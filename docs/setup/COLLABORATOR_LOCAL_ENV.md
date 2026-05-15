@@ -258,9 +258,9 @@ PAYMENTS_ENABLED=false
 # Tenant registration defaults to manual approval unless a local test needs auto-standard activation.
 TENANT_REGISTRATION_APPROVAL_MODE=manual
 
-# Customer Access Mode runtime enforcement is off by default.
-# Settings/onboarding can still store mode preferences while this is false.
-CUSTOMER_ACCESS_MODES_ENABLED=false
+# Customer Access Mode runtime enforcement is on by default.
+# Set this to false only for explicit rollback testing.
+CUSTOMER_ACCESS_MODES_ENABLED=true
 CUSTOMER_ACCESS_MODES_ENABLED_TENANTS=
 
 # PayMongo test/sandbox values from the local development env
@@ -425,12 +425,12 @@ Use production-safe defaults for local setup unless a test specifically needs di
 
 ```env
 TENANT_REGISTRATION_APPROVAL_MODE=manual
-CUSTOMER_ACCESS_MODES_ENABLED=false
+CUSTOMER_ACCESS_MODES_ENABLED=true
 CUSTOMER_ACCESS_MODES_ENABLED_TENANTS=
 PAYMENTS_ENABLED=false
 ```
 
-Customer Access Mode and Inventory Display settings are available to onboarding/settings flows, but public Storefront enforcement remains disabled unless `CUSTOMER_ACCESS_MODES_ENABLED=true` or the current tenant is listed in `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS`.
+Customer Access Mode and Inventory Display settings are enforced by default for public Storefront behavior. Set `CUSTOMER_ACCESS_MODES_ENABLED=false` only for rollback testing; when rollback is active, `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` can re-enable selected tenants.
 
 Services Mode is a first-class workflow mode. It uses normal migrations and does not require a separate setup script, but collaborators should run `npm run doctor:runtime` after migration so service booking, waitlist, reminder, and discovery-index tables are verified.
 

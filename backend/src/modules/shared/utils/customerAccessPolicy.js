@@ -19,6 +19,11 @@ const isTruthyEnv = (value) => {
     return ['1', 'true', 'yes', 'on'].includes(raw);
 };
 
+const isExplicitlyDisabledEnv = (value) => {
+    const raw = String(value || '').trim().toLowerCase();
+    return ['0', 'false', 'no', 'off'].includes(raw);
+};
+
 const parseTenantAllowlist = (value) => String(value || '')
     .split(',')
     .map((entry) => String(entry || '').trim().toLowerCase())
@@ -54,7 +59,7 @@ const REGISTRATION_STAGE_MAX_MODE = Object.freeze({
 });
 
 export const isCustomerAccessModesEnabled = (context = {}) => {
-    if (isTruthyEnv(process.env.CUSTOMER_ACCESS_MODES_ENABLED)) return true;
+    if (!isExplicitlyDisabledEnv(process.env.CUSTOMER_ACCESS_MODES_ENABLED)) return true;
 
     const allowlist = parseTenantAllowlist(process.env.CUSTOMER_ACCESS_MODES_ENABLED_TENANTS);
     if (allowlist.length === 0) return false;

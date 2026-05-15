@@ -72,9 +72,9 @@ POS-derived visibility and POS image data are now compatibility fallback only wh
 
 Image replacement is also sequenced for deploy safety: POS and Storefront uploads store the new file, commit the override update, and then best-effort remove the prior file. If the database update fails after storage succeeds, the newly stored file is removed and the old image remains in place.
 
-## Addendum: Production Hardening And Controlled Rollout (2026-05-04)
+## Addendum: Production Hardening And Default Enforcement (2026-05-04, updated 2026-05-15)
 
-Runtime enforcement remains default-off through `CUSTOMER_ACCESS_MODES_ENABLED=false`, while controlled tenant rollout is supported through `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS`.
+Runtime enforcement is default-on. Public Storefront behavior must honor the effective Customer Access Mode unless operators explicitly set `CUSTOMER_ACCESS_MODES_ENABLED=false` for rollback. When that rollback switch is active, controlled tenant re-enablement is supported through `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS`.
 
 Public discovery index rows materialize Customer Access metadata (`customer_access_mode`, `effective_customer_access_mode`, `max_customer_access_mode`, `inventory_display_mode`, low-stock threshold, `access_capabilities`, limitation reason, and rollout-enabled state) so discovery UI can hide order/cart CTAs before tenant profile load without tenant DB fanout.
 

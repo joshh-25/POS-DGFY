@@ -41,7 +41,18 @@ const invalidateTenantCache = (req) => {
  */
 export const getAllSettings = async (req, res, next) => {
   try {
-    const result = await getAllSettingsUseCase();
+    const result = await getAllSettingsUseCase({
+      context: {
+        tenantId: req.tenant?.id || req.user?.tenant_id || null,
+        tenant_id: req.tenant?.id || req.user?.tenant_id || null,
+        companyToken: req.headers?.['x-company-token'] || req.tenant?.company_token || null,
+        company_token: req.headers?.['x-company-token'] || req.tenant?.company_token || null,
+        slug: req.tenant?.slug || null,
+        tenantSlug: req.tenant?.slug || null,
+        tenantName: req.tenant?.name || req.tenant?.company_name || null,
+        tenant_name: req.tenant?.name || req.tenant?.company_name || null
+      }
+    });
     await trackProductUsageFromResult({
       req,
       user: req.user,

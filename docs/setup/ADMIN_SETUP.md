@@ -142,18 +142,18 @@ Allowed values:
 
 ## Customer Access And Storefront Admin Notes
 
-Customer Access Mode and Inventory Display controls are implemented behind rollout flags.
+Customer Access Mode and Inventory Display controls are enforced by default for public Storefront behavior.
 
-Default local and production-safe rollout values:
+Default local and production values:
 
 ```env
-CUSTOMER_ACCESS_MODES_ENABLED=false
+CUSTOMER_ACCESS_MODES_ENABLED=true
 CUSTOMER_ACCESS_MODES_ENABLED_TENANTS=
 ```
 
-With the global flag off, settings can store Customer Access and Inventory Display preferences, but public runtime enforcement stays compatible unless a tenant is included in the controlled rollout list.
+Use `CUSTOMER_ACCESS_MODES_ENABLED=false` only as an explicit rollback switch. If rollback is active, `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` can re-enable enforcement for selected tenant IDs, company tokens, slugs, or tenant names while recovery smoke evidence is gathered.
 
-Before enabling a tenant:
+Before production smoke:
 
 1. Run migrations.
 2. Run `npm run doctor:runtime`.
@@ -238,7 +238,7 @@ Before going live:
 3. Create a backup admin account.
 4. Document who has admin access.
 5. Set `TENANT_REGISTRATION_APPROVAL_MODE` intentionally.
-6. Keep `CUSTOMER_ACCESS_MODES_ENABLED=false` until controlled rollout smoke evidence is complete.
+6. Keep Customer Access Mode enforcement on unless an explicit rollback is required.
 7. Choose the correct hosting profile env example.
 8. Run docs, architecture, migration, runtime doctor, targeted smoke checks, and the item-detail FIFO behavior tests when inventory UI changed.
 

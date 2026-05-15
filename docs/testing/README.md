@@ -137,9 +137,9 @@ Before running manual UAT after backend changes:
    - Public booking lookup by reference redacts customer contact fields.
    - `/api/v1/pos/catalog` includes `category=service` rows when `visible_in_pos` is not false, even with `current_stock=0`.
    - POS service checkout succeeds without stock deduction and uses the appointment order method when appropriate.
-16. Verify Customer Access Mode rollout behavior before enabling production-wide:
-   - Keep `CUSTOMER_ACCESS_MODES_ENABLED=false` for default production compatibility.
-   - Set `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` to a controlled tenant ID, company token, slug, or tenant name for canary smoke.
+16. Verify Customer Access Mode enforcement behavior:
+   - Keep `CUSTOMER_ACCESS_MODES_ENABLED=true` or unset for default production enforcement.
+   - Use `CUSTOMER_ACCESS_MODES_ENABLED=false` only as a rollback switch. If rollback is active, set `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` to a controlled tenant ID, company token, slug, or tenant name for canary re-enablement smoke.
    - Re-run discovery index sync for that tenant after mode/settings changes.
    - Confirm discovery/profile rows include `customer_access_mode`, `effective_customer_access_mode`, `inventory_display_mode`, `access_capabilities`, limitation metadata, and `customer_access_modes_enabled=true`.
    - Confirm `ghost` tenants remain discoverable by store/profile fields but do not match by item search and return empty public catalog rows.

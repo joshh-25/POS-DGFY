@@ -154,7 +154,7 @@ const createDefaultSettings = ({ workflowMode = DEFAULT_WORKFLOW_MODE } = {}) =>
   inventoryDisplayMode: 'availability',
   inventoryLowStockDisplayThreshold: 5,
   customerAccessRegistrationStage: 'informal',
-  customerAccessFlagStatus: 'backend-controlled',
+  customerAccessFlagStatus: 'enabled',
   storefrontTagline: '',
   storefrontAbout: '',
   storefrontPhone: '',
@@ -675,7 +675,7 @@ export default function Settings() {
           inventoryDisplayMode: normalizeInventoryDisplayMode(systemSettings.inventory_display_mode?.value || 'availability'),
           inventoryLowStockDisplayThreshold: Number(systemSettings.inventory_low_stock_display_threshold?.value ?? 5) || 5,
           customerAccessRegistrationStage,
-          customerAccessFlagStatus: systemSettings.customer_access_modes_enabled?.value === true ? 'enabled' : 'backend-controlled',
+          customerAccessFlagStatus: systemSettings.customer_access_modes_enabled?.value === false ? 'rollback' : 'enabled',
           storefrontTagline: String(systemSettings.storefront_tagline?.value || ''),
           storefrontAbout: String(systemSettings.storefront_about?.value || ''),
           storefrontPhone: String(systemSettings.storefront_phone?.value || ''),
@@ -1829,6 +1829,11 @@ export default function Settings() {
   const customerAccessLimitation = effectiveCustomerAccessMode !== requestedCustomerAccessMode
     ? `Registration stage ${settings.customerAccessRegistrationStage || 'informal'} allows up to ${maxCustomerAccessMode} mode.`
     : 'No registration-stage cap is reducing the requested mode.';
+  const customerAccessRollbackActive = settings.customerAccessFlagStatus === 'rollback';
+  const customerAccessRuntimeLabel = customerAccessRollbackActive ? 'Rollback active' : 'Enforced';
+  const customerAccessRuntimeDescription = customerAccessRollbackActive
+    ? 'Public Storefront access-mode enforcement is globally disabled except for allowlisted tenants.'
+    : 'Public Storefront access-mode enforcement is active for this tenant.';
 
   return (
     <div className="space-y-4 pb-28 sm:space-y-6 sm:pb-0 max-w-5xl mx-auto">
@@ -2184,9 +2189,26 @@ export default function Settings() {
                     onChange={(e) => handleChange('inventoryLowStockDisplayThreshold', e.target.value)}
                   />
                 </div>
-                <div className="rounded-lg border border-slate-200 p-3 text-sm text-slate-600">
-                  <p className="font-semibold text-slate-900">Rollout flag</p>
-                  <p>Enforcement is controlled by the backend <code>CUSTOMER_ACCESS_MODES_ENABLED</code> flag. Settings can be saved before the flag is enabled.</p>
+                <div
+                  className={cn(
+                    'rounded-lg border p-3 text-sm',
+                    customerAccessRollbackActive
+                      ? 'border-amber-200 bg-amber-50 text-amber-800'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  )}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    {customerAccessRollbackActive ? (
+                      <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                    )}
+                    <p className="font-semibold">Runtime enforcement: {customerAccessRuntimeLabel}</p>
+                  </div>
+                  <p className="mt-1">{customerAccessRuntimeDescription}</p>
+                  <p className="mt-1 text-xs">
+                    <code>CUSTOMER_ACCESS_MODES_ENABLED=false</code> is reserved for rollback; <code>CUSTOMER_ACCESS_MODES_ENABLED_TENANTS</code> can re-enable selected tenants during recovery.
+                  </p>
                 </div>
               </div>
               <div className="grid gap-2 md:grid-cols-2">

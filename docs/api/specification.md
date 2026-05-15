@@ -2628,6 +2628,17 @@ Return submission-ready compliance export bundle metadata and CSV file payloads 
 
 ## Storefront Discovery And Guest Store Endpoints
 
+### GET /settings
+Return tenant system settings for IMS Settings.
+
+**Auth**: Private
+
+**Response Notes**
+- Persisted settings are returned by key from tenant `system_settings`.
+- `customer_access_modes_enabled` is an additive read-only virtual key, not a persisted tenant setting. It reflects the effective runtime Customer Access Mode enforcement state for the current tenant context.
+- `customer_access_modes_enabled.value=true` means public Storefront Customer Access Mode enforcement is active for the tenant.
+- `customer_access_modes_enabled.value=false` means the global rollback switch is active for the tenant. Operators should treat `CUSTOMER_ACCESS_MODES_ENABLED=false` as rollback-only and use `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` for tenant re-enablement while recovery evidence is gathered.
+
 ### POST /settings/storefront-assets/:asset_type
 Upload or replace tenant storefront branding image from IMS Settings.
 
@@ -2741,7 +2752,7 @@ List publicly discoverable stores for list/grid/map storefront views.
 - `pin_scope` changes discovery anchor/pin behavior for map/list/grid without changing checkout source contracts.
 - Storefront map marker preview cards may combine discovery-row branding and match metadata with `/store/locations` branch data. The card action must route with the pinned branch `location_id` when available so catalog, quote, checkout, and booking reads stay scoped to the selected fulfillment location. Clients may apply display-only offsets when multiple pins share effectively identical coordinates; this must not mutate stored branch coordinates or the `location_id` used for catalog/quote/checkout/booking scope.
 - Storefront-visible item-search eligibility follows shared catalog policy precedence: explicit `storefront_catalog_overrides.storefront_visible` first; temporary rollout fallback uses `pos_visible` only when Storefront override data is unavailable; otherwise products default to `category=product` + `product_type=finished_goods`, and services default to visible when service metadata exists with `visible_in_storefront !== false` and `bookable !== false`.
-- When `CUSTOMER_ACCESS_MODES_ENABLED=true`, or when a tenant is listed in `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS`, tenants whose effective Customer Access Mode is `ghost` remain discoverable by store/profile fields but are not eligible for item-search matches.
+- When Customer Access Mode enforcement is active, tenants whose effective mode is `ghost` remain discoverable by store/profile fields but are not eligible for item-search matches. Enforcement is active by default; `CUSTOMER_ACCESS_MODES_ENABLED=false` is an explicit rollback switch, and `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` can re-enable selected tenants during rollback recovery.
 
 **Discovery Row Metadata**
 - When `include_match_meta=true`, discovery rows include:
@@ -2836,7 +2847,7 @@ Catalog rows include:
 **Error Code Contract (Catalog Read)**
 - `error_code=STORE_CATALOG_LOCATION_INVALID` (`422`) when `location_id` is invalid.
 - `error_code=STORE_CATALOG_RUNTIME_ERROR` (`500`) for unexpected catalog runtime failures.
-- When `CUSTOMER_ACCESS_MODES_ENABLED=true` and effective mode is `ghost`, catalog read returns `200` with `items=[]` and additive `access_policy` metadata.
+- When effective mode is `ghost`, catalog read returns `200` with `items=[]` and additive `access_policy` metadata while enforcement is active.
 - Compatibility fallback path (missing `item_location_stocks` table/columns) remains non-error and should still return `200`.
 - Storefront clients should map catalog error UX from `error_code` first (code-driven guidance), not message-substring heuristics.
 - Storefront catalog rendering should be deterministic by state (`loading`, `error`, `empty_setup`, `empty_search_on_zero`, `empty_no_match`, `ready`) to avoid blank states.
@@ -2930,7 +2941,7 @@ Services Mode storefront routes are public or Store JWT-authenticated tenant rou
 | `POST` | `/store/services/waitlist` | Optional Store JWT | Add a customer to the service waitlist |
 
 **Booking/Ticket Contract**
-- When `CUSTOMER_ACCESS_MODES_ENABLED=true`, public service booking and waitlist mutations fail closed unless `access_capabilities.booking=true`.
+- Public service booking and waitlist mutations fail closed unless `access_capabilities.booking=true` while enforcement is active.
 - Ticket means booking/order confirmation; receipt means payment proof.
 - Public booking lookup redacts customer contact details.
 - Authenticated customers are auto-linked to new bookings and receive image-download choice only.
@@ -2998,7 +3009,7 @@ Route mapping note:
 **Validation Note**
 - When requested quantity exceeds current stock, response is `422` with machine-readable stock violation details in `errors`.
 - Stock-bearing rows are validated by aggregate requested quantity per `item_id`, not by each submitted line alone. Duplicate product lines, F&B modifier-split lines, physical Services Mode add-ons, and future customized stock-bearing lines cannot exceed the selected location's available stock in one quote.
-- When `CUSTOMER_ACCESS_MODES_ENABLED=true` and effective Customer Access Mode is not `transaction`, response is `403` with `error_code=CUSTOMER_ACCESS_MODE_BLOCKED`.
+- When effective Customer Access Mode is not `transaction`, response is `403` with `error_code=CUSTOMER_ACCESS_MODE_BLOCKED` while enforcement is active.
 - Customer Access Mode block details include `requested_action`, `requested_mode`, `effective_mode`, `limitation_reason`, and `allowed_capabilities`.
 
 **Pricing Contract**
@@ -3022,7 +3033,7 @@ Route mapping note:
 **Validation Note**
 - Validation or stock-constraint breaches return `422` with machine-readable error details.
 - Checkout uses the same aggregate stock-bearing `item_id` quantity validation as quote before persisting lines. Separate submitted lines remain separate receipt/order lines, but their combined stock demand must fit available stock unless the selected location explicitly allows out-of-stock sales.
-- When `CUSTOMER_ACCESS_MODES_ENABLED=true` and effective Customer Access Mode is not `transaction`, response is `403` with `error_code=CUSTOMER_ACCESS_MODE_BLOCKED`.
+- When effective Customer Access Mode is not `transaction`, response is `403` with `error_code=CUSTOMER_ACCESS_MODE_BLOCKED` while enforcement is active.
 - Server errors (`500`) are not the expected contract for normal checkout validation failures.
 
 **Persistence Contract**

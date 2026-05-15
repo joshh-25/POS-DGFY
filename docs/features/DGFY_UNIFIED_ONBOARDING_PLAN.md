@@ -161,7 +161,7 @@ topic: dgfy_unified_onboarding_plan
 - `monetization_tier` (`tier_0 | tier_1 | tier_2 | tier_3`)
 - `workflow_mode_recommendation` (`msme | retail | services | fnb | food_manufacturing | hospitality | healthcare | education_institutions | logistics_distribution | ticketing_transport`)
 - `compliance_path_hint` (`regulated_ready | assisted_compliance | informal_observe`)
-4. Classifier output remains a soft onboarding signal for IMS/POS access. Customer Access Mode enforcement is handled by Storefront runtime policy behind `CUSTOMER_ACCESS_MODES_ENABLED`; no compliance lifecycle mutation or workflow mode auto-write is introduced.
+4. Classifier output remains a soft onboarding signal for IMS/POS access. Customer Access Mode enforcement is handled by default-on Storefront runtime policy; no compliance lifecycle mutation or workflow mode auto-write is introduced.
 5. Added classifier telemetry event keys:
 - `classifier_viewed`, `classifier_saved`, `classifier_skipped`
 
@@ -170,7 +170,7 @@ topic: dgfy_unified_onboarding_plan
 2. Feature contract: `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md`.
 3. Merchant-facing onboarding copy now uses Customer Access Mode while preserving `visibility_mode` as a compatibility alias.
 4. Inventory Display is captured as a separate onboarding preference and editable from Settings > Storefront.
-5. Storefront runtime enforcement is implemented behind `CUSTOMER_ACCESS_MODES_ENABLED` and supports tenant-scoped canaries through `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS`.
+5. Storefront runtime enforcement is default-on. `CUSTOMER_ACCESS_MODES_ENABLED=false` is an explicit rollback switch, and `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` supports tenant-scoped re-enablement during rollback recovery.
 6. Business-classification saves refresh storefront discovery so public discovery/profile rows can reflect current access-mode preferences before onboarding completion.
 
 ## 6) Verification

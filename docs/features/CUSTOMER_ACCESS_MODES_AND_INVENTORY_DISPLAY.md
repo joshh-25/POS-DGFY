@@ -12,7 +12,7 @@ topic: customer_access_modes_inventory_display
 ## Summary
 Customer Access Mode replaces the old merchant-facing "Visibility Mode" wording with a capability contract: what customers can see and do after finding a business. Inventory Display is a separate Storefront control for how much stock information customers can see. Item-level `Show in Storefront` is a third control: it determines whether an individual item is included in the customer-facing catalog when the tenant's effective Customer Access Mode allows catalog browsing.
 
-This contract is implemented behind the backend rollout flag `CUSTOMER_ACCESS_MODES_ENABLED`. With the flag off, public storefront behavior remains transaction-capable for compatibility while onboarding and Settings can store the new mode settings. A controlled tenant rollout can be enabled with `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` while the global flag remains false. With either rollout path enabled for a tenant, public Storefront APIs enforce the effective Customer Access Mode.
+This contract is enforced by default. Public Storefront APIs use the effective Customer Access Mode from tenant settings to decide whether customers can browse catalog rows, contact the tenant, request quotes, book services, or complete checkout. `CUSTOMER_ACCESS_MODES_ENABLED=false` is now an explicit rollback switch only; when it is set, `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` may still re-enable enforcement for selected canary tenants.
 
 Authoritative docs used for this plan:
 
@@ -65,14 +65,15 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 
 3. Settings
 - The Storefront tab exposes `#storefront-access-settings` for Customer Access Mode and Inventory Display.
-- The section shows requested mode, effective mode, max allowed mode, limitation copy, and backend rollout-flag guidance.
+- The section shows requested mode, effective mode, max allowed mode, limitation copy, and a runtime enforcement status sourced from `GET /settings` key `customer_access_modes_enabled`.
+- `customer_access_modes_enabled` is a virtual runtime setting derived from `CUSTOMER_ACCESS_MODES_ENABLED` and tenant allowlisting. It is read-only and must not be persisted in `system_settings`.
 - Modes above the declared onboarding registration stage are disabled in normal tenant UI; backend runtime still enforces public actions.
 - Item-level storefront catalog controls live on inventory item setup surfaces, not Settings. Settings controls whether the Storefront can browse/order overall; `Show in Storefront` controls one item.
 
 4. Storefront public APIs
-- Discovery/profile/catalog responses include additive access metadata. The landlord discovery index materializes `customer_access_mode`, `effective_customer_access_mode`, `inventory_display_mode`, `access_capabilities`, limitation metadata, and the rollout-enabled state so discovery cards can suppress Order Now without a tenant DB fanout.
-- For `ghost`, discovery/profile still work, item-search snapshots are suppressed during discovery indexing, and `/store/catalog` returns no public items when the rollout flag is enabled.
-- For `catalog` and `inquiry`, `/store/catalog` returns public rows but quote/checkout/booking mutations fail closed when the rollout flag is enabled.
+- Discovery/profile/catalog responses include additive access metadata. The landlord discovery index materializes `customer_access_mode`, `effective_customer_access_mode`, `inventory_display_mode`, `access_capabilities`, limitation metadata, and runtime enforcement state so discovery cards can suppress Order Now without a tenant DB fanout.
+- For `ghost`, discovery/profile still work, item-search snapshots are suppressed during discovery indexing, and `/store/catalog` returns no public items while enforcement is active.
+- For `catalog` and `inquiry`, `/store/catalog` returns public rows but quote/checkout/booking mutations fail closed while enforcement is active.
 - For `transaction`, quote/checkout/booking remain available subject to existing location, stock, compliance, and payment gates.
 - Public product catalog payloads continue to omit `current_stock` and `cost_per_unit`; `default_sale_price` is the customer price and `inventory_display.display_quantity` is the only public quantity field.
 - Public product quote and checkout aggregate requested quantity by stock-bearing `item_id` before stock validation. This applies across MSME/product, Food Manufacturing finished products, F&B menu or packaged rows with separate modifier lines, physical Services Mode add-ons, and future stock-bearing mode rows. Pure service rows remain stock-exempt here and use Services booking capacity/hold validation instead.
@@ -138,7 +139,7 @@ Runtime behavior:
 - Backend API/use-case tests: Storefront catalog hides public quantity by default, emits availability labels, strips catalog for `ghost`, blocks quote/checkout/booking for `ghost`, `catalog`, and `inquiry`.
 - Backend catalog split tests: POS catalog uses `pos_visible`, Storefront catalog uses `storefront_visible`, image upload/removal preserves visibility state, row-missing Storefront overrides do not inherit POS state, sale-price readiness rejects missing public prices, image upload DB failures clean up newly stored files, and missing `storefront_catalog_overrides` falls back without `500`.
 - Backend bulk setup tests: POS readiness emits `STOCK_UNAVAILABLE` for stock-bearing out-of-stock rows, stock-exempt service rows remain ready without stock, onboarding sellable-item readiness uses POS readiness, bulk POS/Storefront visibility returns per-item `updated`, `blocked`, `not_found`, or `failed` results, and bulk image uploads cover matched, unmatched, duplicate filename, unsupported MIME, oversize, blocked readiness, and failed-write cleanup paths.
-- Frontend tests: onboarding labels and defaults, Settings section/deep link, Storefront CTA behavior for all four modes, cart reset when mode blocks checkout, inventory display labels, and independent POS/Storefront item-card toggles.
+- Frontend tests: onboarding labels and defaults, Settings section/deep link, Settings runtime enforcement status for enforced/rollback states, Storefront CTA behavior for all four modes, cart reset when mode blocks checkout, inventory display labels, and independent POS/Storefront item-card toggles.
 - Frontend inventory tests: FIFO item-detail behavior, location grouping contract, stale-filter reset on item switch, accessible selected filter state, and long location-name wrapping.
 - Frontend Catalog Setup tests: recommendations, readiness blockers, visibility state, image state, Storefront controls hidden without `items:edit`, bulk action preview, and POS/Storefront image upload independence.
 - Governance checks: `npm run check:architecture`, `npm run lint:docs`, and targeted backend/frontend test suites.
@@ -164,7 +165,7 @@ Validated on 2026-05-08 for the storefront UI merge:
 - Governance gates: `npm run lint:docs`, `npm run check:architecture`, and `git diff --check` passed.
 - Browser smoke: local `/tenant-store` rendered the Storefront shell with no console errors.
 
-Operational readiness rating after this hardening pass: **8.7/10**. Remaining risk is rollout evidence, not missing implementation: apply migrations, sync discovery, enable `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` for controlled tenant smoke, then widen only after evidence confirms no checkout/cart/booking appears for non-transaction effective modes.
+Operational readiness rating after this hardening pass: **8.7/10**. Remaining risk is rollout evidence, not missing implementation: apply migrations, sync discovery, run controlled tenant smoke, then keep `CUSTOMER_ACCESS_MODES_ENABLED=true` unless an explicit rollback is required. If rollback is required, set `CUSTOMER_ACCESS_MODES_ENABLED=false` and use `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` to re-enable enforcement for selected tenants while recovery evidence is gathered.
 
 Validated on 2026-05-11 for bulk Catalog Setup hardening:
 - Backend targeted suites: `npm test -- --runInBand tests/posUsecases.applicationResult.test.js tests/storefrontCatalogUseCases.test.js tests/catalogVisibilityPolicy.test.js` passed 43 tests, covering POS `STOCK_UNAVAILABLE`, service stock exemption, bulk POS visibility mixed results, POS bulk image duplicate/unmatched per-file results, Storefront visibility price blockers, Storefront image preservation/cleanup, and Storefront bulk image price blockers.
@@ -198,7 +199,16 @@ Validated on 2026-05-13 for Business Mode selector cleanup, tenant-location perm
 
 Operational readiness rating after this pass: **8.8/10** for controlled rollout. Remaining risk is live tenant/browser evidence for an authenticated Settings permanent-delete walkthrough and live MySQL concurrency proof; no known source-level implementation gap blocks review.
 
+Validated on 2026-05-15 for default-on Customer Access enforcement and Settings runtime status:
+- Backend targeted suites: `npm --prefix backend test -- --runInBand tests/settingsUsecases.applicationResult.test.js tests/settingsHandlers.transport.test.js tests/customerAccessPolicy.test.js tests/storeUsecases.applicationResult.test.js tests/servicesMode.usecases.test.js` passed 5 files and 86 tests. Coverage includes Settings virtual runtime status, transport tenant context propagation, default-on policy behavior, rollback allowlisting, Storefront quote/checkout blocking, and Services Mode booking/waitlist blocking.
+- Frontend Settings suite: `npm exec vitest run src/pages/__tests__/Settings.deepLinking.integration.test.jsx --pool=threads` from `frontend/` passed 16 tests. Coverage includes rendered IMS Settings runtime status for enforced and rollback states.
+- Frontend Storefront helper suites: `npm exec vitest run apps/store/src/__tests__/customerAccess.test.js apps/store/src/__tests__/checkoutRules.test.js --pool=threads` from `frontend/` passed 7 tests.
+- Governance gates: `npm run lint:docs`, `npm run check:architecture`, `npm run check:compliance`, and `git diff --check` passed.
+
+Operational readiness rating after this pass: **8.9/10**. Source-level implementation, docs, and targeted tests are ready for production deploy. Remaining risk is live production environment confirmation that `CUSTOMER_ACCESS_MODES_ENABLED` is not intentionally set to `false`, plus post-deploy tenant smoke for the public Storefront and IMS Settings runtime-status display.
+
 ## Assumptions
+- Customer Access Mode enforcement is default-on. `CUSTOMER_ACCESS_MODES_ENABLED=false` is reserved for rollback, not normal operation.
 - Inquiry Mode v1 uses existing contact channels only. No stored lead inbox, notification workflow, or inquiry database table is included.
 - Internal mode codes stay `ghost`, `catalog`, `inquiry`, and `transaction` for compatibility. UI copy uses only the new labels.
 - Existing tenants default to browseable catalog behavior with availability-only stock display.
