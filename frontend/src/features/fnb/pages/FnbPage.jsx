@@ -26,6 +26,13 @@ import {
   updateFnbServiceChargeSettings,
   upsertFnbItemKitchenRoute
 } from '../api/fnbApi.js';
+import {
+  buildKitchenTicketDisplay,
+  formatKitchenQuantity,
+  getTicketRecipeMovementCount,
+  getTicketSnapshotLines,
+  getTicketSourceLabel
+} from '../utils/kitchenQueueDisplay.js';
 
 const tabs = [
   { key: 'floor', label: 'Tables', icon: LayoutGrid },
@@ -125,6 +132,15 @@ export default function FnbPage() {
     notes: ''
   });
   const [reservationFilters, setReservationFilters] = useState({ table_id: '', status: '', from: '', to: '' });
+
+  const menuItemById = useMemo(() => new Map(menuItems.map((item) => [Number(item.item_id), item])), [menuItems]);
+  const kitchenTickets = useMemo(() => checks.flatMap((check) => (
+    (check.kitchenTickets || []).map((ticket) => ({
+      ...ticket,
+      check,
+      displayLines: getTicketSnapshotLines(ticket, check)
+    }))
+  )), [checks]);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -517,14 +533,39 @@ export default function FnbPage() {
               <section className="rounded-lg border border-slate-200 bg-white p-4">
                 <h2 className="text-lg font-semibold text-slate-900">Kitchen Queue</h2>
                 <div className="mt-4 grid gap-3">
-                  {checks.flatMap((check) => check.kitchenTickets || []).map((ticket) => (
+                  {kitchenTickets.map((ticket) => (
                     <article key={ticket.kitchen_ticket_id} className="rounded-lg border border-slate-200 p-3">
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="text-sm font-semibold text-slate-900">{ticket.ticket_number}</p>
-                          <p className="text-xs text-slate-500">{ticket.station?.name || 'Unassigned station'}</p>
+                          <p className="text-xs text-slate-500">
+                            {ticket.station?.name || 'Unassigned station'} - {getTicketSourceLabel(ticket, ticket.check)}
+                            {ticket.check?.check_id ? ` - Check #${ticket.check.check_id}` : ''}
+                          </p>
                         </div>
                         <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${statusBadgeClass(ticket.status)}`}>{ticket.status}</span>
+                      </div>
+                      <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-2">
+                        <div className="space-y-1">
+                          {ticket.displayLines.slice(0, 5).map((line, index) => {
+                            const ticketDisplay = buildKitchenTicketDisplay({ ticket, check: ticket.check, itemMap: menuItemById });
+                            const displayLine = ticketDisplay.lines[index];
+                            const item = line.item || menuItemById.get(Number(line.item_id));
+                            return (
+                              <div key={line.check_line_id || `${ticket.kitchen_ticket_id}-${line.item_id || index}`} className="flex items-center justify-between gap-3 text-xs">
+                                <span className="font-medium text-slate-700">{displayLine?.name || item?.name || `Item #${line.item_id || index + 1}`}</span>
+                                <span className="shrink-0 text-slate-500">x{displayLine?.quantity_label || formatKitchenQuantity(line.quantity)}</span>
+                              </div>
+                            );
+                          })}
+                          {ticket.displayLines.length === 0 && <p className="text-xs text-slate-500">No line snapshot available.</p>}
+                          {ticket.displayLines.length > 5 && <p className="text-xs text-slate-500">+{ticket.displayLines.length - 5} more lines</p>}
+                        </div>
+                        {getTicketRecipeMovementCount(ticket) > 0 && (
+                          <p className="mt-2 border-t border-slate-200 pt-2 text-xs font-medium text-slate-600">
+                            {getTicketRecipeMovementCount(ticket)} recipe ingredient movement{getTicketRecipeMovementCount(ticket) === 1 ? '' : 's'} attached
+                          </p>
+                        )}
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {['preparing', 'ready', 'served', 'cancelled'].map((status) => (
@@ -535,7 +576,7 @@ export default function FnbPage() {
                       </div>
                     </article>
                   ))}
-                  {checks.flatMap((check) => check.kitchenTickets || []).length === 0 && <p className="text-sm text-slate-500">No active kitchen tickets.</p>}
+                  {kitchenTickets.length === 0 && <p className="text-sm text-slate-500">No active kitchen tickets.</p>}
                 </div>
               </section>
               <section className="rounded-lg border border-slate-200 bg-white p-4">

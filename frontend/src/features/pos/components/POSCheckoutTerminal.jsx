@@ -73,7 +73,29 @@ const buildMissingFieldsMessage = (error) => {
     if (!Array.isArray(missingFields) || missingFields.length === 0) return null;
     return `Missing POS setup fields: ${missingFields.join(', ')}`;
 };
+const buildFnbRecipeBlockerMessage = (error) => {
+    const details = error?.response?.data?.errors || error?.response?.data?.details || {};
+    const reasonCode = String(details?.reason_code || '').trim().toUpperCase();
+    if (reasonCode === 'FNB_RECIPE_INGREDIENT_SHORTFALL') {
+        const product = details.product_name || 'Selected menu item';
+        const ingredient = details.ingredient_name || `ingredient ${details.ingredient_item_id || ''}`.trim();
+        const unit = details.unit_of_measure ? ` ${details.unit_of_measure}` : '';
+        const location = details.location_id ? ` at location ${details.location_id}` : '';
+        return `${product} cannot be checked out because ${ingredient} is short${location}. Available: ${details.available ?? 0}${unit}; required: ${details.requested ?? ''}${unit}.`;
+    }
+    if (reasonCode === 'FNB_RECIPE_UOM_INCOMPATIBLE') {
+        const product = details.product_name || 'Selected menu item';
+        const ingredient = details.ingredient_name || `ingredient ${details.ingredient_item_id || ''}`.trim();
+        return `${product} cannot be checked out because ${ingredient} uses incompatible recipe units (${details.recipe_uom || 'recipe UOM'} to ${details.ingredient_uom || 'stock UOM'}). Update the recipe or ingredient UOM, then retry.`;
+    }
+    if (reasonCode === 'FNB_KITCHEN_ORDER_UNAVAILABLE') {
+        return 'Kitchen order could not be queued. Refresh the F&B setup, then retry checkout.';
+    }
+    return null;
+};
 const buildValidationDetailMessage = (error) => {
+    const fnbRecipeBlocker = buildFnbRecipeBlockerMessage(error);
+    if (fnbRecipeBlocker) return fnbRecipeBlocker;
     if (error?.response?.status !== 422) return null;
 
     const validationErrors = error?.response?.data?.errors;
@@ -1286,6 +1308,7 @@ export default function POSCheckoutTerminal({
             toast.error(
                 compliancePolicyBlocker?.message
                 || buildMissingFieldsMessage(error)
+                || buildFnbRecipeBlockerMessage(error)
                 || buildValidationDetailMessage(error)
                 || error?.response?.data?.message
                 || 'POS checkout failed'

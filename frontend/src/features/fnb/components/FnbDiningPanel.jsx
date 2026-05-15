@@ -10,6 +10,12 @@ import {
     listFnbKitchenStations,
     updateFnbKitchenTicketStatus
 } from '../api/fnbApi.js';
+import {
+    formatKitchenQuantity,
+    getKitchenLineName,
+    getTicketSnapshotLines,
+    getTicketSourceLabel
+} from '../utils/kitchenQueueDisplay.js';
 
 export default function FnbDiningPanel({ onSelectCheckoutContext }) {
     const [diningAreas, setDiningAreas] = useState([]);
@@ -208,12 +214,36 @@ export default function FnbDiningPanel({ onSelectCheckoutContext }) {
                                     Fire ticket
                                 </button>
                             </div>
+                            {(check.lines || []).length > 0 && (
+                                <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-2">
+                                    {(check.lines || []).slice(0, 4).map((line, index) => (
+                                        <div key={line.check_line_id || `${check.check_id}-${line.item_id || index}`} className="flex items-center justify-between gap-2 text-xs">
+                                            <span className="font-medium text-slate-700">{getKitchenLineName(line, index)}</span>
+                                            <span className="text-slate-500">x{formatKitchenQuantity(line.quantity)}</span>
+                                        </div>
+                                    ))}
+                                    {(check.lines || []).length > 4 && (
+                                        <p className="mt-1 text-xs text-slate-500">+{(check.lines || []).length - 4} more lines</p>
+                                    )}
+                                </div>
+                            )}
                             {(check.kitchenTickets || []).length > 0 && (
                                 <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
                                     {(check.kitchenTickets || []).slice(0, 2).map((ticket) => (
-                                        <div key={ticket.kitchen_ticket_id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                                            <span className="font-semibold text-slate-700">{ticket.ticket_number} - {ticket.status}</span>
-                                            <div className="flex gap-1">
+                                        <div key={ticket.kitchen_ticket_id} className="rounded-lg border border-slate-100 p-2 text-xs">
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <span className="font-semibold text-slate-700">{ticket.ticket_number} - {ticket.status}</span>
+                                                <span className="text-slate-500">{ticket.station?.name || getTicketSourceLabel(ticket, check)}</span>
+                                            </div>
+                                            <div className="mt-2 space-y-1">
+                                                {getTicketSnapshotLines(ticket, check).slice(0, 3).map((line, index) => (
+                                                    <div key={line.check_line_id || `${ticket.kitchen_ticket_id}-${line.item_id || index}`} className="flex items-center justify-between gap-2">
+                                                        <span className="text-slate-600">{getKitchenLineName(line, index)}</span>
+                                                        <span className="text-slate-500">x{formatKitchenQuantity(line.quantity)}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="mt-2 flex flex-wrap gap-1">
                                                 {['preparing', 'ready', 'served'].map((status) => (
                                                     <button key={status} type="button" onClick={() => progressTicket(ticket, status)} disabled={Boolean(busy)} className="rounded border border-slate-200 px-2 py-1 text-slate-600 disabled:opacity-50">
                                                         {status}

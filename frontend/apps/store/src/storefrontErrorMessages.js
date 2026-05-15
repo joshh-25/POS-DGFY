@@ -5,6 +5,28 @@ export const normalizeStorefrontErrorMessage = (error, fallback = 'Request faile
 
   const errorCode = String(error?.errorCode || '').trim().toUpperCase();
   const baseMessage = String(error?.message || '').trim() || fallback;
+  const details = error?.details || {};
+  const reasonCode = String(details?.reason_code || '').trim().toUpperCase();
+
+  if (reasonCode === 'FNB_RECIPE_INGREDIENT_SHORTFALL') {
+    const product = details.product_name || 'Selected menu item';
+    const ingredient = details.ingredient_name || `ingredient ${details.ingredient_item_id || ''}`.trim();
+    const available = details.available ?? '0';
+    const requested = details.requested ?? details.required ?? '';
+    const unit = details.unit_of_measure ? ` ${details.unit_of_measure}` : '';
+    const location = details.location_id ? ` at location ${details.location_id}` : '';
+    return `${product} cannot be checked out because ${ingredient} is short${location}. Available: ${available}${unit}; required: ${requested}${unit}.`;
+  }
+
+  if (reasonCode === 'FNB_RECIPE_UOM_INCOMPATIBLE') {
+    const product = details.product_name || 'Selected menu item';
+    const ingredient = details.ingredient_name || `ingredient ${details.ingredient_item_id || ''}`.trim();
+    return `${product} cannot be checked out because ${ingredient} uses incompatible recipe units (${details.recipe_uom || 'recipe UOM'} to ${details.ingredient_uom || 'stock UOM'}). Update the recipe or ingredient UOM, then retry.`;
+  }
+
+  if (reasonCode === 'FNB_KITCHEN_ORDER_UNAVAILABLE') {
+    return 'Kitchen order could not be queued. Ask staff to refresh the F&B setup, then retry checkout.';
+  }
 
   if (errorCode === 'RESOURCE_NOT_FOUND') {
     return 'Tracking PIN not found. Verify the latest PIN from your checkout confirmation.';

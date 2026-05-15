@@ -26,6 +26,36 @@ describe('storefront error message normalization', () => {
     expect(message).toContain('Fix required');
   });
 
+  it('maps F&B recipe shortfalls to ingredient-specific checkout copy', () => {
+    const message = normalizeStorefrontErrorMessage({
+      errorCode: 'VALIDATION_FAILED',
+      message: 'Insufficient ingredient stock',
+      details: {
+        reason_code: 'FNB_RECIPE_INGREDIENT_SHORTFALL',
+        product_name: 'Burger',
+        ingredient_name: 'Ground beef',
+        available: 0.2,
+        requested: 0.25,
+        unit_of_measure: 'kg',
+        location_id: 4
+      }
+    });
+    expect(message).toContain('Burger cannot be checked out');
+    expect(message).toContain('Ground beef');
+    expect(message).toContain('Available: 0.2 kg; required: 0.25 kg');
+  });
+
+  it('maps F&B kitchen queue failures to staff-actionable copy', () => {
+    const message = normalizeStorefrontErrorMessage({
+      errorCode: 'CONFLICT',
+      message: 'F&B kitchen order could not be created',
+      details: {
+        reason_code: 'FNB_KITCHEN_ORDER_UNAVAILABLE'
+      }
+    });
+    expect(message).toContain('Kitchen order could not be queued');
+  });
+
   it('maps location capability mismatches to fulfillment guidance', () => {
     const message = normalizeStorefrontErrorMessage({
       message: 'Selected location does not support pickup orders'

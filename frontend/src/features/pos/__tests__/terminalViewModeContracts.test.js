@@ -176,6 +176,13 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain('BSP_OPS_REGISTRATION_REQUIRED');
   });
 
+  it('maps F&B recipe checkout blockers to ingredient-specific cashier copy', () => {
+    expect(posCheckoutTerminalContent).toContain('buildFnbRecipeBlockerMessage');
+    expect(posCheckoutTerminalContent).toContain('FNB_RECIPE_INGREDIENT_SHORTFALL');
+    expect(posCheckoutTerminalContent).toContain('FNB_RECIPE_UOM_INCOMPATIBLE');
+    expect(posCheckoutTerminalContent).toContain('FNB_KITCHEN_ORDER_UNAVAILABLE');
+  });
+
   it('requires terminal identity selection and propagates terminal id to checkout payload', () => {
     expect(terminalPageContent).toContain("const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';");
     expect(terminalPageContent).toContain('pos_terminal_registry');
