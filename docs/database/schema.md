@@ -155,8 +155,12 @@ Validation contract:
 - Phone values are trimmed.
 - Accepted format is 7-40 characters using digits, spaces, `+`, `-`, parentheses, and periods.
 - Existing users created before this requirement can add or change their number through Settings > Profile. Admin user management surfaces display existing numbers and mark accepted legacy users whose phone number is missing.
-- Accepted legacy users with blank `users.phone_number` are allowed to read/update their own profile and log out, but normal authenticated tenant work is blocked with `428 PHONE_NUMBER_REQUIRED` until the stored phone number is completed.
-- Operators can run `npm run verify:phone-rollout` from `backend/` to report active-tenant schema presence plus outstanding legacy-user gaps. `npm run verify:phone-rollout:complete` fails while any active accepted user still lacks a phone number, making it the rollout-closure gate.
+- Accepted legacy users with blank `users.phone_number` are allowed to read/update their own profile and log out whenever phone-completion enforcement is active for their tenant; only then is normal authenticated tenant work blocked with `428 PHONE_NUMBER_REQUIRED` until the stored phone number is completed.
+- Enforcement is staged through `PHONE_COMPLETION_ENFORCEMENT_MODE`:
+  - `observe` (non-test default): report and remediate without blocking.
+  - `tenant_allowlist`: enforce only tenant IDs or company tokens in `PHONE_COMPLETION_ENFORCED_TENANTS`.
+  - `all`: enforce globally after closure evidence is clean.
+- Operators can run `npm run verify:phone-rollout` from `backend/` to report active-tenant schema presence, outstanding legacy-user gaps, and current enforcement mode. `npm run verify:phone-rollout:users` prints the exact accepted active users still missing phone numbers, `npm run verify:phone-rollout:config-safe` fails if currently enforced tenants are not ready, and `npm run verify:phone-rollout:complete` remains the global rollout-closure gate.
   - `compliance_cycle_version`, `compliance_revert_last_cycle_version`
   - `compliance_policy_version`, `compliance_profile`
 - Drift-alignment migrations:

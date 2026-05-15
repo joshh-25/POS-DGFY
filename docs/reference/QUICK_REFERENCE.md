@@ -47,6 +47,20 @@ npm run repair:indexes
 npm run audit:indexes
 ```
 
+## Phone Completion Rollout
+```bash
+cd /var/www/skupervisor/backend
+npm run verify:phone-rollout
+npm run verify:phone-rollout:users
+npm run verify:phone-rollout:config-safe
+npm run verify:phone-rollout:complete
+```
+
+Recommended sequence:
+1. Keep `PHONE_COMPLETION_ENFORCEMENT_MODE=observe` until unresolved historical accounts are reviewed.
+2. Use `PHONE_COMPLETION_ENFORCEMENT_MODE=tenant_allowlist` plus `PHONE_COMPLETION_ENFORCED_TENANTS=<tenant-id-or-company-token>` only for tenants whose verifier count is already zero.
+3. Switch to `PHONE_COMPLETION_ENFORCEMENT_MODE=all` only after `npm run verify:phone-rollout:complete` passes.
+
 ## PM2 Operations
 ```bash
 pm2 list

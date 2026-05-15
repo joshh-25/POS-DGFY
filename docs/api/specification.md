@@ -258,7 +258,12 @@ x-company-token: <company-token>
 ### PUT /users/me
 Update the current authenticated user's profile-level account details. Existing users may add or change `phone_number` here after login. When profile identity fields are updated, the resulting profile must keep a non-empty valid `phone_number`; sending an empty phone number is rejected with `422`. The authenticated shell surfaces a remediation prompt for accepted legacy users whose stored account phone is still blank.
 
-Accepted legacy users with a blank stored `phone_number` are restricted after login until they complete this field. During that state:
+Phone-completion enforcement is controlled by `PHONE_COMPLETION_ENFORCEMENT_MODE`:
+- `observe` is the non-test default and does not block historical users yet.
+- `tenant_allowlist` enforces only tenants listed in `PHONE_COMPLETION_ENFORCED_TENANTS` by tenant ID or company token.
+- `all` enforces globally after rollout closure is complete.
+
+When enforcement is active for a tenant, accepted legacy users with a blank stored `phone_number` are restricted after login until they complete this field. During that state:
 - `GET /users/me`, `PUT /users/me`, and `POST /auth/logout` remain available.
 - Other authenticated tenant routes return:
 
