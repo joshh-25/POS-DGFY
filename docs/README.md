@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-05-14
+last_reviewed: 2026-05-15
 applies_to: all_documentation_users
 topic: docs_hub
 ---
@@ -48,6 +48,7 @@ Start here for all planning and implementation work:
 - Mode-Aware RBAC and Role Presets is governed by `docs/architecture/adr/0020-mode-aware-rbac-and-role-presets.md`. It keeps legacy `users.role`, `users.permissions`, and `is_master_admin` operational while adding `users.role_preset_key`, a backend mode role catalog, mode-native Services/F&B permissions, assigned-location role scope, and backend-driven User Management role catalogs.
 - Storefront mode presentation is tracked in `docs/features/STOREFRONT_CURRENT_STANDING.md` and `docs/proposals/STOREFRONT_UI_IMPLEMENTATION_BRIEF.md`. The current storefront app uses a shared template registry plus Services/F&B view models, preserves customer-access/inventory-display gates, and keeps mode-specific lazy surfaces such as service booking, F&B reservation, and map presentation outside the initial generic catalog shell where possible.
 - Tenant provisioning/model-clone hardening is part of the workflow-mode readiness contract. Future mode plans must include tenant-local table and foreign-key mapping, `tenantModelFactory` clone coverage, disposable schema sync evidence across `WORKFLOW_MODE_VALUES`, and retryable approval/auto-approval cleanup behavior.
+- Account-phone rollout hardening is tracked in `docs/features/TENANT_MANAGEMENT.md`, `docs/api/specification.md`, `docs/database/schema.md`, and `docs/reference/QUICK_REFERENCE.md`. New company/user registration requires phone capture, historical accepted users are surfaced for remediation, and post-login enforcement now uses staged rollout controls (`observe`, tenant allowlist, then `all`) instead of surprise global lockout.
 
 ## Repository Structure Snapshot
 - `backend/`: Express + Sequelize modular-monolith backend
@@ -99,6 +100,7 @@ Start here for all planning and implementation work:
 31. Settings > Storefront location pins support add, edit, primary, deactivate/reactivate, and permanent delete for inactive unused pins. Permanent delete is guarded by a tenant-local reference-source manifest, returns `409` with `reference_counts` for operational history, fails closed with `503` when reference inspection is unavailable, and refreshes Storefront discovery after successful deletion.
 32. Storefront discovery map pins use preview-first branded marker cards. Duplicate-coordinate pins are separated with display-only marker offsets so each pin remains targetable without changing stored branch coordinates or location-scoped Storefront routing.
 33. Storefront mode presentation is template-driven. Services Mode uses service-specific view-model grouping, availability/hold-backed booking drafts, batch booking, and per-booking confirmation/payment rendering; F&B uses restaurant/menu grouping, default modifier selection, allergen presentation, and a reservation entry point; simple/MSME keeps a lightweight product storefront. The May 14, 2026 local production candidate passed 74 storefront app tests and a tenant-store build with a fresh vendor chunk, replacing the previously reported failing `vendor-BGNbcnYt.js` runtime path.
+34. Account-phone rollout is now explicit and staged. New company/user registration and invite acceptance require phone numbers, existing users can correct numbers in Settings > Profile, admins can isolate missing-phone accounts in User Management, and backend enforcement defaults to `PHONE_COMPLETION_ENFORCEMENT_MODE=observe` outside tests. Operators can pilot clean tenants through `tenant_allowlist`, inspect unresolved users with `npm --prefix backend run verify:phone-rollout:users`, prove current config safety with `npm --prefix backend run verify:phone-rollout:config-safe`, and only switch to global `all` mode after `npm --prefix backend run verify:phone-rollout:complete` passes.
 
 ## Rules
 1. Use authoritative docs first.

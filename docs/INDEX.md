@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-05-14
+last_reviewed: 2026-05-15
 applies_to: docs_navigation
 topic: docs_index
 ---
@@ -57,6 +57,7 @@ Canonical planning entry:
 - Storefront cover/profile upload ingress is tracked in `docs/ops/DEPLOYMENT_GUIDE.md` and `docs/features/STOREFRONT_SERVICE_MODE_CURRENT_STATE.md`. VPS deploys install an Nginx `client_max_body_size 8m;` guard so IMS Settings photo uploads reach backend validation instead of failing at the proxy with `413`.
 - Namecheap shared-hosting artifact deploys are tracked in `docs/ops/NAMECHEAP_SHARED_CICD.md`, with CI artifacts and `.github/workflows/deploy-namecheap-shared.yml`.
 - Tenant registration approval policy is tracked in `docs/features/TENANT_MANAGEMENT.md` and `docs/api/specification.md`. `manual` remains the default, new pending/active registrations are premium-capable by plan metadata, and `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` temporarily provisions manual registrations immediately before the frontend follows with a normal login call.
+- Account-phone rollout state is tracked in `docs/features/TENANT_MANAGEMENT.md`, `docs/api/specification.md`, `docs/database/schema.md`, and `docs/reference/QUICK_REFERENCE.md`. The current production-safe contract is staged enforcement: `observe` by default, `tenant_allowlist` for verified clean tenants, and global `all` only after the phone-rollout closure gate passes.
 - Public company registration abuse limits are tracked in the same tenant/API docs and configured through `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` plus `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`.
 - Compliance governance, classification floors, and PH regulatory mapping are under `docs/compliance`.
 - Compliance evidence and submission packet are under `docs/compliance/evidence/` and `docs/compliance/submission/`.
