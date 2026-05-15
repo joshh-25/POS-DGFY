@@ -1,7 +1,12 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
-    await queryInterface.createTable('suppliers', {
+    const existingTables = await queryInterface.showAllTables();
+    const hasSuppliersTable = existingTables.some((table) => (
+      String(table).toLowerCase() === 'suppliers'
+    ));
+
+    const columns = {
       supplier_id: {
         type: Sequelize.INTEGER,
         primaryKey: true,
@@ -57,11 +62,32 @@ module.exports = {
         allowNull: false,
         defaultValue: Sequelize.literal('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')
       }
-    });
+    };
 
-    await queryInterface.addIndex('suppliers', ['name'], { name: 'idx_supplier_name' });
-    await queryInterface.addIndex('suppliers', ['email'], { name: 'idx_supplier_email' });
-    await queryInterface.addIndex('suppliers', ['is_active'], { name: 'idx_supplier_is_active' });
+    if (!hasSuppliersTable) {
+      await queryInterface.createTable('suppliers', {
+        ...columns
+      });
+    } else {
+      const existingColumns = await queryInterface.describeTable('suppliers');
+      for (const [columnName, definition] of Object.entries(columns)) {
+        if (!existingColumns[columnName]) {
+          await queryInterface.addColumn('suppliers', columnName, definition);
+        }
+      }
+    }
+
+    const existingIndexes = await queryInterface.showIndex('suppliers');
+    const existingIndexNames = new Set(existingIndexes.map((index) => index.name));
+    const ensureIndex = async (fields, name) => {
+      if (!existingIndexNames.has(name)) {
+        await queryInterface.addIndex('suppliers', fields, { name });
+      }
+    };
+
+    await ensureIndex(['name'], 'idx_supplier_name');
+    await ensureIndex(['email'], 'idx_supplier_email');
+    await ensureIndex(['is_active'], 'idx_supplier_is_active');
   },
 
   async down(queryInterface, Sequelize) {

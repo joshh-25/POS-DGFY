@@ -276,6 +276,8 @@ export default function UserManagementModal({ open, onOpenChange }) {
       let matchesFilter = true;
       if (filter === 'invitations') {
         matchesFilter = isInvitationRow(user);
+      } else if (filter === 'missing-phone') {
+        matchesFilter = user.is_active && !isInvitationRow(user) && !String(user.phone_number || '').trim();
       } else if (filter === 'inactive') {
         // Inactive tab: show only inactive users
         matchesFilter = !user.is_active && !isInvitationRow(user);
@@ -735,6 +737,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
     return [
       { key: 'all', label: 'All', icon: Users2 },
       { key: 'invitations', label: 'Invitations', icon: UserPlus },
+      { key: 'missing-phone', label: 'Missing Phone', icon: AlertTriangle },
       ...modeRoleFilters,
       ...legacyRoleFilters,
       { key: 'inactive', label: 'Inactive', icon: UserX }

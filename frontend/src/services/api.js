@@ -60,6 +60,15 @@ const getSessionExpiredRedirect = () => {
   return '/login?reason=session_expired';
 };
 
+const getPhoneCompletionRedirect = () => '/settings?tab=profile&reason=phone_required';
+
+const isAlreadyOnPhoneCompletionRoute = () => {
+  if (typeof window === 'undefined') return false;
+  const pathname = window.location?.pathname || '';
+  const search = window.location?.search || '';
+  return pathname === '/settings' && new URLSearchParams(search).get('tab') === 'profile';
+};
+
 const dispatchSessionExpiredEvent = () => {
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
     return;
@@ -289,6 +298,15 @@ api.interceptors.response.use(
       localStorage.removeItem('companyToken');
       // Don't necessarily redirect to login here, just clear the token
       // Most protected routes will redirect if they need a tenant
+    }
+
+    if (
+      error.response?.status === 428 &&
+      error.response?.data?.error_code === 'PHONE_NUMBER_REQUIRED' &&
+      typeof window !== 'undefined' &&
+      !isAlreadyOnPhoneCompletionRoute()
+    ) {
+      window.location.href = getPhoneCompletionRedirect();
     }
 
     // Log detailed validation errors for 422 responses

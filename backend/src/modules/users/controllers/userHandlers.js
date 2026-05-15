@@ -92,6 +92,14 @@ export const updateProfile = async (req, res, next) => {
       result
     });
 
+    if (result.success) {
+      invalidateUserAuthCache({
+        tenantId: req.tenant?.id || null,
+        companyToken: req.headers['x-company-token'] || null,
+        userId
+      });
+    }
+
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,
       successPayloadResolver: () => ({

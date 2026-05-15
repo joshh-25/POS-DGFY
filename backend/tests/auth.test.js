@@ -1,4 +1,5 @@
 import request from 'supertest';
+import { jest } from '@jest/globals';
 import app from '../src/server.js';
 import User from '../src/models/User.js';
 import sequelize from '../src/config/database.js';
@@ -6,6 +7,8 @@ import db from '../src/models/index.js';
 import tenantConnector from '../src/utils/TenantConnector.js';
 import { getTenantModels } from '../src/utils/tenantModelFactory.js';
 import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
+
+jest.setTimeout(60000);
 
 describe('Authentication API', () => {
   const TEST_EMAILS = ['test@example.com', 'testuser2@example.com'];
@@ -310,6 +313,105 @@ describe('Authentication API', () => {
 
       expect(response.body.success).toBe(true);
       expect(response.body.message).toBe('Logout successful');
+    });
+  });
+
+  describe('PUT /api/v1/users/me', () => {
+    let authToken;
+
+    beforeEach(async () => {
+      await request(app)
+        .post('/api/v1/auth/register')
+        .set('x-company-token', TEST_COMPANY_TOKEN)
+        .send({
+          username: 'testuser',
+          email: 'test@example.com',
+          phone_number: '+63 912 345 6789',
+          password: 'TestPassword123!'
+        });
+
+      const loginResp = await request(app)
+        .post('/api/v1/auth/login')
+        .set('x-company-token', TEST_COMPANY_TOKEN)
+        .send({
+          email: 'test@example.com',
+          password: 'TestPassword123!'
+        });
+
+      authToken = loginResp.body.data.token;
+    });
+
+    it('rejects attempts to clear the required phone number', async () => {
+      const response = await request(app)
+        .put('/api/v1/users/me')
+        .set('x-company-token', TEST_COMPANY_TOKEN)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ phone_number: '' })
+        .expect(422);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.errors).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            field: 'phone_number'
+          })
+        ])
+      );
+    });
+
+    it('allows valid phone corrections and returns the normalized value', async () => {
+      const response = await request(app)
+        .put('/api/v1/users/me')
+        .set('x-company-token', TEST_COMPANY_TOKEN)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ phone_number: ' +63 917 111 2233 ' })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.phone_number).toBe('+63 917 111 2233');
+    });
+
+    it('blocks protected work until accepted legacy users complete their phone number', async () => {
+      const tenant = await db.Tenant.findOne({ where: { company_token: TEST_COMPANY_TOKEN } });
+      const tenantSequelize = await tenantConnector.getConnection(tenant);
+      const tenantModels = getTenantModels(tenantSequelize);
+      await tenantModels.User.update(
+        { phone_number: null },
+        { where: { email: 'test@example.com' } }
+      );
+
+      const ownProfileResponse = await request(app)
+        .get('/api/v1/users/me')
+        .set('x-company-token', TEST_COMPANY_TOKEN)
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(200);
+
+      expect(ownProfileResponse.body.data.phone_number).toBeNull();
+
+      const blockedResponse = await request(app)
+        .get('/api/v1/dashboard/stats')
+        .set('x-company-token', TEST_COMPANY_TOKEN)
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(428);
+
+      expect(blockedResponse.body).toEqual(expect.objectContaining({
+        success: false,
+        error_code: 'PHONE_NUMBER_REQUIRED'
+      }));
+
+      await request(app)
+        .put('/api/v1/users/me')
+        .set('x-company-token', TEST_COMPANY_TOKEN)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ phone_number: '+63 917 111 2233' })
+        .expect(200);
+
+      const unblockedResponse = await request(app)
+        .get('/api/v1/dashboard/stats')
+        .set('x-company-token', TEST_COMPANY_TOKEN)
+        .set('Authorization', `Bearer ${authToken}`);
+
+      expect(unblockedResponse.status).not.toBe(428);
     });
   });
 });

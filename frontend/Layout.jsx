@@ -100,6 +100,9 @@ export default function Layout({ children, currentPageName }) {
   const shouldShowOnboardingReminder = Boolean(
     currentUser?.is_master_admin === true && onboardingState !== 'completed'
   );
+  const shouldShowPhoneReminder = Boolean(
+    currentUser && !String(currentUser.phone_number || '').trim()
+  );
 
   React.useEffect(() => {
     if (!shouldShowOnboardingReminder) {
@@ -245,6 +248,22 @@ export default function Layout({ children, currentPageName }) {
                 setOnboardingModalOpen(true);
               }}
             />
+          )}
+          {shouldShowPhoneReminder && (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-sm font-semibold text-amber-900">Add your phone number to complete your account profile.</p>
+              <p className="mt-1 text-xs text-amber-800">
+                New accounts require this during registration. Existing accounts can add it in Settings.
+              </p>
+              <div className="mt-2">
+                <Link
+                  to="/settings?tab=profile"
+                  className="inline-flex rounded border border-amber-300 bg-white px-2.5 py-1 text-xs font-semibold text-amber-900"
+                >
+                  Add Phone Number
+                </Link>
+              </div>
+            </div>
           )}
           {modeChangeNotice && (
             <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">

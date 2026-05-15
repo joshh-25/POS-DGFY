@@ -18,10 +18,21 @@ const SUBSCRIPTION_GATE_BYPASS_ROUTES = new Set([
   'POST /sync',
   'POST /sync-paymongo',
 ]);
+const PHONE_COMPLETION_BYPASS_ROUTES = new Set([
+  'GET /api/v1/users/me',
+  'PUT /api/v1/users/me',
+  'POST /api/v1/auth/logout'
+]);
 
 const shouldBypassSubscriptionGate = (req) => {
   const routeKey = `${(req.method || '').toUpperCase()} ${req.path || ''}`;
   return req.baseUrl === '/api/v1/payments' && SUBSCRIPTION_GATE_BYPASS_ROUTES.has(routeKey);
+};
+
+const shouldBypassPhoneCompletionGate = (req) => {
+  const requestPath = String(req.originalUrl || '').split('?')[0];
+  const routeKey = `${(req.method || '').toUpperCase()} ${requestPath}`;
+  return PHONE_COMPLETION_BYPASS_ROUTES.has(routeKey);
 };
 
 const normalizePermissionArray = (rawPermissions) => {
@@ -237,6 +248,19 @@ export const authenticate = async (req, res, next) => {
       });
     }
 
+    if (!String(user.phone_number || '').trim() && !shouldBypassPhoneCompletionGate(req)) {
+      return res.status(428).json({
+        success: false,
+        data: null,
+        message: 'Phone number is required before continuing.',
+        error_code: 'PHONE_NUMBER_REQUIRED',
+        errors: {
+          remediation: 'Update your phone number in Settings > Profile.'
+        },
+        timestamp: new Date().toISOString()
+      });
+    }
+
     // G6: Block access for tenants with expired/inactive subscriptions.
     // req.tenant is set by tenantHandler which runs before authenticate.
     if (req.tenant) {
@@ -284,6 +308,7 @@ export const authenticate = async (req, res, next) => {
       user_id: user.user_id,
       username: user.username,
       email: user.email,
+      phone_number: user.phone_number || null,
       role: user.role,
       role_preset_key: user.role_preset_key || null,
       permissions: resolveEffectivePermissions(user),
@@ -530,4 +555,3 @@ export const requirePremium = (req, res, next) => {
 
   return next();
 };
-

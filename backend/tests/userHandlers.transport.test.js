@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 
 const mockGetCurrentUserUseCase = jest.fn();
+const mockUpdateProfileUseCase = jest.fn();
 const mockInviteUserUseCase = jest.fn();
 const mockResendUserInvitationUseCase = jest.fn();
 const mockCreateInvitationManualLinkUseCase = jest.fn();
@@ -9,12 +10,14 @@ const mockChangePasswordUseCase = jest.fn();
 const mockGetUserLocationGrantsUseCase = jest.fn();
 const mockUpdateUserLocationGrantsUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
+const mockInvalidateUserAuthCache = jest.fn();
 
 jest.unstable_mockModule('../src/modules/users/index.js', () => ({
   getCurrentUserUseCase: mockGetCurrentUserUseCase,
-  updateProfileUseCase: jest.fn(),
+  updateProfileUseCase: mockUpdateProfileUseCase,
   changePasswordUseCase: mockChangePasswordUseCase,
   getAllUsersUseCase: jest.fn(),
+  getRoleCatalogUseCase: jest.fn(),
   updateUserRoleUseCase: jest.fn(),
   updateUserStatusUseCase: jest.fn(),
   updateUserPermissionsUseCase: jest.fn(),
@@ -31,7 +34,12 @@ jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () =
   trackProductUsageFromResult: mockTrackProductUsageFromResult
 }));
 
+jest.unstable_mockModule('../src/middleware/auth.js', () => ({
+  invalidateUserAuthCache: mockInvalidateUserAuthCache
+}));
+
 let getCurrentUser;
+let updateProfile;
 let inviteUser;
 let changePassword;
 let getUserLocationGrants;
@@ -40,6 +48,7 @@ let updateUserLocationGrants;
 beforeAll(async () => {
   const mod = await import('../src/modules/users/controllers/userHandlers.js');
   getCurrentUser = mod.getCurrentUser;
+  updateProfile = mod.updateProfile;
   inviteUser = mod.inviteUser;
   changePassword = mod.changePassword;
   getUserLocationGrants = mod.getUserLocationGrants;
@@ -141,6 +150,79 @@ describe('userHandlers transport contracts', () => {
       surface: 'users',
       action: 'invite_user'
     }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('updateProfile returns validation payload when the required phone would be cleared', async () => {
+    mockUpdateProfileUseCase.mockResolvedValue({
+      success: false,
+      error: {
+        code: 'VALIDATION_FAILED',
+        message: 'Phone number is required',
+        details: null,
+        statusCode: 422
+      }
+    });
+
+    const req = {
+      user: { user_id: 9 },
+      validatedData: { phone_number: '' },
+      requestId: 'req-user-phone-422'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await updateProfile(req, res, next);
+
+    expect(mockUpdateProfileUseCase).toHaveBeenCalledWith({
+      userId: 9,
+      updateData: { phone_number: '' }
+    });
+    expect(res.status).toHaveBeenCalledWith(422);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      data: null,
+      message: 'Phone number is required',
+      error_code: 'VALIDATION_FAILED',
+      errors: null,
+      request_id: 'req-user-phone-422',
+      timestamp: expect.any(String)
+    });
+    expect(mockTrackProductUsageFromResult).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'user_profile_updated',
+      surface: 'users',
+      action: 'update_profile'
+    }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('updateProfile invalidates cached auth state after a successful profile update', async () => {
+    mockUpdateProfileUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        user_id: 9,
+        phone_number: '+63 917 111 2233'
+      }
+    });
+
+    const req = {
+      user: { user_id: 9 },
+      tenant: { id: 77 },
+      headers: { 'x-company-token': 'tenant-token' },
+      validatedData: { phone_number: '+63 917 111 2233' },
+      requestId: 'req-user-phone-success'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await updateProfile(req, res, next);
+
+    expect(mockInvalidateUserAuthCache).toHaveBeenCalledWith({
+      tenantId: 77,
+      companyToken: 'tenant-token',
+      userId: 9
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
     expect(next).not.toHaveBeenCalled();
   });
 

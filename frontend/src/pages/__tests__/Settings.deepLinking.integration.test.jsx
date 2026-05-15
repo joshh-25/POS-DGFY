@@ -224,6 +224,25 @@ describe('Settings deep-linking and action wiring', () => {
     expect(mocks.toastMock.info).toHaveBeenCalled();
   });
 
+  it('blocks accepted users from clearing the required phone number', async () => {
+    const user = userEvent.setup();
+    mocks.storeState.currentUser = {
+      ...mocks.storeState.currentUser,
+      phone_number: '+63 912 345 6789'
+    };
+    mocks.userServiceMock.getCurrentUser.mockResolvedValue(mocks.storeState.currentUser);
+
+    renderSettings('/settings?tab=profile');
+    const phoneInput = await screen.findByLabelText(/Phone Number/i);
+    await user.clear(phoneInput);
+    await user.click(screen.getByRole('button', { name: /Save Changes/i }));
+
+    await waitFor(() => {
+      expect(mocks.toastMock.error).toHaveBeenCalledWith('Phone number is required');
+    });
+    expect(mocks.userServiceMock.updateProfile).not.toHaveBeenCalled();
+  });
+
   it('keeps key Settings actions wired to concrete outcomes', async () => {
     const user = userEvent.setup();
 

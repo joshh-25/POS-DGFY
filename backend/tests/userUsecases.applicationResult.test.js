@@ -35,6 +35,20 @@ describe('user use-cases application result contract', () => {
     expect(result.error.statusCode).toBe(409);
   });
 
+  it('updateProfile maps missing-phone validation failures from user service', async () => {
+    const validationError = new Error('Phone number is required');
+    validationError.statusCode = 422;
+
+    const useCase = buildUpdateProfileUseCase({
+      userService: { updateUserProfile: jest.fn().mockRejectedValue(validationError) }
+    });
+
+    const result = await useCase({ userId: 1, updateData: { phone_number: '' } });
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.statusCode).toBe(422);
+  });
+
   it('changePassword maps incorrect-password failures to AUTHENTICATION_FAILED', async () => {
     const authError = new Error('Current password is incorrect');
     authError.statusCode = 401;
@@ -63,6 +77,7 @@ describe('user use-cases application result contract', () => {
     expect(createUserInvitation).toHaveBeenCalledWith(7, {
       email: 'new@example.com',
       role: 'staff',
+      role_preset_key: null,
       location_ids: [],
       delivery_mode: 'email'
     });

@@ -17,7 +17,7 @@ Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, wri
 
 Object.defineProperty(globalThis, 'window', {
   value: {
-    location: { href: '' },
+    location: { href: '', pathname: '', search: '' },
     addEventListener: (type, fn) => {
       listeners[type] = listeners[type] || [];
       listeners[type].push(fn);
@@ -62,6 +62,9 @@ describe('api.js global error events', () => {
   beforeEach(async () => {
     Object.keys(listeners).forEach((k) => delete listeners[k]);
     localStorage.clear();
+    window.location.href = '';
+    window.location.pathname = '';
+    window.location.search = '';
     api = await freshApi();
     mockApi = new MockAdapter(api, { onNoMatch: 'passthrough' });
   });
@@ -128,5 +131,32 @@ describe('api.js global error events', () => {
     await expect(api.get('/missing')).rejects.toBeTruthy();
     expect(onApiError).not.toHaveBeenCalled();
     expect(onLegacy).not.toHaveBeenCalled();
+  });
+
+  it('redirects legacy users to profile completion when the API requires a phone number', async () => {
+    const onApiError = vi.fn();
+    window.addEventListener('api:error', onApiError);
+    mockApi.onGet('/dashboard/stats').reply(428, {
+      success: false,
+      error_code: 'PHONE_NUMBER_REQUIRED'
+    });
+
+    await expect(api.get('/dashboard/stats')).rejects.toBeTruthy();
+
+    expect(window.location.href).toBe('/settings?tab=profile&reason=phone_required');
+    expect(onApiError).not.toHaveBeenCalled();
+  });
+
+  it('does not redirect repeatedly while already on the profile completion route', async () => {
+    window.location.pathname = '/settings';
+    window.location.search = '?tab=profile';
+    mockApi.onGet('/users/me').reply(428, {
+      success: false,
+      error_code: 'PHONE_NUMBER_REQUIRED'
+    });
+
+    await expect(api.get('/users/me')).rejects.toBeTruthy();
+
+    expect(window.location.href).toBe('');
   });
 });
