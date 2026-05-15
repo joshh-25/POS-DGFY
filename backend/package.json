@@ -52,6 +52,8 @@
     "audit:original-legacy-account": "node scripts/audit_original_legacy_account.js",
     "verify:phone-rollout": "node scripts/verify-phone-rollout.js",
     "verify:phone-rollout:complete": "node scripts/verify-phone-rollout.js --require-complete",
+    "verify:phone-rollout:config-safe": "node scripts/verify-phone-rollout.js --require-safe-config",
+    "verify:phone-rollout:users": "node scripts/verify-phone-rollout.js --include-users",
     "repair:empty-role-permissions": "node scripts/repair-empty-role-permissions.js",
     "check:architecture-guardrails": "node scripts/check-architecture-guardrails.js",
     "check:controller-boundaries": "node scripts/check-controller-boundaries.js",

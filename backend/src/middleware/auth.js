@@ -2,6 +2,7 @@ import { verifyToken, isTokenBlacklisted } from '../services/authService.js';
 import dbStore from '../utils/dbStore.js';
 import { paymentsEnabled } from '../config/paymentsFeature.js';
 import { PERMISSIONS, DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
+import { isPhoneCompletionEnforcedForTenant } from '../config/phoneCompletionRollout.js';
 
 // Short-lived in-memory cache to avoid a DB round-trip on every authenticated request.
 // The JWT is cryptographically verified before the cache is consulted, so this is safe.
@@ -248,7 +249,11 @@ export const authenticate = async (req, res, next) => {
       });
     }
 
-    if (!String(user.phone_number || '').trim() && !shouldBypassPhoneCompletionGate(req)) {
+    if (
+      isPhoneCompletionEnforcedForTenant(req.tenant) &&
+      !String(user.phone_number || '').trim() &&
+      !shouldBypassPhoneCompletionGate(req)
+    ) {
       return res.status(428).json({
         success: false,
         data: null,
