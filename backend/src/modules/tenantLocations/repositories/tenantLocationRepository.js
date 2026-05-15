@@ -1,4 +1,5 @@
 import dbStore from '../../../utils/dbStore.js';
+import { Op } from 'sequelize';
 import { assertTenantLocationRepositoryContract } from '../contracts/tenantLocationRepository.contract.js';
 import { TENANT_LOCATION_REFERENCE_SOURCES } from './tenantLocationReferenceSources.js';
 

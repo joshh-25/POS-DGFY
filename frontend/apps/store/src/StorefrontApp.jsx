@@ -11932,7 +11932,7 @@ return (
 
   { isStorePage && (checkoutPermitted || bookingPermitted || productCartPermitted) && (
     <>
-      {isStorefrontV2 && selectedStore && isMobileViewport && (() => {
+      {isStorefrontV2 && selectedStore && (() => {
         const followEnabled = parseBooleanFlag(selectedStore.storefront_follow_enabled, false);
         const shareEnabled = parseBooleanFlag(selectedStore.storefront_share_enabled, false);
         if (!followEnabled && !shareEnabled) return null;
@@ -11951,9 +11951,14 @@ return (
             }}
           >
             {followEnabled && (
-              <button type="button" aria-label="Follow this storefront" disabled={followState.loading} onClick={handleFollowAction} style={{ borderRadius: 10, border: '1px solid #cbd5e1', background: followState.isFollowing ? '#ecfeff' : '#fff', color: '#334155', padding: '8px 12px', minHeight: 44, minWidth: 96, fontWeight: 700, boxShadow: '0 8px 24px rgba(15,23,42,.12)', opacity: followState.loading ? 0.7 : 1, cursor: followState.loading ? 'not-allowed' : 'pointer' }}>
-                {followState.isFollowing ? 'Following' : 'Follow'}
-              </button>
+              <div style={{ display: 'grid', gap: 4, justifyItems: 'end' }}>
+                <button type="button" aria-label="Follow this storefront" disabled={followState.loading} onClick={handleFollowAction} style={{ borderRadius: 10, border: '1px solid #cbd5e1', background: followState.isFollowing ? '#ecfeff' : '#fff', color: '#334155', padding: '8px 12px', minHeight: 44, minWidth: 96, fontWeight: 700, boxShadow: '0 8px 24px rgba(15,23,42,.12)', opacity: followState.loading ? 0.7 : 1, cursor: followState.loading ? 'not-allowed' : 'pointer' }}>
+                  {followState.isFollowing ? 'Following' : 'Follow'}
+                </button>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 999, padding: '3px 8px', boxShadow: '0 6px 16px rgba(15,23,42,.08)' }}>
+                  {followState.followersCount} follower(s)
+                </span>
+              </div>
             )}
             {shareEnabled && (
               <button type="button" aria-label="Share this storefront" onClick={handleShareAction} style={{ borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '8px 12px', minHeight: 44, minWidth: 96, fontWeight: 700, boxShadow: '0 8px 24px rgba(15,23,42,.12)' }}>
