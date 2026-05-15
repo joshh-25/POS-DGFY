@@ -37,6 +37,7 @@ import {
     hasExplicitSalePrice,
     requireExplicitSalePrice
 } from '../../shared/utils/itemFinancialPolicy.js';
+import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
 
 const INVOICE_COUNTER_KEY = 'POS_OR';
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
@@ -598,7 +599,7 @@ const resolveStorefrontLineModifiers = ({ item, line }) => {
     return { priceDelta, snapshot };
 };
 
-const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false }) => {
+const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false, recipeItemIds = new Set() }) => {
     if (!Array.isArray(rawLines) || rawLines.length === 0) {
         throw new DomainError(
             DomainErrorCode.VALIDATION_FAILED,
@@ -639,7 +640,8 @@ const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false 
             requestedQuantityByItemId.set(item.item_id, requestedItemQuantity);
         }
 
-        if (!isServiceItem && !allowOutOfStockSales && currentStock + 0.000001 < requestedItemQuantity) {
+        const hasRecipeConsumption = recipeItemIds.has(Number(item.item_id));
+        if (!isServiceItem && !allowOutOfStockSales && !hasRecipeConsumption && currentStock + 0.000001 < requestedItemQuantity) {
             const stockViolation = {
                 item_id: item.item_id,
                 item_name: item.name,
@@ -957,7 +959,13 @@ const buildOrderAccountAction = async ({ storeRepository, order, tenantId, store
     }
 };
 
-const resolveCheckoutContext = async ({ storeRepository, payload, storeCustomer = null, options = {} }) => {
+const resolveCheckoutContext = async ({
+    storeRepository,
+    payload,
+    storeCustomer = null,
+    options = {},
+    validateRecipeAvailability = true
+}) => {
     const normalized = buildNormalizedCheckoutRequest(payload, storeCustomer);
     const orderMethod = normalized.order_method || 'delivery';
     const paymentType = normalized.payment_type || 'cash';
@@ -1043,10 +1051,29 @@ const resolveCheckoutContext = async ({ storeRepository, payload, storeCustomer 
     }
 
     const allowOutOfStockSales = Boolean(location?.allow_out_of_stock_sales);
+    const recipeSourceItemIds = items
+        .filter((item) => !isStockExemptServiceItem(item))
+        .map((item) => Number.parseInt(item.item_id, 10))
+        .filter((itemId) => Number.isInteger(itemId) && itemId > 0);
+    const productCompositions = recipeSourceItemIds.length > 0
+        && typeof storeRepository.listProductCompositionsForItems === 'function'
+        ? await storeRepository.listProductCompositionsForItems(recipeSourceItemIds, {
+            ...options,
+            locationId: normalized.location_id
+        })
+        : [];
+    const recipePlan = buildFnbRecipeConsumptionPlan({
+        lines: normalized.lines,
+        itemMap,
+        compositions: productCompositions,
+        locationId: normalized.location_id,
+        validateAvailability: validateRecipeAvailability
+    });
     const prepared = prepareCheckoutLines({
         rawLines: normalized.lines,
         itemMap,
-        allowOutOfStockSales
+        allowOutOfStockSales,
+        recipeItemIds: recipePlan.recipeItemIds
     });
 
     const deliveryFee = resolveStoreDeliveryFee(settings, orderMethod);
@@ -1066,6 +1093,7 @@ const resolveCheckoutContext = async ({ storeRepository, payload, storeCustomer 
         storefront_open: storefrontOpen,
         estimated_wait_minutes: estimatedWaitMinutes,
         prepared,
+        recipePlan,
         deliveryFee,
         serviceFeeAmount,
         serviceFeeLabel,
@@ -1794,22 +1822,28 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
         const transaction = await storeRepository.beginTransaction();
 
         try {
-            const resolved = await resolveCheckoutContext({
-                storeRepository,
-                payload,
-                storeCustomer: normalizedStoreCustomer,
-                options: { transaction, lock: true }
-            });
-            const { normalized } = resolved;
-
-            const idempotencyKey = String(normalized.idempotency_key || '').trim();
-            if (!idempotencyKey) {
+            const pendingNormalized = buildNormalizedCheckoutRequest(payload, normalizedStoreCustomer);
+            const pendingIdempotencyKey = String(pendingNormalized.idempotency_key || '').trim();
+            if (!pendingIdempotencyKey) {
                 throw new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
                     'idempotency_key is required',
                     { statusCode: 400 }
                 );
             }
+            const existing = await storeRepository.findTransactionByIdempotencyKey(pendingIdempotencyKey, {
+                transaction,
+                lock: true
+            });
+            const idempotencyKey = pendingIdempotencyKey;
+            const resolved = await resolveCheckoutContext({
+                storeRepository,
+                payload,
+                storeCustomer: normalizedStoreCustomer,
+                options: { transaction, lock: true },
+                validateRecipeAvailability: !existing
+            });
+            const { normalized } = resolved;
 
             const requestHash = hashPayload({
                 location_id: normalized.location_id,
@@ -1826,10 +1860,6 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
                 lines: normalized.lines
             });
 
-            const existing = await storeRepository.findTransactionByIdempotencyKey(idempotencyKey, {
-                transaction,
-                lock: true
-            });
             if (existing) {
                 if (existing.request_hash !== requestHash) {
                     throw new DomainError(
@@ -1912,6 +1942,42 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
                 },
                 lines: resolved.prepared.preparedLines
             }, { transaction });
+
+            const shouldCreateFnbKitchenOrder = (
+                resolved.recipePlan.allMovements.length > 0
+                || resolved.prepared.preparedLines.some((line) => line.fnb_course_snapshot || line.fnb_modifiers_snapshot)
+            );
+            if (shouldCreateFnbKitchenOrder) {
+                if (typeof storeRepository.createFnbKitchenOrderForOnlineTransaction !== 'function') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'F&B kitchen order persistence is unavailable for storefront checkout',
+                        {
+                            statusCode: 409,
+                            details: { reason_code: 'FNB_KITCHEN_ORDER_UNAVAILABLE' }
+                        }
+                    );
+                }
+                const kitchenOrder = await storeRepository.createFnbKitchenOrderForOnlineTransaction({
+                    pos_transaction_id: orderId,
+                    order_method: normalized.order_method,
+                    location_id: normalized.location_id,
+                    customer_name: normalized.customer_name,
+                    special_instructions: normalized.special_instructions,
+                    lines: resolved.prepared.preparedLines,
+                    recipe_movements: resolved.recipePlan.allMovements
+                }, { transaction });
+                if (!kitchenOrder) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'F&B kitchen order could not be created for storefront checkout',
+                        {
+                            statusCode: 409,
+                            details: { reason_code: 'FNB_KITCHEN_ORDER_UNAVAILABLE' }
+                        }
+                    );
+                }
+            }
 
             const created = await storeRepository.getOrderById(orderId, { transaction });
             const cancelProof = buildCancelProofForOrder({

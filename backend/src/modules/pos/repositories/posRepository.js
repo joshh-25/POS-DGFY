@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
 import { buildVisibleWhere } from '../../../utils/softDeletePolicy.js';
@@ -681,6 +682,141 @@ export const posRepository = {
             transaction: options.transaction
         });
         return toPlain(row);
+    },
+
+    async createFnbKitchenOrderForTransaction(payload = {}, options = {}) {
+        const FnbCheck = dbStore.get('FnbCheck');
+        const FnbCheckLine = dbStore.get('FnbCheckLine');
+        const FnbKitchenTicket = dbStore.get('FnbKitchenTicket');
+        const PosTransaction = dbStore.get('PosTransaction');
+        if (!FnbCheck || !FnbCheckLine || !FnbKitchenTicket || !PosTransaction) return null;
+
+        const transaction = options.transaction;
+        const posTransactionId = toPositiveInt(payload.pos_transaction_id);
+        if (!posTransactionId) return null;
+
+        let checkId = toPositiveInt(payload.check_id);
+        const usesExistingCheck = Boolean(checkId);
+        let check = null;
+        if (checkId) {
+            check = await FnbCheck.findByPk(checkId, {
+                transaction,
+                lock: options.lock && transaction ? transaction.LOCK.UPDATE : undefined
+            });
+            if (!check) return null;
+            const existingTicket = await FnbKitchenTicket.findOne({
+                where: {
+                    check_id: checkId,
+                    status: { [Op.ne]: 'cancelled' }
+                },
+                order: [['created_at', 'DESC']],
+                transaction,
+                lock: options.lock && transaction ? transaction.LOCK.UPDATE : undefined
+            });
+            if (existingTicket) {
+                return {
+                    check: toPlain(check),
+                    kitchen_ticket: toPlain(existingTicket),
+                    idempotent_existing_ticket: true
+                };
+            }
+        } else {
+            check = await FnbCheck.create({
+                table_id: toPositiveInt(payload.table_id),
+                server_id: toPositiveInt(payload.server_id),
+                guest_count: toPositiveInt(payload.guest_count) || 1,
+                order_method: ['dine_in', 'takeout', 'pickup', 'delivery'].includes(payload.order_method)
+                    ? payload.order_method
+                    : 'dine_in',
+                status: 'sent_to_kitchen',
+                pos_transaction_id: posTransactionId,
+                notes: 'POS checkout kitchen order'
+            }, { transaction });
+            checkId = Number(check.check_id);
+            await PosTransaction.update(
+                {
+                    fnb_check_id: checkId,
+                    fnb_metadata: {
+                        source: 'pos_checkout',
+                        check_id: checkId
+                    }
+                },
+                {
+                    where: { pos_transaction_id: posTransactionId },
+                    transaction
+                }
+            );
+        }
+
+        let lineRows = (Array.isArray(payload.lines) ? payload.lines : [])
+            .map((line) => ({
+                check_id: checkId,
+                item_id: toPositiveInt(line.item_id),
+                quantity: Number(line.quantity),
+                course: ['appetizer', 'main', 'dessert', 'drink', 'other'].includes(line.fnb_course_snapshot)
+                    ? line.fnb_course_snapshot
+                    : 'main',
+                modifiers_snapshot: line.fnb_modifiers_snapshot || null,
+                special_instructions: line.fnb_special_instructions || null,
+                kitchen_station_id: toPositiveInt(line.fnb_kitchen_station_snapshot?.kitchen_station_id),
+                status: 'sent'
+            }))
+            .filter((line) => line.item_id && Number.isFinite(line.quantity) && line.quantity > 0);
+
+        if (!usesExistingCheck && lineRows.length > 0) {
+            await FnbCheckLine.bulkCreate(lineRows, { transaction });
+        } else if (usesExistingCheck) {
+            const existingLines = await FnbCheckLine.findAll({
+                where: { check_id: checkId },
+                order: [['created_at', 'ASC']],
+                transaction,
+                lock: options.lock && transaction ? transaction.LOCK.UPDATE : undefined
+            });
+            const existingLineRows = existingLines.map(toPlain).map((line) => ({
+                check_line_id: toPositiveInt(line.check_line_id),
+                check_id: checkId,
+                item_id: toPositiveInt(line.item_id),
+                quantity: Number(line.quantity),
+                course: ['appetizer', 'main', 'dessert', 'drink', 'other'].includes(line.course) ? line.course : 'main',
+                modifiers_snapshot: line.modifiers_snapshot || null,
+                special_instructions: line.special_instructions || null,
+                kitchen_station_id: toPositiveInt(line.kitchen_station_id),
+                status: line.status || 'sent'
+            })).filter((line) => line.item_id && Number.isFinite(line.quantity) && line.quantity > 0);
+            if (existingLineRows.length > 0) {
+                lineRows = existingLineRows;
+                await FnbCheckLine.update(
+                    { status: 'sent' },
+                    {
+                        where: {
+                            check_id: checkId,
+                            status: { [Op.in]: ['pending', 'sent'] }
+                        },
+                        transaction
+                    }
+                );
+            }
+            await check.update({ status: 'sent_to_kitchen', pos_transaction_id: posTransactionId }, { transaction });
+        }
+
+        const ticket = await FnbKitchenTicket.create({
+            check_id: checkId,
+            kitchen_station_id: lineRows.find((line) => line.kitchen_station_id)?.kitchen_station_id || null,
+            ticket_number: `POS-${posTransactionId}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+            status: 'queued',
+            lines_snapshot: {
+                source: 'pos_checkout',
+                pos_transaction_id: posTransactionId,
+                lines: lineRows,
+                recipe_movements: Array.isArray(payload.recipe_movements) ? payload.recipe_movements : []
+            },
+            fired_at: new Date()
+        }, { transaction });
+
+        return {
+            check: toPlain(check),
+            kitchen_ticket: toPlain(ticket)
+        };
     },
 
     async settleFnbCheck({ checkId, posTransactionId }, options = {}) {

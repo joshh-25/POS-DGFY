@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
 import logger from '../../../config/logger.js';
@@ -825,6 +826,197 @@ export const storeRepository = {
         });
 
         return rows.map(toPlain);
+    },
+
+    async listProductCompositionsForItems(itemIds = [], options = {}) {
+        const ProductComposition = dbStore.get('ProductComposition');
+        const Item = dbStore.get('Item');
+        const normalizedLocationId = Number.parseInt(options.locationId, 10);
+        const normalizedItemIds = [...new Set((Array.isArray(itemIds) ? itemIds : [])
+            .map((itemId) => Number.parseInt(itemId, 10))
+            .filter((itemId) => Number.isInteger(itemId) && itemId > 0))];
+        if (!ProductComposition || normalizedItemIds.length === 0) return [];
+
+        const rows = await ProductComposition.findAll({
+            where: {
+                product_id: { [Op.in]: normalizedItemIds },
+                composition_type: 'ingredient'
+            },
+            include: Item
+                ? [{
+                    model: Item,
+                    as: 'ingredient',
+                    required: false,
+                    attributes: ['item_id', 'name', 'sku_code', 'unit_of_measure', 'current_stock', 'category']
+                }]
+                : [],
+            order: [['product_id', 'ASC'], ['composition_id', 'ASC']],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+
+        const payload = rows.map(toPlain);
+        const ingredientIds = [...new Set(payload
+            .map((row) => Number.parseInt(row?.ingredient_id, 10))
+            .filter((itemId) => Number.isInteger(itemId) && itemId > 0))];
+        const locationStock = await loadLocationStockMap(ingredientIds, normalizedLocationId, options);
+        if (!(
+            Number.isInteger(normalizedLocationId)
+            && normalizedLocationId > 0
+            && locationStock.locationScopeResolved
+        )) {
+            return payload;
+        }
+
+        return payload.map((row) => {
+            const ingredient = row.ingredient ? { ...row.ingredient } : row.ingredient;
+            const ingredientId = Number.parseInt(row?.ingredient_id, 10);
+            const scopedStock = locationStock.stockMap.get(ingredientId);
+            return {
+                ...row,
+                ingredient: ingredient
+                    ? {
+                        ...ingredient,
+                        current_stock: Number.isFinite(scopedStock) ? Math.max(0, scopedStock) : 0
+                    }
+                    : ingredient
+            };
+        });
+    },
+
+    async createFnbKitchenOrderForOnlineTransaction(payload = {}, options = {}) {
+        const FnbCheck = dbStore.get('FnbCheck');
+        const FnbCheckLine = dbStore.get('FnbCheckLine');
+        const FnbKitchenTicket = dbStore.get('FnbKitchenTicket');
+        const PosTransaction = dbStore.get('PosTransaction');
+        if (!FnbCheck || !FnbCheckLine || !FnbKitchenTicket || !PosTransaction) return null;
+
+        const transaction = options.transaction;
+        const posTransactionId = Number.parseInt(payload.pos_transaction_id, 10);
+        if (!Number.isInteger(posTransactionId) || posTransactionId <= 0) return null;
+
+        let check = await FnbCheck.findOne({
+            where: { pos_transaction_id: posTransactionId },
+            transaction,
+            lock: options.lock && transaction ? transaction.LOCK.UPDATE : undefined
+        });
+        if (check) {
+            const existingTicket = await FnbKitchenTicket.findOne({
+                where: {
+                    check_id: check.check_id,
+                    status: { [Op.ne]: 'cancelled' }
+                },
+                order: [['created_at', 'DESC']],
+                transaction,
+                lock: options.lock && transaction ? transaction.LOCK.UPDATE : undefined
+            });
+            if (existingTicket) {
+                return {
+                    check: toPlain(check),
+                    kitchen_ticket: toPlain(existingTicket),
+                    idempotent_existing_ticket: true
+                };
+            }
+        } else {
+            check = await FnbCheck.create({
+                table_id: null,
+                dining_area_id: null,
+                server_id: null,
+                guest_count: 1,
+                order_method: ['dine_in', 'takeout', 'pickup', 'delivery'].includes(payload.order_method)
+                    ? payload.order_method
+                    : 'pickup',
+                status: 'sent_to_kitchen',
+                pos_transaction_id: posTransactionId,
+                notes: [
+                    'Online storefront order',
+                    payload.customer_name ? `Customer: ${payload.customer_name}` : null,
+                    payload.special_instructions ? `Instructions: ${payload.special_instructions}` : null
+                ].filter(Boolean).join('\n') || null
+            }, { transaction });
+        }
+
+        const checkId = Number(check.check_id);
+        let lineRows = (Array.isArray(payload.lines) ? payload.lines : [])
+            .map((line) => ({
+                check_id: checkId,
+                item_id: Number.parseInt(line.item_id, 10),
+                quantity: Number(line.quantity),
+                course: ['appetizer', 'main', 'dessert', 'drink', 'other'].includes(line.fnb_course_snapshot)
+                    ? line.fnb_course_snapshot
+                    : 'main',
+                modifiers_snapshot: line.fnb_modifiers_snapshot || null,
+                special_instructions: line.fnb_special_instructions || null,
+                kitchen_station_id: Number.parseInt(line.fnb_kitchen_station_snapshot?.kitchen_station_id, 10) || null,
+                status: 'sent'
+            }))
+            .filter((line) => Number.isInteger(line.item_id) && line.item_id > 0 && Number.isFinite(line.quantity) && line.quantity > 0);
+
+        const existingLines = await FnbCheckLine.findAll({
+            where: { check_id: checkId },
+            order: [['created_at', 'ASC']],
+            transaction,
+            lock: options.lock && transaction ? transaction.LOCK.UPDATE : undefined
+        });
+        if (existingLines.length > 0) {
+            lineRows = existingLines.map(toPlain).map((line) => ({
+                check_line_id: Number.parseInt(line.check_line_id, 10) || null,
+                check_id: checkId,
+                item_id: Number.parseInt(line.item_id, 10),
+                quantity: Number(line.quantity),
+                course: ['appetizer', 'main', 'dessert', 'drink', 'other'].includes(line.course) ? line.course : 'main',
+                modifiers_snapshot: line.modifiers_snapshot || null,
+                special_instructions: line.special_instructions || null,
+                kitchen_station_id: Number.parseInt(line.kitchen_station_id, 10) || null,
+                status: line.status || 'sent'
+            })).filter((line) => Number.isInteger(line.item_id) && line.item_id > 0 && Number.isFinite(line.quantity) && line.quantity > 0);
+            await FnbCheckLine.update(
+                { status: 'sent' },
+                {
+                    where: {
+                        check_id: checkId,
+                        status: { [Op.in]: ['pending', 'sent'] }
+                    },
+                    transaction
+                }
+            );
+        } else if (lineRows.length > 0) {
+            await FnbCheckLine.bulkCreate(lineRows, { transaction });
+        }
+
+        const ticket = await FnbKitchenTicket.create({
+            check_id: checkId,
+            kitchen_station_id: lineRows.find((line) => line.kitchen_station_id)?.kitchen_station_id || null,
+            ticket_number: `WEB-${posTransactionId}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+            status: 'queued',
+            lines_snapshot: {
+                source: 'storefront_checkout',
+                pos_transaction_id: posTransactionId,
+                lines: lineRows,
+                recipe_movements: Array.isArray(payload.recipe_movements) ? payload.recipe_movements : []
+            },
+            fired_at: new Date()
+        }, { transaction });
+
+        await PosTransaction.update(
+            {
+                fnb_check_id: checkId,
+                fnb_metadata: {
+                    source: 'storefront_checkout',
+                    check_id: checkId,
+                    kitchen_ticket_id: ticket.kitchen_ticket_id
+                }
+            },
+            {
+                where: { pos_transaction_id: posTransactionId },
+                transaction
+            }
+        );
+
+        return {
+            check: toPlain(check),
+            kitchen_ticket: toPlain(ticket)
+        };
     },
 
     async listActiveLocations(options = {}) {

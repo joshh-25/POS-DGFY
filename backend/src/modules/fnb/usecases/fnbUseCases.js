@@ -28,6 +28,13 @@ const KITCHEN_TICKET_TRANSITIONS = Object.freeze({
   cancelled: []
 });
 
+const KITCHEN_TICKET_LINE_STATUS = Object.freeze({
+  queued: 'sent',
+  preparing: 'preparing',
+  ready: 'ready',
+  served: 'served'
+});
+
 const RESERVATION_TRANSITIONS = Object.freeze({
   requested: ['confirmed', 'waitlisted', 'cancelled'],
   confirmed: ['seated', 'cancelled', 'no_show'],
@@ -124,6 +131,16 @@ const kitchenTicketNumber = (stationId = null) => {
   const stationPart = stationId ? `S${stationId}` : 'GEN';
   return `${stationPart}-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
 };
+
+const getTicketSnapshotLines = (linesSnapshot) => {
+  if (Array.isArray(linesSnapshot)) return linesSnapshot;
+  if (Array.isArray(linesSnapshot?.lines)) return linesSnapshot.lines;
+  return [];
+};
+
+const getTicketSnapshotLineIds = (linesSnapshot) => getTicketSnapshotLines(linesSnapshot)
+  .map((line) => toPositiveInt(line.check_line_id))
+  .filter(Boolean);
 
 const assertActiveCheck = (check, action) => {
   const plain = toPlain(check);
@@ -679,6 +696,13 @@ export const buildCreateKitchenTicketUseCase = ({ fnbRepository }) => async ({ c
         fired_at: new Date()
       }, { transaction });
       await fnbRepository.updateCheck(checkId, { status: 'sent_to_kitchen' }, { transaction });
+      if (typeof fnbRepository.updateCheckLinesStatus === 'function') {
+        await fnbRepository.updateCheckLinesStatus({
+          checkId: toPositiveInt(checkId),
+          lineIds: getTicketSnapshotLineIds(created.lines_snapshot),
+          status: 'sent'
+        }, { transaction });
+      }
       return created;
     });
     return ok({ kitchen_ticket: ticket }, 'Kitchen ticket queued successfully');
@@ -698,11 +722,20 @@ export const buildUpdateKitchenTicketStatusUseCase = ({ fnbRepository }) => asyn
       if (!current) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Kitchen ticket not found');
       const plain = toPlain(current);
       assertTransition(KITCHEN_TICKET_TRANSITIONS, plain.status, status, 'Kitchen ticket');
-      return fnbRepository.updateKitchenTicket(ticketId, {
+      const updated = await fnbRepository.updateKitchenTicket(ticketId, {
         status,
         ready_at: status === 'ready' ? new Date() : plain.ready_at,
         served_at: status === 'served' ? new Date() : plain.served_at
       }, { transaction });
+      const lineStatus = KITCHEN_TICKET_LINE_STATUS[status];
+      if (lineStatus && typeof fnbRepository.updateCheckLinesStatus === 'function') {
+        await fnbRepository.updateCheckLinesStatus({
+          checkId: toPositiveInt(plain.check_id),
+          lineIds: getTicketSnapshotLineIds(plain.lines_snapshot),
+          status: lineStatus
+        }, { transaction });
+      }
+      return updated;
     });
     return ok({ kitchen_ticket: ticket }, 'Kitchen ticket updated successfully');
   } catch (error) {

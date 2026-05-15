@@ -271,6 +271,31 @@ export const fnbRepository = {
     return toPlain(row);
   },
 
+  async updateCheckLinesStatus({ checkId, lineIds = [], status } = {}, options = {}) {
+    const FnbCheckLine = dbStore.get('FnbCheckLine');
+    const normalizedCheckId = Number.parseInt(checkId, 10);
+    if (!Number.isInteger(normalizedCheckId) || normalizedCheckId <= 0) return 0;
+    if (!['sent', 'preparing', 'ready', 'served', 'voided'].includes(status)) return 0;
+    const normalizedLineIds = [...new Set((Array.isArray(lineIds) ? lineIds : [])
+      .map((lineId) => Number.parseInt(lineId, 10))
+      .filter((lineId) => Number.isInteger(lineId) && lineId > 0))];
+    const where = {
+      check_id: normalizedCheckId,
+      status: { [Op.ne]: 'voided' }
+    };
+    if (normalizedLineIds.length > 0) {
+      where.check_line_id = { [Op.in]: normalizedLineIds };
+    }
+    const [count] = await FnbCheckLine.update(
+      { status },
+      {
+        where,
+        transaction: options.transaction
+      }
+    );
+    return count;
+  },
+
   async getCheckLineById(checkLineId, options = {}) {
     const FnbCheckLine = dbStore.get('FnbCheckLine');
     const row = await FnbCheckLine.findByPk(checkLineId, {

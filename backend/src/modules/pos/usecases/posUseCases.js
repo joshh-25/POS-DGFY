@@ -30,6 +30,7 @@ import {
     isStockExemptServiceItem
 } from '../../shared/utils/stockBearingPolicy.js';
 import { requireExplicitSalePrice } from '../../shared/utils/itemFinancialPolicy.js';
+import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
 
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
@@ -823,7 +824,7 @@ const validateOnlineOrderTransition = ({ currentStatus, nextStatus, orderMethod 
     }
 };
 
-const buildOnlineOrderStockMovements = (order = {}) => {
+const buildOnlineOrderStockMovements = async ({ order = {}, posRepository, options = {} } = {}) => {
     const orderId = parsePositiveInt(order?.pos_transaction_id);
     if (!orderId) {
         throw new DomainError(
@@ -842,9 +843,31 @@ const buildOnlineOrderStockMovements = (order = {}) => {
         );
     }
 
-    return lines
-        .filter((line) => isStockBearingItem(buildLineStockPolicySubject(line)))
-        .map((line, index) => {
+    const itemMap = new Map(lines
+        .map((line) => {
+            const itemId = parsePositiveInt(line?.item_id);
+            return itemId
+                ? [itemId, buildLineStockPolicySubject(line)]
+                : null;
+        })
+        .filter(Boolean));
+    const itemIds = [...itemMap.keys()];
+    const productCompositions = itemIds.length > 0
+        && typeof posRepository?.listProductCompositionsForItems === 'function'
+        ? await posRepository.listProductCompositionsForItems(itemIds, {
+            ...options,
+            locationId: order.location_id || null
+        })
+        : [];
+    const recipePlan = buildFnbRecipeConsumptionPlan({
+        lines,
+        itemMap,
+        compositions: productCompositions,
+        locationId: order.location_id || null
+    });
+
+    return lines.flatMap((line, index) => {
+        if (!isStockBearingItem(buildLineStockPolicySubject(line))) return [];
         const itemId = parsePositiveInt(line?.item_id);
         const quantity = Number(line?.quantity);
         if (!itemId || !Number.isFinite(quantity) || quantity <= 0) {
@@ -856,7 +879,20 @@ const buildOnlineOrderStockMovements = (order = {}) => {
         }
 
         const lineReference = parsePositiveInt(line?.line_id) || `${itemId}-${index + 1}`;
-        return {
+        const recipeMovements = recipePlan.movementsByLineIndex[index] || [];
+        if (recipeMovements.length > 0) {
+            return recipeMovements.map((movement) => ({
+                item_id: movement.ingredient_item_id,
+                quantity: movement.quantity,
+                movement_type: 'goods_issue',
+                location_id: order.location_id || null,
+                reference_type: 'POS',
+                reference_id: `ONLINE:${orderId}:${lineReference}:ING:${movement.ingredient_item_id}`,
+                notes: `Online F&B recipe consumption for ${movement.product_name || `item ${itemId}`} on ${order.invoice_number || `#${orderId}`}${order.tracking_pin ? ` (${order.tracking_pin})` : ''}`
+            }));
+        }
+
+        return [{
             item_id: itemId,
             quantity,
             movement_type: 'goods_issue',
@@ -864,7 +900,7 @@ const buildOnlineOrderStockMovements = (order = {}) => {
             reference_type: 'POS',
             reference_id: `ONLINE:${orderId}:${lineReference}`,
             notes: `Online order completion ${order.invoice_number || `#${orderId}`}${order.tracking_pin ? ` (${order.tracking_pin})` : ''}`
-        };
+        }];
     });
 };
 
@@ -1543,12 +1579,12 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                     locationId: enforcedCheckoutLocationId
                 })
                 : [];
-            const compositionMap = new Map();
-            for (const composition of productCompositions) {
-                const productId = Number(composition.product_id);
-                if (!compositionMap.has(productId)) compositionMap.set(productId, []);
-                compositionMap.get(productId).push(composition);
-            }
+            const recipePlan = buildFnbRecipeConsumptionPlan({
+                lines,
+                itemMap,
+                compositions: productCompositions,
+                locationId: enforcedCheckoutLocationId
+            });
 
             const normalizedShiftId = parsePositiveInt(payload.shift_id);
             if (payload.shift_id != null) {
@@ -1671,41 +1707,13 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
 
                 const isServiceItem = isStockExemptServiceItem(item);
                 const currentStock = Number(item.current_stock) || 0;
-                const recipeCompositions = isServiceItem ? [] : (compositionMap.get(itemId) || []);
-                const lineRecipeMovements = [];
-                if (!isServiceItem && recipeCompositions.length === 0 && currentStock + 0.000001 < quantity) {
+                const lineRecipeMovements = recipePlan.movementsByLineIndex[preparedLines.length] || [];
+                if (!isServiceItem && lineRecipeMovements.length === 0 && currentStock + 0.000001 < quantity) {
                     throw new DomainError(
                         DomainErrorCode.VALIDATION_FAILED,
                         `Insufficient stock for "${item.name}". Available: ${currentStock}, requested: ${quantity}`,
                         { statusCode: 400 }
                     );
-                }
-                for (const composition of recipeCompositions) {
-                    const ingredient = composition.ingredient || {};
-                    const ingredientQuantity = round4(Number(composition.quantity_required || 0) * quantity);
-                    if (ingredientQuantity <= 0) continue;
-                    const ingredientStock = Number(ingredient.current_stock || 0);
-                    if (ingredientStock + 0.000001 < ingredientQuantity) {
-                        throw new DomainError(
-                            DomainErrorCode.VALIDATION_FAILED,
-                            `Insufficient ingredient stock for "${item.name}": ${ingredient.name || `item ${composition.ingredient_id}`}. Available: ${ingredientStock}, requested: ${ingredientQuantity}`,
-                            {
-                                statusCode: 400,
-                                details: {
-                                    product_item_id: itemId,
-                                    ingredient_item_id: composition.ingredient_id,
-                                    available: ingredientStock,
-                                    requested: ingredientQuantity
-                                }
-                            }
-                        );
-                    }
-                    lineRecipeMovements.push({
-                        product_item_id: itemId,
-                        product_name: item.name,
-                        ingredient_item_id: Number(composition.ingredient_id),
-                        quantity: ingredientQuantity
-                    });
                 }
 
                 const modifierResolution = resolveFnbLineModifiers({ item, line, hasFnbCheckoutContext });
@@ -1933,6 +1941,41 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                     taxable: restaurantServiceChargeResolution.restaurantServiceChargeTaxable,
                     settings_snapshot: restaurantServiceChargeResolution.restaurantServiceChargeSnapshot
                 }, { transaction });
+            }
+
+            if (
+                hasFnbCheckoutContext
+            ) {
+                if (typeof posRepository.createFnbKitchenOrderForTransaction !== 'function') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'F&B kitchen order persistence is unavailable for POS checkout',
+                        {
+                            statusCode: 409,
+                            details: { reason_code: 'FNB_KITCHEN_ORDER_UNAVAILABLE' }
+                        }
+                    );
+                }
+                const kitchenOrder = await posRepository.createFnbKitchenOrderForTransaction({
+                    pos_transaction_id: posTransactionId,
+                    check_id: fnbCheckId,
+                    table_id: fnbTableId,
+                    server_id: fnbServerId,
+                    guest_count: fnbGuestCount,
+                    order_method: normalizedOrderMethod,
+                    lines: preparedLines,
+                    recipe_movements: recipeMovementPlanByPreparedLine.flat()
+                }, { transaction });
+                if (!kitchenOrder) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'F&B kitchen order could not be created for POS checkout',
+                        {
+                            statusCode: 409,
+                            details: { reason_code: 'FNB_KITCHEN_ORDER_UNAVAILABLE' }
+                        }
+                    );
+                }
             }
 
             if (fnbCheckId) {
@@ -4085,7 +4128,14 @@ export const buildUpdateOnlineOrderStatusUseCase = ({ posRepository, stockMoveme
                 && targetStatus === 'completed'
                 && stockMovementService?.createStockMovement
             ) {
-                const stockMovements = buildOnlineOrderStockMovements(existing);
+                const stockMovements = await buildOnlineOrderStockMovements({
+                    order: existing,
+                    posRepository,
+                    options: {
+                        transaction,
+                        lock: true
+                    }
+                });
                 for (const movement of stockMovements) {
                     await stockMovementService.createStockMovement(
                         movement,
