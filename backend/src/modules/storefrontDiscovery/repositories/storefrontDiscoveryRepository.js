@@ -842,6 +842,11 @@ const resolveNearestLocationId = (entry = {}, candidateLocationIds = [], latitud
     return Number(sorted[0].location.location_id);
 };
 
+const canTenantExposeOutOfStockMatches = (entry = {}) => {
+    const activeLocations = Array.isArray(entry?.active_location_snapshot) ? entry.active_location_snapshot : [];
+    return activeLocations.some((location) => location?.allow_out_of_stock_sales === true);
+};
+
 const applyDiscoveryQuery = async (entries = [], query = {}) => {
     const startedAt = Date.now();
     const search = normalizeSearchText(query.search);
@@ -884,8 +889,12 @@ const applyDiscoveryQuery = async (entries = [], query = {}) => {
             const storeMatch = tenantFieldMatches.has(tenantId);
             const itemMeta = itemMatchByTenant.get(tenantId) || null;
             const itemExists = Boolean(itemMeta);
-            const itemEligible = itemExists && (
+            const includeOutOfStockForTenant = (
                 stockFilter === 'include_out_of_stock'
+                && canTenantExposeOutOfStockMatches(entry)
+            );
+            const itemEligible = itemExists && (
+                includeOutOfStockForTenant
                 || itemMeta.has_in_stock_match === true
             );
 
@@ -899,15 +908,19 @@ const applyDiscoveryQuery = async (entries = [], query = {}) => {
         const tenantId = String(entry?.tenant_id || '');
         const storeMatch = search ? tenantFieldMatches.has(tenantId) : false;
         const itemMeta = search ? (itemMatchByTenant.get(tenantId) || null) : null;
-        const itemEligible = Boolean(itemMeta) && (
+        const includeOutOfStockForTenant = (
             stockFilter === 'include_out_of_stock'
+            && canTenantExposeOutOfStockMatches(entry)
+        );
+        const itemEligible = Boolean(itemMeta) && (
+            includeOutOfStockForTenant
             || itemMeta.has_in_stock_match === true
         );
         const locationCandidateIds = itemEligible
             ? (
-                stockFilter === 'in_stock_only'
-                    ? itemMeta.in_stock_location_ids
-                    : itemMeta.matching_location_ids
+                includeOutOfStockForTenant
+                    ? itemMeta.matching_location_ids
+                    : itemMeta.in_stock_location_ids
             )
             : [];
 

@@ -12,9 +12,21 @@
     --color-text-secondary: #555555;
   }
 
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
   body {
     @apply bg-gray-50 text-gray-900 antialiased;
+    margin: 0;
     font-family: 'Inter', sans-serif;
+  }
+
+  #root {
+    min-height: 100vh;
+    overflow-x: clip;
   }
 
   h1, h2, h3, h4, h5, h6 {
