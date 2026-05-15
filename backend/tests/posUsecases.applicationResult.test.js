@@ -779,6 +779,98 @@ describe('pos use-cases application result contract', () => {
         );
     });
 
+    it('updateOnlineOrderStatus consumes F&B recipe ingredients for online menu items', async () => {
+        const transaction = {
+            finished: false,
+            LOCK: { UPDATE: 'UPDATE' },
+            commit: jest.fn(async () => { transaction.finished = true; }),
+            rollback: jest.fn(async () => { transaction.finished = true; })
+        };
+        const fakeSequelize = {
+            transaction: jest.fn().mockResolvedValue(transaction)
+        };
+
+        const existingOrder = {
+            pos_transaction_id: 56,
+            invoice_number: 'INV-000056',
+            tracking_pin: 'SK-FNB123',
+            order_source: 'online_store',
+            order_method: 'pickup',
+            fulfillment_status: 'ready_for_pickup',
+            location_id: 4,
+            lines: [{
+                line_id: 10,
+                item_id: 201,
+                quantity: 2,
+                item: {
+                    item_id: 201,
+                    category: 'product',
+                    name: 'Burger',
+                    unit_of_measure: 'serving'
+                }
+            }]
+        };
+        const updatedOrder = {
+            ...existingOrder,
+            fulfillment_status: 'completed'
+        };
+
+        const posRepository = {
+            getOrderByIdForLifecycle: jest
+                .fn()
+                .mockResolvedValueOnce(existingOrder)
+                .mockResolvedValueOnce(updatedOrder),
+            listProductCompositionsForItems: jest.fn().mockResolvedValue([{
+                product_id: 201,
+                ingredient_id: 301,
+                quantity_required: 0.25,
+                unit_of_measure: 'kg',
+                ingredient: {
+                    item_id: 301,
+                    name: 'Ground beef',
+                    current_stock: 5,
+                    unit_of_measure: 'kg',
+                    category: 'raw_material'
+                }
+            }]),
+            updateOrderById: jest.fn().mockResolvedValue(updatedOrder)
+        };
+        const stockMovementService = {
+            createStockMovement: jest.fn().mockResolvedValue({ movement_id: 2 })
+        };
+
+        const useCase = buildUpdateOnlineOrderStatusUseCase({
+            posRepository,
+            stockMovementService
+        });
+
+        const result = await dbStore.run({ sequelize: fakeSequelize }, () => useCase({
+            posTransactionId: 56,
+            payload: { fulfillment_status: 'completed' },
+            user: { user_id: 7 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(posRepository.listProductCompositionsForItems).toHaveBeenCalledWith([201], expect.objectContaining({
+            transaction,
+            lock: true,
+            locationId: 4
+        }));
+        expect(stockMovementService.createStockMovement).toHaveBeenCalledTimes(1);
+        expect(stockMovementService.createStockMovement).toHaveBeenCalledWith(
+            expect.objectContaining({
+                item_id: 301,
+                quantity: 0.5,
+                movement_type: 'goods_issue',
+                location_id: 4,
+                reference_type: 'POS',
+                reference_id: 'ONLINE:56:10:ING:301'
+            }),
+            7,
+            transaction
+        );
+    });
+
     it('updateOnlineOrderStatus does not re-apply stock movement for already completed orders', async () => {
         const transaction = {
             finished: false,

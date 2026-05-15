@@ -129,6 +129,7 @@ Overall status: in_progress
 - IMS reservations validate assigned tables, expose table/date/status schedule filters, and allow multi-table assignment during reservation status updates.
 - Reservation windows now carry duration and reset-buffer minutes. Confirmed/seated reservations block overlap on any assigned table; requested/waitlisted requests remain non-blocking capacity leads. Combined-table bookings reject party sizes above selected seat capacity.
 - Storefront splits the F&B reservation panel and map components out of the primary Storefront entry; the remaining large chunk is the isolated lazy MapLibre vendor chunk.
+- Final F&B readiness ratings must run `npm run qa:fnb-readiness` first. The gate is documented in `docs/testing/fnb-operational-readiness-qa.md` and covers recipe shortfall diagnostics, POS/Storefront recipe checkout contracts, kitchen-ticket idempotency/lifecycle behavior, kitchen queue display contracts, production builds, architecture checks, docs lint, and diff hygiene.
 38. Mode-aware RBAC is active:
 - `users.role_preset_key` stores the mode-native preset while preserving legacy `users.role`, `users.permissions`, and `is_master_admin`.
 - `GET /api/v1/users/role-catalog` returns the active tenant mode's role presets and visible permission groups for User Management.
@@ -203,6 +204,31 @@ Overall status: in_progress
    - FIFO/location stock behavior confidence: `9.3/10`; tests and audits cover policy, F&B ingredient preflight, service add-on behavior, batch grouping, and stale location filters.
    - Release gate confidence: `9.1/10`; gates pass, but exact QA deployed-head matching should be made strict for final production signoff.
    - Full production deploy confidence: `8.7/10` until tracked runtime fixes are committed/pushed and a post-deploy summary confirms the exact deployed SHA.
+
+### 3.23 F&B Recipe-Driven Kitchen Order Readiness Gate (2026-05-15)
+
+1. Root-cause closure:
+   - F&B recipe/kitchen order confidence previously depended on several separate test commands and manual interpretation before assigning readiness ratings.
+   - Kitchen ticket lifecycle, Storefront accepted-order duplicate protection, and kitchen queue display contracts needed one repeatable QA gate before future ratings could be considered final.
+2. Implemented fixes:
+   - Added `npm run qa:fnb-readiness` as the canonical F&B readiness gate.
+   - Added backend operational QA for recipe shortfall diagnostics, non-voided check-line status synchronization, Storefront duplicate ticket reuse by accepted `pos_transaction_id`, and POS existing-check ticket creation from persisted check lines.
+   - Added frontend kitchen queue display utility coverage for ticket source, station/check context, item quantities, and recipe movement counts.
+   - Updated ADR 0019, the F&B feature doc, testing docs, and root docs so final F&B readiness ratings require the gate first.
+3. Regression coverage and gates:
+   - `npm run qa:fnb-readiness` -> PASS.
+   - Included backend suites: `fnbOperationalReadiness.qa.test.js`, `fnbMode.usecases.test.js`, `posCheckoutFnbContracts.usecase.test.js`, and `storeFnbModifiers.usecases.test.js`.
+   - Included frontend suites: `kitchenQueueDisplay.test.js`, `terminalViewModeContracts.test.js`, and `storefrontErrorMessages.test.js`.
+   - Included production builds: SKUpervisor, POS, and Storefront.
+   - Included governance gates: `npm run check:architecture`, `npm run lint:docs`, and `git diff --check`.
+4. Updated honest rating after the automated QA gate:
+   - Idea / architecture: `8.8/10`.
+   - Backend completeness: `8.7/10`.
+   - POS readiness: `8.6/10`.
+   - Storefront readiness: `8.5/10`.
+   - UI readiness: `8.0/10`.
+   - Overall production readiness: `8.6/10`.
+   - Remaining ceiling: ratings stay below `9.0/10` until live/human browser QA captures POS, Storefront, kitchen queue refresh, retry/idempotency, and tablet-width kitchen evidence on a real tenant.
 
 ### 3.18 Food & Beverage Restaurant Hardening Rerun (2026-05-05)
 

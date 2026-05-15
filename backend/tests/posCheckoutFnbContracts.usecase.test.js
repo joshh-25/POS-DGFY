@@ -122,11 +122,13 @@ describe('POS checkout F&B contracts', () => {
             listProductCompositionsForItems: jest.fn().mockResolvedValue([{
                 product_id: 1,
                 ingredient_id: 5,
-                quantity_required: 0.2,
+                quantity_required: 200,
+                unit_of_measure: 'g',
                 ingredient: {
                     item_id: 5,
                     name: 'Ground beef',
                     current_stock: 10,
+                    unit_of_measure: 'kg',
                     category: 'raw_material'
                 }
             }]),
@@ -142,6 +144,7 @@ describe('POS checkout F&B contracts', () => {
                 return 77;
             }),
             createFnbServiceChargeSnapshot: jest.fn().mockResolvedValue({}),
+            createFnbKitchenOrderForTransaction: jest.fn().mockResolvedValue({ kitchen_ticket: { kitchen_ticket_id: 90 } }),
             settleFnbCheck: jest.fn(),
             incrementPersistentCounter: jest.fn().mockResolvedValue(1),
             getTransactionById: jest.fn(async () => createdTransaction)
@@ -207,6 +210,22 @@ describe('POS checkout F&B contracts', () => {
             reference_type: 'POS',
             reference_id: '77'
         }), 12, expect.any(Object));
+        expect(posRepository.createFnbKitchenOrderForTransaction).toHaveBeenCalledWith(expect.objectContaining({
+            pos_transaction_id: 77,
+            order_method: 'dine_in',
+            guest_count: 2,
+            lines: [expect.objectContaining({
+                item_id: 1,
+                fnb_course_snapshot: 'main',
+                fnb_modifiers_snapshot: [expect.objectContaining({ modifier_option_id: 9 })]
+            })],
+            recipe_movements: [expect.objectContaining({
+                product_item_id: 1,
+                ingredient_item_id: 5,
+                quantity: 0.4,
+                location_id: 3
+            })]
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
     });
 
     it('fails F&B recipe checkout before commit when selected location lacks ingredient stock', async () => {
@@ -273,6 +292,13 @@ describe('POS checkout F&B contracts', () => {
         expect(result.success).toBe(false);
         expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
         expect(result.error.message).toContain('Insufficient ingredient stock');
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'FNB_RECIPE_INGREDIENT_SHORTFALL',
+            product_item_id: 1,
+            ingredient_item_id: 5,
+            requested: 0.4,
+            location_id: 3
+        }));
         expect(posRepository.listProductCompositionsForItems).toHaveBeenCalledWith([1], expect.objectContaining({
             locationId: 3
         }));
@@ -280,6 +306,78 @@ describe('POS checkout F&B contracts', () => {
         expect(stockMovementService.createStockMovement).not.toHaveBeenCalled();
         expect(transactionRef.rollback).toHaveBeenCalledTimes(1);
         expect(transactionRef.commit).not.toHaveBeenCalled();
+    });
+
+    it('rejects F&B POS recipes when recipe and ingredient UOMs are incompatible', async () => {
+        const posRepository = {
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({ mode: 'warn', active_registry: [] }),
+            findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 1,
+                name: 'Burger',
+                category: 'product',
+                unit_of_measure: 'pc',
+                current_stock: 0,
+                cost_per_unit: 50,
+                default_sale_price: 100,
+                vat_type: 'vatable',
+                fnbModifierGroups: []
+            }]),
+            listProductCompositionsForItems: jest.fn().mockResolvedValue([{
+                product_id: 1,
+                ingredient_id: 5,
+                quantity_required: 1,
+                unit_of_measure: 'serving',
+                ingredient: {
+                    item_id: 5,
+                    name: 'Ground beef',
+                    current_stock: 10,
+                    unit_of_measure: 'kg',
+                    category: 'raw_material'
+                }
+            }]),
+            getTerminalShiftById: jest.fn(),
+            nextInvoiceNumber: jest.fn(),
+            getFnbTableById: jest.fn(),
+            createTransactionWithLines: jest.fn(),
+            createFnbServiceChargeSnapshot: jest.fn(),
+            settleFnbCheck: jest.fn(),
+            incrementPersistentCounter: jest.fn(),
+            getTransactionById: jest.fn()
+        };
+        const stockMovementService = {
+            createStockMovement: jest.fn()
+        };
+        const useCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'fnb-checkout-contract-uom-incompatible',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'dine_in',
+                lines: [{
+                    item_id: 1,
+                    quantity: 1,
+                    course: 'main'
+                }]
+            }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'FNB_RECIPE_UOM_INCOMPATIBLE',
+            product_item_id: 1,
+            ingredient_item_id: 5,
+            recipe_uom: 'serving',
+            ingredient_uom: 'kg'
+        }));
+        expect(posRepository.createTransactionWithLines).not.toHaveBeenCalled();
+        expect(stockMovementService.createStockMovement).not.toHaveBeenCalled();
     });
 
     it('keeps pure service POS lines stock-exempt while physical add-on lines deduct at the checkout location', async () => {
@@ -393,6 +491,7 @@ describe('POS checkout F&B contracts', () => {
                 return 79;
             }),
             createFnbServiceChargeSnapshot: jest.fn().mockResolvedValue({}),
+            createFnbKitchenOrderForTransaction: jest.fn().mockResolvedValue({ kitchen_ticket: { kitchen_ticket_id: 91 } }),
             settleFnbCheck: jest.fn(),
             incrementPersistentCounter: jest.fn().mockResolvedValue(1),
             getTransactionById: jest.fn(async () => createdTransaction)
@@ -427,5 +526,63 @@ describe('POS checkout F&B contracts', () => {
             item_id: 20,
             cost_snapshot: null
         }));
+        expect(posRepository.createFnbKitchenOrderForTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('fails F&B POS checkout when kitchen order persistence is unavailable', async () => {
+        const posRepository = {
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({ mode: 'warn', active_registry: [] }),
+            findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 1,
+                name: 'Burger',
+                category: 'product',
+                unit_of_measure: 'pc',
+                current_stock: 10,
+                cost_per_unit: 50,
+                default_sale_price: 100,
+                vat_type: 'vatable',
+                fnbModifierGroups: []
+            }]),
+            listProductCompositionsForItems: jest.fn().mockResolvedValue([]),
+            getTerminalShiftById: jest.fn(),
+            nextInvoiceNumber: jest.fn().mockResolvedValue('NFS-000004'),
+            getFnbTableById: jest.fn(),
+            createTransactionWithLines: jest.fn().mockResolvedValue(80),
+            createFnbServiceChargeSnapshot: jest.fn().mockResolvedValue({}),
+            createFnbKitchenOrderForTransaction: jest.fn().mockResolvedValue(null),
+            settleFnbCheck: jest.fn(),
+            incrementPersistentCounter: jest.fn().mockResolvedValue(1),
+            getTransactionById: jest.fn()
+        };
+        const stockMovementService = {
+            createStockMovement: jest.fn()
+        };
+        const useCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'fnb-checkout-kitchen-unavailable',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'dine_in',
+                fnb_guest_count: 1,
+                lines: [{
+                    item_id: 1,
+                    quantity: 1,
+                    course: 'main'
+                }]
+            }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.CONFLICT);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'FNB_KITCHEN_ORDER_UNAVAILABLE'
+        }));
+        expect(stockMovementService.createStockMovement).not.toHaveBeenCalled();
     });
 });

@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-05-05
-last_reviewed: 2026-05-07
+last_reviewed: 2026-05-15
 classification: authoritative
 ---
 
@@ -53,8 +53,19 @@ The F&B API namespace owns:
 - Receipt, sales, Z-reading, and export surfaces may include F&B snapshots without changing fiscal vs non-fiscal document selection.
 - No architecture allowlist exception is introduced.
 
+## Recipe-Driven Kitchen Orders Addendum (2026-05-15)
+
+F&B checkout uses restaurant-native kitchen/check records, not Food Manufacturing `job_orders`. POS checkout and Storefront checkout may create or link `fnb_checks`, `fnb_check_lines`, and `fnb_kitchen_tickets` in the same transaction that accepts the sale/order. Manufacturing job-order and dispatch-order navigation remains hidden in F&B; any future make-ahead prep or batch workflow must be introduced as a separate F&B prep decision instead of automatically creating manufacturing production orders for every menu sale.
+
+F&B menu recipes continue to use `product_composition`. POS and Storefront quote/checkout must run the same recipe preflight for stock-bearing menu lines: expand recipe components, scale by ordered quantity, convert only compatible UOM groups, check the selected/operating location's ingredient availability, and fail before order creation when any ingredient is short. Failure details must identify the menu item, ingredient, available quantity, required quantity, UOM, location, and blocker reason so cashier and customer-facing flows can explain why checkout cannot proceed.
+
+Inventory movement remains location-scoped FIFO. Recipe-backed menu sales consume ingredient stock as `goods_issue` movements; stock-bearing lines without recipes continue to consume the sold item. Online Storefront order completion must use the same recipe-aware consumption path rather than deducting only the sold menu item. Idempotency hashes and offline/online replay inputs must include recipe-relevant customer line data and modifier snapshots, but must not depend on current recipe stock balances so a valid retry can replay after stock is depleted or the recipe is edited. Kitchen ticket snapshots preserve the recipe movements used for operational audit. Existing F&B checks must not receive duplicate check-line rows or duplicate active kitchen tickets during payment checkout; Storefront kitchen-order creation must also reuse any existing non-cancelled ticket for the accepted `pos_transaction_id` if the helper is called again outside the normal checkout replay path. The kitchen ticket lifecycle remains separate from payment and inventory movement, but ticket progress must keep operational check-line statuses in sync (`sent`, `preparing`, `ready`, `served`) so the kitchen queue and check view do not drift.
+
+The F&B kitchen queue UI must expose enough operational context for staff to act on checkout-owned tickets: source (`POS`, `Online`, or restaurant check), station, check number, ticket status, line quantity/name previews, and whether recipe ingredient movements are attached to the ticket snapshot. This is display/audit context only; it must not recompute inventory or mutate payment state from the queue.
+
 ## Validation
 
+- Run `npm run qa:fnb-readiness` before final F&B readiness ratings; ratings are preliminary when this gate is not run.
 - Run `npm run check:architecture`.
 - Run `npm run lint:docs`.
 - Run tenant provisioning/model-factory coverage for all tenant-local F&B tables and shared tables that now reference F&B. Fresh tenant approval must create the complete schema, including POS transaction references to F&B checks/tables, and failed provisioning must restore a retryable landlord status.

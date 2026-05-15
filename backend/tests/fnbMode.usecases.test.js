@@ -130,9 +130,11 @@ describe('Food & Beverage mode use cases', () => {
       }),
       createKitchenTicket: jest.fn().mockResolvedValue({
         kitchen_ticket_id: 6,
-        status: 'queued'
+        status: 'queued',
+        lines_snapshot: [{ check_line_id: 1, item_id: 3 }]
       }),
-      updateCheck: jest.fn().mockResolvedValue({ check_id: 12, status: 'sent_to_kitchen' })
+      updateCheck: jest.fn().mockResolvedValue({ check_id: 12, status: 'sent_to_kitchen' }),
+      updateCheckLinesStatus: jest.fn().mockResolvedValue(1)
     });
     const useCase = buildCreateKitchenTicketUseCase({ fnbRepository: repository });
 
@@ -151,6 +153,11 @@ describe('Food & Beverage mode use cases', () => {
     expect(repository.updateCheck).toHaveBeenCalledWith(12, { status: 'sent_to_kitchen' }, {
       transaction: repository.transaction
     });
+    expect(repository.updateCheckLinesStatus).toHaveBeenCalledWith({
+      checkId: 12,
+      lineIds: [1],
+      status: 'sent'
+    }, { transaction: repository.transaction });
   });
 
   it('uses configured kitchen routes when adding F&B check lines', async () => {
@@ -332,6 +339,50 @@ describe('Food & Beverage mode use cases', () => {
     expect(result.success).toBe(false);
     expect(result.error.code).toBe(DomainErrorCode.CONFLICT);
     expect(repository.updateKitchenTicket).not.toHaveBeenCalled();
+  });
+
+  it('syncs kitchen ticket progress to the related check-line statuses', async () => {
+    const repository = buildTransactionalRepository({
+      getKitchenTicketById: jest.fn().mockResolvedValue({
+        status: 'preparing',
+        toJSON: () => ({
+          kitchen_ticket_id: 7,
+          check_id: 12,
+          status: 'preparing',
+          ready_at: null,
+          served_at: null,
+          lines_snapshot: {
+            source: 'storefront_checkout',
+            lines: [
+              { check_line_id: 101, item_id: 9 },
+              { check_line_id: 102, item_id: 10 }
+            ]
+          }
+        })
+      }),
+      updateKitchenTicket: jest.fn().mockResolvedValue({
+        kitchen_ticket_id: 7,
+        status: 'ready'
+      }),
+      updateCheckLinesStatus: jest.fn().mockResolvedValue(2)
+    });
+    const useCase = buildUpdateKitchenTicketStatusUseCase({ fnbRepository: repository });
+
+    const result = await useCase({
+      ticketId: 7,
+      payload: { status: 'ready' }
+    });
+
+    expect(result.success).toBe(true);
+    expect(repository.updateKitchenTicket).toHaveBeenCalledWith(7, expect.objectContaining({
+      status: 'ready',
+      ready_at: expect.any(Date)
+    }), { transaction: repository.transaction });
+    expect(repository.updateCheckLinesStatus).toHaveBeenCalledWith({
+      checkId: 12,
+      lineIds: [101, 102],
+      status: 'ready'
+    }, { transaction: repository.transaction });
   });
 
   it('stores public reservation requests with storefront source', async () => {

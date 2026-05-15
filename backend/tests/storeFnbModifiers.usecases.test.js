@@ -1,8 +1,32 @@
 import { jest } from '@jest/globals';
-import { buildStoreCartQuoteUseCase } from '../src/modules/store/usecases/storeUseCases.js';
+import {
+  buildStoreCartQuoteUseCase,
+  buildStoreCheckoutUseCase
+} from '../src/modules/store/usecases/storeUseCases.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
 
-const buildRepository = (items) => ({
+const createTransaction = () => {
+  const transaction = {
+    finished: false,
+    LOCK: { UPDATE: 'UPDATE' },
+    commit: jest.fn(async () => {
+      transaction.finished = true;
+    }),
+    rollback: jest.fn(async () => {
+      transaction.finished = true;
+    })
+  };
+  return transaction;
+};
+
+const customerAccessSettings = [
+  { setting_key: 'customer_access_mode', setting_value: '"transaction"' },
+  { setting_key: 'tenant_onboarding_progress', setting_value: '{"classification_snapshot":{"payload":{"legitimacy":{"registration_status":"registered"}}}}' }
+];
+const tenantId = '11111111-1111-4111-8111-111111111111';
+
+const buildRepository = (items, overrides = {}) => ({
+  beginTransaction: jest.fn(async () => createTransaction()),
   findLocationById: jest.fn().mockResolvedValue({
     location_id: 4,
     name: 'Main',
@@ -13,8 +37,26 @@ const buildRepository = (items) => ({
     supports_dine_in: true,
     allow_out_of_stock_sales: true
   }),
-  getSettingsByKeys: jest.fn().mockResolvedValue([]),
-  findSellableItemsByIds: jest.fn().mockResolvedValue(items)
+  getSettingsByKeys: jest.fn().mockResolvedValue(customerAccessSettings),
+  findSellableItemsByIds: jest.fn().mockResolvedValue(items),
+  listProductCompositionsForItems: jest.fn().mockResolvedValue([]),
+  findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+  isTrackingPinTaken: jest.fn().mockResolvedValue(false),
+  nextInvoiceNumber: jest.fn().mockResolvedValue('INV-000001'),
+  createOnlineTransactionWithLines: jest.fn().mockResolvedValue(501),
+  getOrderById: jest.fn().mockResolvedValue({
+    pos_transaction_id: 501,
+    tracking_pin: 'SK-ABC123',
+    invoice_number: 'INV-000001',
+    order_source: 'online_store',
+    order_method: 'pickup',
+    fulfillment_status: 'placed',
+    status: 'completed',
+    total_amount: 116.15,
+    lines: []
+  }),
+  createFnbKitchenOrderForOnlineTransaction: jest.fn().mockResolvedValue({ kitchen_ticket: { kitchen_ticket_id: 9 } }),
+  ...overrides
 });
 
 const burgerItem = {
@@ -104,5 +146,270 @@ describe('storefront F&B modifier checkout contract', () => {
 
     expect(result.success).toBe(false);
     expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+  });
+
+  it('rejects F&B recipe quote before checkout when selected location lacks ingredient stock', async () => {
+    const repository = buildRepository([{
+      ...burgerItem,
+      current_stock: 0
+    }], {
+      listProductCompositionsForItems: jest.fn().mockResolvedValue([{
+        product_id: 20,
+        ingredient_id: 51,
+        quantity_required: 0.25,
+        unit_of_measure: 'kg',
+        ingredient: {
+          item_id: 51,
+          name: 'Ground beef',
+          current_stock: 0.2,
+          unit_of_measure: 'kg',
+          category: 'raw_material'
+        }
+      }])
+    });
+    const useCase = buildStoreCartQuoteUseCase({ storeRepository: repository });
+
+    const result = await useCase({
+      payload: {
+        location_id: 4,
+        order_method: 'pickup',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.message).toContain('Insufficient ingredient stock');
+    expect(result.error.details).toEqual(expect.objectContaining({
+      reason_code: 'FNB_RECIPE_INGREDIENT_SHORTFALL',
+      product_item_id: 20,
+      ingredient_item_id: 51,
+      available: 0.2,
+      requested: 0.25,
+      location_id: 4
+    }));
+    expect(repository.createOnlineTransactionWithLines).not.toHaveBeenCalled();
+  });
+
+  it('rejects F&B recipe checkout before creating the online order', async () => {
+    const repository = buildRepository([{
+      ...burgerItem,
+      current_stock: 0
+    }], {
+      listProductCompositionsForItems: jest.fn().mockResolvedValue([{
+        product_id: 20,
+        ingredient_id: 51,
+        quantity_required: 0.25,
+        unit_of_measure: 'kg',
+        ingredient: {
+          item_id: 51,
+          name: 'Ground beef',
+          current_stock: 0,
+          unit_of_measure: 'kg',
+          category: 'raw_material'
+        }
+      }])
+    });
+    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+
+    const result = await useCase({
+      tenantId,
+      payload: {
+        idempotency_key: 'store-fnb-shortfall',
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.details).toEqual(expect.objectContaining({
+      reason_code: 'FNB_RECIPE_INGREDIENT_SHORTFALL',
+      ingredient_item_id: 51,
+      requested: 0.25,
+      location_id: 4
+    }));
+    expect(repository.createOnlineTransactionWithLines).not.toHaveBeenCalled();
+  });
+
+  it('creates a kitchen ticket record for accepted Storefront F&B checkout', async () => {
+    const repository = buildRepository([{
+      ...burgerItem,
+      current_stock: 0
+    }], {
+      listProductCompositionsForItems: jest.fn().mockResolvedValue([{
+        product_id: 20,
+        ingredient_id: 51,
+        quantity_required: 0.25,
+        unit_of_measure: 'kg',
+        ingredient: {
+          item_id: 51,
+          name: 'Ground beef',
+          current_stock: 2,
+          unit_of_measure: 'kg',
+          category: 'raw_material'
+        }
+      }])
+    });
+    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+
+    const result = await useCase({
+      tenantId,
+      payload: {
+        idempotency_key: 'store-fnb-kitchen-ticket',
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        lines: [{
+          item_id: 20,
+          quantity: 1,
+          course: 'main',
+          line_modifiers: [{
+            modifier_group_id: 5,
+            modifier_option_id: 8
+          }]
+        }]
+      }
+    });
+
+    expect(result.success).toBe(true);
+    expect(repository.createOnlineTransactionWithLines).toHaveBeenCalledTimes(1);
+    expect(repository.createFnbKitchenOrderForOnlineTransaction).toHaveBeenCalledWith(expect.objectContaining({
+      pos_transaction_id: 501,
+      order_method: 'pickup',
+      location_id: 4,
+      lines: [expect.objectContaining({
+        item_id: 20,
+        fnb_course_snapshot: 'main',
+        fnb_modifiers_snapshot: [expect.objectContaining({ modifier_option_id: 8 })]
+      })],
+      recipe_movements: [expect.objectContaining({
+        product_item_id: 20,
+        ingredient_item_id: 51,
+        quantity: 0.25,
+        location_id: 4
+      })]
+    }), expect.objectContaining({
+      transaction: expect.any(Object)
+    }));
+  });
+
+  it('replays an accepted F&B Storefront checkout without rechecking depleted ingredients', async () => {
+    const repository = buildRepository([{
+      ...burgerItem,
+      current_stock: 0
+    }], {
+      listProductCompositionsForItems: jest.fn()
+        .mockResolvedValueOnce([{
+          product_id: 20,
+          ingredient_id: 51,
+          quantity_required: 0.5,
+          unit_of_measure: 'kg',
+          ingredient: {
+            item_id: 51,
+            name: 'Ground beef',
+            current_stock: 2,
+            unit_of_measure: 'kg',
+            category: 'raw_material'
+          }
+        }])
+        .mockResolvedValueOnce([{
+          product_id: 20,
+          ingredient_id: 51,
+          quantity_required: 0.25,
+          unit_of_measure: 'kg',
+          ingredient: {
+            item_id: 51,
+            name: 'Ground beef',
+            current_stock: 0,
+            unit_of_measure: 'kg',
+            category: 'raw_material'
+          }
+        }]),
+      findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null)
+    });
+    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+    const payload = {
+      idempotency_key: 'store-fnb-replay-after-consumption',
+      location_id: 4,
+      order_method: 'pickup',
+      payment_type: 'cash',
+      customer_name: 'Ana',
+      customer_phone: '09170000000',
+      lines: [{ item_id: 20, quantity: 1 }]
+    };
+
+    const first = await useCase({ tenantId, payload });
+    const requestHash = repository.createOnlineTransactionWithLines.mock.calls[0][0].header.request_hash;
+    repository.findTransactionByIdempotencyKey.mockResolvedValue({
+      pos_transaction_id: 501,
+      tracking_pin: 'SK-ABC123',
+      invoice_number: 'INV-000001',
+      order_source: 'online_store',
+      order_method: 'pickup',
+      fulfillment_status: 'placed',
+      status: 'completed',
+      total_amount: 116.15,
+      request_hash: requestHash,
+      lines: []
+    });
+
+    const replay = await useCase({ tenantId, payload });
+
+    expect(first.success).toBe(true);
+    expect(replay.success).toBe(true);
+    expect(replay.data.idempotent_replay).toBe(true);
+    expect(repository.createOnlineTransactionWithLines).toHaveBeenCalledTimes(1);
+    expect(repository.createFnbKitchenOrderForOnlineTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails accepted F&B Storefront checkout when kitchen order persistence is unavailable', async () => {
+    const repository = buildRepository([{
+      ...burgerItem,
+      current_stock: 0
+    }], {
+      listProductCompositionsForItems: jest.fn().mockResolvedValue([{
+        product_id: 20,
+        ingredient_id: 51,
+        quantity_required: 0.25,
+        unit_of_measure: 'kg',
+        ingredient: {
+          item_id: 51,
+          name: 'Ground beef',
+          current_stock: 2,
+          unit_of_measure: 'kg',
+          category: 'raw_material'
+        }
+      }]),
+      createFnbKitchenOrderForOnlineTransaction: jest.fn().mockResolvedValue(null)
+    });
+    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+
+    const result = await useCase({
+      tenantId,
+      payload: {
+        idempotency_key: 'store-fnb-kitchen-unavailable',
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.CONFLICT);
+    expect(result.error.details).toEqual(expect.objectContaining({
+      reason_code: 'FNB_KITCHEN_ORDER_UNAVAILABLE'
+    }));
   });
 });
