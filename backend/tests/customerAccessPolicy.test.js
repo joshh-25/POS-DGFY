@@ -51,7 +51,26 @@ describe('customerAccessPolicy', () => {
         expect(registered.access_capabilities.checkout).toBe(true);
     });
 
-    it('keeps current public behavior while enforcement flag is off', () => {
+    it('enforces saved modes by default when no rollout flag is configured', () => {
+        const resolved = resolveAccessPolicyFromSettings({
+            customer_access_mode: 'ghost',
+            tenant_onboarding_progress: {
+                step_payloads: {
+                    business_classification: {
+                        legitimacy: { registration_status: 'informal' }
+                    }
+                }
+            }
+        });
+
+        expect(resolved.customer_access_mode).toBe('ghost');
+        expect(resolved.effective_customer_access_mode).toBe('ghost');
+        expect(resolved.access_capabilities.catalog).toBe(false);
+        expect(resolved.access_capabilities.checkout).toBe(false);
+        expect(resolved.customer_access_modes_enabled).toBe(true);
+    });
+
+    it('supports explicit rollback to transaction-capable compatibility behavior', () => {
         const resolved = resolveAccessPolicyFromSettings({
             customer_access_mode: 'ghost',
             tenant_onboarding_progress: {

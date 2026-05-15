@@ -105,6 +105,14 @@ describe('settingsHandlers transport contracts', () => {
       surface: 'settings',
       action: 'view_all_settings'
     }));
+    expect(mockGetAllSettingsUseCase).toHaveBeenCalledWith({
+      context: expect.objectContaining({
+        tenantId: 'tenant-1',
+        tenant_id: 'tenant-1',
+        companyToken: null,
+        company_token: null
+      })
+    });
     expect(next).not.toHaveBeenCalled();
   });
 

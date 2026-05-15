@@ -16,6 +16,20 @@ import {
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
 import { generateStoreCancelProof } from '../src/modules/store/utils/storeJwtToken.js';
 
+const registeredTransactionSettings = () => [
+    { setting_key: 'customer_access_mode', setting_value: 'transaction' },
+    {
+        setting_key: 'tenant_onboarding_progress',
+        setting_value: JSON.stringify({
+            step_payloads: {
+                business_classification: {
+                    legitimacy: { registration_status: 'registered' }
+                }
+            }
+        })
+    }
+];
+
 describe('store use-cases application result contract', () => {
     const originalCustomerAccessFlag = process.env.CUSTOMER_ACCESS_MODES_ENABLED;
 
@@ -636,6 +650,7 @@ describe('store use-cases application result contract', () => {
                     current_wait_time_minutes: 15
                 }),
                 getSettingsByKeys: jest.fn().mockResolvedValue([
+                    ...registeredTransactionSettings(),
                     { setting_key: 'store_delivery_fee', setting_value: '20' },
                     { setting_key: 'pos_open_status', setting_value: 'true' },
                     { setting_key: 'pos_wait_time_minutes', setting_value: '25' }
@@ -693,6 +708,7 @@ describe('store use-cases application result contract', () => {
                     current_wait_time_minutes: 15
                 }),
                 getSettingsByKeys: jest.fn().mockResolvedValue([
+                    ...registeredTransactionSettings(),
                     { setting_key: 'store_delivery_fee', setting_value: '0' },
                     { setting_key: 'pos_open_status', setting_value: 'true' }
                 ])
@@ -745,6 +761,7 @@ describe('store use-cases application result contract', () => {
                     current_wait_time_minutes: 15
                 }),
                 getSettingsByKeys: jest.fn().mockResolvedValue([
+                    ...registeredTransactionSettings(),
                     { setting_key: 'store_delivery_fee', setting_value: '20' },
                     { setting_key: 'pos_open_status', setting_value: 'false' },
                     { setting_key: 'pos_wait_time_minutes', setting_value: '25' }
@@ -798,6 +815,7 @@ describe('store use-cases application result contract', () => {
                     current_wait_time_minutes: 10
                 }),
                 getSettingsByKeys: jest.fn().mockResolvedValue([
+                    ...registeredTransactionSettings(),
                     { setting_key: 'store_delivery_fee', setting_value: '20' },
                     { setting_key: 'pos_open_status', setting_value: 'true' }
                 ])
@@ -850,6 +868,7 @@ describe('store use-cases application result contract', () => {
                     current_wait_time_minutes: 15
                 }),
                 getSettingsByKeys: jest.fn().mockResolvedValue([
+                    ...registeredTransactionSettings(),
                     { setting_key: 'store_delivery_fee', setting_value: '20' },
                     { setting_key: 'pos_open_status', setting_value: 'true' }
                 ])
@@ -925,6 +944,7 @@ describe('store use-cases application result contract', () => {
                     current_wait_time_minutes: 15
                 }),
                 getSettingsByKeys: jest.fn().mockResolvedValue([
+                    ...registeredTransactionSettings(),
                     { setting_key: 'store_delivery_fee', setting_value: '20' },
                     { setting_key: 'pos_open_status', setting_value: 'true' }
                 ])
@@ -1002,6 +1022,7 @@ describe('store use-cases application result contract', () => {
                     current_wait_time_minutes: 15
                 }),
                 getSettingsByKeys: jest.fn().mockResolvedValue([
+                    ...registeredTransactionSettings(),
                     { setting_key: 'store_delivery_fee', setting_value: '20' },
                     { setting_key: 'pos_open_status', setting_value: 'true' }
                 ]),

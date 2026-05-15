@@ -42,6 +42,20 @@ const serviceItem = {
     }
 };
 
+const registeredTransactionSettings = () => [
+    { setting_key: 'customer_access_mode', setting_value: 'transaction' },
+    {
+        setting_key: 'tenant_onboarding_progress',
+        setting_value: JSON.stringify({
+            step_payloads: {
+                business_classification: {
+                    legitimacy: { registration_status: 'registered' }
+                }
+            }
+        })
+    }
+];
+
 describe('Services Mode use cases', () => {
     const originalCustomerAccessFlag = process.env.CUSTOMER_ACCESS_MODES_ENABLED;
 
@@ -175,6 +189,7 @@ describe('Services Mode use cases', () => {
         const useCase = buildCreateServiceBookingUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
+                getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
                 findServiceItemById: jest.fn(async () => serviceItem),
                 findResourceById: jest.fn(async () => ({
                     resource_id: 7,
@@ -254,6 +269,7 @@ describe('Services Mode use cases', () => {
         const useCase = buildCreateServiceBookingUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
+                getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
                 findServiceItemById: jest.fn(async () => serviceItem),
                 findResourceById: jest.fn(async () => ({
                     resource_id: 7,
@@ -471,7 +487,7 @@ describe('Services Mode use cases', () => {
         const useCase = buildCreateServiceBookingHoldUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
-                getSettingsByKeys: jest.fn(async () => []),
+                getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
                 findServiceItemById: jest.fn(async () => serviceItem),
                 findResourceById: jest.fn(async () => ({
                     resource_id: 7,
@@ -531,7 +547,7 @@ describe('Services Mode use cases', () => {
         const useCase = buildCreateServiceBookingHoldUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
-                getSettingsByKeys: jest.fn(async () => []),
+                getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
                 findServiceItemById: jest.fn(async () => serviceItem),
                 findActiveHoldByToken: jest.fn(async () => ({
                     hold_id: 4,
@@ -591,6 +607,7 @@ describe('Services Mode use cases', () => {
         const useCase = buildCreateServiceBookingUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
+                getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
                 findServiceItemById: jest.fn(async () => serviceItem),
                 findActiveHoldByToken: jest.fn(async () => ({
                     hold_id: 5,
@@ -664,6 +681,7 @@ describe('Services Mode use cases', () => {
         const useCase = buildCreateServiceBookingUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
+                getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
                 findServiceItemById: jest.fn(async () => ({ ...serviceItem, default_sale_price: 0 })),
                 listActiveAssignmentsForService: jest.fn(async () => []),
                 findConflictingBookings: jest.fn(async () => []),
@@ -697,6 +715,7 @@ describe('Services Mode use cases', () => {
         const useCase = buildCreateServiceBookingUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
+                getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
                 findServiceItemById: jest.fn(async () => serviceItem),
                 findResourceById: jest.fn(async () => ({
                     resource_id: 7,
@@ -754,6 +773,7 @@ describe('Services Mode use cases', () => {
         const useCase = buildCreateServiceBookingUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
+                getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
                 findServiceItemById: jest.fn(async () => serviceItem),
                 listActiveAssignmentsForService: jest.fn(async () => []),
                 findConflictingBookings: jest.fn(async () => []),
@@ -786,6 +806,7 @@ describe('Services Mode use cases', () => {
         const useCase = buildCreateServiceBookingUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
+                getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
                 findServiceItemById: jest.fn(async () => serviceItem),
                 findResourceById: jest.fn(async () => ({
                     resource_id: 7,
@@ -835,6 +856,7 @@ describe('Services Mode use cases', () => {
         const useCase = buildCreateServiceBookingBatchUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
+                getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
                 findServiceItemById: jest.fn(async () => serviceItem),
                 findResourceById: jest.fn(async (resourceId) => ({
                     resource_id: resourceId,
@@ -903,6 +925,7 @@ describe('Services Mode use cases', () => {
         const useCase = buildCreateServiceBookingUseCase({
             serviceRepository: {
                 beginTransaction,
+                getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
                 findServiceItemById: jest.fn(async () => serviceItem),
                 listActiveAssignmentsForService: jest.fn(async () => []),
                 findConflictingBookings: jest.fn(async () => []),
@@ -941,6 +964,7 @@ describe('Services Mode use cases', () => {
         const useCase = buildCreateServiceBookingBatchUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
+                getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
                 findServiceItemById: jest.fn(async () => serviceItem),
                 findResourceById: jest.fn(async () => ({
                     resource_id: 7,

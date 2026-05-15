@@ -12,16 +12,47 @@ describe('settings use-cases application result contract', () => {
     const useCase = buildGetAllSettingsUseCase({
       settingsRepository: {
         getAllSettings: jest.fn().mockResolvedValue({ timezone: { value: 'UTC' } })
-      }
+      },
+      customerAccessModesEnabledProvider: jest.fn().mockReturnValue(true)
     });
 
     const result = await useCase();
     expect(result).toEqual({
       success: true,
-      data: { timezone: { value: 'UTC' } },
+      data: {
+        timezone: { value: 'UTC' },
+        customer_access_modes_enabled: expect.objectContaining({
+          value: true,
+          data_type: 'boolean',
+          source: 'runtime'
+        })
+      },
       error: null,
       message: null
     });
+  });
+
+  it('getAllSettings exposes rollback runtime state with tenant context', async () => {
+    const customerAccessModesEnabledProvider = jest.fn().mockReturnValue(false);
+    const useCase = buildGetAllSettingsUseCase({
+      settingsRepository: {
+        getAllSettings: jest.fn().mockResolvedValue({ timezone: { value: 'UTC' } })
+      },
+      customerAccessModesEnabledProvider
+    });
+
+    const result = await useCase({ context: { tenantId: 'tenant-1', companyToken: 'TOKEN-123' } });
+
+    expect(customerAccessModesEnabledProvider).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      companyToken: 'TOKEN-123'
+    });
+    expect(result.success).toBe(true);
+    expect(result.data.customer_access_modes_enabled).toEqual(expect.objectContaining({
+      value: false,
+      data_type: 'boolean',
+      source: 'runtime'
+    }));
   });
 
   it('getSettingByKey maps not-found errors to RESOURCE_NOT_FOUND', async () => {

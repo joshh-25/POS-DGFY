@@ -210,6 +210,26 @@ describe('Settings deep-linking and action wiring', () => {
     });
   });
 
+  it('shows Customer Access Mode runtime enforcement as active by default', async () => {
+    renderSettings('/settings?tab=storefront#storefront-access-settings');
+
+    expect(await screen.findByText(/Runtime enforcement: Enforced/i)).toBeTruthy();
+    expect(screen.getByText(/Public Storefront access-mode enforcement is active for this tenant/i)).toBeTruthy();
+  });
+
+  it('shows Customer Access Mode rollback status when the backend runtime flag is disabled', async () => {
+    mocks.settingsServiceMock.getAllSettings.mockResolvedValueOnce({
+      storefront_cover_image_url: { value: '/uploads/storefront-assets/t1/cover.png' },
+      storefront_profile_image_url: { value: '/uploads/storefront-assets/t1/profile.png' },
+      customer_access_modes_enabled: { value: false, data_type: 'boolean', source: 'runtime' }
+    });
+
+    renderSettings('/settings?tab=storefront#storefront-access-settings');
+
+    expect(await screen.findByText(/Runtime enforcement: Rollback active/i)).toBeTruthy();
+    expect(screen.getByText(/globally disabled except for allowlisted tenants/i)).toBeTruthy();
+  });
+
   it('keeps settings actions available when hash is malformed', async () => {
     const user = userEvent.setup();
     renderSettings('/settings?tab=profile#%5Bbad-selector');
