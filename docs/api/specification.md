@@ -256,7 +256,25 @@ x-company-token: <company-token>
 ```
 
 ### PUT /users/me
-Update the current authenticated user's profile-level account details. Existing users may add or change `phone_number` here after login. When profile identity fields are updated, the resulting profile must keep a non-empty valid `phone_number`; sending an empty phone number is rejected with `422`.
+Update the current authenticated user's profile-level account details. Existing users may add or change `phone_number` here after login. When profile identity fields are updated, the resulting profile must keep a non-empty valid `phone_number`; sending an empty phone number is rejected with `422`. The authenticated shell surfaces a remediation prompt for accepted legacy users whose stored account phone is still blank.
+
+Accepted legacy users with a blank stored `phone_number` are restricted after login until they complete this field. During that state:
+- `GET /users/me`, `PUT /users/me`, and `POST /auth/logout` remain available.
+- Other authenticated tenant routes return:
+
+```json
+{
+  "success": false,
+  "data": null,
+  "message": "Phone number is required before continuing.",
+  "error_code": "PHONE_NUMBER_REQUIRED",
+  "errors": {
+    "remediation": "Update your phone number in Settings > Profile."
+  }
+}
+```
+
+The frontend redirects this response to `/settings?tab=profile&reason=phone_required`.
 
 **Headers**
 ```

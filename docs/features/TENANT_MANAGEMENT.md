@@ -186,7 +186,13 @@ Mappings are created automatically when:
 1. A company is registered (founder email is mapped)
 2. A user is invited and accepts their invitation
 
-Company-user registration and invitation acceptance now require a phone number. Existing users created before this requirement can add or change their phone number from Settings > Profile. Settings rejects profile saves that would leave the resulting account phone blank or invalid.
+Company-user registration and invitation acceptance now require a phone number. Existing accepted users created before this requirement can add or change their phone number from Settings > Profile. Settings rejects profile saves that would leave the resulting account phone blank or invalid, and the authenticated shell shows a remediation banner with a direct Profile link until the stored account phone is completed.
+
+Legacy accepted accounts with a blank stored `phone_number` are now fail-closed after login:
+- `/api/v1/users/me` `GET` and `PUT` remain available so the user can inspect and complete their own profile.
+- `/api/v1/auth/logout` remains available so the user can end the session safely.
+- Other authenticated tenant routes return `428 PHONE_NUMBER_REQUIRED` until the phone number is completed.
+- A successful profile update clears the short-lived auth cache immediately, so the account can continue without waiting for cache expiry.
 
 The `landlordService.js` functions handle mapping CRUD: `addEmailTenantMapping`, `removeEmailTenantMapping`, `updateEmailTenantMapping`, `findTenantsByEmail`.
 
@@ -212,7 +218,7 @@ Invitation rows use these statuses:
 Pending, expired, and cancelled invitation rows are non-login rows and cannot be edited through role/status/permission/location-scope controls. Admins must resend, copy a fresh link, cancel, or wait for acceptance.
 
 ### Admin UX
-The **Users** tab shows accepted users, including phone number when present and a missing-phone marker for accepted legacy rows. User search matches username, email, and phone number. The **Pending Invitations** tab shows invite email, role, expiry, delivery state, inviter, and actions:
+The **Users** tab shows accepted users, including phone number when present and a missing-phone marker for accepted legacy rows. User search matches username, email, and phone number, and the **Missing Phone** filter isolates accepted legacy accounts that still need remediation before normal authenticated work can resume. The **Pending Invitations** tab shows invite email, role, expiry, delivery state, inviter, and actions:
 - Resend email
 - Copy/generate manual link
 - Cancel invitation
