@@ -68,3 +68,11 @@ Operational hardening for branding asset safety was applied without public contr
 1. Settings/POS image uploads now require both MIME allowlist and binary signature validation.
 2. Storefront asset settings/index reads sanitize non-canonical values and emit security-signal logs.
 3. Legacy SVG files under `/uploads` are served with `text/plain` response type to prevent script execution.
+
+## Addendum (2026-05-15): Current Storefront Client Presentation
+The public API query knobs remain supported, but the current Storefront client no longer exposes the old visible `Result Mode`, `Stock Filter`, or `Pin Scope` dropdowns.
+
+1. The Storefront client sends the discovery contract explicitly with `result_mode=union`, `stock_filter=include_out_of_stock`, `pin_scope=tenant_primary`, and `include_match_meta=true` for normal discovery loads.
+2. The customer-facing search field uses the current placeholder `Search products, services or stores nearby...` and submits searches through the explicit `Search` action.
+3. The location action is an icon button titled `Use my current location`; successful geolocation changes the client pin scope from `tenant_primary` to `nearest_matching_branch`.
+4. Storefront profile and cover media render from the tenant branding fields when present and fall back to initials or mode visuals when an image cannot load.

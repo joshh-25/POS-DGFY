@@ -88,7 +88,8 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - Inquiry Mode: shows catalog plus existing contact channels and hides cart, booking, quote, and checkout.
 - Online Ordering Mode: shows cart, quote, checkout, booking, tracking, and account flows as currently applicable.
 - Cart and quote state are cleared if the loaded profile no longer permits checkout/booking.
-- Discovery map pins use preview-first marker cards. Hover, keyboard focus, or tap opens a compact branded card with tenant cover/profile assets, tenant name, exact pinned branch, address, status, match/distance context, and an action that opens the tenant page with that pin's `location_id` selected. When multiple pins share effectively the same coordinates, the Storefront applies display-only marker offsets so every pin remains targetable while the stored branch coordinates and routing `location_id` stay unchanged.
+- Discovery map pins use preview-first marker cards. Hover or tap opens a compact branded card with tenant cover/profile assets, tenant name, exact pinned branch, address, status, match/distance context, and an action that opens the tenant page with that pin's `location_id` selected. Click-open previews remain available when the pointer leaves the marker and dismiss with Escape. Duplicate-coordinate pins remain separate, targetable markers while the stored branch coordinates and routing `location_id` stay unchanged.
+- The discovery search UI no longer exposes the older `Result Mode`, `Stock Filter`, or `Pin Scope` controls. The current client submits the API discovery contract directly with `result_mode=union`, `stock_filter=include_out_of_stock`, `pin_scope=tenant_primary`, and `include_match_meta=true`; the location icon action is titled `Use my current location` and switches to nearest-matching-branch behavior after successful geolocation.
 - Storefront rendering now lives in `frontend/apps/store/src/StorefrontApp.jsx`, with `frontend/apps/store/src/main.jsx` limited to app bootstrap and test-compatible export.
 - `modePresentationRegistry.js` supplies mode-specific labels, catalog headings, search placeholders, and primary action copy for generic and services storefronts.
 - `normalizeStorefrontPageModel.js` and `servicesStorefrontViewModel.js` normalize public storefront payloads before rendering service-first sections, service-family tabs, booking page content, review sections, and footer content.
@@ -206,6 +207,14 @@ Validated on 2026-05-15 for default-on Customer Access enforcement and Settings 
 - Governance gates: `npm run lint:docs`, `npm run check:architecture`, `npm run check:compliance`, and `git diff --check` passed.
 
 Operational readiness rating after this pass: **8.9/10**. Source-level implementation, docs, and targeted tests are ready for production deploy. Remaining risk is live production environment confirmation that `CUSTOMER_ACCESS_MODES_ENABLED` is not intentionally set to `false`, plus post-deploy tenant smoke for the public Storefront and IMS Settings runtime-status display.
+
+Validated on 2026-05-15 for the merged Storefront pilot UI and discovery test refresh:
+- Merge/runtime commits integrated the current Storefront discovery/follow contracts into `master` while preserving newer master functionality.
+- Frontend Storefront suites: `npm --prefix frontend test -- apps/store/src/__tests__/discoveryPresentation.test.js apps/store/src/__tests__/storefrontFollow.integration.test.jsx apps/store/src/__tests__/discoveryFlow.integration.test.jsx` passed 3 files and 25 tests. Coverage includes current explicit search submission, default discovery query parameters, profile/cover branding fallbacks, marker preview routing, follow behavior, and discovery presentation helpers.
+- Storefront build gate: `npm --prefix frontend run build:store` passed.
+- Cleanup check: `git diff --check` passed.
+
+Operational readiness rating after this merge/test refresh: **9.0/10** locally validated. Remaining risk is production deploy evidence and live browser smoke for the merged Storefront shell, IMS Settings branding upload path, and public tenant-store branding render.
 
 ## Assumptions
 - Customer Access Mode enforcement is default-on. `CUSTOMER_ACCESS_MODES_ENABLED=false` is reserved for rollback, not normal operation.

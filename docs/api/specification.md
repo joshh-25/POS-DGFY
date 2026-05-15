@@ -2748,6 +2748,7 @@ List publicly discoverable stores for list/grid/map storefront views.
 **Search Notes**
 - Item-name search includes tenants that have matching catalog items from indexed storefront snapshots.
 - Default item-search behavior is stock-aware (`in_stock_only`) unless caller explicitly requests `include_out_of_stock`.
+- The current Storefront web client explicitly requests `stock_filter=include_out_of_stock` so broad customer discovery can still show out-of-stock item matches with match metadata. API consumers that omit the parameter keep the backend stock-aware default.
 - `union` mode returns the union of store-field matches and eligible item matches.
 - `pin_scope` changes discovery anchor/pin behavior for map/list/grid without changing checkout source contracts.
 - Storefront map marker preview cards may combine discovery-row branding and match metadata with `/store/locations` branch data. The card action must route with the pinned branch `location_id` when available so catalog, quote, checkout, and booking reads stay scoped to the selected fulfillment location. Clients may apply display-only offsets when multiple pins share effectively identical coordinates; this must not mutate stored branch coordinates or the `location_id` used for catalog/quote/checkout/booking scope.
