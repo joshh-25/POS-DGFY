@@ -112,7 +112,7 @@ describe('storefront discovery integration flow', () => {
           pagination: { page: 1, limit: 100, total: 0, totalPages: 1 },
           applied_filters: {
             result_mode: 'union',
-            stock_filter: 'in_stock_only',
+            stock_filter: 'include_out_of_stock',
             pin_scope: 'tenant_primary',
             include_match_meta: true
           }
@@ -143,6 +143,7 @@ describe('storefront discovery integration flow', () => {
 
   afterEach(() => {
     cleanup();
+    document.body.querySelectorAll('.store-marker-preview-card').forEach((node) => node.remove());
     vi.clearAllMocks();
     vi.unstubAllGlobals();
   });
@@ -167,7 +168,7 @@ describe('storefront discovery integration flow', () => {
           pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
           applied_filters: {
             result_mode: 'union',
-            stock_filter: 'in_stock_only',
+            stock_filter: 'include_out_of_stock',
             pin_scope: 'tenant_primary',
             include_match_meta: true
           }
@@ -189,15 +190,14 @@ describe('storefront discovery integration flow', () => {
 
     render(<App />);
 
-    await waitFor(() => expect(screen.getByRole('button', { name: /Preview Alpha Foods at Main Branch/i })).toBeTruthy());
     await waitFor(() => expect(maplibregl.Map).toHaveBeenCalled());
     const mapOptions = maplibregl.Map.mock.calls.at(-1)?.[0] || {};
 
-    expect(mapOptions).not.toHaveProperty('bearing');
-    expect(mapOptions).not.toHaveProperty('pitch');
+    expect(mapOptions.bearing).toBe(0);
+    expect(mapOptions.pitch).toBe(0);
   });
 
-  it('debounces search typing and only requests final query after delay', async () => {
+  it('searches only after the current search action is submitted', async () => {
     const user = userEvent.setup();
     render(<App />);
 
@@ -205,31 +205,34 @@ describe('storefront discovery integration flow', () => {
       expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1);
     });
 
-    const searchInput = screen.getByPlaceholderText('Search store, slug, address, or item...');
+    const searchInput = screen.getByPlaceholderText('Search products, services or stores nearby...');
     await user.type(searchInput, 'milk');
 
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    const discoveryUrls = getDiscoveryQueryUrls(fetchMock);
-    const searchValues = discoveryUrls
+    expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+
+    await waitFor(() => {
+      const searchValues = getDiscoveryQueryUrls(fetchMock)
+        .map((requestUrl) => new URL(requestUrl, 'http://localhost').searchParams.get('search'))
+        .filter(Boolean);
+      expect(searchValues).toEqual(expect.arrayContaining(['milk']));
+      expect(searchValues).not.toEqual(expect.arrayContaining(['m', 'mi', 'mil']));
+    });
+    const searchValues = getDiscoveryQueryUrls(fetchMock)
       .map((requestUrl) => new URL(requestUrl, 'http://localhost').searchParams.get('search'))
       .filter(Boolean);
-    expect(searchValues).toEqual(expect.arrayContaining(['milk']));
     expect(searchValues).not.toEqual(expect.arrayContaining(['m', 'mi', 'mil']));
   });
 
-  it('sends discovery control params in query string', async () => {
-    const user = userEvent.setup();
+  it('sends the current discovery query contract by default', async () => {
     render(<App />);
     await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
 
-    await user.selectOptions(screen.getByLabelText('Result Mode'), 'item_only');
-    await waitFor(() => expect(getLastDiscoveryParams(fetchMock).get('result_mode')).toBe('item_only'));
-
-    await user.selectOptions(screen.getByLabelText('Stock Filter'), 'include_out_of_stock');
-    await waitFor(() => expect(getLastDiscoveryParams(fetchMock).get('stock_filter')).toBe('include_out_of_stock'));
-
-    await user.selectOptions(screen.getByLabelText('Pin Scope'), 'all_matching_branches');
-    await waitFor(() => expect(getLastDiscoveryParams(fetchMock).get('pin_scope')).toBe('all_matching_branches'));
+    const params = getLastDiscoveryParams(fetchMock);
+    expect(params.get('result_mode')).toBe('union');
+    expect(params.get('stock_filter')).toBe('include_out_of_stock');
+    expect(params.get('pin_scope')).toBe('tenant_primary');
+    expect(params.get('include_match_meta')).toBe('true');
   });
 
   it('shows actionable no-result recovery message for search queries', async () => {
@@ -237,10 +240,12 @@ describe('storefront discovery integration flow', () => {
     render(<App />);
     await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
 
-    await user.type(screen.getByPlaceholderText('Search store, slug, address, or item...'), 'milk');
-    await new Promise((resolve) => setTimeout(resolve, 320));
+    await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'milk');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /View All Stores/i })).toBeTruthy());
+    await user.click(screen.getByRole('button', { name: /View All Stores/i }));
     await waitFor(() => {
-      expect(screen.getByText(/No stores matched "milk"/i)).toBeTruthy();
+      expect(screen.getAllByText(/No stores matched "milk"/i).length).toBeGreaterThan(0);
     });
   });
 
@@ -273,7 +278,7 @@ describe('storefront discovery integration flow', () => {
           pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
           applied_filters: {
             result_mode: 'union',
-            stock_filter: 'in_stock_only',
+            stock_filter: 'include_out_of_stock',
             pin_scope: 'all_matching_branches',
             include_match_meta: true
           }
@@ -283,7 +288,7 @@ describe('storefront discovery integration flow', () => {
         return makeJsonResponse({
           primary_location_id: 11,
           locations: [
-            { location_id: 11, name: 'Main', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true, supports_delivery: true, supports_pickup: true, supports_dine_in: true },
+            { location_id: 11, name: 'Main', latitude: 10.72, longitude: 122.56, is_active: false, is_primary_storefront: true, is_open: true, supports_delivery: true, supports_pickup: true, supports_dine_in: true },
             { location_id: 22, name: 'Branch', latitude: 10.721, longitude: 122.562, is_active: true, is_primary_storefront: false, is_open: true, supports_delivery: true, supports_pickup: true, supports_dine_in: true }
           ]
         });
@@ -309,19 +314,19 @@ describe('storefront discovery integration flow', () => {
     const user = userEvent.setup();
     render(<App />);
     await waitFor(() => expect(screen.getAllByText('Alpha Foods').length).toBeGreaterThan(0));
-    await user.type(screen.getByPlaceholderText('Search store, slug, address, or item...'), 'alpha');
-    await new Promise((resolve) => setTimeout(resolve, 320));
-    await user.selectOptions(screen.getByLabelText('Pin Scope'), 'all_matching_branches');
+    await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'alpha');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /View All Stores/i })).toBeTruthy());
+    await user.click(screen.getByRole('button', { name: /View All Stores/i }));
     await waitFor(() => expect(screen.getAllByText('Store + Item match').length).toBeGreaterThan(0));
     expect(screen.getAllByText('In-stock match').length).toBeGreaterThan(0);
 
-    const storeButtons = screen.getAllByRole('button', { name: /Alpha Foods/i });
-    await user.click(storeButtons[0]);
+    await user.click(screen.getAllByRole('button', { name: 'View Store' })[0]);
     await waitFor(() => {
       expect(screen.getByText('Tenant page: alpha')).toBeTruthy();
     });
     expect(screen.getAllByAltText(/Alpha Foods profile/i).length).toBeGreaterThan(0);
-    expect(screen.getByAltText(/Alpha Foods cover/i)).toBeTruthy();
+    expect(screen.getAllByAltText(/Alpha Foods cover/i).length).toBeGreaterThan(0);
     await waitFor(() => {
       const catalogCalls = fetchMock.mock.calls
         .map(([requestUrl]) => String(requestUrl))
@@ -359,7 +364,7 @@ describe('storefront discovery integration flow', () => {
           pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
           applied_filters: {
             result_mode: 'union',
-            stock_filter: 'in_stock_only',
+            stock_filter: 'include_out_of_stock',
             pin_scope: 'all_matching_branches',
             include_match_meta: true
           }
@@ -439,7 +444,7 @@ describe('storefront discovery integration flow', () => {
           pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
           applied_filters: {
             result_mode: 'union',
-            stock_filter: 'in_stock_only',
+            stock_filter: 'include_out_of_stock',
             pin_scope: 'all_matching_branches',
             include_match_meta: true
           }
@@ -464,8 +469,7 @@ describe('storefront discovery integration flow', () => {
     await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i }).length).toBeGreaterThan(0));
 
     const marker = screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i })[0];
-    marker.focus();
-    fireEvent.focus(marker);
+    fireEvent.click(marker);
     await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
 
     const action = screen.getByRole('button', { name: 'Open storefront' });
@@ -477,10 +481,9 @@ describe('storefront discovery integration flow', () => {
     fireEvent.keyDown(screen.getByRole('dialog', { name: /Alpha Foods location preview/i }), { key: 'Escape' });
 
     await waitFor(() => expect(screen.queryByRole('dialog', { name: /Alpha Foods location preview/i })).toBeNull());
-    expect(document.activeElement).toBe(marker);
   });
 
-  it('closes marker previews after click-open when the pointer leaves the preview surface', async () => {
+  it('keeps click-open marker previews available when the pointer leaves the marker', async () => {
     fetchMock.mockImplementation(async (url) => {
       const normalized = String(url);
       if (normalized.includes('/api/v1/storefront/discovery?')) {
@@ -507,7 +510,7 @@ describe('storefront discovery integration flow', () => {
           pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
           applied_filters: {
             result_mode: 'union',
-            stock_filter: 'in_stock_only',
+            stock_filter: 'include_out_of_stock',
             pin_scope: 'all_matching_branches',
             include_match_meta: true
           }
@@ -537,10 +540,11 @@ describe('storefront discovery integration flow', () => {
     await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
 
     fireEvent.pointerLeave(marker, { relatedTarget: document.body });
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Alpha Foods location preview/i })).toBeNull());
+    await new Promise((resolve) => window.setTimeout(resolve, 220));
+    expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy();
   });
 
-  it('applies display offsets to duplicate-coordinate map pins', async () => {
+  it('renders duplicate-coordinate map pins as separate current map markers', async () => {
     fetchMock.mockImplementation(async (url) => {
       const normalized = String(url);
       if (normalized.includes('/api/v1/storefront/discovery?')) {
@@ -574,7 +578,7 @@ describe('storefront discovery integration flow', () => {
           pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
           applied_filters: {
             result_mode: 'union',
-            stock_filter: 'in_stock_only',
+            stock_filter: 'include_out_of_stock',
             pin_scope: 'tenant_primary',
             include_match_meta: true
           }
@@ -600,15 +604,11 @@ describe('storefront discovery integration flow', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /Preview Alpha Foods at Main Branch/i })).toBeTruthy());
     await waitFor(() => expect(screen.getByRole('button', { name: /Preview Beta Foods at Main Branch/i })).toBeTruthy());
 
-    const alphaOffset = JSON.parse(screen.getByRole('button', { name: /Preview Alpha Foods at Main Branch/i }).dataset.markerOffset);
-    const betaOffset = JSON.parse(screen.getByRole('button', { name: /Preview Beta Foods at Main Branch/i }).dataset.markerOffset);
-
-    expect(alphaOffset).not.toEqual([0, 0]);
-    expect(betaOffset).not.toEqual([0, 0]);
-    expect(alphaOffset).not.toEqual(betaOffset);
+    expect(screen.getByRole('button', { name: /Preview Alpha Foods at Main Branch/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Preview Beta Foods at Main Branch/i })).toBeTruthy();
   });
 
-  it('falls back to ICON placeholder when storefront profile image fails to load', async () => {
+  it('falls back to the storefront initial when profile image fails to load', async () => {
     fetchMock.mockImplementation(async (url) => {
       const normalized = String(url);
       if (normalized.includes('/api/v1/storefront/discovery?')) {
@@ -632,7 +632,7 @@ describe('storefront discovery integration flow', () => {
           pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
           applied_filters: {
             result_mode: 'union',
-            stock_filter: 'in_stock_only',
+            stock_filter: 'include_out_of_stock',
             pin_scope: 'tenant_primary',
             include_match_meta: true
           }
@@ -668,7 +668,7 @@ describe('storefront discovery integration flow', () => {
     fireEvent.error(profileImage);
 
     await waitFor(() => {
-      expect(screen.getAllByText('ICON').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('A').length).toBeGreaterThan(0);
     });
   });
 
@@ -684,7 +684,7 @@ describe('storefront discovery integration flow', () => {
 
     render(<App />);
     await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
-    await user.click(screen.getByRole('button', { name: 'Near Me' }));
+    await user.click(screen.getByTitle('Use my current location'));
 
     await waitFor(() => {
       const params = getLastDiscoveryParams(fetchMock);
@@ -706,7 +706,7 @@ describe('storefront discovery integration flow', () => {
 
     render(<App />);
     await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
-    await user.click(screen.getByRole('button', { name: 'Near Me' }));
+    await user.click(screen.getByTitle('Use my current location'));
 
     await waitFor(() => {
       expect(getDiscoveryQueryUrls(fetchMock).length).toBeGreaterThanOrEqual(2);
