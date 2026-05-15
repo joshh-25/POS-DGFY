@@ -348,7 +348,8 @@ const buildTenantSnapshot = async (tenant) => {
             is_primary_storefront: plainLocation.is_primary_storefront === true,
             supports_delivery: plainLocation.supports_delivery !== false,
             supports_pickup: plainLocation.supports_pickup !== false,
-            supports_dine_in: plainLocation.supports_dine_in !== false
+            supports_dine_in: plainLocation.supports_dine_in !== false,
+            allow_out_of_stock_sales: plainLocation.allow_out_of_stock_sales === true
         };
     }).filter((entry) => Number.isFinite(entry.latitude) && Number.isFinite(entry.longitude));
     const latitude = Number(location.latitude);

@@ -94,5 +94,5 @@ export const getDiscoveryEmptyStateMessage = (query = '') => {
   if (!normalizedQuery) {
     return 'No visible storefronts yet. Tenant pages auto-activate once each tenant enables storefront visibility and active location setup.';
   }
-  return `No stores matched "${normalizedQuery}". Try broadening terms, switching Result Mode to Union, setting Stock Filter to include out-of-stock, or switching Pin Scope to tenant primary.`;
+  return `No storefronts matched "${normalizedQuery}". Try a broader product, service, or business name.`;
 };
