@@ -1,12 +1,13 @@
 import express from 'express';
 import * as authController from '../controllers/authController.js';
-import { validateRegister, validateLogin, validateRefreshToken, validateEmailLookup, validateAcceptInvite, validateInviteToken } from '../validators/authValidator.js';
+import { validateRegister, validateLogin, validateRefreshToken, validateEmailLookup, validateAcceptInvite, validateInviteToken, validateEmailOtpRequest } from '../validators/authValidator.js';
 import { authenticate } from '../middleware/auth.js';
-import { authLimiter, lookupLimiter } from '../middleware/rateLimiter.js';
+import { authLimiter, lookupLimiter, emailOtpLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
 router.post('/register', authLimiter, validateRegister, authController.register);
+router.post('/email-otp/request', emailOtpLimiter, validateEmailOtpRequest, authController.requestAuthEmailOtp);
 router.post('/login', authLimiter, validateLogin, authController.login);
 router.post('/refresh-token', validateRefreshToken, authController.refreshToken);
 // Logout - invalidates the token

@@ -1,7 +1,7 @@
 /**
  * Email Service
  *
- * Handles email sending via SMTP using nodemailer.
+ * Handles email sending via SMTP using nodemailer, with optional Brevo HTTPS API delivery.
  * Supports HTML templates for user invitations.
  *
  * Uses lazy initialization - only creates transporter when needed.
@@ -30,12 +30,56 @@ import {
 // Lazy initialize transporter
 let _transporter = null;
 const getAppUrl = () => process.env.APP_URL || 'http://localhost:5173';
+const getEmailDeliveryProvider = () => String(process.env.EMAIL_DELIVERY_PROVIDER || 'auto').trim().toLowerCase();
+const getBrevoApiUrl = () => process.env.BREVO_API_URL || 'https://api.brevo.com/v3/smtp/email';
+const stripHtml = (html = '') => String(html).replace(/<[^>]*>/g, '');
+const getFromIdentity = () => ({
+  fromName: process.env.EMAIL_FROM_NAME || 'SKUpervisor',
+  fromEmail: process.env.EMAIL_FROM || process.env.SMTP_USER
+});
+
+export const isSmtpConfigured = () => {
+  return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+};
+
+export const isBrevoApiConfigured = () => {
+  const { fromEmail } = getFromIdentity();
+  return !!(process.env.BREVO_API_KEY && fromEmail);
+};
 
 /**
  * Check if email is configured
  */
 export const isEmailConfigured = () => {
-  return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+  return isSmtpConfigured() || isBrevoApiConfigured();
+};
+
+export const getEmailProviderMode = () => {
+  const requestedProvider = getEmailDeliveryProvider();
+  const smtpConfigured = isSmtpConfigured();
+  const brevoApiConfigured = isBrevoApiConfigured();
+
+  if (requestedProvider === 'brevo_api') {
+    return brevoApiConfigured ? 'brevo_api' : 'unconfigured';
+  }
+
+  if (requestedProvider === 'smtp') {
+    return smtpConfigured ? 'smtp' : 'unconfigured';
+  }
+
+  if (smtpConfigured && brevoApiConfigured) {
+    return 'smtp_with_brevo_api_fallback';
+  }
+
+  if (smtpConfigured) {
+    return 'smtp';
+  }
+
+  if (brevoApiConfigured) {
+    return 'brevo_api';
+  }
+
+  return 'unconfigured';
 };
 
 /**
@@ -44,8 +88,8 @@ export const isEmailConfigured = () => {
 const getTransporter = () => {
   if (_transporter) return _transporter;
 
-  if (!isEmailConfigured()) {
-    logger.warn('Email service not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS in .env');
+  if (!isSmtpConfigured()) {
+    logger.warn('SMTP email service not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS in .env');
     return null;
   }
 
@@ -64,6 +108,75 @@ const getTransporter = () => {
   return _transporter;
 };
 
+const buildBrevoRecipients = (to) => {
+  if (Array.isArray(to)) {
+    return to.map((email) => ({ email: String(email).trim() })).filter((entry) => entry.email);
+  }
+
+  return String(to || '')
+    .split(',')
+    .map((email) => ({ email: email.trim() }))
+    .filter((entry) => entry.email);
+};
+
+export const sendEmailViaBrevoApi = async ({ to, subject, html, text }) => {
+  if (!isBrevoApiConfigured()) {
+    const error = new Error('Brevo API email delivery is not configured. Set BREVO_API_KEY and EMAIL_FROM.');
+    error.code = 'BREVO_API_NOT_CONFIGURED';
+    throw error;
+  }
+
+  const { fromName, fromEmail } = getFromIdentity();
+  const payload = {
+    sender: {
+      name: fromName,
+      email: fromEmail
+    },
+    to: buildBrevoRecipients(to),
+    subject,
+    htmlContent: html,
+    textContent: text || stripHtml(html)
+  };
+
+  if (!payload.to.length) {
+    const error = new Error('At least one recipient email is required for Brevo API delivery.');
+    error.code = 'EMAIL_RECIPIENT_REQUIRED';
+    throw error;
+  }
+
+  const response = await fetch(getBrevoApiUrl(), {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'api-key': process.env.BREVO_API_KEY,
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  let responseBody = null;
+  try {
+    responseBody = await response.json();
+  } catch {
+    // Non-JSON provider errors are handled by HTTP status below.
+  }
+
+  if (!response.ok) {
+    const error = new Error(responseBody?.message || `Brevo API delivery failed with HTTP ${response.status}`);
+    error.code = 'BREVO_API_DELIVERY_FAILED';
+    error.status = response.status;
+    error.details = responseBody;
+    throw error;
+  }
+
+  logger.info(`Email sent successfully to ${to} via Brevo API`, { messageId: responseBody?.messageId });
+  return {
+    messageId: responseBody?.messageId,
+    provider: 'brevo_api',
+    response: responseBody
+  };
+};
+
 /**
  * Send an email
  * @param {Object} options - Email options
@@ -74,6 +187,17 @@ const getTransporter = () => {
  * @returns {Promise<Object>} - Nodemailer send result
  */
 export const sendEmail = async ({ to, subject, html, text }) => {
+  const provider = getEmailDeliveryProvider();
+  const allowBrevoFallback = process.env.EMAIL_DELIVERY_FALLBACK_TO_BREVO_API !== 'false';
+
+  if (provider === 'brevo_api') {
+    return sendEmailViaBrevoApi({ to, subject, html, text });
+  }
+
+  if (!isSmtpConfigured() && isBrevoApiConfigured()) {
+    return sendEmailViaBrevoApi({ to, subject, html, text });
+  }
+
   const transporter = getTransporter();
 
   if (!transporter) {
@@ -82,23 +206,29 @@ export const sendEmail = async ({ to, subject, html, text }) => {
     throw error;
   }
 
-  const fromName = process.env.EMAIL_FROM_NAME || 'SKUpervisor';
-  const fromEmail = process.env.EMAIL_FROM || process.env.SMTP_USER;
+  const { fromName, fromEmail } = getFromIdentity();
 
   const mailOptions = {
     from: `"${fromName}" <${fromEmail}>`,
     to,
     subject,
     html,
-    text: text || html.replace(/<[^>]*>/g, '') // Strip HTML for plain text fallback
+    text: text || stripHtml(html)
   };
 
   try {
     const result = await transporter.sendMail(mailOptions);
     logger.info(`Email sent successfully to ${to}`, { messageId: result.messageId });
-    return result;
+    return {
+      ...result,
+      provider: 'smtp'
+    };
   } catch (error) {
     logger.error(`Failed to send email to ${to}:`, error);
+    if (allowBrevoFallback && isBrevoApiConfigured()) {
+      logger.warn(`Retrying email to ${to} through Brevo API after SMTP failure`);
+      return sendEmailViaBrevoApi({ to, subject, html, text });
+    }
     throw error;
   }
 };
@@ -203,25 +333,62 @@ export const sendCompanyRejectedEmail = async ({ email, companyName, rejectionRe
   });
 };
 
+export const sendEmailOtpCode = async ({ email, code, purposeLabel = 'email verification', expiresInMinutes = 10 }) => {
+  const safePurpose = String(purposeLabel || 'email verification');
+  const safeMinutes = Number.isFinite(Number(expiresInMinutes)) ? Number(expiresInMinutes) : 10;
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2>Verify your email</h2>
+      <p>Use this one-time code to continue ${safePurpose}:</p>
+      <p style="font-size: 28px; font-weight: bold; letter-spacing: 4px; margin: 24px 0;">${code}</p>
+      <p>This code expires in ${safeMinutes} minutes.</p>
+      <p>If you did not request this code, you can ignore this email.</p>
+    </div>
+  `;
+
+  return sendEmail({
+    to: email,
+    subject: 'Your SKUpervisor email verification code',
+    html,
+    text: `Your SKUpervisor email verification code is ${code}. It expires in ${safeMinutes} minutes.`
+  });
+};
+
 /**
  * Verify SMTP connection
  * Useful for health checks and configuration validation
  * @returns {Promise<boolean>} - True if connection is successful
  */
 export const verifyConnection = async () => {
+  if (getEmailDeliveryProvider() === 'brevo_api' || (!isSmtpConfigured() && isBrevoApiConfigured())) {
+    return {
+      success: true,
+      provider: 'brevo_api',
+      mode: getEmailProviderMode()
+    };
+  }
+
   const transporter = getTransporter();
 
   if (!transporter) {
-    return { success: false, error: 'Email service not configured' };
+    return { success: false, mode: getEmailProviderMode(), error: 'Email service not configured' };
   }
 
   try {
     await transporter.verify();
     logger.info('SMTP connection verified successfully');
-    return { success: true };
+    return { success: true, provider: 'smtp', mode: getEmailProviderMode() };
   } catch (error) {
     logger.error('SMTP connection verification failed:', error);
-    return { success: false, error: error.message };
+    if (isBrevoApiConfigured()) {
+      return {
+        success: true,
+        provider: 'brevo_api',
+        mode: getEmailProviderMode(),
+        warning: `SMTP verification failed; Brevo API fallback is configured: ${error.message}`
+      };
+    }
+    return { success: false, mode: getEmailProviderMode(), error: error.message };
   }
 };
 
@@ -381,6 +548,7 @@ export default {
   sendWelcomeEmail,
   sendCompanyApprovedEmail,
   sendCompanyRejectedEmail,
+  sendEmailOtpCode,
   sendSubscriptionExpiringEmail,
   sendSubscriptionCancelledEmail,
   sendPaymentFailedEmail,

@@ -9,13 +9,15 @@ const apiMock = vi.hoisted(() => ({
 }));
 
 const registerMock = vi.hoisted(() => vi.fn());
+const requestEmailOtpMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../src/services/api.js', () => ({
   default: apiMock
 }));
 
 vi.mock('../../src/services/authService.js', () => ({
-  register: registerMock
+  register: registerMock,
+  requestEmailOtp: requestEmailOtpMock
 }));
 
 import Register from '../Register.jsx';
@@ -33,6 +35,7 @@ describe('Register token handoff', () => {
   beforeEach(() => {
     apiMock.get.mockReset();
     registerMock.mockReset();
+    requestEmailOtpMock.mockReset();
     apiMock.get.mockResolvedValue({
       data: {
         data: {
@@ -42,6 +45,7 @@ describe('Register token handoff', () => {
       }
     });
     registerMock.mockResolvedValue({});
+    requestEmailOtpMock.mockResolvedValue({});
   });
 
   afterEach(() => {
@@ -70,6 +74,15 @@ describe('Register token handoff', () => {
     fireEvent.change(screen.getByLabelText('Email'), {
       target: { value: 'teammate@example.com' }
     });
+    fireEvent.click(screen.getByRole('button', { name: /send code/i }));
+    await waitFor(() => expect(requestEmailOtpMock).toHaveBeenCalledWith({
+      purpose: 'tenant_user_registration',
+      email: 'teammate@example.com',
+      companyToken: 'token-autofoods-12345678'
+    }));
+    fireEvent.change(screen.getByLabelText('Email Verification Code'), {
+      target: { value: '123456' }
+    });
     fireEvent.change(screen.getByLabelText('Phone Number'), {
       target: { value: '+63 912 345 6789' }
     });
@@ -85,9 +98,34 @@ describe('Register token handoff', () => {
       username: 'teammate',
       email: 'teammate@example.com',
       phone_number: '+63 912 345 6789',
-      password: 'StrongPass1!'
+      password: 'StrongPass1!',
+      email_otp_code: '123456'
     }, 'token-autofoods-12345678'));
     expect(screen.getByText('Login screen')).toBeTruthy();
+  });
+
+  it('requires an email verification code before submitting registration', async () => {
+    renderRegister();
+
+    await screen.findByText('Auto Foods');
+    fireEvent.change(screen.getByLabelText('Username'), {
+      target: { value: 'teammate' }
+    });
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: 'teammate@example.com' }
+    });
+    fireEvent.change(screen.getByLabelText('Phone Number'), {
+      target: { value: '+63 912 345 6789' }
+    });
+    fireEvent.change(screen.getByLabelText('Password'), {
+      target: { value: 'StrongPass1!' }
+    });
+    fireEvent.change(screen.getByLabelText('Confirm Password'), {
+      target: { value: 'StrongPass1!' }
+    });
+
+    expect(screen.getByRole('button', { name: /create account/i }).disabled).toBe(true);
+    expect(registerMock).not.toHaveBeenCalled();
   });
 
   it('rejects invalid phone numbers before submitting registration', async () => {
@@ -102,6 +140,9 @@ describe('Register token handoff', () => {
     });
     fireEvent.change(screen.getByLabelText('Phone Number'), {
       target: { value: 'bad-phone-ext' }
+    });
+    fireEvent.change(screen.getByLabelText('Email Verification Code'), {
+      target: { value: '123456' }
     });
     fireEvent.change(screen.getByLabelText('Password'), {
       target: { value: 'StrongPass1!' }

@@ -12,6 +12,8 @@ const maxRequests = isDevelopment
   : Math.max(parsedGeneralMax || 100, minProdGeneralMax);
 const authWindowMs = parseInt(process.env.RATE_LIMIT_AUTH_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
 const authMaxRequests = parseInt(process.env.RATE_LIMIT_AUTH_MAX_REQUESTS) || (isDevelopment ? 50 : 5); // 50 in dev, 5 in prod
+const emailOtpWindowMs = parseInt(process.env.RATE_LIMIT_EMAIL_OTP_WINDOW_MS) || 10 * 60 * 1000; // 10 minutes
+const emailOtpMaxRequests = parseInt(process.env.RATE_LIMIT_EMAIL_OTP_MAX_REQUESTS) || (isDevelopment ? 12 : 3);
 const adminAuthWindowMs = parseInt(process.env.RATE_LIMIT_ADMIN_AUTH_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
 const adminAuthMaxRequests = parseInt(process.env.RATE_LIMIT_ADMIN_AUTH_MAX_REQUESTS) || (isDevelopment ? 20 : 5);
 const storeAuthWindowMs = parseInt(process.env.RATE_LIMIT_STORE_AUTH_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
@@ -43,6 +45,7 @@ const rateLimitCounters = {
   auth_login: 0,
   auth_register: 0,
   auth_lookup: 0,
+  email_otp: 0,
   store_auth: 0,
   store_tracking: 0,
   storefront_discovery: 0,
@@ -132,6 +135,7 @@ const userKeyFromAuthHeader = (authHeader) => {
 const getScopeFromRequest = (req, fallbackScope) => {
   const path = req.path || '';
   if (path.includes('/auth/login')) return 'auth_login';
+  if (path.includes('/email-otp/request')) return 'email_otp';
   if (path.includes('/auth/register')) return 'auth_register';
   if (path.includes('/auth/lookup')) return 'auth_lookup';
   if (path.includes('/store/auth/')) return 'store_auth';
@@ -371,6 +375,42 @@ export const authLimiter = rateLimit({
       'ip_email'
     );
     logRateLimitEvent(req, scope, response.retryAfterSeconds, 'ip_email');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
+export const emailOtpLimiter = rateLimit({
+  windowMs: emailOtpWindowMs,
+  max: emailOtpMaxRequests,
+  message: createRateLimitError('Too many email verification code requests, please try again later.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('email_otp'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const email = normalizeEmail(req.body?.email || req.validatedData?.email);
+    const inviteToken = String(req.body?.invitation_token || req.validatedData?.invitation_token || '').trim();
+    const tenantKey = req.tenant?.id || req.headers['x-company-token'] || 'global';
+    const purpose = String(req.body?.purpose || req.validatedData?.purpose || 'unknown').trim();
+    const identity = email || inviteToken || 'unknown-email';
+    return `email_otp:${purpose}:${tenantKey}:${ip}:${identity}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many email verification code requests, please try again later.',
+      'email_otp',
+      'tenant_ip_purpose_identity'
+    );
+    logRateLimitEvent(req, 'email_otp', response.retryAfterSeconds, 'tenant_ip_purpose_identity');
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },
@@ -687,6 +727,7 @@ export const posLimiter = rateLimit({
 export default {
   general: generalLimiter,
   auth: authLimiter,
+  emailOtp: emailOtpLimiter,
   adminAuth: adminAuthLimiter,
   storeAuth: storeAuthLimiter,
   storeTracking: storeTrackingLimiter,

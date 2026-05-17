@@ -505,13 +505,21 @@ export default function Settings() {
     phoneNumber: '',
     currentPassword: '',
     newPassword: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    emailOtpCode: ''
   });
 
   const [profileErrors, setProfileErrors] = useState({});
+  const [isRequestingProfileEmailOtp, setIsRequestingProfileEmailOtp] = useState(false);
+  const [profileEmailOtpSentTo, setProfileEmailOtpSentTo] = useState('');
   const [showUserManagement, setShowUserManagement] = useState(false);
   const [companyInfo, setCompanyInfo] = useState(null);
   const { currentUser, setCurrentUser } = useStore();
+  const isProfileEmailChanged = Boolean(
+    currentUser?.email &&
+    profileSettings.email &&
+    String(profileSettings.email).trim().toLowerCase() !== String(currentUser.email).trim().toLowerCase()
+  );
 
   const [isCancelling, setIsCancelling] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -1290,9 +1298,16 @@ export default function Settings() {
   };
 
   const handleProfileChange = (key, value) => {
-    setProfileSettings(prev => ({ ...prev, [key]: value }));
+    setProfileSettings(prev => ({
+      ...prev,
+      [key]: value,
+      ...(key === 'email' ? { emailOtpCode: '' } : {})
+    }));
     // Clear error for this field
     setProfileErrors(prev => ({ ...prev, [key]: '' }));
+    if (key === 'email') {
+      setProfileEmailOtpSentTo('');
+    }
   };
 
   const copyToClipboard = async (value, successMessage) => {
@@ -1304,6 +1319,34 @@ export default function Settings() {
       toast.success(successMessage);
     } catch {
       toast.error('Clipboard copy failed. Please copy the value manually.');
+    }
+  };
+
+  const handleRequestProfileEmailOtp = async () => {
+    setProfileErrors({});
+    const email = String(profileSettings.email || '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setProfileErrors({ email: 'Please provide a valid email address' });
+      toast.error('Please provide a valid email address');
+      return;
+    }
+    if (!isProfileEmailChanged) {
+      toast.info('Change the email address before requesting a verification code');
+      return;
+    }
+
+    setIsRequestingProfileEmailOtp(true);
+    try {
+      await userService.requestEmailChangeOtp({ email });
+      setProfileEmailOtpSentTo(email);
+      setProfileSettings(prev => ({ ...prev, emailOtpCode: '' }));
+      toast.success('Verification code sent');
+    } catch (error) {
+      const message = error.response?.data?.message || 'Could not send verification code';
+      setProfileErrors({ emailOtpCode: message });
+      toast.error(message);
+    } finally {
+      setIsRequestingProfileEmailOtp(false);
     }
   };
 
@@ -1338,15 +1381,28 @@ export default function Settings() {
           return;
         }
 
-        await userService.updateProfile({
+        if (isProfileEmailChanged && !/^\d{6}$/.test(String(profileSettings.emailOtpCode || '').trim())) {
+          setProfileErrors({ emailOtpCode: 'Enter the 6-digit verification code sent to the new email' });
+          toast.error('Enter the email verification code');
+          return;
+        }
+
+        const profilePayload = {
           username: profileSettings.username,
           email: profileSettings.email,
           phone_number: normalizedPhoneNumber
-        });
+        };
+        if (isProfileEmailChanged) {
+          profilePayload.email_otp_code = String(profileSettings.emailOtpCode || '').trim();
+        }
+
+        await userService.updateProfile(profilePayload);
 
         // Update current user
         const newUser = await userService.getCurrentUser();
         setCurrentUser(newUser);
+        setProfileEmailOtpSentTo('');
+        setProfileSettings(prev => ({ ...prev, emailOtpCode: '' }));
       }
 
       // Change password if provided
@@ -1615,8 +1671,10 @@ export default function Settings() {
         phoneNumber: currentUser.phone_number || '',
         currentPassword: '',
         newPassword: '',
-        confirmPassword: ''
+        confirmPassword: '',
+        emailOtpCode: ''
       });
+      setProfileEmailOtpSentTo('');
     }
 
     // Reset system settings
@@ -1904,9 +1962,49 @@ export default function Settings() {
                 <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
+                  type="email"
                   value={profileSettings.email}
                   onChange={(e) => handleProfileChange('email', e.target.value)}
+                  aria-invalid={Boolean(profileErrors.email)}
                 />
+                {profileErrors.email && (
+                  <p className="text-xs text-red-600">{profileErrors.email}</p>
+                )}
+                {isProfileEmailChanged && (
+                  <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                      <div className="flex-1">
+                        <Label htmlFor="profileEmailOtpCode">Email Verification Code</Label>
+                        <Input
+                          id="profileEmailOtpCode"
+                          inputMode="numeric"
+                          pattern="[0-9]{6}"
+                          maxLength={6}
+                          placeholder="123456"
+                          value={profileSettings.emailOtpCode}
+                          onChange={(e) => handleProfileChange('emailOtpCode', e.target.value.replace(/\D/g, '').slice(0, 6))}
+                          aria-invalid={Boolean(profileErrors.emailOtpCode)}
+                          className="mt-1"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleRequestProfileEmailOtp}
+                        disabled={isRequestingProfileEmailOtp}
+                      >
+                        {isRequestingProfileEmailOtp ? 'Sending...' : profileEmailOtpSentTo ? 'Resend Code' : 'Send Code'}
+                      </Button>
+                    </div>
+                    <p className={`mt-2 text-xs ${profileErrors.emailOtpCode ? 'text-red-600' : 'text-slate-500'}`}>
+                      {profileErrors.emailOtpCode || (
+                        profileEmailOtpSentTo
+                          ? `Code sent to ${profileEmailOtpSentTo}.`
+                          : 'Send a code to the new email before saving.'
+                      )}
+                    </p>
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="phoneNumber">Phone Number</Label>

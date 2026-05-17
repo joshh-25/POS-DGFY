@@ -11,6 +11,7 @@ import {
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicationResultHelpers.js';
 import { complianceRepository } from '../../compliance/index.js';
+import { requestEmailOtp, EMAIL_OTP_PURPOSES } from '../../../services/emailOtpService.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
@@ -69,6 +70,50 @@ export const register = async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+};
+
+export const requestAuthEmailOtp = async (req, res, next) => {
+  try {
+    const { purpose, email, invitation_token: invitationToken } = req.validatedData;
+    let targetEmail = email;
+    let tenantId = req.tenant?.id || null;
+
+    if (purpose === EMAIL_OTP_PURPOSES.INVITATION_ACCEPTANCE) {
+      const inviteResult = await validateInviteTokenUseCase({ token: invitationToken });
+      if (!inviteResult?.success) {
+        return sendUseCaseResult(res, inviteResult, {
+          errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+      }
+      targetEmail = inviteResult.data?.email;
+      tenantId = req.tenant?.id || inviteResult.data?.tenant_id || null;
+    }
+
+    const otp = await requestEmailOtp({
+      purpose,
+      email: targetEmail,
+      tenantId,
+      metadata: {
+        request_id: requestId(req, res),
+        ip_address: req.ip || null
+      }
+    });
+
+    return res.status(202).json({
+      success: true,
+      data: otp,
+      message: 'Email verification code sent',
+      timestamp: timestamp()
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      data: null,
+      message: error.message || 'Email verification failed',
+      error_code: error.code || 'EMAIL_OTP_ERROR',
+      timestamp: timestamp()
+    });
   }
 };
 
@@ -297,8 +342,8 @@ export const validateInviteToken = async (req, res, next) => {
 
 export const acceptInvitation = async (req, res, next) => {
   try {
-    const { token, username, password, phone_number: phoneNumber } = req.validatedData;
-    const result = await acceptInvitationUseCase({ token, username, password, phoneNumber });
+    const { token, username, password, phone_number: phoneNumber, email_otp_code: emailOtpCode } = req.validatedData;
+    const result = await acceptInvitationUseCase({ token, username, password, phoneNumber, emailOtpCode });
 
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,
@@ -336,6 +381,7 @@ export const acceptInvitation = async (req, res, next) => {
 
 export default {
   register,
+  requestAuthEmailOtp,
   login,
   refreshToken,
   logout,

@@ -129,7 +129,7 @@ export const buildValidateInviteTokenUseCase = ({ userService }) => {
 };
 
 export const buildAcceptInvitationUseCase = ({ userService }) => {
-  return async ({ token, username, password, phoneNumber }) => {
+  return async ({ token, username, password, phoneNumber, emailOtpCode }) => {
     if (!token || !username || !password || !phoneNumber) {
       return fail(new DomainError(
         DomainErrorCode.VALIDATION_FAILED,
@@ -138,7 +138,12 @@ export const buildAcceptInvitationUseCase = ({ userService }) => {
     }
 
     try {
-      const user = await userService.acceptInvitation(token, { username, password, phone_number: phoneNumber });
+      const user = await userService.acceptInvitation(token, {
+        username,
+        password,
+        phone_number: phoneNumber,
+        email_otp_code: emailOtpCode
+      });
       return ok(user);
     } catch (error) {
       return fail(mapAuthUseCaseError(error, 'Invitation acceptance failed'));

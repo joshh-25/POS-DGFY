@@ -36,6 +36,33 @@ const renderRegistrationFlow = (initialEntries = ['/register-company']) => rende
   </MemoryRouter>
 );
 
+const fillRegistrationForm = ({
+  companyName = 'Auto Foods',
+  email = 'owner@autofoods.test',
+  phone = '+63 912 345 6789',
+  password = 'StrongPass1!',
+  otp = '123456'
+} = {}) => {
+  fireEvent.change(screen.getByLabelText('Company Name'), {
+    target: { value: companyName }
+  });
+  fireEvent.change(screen.getByLabelText('Admin Email'), {
+    target: { value: email }
+  });
+  fireEvent.change(screen.getByLabelText('Admin Phone Number'), {
+    target: { value: phone }
+  });
+  fireEvent.change(screen.getByLabelText('Admin Password'), {
+    target: { value: password }
+  });
+  fireEvent.change(screen.getByLabelText('Confirm Password'), {
+    target: { value: password }
+  });
+  fireEvent.change(screen.getByLabelText('Email Verification Code'), {
+    target: { value: otp }
+  });
+};
+
 describe('RegisterCompany login handoff', () => {
   beforeEach(() => {
     apiMock.post.mockReset();
@@ -71,21 +98,7 @@ describe('RegisterCompany login handoff', () => {
 
     renderRegistrationFlow();
 
-    fireEvent.change(screen.getByLabelText('Company Name'), {
-      target: { value: 'Auto Foods' }
-    });
-    fireEvent.change(screen.getByLabelText('Admin Email'), {
-      target: { value: 'owner@autofoods.test' }
-    });
-    fireEvent.change(screen.getByLabelText('Admin Phone Number'), {
-      target: { value: '+63 912 345 6789' }
-    });
-    fireEvent.change(screen.getByLabelText('Admin Password'), {
-      target: { value: 'StrongPass1!' }
-    });
-    fireEvent.change(screen.getByLabelText('Confirm Password'), {
-      target: { value: 'StrongPass1!' }
-    });
+    fillRegistrationForm();
     fireEvent.click(screen.getByRole('button', { name: /create company/i }));
 
     await waitFor(() => expect(loginMock).toHaveBeenCalledWith({
@@ -128,21 +141,7 @@ describe('RegisterCompany login handoff', () => {
 
     renderRegistrationFlow();
 
-    fireEvent.change(screen.getByLabelText('Company Name'), {
-      target: { value: 'Auto Foods' }
-    });
-    fireEvent.change(screen.getByLabelText('Admin Email'), {
-      target: { value: 'owner@autofoods.test' }
-    });
-    fireEvent.change(screen.getByLabelText('Admin Phone Number'), {
-      target: { value: '+63 912 345 6789' }
-    });
-    fireEvent.change(screen.getByLabelText('Admin Password'), {
-      target: { value: 'StrongPass1!' }
-    });
-    fireEvent.change(screen.getByLabelText('Confirm Password'), {
-      target: { value: 'StrongPass1!' }
-    });
+    fillRegistrationForm();
     fireEvent.click(screen.getByRole('button', { name: /create company/i }));
 
     await screen.findByText('Company Created!');
@@ -177,20 +176,9 @@ describe('RegisterCompany login handoff', () => {
 
     renderRegistrationFlow();
 
-    fireEvent.change(screen.getByLabelText('Company Name'), {
-      target: { value: 'Pending Foods' }
-    });
-    fireEvent.change(screen.getByLabelText('Admin Email'), {
-      target: { value: 'owner@pendingfoods.test' }
-    });
-    fireEvent.change(screen.getByLabelText('Admin Phone Number'), {
-      target: { value: '+63 912 345 6789' }
-    });
-    fireEvent.change(screen.getByLabelText('Admin Password'), {
-      target: { value: 'StrongPass1!' }
-    });
-    fireEvent.change(screen.getByLabelText('Confirm Password'), {
-      target: { value: 'StrongPass1!' }
+    fillRegistrationForm({
+      companyName: 'Pending Foods',
+      email: 'owner@pendingfoods.test'
     });
     fireEvent.click(screen.getByRole('button', { name: /create company/i }));
 

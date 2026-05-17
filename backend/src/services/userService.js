@@ -20,6 +20,7 @@ import { buildVisibleWhere, notFoundError } from '../utils/softDeletePolicy.js';
 import { onboardingRepository } from '../modules/onboarding/repositories/onboardingRepository.js';
 import logger from '../config/logger.js';
 import { isValidPhoneNumber, normalizePhoneNumber, PHONE_NUMBER_VALIDATION_MESSAGE } from '../utils/phoneNumber.js';
+import { verifyEmailOtp, EMAIL_OTP_PURPOSES } from './emailOtpService.js';
 
 const normalizePermissionArray = (rawPermissions) => {
   let normalized = rawPermissions;
@@ -292,17 +293,29 @@ export const updateUserProfile = async (userId, updateData) => {
 
   // Capture old email before update for mapping update
   const oldEmail = user.email;
+  const sanitizedUpdateData = { ...updateData };
+  delete sanitizedUpdateData.email_otp_code;
+
+  if (sanitizedUpdateData.email && sanitizedUpdateData.email !== oldEmail) {
+    const store = dbStore.getStore();
+    await verifyEmailOtp({
+      purpose: EMAIL_OTP_PURPOSES.EMAIL_CHANGE,
+      email: sanitizedUpdateData.email,
+      code: updateData.email_otp_code,
+      tenantId: store?.tenantId
+    });
+  }
 
   // Update user
-  await user.update(updateData);
+  await user.update(sanitizedUpdateData);
 
   // If email changed, update the email-tenant mapping
-  if (updateData.email && updateData.email !== oldEmail) {
+  if (sanitizedUpdateData.email && sanitizedUpdateData.email !== oldEmail) {
     const store = dbStore.getStore();
     const tenantId = store?.tenantId;
     if (tenantId) {
       try {
-        await landlordService.updateEmailTenantMapping(oldEmail, updateData.email, tenantId);
+        await landlordService.updateEmailTenantMapping(oldEmail, sanitizedUpdateData.email, tenantId);
       } catch (mappingError) {
         // Log but don't fail the profile update
         console.warn('Failed to update email-tenant mapping:', mappingError.message);
@@ -312,7 +325,7 @@ export const updateUserProfile = async (userId, updateData) => {
 
   // Generate new token if username or email changed (token payload includes these)
   let newToken = null;
-  if (updateData.username || updateData.email) {
+  if (sanitizedUpdateData.username || sanitizedUpdateData.email) {
     newToken = generateToken(user);
   }
 
@@ -1234,7 +1247,7 @@ export const createUserInvitation = async (adminUserId, invitationData) => {
  * @returns {Promise<Object>} User data with JWT token
  */
 export const acceptInvitation = async (token, userData) => {
-  const { username, password, phone_number: phoneNumber } = userData;
+  const { username, password, phone_number: phoneNumber, email_otp_code: emailOtpCode } = userData;
 
   const User = dbStore.get('User');
   const tokenHash = hashInvitationToken(token);
@@ -1279,6 +1292,13 @@ export const acceptInvitation = async (token, userData) => {
   if (existingUsername) {
     throw createError('Username is already taken', 409);
   }
+
+  await verifyEmailOtp({
+    purpose: EMAIL_OTP_PURPOSES.INVITATION_ACCEPTANCE,
+    email: user.email,
+    code: emailOtpCode,
+    tenantId: dbStore.getStore()?.tenantId
+  });
 
   // Hash password
   const password_hash = await hashPassword(password);

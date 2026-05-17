@@ -22,10 +22,13 @@ export default function AcceptInvite() {
     username: '',
     phoneNumber: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    emailOtpCode: ''
   });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [otpSentAt, setOtpSentAt] = useState(null);
   const [passwordFocus, setPasswordFocus] = useState(false);
 
   // Token validation state
@@ -81,6 +84,35 @@ export default function AcceptInvite() {
 
   const isPasswordValid = Object.values(passwordValidations).every(v => v);
   const passwordsMatch = formData.password === formData.confirmPassword;
+  const isEmailOtpValid = /^\d{6}$/.test(String(formData.emailOtpCode || '').trim());
+
+  const buildTenantConfig = () => (
+    companyTokenFromUrl
+      ? { headers: { 'x-company-token': companyTokenFromUrl } }
+      : {}
+  );
+
+  const handleRequestEmailOtp = async () => {
+    setError('');
+    if (!tokenFromUrl) {
+      setError('Invitation token is required before requesting a verification code');
+      return;
+    }
+
+    setIsSendingOtp(true);
+    try {
+      await api.post('/auth/email-otp/request', {
+        purpose: 'invitation_acceptance',
+        invitation_token: tokenFromUrl
+      }, buildTenantConfig());
+      setOtpSentAt(new Date());
+      setFormData((current) => ({ ...current, emailOtpCode: '' }));
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not send verification code. Please try again.');
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -98,6 +130,11 @@ export default function AcceptInvite() {
       return;
     }
 
+    if (!isEmailOtpValid) {
+      setError('Enter the 6-digit verification code sent to your invited email');
+      return;
+    }
+
     const phoneNumberError = getPhoneNumberError(formData.phoneNumber);
     if (phoneNumberError) {
       setError(phoneNumberError);
@@ -107,15 +144,13 @@ export default function AcceptInvite() {
     setIsLoading(true);
 
     try {
-      const config = companyTokenFromUrl
-        ? { headers: { 'x-company-token': companyTokenFromUrl } }
-        : {};
       const response = await api.post('/auth/accept-invite', {
         token: tokenFromUrl,
         username: formData.username,
         phone_number: normalizePhoneNumber(formData.phoneNumber),
-        password: formData.password
-      }, config);
+        password: formData.password,
+        email_otp_code: String(formData.emailOtpCode || '').trim()
+      }, buildTenantConfig());
 
       const data = response.data?.data || {};
       if (data.token) localStorage.setItem('authToken', data.token);
@@ -349,10 +384,44 @@ export default function AcceptInvite() {
               )}
             </div>
 
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="emailOtpCode">Email Verification Code</Label>
+                  <Input
+                    id="emailOtpCode"
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    maxLength={6}
+                    placeholder="123456"
+                    value={formData.emailOtpCode}
+                    onChange={(e) => setFormData({ ...formData, emailOtpCode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                    required
+                    disabled={isLoading}
+                    className="mt-1"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleRequestEmailOtp}
+                  disabled={isLoading || isSendingOtp}
+                >
+                  {isSendingOtp ? 'Sending Code...' : otpSentAt ? 'Resend Code' : 'Send Code'}
+                </Button>
+                <p className="text-xs text-slate-500">
+                  {otpSentAt
+                    ? `Code sent to ${invitationData?.email || 'your invited email'}.`
+                    : 'Send a code to the invited email before completing setup.'}
+                </p>
+              </div>
+            </div>
+
             <Button
               type="submit"
               className="w-full bg-teal-600 hover:bg-teal-700"
-              disabled={isLoading || !isPasswordValid || !passwordsMatch}
+              disabled={isLoading || !isPasswordValid || !passwordsMatch || !isEmailOtpValid}
             >
               {isLoading ? (
                 <>

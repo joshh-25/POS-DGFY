@@ -4,6 +4,7 @@
 
 export {
   register,
+  requestAuthEmailOtp,
   login,
   refreshToken,
   logout,
@@ -15,6 +16,7 @@ export {
 
 import {
   register,
+  requestAuthEmailOtp,
   login,
   refreshToken,
   logout,
@@ -26,6 +28,7 @@ import {
 
 export default {
   register,
+  requestAuthEmailOtp,
   login,
   refreshToken,
   logout,

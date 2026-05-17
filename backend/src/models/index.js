@@ -72,6 +72,7 @@ import FnbRestaurantServiceChargeSnapshot from './FnbRestaurantServiceChargeSnap
 import TenantFactory from './Landlord/Tenant.js';
 import UserTenantMappingFactory from './Landlord/UserTenantMapping.js';
 import UserInvitationFactory from './Landlord/UserInvitation.js';
+import EmailOtpFactory from './Landlord/EmailOtp.js';
 import PaymentFactory from './Landlord/Payment.js';
 import WebhookLogFactory from './Landlord/WebhookLog.js';
 import EngagementEventFactory from './Landlord/EngagementEvent.js';
@@ -85,6 +86,7 @@ import TenantComplianceFinalReviewSignoffFactory from './Landlord/TenantComplian
 const Tenant = TenantFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const UserInvitation = UserInvitationFactory(sequelize);
+const EmailOtp = EmailOtpFactory(sequelize);
 const Payment = PaymentFactory(sequelize);
 const WebhookLog = WebhookLogFactory(sequelize);
 const EngagementEvent = EngagementEventFactory(sequelize);
@@ -416,6 +418,8 @@ UserTenantMapping.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(UserTenantMapping, { foreignKey: 'tenant_id', as: 'userMappings' });
 UserInvitation.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(UserInvitation, { foreignKey: 'tenant_id', as: 'userInvitations' });
+EmailOtp.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(EmailOtp, { foreignKey: 'tenant_id', as: 'emailOtps' });
 
 const db = {
   sequelize,
@@ -493,6 +497,7 @@ const db = {
   Tenant,
   UserTenantMapping,
   UserInvitation,
+  EmailOtp,
   Payment,
   WebhookLog,
   EngagementEvent,
@@ -582,6 +587,7 @@ export {
   Tenant,
   UserTenantMapping,
   UserInvitation,
+  EmailOtp,
   Payment,
   WebhookLog,
   EngagementEvent,

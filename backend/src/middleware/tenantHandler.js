@@ -13,7 +13,7 @@ const tenantCache = new Map(); // token -> { tenant, expiresAt }
 const TENANT_CACHE_TTL_MS = 60_000; // 60 seconds
 const PLAN_SENSITIVE_ROUTE_PATTERN = /^\/api\/v1\/(pos|ai|forecast|payments|compliance|settings)\b/i;
 const STOREFRONT_ROUTE_PATTERN = /^\/api\/v1\/store(?:\/|$)/i;
-const STRICT_AUTH_ROUTE_PATTERN = /^\/api\/v1\/auth\/(register|login|refresh-token|logout|validate-invite|accept-invite)\b/i;
+const STRICT_AUTH_ROUTE_PATTERN = /^\/api\/v1\/auth\/(register|email-otp\/request|login|refresh-token|logout|validate-invite|accept-invite)\b/i;
 
 const DEFAULT_TENANT_CONTEXT = Object.freeze({
     tenantId: 'default',
@@ -97,9 +97,9 @@ export const tenantHandler = async (req, res, next) => {
         let companyToken = req.headers['x-company-token'];
         const storeSlug = String(req.headers['x-store-slug'] || '').trim().toLowerCase();
         const allowStoreSlugResolution = STOREFRONT_ROUTE_PATTERN.test(path);
-        if (!companyToken && isStrictAuthRoute && /\/(validate-invite|accept-invite)\b/i.test(path)) {
+        if (!companyToken && isStrictAuthRoute && /\/(validate-invite|accept-invite|email-otp\/request)\b/i.test(path)) {
             const pathInviteMatch = path.match(/\/auth\/validate-invite\/([^/?#]+)/i);
-            const inviteToken = String(req.params?.token || req.body?.token || pathInviteMatch?.[1] || '').trim();
+            const inviteToken = String(req.params?.token || req.body?.token || req.body?.invitation_token || pathInviteMatch?.[1] || '').trim();
             if (inviteToken) {
                 try {
                     const resolvedToken = await resolveInvitationTenantTokenByToken(inviteToken);

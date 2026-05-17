@@ -17,6 +17,7 @@ export default function RegisterCompany() {
         adminPhone: '',
         adminPassword: '',
         confirmPassword: '',
+        emailOtpCode: '',
         complianceMode: 'non_compliant',
         workflowMode: 'food_manufacturing'
     });
@@ -24,6 +25,8 @@ export default function RegisterCompany() {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [isSendingOtp, setIsSendingOtp] = useState(false);
+    const [otpSentTo, setOtpSentTo] = useState('');
     const [autoLoginError, setAutoLoginError] = useState('');
 
     const passwordValidations = {
@@ -36,6 +39,31 @@ export default function RegisterCompany() {
 
     const isPasswordValid = Object.values(passwordValidations).every(Boolean);
     const passwordsMatch = formData.adminPassword === formData.confirmPassword;
+    const isEmailOtpValid = /^\d{6}$/.test(String(formData.emailOtpCode || '').trim());
+
+    const handleRequestEmailOtp = async () => {
+        setError('');
+        setSuccess(null);
+        const email = String(formData.adminEmail || '').trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            setError('Enter a valid admin email before requesting a verification code');
+            return;
+        }
+
+        setIsSendingOtp(true);
+        try {
+            await api.post('/auth/email-otp/request', {
+                purpose: 'company_registration',
+                email
+            });
+            setOtpSentTo(email);
+            setFormData((current) => ({ ...current, emailOtpCode: '' }));
+        } catch (err) {
+            setError(err.response?.data?.message || 'Could not send verification code. Please try again.');
+        } finally {
+            setIsSendingOtp(false);
+        }
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -53,6 +81,11 @@ export default function RegisterCompany() {
             return;
         }
 
+        if (!isEmailOtpValid) {
+            setError('Enter the 6-digit verification code sent to the admin email');
+            return;
+        }
+
         const phoneNumberError = getPhoneNumberError(formData.adminPhone, { label: 'Admin phone number' });
         if (phoneNumberError) {
             setError(phoneNumberError);
@@ -67,6 +100,7 @@ export default function RegisterCompany() {
                 adminEmail: formData.adminEmail,
                 adminPhone: normalizePhoneNumber(formData.adminPhone),
                 adminPassword: formData.adminPassword,
+                email_otp_code: String(formData.emailOtpCode || '').trim(),
                 plan: 'premium',
                 complianceMode: formData.complianceMode,
                 workflowMode: formData.workflowMode
@@ -108,7 +142,8 @@ export default function RegisterCompany() {
                 setFormData((current) => ({
                     ...current,
                     adminPassword: '',
-                    confirmPassword: ''
+                    confirmPassword: '',
+                    emailOtpCode: ''
                 }));
             } else {
                 setError(response.data.message || 'Registration failed');
@@ -291,7 +326,13 @@ export default function RegisterCompany() {
                                     type="email"
                                     placeholder="admin@acme.com"
                                     value={formData.adminEmail}
-                                    onChange={(e) => setFormData({ ...formData, adminEmail: e.target.value })}
+                                    onChange={(e) => {
+                                        const nextEmail = e.target.value;
+                                        setFormData({ ...formData, adminEmail: nextEmail, emailOtpCode: '' });
+                                        if (otpSentTo && String(nextEmail || '').trim().toLowerCase() !== otpSentTo.toLowerCase()) {
+                                            setOtpSentTo('');
+                                        }
+                                    }}
                                     required
                                     disabled={isLoading}
                                     className="mt-1"
@@ -311,6 +352,37 @@ export default function RegisterCompany() {
                                     className="mt-1"
                                 />
                             </div>
+                        </div>
+
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                                <div className="flex-1">
+                                    <Label htmlFor="emailOtpCode">Email Verification Code</Label>
+                                    <Input
+                                        id="emailOtpCode"
+                                        inputMode="numeric"
+                                        pattern="[0-9]{6}"
+                                        maxLength={6}
+                                        placeholder="123456"
+                                        value={formData.emailOtpCode}
+                                        onChange={(e) => setFormData({ ...formData, emailOtpCode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                                        required
+                                        disabled={isLoading}
+                                        className="mt-1"
+                                    />
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={handleRequestEmailOtp}
+                                    disabled={isLoading || isSendingOtp || !formData.adminEmail}
+                                >
+                                    {isSendingOtp ? 'Sending...' : otpSentTo ? 'Resend Code' : 'Send Code'}
+                                </Button>
+                            </div>
+                            <p className="mt-2 text-xs text-slate-500">
+                                {otpSentTo ? `Code sent to ${otpSentTo}.` : 'Send a code to verify the admin email before creating the company.'}
+                            </p>
                         </div>
 
                         <div>
@@ -358,7 +430,7 @@ export default function RegisterCompany() {
                         <Button
                             type="submit"
                             className="w-full bg-slate-700 hover:bg-slate-800"
-                            disabled={isLoading || !isPasswordValid || !passwordsMatch}
+                            disabled={isLoading || !isPasswordValid || !passwordsMatch || !isEmailOtpValid}
                         >
                             {isLoading ? 'Creating Company...' : 'Create Company'}
                         </Button>

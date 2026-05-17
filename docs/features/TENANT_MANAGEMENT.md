@@ -21,6 +21,7 @@ The SKU Inventory Manager uses a **Multi-Tenant Architecture** with **Database I
 - **Temporary Auto-Accept Mode**: When `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`, manual registrations are immediately provisioned, activated, and the registration UI signs the founder in through the normal login API. `manual` remains the default and rollback mode.
 - **Provider Subscription Onboarding**: Disabled for this phase. Requests that include provider subscription verification are rejected with `503` and `PAYMENTS_DISABLED`.
 - **Founder Contact Requirement**: Public company registration requires an admin phone number. The landlord tenant record stores it as `admin_phone`, and provisioning copies it into the founder/admin user's `phone_number`.
+- **Founder Email Verification**: Public company registration requires a single-use email OTP for `adminEmail` before any tenant request is created. The registration page includes Send Code/Resend Code controls, requests the code through `POST /api/v1/auth/email-otp/request` with `purpose=company_registration`, and submits it as `email_otp_code`.
 - **Phone Format**: Company admin phone numbers and user phone numbers are trimmed and must be 7-40 characters using digits, spaces, `+`, `-`, parentheses, and periods.
 - **Provisioning Trigger**: Database provisioning runs after explicit admin approval in `manual` mode, or during public registration in `auto_standard` mode.
 - **Email Mapping**: Manual pending registrations create the founder email-to-tenant mapping at registration time so lookup can show pending status. Auto-provisioned registrations leave mapping creation to the provisioning path so the mapping is written only after tenant activation succeeds.
@@ -186,7 +187,15 @@ Mappings are created automatically when:
 1. A company is registered (founder email is mapped)
 2. A user is invited and accepts their invitation
 
-Company-user registration and invitation acceptance now require a phone number. Existing accepted users created before this requirement can add or change their phone number from Settings > Profile. Settings rejects profile saves that would leave the resulting account phone blank or invalid, and the authenticated shell shows a remediation banner with a direct Profile link until the stored account phone is completed.
+Company-user registration and invitation acceptance now require a phone number and an email OTP. Existing accepted users created before this requirement can add or change their phone number from Settings > Profile. Settings rejects profile saves that would leave the resulting account phone blank or invalid, and the authenticated shell shows a remediation banner with a direct Profile link until the stored account phone is completed.
+
+Email ownership checks are required before login identity is created or changed:
+- `company_registration`: requested publicly for the founder/admin email before `/admin/tenants/register`.
+- `tenant_user_registration`: requested with tenant context before `/auth/register`.
+- `invitation_acceptance`: requested from an invitation token before `/auth/accept-invite`.
+- `email_change`: requested by the authenticated user before `PUT /users/me` changes the email.
+
+OTP rows live in the landlord `email_otps` table. Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 10), lock after `EMAIL_OTP_MAX_ATTEMPTS` (default 5), and are consumed through a conditional update so concurrent accepts cannot reuse the same code. Production enables enforcement by default; `EMAIL_OTP_ENFORCEMENT_ENABLED=false` is the rollback switch. OTP request routes are throttled with `RATE_LIMIT_EMAIL_OTP_WINDOW_MS` and `RATE_LIMIT_EMAIL_OTP_MAX_REQUESTS`. OTP requests fail closed when configured email delivery cannot actually send the code; manual invitation links do not bypass email ownership verification.
 
 Phone completion rollout is staged rather than globally forced while historical accounts are still unresolved:
 - `PHONE_COMPLETION_ENFORCEMENT_MODE=observe` is the non-test default. Users see the remediation banner and admins see missing-phone rows, but normal authenticated work is not blocked yet.
@@ -235,18 +244,18 @@ Invite creation supports:
 - Optional `location_ids`: invite-time location scope. Operational roles require explicit selection when multiple active locations exist; admin-like roles default to all active locations but remain editable before submission.
 
 ### Acceptance UX
-`/accept-invite?token=<token>` validates the token without needing tenant context in the URL. The page shows company, inviter, invite email, role, and expiry before password setup. Successful acceptance returns the same usable auth shape as login (`user`, `token`, `refreshToken`, `expiresIn`, `company`) and immediately signs the invited user into the app.
+`/accept-invite?token=<token>` validates the token without needing tenant context in the URL. The page shows company, inviter, invite email, role, and expiry before password setup. The invited user must request an invitation-acceptance OTP from the same page and submit `email_otp_code` with the token, username, phone number, and password. The API resolves tenant context from `invitation_token` for token-only OTP requests, matching validation and acceptance behavior. Successful acceptance returns the same usable auth shape as login (`user`, `token`, `refreshToken`, `expiresIn`, `company`) and immediately signs the invited user into the app.
 
 ### Delivery And Recovery Status
-The product handles SMTP unavailable or failed delivery as a first-class state and gives the admin a manual link.
+The product handles SMTP/API unavailable or failed delivery as a first-class state and gives the admin a manual link for non-OTP invitation recovery.
 
-Current verified status as of `2026-04-30`:
+Current verified status as of `2026-05-17`:
 - Local Gmail SMTP is configured, but the saved credential fails with `EAUTH 535 BadCredentials`. Use a valid Gmail App Password for local/testing SMTP.
-- Production is configured for Brevo SMTP, but the production host times out to `smtp-relay.brevo.com` on ports `587`, `2525`, and `465`.
-- Production firewall checks showed `ufw` inactive and `iptables OUTPUT ACCEPT`; the remaining SMTP blocker appears upstream of the application host.
-- HTTPS to Brevo works from production, but no valid Brevo API key is configured yet.
+- Production previously timed out to `smtp-relay.brevo.com` on ports `587`, `2525`, and `465`.
+- Brevo HTTPS API delivery is supported through `BREVO_API_KEY`, `BREVO_API_URL`, `EMAIL_DELIVERY_PROVIDER`, and `EMAIL_DELIVERY_FALLBACK_TO_BREVO_API`.
+- Before enabling enforced OTP flows in production, run `npm run verify:email` and then `npm run verify:email -- --send-to operator@example.com` from a production-equivalent shell.
 
-Production email delivery can be closed out by either unblocking Brevo SMTP at the provider/network level or adding Brevo HTTPS API delivery with a valid Brevo API key. Until then, the invitation workflow remains user-ready through manual-link recovery.
+Production email delivery can be closed out by either unblocking Brevo SMTP at the provider/network level or configuring Brevo HTTPS API delivery with a valid API key and verified `EMAIL_FROM` sender. Until then, manual-link invitation recovery remains available for non-OTP invitation sends, but email-ownership OTP flows are not production-ready because they must fail closed when the code cannot be delivered.
 
 ---
 

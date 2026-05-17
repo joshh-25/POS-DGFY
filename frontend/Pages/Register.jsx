@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { register } from '../src/services/authService.js';
+import { register, requestEmailOtp } from '../src/services/authService.js';
 import api from '../src/services/api.js';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,9 @@ export default function Register() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [passwordFocus, setPasswordFocus] = useState(false);
+  const [emailOtpCode, setEmailOtpCode] = useState('');
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [otpSentTo, setOtpSentTo] = useState('');
 
   // Token validation state
   const [isValidatingToken, setIsValidatingToken] = useState(false);
@@ -88,6 +91,11 @@ export default function Register() {
     return () => clearTimeout(timeoutId);
   }, [formData.companyToken]);
 
+  useEffect(() => {
+    setEmailOtpCode('');
+    setOtpSentTo('');
+  }, [formData.email, formData.companyToken]);
+
   // Password validation rules
   const passwordValidations = {
     minLength: formData.password.length >= 8,
@@ -99,6 +107,41 @@ export default function Register() {
 
   const isPasswordValid = Object.values(passwordValidations).every(v => v);
   const passwordsMatch = formData.password === formData.confirmPassword;
+  const normalizedEmail = formData.email.trim().toLowerCase();
+  const isEmailOtpValid = /^\d{6}$/.test(emailOtpCode.trim());
+
+  const handleRequestEmailOtp = async () => {
+    setError('');
+
+    if (!normalizedEmail) {
+      setError('Email is required before requesting a verification code.');
+      return;
+    }
+
+    if (!formData.companyToken || !tokenValid) {
+      setError('Enter a valid company token before requesting a verification code.');
+      return;
+    }
+
+    setIsSendingOtp(true);
+
+    try {
+      await requestEmailOtp({
+        purpose: 'tenant_user_registration',
+        email: normalizedEmail,
+        companyToken: formData.companyToken
+      });
+      setOtpSentTo(normalizedEmail);
+      setEmailOtpCode('');
+    } catch (err) {
+      const errorMessage = err.response?.data?.message ||
+        err.response?.data?.errors?.[0]?.message ||
+        'Could not send verification code. Please try again.';
+      setError(errorMessage);
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -133,6 +176,11 @@ export default function Register() {
       return;
     }
 
+    if (!isEmailOtpValid) {
+      setError('Enter the 6-digit email verification code sent to your email.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -140,7 +188,8 @@ export default function Register() {
         username: formData.username,
         email: formData.email,
         phone_number: normalizePhoneNumber(formData.phoneNumber),
-        password: formData.password
+        password: formData.password,
+        email_otp_code: emailOtpCode.trim()
       }, formData.companyToken);
 
       // Redirect to login page
@@ -293,6 +342,40 @@ export default function Register() {
             </div>
 
             <div>
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor="emailOtpCode">Email Verification Code</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRequestEmailOtp}
+                  disabled={isLoading || isSendingOtp || !normalizedEmail || !tokenValid}
+                >
+                  {isSendingOtp ? 'Sending...' : otpSentTo === normalizedEmail ? 'Resend Code' : 'Send Code'}
+                </Button>
+              </div>
+              <Input
+                id="emailOtpCode"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="123456"
+                value={emailOtpCode}
+                onChange={(e) => setEmailOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                required
+                minLength={6}
+                maxLength={6}
+                disabled={isLoading}
+                className="mt-1"
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                {otpSentTo === normalizedEmail
+                  ? `Code sent to ${otpSentTo}.`
+                  : 'Send a code to verify that you own this email.'}
+              </p>
+            </div>
+
+            <div>
               <Label htmlFor="phoneNumber">Phone Number</Label>
               <Input
                 id="phoneNumber"
@@ -368,7 +451,7 @@ export default function Register() {
             <Button
               type="submit"
               className="w-full"
-              disabled={isLoading || !isPasswordValid || !passwordsMatch || !tokenValid}
+              disabled={isLoading || !isPasswordValid || !passwordsMatch || !tokenValid || !isEmailOtpValid}
             >
               {isLoading ? 'Creating Account...' : 'Create Account'}
             </Button>

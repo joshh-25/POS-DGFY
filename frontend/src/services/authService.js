@@ -19,6 +19,23 @@ export const register = async (userData, companyToken) => {
   return response.data.data;
 };
 
+export const requestEmailOtp = async ({ purpose, email, invitationToken, companyToken } = {}) => {
+  const config = companyToken ? {
+    headers: {
+      'x-company-token': companyToken
+    }
+  } : {};
+
+  const payload = {
+    purpose
+  };
+  if (email) payload.email = email;
+  if (invitationToken) payload.invitation_token = invitationToken;
+
+  const response = await api.post('/auth/email-otp/request', payload, config);
+  return response.data.data;
+};
+
 export const login = async (credentials) => {
   const resolvedCompanyToken = String(
     credentials?.companyToken || ''

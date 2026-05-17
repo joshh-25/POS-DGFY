@@ -7,6 +7,7 @@ const NON_TENANT_MODEL_EXPORTS = new Set([
     'Tenant',
     'UserTenantMapping',
     'UserInvitation',
+    'EmailOtp',
     'Payment',
     'WebhookLog',
     'EngagementEvent',

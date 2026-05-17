@@ -76,6 +76,9 @@ describe('AcceptInvite', () => {
     fireEvent.change(screen.getByLabelText('Confirm Password'), {
       target: { value: 'StrongPass1!' }
     });
+    fireEvent.change(screen.getByLabelText('Email Verification Code'), {
+      target: { value: '123456' }
+    });
     fireEvent.click(screen.getByRole('button', { name: /complete setup/i }));
 
     await waitFor(() => expect(screen.getByText('Home screen')).toBeTruthy());
@@ -83,7 +86,8 @@ describe('AcceptInvite', () => {
       token: 'invite-token',
       username: 'teammate',
       phone_number: '+63 912 345 6789',
-      password: 'StrongPass1!'
+      password: 'StrongPass1!',
+      email_otp_code: '123456'
     }, {});
     expect(window.localStorage.getItem('authToken')).toBe('access-token');
     expect(window.localStorage.getItem('refreshToken')).toBe('refresh-token');

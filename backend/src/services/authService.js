@@ -18,6 +18,7 @@ import logger from '../config/logger.js';
 import { onboardingRepository } from '../modules/onboarding/repositories/onboardingRepository.js';
 import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
 import { getTokenBlacklistFailureMode } from '../config/hostingProfile.js';
+import { verifyEmailOtp, EMAIL_OTP_PURPOSES } from './emailOtpService.js';
 
 
 const TEST_JWT_SECRET_FALLBACK = 'test_jwt_secret_for_ci_only_32_chars!';
@@ -201,7 +202,7 @@ export const verifyRefreshToken = (token) => {
 
 export const registerUser = async (userData) => {
   await requireTenantAuthContext({ operation: 'auth.register' });
-  const { username, email, password, phone_number: phoneNumber } = userData;
+  const { username, email, password, phone_number: phoneNumber, email_otp_code: emailOtpCode } = userData;
   // Always create new users as 'staff' - only admins can change roles via User Management
   const role = 'staff';
   const defaultPermissions = DEFAULT_ROLE_PERMISSIONS[role] || [];
@@ -220,6 +221,15 @@ export const registerUser = async (userData) => {
     throw error;
   }
 
+  const store = dbStore.getStore();
+  const tenantId = store?.tenantId;
+  await verifyEmailOtp({
+    purpose: EMAIL_OTP_PURPOSES.TENANT_USER_REGISTRATION,
+    email,
+    code: emailOtpCode,
+    tenantId
+  });
+
   // Hash password
   const password_hash = await hashPassword(password);
 
@@ -235,8 +245,6 @@ export const registerUser = async (userData) => {
   });
 
   // Add email-to-tenant mapping for future token-less login
-  const store = dbStore.getStore();
-  const tenantId = store?.tenantId;
   // Guard: Only map if we have a real tenant context (not 'default' fallback)
   if (tenantId && tenantId !== 'default') {
     try {

@@ -4,6 +4,7 @@
 
 export {
   getCurrentUser,
+  requestEmailChangeOtp,
   updateProfile,
   changePassword,
   getAllUsers,
@@ -22,6 +23,7 @@ export {
 
 import {
   getCurrentUser,
+  requestEmailChangeOtp,
   updateProfile,
   changePassword,
   getAllUsers,
@@ -40,6 +42,7 @@ import {
 
 export default {
   getCurrentUser,
+  requestEmailChangeOtp,
   updateProfile,
   changePassword,
   getAllUsers,

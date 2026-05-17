@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   userServiceMock: {
     getCurrentUser: vi.fn(),
     updateProfile: vi.fn(),
+    requestEmailChangeOtp: vi.fn(),
     changePassword: vi.fn()
   },
   settingsServiceMock: {

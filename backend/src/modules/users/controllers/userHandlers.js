@@ -18,6 +18,7 @@ import {
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
 import { invalidateUserAuthCache } from '../../../middleware/auth.js';
+import { requestEmailOtp, EMAIL_OTP_PURPOSES } from '../../../services/emailOtpService.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
@@ -112,6 +113,37 @@ export const updateProfile = async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+};
+
+export const requestEmailChangeOtp = async (req, res, next) => {
+  try {
+    const { email } = req.validatedData;
+    const otp = await requestEmailOtp({
+      purpose: EMAIL_OTP_PURPOSES.EMAIL_CHANGE,
+      email,
+      tenantId: req.tenant?.id || null,
+      metadata: {
+        user_id: req.user?.user_id || null,
+        request_id: requestId(req, res),
+        ip_address: req.ip || null
+      }
+    });
+
+    return res.status(202).json({
+      success: true,
+      data: otp,
+      message: 'Email verification code sent',
+      timestamp: timestamp()
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      data: null,
+      message: error.message || 'Email verification failed',
+      error_code: error.code || 'EMAIL_OTP_ERROR',
+      timestamp: timestamp()
+    });
   }
 };
 
@@ -464,6 +496,7 @@ export const removeUserFromCompany = async (req, res, next) => {
 
 export default {
   getCurrentUser,
+  requestEmailChangeOtp,
   updateProfile,
   changePassword,
   getAllUsers,

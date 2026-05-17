@@ -14,6 +14,7 @@ import {
     resolveRegisteredTenantPlan
 } from './tenantPlanPolicy.js';
 import { isValidPhoneNumber, normalizePhoneNumber } from '../../../utils/phoneNumber.js';
+import { verifyEmailOtp, EMAIL_OTP_PURPOSES } from '../../../services/emailOtpService.js';
 
 export const buildRegisterCompanyRequestUseCase = ({
     tenantAdminRepository,
@@ -33,6 +34,7 @@ export const buildRegisterCompanyRequestUseCase = ({
             adminEmail,
             adminPhone,
             adminPassword,
+            email_otp_code: emailOtpCode,
             plan = 'premium',
             subscriptionId,
             complianceMode,
@@ -113,6 +115,13 @@ export const buildRegisterCompanyRequestUseCase = ({
                     { statusCode: 400 }
                 ));
             }
+
+            await verifyEmailOtp({
+                purpose: EMAIL_OTP_PURPOSES.COMPANY_REGISTRATION,
+                email: adminEmail,
+                code: emailOtpCode,
+                tenantId: null
+            });
 
             if (!['non_compliant', 'compliant'].includes(normalizedComplianceMode)) {
                 await tracker.failed({
@@ -383,22 +392,24 @@ export const buildRegisterCompanyRequestUseCase = ({
             });
         } catch (error) {
             logger?.error?.('Registration request error:', error);
+            const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+            const isClientError = statusCode >= 400 && statusCode < 500;
 
             await tracker.failed({
                 tenantId: tenant?.id || null,
                 subscriptionId: validatedSubscriptionId || subscriptionId || null,
-                failureCode: tenant ? 'post_creation_failure' : 'unexpected_error',
+                failureCode: isClientError ? (error.code || 'validation_failed') : (tenant ? 'post_creation_failure' : 'unexpected_error'),
                 failureReason: error.message,
-                httpStatus: 500,
+                httpStatus: statusCode,
                 metadata: {
                     error: error.message
                 }
             });
 
             return fail(new DomainError(
-                DomainErrorCode.INTERNAL_ERROR,
+                isClientError ? DomainErrorCode.VALIDATION_FAILED : DomainErrorCode.INTERNAL_ERROR,
                 error.message || 'Registration failed',
-                { statusCode: 500 }
+                { statusCode, details: error.code ? { error_code: error.code } : null }
             ));
         }
     };

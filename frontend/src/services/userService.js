@@ -26,6 +26,11 @@ export const updateProfile = async (profileData) => {
   return result;
 };
 
+export const requestEmailChangeOtp = async ({ email }) => {
+  const response = await api.post('/users/me/email-otp/request', { email });
+  return response.data.data;
+};
+
 /**
  * Change current user's password
  * @param {Object} passwordData - { currentPassword, newPassword }

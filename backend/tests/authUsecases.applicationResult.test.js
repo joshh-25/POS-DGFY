@@ -3,6 +3,7 @@ import {
   buildLoginUseCase,
   buildLookupEmailUseCase,
   buildValidateInviteTokenUseCase,
+  buildAcceptInvitationUseCase,
   buildBlacklistTokenUseCase
 } from '../src/modules/auth/usecases/authUseCases.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
@@ -73,6 +74,28 @@ describe('auth use-cases application result contract', () => {
       data: { blacklisted: true },
       error: null,
       message: null
+    });
+  });
+
+  it('acceptInvitation delegates missing OTP to the service so rollback can disable enforcement', async () => {
+    const acceptInvitation = jest.fn().mockResolvedValue({ user_id: 2 });
+    const useCase = buildAcceptInvitationUseCase({
+      userService: { acceptInvitation }
+    });
+
+    const result = await useCase({
+      token: 'invite-token',
+      username: 'teammate',
+      password: 'StrongPass1!',
+      phoneNumber: '+63 912 345 6789'
+    });
+
+    expect(result.success).toBe(true);
+    expect(acceptInvitation).toHaveBeenCalledWith('invite-token', {
+      username: 'teammate',
+      password: 'StrongPass1!',
+      phone_number: '+63 912 345 6789',
+      email_otp_code: undefined
     });
   });
 });

@@ -1,6 +1,7 @@
 import Joi from 'joi';
 import { USER_ROLES } from '../config/userRoles.js';
 import { PHONE_NUMBER_PATTERN } from '../utils/phoneNumber.js';
+import { isEmailOtpEnforcementEnabled } from '../config/emailOtp.js';
 
 const phoneNumberSchema = Joi.string()
   .trim()
@@ -21,6 +22,14 @@ export const updateProfileSchema = Joi.object({
   }),
   email: Joi.string().email().optional().messages({
     'string.email': 'Please provide a valid email address'
+  }),
+  email_otp_code: Joi.string().pattern(/^\d{6}$/).when('email', {
+    is: Joi.exist(),
+    then: isEmailOtpEnforcementEnabled() ? Joi.required() : Joi.optional(),
+    otherwise: Joi.optional()
+  }).messages({
+    'string.pattern.base': 'Email verification code must be 6 digits',
+    'any.required': 'Email verification code is required when changing email'
   }),
   phone_number: phoneNumberSchema.optional().messages({
     'string.empty': 'Phone number cannot be empty'
@@ -227,11 +236,40 @@ export const inviteUserSchema = Joi.object({
   })
 });
 
+export const emailChangeOtpRequestSchema = Joi.object({
+  email: Joi.string().email().required().messages({
+    'string.email': 'Please provide a valid email address',
+    'any.required': 'Email is required'
+  })
+});
+
 /**
  * Middleware to validate user invitation request (admin only)
  */
 export const validateInviteUser = (req, res, next) => {
   const { error, value } = inviteUserSchema.validate(req.body, { abortEarly: false });
+
+  if (error) {
+    const errors = error.details.map(detail => ({
+      field: detail.path[0],
+      message: detail.message
+    }));
+
+    return res.status(422).json({
+      success: false,
+      data: null,
+      message: 'Validation failed',
+      errors,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  req.validatedData = value;
+  next();
+};
+
+export const validateEmailChangeOtpRequest = (req, res, next) => {
+  const { error, value } = emailChangeOtpRequestSchema.validate(req.body, { abortEarly: false });
 
   if (error) {
     const errors = error.details.map(detail => ({

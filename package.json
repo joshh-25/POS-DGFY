@@ -36,6 +36,7 @@
     "generate:ai-docs": "cd backend && npm run generate:ai-docs",
     "ai:check": "cd backend && npm run ai:check",
     "doctor:runtime": "cd backend && npm run doctor:runtime",
+    "verify:email": "cd backend && npm run verify:email --",
     "audit:fifo-drift": "cd backend && npm run audit:fifo-drift",
     "audit:fifo-drift:repair": "cd backend && npm run audit:fifo-drift:repair",
     "audit:location-stock-parity": "cd backend && npm run audit:location-stock-parity",
