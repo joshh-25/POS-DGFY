@@ -5,9 +5,10 @@ import { login } from '../src/services/authService.js';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Building2, CheckCircle2, XCircle } from 'lucide-react';
+import { Building2, CheckCircle2, XCircle, Wand2 } from 'lucide-react';
 import { WORKFLOW_MODE_LABELS, WORKFLOW_MODE_SELECT_VALUES } from '../src/features/settings/workflowMode.js';
 import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../src/utils/phoneNumber.js';
+import { generateReadablePassword, isPasswordLongEnough } from '../src/utils/passwordPolicy.js';
 
 export default function RegisterCompany() {
     const navigate = useNavigate();
@@ -30,11 +31,7 @@ export default function RegisterCompany() {
     const [autoLoginError, setAutoLoginError] = useState('');
 
     const passwordValidations = {
-        minLength: formData.adminPassword.length >= 8,
-        hasUppercase: /[A-Z]/.test(formData.adminPassword),
-        hasLowercase: /[a-z]/.test(formData.adminPassword),
-        hasNumber: /\d/.test(formData.adminPassword),
-        hasSpecial: /[@$!%*?&]/.test(formData.adminPassword)
+        minLength: isPasswordLongEnough(formData.adminPassword)
     };
 
     const isPasswordValid = Object.values(passwordValidations).every(Boolean);
@@ -77,7 +74,7 @@ export default function RegisterCompany() {
         }
 
         if (!isPasswordValid) {
-            setError('Password does not meet security requirements');
+            setError('Password must be at least 8 characters');
             return;
         }
 
@@ -161,6 +158,15 @@ export default function RegisterCompany() {
             <span className={valid ? 'text-green-700' : 'text-slate-600'}>{text}</span>
         </div>
     );
+
+    const handleGeneratePassword = () => {
+        const generatedPassword = generateReadablePassword();
+        setFormData((current) => ({
+            ...current,
+            adminPassword: generatedPassword,
+            confirmPassword: generatedPassword
+        }));
+    };
 
     if (success) {
         const isActive = success.status === 'active';
@@ -386,11 +392,24 @@ export default function RegisterCompany() {
                         </div>
 
                         <div>
-                            <Label htmlFor="adminPassword">Admin Password</Label>
+                            <div className="flex items-center justify-between gap-3">
+                                <Label htmlFor="adminPassword">Admin Password</Label>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleGeneratePassword}
+                                    disabled={isLoading}
+                                    className="h-8 gap-1.5"
+                                >
+                                    <Wand2 className="w-3.5 h-3.5" />
+                                    Generate
+                                </Button>
+                            </div>
                             <Input
                                 id="adminPassword"
                                 type="password"
-                                placeholder="Create a strong password"
+                                placeholder="At least 8 characters"
                                 value={formData.adminPassword}
                                 onChange={(e) => setFormData({ ...formData, adminPassword: e.target.value })}
                                 required
@@ -400,10 +419,6 @@ export default function RegisterCompany() {
                             {formData.adminPassword && (
                                 <div className="mt-2 p-3 bg-slate-50 rounded-lg space-y-1">
                                     <ValidationItem valid={passwordValidations.minLength} text="At least 8 characters" />
-                                    <ValidationItem valid={passwordValidations.hasUppercase} text="One uppercase letter" />
-                                    <ValidationItem valid={passwordValidations.hasLowercase} text="One lowercase letter" />
-                                    <ValidationItem valid={passwordValidations.hasNumber} text="One number" />
-                                    <ValidationItem valid={passwordValidations.hasSpecial} text="One special character (@$!%*?&)" />
                                 </div>
                             )}
                         </div>

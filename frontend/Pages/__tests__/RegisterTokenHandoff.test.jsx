@@ -87,10 +87,10 @@ describe('Register token handoff', () => {
       target: { value: '+63 912 345 6789' }
     });
     fireEvent.change(screen.getByLabelText('Password'), {
-      target: { value: 'StrongPass1!' }
+      target: { value: 'abcdefgh' }
     });
     fireEvent.change(screen.getByLabelText('Confirm Password'), {
-      target: { value: 'StrongPass1!' }
+      target: { value: 'abcdefgh' }
     });
     fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 
@@ -98,7 +98,7 @@ describe('Register token handoff', () => {
       username: 'teammate',
       email: 'teammate@example.com',
       phone_number: '+63 912 345 6789',
-      password: 'StrongPass1!',
+      password: 'abcdefgh',
       email_otp_code: '123456'
     }, 'token-autofoods-12345678'));
     expect(screen.getByText('Login screen')).toBeTruthy();
@@ -118,10 +118,10 @@ describe('Register token handoff', () => {
       target: { value: '+63 912 345 6789' }
     });
     fireEvent.change(screen.getByLabelText('Password'), {
-      target: { value: 'StrongPass1!' }
+      target: { value: 'abcdefgh' }
     });
     fireEvent.change(screen.getByLabelText('Confirm Password'), {
-      target: { value: 'StrongPass1!' }
+      target: { value: 'abcdefgh' }
     });
 
     expect(screen.getByRole('button', { name: /create account/i }).disabled).toBe(true);
@@ -145,14 +145,26 @@ describe('Register token handoff', () => {
       target: { value: '123456' }
     });
     fireEvent.change(screen.getByLabelText('Password'), {
-      target: { value: 'StrongPass1!' }
+      target: { value: 'abcdefgh' }
     });
     fireEvent.change(screen.getByLabelText('Confirm Password'), {
-      target: { value: 'StrongPass1!' }
+      target: { value: 'abcdefgh' }
     });
     fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 
     expect(await screen.findByText(/phone number must be 7-40 characters/i)).toBeTruthy();
     expect(registerMock).not.toHaveBeenCalled();
+  });
+
+  it('generates a matching 16-character password for registration', async () => {
+    renderRegister();
+
+    await screen.findByText('Auto Foods');
+    fireEvent.click(screen.getByRole('button', { name: /generate/i }));
+
+    const password = screen.getByLabelText('Password').value;
+    expect(password).toHaveLength(16);
+    expect(screen.getByLabelText('Confirm Password').value).toBe(password);
+    expect(screen.getByText('At least 8 characters')).toBeTruthy();
   });
 });

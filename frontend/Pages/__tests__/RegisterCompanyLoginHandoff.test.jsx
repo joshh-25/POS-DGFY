@@ -40,7 +40,7 @@ const fillRegistrationForm = ({
   companyName = 'Auto Foods',
   email = 'owner@autofoods.test',
   phone = '+63 912 345 6789',
-  password = 'StrongPass1!',
+  password = 'abcdefgh',
   otp = '123456'
 } = {}) => {
   fireEvent.change(screen.getByLabelText('Company Name'), {
@@ -103,7 +103,7 @@ describe('RegisterCompany login handoff', () => {
 
     await waitFor(() => expect(loginMock).toHaveBeenCalledWith({
       email: 'owner@autofoods.test',
-      password: 'StrongPass1!',
+      password: 'abcdefgh',
       companyToken: 'token-autofoods-12345678'
     }));
     expect(await screen.findByText('Dashboard screen')).toBeTruthy();
@@ -121,6 +121,17 @@ describe('RegisterCompany login handoff', () => {
     expect(options.some((option) => option.value === 'manufacturing')).toBe(false);
     expect(options.filter((option) => option.label === 'Food Manufacturing')).toHaveLength(1);
     expect(options.some((option) => option.value === 'food_manufacturing')).toBe(true);
+  });
+
+  it('generates a matching 16-character founder password', () => {
+    renderRegistrationFlow();
+
+    fireEvent.click(screen.getByRole('button', { name: /generate/i }));
+
+    const password = screen.getByLabelText('Admin Password').value;
+    expect(password).toHaveLength(16);
+    expect(screen.getByLabelText('Confirm Password').value).toBe(password);
+    expect(screen.getByText('At least 8 characters')).toBeTruthy();
   });
 
   it('falls back to manual login when auto-login fails after active registration', async () => {

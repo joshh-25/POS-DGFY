@@ -4,8 +4,9 @@ import api from '../src/services/api.js';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CheckCircle2, XCircle, Mail, Loader2, AlertCircle, UserPlus, Shield } from 'lucide-react';
+import { CheckCircle2, XCircle, Mail, Loader2, AlertCircle, UserPlus, Shield, Wand2 } from 'lucide-react';
 import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../src/utils/phoneNumber.js';
+import { generateReadablePassword, isPasswordLongEnough } from '../src/utils/passwordPolicy.js';
 
 export default function AcceptInvite() {
   const navigate = useNavigate();
@@ -75,11 +76,7 @@ export default function AcceptInvite() {
 
   // Password validation rules
   const passwordValidations = {
-    minLength: formData.password.length >= 8,
-    hasUppercase: /[A-Z]/.test(formData.password),
-    hasLowercase: /[a-z]/.test(formData.password),
-    hasNumber: /\d/.test(formData.password),
-    hasSpecial: /[@$!%*?&]/.test(formData.password)
+    minLength: isPasswordLongEnough(formData.password)
   };
 
   const isPasswordValid = Object.values(passwordValidations).every(v => v);
@@ -126,7 +123,7 @@ export default function AcceptInvite() {
 
     // Validate password strength
     if (!isPasswordValid) {
-      setError('Password does not meet security requirements');
+      setError('Password must be at least 8 characters');
       return;
     }
 
@@ -181,6 +178,16 @@ export default function AcceptInvite() {
       </span>
     </div>
   );
+
+  const handleGeneratePassword = () => {
+    const generatedPassword = generateReadablePassword();
+    setFormData((current) => ({
+      ...current,
+      password: generatedPassword,
+      confirmPassword: generatedPassword
+    }));
+    setPasswordFocus(true);
+  };
 
   // Role badge color
   const getRoleBadgeClass = (role) => {
@@ -337,12 +344,25 @@ export default function AcceptInvite() {
               </div>
 
             <div>
-              <Label htmlFor="password">Create Password</Label>
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor="password">Create Password</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGeneratePassword}
+                  disabled={isLoading}
+                  className="h-8 gap-1.5"
+                >
+                  <Wand2 className="w-3.5 h-3.5" />
+                  Generate
+                </Button>
+              </div>
               <Input
                 id="password"
                 type="password"
                 autoComplete="new-password"
-                placeholder="Create a strong password"
+                placeholder="At least 8 characters"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 onFocus={() => setPasswordFocus(true)}
@@ -356,10 +376,6 @@ export default function AcceptInvite() {
                 <div className="mt-2 p-3 bg-slate-50 rounded-lg space-y-1">
                   <p className="text-xs font-semibold text-slate-700 mb-1">Password Requirements:</p>
                   <ValidationItem valid={passwordValidations.minLength} text="At least 8 characters" />
-                  <ValidationItem valid={passwordValidations.hasUppercase} text="One uppercase letter" />
-                  <ValidationItem valid={passwordValidations.hasLowercase} text="One lowercase letter" />
-                  <ValidationItem valid={passwordValidations.hasNumber} text="One number" />
-                  <ValidationItem valid={passwordValidations.hasSpecial} text="One special character (@$!%*?&)" />
                 </div>
               )}
             </div>

@@ -264,6 +264,37 @@ describe('Settings deep-linking and action wiring', () => {
     expect(mocks.userServiceMock.updateProfile).not.toHaveBeenCalled();
   });
 
+  it('rejects password changes shorter than 8 characters before API submission', async () => {
+    const user = userEvent.setup();
+
+    renderSettings('/settings?tab=profile');
+    await screen.findByRole('button', { name: /Save Changes/i });
+
+    await user.type(screen.getByPlaceholderText('Current Password'), 'old-password');
+    await user.type(screen.getByPlaceholderText('New Password'), 'abcdefg');
+    await user.type(screen.getByPlaceholderText('Confirm New Password'), 'abcdefg');
+    await user.click(screen.getByRole('button', { name: /Save Changes/i }));
+
+    await waitFor(() => {
+      expect(mocks.toastMock.error).toHaveBeenCalledWith('New password must be at least 8 characters');
+    });
+    expect(mocks.userServiceMock.changePassword).not.toHaveBeenCalled();
+  });
+
+  it('generates a matching 16-character password in Settings', async () => {
+    const user = userEvent.setup();
+
+    renderSettings('/settings?tab=profile');
+    await screen.findByRole('button', { name: /Save Changes/i });
+
+    await user.click(screen.getByRole('button', { name: /generate/i }));
+
+    const password = screen.getByPlaceholderText('New Password').value;
+    expect(password).toHaveLength(16);
+    expect(screen.getByPlaceholderText('Confirm New Password').value).toBe(password);
+    expect(screen.getByText('At least 8 characters')).toBeTruthy();
+  });
+
   it('keeps key Settings actions wired to concrete outcomes', async () => {
     const user = userEvent.setup();
 

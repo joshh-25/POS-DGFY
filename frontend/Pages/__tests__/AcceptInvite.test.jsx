@@ -71,10 +71,10 @@ describe('AcceptInvite', () => {
       target: { value: '+63 912 345 6789' }
     });
     fireEvent.change(screen.getByLabelText('Create Password'), {
-      target: { value: 'StrongPass1!' }
+      target: { value: 'abcdefgh' }
     });
     fireEvent.change(screen.getByLabelText('Confirm Password'), {
-      target: { value: 'StrongPass1!' }
+      target: { value: 'abcdefgh' }
     });
     fireEvent.change(screen.getByLabelText('Email Verification Code'), {
       target: { value: '123456' }
@@ -86,11 +86,41 @@ describe('AcceptInvite', () => {
       token: 'invite-token',
       username: 'teammate',
       phone_number: '+63 912 345 6789',
-      password: 'StrongPass1!',
+      password: 'abcdefgh',
       email_otp_code: '123456'
     }, {});
     expect(window.localStorage.getItem('authToken')).toBe('access-token');
     expect(window.localStorage.getItem('refreshToken')).toBe('refresh-token');
     expect(window.localStorage.getItem('companyToken')).toBe('tenant-token');
+  });
+
+  it('generates a matching 16-character password for invitation setup', async () => {
+    apiMock.get.mockResolvedValue({
+      data: {
+        data: {
+          email: 'teammate@example.com',
+          role: 'staff',
+          tenantName: 'Acme Foods',
+          inviter_name: 'Master Admin',
+          expires_at: '2026-05-07T04:30:00.000Z'
+        }
+      }
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/accept-invite?token=invite-token']}>
+        <Routes>
+          <Route path="/accept-invite" element={<AcceptInvite />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await screen.findByText('Acme Foods');
+    fireEvent.click(screen.getByRole('button', { name: /generate/i }));
+
+    const password = screen.getByLabelText('Create Password').value;
+    expect(password).toHaveLength(16);
+    expect(screen.getByLabelText('Confirm Password').value).toBe(password);
+    expect(screen.getByText('At least 8 characters')).toBeTruthy();
   });
 });

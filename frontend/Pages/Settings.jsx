@@ -16,7 +16,8 @@ import {
   History,
   XCircle,
   Plus,
-  Trash2
+  Trash2,
+  Wand2
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,6 +62,7 @@ import {
 } from '../src/features/settings/workflowMode.js';
 import resolveAssetUrl from '../src/utils/assetUrl.js';
 import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../src/utils/phoneNumber.js';
+import { generateReadablePassword, isPasswordLongEnough } from '../src/utils/passwordPolicy.js';
 
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const TERMINAL_REGISTRY_MODE_OPTIONS = ['warn', 'enforce'];
@@ -1350,6 +1352,20 @@ export default function Settings() {
     }
   };
 
+  const handleGenerateProfilePassword = () => {
+    const generatedPassword = generateReadablePassword();
+    setProfileSettings(prev => ({
+      ...prev,
+      newPassword: generatedPassword,
+      confirmPassword: generatedPassword
+    }));
+    setProfileErrors(prev => ({
+      ...prev,
+      newPassword: undefined,
+      confirmPassword: undefined
+    }));
+  };
+
   const handleSave = async () => {
     setProfileErrors({});
 
@@ -1359,6 +1375,12 @@ export default function Settings() {
         if (!profileSettings.currentPassword) {
           setProfileErrors({ currentPassword: 'Current password is required' });
           toast.error('Please enter your current password');
+          return;
+        }
+
+        if (!isPasswordLongEnough(profileSettings.newPassword)) {
+          setProfileErrors({ newPassword: 'New password must be at least 8 characters' });
+          toast.error('New password must be at least 8 characters');
           return;
         }
 
@@ -2026,23 +2048,53 @@ export default function Settings() {
                 <Label className="text-base font-semibold">Change Password</Label>
                 <div className="grid gap-4">
                   <Input
+                    id="currentPassword"
                     type="password"
                     placeholder="Current Password"
                     value={profileSettings.currentPassword}
                     onChange={(e) => handleProfileChange('currentPassword', e.target.value)}
+                    aria-invalid={Boolean(profileErrors.currentPassword)}
                   />
+                  {profileErrors.currentPassword && (
+                    <p className="text-xs text-red-600">{profileErrors.currentPassword}</p>
+                  )}
+                  <div className="grid gap-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label htmlFor="newPassword">New Password</Label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleGenerateProfilePassword}
+                        className="ml-auto h-8 gap-1.5"
+                      >
+                        <Wand2 className="w-3.5 h-3.5" />
+                        Generate
+                      </Button>
+                    </div>
+                    <Input
+                      id="newPassword"
+                      type="password"
+                      placeholder="New Password"
+                      value={profileSettings.newPassword}
+                      onChange={(e) => handleProfileChange('newPassword', e.target.value)}
+                      aria-invalid={Boolean(profileErrors.newPassword)}
+                    />
+                    <p className={`text-xs ${profileErrors.newPassword ? 'text-red-600' : 'text-slate-500'}`}>
+                      {profileErrors.newPassword || 'At least 8 characters'}
+                    </p>
+                  </div>
                   <Input
-                    type="password"
-                    placeholder="New Password"
-                    value={profileSettings.newPassword}
-                    onChange={(e) => handleProfileChange('newPassword', e.target.value)}
-                  />
-                  <Input
+                    id="confirmPassword"
                     type="password"
                     placeholder="Confirm New Password"
                     value={profileSettings.confirmPassword}
                     onChange={(e) => handleProfileChange('confirmPassword', e.target.value)}
+                    aria-invalid={Boolean(profileErrors.confirmPassword)}
                   />
+                  {profileErrors.confirmPassword && (
+                    <p className="text-xs text-red-600">{profileErrors.confirmPassword}</p>
+                  )}
                 </div>
               </div>
             </CardContent>
