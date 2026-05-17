@@ -89,6 +89,24 @@ describe('registerCompanyRequestUseCase approval mode', () => {
         expect(deps.provisionTenant).not.toHaveBeenCalled();
     });
 
+    it('rejects founder passwords shorter than 8 characters before creating a tenant', async () => {
+        const { deps, useCase } = createUseCase();
+
+        const result = await useCase({
+            body: {
+                ...validBody,
+                adminPassword: 'abcdefg'
+            },
+            correlationId: 'req-short-password'
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(400);
+        expect(result.error.message).toBe('Password must be at least 8 characters');
+        expect(deps.tenantAdminRepository.createTenant).not.toHaveBeenCalled();
+        expect(deps.hashPassword).not.toHaveBeenCalled();
+    });
+
     it('auto-provisions standard registration when auto_standard mode is enabled', async () => {
         const { deps, useCase } = createUseCase({
             getTenantRegistrationApprovalMode: jest.fn().mockReturnValue(TENANT_REGISTRATION_APPROVAL_MODES.AUTO_STANDARD)

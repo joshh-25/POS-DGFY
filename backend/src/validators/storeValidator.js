@@ -20,10 +20,14 @@ const checkoutLineSchema = Joi.object({
     modifiers: Joi.array().items(Joi.object().unknown(true)).max(30).optional()
 });
 
-const storeRegisterSchema = Joi.object({
+export const storeRegisterSchema = Joi.object({
     name: Joi.string().trim().min(1).max(255).required(),
     email: Joi.string().email().trim().lowercase().max(255).required(),
-    password: Joi.string().min(8).max(255).required(),
+    password: Joi.string().min(8).max(255).required().messages({
+        'string.min': 'Password must be at least 8 characters',
+        'string.max': 'Password must not exceed 255 characters',
+        'any.required': 'Password is required'
+    }),
     phone: Joi.string().trim().max(50).allow(null, '').optional()
 });
 

@@ -116,6 +116,20 @@ export const buildRegisterCompanyRequestUseCase = ({
                 ));
             }
 
+            if (String(adminPassword).length < 8) {
+                await tracker.failed({
+                    failureCode: 'validation_failed',
+                    failureReason: 'short_admin_password',
+                    httpStatus: 400
+                });
+
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Password must be at least 8 characters',
+                    { statusCode: 400 }
+                ));
+            }
+
             await verifyEmailOtp({
                 purpose: EMAIL_OTP_PURPOSES.COMPANY_REGISTRATION,
                 email: adminEmail,

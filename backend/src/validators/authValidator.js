@@ -35,9 +35,8 @@ export const registerSchema = Joi.object({
   phone_number: phoneNumberSchema.required().messages({
     'any.required': 'Phone number is required'
   }),
-  password: Joi.string().min(8).pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).+$/).required().messages({
+  password: Joi.string().min(8).required().messages({
     'string.min': 'Password must be at least 8 characters',
-    'string.pattern.base': 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
     'any.required': 'Password is required'
   }),
   email_otp_code: requiredEmailOtpCodeSchema()
@@ -81,9 +80,8 @@ export const acceptInviteSchema = Joi.object({
   phone_number: phoneNumberSchema.required().messages({
     'any.required': 'Phone number is required'
   }),
-  password: Joi.string().min(8).pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).+$/).required().messages({
+  password: Joi.string().min(8).required().messages({
     'string.min': 'Password must be at least 8 characters',
-    'string.pattern.base': 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
     'any.required': 'Password is required'
   }),
   email_otp_code: requiredEmailOtpCodeSchema()
