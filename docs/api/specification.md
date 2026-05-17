@@ -4420,8 +4420,10 @@ The system uses Nodemailer with SMTP for baseline email delivery and can use Bre
 
 Current operational status as of 2026-05-17:
 - Local Gmail SMTP requires a valid Gmail App Password. A normal Gmail password will fail with `EAUTH 535 BadCredentials`.
-- Production previously timed out to Brevo SMTP ports `587`, `2525`, and `465`; configure `BREVO_API_KEY` and a verified `EMAIL_FROM` sender to route through HTTPS API fallback when SMTP remains blocked.
-- Gmail SMTP is acceptable for local/testing only. Production should use Brevo SMTP where ports are open, or Brevo HTTPS API where only HTTPS egress is reliable.
+- Production commit `064766a3c465ca398f2abd821eb8465b72e13e7c` is deployed, the landlord `email_otps` migration is up, and Brevo SMTP verifies with `SMTP_HOST=smtp-relay.brevo.com`, `SMTP_PORT=587`, `SMTP_SECURE=false`, the Brevo SMTP login, the active SMTP key, and verified `EMAIL_FROM=skupervisor@gmail.com`.
+- A production send check using `npm run verify:email -- --send-to skupervisor@gmail.com` succeeded through the same `sendEmail` service path used by OTP delivery, returning provider `smtp` and a Brevo/Nodemailer message ID.
+- Brevo HTTPS API fallback is configured in shape (`EMAIL_DELIVERY_PROVIDER=auto`, `EMAIL_DELIVERY_FALLBACK_TO_BREVO_API=true`, `BREVO_API_URL=https://api.brevo.com/v3/smtp/email`) but `BREVO_API_KEY` is intentionally empty until an API key is provisioned. The active production path is SMTP.
+- Gmail SMTP is acceptable for local/testing only. Production should use Brevo SMTP where ports and credentials verify, or Brevo HTTPS API where only HTTPS egress is reliable.
 
 ### Environment Variables
 ```env
@@ -4439,7 +4441,7 @@ BREVO_API_URL=https://api.brevo.com/v3/smtp/email
 APP_URL=https://your-domain.com
 ```
 
-Run `npm run verify:email` from the repo root before enabling OTP enforcement in production. Use `npm run verify:email -- --send-to operator@example.com` for an end-to-end provider send test. The check fails when placeholder SMTP/Brevo credentials are still present.
+Run `npm run verify:email` from the repo root before enabling OTP enforcement in a new environment. Use `npm run verify:email -- --send-to operator@example.com` for an end-to-end provider send test. The check fails when placeholder SMTP/Brevo credentials are still present. On production, this check passed after correcting `SMTP_USER` to the Brevo SMTP login.
 
 ### Email Types
 

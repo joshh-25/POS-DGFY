@@ -251,11 +251,12 @@ The product handles SMTP/API unavailable or failed delivery as a first-class sta
 
 Current verified status as of `2026-05-17`:
 - Local Gmail SMTP is configured, but the saved credential fails with `EAUTH 535 BadCredentials`. Use a valid Gmail App Password for local/testing SMTP.
-- Production previously timed out to `smtp-relay.brevo.com` on ports `587`, `2525`, and `465`.
-- Brevo HTTPS API delivery is supported through `BREVO_API_KEY`, `BREVO_API_URL`, `EMAIL_DELIVERY_PROVIDER`, and `EMAIL_DELIVERY_FALLBACK_TO_BREVO_API`.
-- Before enabling enforced OTP flows in production, run `npm run verify:email` and then `npm run verify:email -- --send-to operator@example.com` from a production-equivalent shell.
+- Production is deployed at commit `064766a3c465ca398f2abd821eb8465b72e13e7c`; the landlord `email_otps` migration is applied.
+- Production Brevo SMTP is verified with the Brevo SMTP login (`a1b722001@smtp-brevo.com`), active SMTP key, and `EMAIL_FROM=skupervisor@gmail.com`. `npm run verify:email` passes, and `npm run verify:email -- --send-to skupervisor@gmail.com` sent a real message through provider `smtp`.
+- Brevo HTTPS API delivery is supported through `BREVO_API_KEY`, `BREVO_API_URL`, `EMAIL_DELIVERY_PROVIDER`, and `EMAIL_DELIVERY_FALLBACK_TO_BREVO_API`; production has the non-secret fallback keys present, but `BREVO_API_KEY` remains empty because SMTP is the verified active provider.
+- Before enabling enforced OTP flows in any new environment, run `npm run verify:email` and then `npm run verify:email -- --send-to operator@example.com` from that environment.
 
-Production email delivery can be closed out by either unblocking Brevo SMTP at the provider/network level or configuring Brevo HTTPS API delivery with a valid API key and verified `EMAIL_FROM` sender. Until then, manual-link invitation recovery remains available for non-OTP invitation sends, but email-ownership OTP flows are not production-ready because they must fail closed when the code cannot be delivered.
+Production email delivery is closed for the SMTP path. Manual-link invitation recovery remains available for non-OTP invitation sends, but email-ownership OTP flows now have a verified production delivery path and still fail closed if provider delivery fails.
 
 ---
 
