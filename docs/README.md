@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-05-15
+last_reviewed: 2026-05-17
 applies_to: all_documentation_users
 topic: docs_hub
 ---
@@ -49,6 +49,7 @@ Start here for all planning and implementation work:
 - Storefront mode presentation is tracked in `docs/features/STOREFRONT_CURRENT_STANDING.md` and `docs/proposals/STOREFRONT_UI_IMPLEMENTATION_BRIEF.md`. The current storefront app uses a shared template registry plus Services/F&B view models, preserves customer-access/inventory-display gates, and keeps mode-specific lazy surfaces such as service booking, F&B reservation, and map presentation outside the initial generic catalog shell where possible.
 - Tenant provisioning/model-clone hardening is part of the workflow-mode readiness contract. Future mode plans must include tenant-local table and foreign-key mapping, `tenantModelFactory` clone coverage, disposable schema sync evidence across `WORKFLOW_MODE_VALUES`, and retryable approval/auto-approval cleanup behavior.
 - Account-phone rollout hardening is tracked in `docs/features/TENANT_MANAGEMENT.md`, `docs/api/specification.md`, `docs/database/schema.md`, and `docs/reference/QUICK_REFERENCE.md`. New company/user registration requires phone capture, historical accepted users are surfaced for remediation, and post-login enforcement now uses staged rollout controls (`observe`, tenant allowlist, then `all`) instead of surprise global lockout.
+- Account password policy is tracked in `docs/features/TENANT_MANAGEMENT.md`, `docs/api/specification.md`, and `docs/features/SETTINGS_INFORMATION_ARCHITECTURE.md`. Registration, invitation acceptance, company founder registration, and Settings > Profile password changes require only a minimum of 8 characters; the frontend offers an optional readable 16-character generator on those password-entry flows.
 
 ## Repository Structure Snapshot
 - `backend/`: Express + Sequelize modular-monolith backend
@@ -101,6 +102,7 @@ Start here for all planning and implementation work:
 32. Storefront discovery map pins use preview-first branded marker cards. Duplicate-coordinate pins are separated with display-only marker offsets so each pin remains targetable without changing stored branch coordinates or location-scoped Storefront routing.
 33. Storefront mode presentation is template-driven. Services Mode uses service-specific view-model grouping, availability/hold-backed booking drafts, batch booking, and per-booking confirmation/payment rendering; F&B uses restaurant/menu grouping, default modifier selection, allergen presentation, and a reservation entry point; simple/MSME keeps a lightweight product storefront. The May 14, 2026 local production candidate passed 74 storefront app tests and a tenant-store build with a fresh vendor chunk, replacing the previously reported failing `vendor-BGNbcnYt.js` runtime path.
 34. Account-phone rollout is now explicit and staged. New company/user registration and invite acceptance require phone numbers, existing users can correct numbers in Settings > Profile, admins can isolate missing-phone accounts in User Management, and backend enforcement defaults to `PHONE_COMPLETION_ENFORCEMENT_MODE=observe` outside tests. Operators can pilot clean tenants through `tenant_allowlist`, inspect unresolved users with `npm --prefix backend run verify:phone-rollout:users`, prove current config safety with `npm --prefix backend run verify:phone-rollout:config-safe`, and only switch to global `all` mode after `npm --prefix backend run verify:phone-rollout:complete` passes.
+35. Account passwords require only a minimum of 8 characters across tenant user registration, invitation acceptance, company founder registration, and authenticated Settings > Profile password changes. The frontend password generator is optional convenience UI, defaults to a readable 16-character password, and fills matching confirmation fields where present.
 
 ## Rules
 1. Use authoritative docs first.

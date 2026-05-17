@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-05-09
+last_reviewed: 2026-05-17
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -22,6 +22,7 @@ The SKU Inventory Manager uses a **Multi-Tenant Architecture** with **Database I
 - **Provider Subscription Onboarding**: Disabled for this phase. Requests that include provider subscription verification are rejected with `503` and `PAYMENTS_DISABLED`.
 - **Founder Contact Requirement**: Public company registration requires an admin phone number. The landlord tenant record stores it as `admin_phone`, and provisioning copies it into the founder/admin user's `phone_number`.
 - **Founder Email Verification**: Public company registration requires a single-use email OTP for `adminEmail` before any tenant request is created. The registration page includes Send Code/Resend Code controls, requests the code through `POST /api/v1/auth/email-otp/request` with `purpose=company_registration`, and submits it as `email_otp_code`.
+- **Password Requirement**: Account registration, invitation acceptance, and password changes require only a minimum password length of 8 characters. The UI offers a readable 16-character generator, but generated passwords are optional.
 - **Phone Format**: Company admin phone numbers and user phone numbers are trimmed and must be 7-40 characters using digits, spaces, `+`, `-`, parentheses, and periods.
 - **Provisioning Trigger**: Database provisioning runs after explicit admin approval in `manual` mode, or during public registration in `auto_standard` mode.
 - **Email Mapping**: Manual pending registrations create the founder email-to-tenant mapping at registration time so lookup can show pending status. Auto-provisioned registrations leave mapping creation to the provisioning path so the mapping is written only after tenant activation succeeds.

@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-05-13
+last_reviewed: 2026-05-17
 applies_to: sku_pervisor_settings_surface
 topic: settings_information_architecture
 ---
@@ -35,7 +35,7 @@ Current top-level tabs:
 
 | Tab | Purpose | Examples |
 |---|---|---|
-| Profile | Current user's personal account details | Name, email, phone number, profile-level preferences |
+| Profile | Current user's personal account details | Name, email, phone number, profile-level preferences, password change |
 | Company | Tenant identity, team, and business mode | Company details, user management, workflow/business mode selector with legacy manufacturing alias hidden from new choices |
 | Storefront | Public DGFY storefront operations and presentation | Storefront slug, open status, fulfillment toggles, locations, primary pin, inactive-pin permanent delete, logo/cover, customer access mode, inventory display, customer-facing content |
 | POS Setup | DGFY POS terminal, receipt, fiscal metadata, and cashier closeout behavior | Legal receipt metadata, TIN/PTU/MIN/accreditation, petty cash, terminal policy, DGFY fee policy, POS discounts |
@@ -56,6 +56,7 @@ Current top-level tabs:
 10. Storefront item controls are edit-gated. Inventory users without `items:edit` must not see disabled Storefront switches or image controls backed by inferred defaults, because the Storefront override read endpoint is also edit-gated.
 11. User phone number management belongs in `Profile` because it is an account-level contact field. Existing users may add or change it there after login; company/user registration and invitation acceptance require it at account creation. Saving profile identity changes must not clear the resulting phone number.
 12. Accepted-user phone visibility belongs in `Company -> Manage Users` because admins need to identify legacy accepted users missing the new required contact field. Pending invitation rows do not collect phone numbers until acceptance.
+13. Authenticated password changes belong in `Profile` because they update the current user's account credential. The current password-change UI validates only current password presence, new password minimum length of 8 characters, and confirmation match before calling `PUT /users/me/password`; the optional generator fills the new and confirmation fields with a readable 16-character password.
 
 ## Deep-Link Contract
 
