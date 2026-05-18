@@ -72,6 +72,8 @@ npm run lint:docs
 npm run doctor:runtime
 npm run smoke:pos-local
 npm run check:architecture
+npm run check:frontend-budgets
+npm run check:compliance
 ```
 
 ## Key Capabilities
@@ -82,9 +84,11 @@ npm run check:architecture
 - POS checkout, discounts, service fees, terminal shifts, and Z-reading
 - Unified sales read model
 - Tenant locations and storefront discovery
+- Default auto-activation company registration plus first-login onboarding for brand assets, primary location, and starter items
 - Public store catalog, quote, checkout, booking, waitlist, and order tracking
 - Customer Access Mode and Inventory Display controls for storefront rollout-gated public behavior
 - Services Mode with item-backed service catalog rows, bookings, resources/providers, reminders, intake forms, and stock-exempt POS service sales
+- Food & Beverage Mode with menu modifiers, dining areas/tables, checks, kitchen tickets, reservations, and restaurant service-charge snapshots
 - AI-assisted workflows and generated AI docs
 
 ## Documentation

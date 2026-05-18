@@ -61,9 +61,11 @@ Canonical planning entry:
 - Account password policy is tracked in `docs/features/TENANT_MANAGEMENT.md`, `docs/api/specification.md`, and `docs/features/SETTINGS_INFORMATION_ARCHITECTURE.md`. Current registration, invitation acceptance, company founder registration, and Settings > Profile password-change flows enforce only a minimum of 8 characters and expose an optional readable 16-character generator.
 - Public company registration abuse limits are tracked in the same tenant/API docs and configured through `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` plus `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`.
 - Compliance governance, classification floors, and PH regulatory mapping are under `docs/compliance`.
+- Compliance-sensitive changes are branch-gated by `npm run check:compliance`; declaration files must satisfy computed classification floors, and `major|regulatory` declarations require preflight metadata.
 - Compliance evidence and submission packet are under `docs/compliance/evidence/` and `docs/compliance/submission/`.
 - Compliance Final Review documentary requirements are tenant self-serve in Settings > Compliance (backend stores tenant records; submission docs remain internal reference).
 - Compliance activation readiness browser E2E and startup regression guardrails are under `docs/testing/README.md`.
+- Frontend release-hardening budgets are documented in `docs/testing/README.md`; `npm run check:frontend-budgets` governs route chunks and keeps lazy MapLibre isolated under its dedicated ceiling.
 - Historical compliance remediation packets are archived under `docs/archive/compliance/2026-04-07`.
 - Historical exploratory testing packets are archived under `docs/archive/testing/`.
 - Historical SKU expansion/storefront planning snapshots are archived under `docs/archive/reference/2026-03/`.

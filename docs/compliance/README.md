@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: compliance
-last_reviewed: 2026-04-09
+last_reviewed: 2026-05-18
 applies_to: compliance_docs_navigation
 topic: compliance_docs_index
 ---
@@ -30,6 +30,9 @@ Final Review self-serve:
 
 Change declaration workflow:
 - `docs/compliance/impact-declarations/`
+- `scripts/check-compliance-impact.js` computes the minimum classification from the changed sensitive surfaces.
+- `major` and `regulatory` declarations must include strict preflight metadata and `preflight_result=no_breach`.
+- `scripts/check-compliance-api-contracts.js` runs with `npm run check:compliance` and blocks contract drift against `docs/api/specification.md`.
 
 Historical remediation packets from April 2026 were moved to:
 - `docs/archive/compliance/2026-04-07/`
