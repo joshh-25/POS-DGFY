@@ -47,7 +47,7 @@ const createUseCase = (overrides = {}) => {
         emailService,
         hashPassword,
         idGenerator,
-        getTenantRegistrationApprovalMode: jest.fn().mockReturnValue(TENANT_REGISTRATION_APPROVAL_MODES.MANUAL),
+        getTenantRegistrationApprovalMode: jest.fn().mockReturnValue(TENANT_REGISTRATION_APPROVAL_MODES.AUTO_STANDARD),
         logger,
         ...overrides
     };
@@ -59,20 +59,58 @@ const createUseCase = (overrides = {}) => {
 };
 
 describe('registerCompanyRequestUseCase approval mode', () => {
-    it('falls back to manual mode for invalid approval mode values', () => {
+    it('defaults to auto-standard mode when approval mode is omitted', () => {
+        expect(normalizeTenantRegistrationApprovalMode()).toBe(
+            TENANT_REGISTRATION_APPROVAL_MODES.AUTO_STANDARD
+        );
+    });
+
+    it('falls back to auto-standard mode for invalid approval mode values', () => {
         const logger = { warn: jest.fn() };
 
         expect(normalizeTenantRegistrationApprovalMode('invalid-mode', logger)).toBe(
-            TENANT_REGISTRATION_APPROVAL_MODES.MANUAL
+            TENANT_REGISTRATION_APPROVAL_MODES.AUTO_STANDARD
         );
         expect(logger.warn).toHaveBeenCalledWith(
-            '[TenantRegistration] Invalid TENANT_REGISTRATION_APPROVAL_MODE; using manual approval',
+            '[TenantRegistration] Invalid TENANT_REGISTRATION_APPROVAL_MODE; using default auto-standard approval',
             expect.objectContaining({ providedValue: 'invalid-mode' })
         );
     });
 
-    it('keeps standard registration pending in manual approval mode', async () => {
+    it('auto-provisions standard registration by default', async () => {
         const { deps, useCase } = createUseCase();
+
+        const result = await useCase({ body: validBody, correlationId: 'req-auto-default' });
+
+        expect(result.success).toBe(true);
+        expect(result.data.payload.message).toBe('Company registered and activated successfully. You can sign in now.');
+        expect(result.data.payload.data).toEqual(expect.objectContaining({
+            status: 'active',
+            company_token: 'token-autoacceptfoods-12345678',
+            email_sent: false
+        }));
+        expect(deps.tenantAdminRepository.createTenant).toHaveBeenCalledWith(expect.objectContaining({
+            status: 'pending',
+            payment_method: 'manual',
+            plan: 'premium'
+        }));
+        expect(deps.addEmailTenantMapping).not.toHaveBeenCalled();
+        expect(deps.provisionTenant).toHaveBeenCalledWith(expect.objectContaining({
+            tenantId: '12345678-aaaa-bbbb-cccc-123456789abc',
+            name: validBody.name,
+            dbName: 'sku_tenant_autoacceptfoods_12345678',
+            companyToken: 'token-autoacceptfoods-12345678',
+            adminEmail: validBody.adminEmail,
+            adminPhone: validBody.adminPhone,
+            adminPasswordHash: 'hashed-password',
+            workflowMode: validBody.workflowMode
+        }));
+    });
+
+    it('keeps standard registration pending when manual approval mode is explicitly configured', async () => {
+        const { deps, useCase } = createUseCase({
+            getTenantRegistrationApprovalMode: jest.fn().mockReturnValue(TENANT_REGISTRATION_APPROVAL_MODES.MANUAL)
+        });
 
         const result = await useCase({ body: validBody, correlationId: 'req-manual' });
 
@@ -107,7 +145,7 @@ describe('registerCompanyRequestUseCase approval mode', () => {
         expect(deps.hashPassword).not.toHaveBeenCalled();
     });
 
-    it('auto-provisions standard registration when auto_standard mode is enabled', async () => {
+    it('auto-provisions standard registration when auto_standard mode is explicitly configured', async () => {
         const { deps, useCase } = createUseCase({
             getTenantRegistrationApprovalMode: jest.fn().mockReturnValue(TENANT_REGISTRATION_APPROVAL_MODES.AUTO_STANDARD)
         });

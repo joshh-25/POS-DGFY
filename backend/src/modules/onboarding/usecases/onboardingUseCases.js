@@ -58,12 +58,12 @@ export const buildSaveOnboardingStepUseCase = ({ onboardingRepository, syncStore
       let sync = null;
       if (
         tenantId
-        && stepKey === 'business_classification'
+        && ['primary_location', 'bulk_items'].includes(String(stepKey || '').trim())
         && typeof syncStorefrontDiscoveryWithReliability === 'function'
       ) {
         sync = await syncStorefrontDiscoveryWithReliability({
           tenantId,
-          source: 'tenant_onboarding_business_classification'
+          source: `tenant_onboarding_${String(stepKey).trim()}`
         }).catch((error) => ({
           ok: false,
           attempts: 0,

@@ -155,7 +155,7 @@ const createDefaultSettings = ({ workflowMode = DEFAULT_WORKFLOW_MODE } = {}) =>
   customerAccessMode: 'catalog',
   inventoryDisplayMode: 'availability',
   inventoryLowStockDisplayThreshold: 5,
-  customerAccessRegistrationStage: 'informal',
+  customerAccessRegistrationStage: 'registered',
   customerAccessFlagStatus: 'enabled',
   storefrontTagline: '',
   storefrontAbout: '',
@@ -645,8 +645,8 @@ export default function Settings() {
         const customerAccessRegistrationStage = String(
           onboardingProgress?.step_payloads?.business_classification?.legitimacy?.registration_status
           || onboardingProgress?.classification_snapshot?.payload?.legitimacy?.registration_status
-          || 'informal'
-        ).trim().toLowerCase() || 'informal';
+          || 'registered'
+        ).trim().toLowerCase() || 'registered';
         const storefrontCategoriesRaw = Array.isArray(systemSettings.storefront_categories?.value)
           ? systemSettings.storefront_categories.value
           : [];
@@ -2423,7 +2423,7 @@ export default function Settings() {
                   />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Map Pin (OpenStreetMap)</Label>
+                  <Label>Map Pin (MapLibre)</Label>
                   <MapPinPicker
                     latitude={locationForm.latitude}
                     longitude={locationForm.longitude}

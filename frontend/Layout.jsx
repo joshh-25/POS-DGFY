@@ -306,6 +306,7 @@ export default function Layout({ children, currentPageName }) {
         }}
         onboarding={onboarding}
         currentUser={currentUser}
+        workflowMode={workflowMode}
         onRefreshUser={refreshCurrentUser}
       />
       <FeedbackWidget />

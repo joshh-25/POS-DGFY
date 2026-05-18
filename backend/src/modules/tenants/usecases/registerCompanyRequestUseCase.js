@@ -25,7 +25,7 @@ export const buildRegisterCompanyRequestUseCase = ({
     emailService,
     hashPassword,
     idGenerator,
-    getTenantRegistrationApprovalMode = () => TENANT_REGISTRATION_APPROVAL_MODES.MANUAL,
+    getTenantRegistrationApprovalMode = () => TENANT_REGISTRATION_APPROVAL_MODES.AUTO_STANDARD,
     logger
 }) => {
     return async ({ body, correlationId }) => {
@@ -267,7 +267,7 @@ export const buildRegisterCompanyRequestUseCase = ({
                     ));
                 }
             }
-            // No subscriptionId uses manual approval unless auto-standard mode is explicitly enabled.
+            // No subscriptionId provisions immediately by default unless manual approval is explicitly configured.
 
             const uuid = idGenerator();
             const safeName = name.toLowerCase().replace(/[^a-z0-9]/g, '');

@@ -10,6 +10,7 @@ const EMAIL_PREFIX = 'lookup-v2-test-';
 const ts = Date.now();
 
 const makeEmail = (label) => `${EMAIL_PREFIX}${label}-${ts}@example.com`;
+let previousApprovalMode;
 
 const baseData = (label) => ({
     name: `Lookup V2 Test Corp [${label}] ${ts}`,
@@ -22,8 +23,19 @@ const baseData = (label) => ({
 });
 
 // ─── Cleanup ────────────────────────────────────────────────────────────────
+beforeAll(() => {
+    previousApprovalMode = process.env.TENANT_REGISTRATION_APPROVAL_MODE;
+    process.env.TENANT_REGISTRATION_APPROVAL_MODE = 'manual';
+});
+
 // Pattern-based: catches orphans even if a test fails mid-way.
 afterAll(async () => {
+    if (previousApprovalMode === undefined) {
+        delete process.env.TENANT_REGISTRATION_APPROVAL_MODE;
+    } else {
+        process.env.TENANT_REGISTRATION_APPROVAL_MODE = previousApprovalMode;
+    }
+
     await db.UserTenantMapping.destroy({
         where: { email: { [Op.like]: `${EMAIL_PREFIX}%` } },
     });

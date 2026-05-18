@@ -36,7 +36,7 @@ describe('onboardingRepository schema compatibility', () => {
         status: { fieldName: 'status', field: 'status' },
         deleted_at: { fieldName: 'deleted_at', field: 'deleted_at' }
       },
-      count: jest.fn().mockResolvedValue(1)
+      findAll: jest.fn()
     };
 
     mockDbStore.get.mockImplementation((name) => {
@@ -48,42 +48,13 @@ describe('onboardingRepository schema compatibility', () => {
 
     await onboardingRepository.getStatus({ storeNameBaseline: 'Tenant One' });
 
-    expect(Item.count).toHaveBeenCalledTimes(1);
-    const where = Item.count.mock.calls[0][0].where;
-    expect(where).toEqual({
-      deleted_at: null,
-      status: 'active'
-    });
-    expect(where.is_active).toBeUndefined();
-    expect(where.pos_visible).toBeUndefined();
+    expect(Item.findAll).not.toHaveBeenCalled();
   });
 
-  it('derives deterministic advisory classification snapshot from business_classification payload', async () => {
+  it('reports priced starter item readiness without requiring positive stock', async () => {
     const progress = {
       step_payloads: {
-        business_classification: {
-          legitimacy: {
-            registration_status: 'registered',
-            requires_official_receipt: true
-          },
-          location_presence: {
-            branch_count: 3
-          },
-          operations_staff: {
-            pos_user_count: 10,
-            needs_rbac: true
-          },
-          order_booking: {
-            order_modes: ['scheduled'],
-            fulfillment_methods: ['platform_delivery']
-          },
-          online_visibility: {
-            mode: 'transaction'
-          },
-          growth_intent: {
-            estimated_monthly_sales: 500000
-          }
-        }
+        bulk_items: { created_item_ids: [1] }
       }
     };
     const SystemSetting = {
@@ -93,16 +64,42 @@ describe('onboardingRepository schema compatibility', () => {
           setting_value: JSON.stringify(progress)
         }
       ]),
-      findOne: jest.fn().mockResolvedValue(null)
+      findOne: jest.fn(({ where }) => {
+        if (where?.setting_key === 'ops_workflow_mode') {
+          return Promise.resolve({ setting_value: 'food_manufacturing' });
+        }
+        return Promise.resolve(null);
+      })
     };
     const TenantLocation = {
       count: jest.fn().mockResolvedValue(1)
     };
     const Item = {
       rawAttributes: {
-        item_id: { fieldName: 'item_id', field: 'item_id' }
+        item_id: { fieldName: 'item_id', field: 'item_id' },
+        name: { fieldName: 'name', field: 'name' },
+        sku_code: { fieldName: 'sku_code', field: 'sku_code' },
+        category: { fieldName: 'category', field: 'category' },
+        product_type: { fieldName: 'product_type', field: 'product_type' },
+        mode_item_preset: { fieldName: 'mode_item_preset', field: 'mode_item_preset' },
+        status: { fieldName: 'status', field: 'status' },
+        default_sale_price: { fieldName: 'default_sale_price', field: 'default_sale_price' },
+        current_stock: { fieldName: 'current_stock', field: 'current_stock' }
       },
-      count: jest.fn().mockResolvedValue(1)
+      findAll: jest.fn().mockResolvedValue([
+        {
+          toJSON: () => ({
+            item_id: 1,
+            name: 'Starter',
+            category: 'product',
+            product_type: 'finished_goods',
+            mode_item_preset: 'finished_product',
+            status: 'active',
+            default_sale_price: 25,
+            current_stock: 0
+          })
+        }
+      ])
     };
 
     mockDbStore.get.mockImplementation((name) => {
@@ -113,12 +110,61 @@ describe('onboardingRepository schema compatibility', () => {
     });
 
     const result = await onboardingRepository.getStatus({ storeNameBaseline: 'Tenant One' });
-    const snapshot = result.tenant_onboarding_progress.classification_snapshot;
-    expect(snapshot.visibility_mode).toBe('transaction');
-    expect(snapshot.monetization_tier).toBe('tier_3');
-    expect(snapshot.workflow_mode_recommendation).toBe('food_manufacturing');
-    expect(snapshot.customer_access_mode).toBe('transaction');
-    expect(snapshot.inventory_display_mode).toBe('availability');
-    expect(snapshot.compliance_path_hint).toBe('regulated_ready');
+    const checklist = result.tenant_onboarding_progress.checklist_snapshot;
+    expect(checklist.checklist.has_priced_starter_item).toBe(true);
+    expect(checklist.missing_requirements).toEqual([]);
+  });
+
+  it('does not count internal Food Manufacturing presets as onboarding completion starters', async () => {
+    const SystemSetting = {
+      findAll: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn(({ where }) => {
+        if (where?.setting_key === 'ops_workflow_mode') {
+          return Promise.resolve({ setting_value: 'food_manufacturing' });
+        }
+        return Promise.resolve(null);
+      })
+    };
+    const TenantLocation = {
+      count: jest.fn().mockResolvedValue(1)
+    };
+    const Item = {
+      rawAttributes: {
+        item_id: { fieldName: 'item_id', field: 'item_id' },
+        name: { fieldName: 'name', field: 'name' },
+        sku_code: { fieldName: 'sku_code', field: 'sku_code' },
+        category: { fieldName: 'category', field: 'category' },
+        product_type: { fieldName: 'product_type', field: 'product_type' },
+        mode_item_preset: { fieldName: 'mode_item_preset', field: 'mode_item_preset' },
+        status: { fieldName: 'status', field: 'status' },
+        default_sale_price: { fieldName: 'default_sale_price', field: 'default_sale_price' },
+        current_stock: { fieldName: 'current_stock', field: 'current_stock' }
+      },
+      findAll: jest.fn().mockResolvedValue([
+        {
+          toJSON: () => ({
+            item_id: 1,
+            name: 'Flour',
+            category: 'raw_material',
+            mode_item_preset: 'raw_material',
+            status: 'active',
+            default_sale_price: 25,
+            current_stock: 0
+          })
+        }
+      ])
+    };
+
+    mockDbStore.get.mockImplementation((name) => {
+      if (name === 'SystemSetting') return SystemSetting;
+      if (name === 'TenantLocation') return TenantLocation;
+      if (name === 'Item') return Item;
+      return null;
+    });
+
+    const result = await onboardingRepository.getStatus({ storeNameBaseline: 'Tenant One' });
+    const checklist = result.tenant_onboarding_progress.checklist_snapshot;
+    expect(checklist.checklist.has_priced_starter_item).toBe(false);
+    expect(checklist.missing_requirements).toContain('has_priced_starter_item');
   });
 });

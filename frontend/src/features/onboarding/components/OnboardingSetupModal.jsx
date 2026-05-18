@@ -1,69 +1,36 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { completeOnboarding, saveOnboardingStep, trackOnboardingEvent } from '@/services/onboardingService.js';
-import { updateSettings, uploadStorefrontAsset } from '@/services/settingsService.js';
-import { WORKFLOW_MODE_LABELS } from '@/src/features/settings/workflowMode.js';
+import {
+  bulkCreateOnboardingItems,
+  completeOnboarding,
+  saveOnboardingStep,
+  trackOnboardingEvent
+} from '@/services/onboardingService.js';
+import { uploadStorefrontAsset } from '@/services/settingsService.js';
+import {
+  createTenantLocation,
+  listTenantLocations,
+  updateTenantLocation
+} from '@/src/services/tenantLocationService.js';
+import { uploadStorefrontCatalogImage } from '@/src/services/storefrontCatalogService.js';
+import {
+  DEFAULT_WORKFLOW_MODE,
+  getWorkflowModeLabel,
+  normalizeWorkflowMode
+} from '@/src/features/settings/workflowMode.js';
+import {
+  getDefaultItemPreset,
+  resolveModeItemTaxonomy
+} from '@/src/features/settings/modeItemTaxonomy.js';
+import MapPinPicker from '@/src/components/maps/MapPinPicker.jsx';
 
-const WIZARD_STEPS = Object.freeze([
-  'business_profile',
-  'brand_assets',
-  'business_classification',
-  'readiness'
-]);
-
-const VISIBILITY_OPTIONS = Object.freeze([
-  { value: 'ghost', label: 'Ghost (profile and contact only)' },
-  { value: 'catalog', label: 'Catalog Only' },
-  { value: 'inquiry', label: 'Inquiry' },
-  { value: 'transaction', label: 'Transaction' }
-]);
-
-const INVENTORY_DISPLAY_OPTIONS = Object.freeze([
-  { value: 'hidden', label: 'Hidden' },
-  { value: 'availability', label: 'Availability' },
-  { value: 'low_stock', label: 'Low Stock' },
-  { value: 'exact_quantity', label: 'Exact Quantity' }
-]);
-
-const OFFERING_OPTIONS = Object.freeze([
-  { value: 'physical_product', label: 'Physical products' },
-  { value: 'time_service', label: 'Time-based services' },
-  { value: 'ticketed_seat', label: 'Ticketed seats' },
-  { value: 'capacity_slot', label: 'Capacity slots' },
-  { value: 'rental', label: 'Rentals' }
-]);
-
-const ORDER_MODE_OPTIONS = Object.freeze([
-  { value: 'walk_in', label: 'Walk-in' },
-  { value: 'pre_order', label: 'Pre-order' },
-  { value: 'scheduled', label: 'Scheduled' },
-  { value: 'realtime', label: 'Real-time' }
-]);
-
-const FULFILLMENT_OPTIONS = Object.freeze([
-  { value: 'pickup', label: 'Pickup' },
-  { value: 'own_delivery', label: 'Own delivery' },
-  { value: 'platform_delivery', label: 'Platform delivery' },
-  { value: 'on_site_service', label: 'On-site service' }
-]);
-
-const tierLabelMap = Object.freeze({
-  tier_0: 'Tier 0 (Ghost Listing)',
-  tier_1: 'Tier 1 (Catalog Mode)',
-  tier_2: 'Tier 2 (Inquiry Mode)',
-  tier_3: 'Tier 3 (Transaction Mode)'
-});
-
-const workflowLabelMap = Object.freeze(Object.fromEntries(
-  Object.entries(WORKFLOW_MODE_LABELS).map(([key, label]) => [key, `${label} template recommendation`])
-));
+const WIZARD_STEPS = Object.freeze(['brand_assets', 'primary_location', 'bulk_items']);
 
 const getProgress = (onboarding) => {
   const snapshot = onboarding?.tenant_onboarding_progress?.checklist_snapshot;
   if (!snapshot) {
     return {
-      required_total: 4,
+      required_total: 3,
       completed_required_count: 0,
       missing_requirements: []
     };
@@ -79,107 +46,58 @@ const getProgress = (onboarding) => {
 const formatRequirementLabel = (key) => {
   const labelMap = {
     store_name_ready: 'Store name available',
-    has_active_location: 'At least one active location',
     has_primary_storefront_location: 'Primary storefront location set',
-    has_sellable_item: 'At least one sellable POS item'
+    has_priced_starter_item: 'At least one priced starter item'
   };
-  return labelMap[key] || key.replace(/_/g, ' ');
+  return labelMap[key] || String(key || '').replace(/_/g, ' ');
 };
 
-const deriveDisplayName = ({ onboarding, currentUser }) => {
-  const payloadName = String(
-    onboarding?.tenant_onboarding_progress?.step_payloads?.business_profile?.pos_business_name || ''
-  ).trim();
-  if (payloadName) return payloadName;
-  return String(currentUser?.company?.name || '').trim();
+const makeRowId = () => `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const fallbackPreset = Object.freeze({
+  key: 'default',
+  label: 'Default Item',
+  category: 'product',
+  product_type: 'finished_goods',
+  default_unit: 'pcs',
+  max_capacity: 100,
+  fifo_enabled: true
+});
+
+const resolvePresetOptions = (workflowMode) => {
+  const taxonomy = resolveModeItemTaxonomy(workflowMode);
+  if (taxonomy?.presets?.length) return taxonomy.presets;
+  return [fallbackPreset];
 };
 
-const normalizeList = (value) => Array.isArray(value) ? value.filter(Boolean) : [];
-
-const deriveClassificationPayload = (onboarding) => {
-  const existing = onboarding?.tenant_onboarding_progress?.step_payloads?.business_classification;
-  if (!existing || typeof existing !== 'object') {
-    return {
-      identity: { industry_tags: [] },
-      legitimacy: { registration_status: 'informal', requires_official_receipt: false },
-      location_presence: { operation_type: 'fixed', branch_count: 1, radius_visibility: 'approximate' },
-      operations_staff: { pos_user_count: 1, needs_rbac: false },
-      product_service: { offering_types: [] },
-      order_booking: { order_modes: ['walk_in'], fulfillment_methods: ['pickup'] },
-      online_visibility: { mode: 'catalog' },
-      inventory_display: { mode: 'availability', low_stock_threshold: 5 },
-      payment_configuration: { accepted_in_store_payments: ['cash'], accepts_online_payments: false, payout_destination: 'bank_transfer', settlement_preference: 'daily' },
-      branding: { branding_level: 'basic', has_custom_domain: false },
-      customer_interaction: { preferred_channels: ['sms'], tracks_customer_data: false },
-      growth_intent: { growth_goals: [], estimated_monthly_sales: 0 }
-    };
-  }
-
+const buildEmptyItemRow = (workflowMode) => {
+  const defaultPreset = getDefaultItemPreset(workflowMode) || resolvePresetOptions(workflowMode)[0] || fallbackPreset;
   return {
-    identity: {
-      official_name: String(existing?.identity?.official_name || '').trim(),
-      display_name: String(existing?.identity?.display_name || '').trim(),
-      industry_tags: normalizeList(existing?.identity?.industry_tags)
-    },
-    legitimacy: {
-      registration_status: String(existing?.legitimacy?.registration_status || 'informal').trim().toLowerCase(),
-      requires_official_receipt: Boolean(existing?.legitimacy?.requires_official_receipt)
-    },
-    location_presence: {
-      operation_type: String(existing?.location_presence?.operation_type || 'fixed').trim().toLowerCase(),
-      branch_count: Number(existing?.location_presence?.branch_count || 1),
-      radius_visibility: String(existing?.location_presence?.radius_visibility || 'approximate').trim().toLowerCase()
-    },
-    operations_staff: {
-      pos_user_count: Number(existing?.operations_staff?.pos_user_count || 1),
-      needs_rbac: Boolean(existing?.operations_staff?.needs_rbac)
-    },
-    product_service: {
-      offering_types: normalizeList(existing?.product_service?.offering_types)
-    },
-    order_booking: {
-      order_modes: normalizeList(existing?.order_booking?.order_modes),
-      fulfillment_methods: normalizeList(existing?.order_booking?.fulfillment_methods)
-    },
-    online_visibility: {
-      mode: String(existing?.customer_access_mode || existing?.online_visibility?.mode || 'catalog').trim().toLowerCase()
-    },
-    inventory_display: {
-      mode: String(existing?.inventory_display_mode || existing?.inventory_display?.mode || 'availability').trim().toLowerCase(),
-      low_stock_threshold: Number(existing?.inventory_low_stock_display_threshold || existing?.inventory_display?.low_stock_threshold || 5)
-    },
-    payment_configuration: {
-      accepted_in_store_payments: normalizeList(existing?.payment_configuration?.accepted_in_store_payments),
-      accepts_online_payments: Boolean(existing?.payment_configuration?.accepts_online_payments),
-      payout_destination: String(existing?.payment_configuration?.payout_destination || 'bank_transfer').trim().toLowerCase(),
-      settlement_preference: String(existing?.payment_configuration?.settlement_preference || 'daily').trim().toLowerCase()
-    },
-    branding: {
-      branding_level: String(existing?.branding?.branding_level || 'basic').trim().toLowerCase(),
-      has_custom_domain: Boolean(existing?.branding?.has_custom_domain)
-    },
-    customer_interaction: {
-      preferred_channels: normalizeList(existing?.customer_interaction?.preferred_channels),
-      tracks_customer_data: Boolean(existing?.customer_interaction?.tracks_customer_data)
-    },
-    growth_intent: {
-      growth_goals: normalizeList(existing?.growth_intent?.growth_goals),
-      estimated_monthly_sales: Number(existing?.growth_intent?.estimated_monthly_sales || 0)
-    }
+    client_row_id: makeRowId(),
+    mode_item_preset: defaultPreset.key,
+    name: '',
+    default_sale_price: '',
+    cost_per_unit: '',
+    current_stock: '',
+    image_file: null,
+    status: 'idle',
+    errors: [],
+    created_item: null
   };
 };
 
-const deriveClassificationSnapshot = (onboarding) => (
-  onboarding?.tenant_onboarding_progress?.classification_snapshot || null
-);
+const normalizeLocationForm = (currentUser) => ({
+  location_id: null,
+  name: `${String(currentUser?.company?.name || 'Main').trim()} Main Branch`.trim(),
+  address_line: '',
+  latitude: '',
+  longitude: '',
+  delivery_radius_km: 5
+});
 
-const toggleListOption = (currentList, optionValue) => {
-  const current = Array.isArray(currentList) ? currentList : [];
-  if (current.includes(optionValue)) {
-    return current.filter((entry) => entry !== optionValue);
-  }
-  return [...current, optionValue];
-};
+const isCreatedRow = (row) => ['created', 'created_with_image_error'].includes(row?.status);
+
+const getCreatedItemId = (row) => row?.created_item?.item_id || row?.created_item?.id || null;
 
 export function OnboardingReminderBanner({ onboarding, onOpenWizard }) {
   const progress = getProgress(onboarding);
@@ -187,15 +105,12 @@ export function OnboardingReminderBanner({ onboarding, onOpenWizard }) {
 
   if (state === 'completed') return null;
 
-  const done = progress.completed_required_count;
-  const total = progress.required_total;
-
   return (
     <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-amber-900">Tenant onboarding is incomplete</p>
-          <p className="text-xs text-amber-800">Completion progress: {done}/{total} required checks.</p>
+          <p className="text-xs text-amber-800">Completion progress: {progress.completed_required_count}/{progress.required_total} required checks.</p>
         </div>
         <button
           type="button"
@@ -214,30 +129,31 @@ export default function OnboardingSetupModal({
   onClose,
   onboarding,
   currentUser,
+  workflowMode = DEFAULT_WORKFLOW_MODE,
   onRefreshUser
 }) {
-  const navigate = useNavigate();
+  const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
+  const presetOptions = useMemo(() => resolvePresetOptions(normalizedWorkflowMode), [normalizedWorkflowMode]);
+  const progress = useMemo(() => getProgress(onboarding), [onboarding]);
   const [saving, setSaving] = useState(false);
   const [finishing, setFinishing] = useState(false);
-  const [displayName, setDisplayName] = useState('');
   const [logoFile, setLogoFile] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
+  const [locationsLoading, setLocationsLoading] = useState(false);
+  const [locationForm, setLocationForm] = useState(() => normalizeLocationForm(currentUser));
+  const [primaryLocationId, setPrimaryLocationId] = useState(null);
+  const [itemRows, setItemRows] = useState(() => [buildEmptyItemRow(normalizedWorkflowMode)]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [classificationForm, setClassificationForm] = useState(deriveClassificationPayload(onboarding));
-  const [classificationSnapshot, setClassificationSnapshot] = useState(deriveClassificationSnapshot(onboarding));
-
-  const progress = useMemo(() => getProgress(onboarding), [onboarding]);
   const lastTrackedOpenRef = useRef(false);
-  const lastClassifierViewTrackedRef = useRef(false);
   const initializedForOpenRef = useRef(false);
 
   useEffect(() => {
     if (!open) {
       lastTrackedOpenRef.current = false;
-      lastClassifierViewTrackedRef.current = false;
       initializedForOpenRef.current = false;
       return;
     }
+
     if (!lastTrackedOpenRef.current) {
       lastTrackedOpenRef.current = true;
       trackOnboardingEvent({
@@ -247,30 +163,54 @@ export default function OnboardingSetupModal({
     }
 
     if (!initializedForOpenRef.current) {
-      setDisplayName(deriveDisplayName({ onboarding, currentUser }));
-      setClassificationForm(deriveClassificationPayload(onboarding));
-      setClassificationSnapshot(deriveClassificationSnapshot(onboarding));
-      setCurrentStepIndex(0);
       initializedForOpenRef.current = true;
+      setCurrentStepIndex(0);
+      setLogoFile(null);
+      setCoverFile(null);
+      setItemRows([buildEmptyItemRow(normalizedWorkflowMode)]);
+      setLocationForm(normalizeLocationForm(currentUser));
+      setPrimaryLocationId(null);
+      setLocationsLoading(true);
+      listTenantLocations({ include_inactive: true })
+        .then((locations) => {
+          const rows = Array.isArray(locations) ? locations : [];
+          const primary = rows.find((location) => location?.is_primary_storefront === true)
+            || rows.find((location) => location?.is_active === true);
+          if (!primary) return;
+          setPrimaryLocationId(primary.location_id || null);
+          setLocationForm({
+            location_id: primary.location_id || null,
+            name: primary.name || '',
+            address_line: primary.address_line || '',
+            latitude: primary.latitude ?? '',
+            longitude: primary.longitude ?? '',
+            delivery_radius_km: primary.delivery_radius_km ?? 5
+          });
+        })
+        .catch(() => {
+          toast.error('Failed to load saved locations.');
+        })
+        .finally(() => setLocationsLoading(false));
     }
-  }, [open, onboarding, currentUser]);
-
-  const step = WIZARD_STEPS[currentStepIndex] || WIZARD_STEPS[0];
-
-  useEffect(() => {
-    if (step !== 'business_classification') return;
-    if (lastClassifierViewTrackedRef.current) return;
-    lastClassifierViewTrackedRef.current = true;
-    trackOnboardingEvent({
-      eventKey: 'classifier_viewed',
-      metadata: { surface: 'modal' }
-    }).catch(() => {});
-  }, [step]);
+  }, [currentUser, normalizedWorkflowMode, open]);
 
   if (!open) return null;
 
+  const step = WIZARD_STEPS[currentStepIndex] || WIZARD_STEPS[0];
   const canGoBack = currentStepIndex > 0;
   const canGoNext = currentStepIndex < WIZARD_STEPS.length - 1;
+  const missingRequirements = progress.missing_requirements;
+  const serverHasPrimaryLocation = !missingRequirements.includes('has_primary_storefront_location');
+  const serverHasPricedStarterItem = !missingRequirements.includes('has_priced_starter_item');
+  const hasCompletionLocation = Boolean(primaryLocationId) || serverHasPrimaryLocation;
+  const hasCompletionStarterItem = itemRows.some((row) => (
+    isCreatedRow(row) && Number(row.default_sale_price) > 0
+  )) || serverHasPricedStarterItem;
+  const completionBlockers = [
+    hasCompletionLocation ? null : 'save a primary storefront location',
+    hasCompletionStarterItem ? null : 'save at least one priced starter item'
+  ].filter(Boolean);
+  const completionDisabled = finishing || saving || completionBlockers.length > 0;
 
   const goToNextStep = () => {
     if (!canGoNext) return;
@@ -282,129 +222,217 @@ export default function OnboardingSetupModal({
     setCurrentStepIndex((prev) => Math.max(prev - 1, 0));
   };
 
-  const handleSaveBusinessProfile = async () => {
+  const handleSaveBrandAssets = async ({ skipped = false } = {}) => {
     setSaving(true);
     try {
-      const nameValue = String(displayName || '').trim();
-      if (nameValue) {
-        await updateSettings({ pos_business_name: nameValue });
-      }
-      await saveOnboardingStep({
-        stepKey: 'business_profile',
-        payload: {
-          pos_business_name: nameValue || null
-        }
-      });
-      toast.success('Business profile step saved.');
-      await onRefreshUser?.();
-      goToNextStep();
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to save business profile step.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSaveBrandAssets = async () => {
-    setSaving(true);
-    try {
-      if (logoFile) {
-        await uploadStorefrontAsset('profile', logoFile);
-      }
-      if (coverFile) {
-        await uploadStorefrontAsset('cover', coverFile);
+      if (!skipped) {
+        if (logoFile) await uploadStorefrontAsset('profile', logoFile);
+        if (coverFile) await uploadStorefrontAsset('cover', coverFile);
+      } else {
+        await trackOnboardingEvent({
+          eventKey: 'optional_asset_skipped',
+          metadata: { surface: 'modal' }
+        });
       }
       await saveOnboardingStep({
         stepKey: 'brand_assets',
         payload: {
-          uploaded_profile_asset: Boolean(logoFile),
-          uploaded_cover_asset: Boolean(coverFile)
+          uploaded_profile_asset: Boolean(logoFile && !skipped),
+          uploaded_cover_asset: Boolean(coverFile && !skipped),
+          skipped: Boolean(skipped)
         }
       });
-      toast.success('Branding assets step saved.');
+      toast.success(skipped ? 'Branding skipped for now.' : 'Branding saved.');
       setLogoFile(null);
       setCoverFile(null);
       await onRefreshUser?.();
       goToNextStep();
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to save branding assets step.');
+      toast.error(error?.response?.data?.message || 'Failed to save branding.');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleSkipOptionalAssets = async () => {
-    setSaving(true);
-    try {
-      await trackOnboardingEvent({
-        eventKey: 'optional_asset_skipped',
-        metadata: { surface: 'modal' }
-      });
-      toast.success('Optional branding assets skipped for now.');
-      goToNextStep();
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to record optional assets skip.');
-    } finally {
-      setSaving(false);
-    }
-  };
+  const handleSaveLocation = async () => {
+    const payload = {
+      name: String(locationForm.name || '').trim(),
+      address_line: String(locationForm.address_line || '').trim(),
+      latitude: Number(locationForm.latitude),
+      longitude: Number(locationForm.longitude),
+      delivery_radius_km: Number(locationForm.delivery_radius_km || 5),
+      is_active: true,
+      is_open: true,
+      is_primary_storefront: true
+    };
 
-  const handleSaveClassification = async () => {
+    if (!payload.name || !payload.address_line || !Number.isFinite(payload.latitude) || !Number.isFinite(payload.longitude)) {
+      toast.error('Location name, address, latitude, and longitude are required.');
+      return;
+    }
+
     setSaving(true);
     try {
-      const payload = {
-        ...classificationForm,
-        location_presence: {
-          ...classificationForm.location_presence,
-          branch_count: Number(classificationForm.location_presence?.branch_count || 0)
-        },
-        operations_staff: {
-          ...classificationForm.operations_staff,
-          pos_user_count: Number(classificationForm.operations_staff?.pos_user_count || 0)
-        },
-        customer_access_mode: String(classificationForm.online_visibility?.mode || 'catalog').trim().toLowerCase(),
-        inventory_display_mode: String(classificationForm.inventory_display?.mode || 'availability').trim().toLowerCase(),
-        inventory_low_stock_display_threshold: Number(classificationForm.inventory_display?.low_stock_threshold || 5),
-        growth_intent: {
-          ...classificationForm.growth_intent,
-          estimated_monthly_sales: Number(classificationForm.growth_intent?.estimated_monthly_sales || 0)
+      const saved = locationForm.location_id
+        ? await updateTenantLocation(locationForm.location_id, payload)
+        : await createTenantLocation(payload);
+      const savedLocationId = saved?.location_id || locationForm.location_id || null;
+      setPrimaryLocationId(savedLocationId);
+
+      await saveOnboardingStep({
+        stepKey: 'primary_location',
+        payload: {
+          location_id: savedLocationId,
+          name: saved?.name || payload.name,
+          is_primary_storefront: true
         }
-      };
-      const data = await saveOnboardingStep({
-        stepKey: 'business_classification',
-        payload
       });
-      await updateSettings({
-        customer_access_mode: payload.customer_access_mode,
-        inventory_display_mode: payload.inventory_display_mode,
-        inventory_low_stock_display_threshold: payload.inventory_low_stock_display_threshold
-      });
-      setClassificationSnapshot(data?.tenant_onboarding_progress?.classification_snapshot || null);
       await trackOnboardingEvent({
-        eventKey: 'classifier_saved',
+        eventKey: 'primary_location_saved',
         metadata: { surface: 'modal' }
       });
-      toast.success('Business classification saved.');
+      toast.success('Primary storefront location saved.');
       await onRefreshUser?.();
       goToNextStep();
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to save business classification step.');
+      toast.error(error?.response?.data?.message || 'Failed to save storefront location.');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleSkipClassification = async () => {
+  const handleLocationPinChange = ({ latitude, longitude }) => {
+    setLocationForm((prev) => ({
+      ...prev,
+      latitude: String(latitude),
+      longitude: String(longitude)
+    }));
+  };
+
+  const updateItemRow = (clientRowId, patch) => {
+    setItemRows((rows) => rows.map((row) => (
+      row.client_row_id === clientRowId && !isCreatedRow(row) ? { ...row, ...patch } : row
+    )));
+  };
+
+  const addItemRow = () => {
+    setItemRows((rows) => [...rows, buildEmptyItemRow(normalizedWorkflowMode)]);
+  };
+
+  const removeItemRow = (clientRowId) => {
+    setItemRows((rows) => rows.length === 1 ? rows : rows.filter((row) => (
+      row.client_row_id !== clientRowId || isCreatedRow(row)
+    )));
+  };
+
+  const handleSaveItems = async () => {
     setSaving(true);
     try {
-      await trackOnboardingEvent({
-        eventKey: 'classifier_skipped',
-        metadata: { surface: 'modal' }
+      const rowsToSubmit = itemRows.filter((row) => !isCreatedRow(row));
+      if (rowsToSubmit.length === 0) {
+        toast.success('All onboarding item rows are already saved.');
+        return;
+      }
+
+      const rowsForApi = rowsToSubmit.map((row) => ({
+        client_row_id: row.client_row_id,
+        mode_item_preset: row.mode_item_preset,
+        name: row.name,
+        default_sale_price: row.default_sale_price,
+        cost_per_unit: row.cost_per_unit,
+        current_stock: row.current_stock,
+        location_id: primaryLocationId || undefined
+      }));
+
+      const result = await bulkCreateOnboardingItems({ rows: rowsForApi });
+      const resultByRow = new Map((result?.results || []).map((row) => [row.client_row_id, row]));
+
+      const nextRows = await Promise.all(itemRows.map(async (row) => {
+        if (isCreatedRow(row)) return row;
+        const rowResult = resultByRow.get(row.client_row_id);
+        if (!rowResult || rowResult.status !== 'created') {
+          return {
+            ...row,
+            status: 'failed',
+            errors: rowResult?.errors || ['Unable to create this row.'],
+            created_item: null
+          };
+        }
+
+        const createdItem = rowResult.item || null;
+        const itemId = createdItem?.item_id || createdItem?.id || null;
+        const nextRow = {
+          ...row,
+          status: 'created',
+          errors: [],
+          created_item: createdItem
+        };
+        if (itemId && row.image_file) {
+          try {
+            await uploadStorefrontCatalogImage(itemId, row.image_file);
+          } catch (error) {
+            return {
+              ...nextRow,
+              status: 'created_with_image_error',
+              errors: [error?.response?.data?.message || 'Item created, but image upload failed.']
+            };
+          }
+        }
+        return nextRow;
+      }));
+
+      setItemRows(nextRows);
+      await saveOnboardingStep({
+        stepKey: 'bulk_items',
+        payload: {
+          workflow_mode: result?.workflow_mode || normalizedWorkflowMode,
+          summary: result?.summary || null,
+          created_item_ids: nextRows
+            .map((row) => row.created_item?.item_id || row.created_item?.id || null)
+            .filter(Boolean)
+        }
       });
-      toast.success('Classification skipped for now.');
-      goToNextStep();
+      await trackOnboardingEvent({
+        eventKey: 'bulk_items_saved',
+        metadata: {
+          surface: 'modal',
+          created: result?.summary?.created || 0,
+          failed: result?.summary?.failed || 0
+        }
+      });
+      toast.success(`${result?.summary?.created || 0} onboarding item(s) created.`);
+      await onRefreshUser?.();
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to skip classification step.');
+      toast.error(error?.response?.data?.message || 'Failed to create onboarding items.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRetryImageUpload = async (clientRowId) => {
+    const row = itemRows.find((entry) => entry.client_row_id === clientRowId);
+    const itemId = getCreatedItemId(row);
+    if (!row?.image_file || !itemId) {
+      toast.error('Choose an image before retrying upload.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await uploadStorefrontCatalogImage(itemId, row.image_file);
+      setItemRows((rows) => rows.map((entry) => (
+        entry.client_row_id === clientRowId
+          ? { ...entry, status: 'created', errors: [] }
+          : entry
+      )));
+      toast.success('Storefront image uploaded.');
+    } catch (error) {
+      setItemRows((rows) => rows.map((entry) => (
+        entry.client_row_id === clientRowId
+          ? { ...entry, errors: [error?.response?.data?.message || 'Image upload failed.'] }
+          : entry
+      )));
+      toast.error(error?.response?.data?.message || 'Image upload failed.');
     } finally {
       setSaving(false);
     }
@@ -429,430 +457,167 @@ export default function OnboardingSetupModal({
     }
   };
 
-  const handleGoToLocations = () => {
-    onClose?.();
-    navigate('/settings?tab=profile#tab-profile');
-  };
-
-  const handleGoToItems = () => {
-    onClose?.();
-    navigate('/items');
-  };
-
   return (
     <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/40 p-4 sm:p-8">
-      <div className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-xl">
+      <div className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white shadow-xl">
         <div className="border-b border-slate-200 px-5 py-4">
           <h2 className="text-lg font-semibold text-slate-900">Tenant Onboarding Setup</h2>
           <p className="mt-1 text-xs text-slate-600">
-            Complete setup for DGFY storefront, DGFY POS, and SKUpervisor. Progress: {progress.completed_required_count}/{progress.required_total} required.
+            Progress: {progress.completed_required_count}/{progress.required_total} required. Mode: {getWorkflowModeLabel(normalizedWorkflowMode)}.
           </p>
-          {currentUser?.company?.name && (
-            <p className="mt-1 text-xs text-slate-500">Tenant: {currentUser.company.name}</p>
-          )}
           <p className="mt-2 text-xs font-semibold text-slate-700">
             Step {currentStepIndex + 1} of {WIZARD_STEPS.length}
           </p>
         </div>
 
         <div className="space-y-5 px-5 py-5">
-          {step === 'business_profile' && (
-            <section className="rounded-lg border border-slate-200 p-4">
-              <h3 className="text-sm font-semibold text-slate-900">1) Business Profile</h3>
-              <p className="mt-1 text-xs text-slate-600">
-                Store name from registration is prefilled as baseline. You can update POS business display name here.
-              </p>
-              <label htmlFor="onboarding-pos-business-name" className="mt-3 block text-xs font-medium text-slate-700">
-                POS business display name
-              </label>
-              <input
-                id="onboarding-pos-business-name"
-                type="text"
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                placeholder="POS business display name"
-                value={displayName}
-                onChange={(event) => setDisplayName(event.target.value)}
-              />
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveBusinessProfile}
-                  disabled={saving}
-                  className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-                >
-                  Save and Continue
-                </button>
-              </div>
-            </section>
-          )}
-
           {step === 'brand_assets' && (
             <section className="rounded-lg border border-slate-200 p-4">
-              <h3 className="text-sm font-semibold text-slate-900">2) Optional Branding Assets</h3>
-              <p className="mt-1 text-xs text-slate-600">
-                Logo and cover are optional. Upload now using existing storefront asset endpoints or skip.
-              </p>
+              <h3 className="text-sm font-semibold text-slate-900">1) Profile and Cover</h3>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <label className="text-xs text-slate-700">
-                  Logo / Profile image (optional)
+                  Profile picture
                   <input type="file" accept="image/*" className="mt-1 block w-full text-xs" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} />
                 </label>
                 <label className="text-xs text-slate-700">
-                  Cover image (optional)
+                  Cover photo
                   <input type="file" accept="image/*" className="mt-1 block w-full text-xs" onChange={(e) => setCoverFile(e.target.files?.[0] || null)} />
                 </label>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveBrandAssets}
-                  disabled={saving}
-                  className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-                >
+                <button type="button" onClick={() => handleSaveBrandAssets()} disabled={saving} className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">
                   Save and Continue
                 </button>
-                <button
-                  type="button"
-                  onClick={handleSkipOptionalAssets}
-                  disabled={saving}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-60"
-                >
+                <button type="button" onClick={() => handleSaveBrandAssets({ skipped: true })} disabled={saving} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-60">
                   Skip for Now
                 </button>
               </div>
             </section>
           )}
 
-          {step === 'readiness' && (
+          {step === 'primary_location' && (
             <section className="rounded-lg border border-slate-200 p-4">
-              <h3 className="text-sm font-semibold text-slate-900">4) Required Readiness Checks</h3>
-              {classificationSnapshot && (
-                <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                  <p>
-                    Advisory tier: <span className="font-semibold">{tierLabelMap[classificationSnapshot.monetization_tier] || classificationSnapshot.monetization_tier || 'Unknown'}</span>
-                  </p>
-                  <p className="mt-1">
-                    Workflow recommendation: <span className="font-semibold">{workflowLabelMap[classificationSnapshot.business_mode_template_recommendation] || workflowLabelMap[classificationSnapshot.workflow_mode_recommendation] || classificationSnapshot.business_mode_template_recommendation || classificationSnapshot.workflow_mode_recommendation || 'Unknown'}</span>
-                  </p>
+              <h3 className="text-sm font-semibold text-slate-900">2) Main Storefront Location</h3>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="text-xs text-slate-700">
+                  Location name
+                  <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.name} onChange={(event) => setLocationForm((prev) => ({ ...prev, name: event.target.value }))} disabled={locationsLoading} />
+                </label>
+                <label className="text-xs text-slate-700">
+                  Delivery radius (km)
+                  <input type="number" min={0} max={100} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.delivery_radius_km} onChange={(event) => setLocationForm((prev) => ({ ...prev, delivery_radius_km: event.target.value }))} disabled={locationsLoading} />
+                </label>
+                <label className="text-xs text-slate-700 sm:col-span-2">
+                  Address
+                  <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.address_line} onChange={(event) => setLocationForm((prev) => ({ ...prev, address_line: event.target.value }))} disabled={locationsLoading} />
+                </label>
+                <div className="sm:col-span-2">
+                  <MapPinPicker
+                    latitude={locationForm.latitude}
+                    longitude={locationForm.longitude}
+                    deliveryRadiusKm={locationForm.delivery_radius_km}
+                    onChange={handleLocationPinChange}
+                  />
                 </div>
-              )}
-              <ul className="mt-2 space-y-1 text-xs text-slate-700">
-                {(progress.missing_requirements || []).length === 0 ? (
-                  <li className="font-semibold text-emerald-700">All required checks are currently satisfied.</li>
-                ) : (
-                  progress.missing_requirements.map((key) => (
-                    <li key={key}>- Missing: {formatRequirementLabel(key)}</li>
-                  ))
-                )}
-              </ul>
+                <label className="text-xs text-slate-700">
+                  Latitude
+                  <input type="number" step="any" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.latitude} onChange={(event) => setLocationForm((prev) => ({ ...prev, latitude: event.target.value }))} disabled={locationsLoading} />
+                </label>
+                <label className="text-xs text-slate-700">
+                  Longitude
+                  <input type="number" step="any" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.longitude} onChange={(event) => setLocationForm((prev) => ({ ...prev, longitude: event.target.value }))} disabled={locationsLoading} />
+                </label>
+              </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                <button type="button" onClick={handleGoToLocations} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-800">
-                  Go to Locations
+                <button type="button" onClick={handleSaveLocation} disabled={saving || locationsLoading} className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">
+                  Save and Continue
                 </button>
-                <button type="button" onClick={handleGoToItems} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-800">
-                  Go to Items
+              </div>
+            </section>
+          )}
+
+          {step === 'bulk_items' && (
+            <section className="rounded-lg border border-slate-200 p-4">
+              <h3 className="text-sm font-semibold text-slate-900">3) Starter Items</h3>
+              <div className="mt-3 space-y-3">
+                {itemRows.map((row, index) => (
+                  <div key={row.client_row_id} className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                    <div className="grid gap-3 md:grid-cols-6">
+                      <label className="text-xs text-slate-700 md:col-span-2">
+                        Item type
+                        <select className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm" value={row.mode_item_preset} onChange={(event) => updateItemRow(row.client_row_id, { mode_item_preset: event.target.value })} disabled={isCreatedRow(row) || saving}>
+                          {presetOptions.map((preset) => (
+                            <option key={preset.key} value={preset.key}>{preset.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-xs text-slate-700 md:col-span-2">
+                        Item name
+                        <input className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm" value={row.name} onChange={(event) => updateItemRow(row.client_row_id, { name: event.target.value })} disabled={isCreatedRow(row) || saving} />
+                      </label>
+                      <label className="text-xs text-slate-700">
+                        Selling price
+                        <input type="number" min={0} step="0.01" className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm" value={row.default_sale_price} onChange={(event) => updateItemRow(row.client_row_id, { default_sale_price: event.target.value })} disabled={isCreatedRow(row) || saving} />
+                      </label>
+                      <div className="flex items-end justify-end">
+                        <button type="button" onClick={() => removeItemRow(row.client_row_id)} disabled={itemRows.length === 1 || saving || isCreatedRow(row)} className="rounded-md border border-slate-300 px-2 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50">
+                          Remove
+                        </button>
+                      </div>
+                      <label className="text-xs text-slate-700">
+                        Cost
+                        <input type="number" min={0} step="0.01" className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm" value={row.cost_per_unit} onChange={(event) => updateItemRow(row.client_row_id, { cost_per_unit: event.target.value })} disabled={isCreatedRow(row) || saving} />
+                      </label>
+                      <label className="text-xs text-slate-700">
+                        Current stock
+                        <input type="number" min={0} step="0.01" className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm" value={row.current_stock} onChange={(event) => updateItemRow(row.client_row_id, { current_stock: event.target.value })} disabled={isCreatedRow(row) || saving} />
+                      </label>
+                      <label className="text-xs text-slate-700 md:col-span-3">
+                        Storefront image
+                        <input type="file" accept="image/*" className="mt-1 block w-full text-xs" onChange={(event) => updateItemRow(row.client_row_id, { image_file: event.target.files?.[0] || null })} disabled={isCreatedRow(row) || saving} />
+                      </label>
+                      <div className="flex items-end text-xs text-slate-500">Row {index + 1}</div>
+                    </div>
+                    {row.status === 'created' && <p className="mt-2 text-xs font-semibold text-emerald-700">Created.</p>}
+                    {row.status === 'created_with_image_error' && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <p className="text-xs font-semibold text-amber-700">{row.errors.join(' ')}</p>
+                        <button type="button" onClick={() => handleRetryImageUpload(row.client_row_id)} disabled={saving || !row.image_file} className="rounded-md border border-amber-300 px-2 py-1 text-xs font-semibold text-amber-800 disabled:opacity-50">
+                          Retry Image Upload
+                        </button>
+                      </div>
+                    )}
+                    {row.status === 'failed' && row.errors.length > 0 && (
+                      <p className="mt-2 text-xs font-semibold text-red-700">{row.errors.join(' ')}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={addItemRow} disabled={saving} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-60">
+                  Add Row
                 </button>
-                <button
-                  type="button"
-                  onClick={handleComplete}
-                  disabled={finishing}
-                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-                >
+                <button type="button" onClick={handleSaveItems} disabled={saving} className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">
+                  Save Items
+                </button>
+                <button type="button" onClick={handleComplete} disabled={completionDisabled} className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">
                   Complete Onboarding
                 </button>
               </div>
-            </section>
-          )}
-
-          {step === 'business_classification' && (
-            <section className="rounded-lg border border-slate-200 p-4">
-              <h3 className="text-sm font-semibold text-slate-900">3) Business Classification</h3>
-              <p className="mt-1 text-xs text-slate-600">
-                Configure customer access, inventory display, tier, workflow, and compliance signals for this tenant.
-              </p>
-
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <label className="text-xs text-slate-700">
-                  Registration status
-                  <select
-                    className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-                    value={classificationForm.legitimacy.registration_status}
-                    onChange={(event) => setClassificationForm((prev) => ({
-                      ...prev,
-                      legitimacy: {
-                        ...prev.legitimacy,
-                        registration_status: event.target.value
-                      }
-                    }))}
-                  >
-                    <option value="registered">Registered</option>
-                    <option value="partial">Partially Registered</option>
-                    <option value="informal">Informal</option>
-                  </select>
-                </label>
-
-                <label className="text-xs text-slate-700">
-                  Customer Access Mode
-                  <select
-                    className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-                    value={classificationForm.online_visibility.mode}
-                    onChange={(event) => setClassificationForm((prev) => ({
-                      ...prev,
-                      online_visibility: {
-                        ...prev.online_visibility,
-                        mode: event.target.value
-                      }
-                    }))}
-                  >
-                    {VISIBILITY_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="text-xs text-slate-700">
-                  Inventory Display
-                  <select
-                    className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-                    value={classificationForm.inventory_display?.mode || 'availability'}
-                    onChange={(event) => setClassificationForm((prev) => ({
-                      ...prev,
-                      inventory_display: {
-                        ...prev.inventory_display,
-                        mode: event.target.value
-                      }
-                    }))}
-                  >
-                    {INVENTORY_DISPLAY_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="text-xs text-slate-700">
-                  Low stock display threshold
-                  <input
-                    type="number"
-                    min={1}
-                    max={9999}
-                    className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-                    value={classificationForm.inventory_display?.low_stock_threshold ?? 5}
-                    onChange={(event) => setClassificationForm((prev) => ({
-                      ...prev,
-                      inventory_display: {
-                        ...prev.inventory_display,
-                        low_stock_threshold: event.target.value
-                      }
-                    }))}
-                  />
-                </label>
-
-                <label className="text-xs text-slate-700">
-                  Number of branches
-                  <input
-                    type="number"
-                    min={0}
-                    className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-                    value={classificationForm.location_presence.branch_count}
-                    onChange={(event) => setClassificationForm((prev) => ({
-                      ...prev,
-                      location_presence: {
-                        ...prev.location_presence,
-                        branch_count: event.target.value
-                      }
-                    }))}
-                  />
-                </label>
-
-                <label className="text-xs text-slate-700">
-                  POS users/staff count
-                  <input
-                    type="number"
-                    min={0}
-                    className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-                    value={classificationForm.operations_staff.pos_user_count}
-                    onChange={(event) => setClassificationForm((prev) => ({
-                      ...prev,
-                      operations_staff: {
-                        ...prev.operations_staff,
-                        pos_user_count: event.target.value
-                      }
-                    }))}
-                  />
-                </label>
-
-                <label className="text-xs text-slate-700">
-                  Estimated monthly sales
-                  <input
-                    type="number"
-                    min={0}
-                    className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-                    value={classificationForm.growth_intent.estimated_monthly_sales}
-                    onChange={(event) => setClassificationForm((prev) => ({
-                      ...prev,
-                      growth_intent: {
-                        ...prev.growth_intent,
-                        estimated_monthly_sales: event.target.value
-                      }
-                    }))}
-                  />
-                </label>
-
-                <label className="mt-5 inline-flex items-center gap-2 text-xs text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={classificationForm.legitimacy.requires_official_receipt}
-                    onChange={(event) => setClassificationForm((prev) => ({
-                      ...prev,
-                      legitimacy: {
-                        ...prev.legitimacy,
-                        requires_official_receipt: event.target.checked
-                      }
-                    }))}
-                  />
-                  Requires official receipts
-                </label>
-
-                <label className="inline-flex items-center gap-2 text-xs text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={classificationForm.operations_staff.needs_rbac}
-                    onChange={(event) => setClassificationForm((prev) => ({
-                      ...prev,
-                      operations_staff: {
-                        ...prev.operations_staff,
-                        needs_rbac: event.target.checked
-                      }
-                    }))}
-                  />
-                  Needs role-based access controls
-                </label>
-              </div>
-
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <div>
-                  <p className="text-xs font-medium text-slate-700">Offering types</p>
-                  <div className="mt-1 space-y-1">
-                    {OFFERING_OPTIONS.map((option) => (
-                      <label key={option.value} className="flex items-center gap-2 text-xs text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={classificationForm.product_service.offering_types.includes(option.value)}
-                          onChange={() => setClassificationForm((prev) => ({
-                            ...prev,
-                            product_service: {
-                              ...prev.product_service,
-                              offering_types: toggleListOption(prev.product_service.offering_types, option.value)
-                            }
-                          }))}
-                        />
-                        {option.label}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-xs font-medium text-slate-700">Order modes</p>
-                  <div className="mt-1 space-y-1">
-                    {ORDER_MODE_OPTIONS.map((option) => (
-                      <label key={option.value} className="flex items-center gap-2 text-xs text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={classificationForm.order_booking.order_modes.includes(option.value)}
-                          onChange={() => setClassificationForm((prev) => ({
-                            ...prev,
-                            order_booking: {
-                              ...prev.order_booking,
-                              order_modes: toggleListOption(prev.order_booking.order_modes, option.value)
-                            }
-                          }))}
-                        />
-                        {option.label}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-3">
-                <p className="text-xs font-medium text-slate-700">Fulfillment methods</p>
-                <div className="mt-1 grid gap-1 sm:grid-cols-2">
-                  {FULFILLMENT_OPTIONS.map((option) => (
-                    <label key={option.value} className="flex items-center gap-2 text-xs text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={classificationForm.order_booking.fulfillment_methods.includes(option.value)}
-                        onChange={() => setClassificationForm((prev) => ({
-                          ...prev,
-                          order_booking: {
-                            ...prev.order_booking,
-                            fulfillment_methods: toggleListOption(prev.order_booking.fulfillment_methods, option.value)
-                          }
-                        }))}
-                      />
-                      {option.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {classificationSnapshot && (
-                <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-                  <p>
-                    Current advisory tier: <span className="font-semibold">{tierLabelMap[classificationSnapshot.monetization_tier] || classificationSnapshot.monetization_tier}</span>
-                  </p>
-                  <p className="mt-1">
-                    Customer access: <span className="font-semibold">{classificationSnapshot.customer_access_mode || classificationSnapshot.visibility_mode}</span>
-                  </p>
-                  <p className="mt-1">
-                    Inventory display: <span className="font-semibold">{classificationSnapshot.inventory_display_mode || 'availability'}</span>
-                  </p>
-                  <p className="mt-1">
-                    Workflow recommendation: <span className="font-semibold">{workflowLabelMap[classificationSnapshot.business_mode_template_recommendation] || workflowLabelMap[classificationSnapshot.workflow_mode_recommendation] || classificationSnapshot.business_mode_template_recommendation || classificationSnapshot.workflow_mode_recommendation}</span>
-                  </p>
-                  <p className="mt-1">
-                    Compliance hint: <span className="font-semibold">{classificationSnapshot.compliance_path_hint}</span>
-                  </p>
-                </div>
+              {completionBlockers.length > 0 && (
+                <p className="mt-2 text-xs text-slate-500">
+                  To complete onboarding, {completionBlockers.join(' and ')}.
+                </p>
               )}
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveClassification}
-                  disabled={saving}
-                  className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-                >
-                  Save and Continue
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSkipClassification}
-                  disabled={saving}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-60"
-                >
-                  Skip for Now
-                </button>
-              </div>
             </section>
           )}
         </div>
 
         <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3">
-          <button
-            type="button"
-            onClick={goToPrevStep}
-            disabled={!canGoBack}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
+          <button type="button" onClick={goToPrevStep} disabled={!canGoBack} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50">
             Previous
           </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700"
-          >
+          <button type="button" onClick={onClose} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700">
             Close (Soft Reminder)
           </button>
         </div>

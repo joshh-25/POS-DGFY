@@ -18,6 +18,11 @@ export const completeOnboarding = async () => {
   return response.data.data;
 };
 
+export const bulkCreateOnboardingItems = async ({ rows = [] } = {}) => {
+  const response = await api.post('/onboarding/items/bulk', { rows });
+  return response.data.data;
+};
+
 export const trackOnboardingEvent = async ({ eventKey, metadata = {} } = {}) => {
   const response = await api.post('/onboarding/events', {
     event_key: eventKey,
@@ -30,5 +35,6 @@ export default {
   getOnboardingStatus,
   saveOnboardingStep,
   completeOnboarding,
+  bulkCreateOnboardingItems,
   trackOnboardingEvent
 };

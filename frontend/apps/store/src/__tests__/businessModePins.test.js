@@ -15,7 +15,7 @@ describe('business mode storefront pins', () => {
     expect(getBusinessModePinMeta('manufacturing').label).toBe('Food Manufacturing');
   });
 
-  it('renders an inline svg marker for Leaflet without falling back to a generic dot', () => {
+  it('renders an inline svg marker for MapLibre without falling back to a generic dot', () => {
     const html = renderBusinessModePinSvg('services', true);
     expect(html).toContain('<svg');
     expect(html).toContain('aria-label="Services"');

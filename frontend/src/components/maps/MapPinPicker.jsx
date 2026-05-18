@@ -157,9 +157,13 @@ export default function MapPinPicker({
         zoom: DEFAULT_ZOOM,
         minZoom: MIN_ZOOM,
         maxZoom: MAX_ZOOM,
-        // [swLng, swLat, neLng, neLat] — MapLibre uses lng-first order
+        bearing: 0,
+        pitch: 0,
+        // [swLng, swLat, neLng, neLat]. MapLibre uses lng-first order.
         maxBounds: [[-180, -85], [180, 85]]
       });
+      map.dragRotate.disable();
+      map.touchZoomRotate.disableRotation();
     } catch {
       setLoadError('Map failed to load. Please refresh and try again.');
       return undefined;

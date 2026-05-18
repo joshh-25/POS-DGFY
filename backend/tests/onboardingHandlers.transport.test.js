@@ -3,13 +3,15 @@ import { jest } from '@jest/globals';
 const mockGetOnboardingStatusUseCase = jest.fn();
 const mockSaveOnboardingStepUseCase = jest.fn();
 const mockCompleteOnboardingUseCase = jest.fn();
+const mockBulkCreateOnboardingItemsUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
 const mockTrackProductUsageEvent = jest.fn();
 
 jest.unstable_mockModule('../src/modules/onboarding/index.js', () => ({
   getOnboardingStatusUseCase: mockGetOnboardingStatusUseCase,
   saveOnboardingStepUseCase: mockSaveOnboardingStepUseCase,
-  completeOnboardingUseCase: mockCompleteOnboardingUseCase
+  completeOnboardingUseCase: mockCompleteOnboardingUseCase,
+  bulkCreateOnboardingItemsUseCase: mockBulkCreateOnboardingItemsUseCase
 }));
 
 jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () => ({
@@ -19,12 +21,14 @@ jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () =
 
 let getOnboardingStatus;
 let saveOnboardingStep;
+let bulkCreateOnboardingItems;
 let trackOnboardingEvent;
 
 beforeAll(async () => {
   const mod = await import('../src/modules/onboarding/controllers/onboardingHandlers.js');
   getOnboardingStatus = mod.getOnboardingStatus;
   saveOnboardingStep = mod.saveOnboardingStep;
+  bulkCreateOnboardingItems = mod.bulkCreateOnboardingItems;
   trackOnboardingEvent = mod.trackOnboardingEvent;
 });
 
@@ -75,8 +79,8 @@ describe('onboardingHandlers transport contracts', () => {
       tenant: { name: 'Tenant Beta' },
       user: { user_id: 1 },
       validatedData: {
-        step_key: 'business_profile',
-        payload: { pos_business_name: 'Tenant Beta Store' }
+        step_key: 'primary_location',
+        payload: { location_id: 10 }
       },
       requestId: 'req-onboarding-step'
     };
@@ -86,11 +90,45 @@ describe('onboardingHandlers transport contracts', () => {
     await saveOnboardingStep(req, res, next);
 
     expect(mockSaveOnboardingStepUseCase).toHaveBeenCalledWith({
-      stepKey: 'business_profile',
-      payload: { pos_business_name: 'Tenant Beta Store' },
+      stepKey: 'primary_location',
+      payload: { location_id: 10 },
       storeNameBaseline: 'Tenant Beta',
       tenantId: null
     });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('passes validated onboarding item rows to the bulk item use case', async () => {
+    mockBulkCreateOnboardingItemsUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        summary: { total: 1, created: 1, failed: 0 },
+        results: []
+      }
+    });
+    const req = {
+      tenant: { id: 3, name: 'Tenant Items' },
+      user: { user_id: 77 },
+      validatedData: {
+        rows: [
+          { client_row_id: 'row-1', mode_item_preset: 'finished_product', name: 'Bread', default_sale_price: 25 }
+        ]
+      },
+      requestId: 'req-onboarding-items'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await bulkCreateOnboardingItems(req, res, next);
+
+    expect(mockBulkCreateOnboardingItemsUseCase).toHaveBeenCalledWith({
+      rows: req.validatedData.rows,
+      userId: 77
+    });
+    expect(mockTrackProductUsageFromResult).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'tenant_onboarding_bulk_items_saved',
+      action: 'bulk_create_items'
+    }));
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -129,12 +167,12 @@ describe('onboardingHandlers transport contracts', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('maps classifier telemetry event keys to onboarding telemetry event types', async () => {
+  it('maps setup telemetry event keys to onboarding telemetry event types', async () => {
     const req = {
       user: { user_id: 11, is_master_admin: true },
       tenant: { id: 100, name: 'Tenant Delta' },
       validatedData: {
-        event_key: 'classifier_saved',
+        event_key: 'bulk_items_saved',
         metadata: { surface: 'modal' }
       },
       requestId: 'req-onboarding-event-classifier'
@@ -145,9 +183,9 @@ describe('onboardingHandlers transport contracts', () => {
     await trackOnboardingEvent(req, res, next);
 
     expect(mockTrackProductUsageEvent).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'tenant_onboarding_classifier_saved',
+      eventType: 'tenant_onboarding_bulk_items_saved',
       metadata: expect.objectContaining({
-        event_key: 'classifier_saved'
+        event_key: 'bulk_items_saved'
       })
     }));
     expect(res.status).toHaveBeenCalledWith(202);

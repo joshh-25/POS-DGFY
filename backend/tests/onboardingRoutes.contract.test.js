@@ -13,4 +13,9 @@ describe('onboarding route contracts', () => {
     expect(source).toContain('onboardingEventsLimiter');
     expect(source).toContain("router.post('/events', authenticate, requireMasterAdmin, onboardingEventsLimiter, validateOnboardingEventPayload, onboardingController.trackOnboardingEvent);");
   });
+
+  it('exposes a master-admin guarded bulk onboarding items route', () => {
+    const source = fs.readFileSync(onboardingRoutesPath, 'utf8');
+    expect(source).toContain("router.post('/items/bulk', authenticate, requireMasterAdmin, validateOnboardingBulkItemsPayload, onboardingController.bulkCreateOnboardingItems);");
+  });
 });

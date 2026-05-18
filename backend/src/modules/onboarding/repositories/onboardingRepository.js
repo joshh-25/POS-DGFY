@@ -1,31 +1,33 @@
 import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
 import { assertOnboardingRepositoryContract } from '../contracts/onboardingRepository.contract.js';
-import { buildBusinessClassificationSnapshot } from '../domain/businessClassification.js';
 import {
-  normalizeCustomerAccessMode,
-  normalizeInventoryDisplayMode,
-  normalizeLowStockDisplayThreshold
-} from '../../shared/utils/customerAccessPolicy.js';
+  CORRECTED_ITEM_TAXONOMY_MODES,
+  resolveItemPreset
+} from '../../shared/constants/modeItemTaxonomy.js';
 import {
-  buildPosReadiness
-} from '../../shared/utils/catalogSetupPolicy.js';
+  DEFAULT_WORKFLOW_MODE,
+  normalizeWorkflowMode
+} from '../../shared/constants/workflowModes.js';
 
 const ONBOARDING_STATE_KEY = 'tenant_onboarding_state';
 const ONBOARDING_STARTED_AT_KEY = 'tenant_onboarding_started_at';
 const ONBOARDING_COMPLETED_AT_KEY = 'tenant_onboarding_completed_at';
 const ONBOARDING_PROGRESS_KEY = 'tenant_onboarding_progress';
 const POS_BUSINESS_NAME_KEY = 'pos_business_name';
-const CUSTOMER_ACCESS_MODE_KEY = 'customer_access_mode';
-const INVENTORY_DISPLAY_MODE_KEY = 'inventory_display_mode';
-const INVENTORY_LOW_STOCK_DISPLAY_THRESHOLD_KEY = 'inventory_low_stock_display_threshold';
+const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
+const ONBOARDING_COMPLETION_PRESETS_BY_MODE = Object.freeze({
+  food_manufacturing: new Set(['finished_product']),
+  msme: new Set(['product']),
+  services: new Set(['service', 'physical_add_on']),
+  fnb: new Set(['menu_item', 'packaged_beverage'])
+});
 
 const ALLOWED_STATES = new Set(['not_started', 'in_progress', 'completed']);
 const REQUIRED_CHECK_KEYS = Object.freeze([
   'store_name_ready',
-  'has_active_location',
   'has_primary_storefront_location',
-  'has_sellable_item'
+  'has_priced_starter_item'
 ]);
 const MAX_STEP_PAYLOAD_BYTES = 16 * 1024;
 const MAX_PROGRESS_PAYLOAD_BYTES = 64 * 1024;
@@ -61,9 +63,8 @@ const toBoolean = (value) => value === true;
 const normalizeChecklist = (rawChecklist = {}) => {
   const checklist = {
     store_name_ready: toBoolean(rawChecklist.store_name_ready),
-    has_active_location: toBoolean(rawChecklist.has_active_location),
     has_primary_storefront_location: toBoolean(rawChecklist.has_primary_storefront_location),
-    has_sellable_item: toBoolean(rawChecklist.has_sellable_item)
+    has_priced_starter_item: toBoolean(rawChecklist.has_priced_starter_item)
   };
   const requiredTotal = REQUIRED_CHECK_KEYS.length;
   const completedRequiredCount = REQUIRED_CHECK_KEYS.filter((key) => checklist[key] === true).length;
@@ -83,31 +84,20 @@ const normalizeProgress = (rawValue = {}) => {
   const stepPayloads = normalized.step_payloads && typeof normalized.step_payloads === 'object'
     ? normalized.step_payloads
     : {};
-  const rawClassificationPayload = stepPayloads.business_classification && typeof stepPayloads.business_classification === 'object'
-    ? stepPayloads.business_classification
-    : {};
-  const fallbackClassificationSnapshot = buildBusinessClassificationSnapshot(rawClassificationPayload);
-  const classificationSnapshot = normalized.classification_snapshot && typeof normalized.classification_snapshot === 'object'
-    ? {
-      ...fallbackClassificationSnapshot,
-      ...normalized.classification_snapshot,
-      payload: normalized.classification_snapshot.payload && typeof normalized.classification_snapshot.payload === 'object'
-        ? normalized.classification_snapshot.payload
-        : fallbackClassificationSnapshot.payload
-    }
-    : fallbackClassificationSnapshot;
 
-  return {
+  const nextProgress = {
     step_payloads: stepPayloads,
-    checklist_snapshot: normalizeChecklist(normalized.checklist_snapshot?.checklist || {}),
-    classification_snapshot: classificationSnapshot
+    checklist_snapshot: normalizeChecklist(normalized.checklist_snapshot?.checklist || {})
   };
+  if (normalized.classification_snapshot && typeof normalized.classification_snapshot === 'object') {
+    nextProgress.classification_snapshot = normalized.classification_snapshot;
+  }
+  return nextProgress;
 };
 
 const buildDefaultProgress = () => ({
   step_payloads: {},
-  checklist_snapshot: normalizeChecklist({}),
-  classification_snapshot: buildBusinessClassificationSnapshot({})
+  checklist_snapshot: normalizeChecklist({})
 });
 
 const modelHasColumn = (Model, columnName) => {
@@ -116,11 +106,12 @@ const modelHasColumn = (Model, columnName) => {
   return attrs.some((attr) => attr?.fieldName === columnName || attr?.field === columnName);
 };
 
-const buildSellableItemWhere = (Item) => {
+const buildPricedStarterItemWhere = (Item) => {
   const where = {};
   if (modelHasColumn(Item, 'deleted_at')) where.deleted_at = null;
   if (modelHasColumn(Item, 'status')) where.status = 'active';
   if (modelHasColumn(Item, 'is_active')) where.is_active = true;
+  if (modelHasColumn(Item, 'default_sale_price')) where.default_sale_price = { [Op.gt]: 0 };
   return where;
 };
 
@@ -130,31 +121,37 @@ const toPlain = (value) => (
     : value
 );
 
-const countPosReadySellableItems = async ({ Item, PosCatalogOverride, ServiceItemDetail, transaction = null } = {}) => {
+const itemHasModeValidPreset = ({ item, workflowMode }) => {
+  const mode = normalizeWorkflowMode(workflowMode);
+  if (!CORRECTED_ITEM_TAXONOMY_MODES.includes(mode)) return true;
+
+  const presetKey = String(item?.mode_item_preset || '').trim();
+  const completionPresets = ONBOARDING_COMPLETION_PRESETS_BY_MODE[mode];
+  if (completionPresets && !completionPresets.has(presetKey)) return false;
+  return Boolean(presetKey && resolveItemPreset(mode, presetKey));
+};
+
+const countPricedStarterItems = async ({ Item, transaction = null, workflowMode = DEFAULT_WORKFLOW_MODE } = {}) => {
   if (!Item) return 0;
+  if (!modelHasColumn(Item, 'default_sale_price')) return 0;
   const batchSize = 500;
   let offset = 0;
+  const attributes = [
+    'item_id',
+    'name',
+    'sku_code',
+    'category',
+    'product_type',
+    'mode_item_preset',
+    'status',
+    'default_sale_price',
+    'current_stock'
+  ].filter((column) => modelHasColumn(Item, column));
 
   while (true) {
     const rows = await Item.findAll({
-      where: buildSellableItemWhere(Item),
-      attributes: [
-        'item_id',
-        'name',
-        'sku_code',
-        'category',
-        'product_type',
-        'mode_item_preset',
-        'status',
-        'default_sale_price',
-        'current_stock'
-      ],
-      include: ServiceItemDetail ? [{
-        model: ServiceItemDetail,
-        as: 'serviceDetail',
-        attributes: ['bookable', 'visible_in_pos', 'visible_in_storefront'],
-        required: false
-      }] : [],
+      where: buildPricedStarterItemWhere(Item),
+      attributes,
       order: [['item_id', 'ASC']],
       limit: batchSize,
       offset,
@@ -162,26 +159,9 @@ const countPosReadySellableItems = async ({ Item, PosCatalogOverride, ServiceIte
     });
     if (!rows.length) return 0;
 
-    const itemIds = rows.map((row) => toPlain(row)?.item_id).filter(Boolean);
-    const overrideMap = new Map();
-    if (PosCatalogOverride && itemIds.length > 0) {
-      const overrides = await PosCatalogOverride.findAll({
-        where: { item_id: { [Op.in]: itemIds } },
-        attributes: ['item_id', 'pos_visible', 'pos_image_path', 'pos_image_url'],
-        ...(transaction ? { transaction } : {})
-      });
-      overrides.forEach((row) => {
-        const payload = toPlain(row);
-        overrideMap.set(payload.item_id, payload);
-      });
-    }
-
     if (rows.some((row) => {
       const item = toPlain(row);
-      return buildPosReadiness({
-        item,
-        override: overrideMap.get(item.item_id) || null
-      }).ready === true;
+      return itemHasModeValidPreset({ item, workflowMode });
     })) {
       return 1;
     }
@@ -236,6 +216,16 @@ const upsertSetting = async (SystemSetting, rowMap, {
   rowMap.set(key, created);
 };
 
+const readSettingValue = async (SystemSetting, key, { transaction = null, defaultValue = '' } = {}) => {
+  if (!SystemSetting) return defaultValue;
+  const row = await SystemSetting.findOne({
+    where: { setting_key: key },
+    ...(transaction ? { transaction } : {})
+  });
+  const value = String(row?.setting_value || '').trim();
+  return value || defaultValue;
+};
+
 const computeChecklist = async ({ storeNameBaseline = '', transaction = null } = {}) => {
   const store = dbStore.getStore() || {};
   const contextTenantName = String(store?.tenantName || '').trim();
@@ -243,38 +233,28 @@ const computeChecklist = async ({ storeNameBaseline = '', transaction = null } =
 
   const TenantLocation = dbStore.get('TenantLocation');
   const Item = dbStore.get('Item');
-  const PosCatalogOverride = dbStore.get('PosCatalogOverride');
-  const ServiceItemDetail = dbStore.get('ServiceItemDetail');
   const SystemSetting = dbStore.get('SystemSetting');
 
-  let fallbackBusinessName = '';
-  if (SystemSetting) {
-    const row = await SystemSetting.findOne({
-      where: { setting_key: POS_BUSINESS_NAME_KEY },
-      ...(transaction ? { transaction } : {})
-    });
-    fallbackBusinessName = String(row?.setting_value || '').trim();
-  }
+  const fallbackBusinessName = await readSettingValue(SystemSetting, POS_BUSINESS_NAME_KEY, { transaction });
+  const workflowMode = await readSettingValue(SystemSetting, WORKFLOW_MODE_SETTING_KEY, {
+    transaction,
+    defaultValue: DEFAULT_WORKFLOW_MODE
+  });
 
-  const [activeLocationCount, primaryActiveLocationCount, sellableItemCount] = await Promise.all([
-    TenantLocation ? TenantLocation.count({
-      where: { is_active: true },
-      ...(transaction ? { transaction } : {})
-    }) : 0,
+  const [primaryActiveLocationCount, pricedStarterItemCount] = await Promise.all([
     TenantLocation ? TenantLocation.count({
       where: { is_active: true, is_primary_storefront: true },
       ...(transaction ? { transaction } : {})
     }) : 0,
-    countPosReadySellableItems({ Item, PosCatalogOverride, ServiceItemDetail, transaction })
+    countPricedStarterItems({ Item, transaction, workflowMode })
   ]);
 
   const resolvedStoreName = baselineName || contextTenantName || fallbackBusinessName;
 
   return normalizeChecklist({
     store_name_ready: resolvedStoreName.length > 0,
-    has_active_location: activeLocationCount > 0,
     has_primary_storefront_location: primaryActiveLocationCount > 0,
-    has_sellable_item: sellableItemCount > 0
+    has_priced_starter_item: pricedStarterItemCount > 0
   });
 };
 
@@ -284,10 +264,7 @@ const readOnboardingSettings = async ({ transaction = null } = {}) => {
     ONBOARDING_STATE_KEY,
     ONBOARDING_STARTED_AT_KEY,
     ONBOARDING_COMPLETED_AT_KEY,
-    ONBOARDING_PROGRESS_KEY,
-    CUSTOMER_ACCESS_MODE_KEY,
-    INVENTORY_DISPLAY_MODE_KEY,
-    INVENTORY_LOW_STOCK_DISPLAY_THRESHOLD_KEY
+    ONBOARDING_PROGRESS_KEY
   ], { transaction });
 
   const state = sanitizeState(rowMap.get(ONBOARDING_STATE_KEY)?.setting_value);
@@ -311,12 +288,7 @@ const toResponsePayload = ({ state, startedAt, completedAt, progress, checklist 
   tenant_onboarding_completed_at: completedAt,
   tenant_onboarding_progress: {
     ...progress,
-    checklist_snapshot: checklist,
-    classification_snapshot: buildBusinessClassificationSnapshot(
-      progress?.step_payloads?.business_classification && typeof progress.step_payloads.business_classification === 'object'
-        ? progress.step_payloads.business_classification
-        : {}
-    )
+    checklist_snapshot: checklist
   }
 });
 
@@ -392,11 +364,6 @@ export const onboardingRepository = {
           ...progress.step_payloads,
           [safeStepKey]: normalizedPayload
         },
-        classification_snapshot: buildBusinessClassificationSnapshot(
-          safeStepKey === 'business_classification'
-            ? normalizedPayload
-            : (progress.step_payloads?.business_classification || {})
-        ),
         checklist_snapshot: checklist
       };
       validatePayloadSizes({ nextProgress });
@@ -429,31 +396,6 @@ export const onboardingRepository = {
         description: 'Tenant onboarding progress and latest checklist snapshot',
         transaction
       });
-      if (safeStepKey === 'business_classification') {
-        const classification = nextProgress.classification_snapshot || {};
-        await upsertSetting(SystemSetting, rowMap, {
-          key: CUSTOMER_ACCESS_MODE_KEY,
-          value: normalizeCustomerAccessMode(classification.customer_access_mode || classification.visibility_mode),
-          dataType: 'string',
-          description: 'Requested storefront customer access mode (ghost | catalog | inquiry | transaction)',
-          transaction
-        });
-        await upsertSetting(SystemSetting, rowMap, {
-          key: INVENTORY_DISPLAY_MODE_KEY,
-          value: normalizeInventoryDisplayMode(classification.inventory_display_mode),
-          dataType: 'string',
-          description: 'Customer-facing inventory display mode (hidden | availability | low_stock | exact_quantity)',
-          transaction
-        });
-        await upsertSetting(SystemSetting, rowMap, {
-          key: INVENTORY_LOW_STOCK_DISPLAY_THRESHOLD_KEY,
-          value: normalizeLowStockDisplayThreshold(classification.inventory_low_stock_display_threshold),
-          dataType: 'number',
-          description: 'Public low-stock display threshold for storefront inventory labels',
-          transaction
-        });
-      }
-
       responsePayload = toResponsePayload({
         state: nextState,
         startedAt: nextStartedAt,

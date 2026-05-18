@@ -1,7 +1,8 @@
 import {
   getOnboardingStatusUseCase,
   saveOnboardingStepUseCase,
-  completeOnboardingUseCase
+  completeOnboardingUseCase,
+  bulkCreateOnboardingItemsUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import {
@@ -26,9 +27,8 @@ const ONBOARDING_EVENT_MAP = Object.freeze({
   reminder_shown: 'tenant_onboarding_reminder_shown',
   reminder_dismissed: 'tenant_onboarding_reminder_dismissed',
   optional_asset_skipped: 'tenant_onboarding_optional_asset_skipped',
-  classifier_viewed: 'tenant_onboarding_classifier_viewed',
-  classifier_saved: 'tenant_onboarding_classifier_saved',
-  classifier_skipped: 'tenant_onboarding_classifier_skipped'
+  primary_location_saved: 'tenant_onboarding_primary_location_saved',
+  bulk_items_saved: 'tenant_onboarding_bulk_items_saved'
 });
 
 export const getOnboardingStatus = async (req, res, next) => {
@@ -127,6 +127,42 @@ export const completeOnboarding = async (req, res, next) => {
   }
 };
 
+export const bulkCreateOnboardingItems = async (req, res, next) => {
+  try {
+    const result = await bulkCreateOnboardingItemsUseCase({
+      rows: req.validatedData?.rows || [],
+      userId: req.user?.user_id || req.user?.id || null
+    });
+
+    await trackProductUsageFromResult({
+      req,
+      user: req.user,
+      eventType: 'tenant_onboarding_bulk_items_saved',
+      surface: 'onboarding',
+      action: 'bulk_create_items',
+      result,
+      successMetadataResolver: () => ({
+        total: result.data?.summary?.total ?? null,
+        created: result.data?.summary?.created ?? null,
+        failed: result.data?.summary?.failed ?? null
+      })
+    });
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'Onboarding items processed successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const trackOnboardingEvent = async (req, res, next) => {
   try {
     const eventKey = String(req.validatedData?.event_key || '').trim().toLowerCase();
@@ -178,5 +214,6 @@ export default {
   getOnboardingStatus,
   saveOnboardingStep,
   completeOnboarding,
+  bulkCreateOnboardingItems,
   trackOnboardingEvent
 };
