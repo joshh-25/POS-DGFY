@@ -257,8 +257,10 @@ const resolveChangedFiles = () => {
     files = splitLines(runCommand('git diff --name-only HEAD~1...HEAD', { allowFail: true }));
   }
 
+  const staged = splitLines(runCommand('git diff --cached --name-only', { allowFail: true }));
+  const worktree = splitLines(runCommand('git diff --name-only', { allowFail: true }));
   const untracked = splitLines(runCommand('git ls-files --others --exclude-standard', { allowFail: true }));
-  return unique([...files, ...untracked]);
+  return unique([...files, ...staged, ...worktree, ...untracked]);
 };
 
 const isSensitiveFile = (filePath) => getMatchingRules(filePath).length > 0;

@@ -81,15 +81,15 @@ const buildFnbRecipeBlockerMessage = (error) => {
         const ingredient = details.ingredient_name || `ingredient ${details.ingredient_item_id || ''}`.trim();
         const unit = details.unit_of_measure ? ` ${details.unit_of_measure}` : '';
         const location = details.location_id ? ` at location ${details.location_id}` : '';
-        return `${product} cannot be checked out because ${ingredient} is short${location}. Available: ${details.available ?? 0}${unit}; required: ${details.requested ?? ''}${unit}.`;
+        return `${product}: ${ingredient} short${location}. Avail ${details.available ?? 0}${unit}; req ${details.requested ?? ''}${unit}.`;
     }
     if (reasonCode === 'FNB_RECIPE_UOM_INCOMPATIBLE') {
         const product = details.product_name || 'Selected menu item';
         const ingredient = details.ingredient_name || `ingredient ${details.ingredient_item_id || ''}`.trim();
-        return `${product} cannot be checked out because ${ingredient} uses incompatible recipe units (${details.recipe_uom || 'recipe UOM'} to ${details.ingredient_uom || 'stock UOM'}). Update the recipe or ingredient UOM, then retry.`;
+        return `${product}: ${ingredient} unit mismatch (${details.recipe_uom || 'recipe'} to ${details.ingredient_uom || 'stock'}). Update UOM.`;
     }
     if (reasonCode === 'FNB_KITCHEN_ORDER_UNAVAILABLE') {
-        return 'Kitchen order could not be queued. Refresh the F&B setup, then retry checkout.';
+        return 'Kitchen order unavailable. Refresh F&B setup.';
     }
     return null;
 };
@@ -134,13 +134,13 @@ const buildCompliancePolicyBlockerMessage = (error) => {
         ? complianceDecision.obligations.map((entry) => String(entry || '').trim()).filter(Boolean)
         : [];
     const actionTarget = COMPLIANCE_ACTION_TARGET_BY_REASON[reasonCode] || '/settings?tab=compliance';
-    const guidance = obligations[0] || 'Open compliance settings and complete the required controls.';
+    const guidance = obligations[0] || 'Complete settings.';
     const compactTarget = actionTarget.replace('/settings?tab=compliance', 'Settings > Compliance');
 
     return {
         reasonCode,
         actionTarget,
-        message: `Compliance policy blocked checkout (${reasonCode}). ${guidance} Fix path: ${compactTarget}.`
+        message: `Compliance policy blocked checkout (${reasonCode}). ${guidance} Fix: ${compactTarget}.`
     };
 };
 const buildStockExceededMessage = ({ itemName, requestedQty, availableStock, unit }) => (
@@ -216,7 +216,7 @@ const isRetryableCheckoutReplayError = (error) => {
 };
 
 const resolveCheckoutReplayErrorDetails = (error) => ({
-    message: String(error?.response?.data?.message || error?.message || 'Checkout replay failed').trim(),
+      message: String(error?.response?.data?.message || error?.message || 'Replay failed').trim(),
     code: String(error?.response?.data?.error_code || error?.code || '').trim() || undefined,
     status: Number(error?.response?.status || 0) || undefined
 });
@@ -528,7 +528,7 @@ export default function POSCheckoutTerminal({
         if (!Array.isArray(candidates) || candidates.length === 0) {
             await syncQueuedCheckoutsState();
             if (toastIfEmpty) {
-                toast.message('No queued checkouts to replay.');
+                toast.message('No queued checkouts.');
             }
             return;
         }
@@ -546,7 +546,7 @@ export default function POSCheckoutTerminal({
                     failedManualCount += 1;
                     await markTerminalOperationFailedManualResolution(intentId, {
                         error: {
-                            message: 'Queued checkout payload is malformed and requires manual resolution.',
+      message: 'Queued payload is malformed.',
                             code: 'POS_CHECKOUT_QUEUE_MALFORMED_ENTRY'
                         }
                     });
@@ -1287,8 +1287,8 @@ export default function POSCheckoutTerminal({
             }
             toast.success(
                 data?.idempotent_replay
-                    ? `Checkout replayed from idempotent request (${inferReceiptContract(data?.transaction, data?.receipt_contract)?.label || 'receipt loaded'})`
-                    : `Checkout completed successfully (${inferReceiptContract(data?.transaction, data?.receipt_contract)?.label || 'receipt ready'})`
+                    ? `Replayed (${inferReceiptContract(data?.transaction, data?.receipt_contract)?.label || 'receipt loaded'})`
+                    : `Done (${inferReceiptContract(data?.transaction, data?.receipt_contract)?.label || 'receipt ready'})`
             );
             if (data?.terminal_identity_policy?.warning?.message) {
                 toast.message(`Terminal policy warning: ${data.terminal_identity_policy.warning.message}`);
@@ -1364,7 +1364,7 @@ export default function POSCheckoutTerminal({
                 </div>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                     <p className="text-xs text-slate-600">
-                        Tip: Use <span className="font-semibold text-slate-800">Checkout</span> for live selling, <span className="font-semibold text-slate-800">History</span> for audits, and <span className="font-semibold text-slate-800">Receipt Preview</span> for reprints.
+                        Use <span className="font-semibold text-slate-800">Checkout</span> for sales, <span className="font-semibold text-slate-800">History</span> for audits, and <span className="font-semibold text-slate-800">Receipt Preview</span> for reprints.
                     </p>
                     <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
                         {terminalIdentityLabel}
@@ -1396,7 +1396,7 @@ export default function POSCheckoutTerminal({
                         </Button>
                     </div>
                     <p className="text-xs text-amber-800">
-                        Offline-safe checkout queue uses durable replay statuses (`queued`, `replaying`, `replayed`, `failed_manual_resolution_required`) with idempotent retry safety.
+                        Offline queue keeps durable replay status and retry safety.
                     </p>
                 </div>
             )}
@@ -1447,7 +1447,7 @@ export default function POSCheckoutTerminal({
                 <div className={checkoutGridClassName}>
             {hasSplitPaneScroll && (
                 <p className="2xl:col-span-12 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
-                    Scroll tip: hover or focus inside each pane to scroll it independently.
+                    Hover or focus a pane to scroll it.
                 </p>
             )}
             <section className={`2xl:col-span-8 h-full bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col min-h-0 overflow-hidden ${checkoutPaneClassName}`}>
@@ -1480,7 +1480,7 @@ export default function POSCheckoutTerminal({
                 </div>
                 <div className="mb-2 flex justify-end">
                     <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                        {hasSplitPaneScroll ? 'Scroll Zone: Catalog' : 'Scroll: Page (Catalog)'}
+                        {hasSplitPaneScroll ? 'Catalog scroll' : 'Page scroll'}
                     </span>
                 </div>
 
@@ -1605,7 +1605,7 @@ export default function POSCheckoutTerminal({
                                             });
                                         }}
                                         className="w-full aspect-square max-h-64 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-inner hover:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
-                                        title={hasImage ? 'Click to enlarge image' : 'Click to preview placeholder'}
+                                title={hasImage ? 'Enlarge image' : 'Preview placeholder'}
                                     >
                                         {hasImage ? (
                                             <img
@@ -1657,7 +1657,7 @@ export default function POSCheckoutTerminal({
                                 </p>
                                 {isOutOfStock && (
                                     <p className="mt-1 text-[11px] font-medium text-slate-500">
-                                        Visible in catalog but unavailable for checkout.
+                                        Unavailable for checkout.
                                     </p>
                                 )}
                                 </div>
@@ -1670,7 +1670,7 @@ export default function POSCheckoutTerminal({
                         )}
                         {!catalogError && catalog.length === 0 && (
                             <p className="text-sm text-slate-600 col-span-full rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
-                                No POS-visible items found. Enable items from Inventory first.
+                                No POS-visible items.
                             </p>
                         )}
                     </div>
@@ -1696,10 +1696,10 @@ export default function POSCheckoutTerminal({
                         onScroll={syncCurrentSalePaneScrollState}
                     >
                 <h2 className="text-xl font-bold text-slate-900 mb-1">Current Sale</h2>
-                <p className="text-sm text-slate-600 mb-4">Review cart, pricing, VAT buckets, and final total before checkout.</p>
+                <p className="text-sm text-slate-600 mb-4">Review cart, VAT, and total before checkout.</p>
                 <div className="mb-2 flex justify-end">
                     <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                        {hasSplitPaneScroll ? 'Scroll Zone: Current Sale' : 'Scroll: Page (Current Sale)'}
+                        {hasSplitPaneScroll ? 'Sale scroll' : 'Page scroll'}
                     </span>
                 </div>
                 <div className="space-y-3 mb-4">
@@ -1733,7 +1733,7 @@ export default function POSCheckoutTerminal({
                         </select>
                         {isMsmeMode && paymentType !== 'cash' && (
                             <span className="mt-1 block text-[11px] text-amber-700">
-                                MSME mode uses a placeholder/manual flow for non-cash entries (no live gateway in v1).
+                                MSME non-cash is manual.
                             </span>
                         )}
                     </label>
@@ -1935,7 +1935,7 @@ export default function POSCheckoutTerminal({
                     })}
                     {cart.length === 0 && (
                         <p className="text-sm text-slate-600 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3">
-                            Cart is empty. Select any product from the catalog to start a transaction.
+                            Select a catalog item to start.
                         </p>
                     )}
                 </div>
@@ -1981,7 +1981,7 @@ export default function POSCheckoutTerminal({
                         placeholder="0.00"
                     />
                     <span className="mt-1 block text-[11px] text-slate-500">
-                        Manual and profile discounts are mutually exclusive.
+                        Manual and preset discounts cannot combine.
                     </span>
                 </label>
 
@@ -2005,7 +2005,7 @@ export default function POSCheckoutTerminal({
                         </span>
                     ) : (
                         <span className="mt-1 block text-[11px] text-slate-500">
-                            Select a configured discount preset in Settings &gt; POS Setup to apply a discount.
+                            Select a POS Setup preset.
                         </span>
                     )}
                 </label>
@@ -2109,7 +2109,7 @@ export default function POSCheckoutTerminal({
                     <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
                         <div>
                             <h2 className="text-xl font-bold text-slate-900">Receipt Preview</h2>
-                            <p className="text-sm text-slate-600">Review the latest selected receipt before printing or sharing.</p>
+                            <p className="text-sm text-slate-600">Review the selected receipt.</p>
                         </div>
                         <div className="flex items-center gap-2">
                             {normalizedTerminalId && (
@@ -2148,7 +2148,7 @@ export default function POSCheckoutTerminal({
                         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
                             <p className="text-base font-semibold text-slate-900">No receipt selected yet.</p>
                             <p className="mt-1 text-sm text-slate-600">
-                                Open transaction history and select a record to load its receipt preview.
+                                Select a history record to preview.
                             </p>
                             <Button
                                 type="button"

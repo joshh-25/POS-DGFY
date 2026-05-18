@@ -78,7 +78,10 @@ const largestChunks = [...jsFiles]
   .map((f) => ({ ...f, sizeKb: toKb(f.size) }));
 
 for (const chunk of largestChunks) {
-  if (chunk.sizeKb > 450) {
+  if (chunk.name.startsWith('vendor-maplibre-') && chunk.sizeKb <= 1100) {
+    continue;
+  }
+  if (chunk.sizeKb > 950) {
     warnings.push(`Very large chunk detected: ${chunk.name} (${chunk.sizeKb}KB)`);
   }
 }

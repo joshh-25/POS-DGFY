@@ -78,6 +78,20 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    // MapLibre is lazy-loaded by location-picker surfaces; keep warnings focused on initial app/vendor regressions.
+    chunkSizeWarningLimit: 1100,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (id.includes('maplibre-gl')) return 'vendor-maplibre'
+          if (id.includes('qrcode')) return 'vendor-qrcode'
+          if (id.includes('lucide-react')) return 'vendor-icons'
+          if (id.includes('react-markdown') || id.includes('remark-') || id.includes('rehype-') || id.includes('katex') || id.includes('unified') || id.includes('micromark')) return 'vendor-markdown'
+          return 'vendor'
+        },
+      },
+    },
+  },
 })
-
-
