@@ -42,7 +42,7 @@ import * as settingsService from '../src/services/settingsService.js';
 import * as paymentService from '../src/services/paymentService.js';
 import * as tenantLocationService from '../src/services/tenantLocationService.js';
 import UserManagementModal from '../Components/users/UserManagementModal.jsx';
-import OpenStreetMapPinPicker from '../src/components/maps/OpenStreetMapPinPicker.jsx';
+import MapPinPicker from '../src/components/maps/MapPinPicker.jsx';
 import ComplianceProgramPanel from '../src/features/compliance/components/ComplianceProgramPanel.jsx';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { shouldShowMigrateToPayMongoSection, subscriptionsEnabled } from '../src/utils/subscriptionUi.js';
@@ -2372,7 +2372,7 @@ export default function Settings() {
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label>Map Pin (OpenStreetMap)</Label>
-                  <OpenStreetMapPinPicker
+                  <MapPinPicker
                     latitude={locationForm.latitude}
                     longitude={locationForm.longitude}
                     deliveryRadiusKm={locationForm.delivery_radius_km}

@@ -48,6 +48,11 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      '/openfreemap': {
+        target: 'https://tiles.openfreemap.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/openfreemap/, '')
+      },
     },
   },
   preview: {
@@ -65,6 +70,11 @@ export default defineConfig({
         target: apiProxyTarget,
         changeOrigin: true,
         secure: false,
+      },
+      '/openfreemap': {
+        target: 'https://tiles.openfreemap.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/openfreemap/, '')
       },
     },
   },

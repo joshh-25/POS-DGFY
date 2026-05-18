@@ -65,7 +65,7 @@ vi.mock('../../../Components/users/UserManagementModal.jsx', () => ({
   default: ({ open }) => open ? <div>UserManagementModal</div> : null
 }));
 
-vi.mock('../../components/maps/OpenStreetMapPinPicker.jsx', () => ({
+vi.mock('../../components/maps/MapPinPicker.jsx', () => ({
   default: () => <div>MapPicker</div>
 }));
 
