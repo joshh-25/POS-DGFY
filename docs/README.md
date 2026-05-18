@@ -105,6 +105,7 @@ Start here for all planning and implementation work:
 35. Account passwords require only a minimum of 8 characters across tenant user registration, invitation acceptance, company founder registration, and authenticated Settings > Profile password changes. The frontend password generator is optional convenience UI, defaults to a readable 16-character password, and fills matching confirmation fields where present.
 36. Frontend release hardening includes a governed route-chunk budget gate. `npm run check:frontend-budgets` enforces login, POS, terminal, and sales route ceilings, treats lazy `vendor-maplibre-*` as a separately capped map dependency, and still reports unrelated vendor growth as actionable.
 37. Compliance-sensitive delivery work now has two paired branch gates: `npm run check:compliance` requires a declaration file for sensitive paths and enforces computed minimum classification plus strict `major|regulatory` preflight metadata, while the bundled API-contract check fails when compliance-sensitive runtime fields drift from `docs/api/specification.md`.
+38. No-staging production promotion requires exact QA deploy parity. `qa_deploy_summary.txt` must show the same `deployed_head` as `RELEASE_TARGET_SHA`; stale QA evidence is a hard release failure unless an explicit emergency bypass is recorded.
 
 ## Rules
 1. Use authoritative docs first.

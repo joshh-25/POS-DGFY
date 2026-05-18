@@ -66,6 +66,7 @@ Canonical planning entry:
 - Compliance Final Review documentary requirements are tenant self-serve in Settings > Compliance (backend stores tenant records; submission docs remain internal reference).
 - Compliance activation readiness browser E2E and startup regression guardrails are under `docs/testing/README.md`.
 - Frontend release-hardening budgets are documented in `docs/testing/README.md`; `npm run check:frontend-budgets` governs route chunks and keeps lazy MapLibre isolated under its dedicated ceiling.
+- No-staging release promotion requires exact QA deploy parity. `docs/ops/NO_STAGING_RELEASE_STANDARD.md` defines the hard gate that rejects stale `qa_deploy_summary.txt` evidence when `deployed_head` does not match `RELEASE_TARGET_SHA`.
 - Historical compliance remediation packets are archived under `docs/archive/compliance/2026-04-07`.
 - Historical exploratory testing packets are archived under `docs/archive/testing/`.
 - Historical SKU expansion/storefront planning snapshots are archived under `docs/archive/reference/2026-03/`.

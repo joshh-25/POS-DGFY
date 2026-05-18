@@ -39,16 +39,16 @@ Default evidence root:
 ```
 
 Required files:
-1. `qa_deploy_summary.txt` (required for evidence continuity; strict SHA match can be enforced with `RELEASE_ENFORCE_PREDEPLOY_SUMMARY_SHA_MATCH=1`)
+1. `qa_deploy_summary.txt`
 2. `smoke_result.json`
 3. `rollback_drill_result.json`
 4. `restore_drill_result.json`
 5. `release_verdict.json` (final aggregated verdict)
 
 Current behavior note:
-1. `qa_deploy_summary.txt` preserves deploy evidence continuity.
-2. SHA mismatch is reported in the verdict as `non_blocking_predeploy_check` unless `RELEASE_ENFORCE_PREDEPLOY_SUMMARY_SHA_MATCH=1` is set.
-3. Production signoff should treat a non-blocking SHA mismatch as residual risk, even when the gate exits successfully.
+1. `qa_deploy_summary.txt` must prove that QA deployed the exact `RELEASE_TARGET_SHA`.
+2. A missing or mismatched `deployed_head` is a hard gate failure.
+3. Emergency override remains available only through the explicit bypass metadata contract below.
 
 ## QA Configuration Inputs
 1. QA smoke:
@@ -74,6 +74,7 @@ Recommended local secret source:
 1. Keep non-secret defaults in `.env.qa.local`.
 2. Keep credentials/tokens in `.env.qa.secrets.local` (gitignored).
 3. `scripts/deploy-remote.sh` and `scripts/load-qa-env.ps1` auto-load the secrets overlay when present.
+4. Explicit process environment values take precedence over local file defaults, so `RELEASE_TARGET_SHA=<sha> npm run gate:release:no-staging:qa-env` can safely target the intended release even if a local QA env file is older.
 
 ## Emergency Bypass
 Allowed only during incident response with explicit metadata:

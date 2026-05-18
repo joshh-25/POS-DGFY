@@ -9,7 +9,7 @@ Last updated: 2026-05-06
 2. Overall readiness: `in_progress` until human/ops signoffs close
 3. Local PM2 production preview: healthy on `ecosystem.config.cjs` with backend, IMS, POS, and Storefront processes online
 4. Production contract smoke: passing against the configured production target
-5. Residual deploy evidence risk: the latest no-staging gate can pass with a non-blocking QA deploy summary SHA mismatch unless strict SHA enforcement is enabled
+5. Exact QA deploy parity is mandatory: the latest no-staging gate fails when the QA deploy summary does not match the release target SHA
 
 Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for readiness status and blockers.
 
@@ -29,7 +29,7 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 2. `GET http://localhost:5000/health` -> PASS with production, DB connected, Redis connected/required, runtime schema healthy, schema indexes healthy, tenant pool healthy, and fail-closed token blacklist mode.
 3. `GET http://localhost:5173`, `:5174`, and `:5175` -> PASS.
 4. `npm run gate:release:local` -> PASS.
-5. `npm run gate:release:no-staging` with QA env overlay -> PASS; current verdict includes a non-blocking QA deploy-summary SHA mismatch and should not be treated as exact-deploy proof unless strict mode is enabled.
+5. `npm run gate:release:no-staging` with QA env overlay -> PASS only when QA deploy evidence, smoke, rollback, restore, docs lint, and architecture checks all pass for the exact release SHA.
 6. `npm run gate:release:prod-contracts` with exported production values -> PASS (`12/12` checks).
 7. Targeted FIFO/service/F&B backend tests -> PASS (`27` tests).
 8. Targeted FIFO batch viewer frontend tests -> PASS (`6` tests).

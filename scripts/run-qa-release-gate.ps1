@@ -7,3 +7,4 @@ $ErrorActionPreference = 'Stop'
 
 & "$PSScriptRoot\load-qa-env.ps1" -EnvFile $EnvFile -SecretsFile $SecretsFile
 npm run gate:release:no-staging
+exit $LASTEXITCODE

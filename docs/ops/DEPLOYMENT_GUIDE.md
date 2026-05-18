@@ -97,6 +97,11 @@ cp .env.qa.local.example .env.qa.local
 # fill values, then load them into your shell before deploy/gates
 ```
 
+Explicit process values override `.env.qa.local` defaults. For one-off release validation, pass the intended target directly, for example:
+```bash
+RELEASE_TARGET_SHA="<target_sha>" npm run gate:release:no-staging:qa-env
+```
+
 Recommended local secret overlay (gitignored):
 ```bash
 cp .env.qa.secrets.local.example .env.qa.secrets.local
@@ -141,7 +146,7 @@ Behavior:
 2. Runs no-staging preflight (`npm run gate:release:no-staging:preflight`) before push when `DEPLOY_ENFORCE_NO_STAGING_GATE=1`.
 3. Auto-fetches QA deploy summary evidence (`npm run evidence:qa:deploy-summary`) when local summary file is missing.
 4. Runs no-staging hard gate (`npm run gate:release:no-staging`) for pushed SHA.
-5. Proceeds to production SSH deploy only when gate verdict is pass/bypassed.
+5. Proceeds to production SSH deploy only when gate verdict is pass/bypassed and QA deploy evidence matches the exact target SHA.
 6. Auto-loads `.env.qa.local` and `.env.qa.secrets.local` if present.
 
 No-staging preflight checks:
@@ -162,8 +167,9 @@ $env:RELEASE_TARGET_SHA="<target_sha>"
 powershell -ExecutionPolicy Bypass -File scripts/fetch-qa-deploy-summary.ps1
 ```
 
-Optional strictness:
-1. Set `RELEASE_ENFORCE_PREDEPLOY_SUMMARY_SHA_MATCH=1` when you need hard fail on pre-deploy summary SHA mismatch.
+Exact QA parity requirement:
+1. `qa_deploy_summary.txt` must show `deployed_head=<RELEASE_TARGET_SHA>`.
+2. A stale QA summary is a hard release failure; refresh QA to the target SHA, fetch a fresh summary, and rerun the gate.
 
 ## Advanced Deployment (SHA Pinning)
 If you need to ensure a specific commit is deployed (e.g., to prevent race conditions during parallel pushes):
