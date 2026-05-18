@@ -31,7 +31,7 @@ Supporting operations context:
 
 `vps` is the Redis-capable profile. It requires `REDIS_URL`, uses Redis-backed token blacklist/rate limiting/cache paths when connected, and requires fail-closed blacklist checks.
 
-Both profiles keep `TENANT_REGISTRATION_APPROVAL_MODE=manual` as the default. Enabling `auto_standard` is an explicit rollout choice for standard company registrations only; keep `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS=3600000` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS=5` or stricter because public registration can provision tenant databases in that mode.
+Both profiles keep `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` as the default so public company registration provisions tenants immediately. Use `manual` only as an explicit rollback/admin-review mode; keep `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS=3600000` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS=5` or stricter because public registration can provision tenant databases.
 
 ## Runtime Surfaces
 The backend exposes non-secret capability status at both endpoints:
@@ -110,9 +110,9 @@ Token blacklist runtime behavior must match the reported capability mode:
 - `fail_closed`: Redis/cache check failures deny the request with service-unavailable behavior.
 
 Tenant registration approval mode is security-sensitive operational config:
-- `manual` keeps company registrations pending until platform-admin approval.
-- `auto_standard` immediately provisions manual, non-subscription registrations and then the frontend performs a normal login call.
-- Invalid values fall back to `manual`; do not depend on typoed values for rollout state.
+- `auto_standard` immediately provisions non-subscription registrations and then the frontend performs a normal login call.
+- `manual` keeps company registrations pending until platform-admin approval and is the explicit rollback/admin-review mode.
+- Invalid values fall back to the default `auto_standard`; do not depend on typoed values for rollout state.
 - New pending and active registrations are premium-capable by plan metadata, but provider subscription registration remains blocked while `PAYMENTS_ENABLED=false`.
 
 In `vps` mode, Redis is a required capability. If `REDIS_URL` is configured but Redis is disconnected, `/health` and `/api/v1/health` should report degraded/unhealthy status so deploy automation and operators do not treat the runtime as fully ready.

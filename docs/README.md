@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-05-17
+last_reviewed: 2026-05-18
 applies_to: all_documentation_users
 topic: docs_hub
 ---
@@ -79,14 +79,14 @@ Start here for all planning and implementation work:
 10. POS terminal location safety now includes audited shift-location remediation and strict-binding readiness guardrails before enabling `pos_terminal_location_binding_enforced=true`.
 11. POS offline operations (including checkout replay) use a durable queue contract with explicit statuses (`queued`, `replaying`, `replayed`, `failed_manual_resolution_required`) and operator-facing Sync Queue controls.
 12. Storefront discovery/catalog read endpoints now publish explicit HTTP cache contracts while checkout/mutation flows remain `no-store`.
-13. Tenant first-login onboarding now supports business classification (`business_classification`) with deterministic snapshot outputs (`visibility_mode`, `customer_access_mode`, `inventory_display_mode`, `monetization_tier`, `workflow_mode_recommendation`, `compliance_path_hint`) while keeping readiness completion gates unchanged.
+13. Tenant first-login onboarding is a three-step soft-reminder flow: optional storefront profile/cover photos, primary storefront location pin, and mode-aware bulk starter items. Completion requires store name, an active primary storefront location, and one active positively priced starter item; zero stock and item images do not block completion.
 14. Settings information architecture is split by user mental model: Profile, Company, Storefront, POS Setup, Compliance, and System (`docs/features/SETTINGS_INFORMATION_ARCHITECTURE.md`).
 15. SKUpervisor/admin, POS, and Storefront all have PWA source contracts with manifests and service-worker entrypoints; admin/SKUpervisor service-worker caching bypasses `/api/` and `/uploads/`.
 16. Hosting mode is selected from one codebase by environment profile (`shared` or `vps`) and validated by `npm run preflight:shared` / `npm run preflight:vps`; runtime capabilities are visible through `/health`, `/api/v1/health`, and Admin > Hosting. Namecheap shared production deploys use `.github/workflows/deploy-namecheap-shared.yml` plus the runbook in `docs/ops/NAMECHEAP_SHARED_CICD.md`.
    - The canonical PM2 production entrypoint is root `ecosystem.config.cjs`, which runs backend, IMS, POS, and Storefront processes. Do not use obsolete two-process ecosystem shapes for production signoff.
 17. Services Mode is a first-class workflow mode across IMS, POS, and Storefront. It uses item-backed service catalog rows plus service metadata, appointment bookings, resources/providers, waitlist, intake forms, reminder outbox, client signals, and stock-exempt POS service sales.
-18. Company registration defaults to manual platform-admin approval. New pending and active registrations are premium-capable by plan metadata. `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` is the temporary opt-in path for immediately provisioning manual registrations and signing the founder in through the normal login API; provider subscription registration remains blocked while `PAYMENTS_ENABLED=false`.
-19. Public company registration has its own strict IP limiter (`RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`) because `auto_standard` can create tenant databases from a public request.
+18. Company registration defaults to immediate activation. New registrations are premium-capable by plan metadata, `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` is the default, and successful public registration provisions the tenant database before the frontend signs the founder in through the normal login API. `TENANT_REGISTRATION_APPROVAL_MODE=manual` remains an explicit rollback/admin-review mode; provider subscription registration remains blocked while `PAYMENTS_ENABLED=false`.
+19. Public company registration has its own strict IP limiter (`RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`) because the default `auto_standard` path creates tenant databases from public requests.
 20. Customer Access Mode is the default-on runtime storefront capability contract. Discovery/profile/catalog responses expose additive access metadata; `GET /settings` exposes read-only runtime key `customer_access_modes_enabled` for IMS Settings status; `ghost` suppresses public item-search/catalog rows, `catalog` and `inquiry` suppress cart/quote/checkout/booking, and `transaction` preserves current ordering/booking behavior subject to existing stock, location, compliance, and payment gates.
 21. Inventory Display is independent from Customer Access Mode. Public storefront payloads keep raw `current_stock` and `cost_per_unit` private while exposing only the normalized `inventory_display` object allowed by tenant settings.
 22. POS and Storefront item catalog controls are independent. POS uses `pos_catalog_overrides`; Storefront uses `storefront_catalog_overrides`. POS-derived Storefront fallback is allowed only when the Storefront override table is unavailable during rollout, not when an individual Storefront override row is missing.

@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-05-04
+last_reviewed: 2026-05-18
 applies_to: tenant_onboarding_and_storefront_bootstrap
 topic: dgfy_unified_onboarding_plan
 ---
@@ -15,23 +15,23 @@ topic: dgfy_unified_onboarding_plan
 - `SKUpervisor`: Inventory management system.
 - Product direction: all three surfaces are connected.
 
-## 1) Vision Alignment Status (As Of 2026-05-04)
+## 1) Vision Alignment Status (As Of 2026-05-18)
 
 ### Vision Target
 1. Store owner registers a store.
-2. On first login, a short setup questionnaire appears (asset-first onboarding).
+2. On first login, a short guided setup appears for brand assets, primary storefront location, and starter items.
 3. A tenant storefront page in DGFY is automatically available using template-based UI/UX.
 
 ### Current Closeness Score
 - **Overall closeness: 98%**
 
 ### Layman Evidence (What Exists Today)
-1. Registration remains manual-approval first before activation.
-- Evidence: registration creates `pending` request and returns pending status for manual review path (`backend/src/modules/tenants/usecases/registerCompanyRequestUseCase.js`).
-- Evidence: tenant management feature doc states standard onboarding uses pending -> admin approval (`docs/features/TENANT_MANAGEMENT.md`).
+1. Registration defaults to immediate activation.
+- Evidence: public company registration defaults to `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`, provisions the tenant database, activates the tenant, and lets the frontend sign the founder in through normal login (`backend/src/modules/tenants/usecases/registerCompanyRequestUseCase.js`, `docs/features/TENANT_MANAGEMENT.md`).
+- Evidence: `TENANT_REGISTRATION_APPROVAL_MODE=manual` remains an explicit rollback path for pending platform-admin review.
 
 2. First-login onboarding wizard is implemented for tenant master admin.
-- Evidence: onboarding routes exist (`GET /onboarding/status`, `PUT /onboarding/step`, `POST /onboarding/complete`, `POST /onboarding/events`) (`backend/src/routes/onboarding.js`).
+- Evidence: onboarding routes exist (`GET /onboarding/status`, `PUT /onboarding/step`, `POST /onboarding/items/bulk`, `POST /onboarding/complete`, `POST /onboarding/events`) (`backend/src/routes/onboarding.js`).
 - Evidence: onboarding metadata is exposed in login/current-user bootstrap for master admin scope (`backend/src/services/authService.js`, `backend/src/services/userService.js`).
 - Evidence: onboarding wizard/reminder UI is implemented in app shell (`frontend/Layout.jsx`, `frontend/src/features/onboarding/components/OnboardingSetupModal.jsx`).
 
@@ -86,28 +86,20 @@ topic: dgfy_unified_onboarding_plan
 - Google Merchant product data spec indicates minimum product/feed attributes for discoverability and ecommerce readiness (`id`, `title`, `description`, `link`, `image_link`, `price`, `availability`; `brand` required for many new products and `gtin` strongly recommended when available).
 - Stripe statement descriptor docs specify recognizable merchant descriptor requirements for payment clarity and dispute reduction.
 
-### Required At First Login (Blocker To Finish Initial Setup)
+### Required At First Login (Current Completion Contract)
 1. Brand identity:
-- Store display name
-- Primary logo (profile image)
+- Store display name from registration or Settings
+- Profile image and cover image are optional
 
 2. Store operations:
-- At least one active storefront location
-- Primary storefront location selected
-- Basic fulfillment toggles (delivery/pickup/dine-in) and wait-time/radius defaults
+- At least one active primary storefront location pin
 
-3. Merchant contact and legal minimum:
-- Support email
-- Support phone
-- Business address
-- At least placeholder policy links or text for: return, privacy, terms, shipping
+3. Mode-aware starter catalog readiness:
+- At least one active starter item with name/title and positive `default_sale_price`
+- Corrected modes require a mode-valid `mode_item_preset`
+- Stock and item image upload are optional and do not block completion
 
-4. Minimal sellable catalog readiness:
-- At least one sellable item/product with:
-- Name/title
-- Price
-- Stock/availability state
-- Main image
+4. Merchant contact, legal/policy copy, fulfillment toggles, and richer catalog setup remain editable after onboarding through Settings and catalog setup surfaces.
 
 ### Optional In First Login (Can Be Completed Later)
 - Cover/banner image
@@ -132,9 +124,9 @@ topic: dgfy_unified_onboarding_plan
 ### Phase 2: First-Login Guided Setup
 1. On successful login, master admin receives onboarding reminder + wizard for incomplete state.
 2. Wizard sections:
-- Brand basics (logo + store name)
-- Optional branding assets
-- Required readiness checks with deep links
+- Optional profile picture and cover photo
+- Primary storefront location pin through the shared IMS MapLibre picker, with click-to-place, drag-to-adjust, browser geolocation, coordinate fields, and delivery-radius preview
+- Mode-aware bulk starter-item creation, including row-level partial saves, optional post-create storefront image upload retry, and exact generated-SKU replay handling that returns prior rows as idempotent success rather than duplicates
 3. Persist progress after each step and allow safe resume.
 
 ### Phase 3: Storefront Readiness Binding
@@ -151,19 +143,11 @@ topic: dgfy_unified_onboarding_plan
 - `wizard_viewed`, `reminder_shown`, `reminder_dismissed`, `optional_asset_skipped`
 2. Added backend/frontend tests for onboarding contracts and behavior.
 
-## 10) Questionnaire + Classifier Addendum (MVP Advisory Tier)
-1. Added onboarding questionnaire step key: `business_classification`.
-2. Questionnaire payload is normalized and persisted under onboarding step payloads.
-3. Deterministic advisory classifier output is persisted/exposed as `tenant_onboarding_progress.classification_snapshot` with:
-- `visibility_mode` (`ghost | catalog | inquiry | transaction`)
-- `customer_access_mode` (`ghost | catalog | inquiry | transaction`)
-- `inventory_display_mode` (`hidden | availability | low_stock | exact_quantity`)
-- `monetization_tier` (`tier_0 | tier_1 | tier_2 | tier_3`)
-- `workflow_mode_recommendation` (`msme | retail | services | fnb | food_manufacturing | hospitality | healthcare | education_institutions | logistics_distribution | ticketing_transport`)
-- `compliance_path_hint` (`regulated_ready | assisted_compliance | informal_observe`)
-4. Classifier output remains a soft onboarding signal for IMS/POS access. Customer Access Mode enforcement is handled by default-on Storefront runtime policy; no compliance lifecycle mutation or workflow mode auto-write is introduced.
-5. Added classifier telemetry event keys:
-- `classifier_viewed`, `classifier_saved`, `classifier_skipped`
+## 10) Legacy Questionnaire + Classifier Note
+1. The earlier MVP advisory questionnaire used `business_classification` and persisted `tenant_onboarding_progress.classification_snapshot`.
+2. That step is no longer part of the current first-login wizard and should not be used for new implementation plans.
+3. Existing legacy payloads remain readable as backward-compatible context only.
+4. Customer Access Mode and Inventory Display are now configured through Settings > Storefront, while onboarding focuses on brand assets, primary location, and starter items.
 
 ## Customer Access Mode Evolution
 1. ADR: `docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md`.

@@ -64,6 +64,7 @@ Every mode implementation plan must include explicit RBAC and tenant-provisionin
    - Approval and auto-approval provisioning failures must leave the landlord tenant row in a valid retryable lifecycle state. Do not introduce temporary statuses outside the landlord `Tenant.status` enum unless the enum, API contract, UI filters, and recovery paths are updated together.
    - Declare stock behavior for every sellable line type as `stock_bearing` or `stock_exempt`. Stock-bearing lines in every mode must use location-scoped FIFO; stock-exempt lines must state why no inventory batch can be affected.
    - Define item creation presets before UI/backend work begins. Each preset must declare its user-facing label, canonical `items.category`, `product_type`, default UOM, allowed UOM groups/units, stock behavior, FIFO default, POS eligibility, Storefront eligibility, and legacy-row behavior. When explicit allowed units are present, both frontend selectors and backend validators must enforce those units instead of expanding to every unit in the allowed group.
+   - Define first-login onboarding starter-item behavior before exposing a mode as production-ready. The mode must declare which presets appear in onboarding, which fields are required, which hidden item fields are derived, whether cost/stock/image are optional, and what row-level backend/frontend validation proves partial bulk saves.
    - Define catalog setup behavior before exposing a preset in POS or Storefront. The mode contract must state stock-bearing versus stock-exempt behavior, sale-price and cost requirements, POS visibility defaults and blockers, Storefront visibility defaults and customer-price blockers, image upload behavior, and whether the item should be recommended for POS, Storefront, both, or internal use only.
    - If two presets share the same canonical category/product type, persist the preset key (for example `items.mode_item_preset`) instead of relying on UOM inference to recover user intent.
    - Separate convertible UOMs from valid business presentation units. Automatic conversion is allowed only for weight, volume, and count groups. Presentation and packaging units such as `serving`, `service`, `ticket`, `pack`, `case`, and `bottle` require explicit item-specific conversion before stock math can convert them.
@@ -184,7 +185,7 @@ Before changing any placeholder mode item UI, complete this checklist:
     - POS image versus Storefront image behavior, public/private asset boundaries, and cleanup expectations for failed writes.
     - Bulk image upload validation behavior. Unsupported files, duplicate SKU filenames, unmatched SKU filenames, readiness blockers, and failed writes must return per-file results where transport limits allow it.
     - Import/export template columns for visibility, price, cost, images, and preset keys.
-    - Onboarding readiness expectations, including what counts as a sellable POS-ready row.
+    - Onboarding starter-item expectations, including preset choices, which presets count as customer-facing completion starters, required `name` and positive `default_sale_price`, optional cost/stock/image behavior, hidden default derivation, duplicate-row/idempotency behavior, and why zero stock does or does not affect completion readiness.
     - Bulk setup recommendation rules for `Recommended for POS`, `Recommended for Storefront`, `Keep internal`, `Needs setup`, and any mode-specific labels.
     - Backend and frontend tests for single-item setup, bulk visibility, bulk image upload, onboarding readiness, import/export, and all mode fallback behavior.
 
@@ -202,4 +203,4 @@ Before implementing or promoting any future mode, complete this checklist:
 4. Run a disposable MySQL tenant schema sync against the complete model graph, not only mocked provisioning tests.
 5. Run the mode matrix against every value in `WORKFLOW_MODE_VALUES`, including placeholder modes that inherit conservative defaults.
 6. Confirm approval and auto-approval failures restore a valid retryable landlord status (`pending` for approval paths) and drop any zombie tenant database safely.
-7. Document seed/default data requirements for first-login onboarding, customer access settings, role presets, locations, Storefront discovery, and mode-native setup tables.
+7. Document seed/default data requirements for first-login onboarding, including brand assets, primary storefront location, starter-item presets, customer access settings, role presets, Storefront discovery, and mode-native setup tables.

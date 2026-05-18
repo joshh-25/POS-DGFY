@@ -130,15 +130,15 @@ Current admin surfaces include:
 Tenant registration approval is controlled by:
 
 ```env
-TENANT_REGISTRATION_APPROVAL_MODE=manual
+TENANT_REGISTRATION_APPROVAL_MODE=auto_standard
 ```
 
 Allowed values:
 
 | Value | Behavior |
 |---|---|
-| `manual` | Registrations remain pending until an admin approves them. |
-| `auto_standard` | Manual non-subscription registrations can be activated automatically after provisioning. New pending and active tenants are premium-capable by plan metadata, while provider subscription flows remain payment-gated when payments are disabled. |
+| `auto_standard` | Default. Non-subscription registrations are activated automatically after provisioning. New active tenants are premium-capable by plan metadata, while provider subscription flows remain payment-gated when payments are disabled. |
+| `manual` | Explicit rollback/admin-review mode. Registrations remain pending until an admin approves them. |
 
 ## Customer Access And Storefront Admin Notes
 

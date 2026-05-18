@@ -255,8 +255,8 @@ STOREFRONT_DEFAULT_WAIT_MINUTES=15
 # Payments are off by default for local development
 PAYMENTS_ENABLED=false
 
-# Tenant registration defaults to manual approval unless a local test needs auto-standard activation.
-TENANT_REGISTRATION_APPROVAL_MODE=manual
+# Tenant registration defaults to auto-standard activation; set manual only for admin-review rollback tests.
+TENANT_REGISTRATION_APPROVAL_MODE=auto_standard
 
 # Customer Access Mode runtime enforcement is on by default.
 # Set this to false only for explicit rollback testing.
@@ -424,7 +424,7 @@ Local URLs:
 Use production-safe defaults for local setup unless a test specifically needs different behavior:
 
 ```env
-TENANT_REGISTRATION_APPROVAL_MODE=manual
+TENANT_REGISTRATION_APPROVAL_MODE=auto_standard
 CUSTOMER_ACCESS_MODES_ENABLED=true
 CUSTOMER_ACCESS_MODES_ENABLED_TENANTS=
 PAYMENTS_ENABLED=false

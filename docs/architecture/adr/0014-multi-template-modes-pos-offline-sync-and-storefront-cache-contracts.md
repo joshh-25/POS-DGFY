@@ -71,6 +71,7 @@ Item and UOM defaults are now governed by a corrected-mode taxonomy instead of a
 - New non-draft item creation and draft finalization are strict for corrected modes. Existing legacy rows remain editable unless the operator changes category, product type, UOM, or publishes the row into an invalid corrected-mode combination.
 - CSV templates are mode-aware for corrected modes and signed/marked templates must match the tenant workflow mode. Legacy manufacturing markers normalize to `food_manufacturing`. Preview and confirm paths must validate each row against the same corrected-mode taxonomy used by item create/update/finalize, including optimized bulk-import rows.
 - Item CSV export now uses the same mode-aware import template definitions for corrected modes. Unless an old caller explicitly requests legacy `type=items`, `type=products`, or `type=master`, exports for `food_manufacturing`, `msme`, `services`, and `fnb` must emit the matching import-template headers, marker columns, `mode_item_preset`, `default_sale_price`, and row values in header order so the file can be imported back without column drift.
+- First-login onboarding starter-item creation must use the same taxonomy. Corrected modes must expose only their governed onboarding presets, persist `mode_item_preset` on created rows, require a positive `default_sale_price`, keep image/cost/stock optional unless the mode contract says otherwise, pass the saved primary `location_id` for optional initial stock, avoid retry duplicates for already-created rows, and return row-level validation for partial bulk saves.
 
 ## Future Mode Financial Readiness Addendum (2026-05-07)
 
@@ -81,6 +82,7 @@ Future placeholder modes must not be promoted into corrected item taxonomy by on
 - Public Storefront catalog and checkout behavior must remain customer-safe: selling price may be exposed, price-less sellable rows must be suppressed or rejected, and internal cost fields must not be exposed publicly.
 - Stock movements, FIFO depletion, valuation, COGS, and profitability reports must continue to use cost snapshots/internal cost data only for internal accounting, not as a customer price fallback.
 - Placeholder modes remain conservative until their governed mode pass updates the ADR, mode development playbook, shared taxonomy, backend validators, frontend display policy, POS/Storefront readiness paths, reports, imports, and tests together.
+- Future mode promotion must also define onboarding starter-item choices, customer-facing completion presets, default hidden fields, financial rules, stock behavior, duplicate/idempotency behavior, completion readiness, and tests before the mode can be called production-ready.
 
 ## Future Mode Provisioning Addendum (2026-05-07)
 

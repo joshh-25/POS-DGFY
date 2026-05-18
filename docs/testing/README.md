@@ -17,6 +17,13 @@ Use this table to avoid over-claiming what a green test run proves.
 | Live sandbox tests (legacy/opt-in) | PayPal sandbox canary E2E suites | Real provider verification flow + backend transition contracts when payments are explicitly re-enabled | Production traffic behavior, customer engagement depth |
 | Production evidence | reconciliation dashboards, longitudinal audits | Real-world behavior over time in deployed environment | Causal impact without controlled experiments |
 
+## Frontend Bundle Guard
+
+Current bundle-gate expectations:
+1. `npm run check:frontend-budgets` enforces route-chunk ceilings for login, POS, terminal, and sales surfaces.
+2. The shared MapLibre dependency is intentionally isolated as `vendor-maplibre-*`; it is large but lazy-loaded by map-picker surfaces and is checked against the dedicated build cap instead of being treated as a generic vendor regression.
+3. Other vendor growth still remains actionable through the largest-chunk report.
+
 ## Claim Guardrail
 
 Current approved claim language for subscription telemetry:
@@ -197,8 +204,8 @@ Targeted frontend suite:
 npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx
 ```
 
-Manual smoke for an auto-standard environment:
-1. Set `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`.
+Manual smoke for the default auto-standard environment:
+1. Confirm `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` or leave the value unset so the backend uses its default.
 2. Register a new standard company from `/register-company`.
 3. Confirm the tenant is created as non-loginable until provisioning completes, then returned as `status=active`.
 4. Confirm the frontend calls the normal login API and lands on the authenticated app.

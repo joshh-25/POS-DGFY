@@ -4016,15 +4016,15 @@ Submit a public company registration request.
 **Access:** Public, rate-limited.
 
 **Current policy**
-- All new registrations persist `plan: "premium"` by default so mode-specific premium-gated surfaces are available after approval/activation.
-- `TENANT_REGISTRATION_APPROVAL_MODE=manual` (default): registrations return `status: "pending"` and require platform admin approval before login.
-- `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`: manual registrations are provisioned immediately and return `status: "active"` with a `company_token`; the registration UI then signs the founder in through the normal login API.
+- All new registrations persist `plan: "premium"` by default so mode-specific premium-gated surfaces are available after activation.
+- `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` (default): public company registrations are provisioned immediately and return `status: "active"` with a `company_token`; the registration UI then signs the founder in through the normal login API.
+- `TENANT_REGISTRATION_APPROVAL_MODE=manual`: registrations return `status: "pending"` and require platform admin approval before login. Use this as an explicit rollback/admin-review mode.
 - Provider subscription registration remains disabled while `PAYMENTS_ENABLED=false`; payloads with `subscriptionId` return `503` with `PAYMENTS_DISABLED`.
-- Manual premium-capable registrations keep `subscription_status: "inactive"` while payments are paused. In that mode, premium route access is plan-driven and does not require an active subscription row.
+- Auto-standard and manual premium-capable registrations keep `subscription_status: "inactive"` while payments are paused. In that mode, premium route access is plan-driven and does not require an active subscription row.
 - Approval email delivery is non-blocking after provisioning; active responses include `email_sent`.
 - Active registration responses do not include auth tokens. Auto-login is a frontend follow-up call to `POST /auth/login` using the submitted email/password and returned `company_token`.
-- Manual pending registrations create founder email lookup mappings during registration. Auto-standard registrations rely on the provisioning path to create the mapping after successful activation.
-- Abuse control: public company registration is IP rate-limited by `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS` (production default: 5 requests per hour). Keep this strict when `auto_standard` is enabled because each accepted registration provisions an isolated tenant database.
+- Manual pending registrations create founder email lookup mappings during registration. Default auto-standard registrations rely on the provisioning path to create the mapping after successful activation.
+- Abuse control: public company registration is IP rate-limited by `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS` (production default: 5 requests per hour). Keep this strict because each accepted registration provisions an isolated tenant database by default.
 - Auto-login fallback: if the follow-up login call fails after an active response, the frontend keeps the company created state and routes the founder to manual sign-in with email/company token prefilled.
 - Founder contact: public company registration requires `adminPhone`; provisioned founder/admin users receive the same value in `users.phone_number`.
 - `adminPhone` is trimmed and must follow the same 7-40 character phone format used by user registration and Settings profile updates.
@@ -4045,7 +4045,7 @@ Submit a public company registration request.
 }
 ```
 
-**Response (201, manual mode)**
+**Response (201, explicit manual mode)**
 ```json
 {
   "success": true,
@@ -4060,7 +4060,7 @@ Submit a public company registration request.
 }
 ```
 
-**Response (201, auto_standard mode)**
+**Response (201, default auto_standard mode)**
 ```json
 {
   "success": true,
@@ -4495,6 +4495,9 @@ Run `npm run verify:email` from the repo root before enabling OTP enforcement in
 **Bootstrap ownership note**
 - Login and current-user bootstrap payloads expose onboarding metadata for tenant master admins.
 - Non-master users do not own onboarding lifecycle and may receive `onboarding: null`.
+- The active wizard has three steps: `brand_assets`, `primary_location`, and `bulk_items`.
+- The `primary_location` wizard step uses the shared IMS MapLibre pin picker. Click, drag, or browser geolocation updates the same latitude/longitude fields submitted to the tenant-location API.
+- Stored legacy `classification_snapshot` data may remain in older `tenant_onboarding_progress` records, but the current wizard does not create or require business classification output.
 
 ### GET /onboarding/status
 Get tenant onboarding status snapshot for the authenticated tenant master admin.
@@ -4508,15 +4511,9 @@ Get tenant onboarding status snapshot for the authenticated tenant master admin.
 - `tenant_onboarding_progress`:
   - `step_payloads` (step-keyed object)
   - `checklist_snapshot` (`required_total`, `completed_required_count`, `missing_requirements`, `is_ready`)
-  - `classification_snapshot`:
-    - `visibility_mode` (`ghost | catalog | inquiry | transaction`)
-    - `customer_access_mode` (`ghost | catalog | inquiry | transaction`)
-    - `inventory_display_mode` (`hidden | availability | low_stock | exact_quantity`)
-    - `inventory_low_stock_display_threshold` (number)
-    - `monetization_tier` (`tier_0 | tier_1 | tier_2 | tier_3`)
-    - `workflow_mode_recommendation` (`msme | retail | services | fnb | food_manufacturing | hospitality | healthcare | education_institutions | logistics_distribution | ticketing_transport`)
-    - `compliance_path_hint` (`regulated_ready | assisted_compliance | informal_observe`)
-    - `payload` (normalized questionnaire payload)
+    - required keys are `store_name_ready`, `has_primary_storefront_location`, and `has_priced_starter_item`
+    - `has_priced_starter_item` accepts an active item with positive `default_sale_price`; zero stock does not block completion
+    - corrected item-taxonomy modes require the item to have a mode-valid `mode_item_preset`
 
 ### PUT /onboarding/step
 Persist onboarding progress for a step (idempotent).
@@ -4526,29 +4523,87 @@ Persist onboarding progress for a step (idempotent).
 **Request**
 ```json
 {
-  "step_key": "business_classification",
+  "step_key": "brand_assets",
   "payload": {
-    "identity": {
-      "official_name": "Acme Incorporated",
-      "display_name": "Acme Storefront",
-      "industry_tags": ["retail", "food"]
-    },
-    "legitimacy": {
-      "registration_status": "registered",
-      "requires_official_receipt": true
-    },
-    "online_visibility": {
-      "mode": "transaction"
-    }
+    "profile_uploaded": true,
+    "cover_uploaded": false
   }
 }
 ```
 
 **Supported `step_key` values**
-- `business_profile`
 - `brand_assets`
-- `business_classification`
-- `readiness`
+- `primary_location`
+- `bulk_items`
+
+### POST /onboarding/items/bulk
+Create starter catalog items from the active workflow mode's onboarding presets.
+
+Exact retries are idempotent at the generated-SKU boundary: when a repeated row resolves to the same generated SKU, item name, mode preset, and selling price as an already-created onboarding item, the response returns that existing item as `status: "created"` with `idempotent_replay: true` instead of creating a duplicate or surfacing a false failure.
+
+**Access**: Private (`master admin` only)
+
+**Request**
+```json
+{
+  "rows": [
+    {
+      "client_row_id": "row-1",
+      "mode_item_preset": "menu_item",
+      "name": "Chicken Rice Bowl",
+      "default_sale_price": 149,
+      "cost_per_unit": 72,
+      "current_stock": 0,
+      "location_id": 12
+    }
+  ]
+}
+```
+
+**Row rules**
+- `mode_item_preset`, `name`, and positive `default_sale_price` are required per valid row.
+- `cost_per_unit` and `current_stock` are optional and default to `0` when omitted.
+- `location_id` is optional, but should be supplied by the onboarding UI after the primary location step when `current_stock` is greater than `0` so existing location-scoped stock movement rules can record the initial stock.
+- Item images are optional and uploaded after creation through the existing storefront catalog image upload endpoint.
+- The backend derives hidden item defaults such as category, product type, UOM, FIFO behavior, capacity, stock behavior, and a deterministic generated onboarding SKU from the selected preset.
+- Corrected modes validate `mode_item_preset` against the active workflow mode. Placeholder modes use conservative default item behavior until promoted by a governed mode pass.
+- Partial save is supported: valid rows are created, invalid rows are returned with row-level `errors`.
+- The frontend must not resubmit rows already returned as `created`. Duplicate `client_row_id` values in one request and generated SKU conflicts return row-level failures instead of creating retry duplicates.
+- Completion readiness for corrected modes requires a customer-facing onboarding preset: Food Manufacturing `finished_product`, MSME `product`, Services `service` or `physical_add_on`, and Food & Beverage `menu_item` or `packaged_beverage`.
+
+**Response (207-style application payload over 200)**
+```json
+{
+  "success": true,
+  "data": {
+    "workflow_mode": "fnb",
+    "summary": {
+      "total": 2,
+      "created": 1,
+      "failed": 1
+    },
+    "results": [
+      {
+        "client_row_id": "row-1",
+        "status": "created",
+        "item": {
+          "item_id": 42,
+          "sku_code": "ONB-CHICKEN-RICE-BOWL-1",
+          "name": "Chicken Rice Bowl",
+          "mode_item_preset": "menu_item"
+        },
+        "errors": []
+      },
+      {
+        "client_row_id": "row-2",
+        "status": "failed",
+        "item": null,
+        "errors": ["Selling price must be greater than 0."]
+      }
+    ]
+  }
+}
+```
 
 ### POST /onboarding/complete
 Finalize onboarding if required readiness checks are satisfied.
@@ -4557,6 +4612,8 @@ Finalize onboarding if required readiness checks are satisfied.
 
 **Behavior**
 - Returns `422` with `missing_requirements[]` if readiness is incomplete.
+- Missing requirement keys are `store_name_ready`, `has_primary_storefront_location`, and `has_priced_starter_item`.
+- Storefront item image upload and stock quantity never block completion by themselves.
 - On success, sets onboarding state to `completed` and triggers storefront discovery sync.
 
 ### POST /onboarding/events
@@ -4580,9 +4637,8 @@ Track onboarding UX telemetry events without mutating onboarding checklist progr
 - `reminder_shown`
 - `reminder_dismissed`
 - `optional_asset_skipped`
-- `classifier_viewed`
-- `classifier_saved`
-- `classifier_skipped`
+- `primary_location_saved`
+- `bulk_items_saved`
 
 **Response (202)**
 ```json

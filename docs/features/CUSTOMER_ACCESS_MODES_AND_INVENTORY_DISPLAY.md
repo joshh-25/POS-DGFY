@@ -55,13 +55,13 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - Tenant-local settings are persisted in `system_settings`: `customer_access_mode`, `inventory_display_mode`, and `inventory_low_stock_display_threshold`.
 - Existing and newly provisioned tenants default to `customer_access_mode=catalog`, `inventory_display_mode=availability`, and low-stock threshold `5`.
 - Settings validation and normalization accept the new keys through the modular Settings flow. Controllers remain transport-only. Bulk Settings saves compare incoming keys with persisted values before compliance preflight, so unchanged fiscal POS fields included by the full Settings form do not block unrelated Storefront/profile/system changes for non-compliant tenants.
-- Settings, onboarding classifier saves, tenant location changes, and storefront asset changes refresh the discovery index after successful use-case results so public search/profile rows do not carry stale access-mode or location data.
+- Settings, tenant onboarding location/item saves, tenant location changes, and storefront asset changes refresh the discovery index after successful use-case results so public search/profile rows do not carry stale access-mode, location, or starter-catalog data.
 
 2. Onboarding
-- The onboarding classifier UI uses Customer Access Mode copy.
-- The `business_classification` step stores both new settings and the legacy-compatible `online_visibility.mode`/`visibility_mode` alias.
-- Inventory Display selection is captured during onboarding with default `availability`.
-- Keep onboarding completion gates unchanged: onboarding remains a soft reminder and does not block IMS/POS access.
+- The current first-login wizard no longer captures Customer Access Mode or Inventory Display choices.
+- Legacy tenants may still have `business_classification` or `classification_snapshot` payloads; those records are backward-compatible context only.
+- New tenants use the Settings > Storefront controls for Customer Access Mode and Inventory Display, with default `catalog` and `availability` behavior.
+- Onboarding remains a soft reminder and does not block IMS/POS access.
 
 3. Settings
 - The Storefront tab exposes `#storefront-access-settings` for Customer Access Mode and Inventory Display.

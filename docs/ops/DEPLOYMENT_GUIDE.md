@@ -34,7 +34,7 @@ No-staging release policy reference:
   - `CORS_ORIGIN`
   - `AUTH_BLACKLIST_FAILURE_MODE`
   - `TEMP_FILE_STORAGE`
-  - `TENANT_REGISTRATION_APPROVAL_MODE` (`manual` unless intentionally enabling temporary auto-accept)
+  - `TENANT_REGISTRATION_APPROVAL_MODE` (`auto_standard` by default; `manual` only for explicit admin-review rollback)
   - `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS`
   - `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`
   - `REDIS_URL` when `HOSTING_PROFILE=vps`
@@ -72,9 +72,9 @@ npm run test:hosting:vps
 Shared hosting uses `backend/.env.shared.example` and `frontend/.env.shared.example` as templates. VPS/Redis hosting uses `backend/.env.vps.example` and `frontend/.env.vps.example` as templates. Do not leave placeholder secrets or `DB_AUTO_SYNC=true` in production.
 
 Tenant registration rollout note:
-1. Keep `TENANT_REGISTRATION_APPROVAL_MODE=manual` unless the release explicitly enables temporary standard auto-accept.
-2. If `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`, verify public registration rate limits are present and strict before deploy.
-3. `auto_standard` applies only to standard non-subscription registrations; keep `PAYMENTS_ENABLED=false` billing-disabled behavior unchanged unless payment workflows are being intentionally re-enabled.
+1. Keep `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` for the default public company registration flow.
+2. Verify public registration rate limits are present and strict before deploy because accepted registrations provision isolated tenant databases.
+3. Set `TENANT_REGISTRATION_APPROVAL_MODE=manual` only when intentionally restoring platform-admin review before provisioning; keep `PAYMENTS_ENABLED=false` billing-disabled behavior unchanged unless payment workflows are being intentionally re-enabled.
 
 Run on the production server for a one-command deploy:
 
@@ -368,7 +368,7 @@ AUTH_BLACKLIST_FAILURE_MODE=fail_closed
 TEMP_FILE_STORAGE=auto
 STOREFRONT_DISCOVERY_REDIS_CACHE_ENABLED=true
 CUSTOMER_ACCESS_MODES_ENABLED=true
-TENANT_REGISTRATION_APPROVAL_MODE=manual
+TENANT_REGISTRATION_APPROVAL_MODE=auto_standard
 PAYMENTS_ENABLED=false
 DB_AUTO_SYNC=false
 ```
