@@ -118,7 +118,8 @@ export const buildStoreMarkerPreviewModel = (store = {}, {
 
 export const createStoreMarkerPreviewNode = (store = {}, {
   resolveAssetUrl = (value) => value,
-  onAction = null
+  onAction = null,
+  onClose = null
 } = {}) => {
   const model = buildStoreMarkerPreviewModel(store, { resolveAssetUrl });
   const card = document.createElement('article');
@@ -140,6 +141,19 @@ export const createStoreMarkerPreviewNode = (store = {}, {
   status.textContent = model.statusLabel;
   status.className = `store-marker-preview-status ${model.isOpen ? 'store-marker-preview-statusOpen' : 'store-marker-preview-statusClosed'}`;
   cover.appendChild(status);
+  if (typeof onClose === 'function') {
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'store-marker-preview-close';
+    closeButton.setAttribute('aria-label', `Close ${model.tenantName} preview`);
+    closeButton.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>';
+    closeButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    });
+    cover.appendChild(closeButton);
+  }
   card.appendChild(cover);
 
   const body = document.createElement('div');
@@ -192,11 +206,19 @@ export const createStoreMarkerPreviewNode = (store = {}, {
     action.type = 'button';
     action.textContent = model.actionLabel;
     action.className = 'store-marker-preview-action';
-    action.addEventListener('click', (event) => {
+    let actionTriggered = false;
+    const triggerAction = (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (actionTriggered) return;
+      actionTriggered = true;
       onAction(store);
-    });
+      window.setTimeout(() => {
+        actionTriggered = false;
+      }, 0);
+    };
+    action.addEventListener('pointerdown', triggerAction);
+    action.addEventListener('click', triggerAction);
     body.appendChild(action);
   }
 

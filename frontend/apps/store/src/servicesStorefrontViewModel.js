@@ -39,7 +39,7 @@ const CATEGORY_COLORS = Object.freeze([
   { accent: '#7c3aed', accentBg: '#f5f3ff' },
   { accent: '#c2410c', accentBg: '#fff7ed' },
   { accent: '#be123c', accentBg: '#fff1f2' },
-  { accent: '#1d4ed8', accentBg: '#eff6ff' },
+  { accent: '#1a4e8d', accentBg: '#eff6ff' },
   { accent: '#0f766e', accentBg: '#ecfeff' }
 ]);
 

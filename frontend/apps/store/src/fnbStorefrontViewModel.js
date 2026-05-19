@@ -25,7 +25,7 @@ const SECTION_VISUAL_PRESETS = Object.freeze([
   },
   {
     iconToken: 'drink',
-    accent: '#2563eb',
+    accent: '#1a4e8d',
     accentSoft: '#dbeafe',
     keywords: ['beverage', 'drinks', 'drink', 'mock', 'refresh', 'soda', 'lemonade', 'shake', 'frappe', 'smoothie', 'juice', 'blend']
   },
