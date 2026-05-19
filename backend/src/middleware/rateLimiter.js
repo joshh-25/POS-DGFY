@@ -30,6 +30,10 @@ const posWindowMs = parseInt(process.env.RATE_LIMIT_POS_WINDOW_MS) || 15 * 60 * 
 const posMaxRequests = parseInt(process.env.RATE_LIMIT_POS_MAX_REQUESTS) || (isDevelopment ? 3000 : 1500);
 const tenantRegistrationWindowMs = parseInt(process.env.RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS) || 60 * 60 * 1000; // 1 hour
 const tenantRegistrationMaxRequests = parseInt(process.env.RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS) || (isDevelopment ? 50 : 5);
+const geoSearchWindowMs = parseInt(process.env.RATE_LIMIT_GEO_SEARCH_WINDOW_MS) || 60 * 1000; // 1 minute
+const geoSearchMaxRequests = parseInt(process.env.RATE_LIMIT_GEO_SEARCH_MAX_REQUESTS) || (isDevelopment ? 240 : 60);
+const inventoryPushWindowMs = parseInt(process.env.RATE_LIMIT_INVENTORY_PUSH_WINDOW_MS) || 60 * 1000; // 1 minute
+const inventoryPushMaxRequests = parseInt(process.env.RATE_LIMIT_INVENTORY_PUSH_MAX_REQUESTS) || (isDevelopment ? 120 : 20);
 
 // Standard error response format
 const createRateLimitError = (message, metadata = {}) => ({
@@ -54,6 +58,8 @@ const rateLimitCounters = {
   ai: 0,
   pos: 0,
   registration: 0,
+  geo_search: 0,
+  inventory_push: 0,
   other: 0,
 };
 const rateLimitAlertThreshold = parseInt(process.env.RATE_LIMIT_ALERT_THRESHOLD) || 50;
@@ -146,6 +152,8 @@ const getScopeFromRequest = (req, fallbackScope) => {
   if (path.includes('/ai/')) return 'ai';
   if (path.includes('/pos/')) return 'pos';
   if (path.includes('/admin/tenants/register')) return 'registration';
+  if (path.includes('/storefront/geo-search')) return 'geo_search';
+  if (path.includes('/store/inventory/push')) return 'inventory_push';
   return fallbackScope || 'other';
 };
 
@@ -724,6 +732,72 @@ export const posLimiter = rateLimit({
   },
 });
 
+// Geo-search limiter: public spatial item-search endpoint, IP + query keyed.
+export const geoSearchLimiter = rateLimit({
+  windowMs: geoSearchWindowMs,
+  max: geoSearchMaxRequests,
+  message: createRateLimitError('Too many geo-search requests. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('geo_search'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const query = String(req.query?.query || '').trim().toLowerCase().slice(0, 64);
+    return query ? `geo_search:${ip}:q:${query}` : `geo_search:${ip}:browse`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many geo-search requests. Please wait before trying again.',
+      'geo_search',
+      'ip_query'
+    );
+    logRateLimitEvent(req, 'geo_search', response.retryAfterSeconds, 'ip_query');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
+// Inventory push limiter: tenant-scoped to prevent queue flooding.
+export const inventoryPushLimiter = rateLimit({
+  windowMs: inventoryPushWindowMs,
+  max: inventoryPushMaxRequests,
+  message: createRateLimitError('Too many inventory push requests. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('inventory_push'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const tenantKey = req.tenant?.id || req.headers['x-company-token'] || 'unknown-tenant';
+    return `inventory_push:${tenantKey}:${ip}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many inventory push requests. Please wait before trying again.',
+      'inventory_push',
+      'tenant_ip'
+    );
+    logRateLimitEvent(req, 'inventory_push', response.retryAfterSeconds, 'tenant_ip');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
 export default {
   general: generalLimiter,
   auth: authLimiter,
@@ -737,4 +811,6 @@ export default {
   lookup: lookupLimiter,
   registration: tenantRegistrationLimiter,
   pos: posLimiter,
+  geoSearch: geoSearchLimiter,
+  inventoryPush: inventoryPushLimiter,
 };

@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const frontendRoot = path.resolve(__dirname, '../..');
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000';
-const allowedHosts = ['skupervisor.surebizcorp.com', 'skupervisor.dgfy.ph', 'localhost', '127.0.0.1'];
+const allowedHosts = ['skupervisor.surebizcorp.com', 'skupervisor.dgfy.ph', 'staging.dgfy.ph', 'localhost', '127.0.0.1'];
 
 export default defineConfig({
   root: __dirname,
