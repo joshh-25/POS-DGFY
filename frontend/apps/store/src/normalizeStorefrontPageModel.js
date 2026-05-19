@@ -72,6 +72,7 @@ export const normalizeStorefrontPageModel = ({
   const isServicesMode = modeAdapter.isServicesMode === true;
   const isFnbMode = modeAdapter.isFnbMode === true;
   const isSimpleMode = modeAdapter.isSimpleMode === true;
+  const isHospitalityMode = modeAdapter.isHospitalityMode === true;
   const socialLinks = normalizeLinkMap(selectedStore?.storefront_social_links);
   const promo = normalizeLinkMap(selectedStore?.storefront_promo);
   const reviewSummary = normalizeReviewSummary(selectedStore?.storefront_review_summary);
@@ -132,6 +133,7 @@ export const normalizeStorefrontPageModel = ({
     isServicesMode,
     isFnbMode,
     isSimpleMode,
+    isHospitalityMode,
     servicesViewModel,
     fnbViewModel,
     servicesLayoutMode: servicesViewModel?.servicesLayoutMode || 'directory',

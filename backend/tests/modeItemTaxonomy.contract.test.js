@@ -24,6 +24,7 @@ describe('mode-aware item taxonomy contract', () => {
         expect(Object.keys(backendTaxonomy).sort()).toEqual([
             'fnb',
             'food_manufacturing',
+            'hospitality',
             'msme',
             'services'
         ]);
@@ -33,13 +34,13 @@ describe('mode-aware item taxonomy contract', () => {
         expect([...CORRECTED_ITEM_TAXONOMY_MODES].sort()).toEqual([
             'fnb',
             'food_manufacturing',
+            'hospitality',
             'msme',
             'services'
         ]);
         expect([...PLACEHOLDER_ITEM_TAXONOMY_MODES].sort()).toEqual([
             'education_institutions',
             'healthcare',
-            'hospitality',
             'logistics_distribution',
             'retail',
             'ticketing_transport'
@@ -48,7 +49,7 @@ describe('mode-aware item taxonomy contract', () => {
     });
 
     it('recognizes business presentation units without auto-converting them', () => {
-        ['serving', 'service', 'session', 'ticket', 'booking', 'bottle', 'case'].forEach((unit) => {
+        ['serving', 'service', 'session', 'ticket', 'booking', 'room_night', 'bottle', 'case'].forEach((unit) => {
             expect(backendIsValidUom(unit)).toBe(true);
             expect(frontendIsValidUom(unit)).toBe(true);
             expect(frontendGetUomGroup(unit)).toBe(backendGetUomGroup(unit));
@@ -80,6 +81,14 @@ describe('mode-aware item taxonomy contract', () => {
             .toBe(ITEM_FINANCIAL_VISIBILITY.VISIBLE);
         expect(presetByKey('fnb', 'packaged_beverage').financial_profile.sale_price_visibility)
             .toBe(ITEM_FINANCIAL_VISIBILITY.VISIBLE);
+        expect(presetByKey('hospitality', 'room_night').financial_profile.sale_price_visibility)
+            .toBe(ITEM_FINANCIAL_VISIBILITY.VISIBLE);
+        expect(presetByKey('hospitality', 'minibar_retail_product').financial_profile).toEqual(expect.objectContaining({
+            cost_required: ITEM_FINANCIAL_REQUIREMENT.ACTIVE,
+            sale_price_visibility: ITEM_FINANCIAL_VISIBILITY.VISIBLE
+        }));
+        expect(presetByKey('hospitality', 'housekeeping_supply').financial_profile.sale_price_visibility)
+            .toBe(ITEM_FINANCIAL_VISIBILITY.SELLABLE_ONLY);
         expect(presetByKey('food_manufacturing', 'raw_material').financial_profile.sale_price_visibility)
             .toBe(ITEM_FINANCIAL_VISIBILITY.SELLABLE_ONLY);
         expect(presetByKey('msme', 'product').financial_profile).toEqual(expect.objectContaining({
@@ -108,10 +117,41 @@ describe('mode-aware item taxonomy contract', () => {
             operation: 'create'
         }).ok).toBe(true);
 
+        expect(validateItemAgainstModeTaxonomy({
+            workflowMode: 'hospitality',
+            itemData: {
+                category: 'service',
+                mode_item_preset: 'room_night',
+                unit_of_measure: 'room_night'
+            },
+            operation: 'create'
+        }).preset.key).toBe('room_night');
+
+        expect(validateItemAgainstModeTaxonomy({
+            workflowMode: 'hospitality',
+            itemData: {
+                category: 'product',
+                product_type: 'finished_goods',
+                mode_item_preset: 'minibar_retail_product',
+                unit_of_measure: 'bottle'
+            },
+            operation: 'create'
+        }).preset.key).toBe('minibar_retail_product');
+
         expect(() => validateItemAgainstModeTaxonomy({
             workflowMode: 'services',
             itemData: {
                 category: 'service',
+                unit_of_measure: 'kg'
+            },
+            operation: 'create'
+        })).toThrow(/does not support unit_of_measure/i);
+
+        expect(() => validateItemAgainstModeTaxonomy({
+            workflowMode: 'hospitality',
+            itemData: {
+                category: 'service',
+                mode_item_preset: 'room_night',
                 unit_of_measure: 'kg'
             },
             operation: 'create'

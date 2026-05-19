@@ -49,6 +49,7 @@ const JobOrders = lazy(() => import('./features/jobOrders/pages/JobOrdersPage.js
 const StockMovements = lazy(() => import('./features/stockMovements/pages/StockMovementsPage.jsx'))
 const Services = lazy(() => import('./features/services/pages/ServicesPage.jsx'))
 const Fnb = lazy(() => import('./features/fnb/pages/FnbPage.jsx'))
+const Hospitality = lazy(() => import('./features/hospitality/pages/HospitalityPage.jsx'))
 const Reports = lazy(() => import('../Pages/Reports.jsx'))
 const Settings = lazy(() => import('../Pages/Settings.jsx'))
 const Login = lazy(() => import('../Pages/Login.jsx'))
@@ -153,7 +154,7 @@ function App() {
         } />
         <Route path="/job-orders" element={
           <ProtectedRoute>
-            <WorkflowModeRouteGate blockInMsme blockInServices blockInFnb moduleLabel="Job Orders">
+            <WorkflowModeRouteGate blockInMsme blockInServices blockInFnb blockInHospitality moduleLabel="Job Orders">
               <Layout currentPageName={currentPageName}>
                 <JobOrders />
               </Layout>
@@ -171,7 +172,7 @@ function App() {
         } />
         <Route path="/dispatch-orders" element={
           <ProtectedRoute>
-            <WorkflowModeRouteGate blockInMsme blockInServices blockInFnb moduleLabel="Dispatch Orders">
+            <WorkflowModeRouteGate blockInMsme blockInServices blockInFnb blockInHospitality moduleLabel="Dispatch Orders">
               <Layout currentPageName={currentPageName}>
                 <DispatchOrders />
               </Layout>
@@ -215,6 +216,15 @@ function App() {
             <WorkflowModeRouteGate requiredCapability="fnbDining" moduleLabel="Food & Beverage">
               <Layout currentPageName={currentPageName}>
                 <Fnb />
+              </Layout>
+            </WorkflowModeRouteGate>
+          </ProtectedRoute>
+        } />
+        <Route path="/hospitality" element={
+          <ProtectedRoute>
+            <WorkflowModeRouteGate requiredCapability="hospitalityReservations" moduleLabel="Hospitality">
+              <Layout currentPageName={currentPageName}>
+                <Hospitality />
               </Layout>
             </WorkflowModeRouteGate>
           </ProtectedRoute>
@@ -281,4 +291,3 @@ ReactDOM.createRoot(rootElement).render(
 )
 
 registerAdminServiceWorker()
-

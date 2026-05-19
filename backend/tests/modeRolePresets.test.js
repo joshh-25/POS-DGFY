@@ -11,11 +11,12 @@ describe('mode-aware role preset catalog', () => {
   it('normalizes workflow modes to the correct role catalog family', () => {
     expect(getRoleCatalogMode('services')).toBe('services');
     expect(getRoleCatalogMode('fnb')).toBe('fnb');
+    expect(getRoleCatalogMode('hospitality')).toBe('hospitality');
     expect(getRoleCatalogMode('msme')).toBe('msme');
     expect(getRoleCatalogMode('unknown-mode')).toBe('food_manufacturing');
   });
 
-  it('exposes the required Services and F&B presets with mode-native permissions', () => {
+  it('exposes the required Services, F&B, and Hospitality presets with mode-native permissions', () => {
     const servicesPresets = getRolePresetsForMode('services').map((preset) => preset.key);
     expect(servicesPresets).toEqual(expect.arrayContaining([
       'services_admin',
@@ -39,6 +40,21 @@ describe('mode-aware role preset catalog', () => {
       'fnb_viewer'
     ]));
 
+    const hospitalityPresets = getRolePresetsForMode('hospitality').map((preset) => preset.key);
+    expect(hospitalityPresets).toEqual(expect.arrayContaining([
+      'hospitality_admin',
+      'hospitality_general_manager',
+      'hospitality_front_desk_manager',
+      'hospitality_front_desk_agent',
+      'hospitality_housekeeping_manager',
+      'hospitality_housekeeper',
+      'hospitality_maintenance_staff',
+      'hospitality_revenue_manager',
+      'hospitality_finance_billing',
+      'hospitality_concierge',
+      'hospitality_viewer'
+    ]));
+
     expect(getModeRolePreset('services_scheduler', 'services').permissions).toEqual(expect.arrayContaining([
       'services:bookings:manage',
       'services:waitlist:manage'
@@ -46,6 +62,14 @@ describe('mode-aware role preset catalog', () => {
     expect(getModeRolePreset('fnb_kitchen_staff', 'fnb').permissions).toEqual(expect.arrayContaining([
       'fnb:kitchen:view',
       'fnb:kitchen:manage'
+    ]));
+    expect(getModeRolePreset('hospitality_front_desk_agent', 'hospitality').permissions).toEqual(expect.arrayContaining([
+      'hospitality:reservations:manage',
+      'hospitality:folios:manage'
+    ]));
+    expect(getModeRolePreset('hospitality_housekeeper', 'hospitality').permissions).toEqual(expect.arrayContaining([
+      'hospitality:housekeeping:view',
+      'hospitality:housekeeping:manage'
     ]));
   });
 
@@ -61,6 +85,9 @@ describe('mode-aware role preset catalog', () => {
     expect(buildPermissionGroupsForMode('services').map((group) => group.key)).toEqual(expect.arrayContaining(['SERVICES', 'POS']));
     expect(buildPermissionGroupsForMode('services').map((group) => group.key)).not.toContain('FNB');
     expect(buildPermissionGroupsForMode('fnb').map((group) => group.key)).toEqual(expect.arrayContaining(['FNB', 'POS']));
+    expect(buildPermissionGroupsForMode('hospitality').map((group) => group.key)).toEqual(expect.arrayContaining(['HOSPITALITY', 'POS']));
+    expect(buildPermissionGroupsForMode('hospitality').map((group) => group.key)).not.toContain('FNB');
+    expect(buildPermissionGroupsForMode('hospitality').map((group) => group.key)).not.toContain('SERVICES');
   });
 
   it('marks users without a role preset as legacy and mismatched presets for review', () => {

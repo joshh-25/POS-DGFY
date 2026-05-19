@@ -1494,7 +1494,8 @@ const getTemplateCompatibilityNote = (workflowMode) => {
         food_manufacturing: 'Food Manufacturing',
         msme: 'Simple (MSME)',
         services: 'Services',
-        fnb: 'Food & Beverage'
+        fnb: 'Food & Beverage',
+        hospitality: 'Hospitality'
     };
     return `This CSV template is for ${labels[workflowMode] || workflowMode} mode only. It will be rejected for incompatible tenant modes.`;
 };
@@ -1549,6 +1550,18 @@ export const getTemplateDefinition = ({ workflowMode, templateType } = {}) => {
             sampleRows: appendTemplateMarkersToRows([
                 ['FNB-MENU-001', 'Chicken Adobo Plate', 'product', 'finished_goods', 'menu_item', 'vatable', 'Restaurant menu item with recipe ingredients', 'Mains', '180', '0', '20', '10', 'serving', '95.00', '180.00', 'FALSE', '', '', '1', '95', '5', 'Prepared to order', '', '', '', '', '', '', 'soybeans', 'FNB-MENU-001-POS', 'tenant_generated', 'pos', 'unit', '1', ''],
                 ['FNB-ING-001', 'Chicken Thigh', 'raw_material', '', 'ingredient', '', 'Kitchen ingredient', '', '300', '50', '40', '20', 'kg', '180.00', '0.00', 'TRUE', '5', '2', '', '', '', '', '', '', '', '', '', '', '', 'FNB-ING-001-SACK', 'supplier', 'package', 'case', '25', '']
+            ], resolvedWorkflowMode)
+        };
+    }
+
+    if (resolvedWorkflowMode === 'hospitality') {
+        return {
+            workflowMode: resolvedWorkflowMode,
+            filename: 'hospitality_items_import_template.csv',
+            headers: [...MANUFACTURING_TEMPLATE_HEADERS],
+            sampleRows: appendTemplateMarkersToRows([
+                ['HOSP-ROOM-001', 'Deluxe Queen Room Night', 'service', '', 'room_night', 'vatable', 'Capacity-backed room night for direct booking', 'Rooms', '1', '0', '0', '0', 'room_night', '0.00', '4200.00', 'FALSE', '', '', '', '', '', 'Includes accommodation only', '', '', '', '', '', '', '', 'HOSP-ROOM-001-QR', 'tenant_generated', 'storefront_qr', 'unit', '1', ''],
+                ['HOSP-MINI-001', 'Minibar Bottled Water', 'product', 'finished_goods', 'minibar_retail_product', 'vatable', 'Stock-bearing minibar retail item', 'Minibar', '180', '24', '24', '12', 'bottle', '18.00', '55.00', 'TRUE', '365', '', '', '', '', 'Store at room temperature', '', '', '', '', '', '', '', 'HOSP-MINI-001-CASE', 'supplier', 'package', 'case', '24', '']
             ], resolvedWorkflowMode)
         };
     }

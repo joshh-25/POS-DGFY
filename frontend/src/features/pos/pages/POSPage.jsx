@@ -5,10 +5,11 @@ import { usePermission } from '@/hooks/usePermission';
 import { CalendarCheck, CheckCircle2, Clock, UserCheck, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useWorkflowMode } from '../../settings/WorkflowModeContext.jsx';
-import { isFnbWorkflowMode, isServicesWorkflowMode } from '../../settings/workflowMode.js';
+import { isFnbWorkflowMode, isHospitalityWorkflowMode, isServicesWorkflowMode } from '../../settings/workflowMode.js';
 import { listServiceBookings, updateServiceBookingStatus } from '../../services/api/servicesApi.js';
 
 const FnbDiningPanel = lazy(() => import('../../fnb/components/FnbDiningPanel.jsx'));
+const HospitalityPosPanel = lazy(() => import('../components/HospitalityPosPanel.jsx'));
 
 const servicePosActions = [
     { status: 'confirmed', label: 'Confirm', icon: CalendarCheck },
@@ -137,6 +138,11 @@ export default function POSPage() {
                 <p className="text-sm text-slate-500">Checkout POS-visible items, collect service payments, issue digital receipts, and generate daily Z-reading.</p>
             </div>
             {isServicesWorkflowMode(workflowMode) && <ServicesPosQueue />}
+            {isHospitalityWorkflowMode(workflowMode) && (
+                <Suspense fallback={<section className="rounded-lg border border-sky-100 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading Hospitality front desk POS...</section>}>
+                    <HospitalityPosPanel />
+                </Suspense>
+            )}
             {isFnbWorkflowMode(workflowMode) && (
                 <Suspense fallback={<section className="rounded-lg border border-red-100 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading Food & Beverage service controls...</section>}>
                     <FnbDiningPanel onSelectCheckoutContext={setFnbCheckoutContext} />

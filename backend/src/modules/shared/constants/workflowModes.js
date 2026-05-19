@@ -90,7 +90,19 @@ export const WORKFLOW_MODE_CAPABILITIES = Object.freeze({
         'pos',
         'storefront'
     ],
-    hospitality: ['catalog', 'inventory', 'pos', 'storefront'],
+    hospitality: [
+        'hospitalityReservations',
+        'hospitalityRooms',
+        'hospitalityHousekeeping',
+        'hospitalityMaintenance',
+        'hospitalityFolios',
+        'hospitalityRates',
+        'hospitalityAmenities',
+        'catalog',
+        'inventory',
+        'pos',
+        'storefront'
+    ],
     healthcare: ['catalog', 'inventory', 'pos', 'storefront'],
     ticketing_transport: ['catalog', 'inventory', 'pos', 'storefront'],
     logistics_distribution: ['catalog', 'inventory', 'pos', 'storefront'],

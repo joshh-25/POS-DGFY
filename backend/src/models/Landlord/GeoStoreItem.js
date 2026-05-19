@@ -21,6 +21,10 @@ export default (sequelize) => {
             type: DataTypes.BIGINT.UNSIGNED,
             allowNull: false
         },
+        sku_code: {
+            type: DataTypes.STRING(100),
+            allowNull: true
+        },
         price: {
             type: DataTypes.DECIMAL(12, 2),
             allowNull: true

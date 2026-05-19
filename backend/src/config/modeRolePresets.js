@@ -41,6 +41,7 @@ const shared = {
 
 const services = PERMISSIONS.SERVICES.actions;
 const fnb = PERMISSIONS.FNB.actions;
+const hospitality = PERMISSIONS.HOSPITALITY.actions;
 
 const preset = ({
   key,
@@ -394,6 +395,175 @@ const MODE_ROLE_PRESETS = Object.freeze({
         ...shared.reportsView
       ]
     })
+  ],
+  hospitality: [
+    adminPreset('hospitality_admin', 'Hospitality Admin', 'hospitality'),
+    preset({
+      key: 'hospitality_general_manager',
+      label: 'General Manager',
+      mode: 'hospitality',
+      role: 'manager',
+      rank: 6,
+      locationScope: 'tenant',
+      permissions: [
+        ...shared.inventoryManage,
+        ...shared.posCashier,
+        PERMISSIONS.POS.actions.PRICE_OVERRIDE_POS,
+        ...Object.values(hospitality),
+        PERMISSIONS.REPORTS.actions.VIEW_REPORTS,
+        PERMISSIONS.REPORTS.actions.EXPORT_REPORTS,
+        ...shared.systemView
+      ]
+    }),
+    preset({
+      key: 'hospitality_front_desk_manager',
+      label: 'Front Desk Manager',
+      mode: 'hospitality',
+      role: 'manager',
+      rank: 5,
+      permissions: [
+        hospitality.VIEW_DASHBOARD,
+        hospitality.VIEW_RESERVATIONS,
+        hospitality.MANAGE_RESERVATIONS,
+        hospitality.VIEW_ROOMS,
+        hospitality.MANAGE_ROOMS,
+        hospitality.VIEW_GUESTS,
+        hospitality.MANAGE_GUESTS,
+        hospitality.VIEW_FOLIOS,
+        hospitality.MANAGE_FOLIOS,
+        ...shared.posCashier
+      ]
+    }),
+    preset({
+      key: 'hospitality_front_desk_agent',
+      label: 'Front Desk Agent',
+      mode: 'hospitality',
+      role: 'cashier',
+      rank: 4,
+      permissions: [
+        hospitality.VIEW_DASHBOARD,
+        hospitality.VIEW_RESERVATIONS,
+        hospitality.MANAGE_RESERVATIONS,
+        hospitality.VIEW_ROOMS,
+        hospitality.VIEW_GUESTS,
+        hospitality.MANAGE_GUESTS,
+        hospitality.VIEW_FOLIOS,
+        hospitality.MANAGE_FOLIOS,
+        PERMISSIONS.POS.actions.VIEW_POS,
+        PERMISSIONS.POS.actions.TRANSACT_POS,
+        PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT
+      ]
+    }),
+    preset({
+      key: 'hospitality_housekeeping_manager',
+      label: 'Housekeeping Manager',
+      mode: 'hospitality',
+      role: 'manager',
+      rank: 5,
+      permissions: [
+        hospitality.VIEW_DASHBOARD,
+        hospitality.VIEW_ROOMS,
+        hospitality.VIEW_HOUSEKEEPING,
+        hospitality.MANAGE_HOUSEKEEPING,
+        hospitality.VIEW_MAINTENANCE,
+        hospitality.VIEW_AMENITIES,
+        ...shared.inventoryView
+      ]
+    }),
+    preset({
+      key: 'hospitality_housekeeper',
+      label: 'Housekeeper',
+      mode: 'hospitality',
+      role: 'staff',
+      rank: 3,
+      permissions: [
+        hospitality.VIEW_ROOMS,
+        hospitality.VIEW_HOUSEKEEPING,
+        hospitality.MANAGE_HOUSEKEEPING
+      ]
+    }),
+    preset({
+      key: 'hospitality_maintenance_staff',
+      label: 'Maintenance Staff',
+      mode: 'hospitality',
+      role: 'staff',
+      rank: 3,
+      permissions: [
+        hospitality.VIEW_ROOMS,
+        hospitality.VIEW_MAINTENANCE,
+        hospitality.MANAGE_MAINTENANCE
+      ]
+    }),
+    preset({
+      key: 'hospitality_revenue_manager',
+      label: 'Revenue Manager',
+      mode: 'hospitality',
+      role: 'manager',
+      rank: 5,
+      locationScope: 'tenant',
+      permissions: [
+        hospitality.VIEW_DASHBOARD,
+        hospitality.VIEW_RESERVATIONS,
+        hospitality.VIEW_RATES,
+        hospitality.MANAGE_RATES,
+        hospitality.VIEW_REPORTS,
+        PERMISSIONS.REPORTS.actions.VIEW_REPORTS,
+        PERMISSIONS.REPORTS.actions.EXPORT_REPORTS
+      ]
+    }),
+    preset({
+      key: 'hospitality_finance_billing',
+      label: 'Finance / Billing',
+      mode: 'hospitality',
+      role: 'manager',
+      rank: 5,
+      permissions: [
+        hospitality.VIEW_DASHBOARD,
+        hospitality.VIEW_RESERVATIONS,
+        hospitality.VIEW_GUESTS,
+        hospitality.VIEW_FOLIOS,
+        hospitality.MANAGE_FOLIOS,
+        hospitality.VIEW_REPORTS,
+        PERMISSIONS.REPORTS.actions.VIEW_REPORTS,
+        PERMISSIONS.REPORTS.actions.EXPORT_REPORTS
+      ]
+    }),
+    preset({
+      key: 'hospitality_concierge',
+      label: 'Concierge / Guest Services',
+      mode: 'hospitality',
+      role: 'staff',
+      rank: 3,
+      permissions: [
+        hospitality.VIEW_DASHBOARD,
+        hospitality.VIEW_RESERVATIONS,
+        hospitality.VIEW_GUESTS,
+        hospitality.MANAGE_GUESTS,
+        hospitality.VIEW_AMENITIES,
+        hospitality.VIEW_FACILITIES,
+        hospitality.MANAGE_FACILITIES
+      ]
+    }),
+    preset({
+      key: 'hospitality_viewer',
+      label: 'Viewer',
+      mode: 'hospitality',
+      role: 'staff',
+      rank: 3,
+      permissions: [
+        hospitality.VIEW_DASHBOARD,
+        hospitality.VIEW_RESERVATIONS,
+        hospitality.VIEW_ROOMS,
+        hospitality.VIEW_GUESTS,
+        hospitality.VIEW_HOUSEKEEPING,
+        hospitality.VIEW_MAINTENANCE,
+        hospitality.VIEW_FOLIOS,
+        hospitality.VIEW_RATES,
+        hospitality.VIEW_AMENITIES,
+        hospitality.VIEW_FACILITIES,
+        ...shared.reportsView
+      ]
+    })
   ]
 });
 
@@ -401,10 +571,11 @@ const PERMISSION_GROUP_VISIBILITY = Object.freeze({
   msme: ['INVENTORY', 'SUPPLIERS', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM'],
   food_manufacturing: ['INVENTORY', 'SUPPLIERS', 'ORDERS', 'DISPATCH', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM'],
   services: ['INVENTORY', 'SUPPLIERS', 'SERVICES', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM'],
-  fnb: ['INVENTORY', 'SUPPLIERS', 'FNB', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM']
+  fnb: ['INVENTORY', 'SUPPLIERS', 'FNB', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM'],
+  hospitality: ['INVENTORY', 'SUPPLIERS', 'HOSPITALITY', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM']
 });
 
-export const ROLE_CATALOG_VERSION = '2026-05-06.mode-aware-rbac-v1';
+export const ROLE_CATALOG_VERSION = '2026-05-19.mode-aware-rbac-v2';
 
 export const getRoleCatalogMode = (mode) => {
   const normalized = normalizeWorkflowMode(mode || DEFAULT_WORKFLOW_MODE);

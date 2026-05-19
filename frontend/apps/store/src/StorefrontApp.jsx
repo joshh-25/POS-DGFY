@@ -95,6 +95,8 @@ import {
   WORKFLOW_MODE_LABELS,
   WORKFLOW_MODE_SELECT_VALUES
 } from '../../../src/features/settings/workflowMode.js';
+import { searchNearbyStores as searchNearbyGeoStores } from '../../../src/services/geoSearchService.js';
+import HospitalityBookingPanel from './HospitalityBookingPanel.jsx';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 /* Legacy storefront contract anchors (frontend-only compatibility)
@@ -127,6 +129,15 @@ line?.intake_responses || {}
 Booking references
 checkoutResult.payments.filter
 cart_line_id
+/api/v1/store/hospitality/availability?
+/api/v1/store/hospitality/quote
+/api/v1/store/hospitality/booking-holds
+/api/v1/store/hospitality/bookings
+HospitalityBookingPanel
+Direct Booking
+Room Availability
+Paid add-ons
+Booking confirmed
 */
 
 const DEFAULT_CENTER = { latitude: 10.7202, longitude: 122.5621 };
@@ -1088,6 +1099,41 @@ const requestJson = async (url, { method = 'GET', body, storeSlug, authToken = '
     });
   }
   return payload?.data ?? payload;
+};
+
+const geoSearchRadiusForFilter = (distanceFilter) => {
+  const parsed = Number(distanceFilter);
+  if (Number.isFinite(parsed) && parsed > 0) return Math.min(Math.max(parsed, 0.1), 50);
+  return 5;
+};
+
+const normalizeGeoSearchStoreForDiscovery = (store) => {
+  const locationId = toNumberOrNull(store?.location_id);
+  const distanceKm = toNumberOrNull(store?.distance_km);
+  const matchedItemNames = Array.isArray(store?.matched_item_names)
+    ? store.matched_item_names.filter(Boolean)
+    : [];
+
+  return {
+    ...store,
+    latitude: toNumberOrNull(store?.latitude),
+    longitude: toNumberOrNull(store?.longitude),
+    location_id: locationId,
+    nearest_matching_location_id: locationId,
+    matching_location_ids: locationId == null ? [] : [locationId],
+    nearest_distance_km: distanceKm,
+    matching_item_count: Number(store?.matched_item_count || 0),
+    matching_item_sample: matchedItemNames,
+    has_in_stock_match: Number(store?.in_stock_match_count || 0) > 0,
+    nearest_location_name: store?.location_name || null,
+    nearest_location_address: store?.address_line || null,
+    business_mode: store?.workflow_mode || store?.business_mode || null,
+    active_location_count: Number(store?.active_location_count || (locationId == null ? 0 : 1)),
+    storefront_categories: store?.storefront_categories ?? null,
+    match_reasons: matchedItemNames.length > 0
+      ? matchedItemNames.map((name) => `Item match: ${name}`)
+      : ['Item match']
+  };
 };
 
 const extractStockViolation = (error) => {
@@ -3844,6 +3890,7 @@ export default function StorefrontApp() {
     isServicesMode,
     isFnbMode,
     isSimpleMode,
+    isHospitalityMode,
     modeAdapter,
     servicesViewModel,
     fnbViewModel,
@@ -3911,6 +3958,54 @@ export default function StorefrontApp() {
     setStoresError('');
     try {
       const resolvedCoords = coords === undefined ? discoveryCoordsRef.current : coords;
+      const hasGeoSearchCoords = Number.isFinite(Number(resolvedCoords?.latitude))
+        && Number.isFinite(Number(resolvedCoords?.longitude));
+      if (requestSearch && hasGeoSearchCoords) {
+        try {
+          const geoResult = await searchNearbyGeoStores({
+            query: requestSearch,
+            latitude: Number(resolvedCoords.latitude),
+            longitude: Number(resolvedCoords.longitude),
+            radius: geoSearchRadiusForFilter(discoveryDistanceFilter),
+            stockFilter: discoveryStockFilter,
+            page: 1,
+            limit: 100
+          });
+          const geoStores = Array.isArray(geoResult?.stores)
+            ? geoResult.stores.map(normalizeGeoSearchStoreForDiscovery)
+            : [];
+          if (geoStores.length > 0) {
+            const nextCoords = {
+              latitude: Number(resolvedCoords.latitude),
+              longitude: Number(resolvedCoords.longitude)
+            };
+            discoveryCoordsRef.current = nextCoords;
+            setDiscoveryCoords((previous) => {
+              if (
+                previous
+                && Number(previous.latitude) === Number(nextCoords.latitude)
+                && Number(previous.longitude) === Number(nextCoords.longitude)
+              ) {
+                return previous;
+              }
+              return nextCoords;
+            });
+            if (requestSequence === discoveryRequestSequenceRef.current) {
+              setStores(geoStores);
+              setDiscoveryAppliedFilters({
+                source: 'geo_search',
+                query: requestSearch,
+                radius_km: geoSearchRadiusForFilter(discoveryDistanceFilter),
+                stock_filter: discoveryStockFilter,
+                pagination: geoResult?.pagination || null
+              });
+            }
+            return;
+          }
+        } catch (geoSearchError) {
+          console.warn('[StorefrontDiscovery] Geo item search failed; falling back to discovery search.', geoSearchError);
+        }
+      }
       const q = new URLSearchParams();
       if (requestSearch) q.set('search', requestSearch);
       q.set('result_mode', discoveryResultMode);
@@ -3955,7 +4050,7 @@ export default function StorefrontApp() {
         setLoadingStores(false);
       }
     }
-  }, [debouncedDiscoverySearch, discoveryResultMode, discoveryStockFilter, discoveryPinScope, discoveryIncludeMatchMeta]);
+  }, [debouncedDiscoverySearch, discoveryResultMode, discoveryStockFilter, discoveryPinScope, discoveryIncludeMatchMeta, discoveryDistanceFilter]);
 
   const openStoreBySlug = useCallback(async (slug) => {
     const normalized = toSlug(slug);
@@ -7403,18 +7498,19 @@ export default function StorefrontApp() {
       </DiscoveryMapCard>
     );
   };
+  const isModeSpecificStorefront = isServicesMode || isFnbMode || isSimpleMode || isHospitalityMode;
 
   return (
-    <main style={{ fontFamily: isFnbMode ? "'Trebuchet MS', 'Segoe UI', sans-serif" : (isServicesMode ? servicesBodyFont : STYLES.fonts.body), background: isStorePage ? 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)' : '#ffffff', minHeight: '100vh', color: '#0f172a', overflowX: 'clip' }}>
+    <main style={{ fontFamily: isFnbMode ? "'Trebuchet MS', 'Segoe UI', sans-serif" : ((isServicesMode || isHospitalityMode) ? servicesBodyFont : STYLES.fonts.body), background: isStorePage ? 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)' : '#ffffff', minHeight: '100vh', color: '#0f172a', overflowX: 'clip' }}>
       <div style={{
         maxWidth: 1320,
         width: '100%',
         boxSizing: 'border-box',
         margin: '0 auto',
-        paddingTop: isStorePage && (isServicesMode || isFnbMode || isSimpleMode) ? 0 : (isMobileViewport ? 6 : 10),
-        paddingRight: isStorePage && (isServicesMode || isFnbMode || isSimpleMode) ? 0 : (isMobileViewport ? 12 : 20),
-        paddingLeft: isStorePage && (isServicesMode || isFnbMode || isSimpleMode) ? 0 : (isMobileViewport ? 12 : 20),
-        paddingBottom: isStorePage ? ((isServicesMode || isFnbMode || isSimpleMode || !hasDiscoverySearch) ? 0 : (isMobileViewport ? 96 : 120)) : 0
+        paddingTop: isStorePage && isModeSpecificStorefront ? 0 : (isMobileViewport ? 6 : 10),
+        paddingRight: isStorePage && isModeSpecificStorefront ? 0 : (isMobileViewport ? 12 : 20),
+        paddingLeft: isStorePage && isModeSpecificStorefront ? 0 : (isMobileViewport ? 12 : 20),
+        paddingBottom: isStorePage ? ((isModeSpecificStorefront || !hasDiscoverySearch) ? 0 : (isMobileViewport ? 96 : 120)) : 0
       }}>
         {!isStorePage && (
           <>
@@ -9174,6 +9270,13 @@ export default function StorefrontApp() {
                 openStorefrontActionLink={openStorefrontActionLink}
               />
             )}
+            {isHospitalityMode && selectedStore && (
+              <HospitalityBookingPanel
+                selectedStore={selectedStore}
+                selectedLocationId={selectedLocationId}
+                isMobileViewport={isMobileViewport}
+              />
+            )}
             {false && isServicesMode && selectedStore && serviceHeroModel && (
               <section style={{ marginBottom: 40 }}>
                 {/* Modernized Header/Nav */}
@@ -9384,7 +9487,7 @@ export default function StorefrontApp() {
             {!isServicesMode && (
               <>
                 {/* ZONE 1: Navigation & Header */}
-                {!isFnbMode && !isSimpleMode && (
+                {!isFnbMode && !isSimpleMode && !isHospitalityMode && (
                   <section style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
                     <GhostButton onClick={goDiscovery} style={{ padding: '8px 16px', minHeight: 44, fontSize: 13 }}>
                       Back to Discovery
@@ -9444,7 +9547,7 @@ export default function StorefrontApp() {
                     openTrackPanel={openTrackPanel}
                     openAccountPanel={openAccountPanel}
                   />
-                ) : (!isFnbMode && !isSimpleMode) ? (
+                ) : (!isFnbMode && !isSimpleMode && !isHospitalityMode) ? (
                   <DefaultStorefrontHero
                     modeAdapter={modeAdapter}
                     selectedStore={selectedStore}
@@ -9457,7 +9560,7 @@ export default function StorefrontApp() {
             )}
 
             {/* ZONE 3: Location Map Snapshot */}
-            {!isServicesMode && !isFnbMode && !isSimpleMode && selectedStore && (
+            {!isServicesMode && !isFnbMode && !isSimpleMode && !isHospitalityMode && selectedStore && (
               <section style={{ background: '#fff', borderRadius: STYLES.radius.card, border: `1px solid ${STYLES.colors.border}`, padding: 16, marginBottom: 24, boxShadow: STYLES.shadow.sm }}>
                 <StoresMap
                   stores={storeLocations.length > 0 ? storeLocations.map(l => ({ ...l, tenant_name: selectedStore?.tenant_name })) : [selectedStore]}
@@ -11677,7 +11780,7 @@ return (
     gridTemplateColumns: (isServicesMode && !isMobileViewport) ? '1fr 340px' : '1fr'
   }}>
     <div style={{ display: 'grid', gap: 24 }}>
-      {!(isSimpleMode && isResolvedOrderSubpage) && (
+      {!isHospitalityMode && !(isSimpleMode && isResolvedOrderSubpage) && (
       <section id="storefront-catalog-section" style={{
         display: 'grid',
         gap: isFnbMode ? (isMobileViewport ? 18 : 24) : (isSimpleMode ? 22 : undefined),
@@ -12007,7 +12110,7 @@ return (
         )}
 
         {/* Section header */}
-        {((!isFnbMode && !isSimpleMode) || isMultiGroup) && (
+        {((!isFnbMode && !isSimpleMode && !isHospitalityMode) || isMultiGroup) && (
           <div style={{ marginBottom: isMultiGroup ? 20 : 32 }}>
             <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, fontWeight: 900, color: STYLES.colors.dark }}>{modeAdapter.catalogHeading}</h2>
             <p style={{ margin: '4px 0 0 0', color: STYLES.colors.muted, fontSize: 15 }}>{modeAdapter.catalogSubtitle}</p>
@@ -12138,7 +12241,7 @@ return (
         )}
 
         {/* Catalog items grid */}
-        {!isServicesMode && !isFnbMode && !isSimpleMode && (
+        {!isServicesMode && !isFnbMode && !isSimpleMode && !isHospitalityMode && (
           <div style={{ maxWidth: 1320, margin: `${isMobileViewport ? 12 : 16}px auto 0`, width: '100%', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
             <input
               value={catalogSearch}
@@ -14222,7 +14325,7 @@ return (
           right: isMobileViewport ? 10 : 18,
           left: isFnbMode ? 'auto' : (isMobileViewport ? 10 : 'auto'),
           bottom: isMobileViewport ? 10 : 18,
-          display: isServicesCartDrawerMode
+          display: isHospitalityMode || isServicesCartDrawerMode
             ? 'none'
             : (
               isServicesMode && isDesktopViewport

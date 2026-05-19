@@ -88,6 +88,33 @@ export const ModePresentationRegistry = Object.freeze({
       textMuted: '#7c6757',
       buttonTextOnAccent: '#fffdf9'
     })
+  }),
+  hospitality: Object.freeze({
+    heroEyebrow: 'Hospitality storefront',
+    heroDescription: 'Search stay dates, compare room types, add amenities or packages, and confirm a direct booking.',
+    catalogHeading: 'Direct Booking',
+    catalogSubtitle: 'Search room availability and choose PMS-backed room types, packages, policies, and paid extras.',
+    catalogSearchPlaceholder: 'Search rooms, amenities, packages, or policies...',
+    primaryActionLabel: 'Book a Stay',
+    trackHeading: 'Booking Lookup',
+    trackDescription: 'Enter a booking reference to check stay dates, status, and payment state.',
+    supportsServiceGrouping: false,
+    supportsProductGrouping: false,
+    heroTheme: Object.freeze({
+      displayFont: "'Avenir Next', 'Segoe UI', sans-serif",
+      bodyFont: "'Avenir Next', 'Segoe UI', sans-serif",
+      accent: '#0f766e',
+      accentDark: '#134e4a',
+      accentSoft: '#ecfeff',
+      surface: '#102033',
+      surfaceRaised: '#ffffff',
+      surfaceMuted: '#f8fafc',
+      surfaceInset: '#ecfeff',
+      borderSoft: '#bae6fd',
+      textPrimary: '#0f172a',
+      textMuted: '#64748b',
+      buttonTextOnAccent: '#ffffff'
+    })
   })
 });
 
@@ -109,6 +136,7 @@ export const getStorefrontModeAdapter = (store = null) => {
     ...modeConfig,
     isServicesMode: mode === 'services',
     isFnbMode: mode === 'fnb',
-    isSimpleMode: mode === 'msme'
+    isSimpleMode: mode === 'msme',
+    isHospitalityMode: mode === 'hospitality'
   };
 };

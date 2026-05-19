@@ -19,6 +19,7 @@ import {
   PackageCheck,
   ShoppingCart,
   CalendarCheck,
+  BedDouble,
   Utensils
 } from 'lucide-react';
 import { cn } from "./src/lib/utils.js";
@@ -40,6 +41,7 @@ const ALL_NAV_ITEMS = [
   { name: 'Dispatch Orders', icon: PackageCheck, page: 'DispatchOrders', permission: 'do:view' },
   { name: 'Services', icon: CalendarCheck, page: 'Services', permissionAny: ['items:view', 'pos:view', 'reports:view'] },
   { name: 'Food & Beverage', icon: Utensils, page: 'Fnb', permissionAny: ['items:view', 'pos:view', 'reports:view'] },
+  { name: 'Hospitality', icon: BedDouble, page: 'Hospitality', permissionAny: ['items:view', 'pos:view', 'reports:view'] },
   { name: 'POS Terminal', icon: ShoppingCart, page: 'POS', permission: 'pos:view' },
   { name: 'Sales', icon: FileText, page: 'Sales', permissionAny: ['reports:view', 'do:view', 'pos:view', 'pos:transact'] },
   { name: 'Stock Movements', icon: ArrowLeftRight, page: 'StockMovements', permission: 'stock:view' },

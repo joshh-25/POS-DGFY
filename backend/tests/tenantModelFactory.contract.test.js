@@ -106,6 +106,11 @@ describe('tenantModelFactory contract', () => {
             expect(models.PosTransaction).toEqual(expect.any(Function));
             expect(models.ServiceBooking).toEqual(expect.any(Function));
             expect(models.FnbCheck).toEqual(expect.any(Function));
+            expect(models.HospitalityRoomType).toEqual(expect.any(Function));
+            expect(models.HospitalityRoom).toEqual(expect.any(Function));
+            expect(models.HospitalityReservation).toEqual(expect.any(Function));
+            expect(models.HospitalityFolio).toEqual(expect.any(Function));
+            expect(models.HospitalityAmenity).toEqual(expect.any(Function));
             expect(models.UserLocationGrant).toEqual(expect.any(Function));
         } finally {
             await tenantSequelize.close();

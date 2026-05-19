@@ -38,7 +38,7 @@ describe('workflow mode cross-layer contracts', () => {
     });
 
     it('resolves normalization, mode family, and template family identically across layers', () => {
-        const unknownModeInputs = ['UNKNOWN', '', null, undefined, '  retail  ', 'msme', 'FNB', 'education_institutions', 'manufacturing', 'food_manufacturing', 'services'];
+        const unknownModeInputs = ['UNKNOWN', '', null, undefined, '  retail  ', 'msme', 'FNB', 'hospitality', 'education_institutions', 'manufacturing', 'food_manufacturing', 'services'];
 
         unknownModeInputs.forEach((input) => {
             const backendMode = normalizeBackendWorkflowMode(input);
@@ -76,5 +76,24 @@ describe('workflow mode cross-layer contracts', () => {
         expect(backendModeHasCapability('fnb', 'productionWorkflows')).toBe(false);
         expect(frontendModeHasCapability('fnb', 'fnbDining')).toBe(true);
         expect(frontendModeHasCapability('fnb', 'productionWorkflows')).toBe(false);
+    });
+
+    it('keeps Hospitality mode PMS-native and out of manufacturing, F&B, and Services booking workflows', () => {
+        expect(backendLabels.hospitality).toBe('Hospitality');
+        expect(frontendLabels.hospitality).toBe('Hospitality');
+        expect(backendModeHasCapability('hospitality', 'hospitalityReservations')).toBe(true);
+        expect(backendModeHasCapability('hospitality', 'hospitalityRooms')).toBe(true);
+        expect(backendModeHasCapability('hospitality', 'hospitalityHousekeeping')).toBe(true);
+        expect(backendModeHasCapability('hospitality', 'hospitalityMaintenance')).toBe(true);
+        expect(backendModeHasCapability('hospitality', 'hospitalityFolios')).toBe(true);
+        expect(backendModeHasCapability('hospitality', 'hospitalityRates')).toBe(true);
+        expect(backendModeHasCapability('hospitality', 'hospitalityAmenities')).toBe(true);
+        expect(backendModeHasCapability('hospitality', 'productionWorkflows')).toBe(false);
+        expect(backendModeHasCapability('hospitality', 'fnbDining')).toBe(false);
+        expect(backendModeHasCapability('hospitality', 'services')).toBe(false);
+        expect(frontendModeHasCapability('hospitality', 'hospitalityReservations')).toBe(true);
+        expect(frontendModeHasCapability('hospitality', 'productionWorkflows')).toBe(false);
+        expect(frontendModeHasCapability('hospitality', 'fnbDining')).toBe(false);
+        expect(frontendModeHasCapability('hospitality', 'services')).toBe(false);
     });
 });

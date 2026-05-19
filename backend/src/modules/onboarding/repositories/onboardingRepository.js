@@ -20,7 +20,8 @@ const ONBOARDING_COMPLETION_PRESETS_BY_MODE = Object.freeze({
   food_manufacturing: new Set(['finished_product']),
   msme: new Set(['product']),
   services: new Set(['service', 'physical_add_on']),
-  fnb: new Set(['menu_item', 'packaged_beverage'])
+  fnb: new Set(['menu_item', 'packaged_beverage']),
+  hospitality: new Set(['room_night', 'paid_amenity', 'minibar_retail_product', 'facility_booking'])
 });
 
 const ALLOWED_STATES = new Set(['not_started', 'in_progress', 'completed']);
@@ -171,6 +172,30 @@ const countPricedStarterItems = async ({ Item, transaction = null, workflowMode 
   }
 };
 
+const countHospitalityStarterRooms = async ({ transaction = null } = {}) => {
+  const HospitalityRoomType = dbStore.get('HospitalityRoomType');
+  const HospitalityRoom = dbStore.get('HospitalityRoom');
+  if (!HospitalityRoomType || !HospitalityRoom) return 0;
+
+  const roomType = await HospitalityRoomType.findOne({
+    where: {
+      is_active: true,
+      default_rate: { [Op.gt]: 0 }
+    },
+    attributes: ['room_type_id'],
+    ...(transaction ? { transaction } : {})
+  });
+  if (!roomType) return 0;
+
+  return HospitalityRoom.count({
+    where: {
+      room_type_id: roomType.room_type_id,
+      is_active: true
+    },
+    ...(transaction ? { transaction } : {})
+  });
+};
+
 const getSettingRows = async (SystemSetting, keys = [], { transaction = null } = {}) => {
   const rows = await SystemSetting.findAll({
     where: {
@@ -240,13 +265,16 @@ const computeChecklist = async ({ storeNameBaseline = '', transaction = null } =
     transaction,
     defaultValue: DEFAULT_WORKFLOW_MODE
   });
+  const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
 
   const [primaryActiveLocationCount, pricedStarterItemCount] = await Promise.all([
     TenantLocation ? TenantLocation.count({
       where: { is_active: true, is_primary_storefront: true },
       ...(transaction ? { transaction } : {})
     }) : 0,
-    countPricedStarterItems({ Item, transaction, workflowMode })
+    normalizedWorkflowMode === 'hospitality'
+      ? countHospitalityStarterRooms({ transaction })
+      : countPricedStarterItems({ Item, transaction, workflowMode: normalizedWorkflowMode })
   ]);
 
   const resolvedStoreName = baselineName || contextTenantName || fallbackBusinessName;
