@@ -16,6 +16,8 @@
 - [Dispatch Orders Endpoints](#dispatch-orders-endpoints)
 - [POS Endpoints](#pos-endpoints)
 - [Food & Beverage Endpoints](#food--beverage-endpoints)
+- [Storefront Hospitality Endpoints](#storefront-hospitality-endpoints)
+- [Hospitality Admin Endpoints](#hospitality-admin-endpoints)
 - [Unified Sales Endpoints](#unified-sales-endpoints)
 - [Reports Endpoints](#reports-endpoints)
 - [AI Assistant Endpoints](#ai-assistant-endpoints)
@@ -860,10 +862,11 @@ Create new item
   - MSME: products and supplies, with legacy raw/packaging rows preserved when not recategorized.
   - Services: service rows (`category=service`, stock-exempt), physical add-on products, and supplies.
   - Food & Beverage: menu items (`serving`), ingredients (`kg`/weight-volume-count), packaged beverage/retail items (`bottle`/packaging), and to-go packaging/supplies.
-- Valid UOMs include convertible inventory units (`kg`, `g`, `mL`, `L`, `pcs`, etc.) plus non-convertible business units such as `serving`, `portion`, `service`, `session`, `ticket`, `booking`, `pack`, `case`, `carton`, `bottle`, and `can`. Automatic conversion is limited to weight, volume, and count groups.
-- Corrected-mode clients may send `mode_item_preset` to persist the selected mode-native item type. F&B uses this to distinguish `menu_item` from `packaged_beverage` even though both are stored as `category=product` and `product_type=finished_goods`.
+  - Hospitality: room nights (`room_night`), paid amenities, facility bookings, minibar/retail products, housekeeping supplies, reusable linen assets, and physical add-ons.
+- Valid UOMs include convertible inventory units (`kg`, `g`, `mL`, `L`, `pcs`, etc.) plus non-convertible business units such as `serving`, `portion`, `service`, `session`, `ticket`, `booking`, `room_night`, `pack`, `case`, `carton`, `bottle`, and `can`. Automatic conversion is limited to weight, volume, and count groups.
+- Corrected-mode clients may send `mode_item_preset` to persist the selected mode-native item type. F&B uses this to distinguish `menu_item` from `packaged_beverage`; Hospitality uses this to separate stock-exempt room nights/amenities/facility bookings from stock-bearing minibar, supply, linen, and physical add-on rows.
 - `default_sale_price > 0` is required before an item can be sold through POS, Storefront checkout, or Dispatch Orders. Cost-only internal inventory rows may keep `default_sale_price=null`.
-- Placeholder modes (`retail`, `hospitality`, `healthcare`, `ticketing_transport`, `logistics_distribution`, `education_institutions`) keep conservative defaults until their governed mode-specific item taxonomy is added.
+- Placeholder modes (`retail`, `healthcare`, `ticketing_transport`, `logistics_distribution`, `education_institutions`) keep conservative defaults until their governed mode-specific item taxonomy is added.
 
 ### PUT /items/:item_id
 Update item
@@ -983,11 +986,12 @@ The item CSV endpoints share the same workflow-mode template contract for correc
 | `category`, `search`, `fifo`, `folder` | string | Optional filters for filtered export and preview. |
 
 **Current CSV contract**
-- Corrected-mode exports for `food_manufacturing`, `msme`, `services`, and `fnb` reuse the same template definitions as item import.
+- Corrected-mode exports for `food_manufacturing`, `msme`, `services`, `fnb`, and `hospitality` reuse the same template definitions as item import.
 - Export headers include the mode template marker columns (`template_workflow_mode`, `mode_compatibility_note`, `template_schema_version`, `template_issued_at`, `template_signature`) and are emitted in the same order as import templates.
 - Rows include `mode_item_preset` and `default_sale_price` whenever the mode template includes those columns.
 - Services exports include `category=service` rows. Pure service rows export `current_stock=0` and `fifo_enabled=FALSE` to preserve the stock-exempt import contract.
 - F&B exports preserve restaurant preset keys such as `menu_item`, `ingredient`, `packaged_beverage`, and `packaging_supply`.
+- Hospitality exports preserve PMS preset keys such as `room_night`, `paid_amenity`, `facility_booking`, `minibar_retail_product`, `housekeeping_supply`, `linen_reusable_asset`, and `physical_add_on`.
 - Export preview returns `workflowMode` and `templateType` metadata so the frontend can label the active export template before download.
 
 ### GET /items/supplier-coverage
@@ -3065,6 +3069,80 @@ Services Mode storefront routes are public or Store JWT-authenticated tenant rou
 - Batch booking responses include `bookings[]`, `payments[]`, and a summary `payment` object. Frontends must render every `payments[].checkout_url` for multi-booking prepaid/deposit batches.
 - `payment_timing=postpaid` creates an unpaid booking/ticket for POS collection later; `payment_timing=prepaid` depends on the configured commerce adapter and remains separate from fiscal/non-fiscal receipt issuance.
 
+### Storefront Hospitality Endpoints
+
+Hospitality Storefront routes live under `/api/v1/store/hospitality`. Most reads are public; stay history and claim routes require Store JWT. They implement the direct booking-engine contract for customer-facing room availability, room-type pricing, amenities, packages, quote/hold, confirmation, lookup, authenticated stay history, and customer claim. Public responses must expose selling prices and customer-safe availability only; they must never expose item costs, supplier data, internal housekeeping status, internal maintenance notes, or staff-only room movement details.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/store/hospitality/availability` | Public | Search available room types by `check_in_date`, `check_out_date`, optional guest counts, and optional property/location context |
+| `POST` | `/store/hospitality/quote` | Public | Build a customer-safe quote for selected room type, room count, packages, and paid add-ons; response is `no-store` |
+| `POST` | `/store/hospitality/booking-holds` | Public | Create a persisted short-lived booking hold token for the selected room type and quote; response is `no-store` |
+| `GET` | `/store/hospitality/amenities` | Public | List active public amenities, including property, room, paid add-on, facility, accessibility, policy, local area, transport, meal, and package amenities |
+| `GET` | `/store/hospitality/packages` | Public | List active customer-facing packages and add-on bundles |
+| `POST` | `/store/hospitality/bookings` | Optional Store JWT | Confirm a direct booking from Storefront with a valid active `hold_token`; authenticated customers are linked to `store_customer_id`; response is `no-store` |
+| `GET` | `/store/hospitality/bookings` | Store JWT | List authenticated customer's redacted Hospitality stay history |
+| `POST` | `/store/hospitality/bookings/:public_reference/claim` | Store JWT | Claim an existing direct booking into the authenticated customer account when the booking email matches the signed-in customer email |
+| `GET` | `/store/hospitality/bookings/:public_reference` | Public limited lookup | Customer-safe booking lookup by public reference; response is `no-store` |
+
+**Availability and Booking Contract**
+- `room_types[]` includes `room_type_id`, `code`, `name`, `description`, `max_occupancy`, `available_rooms`, `starting_rate`, `currency`, and `amenities`.
+- `available_rooms` is capacity-safe, subtracts active reservations and unexpired booking holds, excludes out-of-order/out-of-service rooms, and may be rounded or suppressed later by revenue policy; it must not reveal room-level internal status.
+- Room nights and facility bookings are capacity-backed service rows, not stock items. Minibar, retail, housekeeping supplies, linen assets, and physical add-ons remain normal inventory/SKU records when stock is consumed.
+- Booking, quote, hold, payment, refund, and folio mutation routes must be `no-store`.
+- Direct Storefront booking confirmation requires a valid unexpired hold token matching room type and stay dates.
+- Idempotency keys and request hashes are persisted for booking confirmation. Matching replay returns the existing reservation; mismatched replay fails with an idempotency conflict.
+- Optional Store JWT booking confirmation saves `store_customer_id`; authenticated stay history and claim responses are redacted to the same customer-safe booking summary used by public lookup.
+- Claim by public reference is email-bound. A signed-in customer cannot claim a booking whose stored booking email belongs to a different address, and an already-linked booking cannot be moved to another customer account.
+- Quote responses include `pricing.deposit_due`, `pricing.payment_collection`, and `pricing.payment_due_at`. Current v1 direct booking uses `payment_collection=property_collects`; no online card authorization or deposit capture is performed by Hospitality Storefront until a separate payment-adapter ADR is accepted.
+- Booking payloads may persist future channel reconciliation fields: `external_source`, `external_reference`, and `channel_metadata`. These fields are metadata only; v1 does not poll, push, or reconcile live OTA/channel inventory.
+- Staff reservation creation may request `auto_assign_rooms=true` to assign available physical rooms by PMS room-status priority. Check-in/in-house transitions must ensure each reservation-room row is assigned to a physical room before stays are created.
+- Booking confirmation, reservation lifecycle changes, folio posting, and maintenance blocking write Hospitality domain audit events and mirror those events into the existing tenant `audit_logs` table using valid `CREATE`/`UPDATE`/`DELETE`/`VIEW` enum actions.
+- Public lookup redacts guest contact/private notes and returns only `public_reference`, status, source, dates, selected rooms, total amount, deposit amount/due, payment collection status, and payment status.
+
+## Hospitality Admin Endpoints
+
+Hospitality admin routes live under `/api/v1/hospitality`, require authentication, and require the active tenant workflow mode to expose the `hospitalityReservations` capability. Controllers are transport-only; business behavior belongs in Hospitality use cases and repositories.
+
+| Method | Path | Permission | Purpose |
+|---|---|---|---|
+| `GET` | `/hospitality/dashboard` | `hospitality:dashboard:view` or reports view | Today dashboard: arrivals, departures, in-house stays, room status counts, housekeeping, and maintenance |
+| `GET` | `/hospitality/availability` | reservations/rooms view | Staff availability lookup |
+| `GET`/`POST` | `/hospitality/room-types` | rooms view/manage | Manage sellable room types, occupancy, rate baseline, amenities snapshot, and policies |
+| `GET`/`POST` | `/hospitality/rooms` | rooms view/manage | Manage physical rooms and room status |
+| `PATCH` | `/hospitality/rooms/:room_id/status` | rooms manage or housekeeping manage | Update PMS room/housekeeping/maintenance status with audit-ready intent |
+| `GET`/`POST` | `/hospitality/guests` | guests or reservations view/manage | Manage guest profiles |
+| `GET`/`POST` | `/hospitality/reservations` | reservations view/manage | Manage direct/admin reservations; mutations are `no-store` |
+| `PATCH` | `/hospitality/reservations/:reservation_id/status` | reservations manage | Confirm, check in, mark in-house, check out, cancel, or no-show |
+| `PATCH` | `/hospitality/reservations/:reservation_id/rooms/:reservation_room_id` | reservations or rooms manage | Move or assign a reservation room after validating ownership, matching room type, and room conflict |
+| `GET` | `/hospitality/stays` | reservations view | List in-house and historical stays |
+| `GET`/`POST` | `/hospitality/rate-plans` | rates view/manage | Manage rate plans and policy metadata |
+| `GET`/`POST` | `/hospitality/folios` | folios view/manage | Manage folios attached to reservations, stays, or guests |
+| `POST` | `/hospitality/folios/:folio_id/lines` | folios manage or POS transact | Post room charges, taxes, fees, deposits, payments, refunds, amenities, minibar, retail, room service, and adjustments |
+| `GET`/`POST` | `/hospitality/housekeeping/tasks` | housekeeping view/manage | Manage room-turnover and inspection work |
+| `PATCH` | `/hospitality/housekeeping/tasks/:task_id` | housekeeping manage | Advance housekeeping status |
+| `GET`/`POST` | `/hospitality/maintenance/requests` | maintenance view/manage | Manage room/facility maintenance and blocking workflow |
+| `PATCH` | `/hospitality/maintenance/requests/:request_id` | maintenance manage | Advance maintenance status |
+| `GET`/`POST` | `/hospitality/amenities` | amenities view/manage | Manage property, room, paid add-on, facility, accessibility, policy, local-area, transport, meal, and package amenities |
+| `POST` | `/hospitality/room-amenities` | amenities/rooms manage | Link amenities to room types or specific rooms |
+| `POST` | `/hospitality/property-amenities` | amenities manage | Link amenities to the property/location level |
+| `GET`/`POST` | `/hospitality/facilities` | facilities view/manage | Manage pool/gym/spa/laundry/business center/parking/shuttle/meeting-room facilities |
+| `POST` | `/hospitality/facilities/bookings` | facilities or reservations manage | Book capacity-backed facilities for a guest/reservation time window |
+| `GET`/`POST` | `/hospitality/packages` | amenities or rates view/manage | Manage stay packages and add-on bundles |
+| `POST` | `/hospitality/packages/items` | amenities or rates manage | Link amenities, facilities, or physical items into a package |
+| `GET`/`POST` | `/hospitality/guest-messages` | guests or reservations view/manage | Store internal/storefront guest communication drafts and history |
+| `GET` | `/hospitality/reports` | hospitality reports or reports view | Hospitality report summary surface for occupancy and operational metrics |
+
+**Mode Boundary**
+- Hospitality hides manufacturing, dispatch, production, F&B dining, and Services booking routes unless a future ADR explicitly shares a boundary.
+- Inventory, suppliers, POS, reports, settings, users, and storefront remain available with Hospitality labels and guards.
+- POS usage in Hospitality is front-desk/on-property charging: charge to room, minibar/retail stock deduction, paid amenities/add-ons, deposits, refunds, and folio settlement. Folio `payment` and `deposit` lines reduce balance; `refund` lines reverse payments and increase balance.
+- Staff can send `auto_assign_rooms=true` when creating a reservation. The backend assigns available rooms by PMS room-status priority and returns a conflict if insufficient assignable rooms exist.
+- `PATCH /hospitality/reservations/:reservation_id/status` may include `check_in_date` and/or `check_out_date` with the desired `status`; date changes update the reservation and reservation-room dates only after assigned-room conflicts and unassigned room-type capacity are revalidated.
+- Checkout returns `HOSPITALITY_FOLIO_BALANCE_DUE` while open folios have a positive balance. Staff may send `override_open_balance=true`; this flag permits the action but is removed before reservation persistence.
+- Room moves emit Hospitality audit events with before/after `room_id` and reservation context. Status changes emit before/after status, dates, and reservation-room summaries.
+- Manager reports expose occupancy percentage, ADR, RevPAR, unassigned arrivals, and out-of-order room counts in addition to arrivals, departures, in-house, housekeeping, and maintenance counts.
+
 ## Services Admin Endpoints
 
 Services Mode IMS/POS operator routes live under `/api/v1/services`. They require tenant authentication plus the Services workflow capability guard. The Permission column lists the primary mode-native permission. Generic compatibility fallback remains enabled by default for legacy users and can be disabled with `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` after remapping.
@@ -4569,7 +4647,7 @@ Exact retries are idempotent at the generated-SKU boundary: when a repeated row 
 - Corrected modes validate `mode_item_preset` against the active workflow mode. Placeholder modes use conservative default item behavior until promoted by a governed mode pass.
 - Partial save is supported: valid rows are created, invalid rows are returned with row-level `errors`.
 - The frontend must not resubmit rows already returned as `created`. Duplicate `client_row_id` values in one request and generated SKU conflicts return row-level failures instead of creating retry duplicates.
-- Completion readiness for corrected modes requires a customer-facing onboarding preset: Food Manufacturing `finished_product`, MSME `product`, Services `service` or `physical_add_on`, and Food & Beverage `menu_item` or `packaged_beverage`.
+- Completion readiness for corrected modes requires a customer-facing onboarding preset: Food Manufacturing `finished_product`, MSME `product`, Services `service` or `physical_add_on`, and Food & Beverage `menu_item` or `packaged_beverage`. Hospitality readiness is PMS-native and requires an active bookable room type with a positive default rate plus at least one active room.
 
 **Response (207-style application payload over 200)**
 ```json

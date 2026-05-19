@@ -189,7 +189,9 @@ Before changing any placeholder mode item UI, complete this checklist:
     - Bulk setup recommendation rules for `Recommended for POS`, `Recommended for Storefront`, `Keep internal`, `Needs setup`, and any mode-specific labels.
     - Backend and frontend tests for single-item setup, bulk visibility, bulk image upload, onboarding readiness, import/export, and all mode fallback behavior.
 
-Current corrected item-taxonomy modes are Food Manufacturing (`food_manufacturing` and legacy `manufacturing`), MSME, Services, and Food & Beverage. Retail, Hospitality, Healthcare, Ticketing & Transport, Logistics & Distribution, and Education & Institutions remain placeholder item-taxonomy modes until their governed mode pass is completed.
+Current corrected item-taxonomy modes are Food Manufacturing (`food_manufacturing` and legacy `manufacturing`), MSME, Services, Food & Beverage, and Hospitality. Retail, Healthcare, Ticketing & Transport, Logistics & Distribution, and Education & Institutions remain placeholder item-taxonomy modes until their governed mode pass is completed.
+
+Hospitality uses PMS/stay-management nouns: room types, rooms, guests, reservations, stays, folios, room charges, housekeeping tasks, maintenance requests, amenities, facilities, packages, rate plans, rate calendars, and guest messages. Room nights, amenities, and facility bookings are stock-exempt capacity reservations; minibar, retail, supplies, linens, and physical add-ons remain stock-bearing inventory lines when they affect stock.
 
 Placeholder modes must not gain custom POS, Storefront, image, import/export, or recommendation defaults through one-off UI logic. Until the checklist above is complete, they inherit conservative finished-goods catalog defaults and must be labelled as conservative/default behavior in future implementation notes.
 
