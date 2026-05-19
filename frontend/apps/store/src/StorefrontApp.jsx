@@ -1682,9 +1682,8 @@ function StoreCatalogEmptyState({ mode = 'setup_pending', searchQuery = '', onRe
     : 'This tenant has not configured any storefront-visible items yet. Ask the tenant admin to enable items for storefront selling.';
 
   return (
-		                                <div
-		                                  ref={isDiscoveryMobileViewport ? mobileCategoryRailRef : null}
-		                                  style={{
+    <div
+      style={{
         marginTop: 12,
         border: '1px solid #cbd5e1',
         borderRadius: 14,

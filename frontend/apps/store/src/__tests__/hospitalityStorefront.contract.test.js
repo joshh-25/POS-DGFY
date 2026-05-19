@@ -61,4 +61,16 @@ describe('Hospitality storefront contract', () => {
     expect(app).toContain('!isHospitalityMode && !(isSimpleMode && isResolvedOrderSubpage)');
     expect(app).toContain('!isServicesMode && !isFnbMode && !isSimpleMode && !isHospitalityMode');
   });
+
+  it('keeps the shared empty catalog state free of discovery-only viewport refs', () => {
+    const app = readSource('StorefrontApp.jsx');
+    const emptyStateStart = app.indexOf('function StoreCatalogEmptyState');
+    const emptyStateEnd = app.indexOf('export default function StorefrontApp');
+    const emptyStateSource = app.slice(emptyStateStart, emptyStateEnd);
+
+    expect(emptyStateStart).toBeGreaterThanOrEqual(0);
+    expect(emptyStateEnd).toBeGreaterThan(emptyStateStart);
+    expect(emptyStateSource).not.toContain('isDiscoveryMobileViewport');
+    expect(emptyStateSource).not.toContain('mobileCategoryRailRef');
+  });
 });
