@@ -42,6 +42,7 @@ This declaration covers adding Hospitality-specific front-desk POS folio posting
 - Hospitality dashboards/reports now expose operational readiness metrics such as occupancy, ADR, RevPAR, unassigned arrivals, and out-of-order rooms.
 - Storefront quote/booking UI states deposit due and property collection explicitly; no online card authorization or deposit capture is introduced by this declaration.
 - Reservation, folio, and maintenance-blocking mutations now write Hospitality domain audit events and mirror actor/request metadata into the existing tenant `audit_logs` table.
+- Local PM2 startup now keeps the staging backend on its own fallback port so the production-mode backend remains the only process bound to the default local API port during operator testing.
 
 ## Compliance Preconditions
 
