@@ -12,7 +12,9 @@ import {
     createPublicReservation as createPublicFnbReservation
 } from '../modules/fnb/controllers/fnbHandlers.js';
 import { authenticateStoreCustomer, optionalStoreCustomer } from '../middleware/storeAuth.js';
-import { storeAuthLimiter, storeTrackingLimiter, storefrontFollowLimiter } from '../middleware/rateLimiter.js';
+import { storeAuthLimiter, storeTrackingLimiter, storefrontFollowLimiter, inventoryPushLimiter } from '../middleware/rateLimiter.js';
+import { validateInventoryPush } from '../validators/geoSearchValidator.js';
+import { enqueueInventoryPush } from '../workers/geoInventoryWorker.js';
 import { requireTenantContext } from '../middleware/requireTenantContext.js';
 import { setReadCacheControl, setNoStoreCacheControl } from '../middleware/cachePolicy.js';
 import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
@@ -99,5 +101,16 @@ router.get('/orders', setNoStoreCacheControl, authenticateStoreCustomer, validat
 router.get('/follow/status', setNoStoreCacheControl, storefrontFollowLimiter, optionalStoreCustomer, validateStorefrontFollowQuery, storeController.getStorefrontFollowStatus);
 router.post('/follow', setNoStoreCacheControl, storefrontFollowLimiter, optionalStoreCustomer, validateStorefrontFollowBody, storeController.followStorefront);
 router.delete('/follow', setNoStoreCacheControl, storefrontFollowLimiter, optionalStoreCustomer, validateStorefrontFollowBody, storeController.unfollowStorefront);
+
+router.post('/inventory/push', setNoStoreCacheControl, inventoryPushLimiter, validateInventoryPush, async (req, res, next) => {
+    try {
+        const { location_id, items } = req.validatedBody;
+        const tenantId = req.tenant?.id;
+        await enqueueInventoryPush({ tenant_id: tenantId, location_id: location_id ?? null, items });
+        return res.status(202).json({ success: true, data: { queued: items.length }, timestamp: new Date().toISOString() });
+    } catch (err) {
+        next(err);
+    }
+});
 
 export default router;

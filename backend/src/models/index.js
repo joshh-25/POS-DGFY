@@ -102,6 +102,13 @@ const TenantComplianceFinalReviewSignoff = TenantComplianceFinalReviewSignoffFac
 import AiUsageLogFactory from './Landlord/AiUsageLog.js';
 const AiUsageLog = AiUsageLogFactory(sequelize);
 
+import GeoItemFactory from './Landlord/GeoItem.js';
+import GeoStoreItemFactory from './Landlord/GeoStoreItem.js';
+import GeoItemAliasFactory from './Landlord/GeoItemAlias.js';
+const GeoItem = GeoItemFactory(sequelize);
+const GeoStoreItem = GeoStoreItemFactory(sequelize);
+const GeoItemAlias = GeoItemAliasFactory(sequelize);
+
 // Define associations
 // Tenant & Payment associations
 Tenant.hasMany(Payment, { foreignKey: 'tenant_id', as: 'payments' });
@@ -598,5 +605,14 @@ export {
   TenantComplianceAuditLog,
   TenantComplianceAuditFailure,
   TenantComplianceFinalReviewDocument,
-  TenantComplianceFinalReviewSignoff
+  TenantComplianceFinalReviewSignoff,
+  GeoItem,
+  GeoStoreItem,
+  GeoItemAlias
 };
+
+// Geo search model associations (landlord DB)
+GeoItem.hasMany(GeoStoreItem, { foreignKey: 'item_id', as: 'storeItems' });
+GeoStoreItem.belongsTo(GeoItem, { foreignKey: 'item_id', as: 'item' });
+GeoItem.hasMany(GeoItemAlias, { foreignKey: 'item_id', as: 'aliases' });
+GeoItemAlias.belongsTo(GeoItem, { foreignKey: 'item_id', as: 'item' });

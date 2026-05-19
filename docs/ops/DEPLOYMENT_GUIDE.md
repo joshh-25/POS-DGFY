@@ -48,6 +48,7 @@ No-staging release policy reference:
   - `https://pos.dgfy.ph`
   - `https://dgfy.ph`
   - `https://store.dgfy.ph`
+  - `https://staging.dgfy.ph` (staging IMS — added 2026-05-19)
 - Optional deploy override:
   - `DEPLOY_RUN_BILLING_VERIFY=auto|0|1` (default `auto`)
     - `auto`: billing checks run only when `PAYMENTS_ENABLED=true`
@@ -357,12 +358,17 @@ tail -f "$LOG"
 ```
 
 ## PM2 Notes
-The canonical PM2 entrypoint is the root `ecosystem.config.cjs`. It defines all four production processes:
+The canonical PM2 entrypoint is the root `ecosystem.config.cjs`. It defines the four production processes and two staging processes:
 
+**Production processes (`--env production`):**
 1. `sku-backend` on port `5000`
 2. `sku-frontend` on port `5173`
 3. `sku-pos-frontend` on port `5174`
 4. `sku-store-frontend` on port `5175`
+
+**Staging processes (`--env staging`, serving `staging.dgfy.ph`):**
+5. `sku-staging-backend` on port `5002`
+6. `sku-staging-frontend` (SKUpervisor IMS) on port `5183`
 
 `ecosystem.config.cjs` includes non-secret production defaults for the VPS profile:
 
@@ -390,7 +396,7 @@ pm2 save
 
 Do not use `pm2 restart all` as primary deployment strategy.
 
-After manual PM2 changes, verify:
+After manual PM2 changes, verify production:
 
 ```bash
 pm2 list
@@ -401,6 +407,15 @@ curl -fsS http://127.0.0.1:5173
 curl -fsS http://127.0.0.1:5174
 curl -fsS http://127.0.0.1:5175
 curl -fsS -H "Host: dgfy.ph" http://127.0.0.1:5175/ >/dev/null
+```
+
+After staging PM2 changes, verify staging:
+
+```bash
+pm2 describe sku-staging-backend
+pm2 env sku-staging-backend | grep '^CORS_ORIGIN'
+curl -fsS http://127.0.0.1:5002/health
+curl -fsS http://127.0.0.1:5183
 ```
 
 If the browser shows `Blocked request. This host ("dgfy.ph") is not allowed. To allow this host, add "dgfy.ph" to preview.allowedHosts in vite.config.js`, Nginx is already reaching Vite but the Storefront preview process is running stale or incomplete config. Verify the deployed checkout is current, confirm `frontend/apps/store/vite.config.js` includes `dgfy.ph` and `store.dgfy.ph` in `allowedHosts`, then restart `sku-store-frontend` with `pm2 restart sku-store-frontend --update-env` and `pm2 save`.
@@ -435,11 +450,57 @@ After every deploy or rollback:
    - `schedulerLock.mode=distributed`
 5. Open Admin > Hosting and use the readiness checklist, runbook actions, and copyable diagnostics before declaring the environment ready.
 
+## Staging Environment
+
+`staging.dgfy.ph` is a manually-managed VPS environment for pre-production QA. It is **not** part of the automated CI/CD pipeline (see `docs/ops/NO_STAGING_RELEASE_STANDARD.md`).
+
+### Port Assignments
+
+| Service | Production | Staging |
+|---|---|---|
+| Backend API | 5001 (nginx → 5000) | 5002 |
+| IMS (SKUpervisor) frontend | 5173 | 5183 |
+| POS frontend | 5174 | — |
+| Storefront frontend | 5175 | — |
+
+### Starting the Staging Processes
+
+Staging reads secrets from `backend/.env` by default. Override the database by setting `DB_NAME` (and related credentials) in the `env_staging` block of `ecosystem.config.cjs`, or use a separate env file loaded before PM2 start.
+
+```bash
+cd /var/www/skupervisor
+pm2 start ecosystem.config.cjs --only sku-staging-backend,sku-staging-frontend --env staging
+pm2 save
+```
+
+### Nginx
+
+The staging virtual host is defined alongside production in `nginx/dgfy.ph.conf` (server block for `staging.dgfy.ph`). Deploy and reload:
+
+```bash
+sudo cp nginx/dgfy.ph.conf /etc/nginx/sites-available/dgfy.ph
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### SSL
+
+Add `staging.dgfy.ph` to the certbot renewal:
+
+```bash
+sudo certbot --nginx -d skupervisor.dgfy.ph -d pos.dgfy.ph -d dgfy.ph -d store.dgfy.ph -d staging.dgfy.ph
+```
+
+### What Is NOT Covered by Staging
+
+- POS and Storefront staging subdomains are not configured. Add `sku-staging-pos-frontend` (port 5184) and `sku-staging-store-frontend` (port 5185) to `ecosystem.config.cjs` and a corresponding server block in `nginx/dgfy.ph.conf` if needed.
+- Staging is not verified by `deploy.sh` public endpoint checks. Run manual curl checks after each staging deploy.
+
 ## Endpoint Targets
 - IMS: `https://skupervisor.surebizcorp.com`
 - POS: `https://pos.surebizcorp.com`
 - Storefront: `https://surebizcorp.com`
 - Tenant Store: `https://surebizcorp.com/tenant-store`
+- Staging IMS: `https://staging.dgfy.ph`
 
 ## Force Non-Compliant Observability
 Backend now emits structured log signatures for force-mode operations:
