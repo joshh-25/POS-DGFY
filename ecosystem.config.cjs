@@ -15,7 +15,7 @@ module.exports = {
             restart_delay: 5000,
             env: {
                 NODE_ENV: 'development',
-                CORS_ORIGIN: 'http://localhost:5173,http://localhost:5174,http://localhost:5175,https://skupervisor.surebizcorp.com,https://surebizcorp.com,https://pos.surebizcorp.com,https://store.surebizcorp.com,https://skupervisor.dgfy.ph,https://pos.dgfy.ph,https://dgfy.ph,https://store.dgfy.ph',
+                CORS_ORIGIN: 'http://localhost:5173,http://localhost:5174,http://localhost:5175,https://skupervisor.surebizcorp.com,https://surebizcorp.com,https://pos.surebizcorp.com,https://store.surebizcorp.com,https://skupervisor.dgfy.ph,https://pos.dgfy.ph,https://dgfy.ph,https://store.dgfy.ph,https://staging.dgfy.ph',
             },
             env_production: {
                 NODE_ENV: 'production',
@@ -28,7 +28,7 @@ module.exports = {
                 TENANT_REGISTRATION_APPROVAL_MODE: 'manual',
                 PAYMENTS_ENABLED: 'false',
                 DB_AUTO_SYNC: 'false',
-                CORS_ORIGIN: 'https://skupervisor.surebizcorp.com,https://surebizcorp.com,https://pos.surebizcorp.com,https://store.surebizcorp.com,https://skupervisor.dgfy.ph,https://pos.dgfy.ph,https://dgfy.ph,https://store.dgfy.ph',
+                CORS_ORIGIN: 'https://skupervisor.surebizcorp.com,https://surebizcorp.com,https://pos.surebizcorp.com,https://store.surebizcorp.com,https://skupervisor.dgfy.ph,https://pos.dgfy.ph,https://dgfy.ph,https://store.dgfy.ph,https://staging.dgfy.ph',
             },
         },
         {
@@ -64,6 +64,41 @@ module.exports = {
                 NODE_ENV: 'production',
             },
             env_production: {
+                NODE_ENV: 'production',
+            },
+        },
+        // Staging processes — serve the staging.dgfy.ph environment
+        {
+            name: 'sku-staging-backend',
+            script: './src/server.js',
+            cwd: './backend',
+            exec_mode: 'fork',
+            instances: 1,
+            max_memory_restart: '512M',
+            max_restarts: 10,
+            min_uptime: '10s',
+            restart_delay: 5000,
+            env_staging: {
+                NODE_ENV: 'staging',
+                PORT: '5002',
+                HOSTING_PROFILE: 'vps',
+                HOSTING_INSTANCE_COUNT: '1',
+                AUTH_BLACKLIST_FAILURE_MODE: 'fail_closed',
+                TEMP_FILE_STORAGE: 'auto',
+                STOREFRONT_DISCOVERY_REDIS_CACHE_ENABLED: 'true',
+                CUSTOMER_ACCESS_MODES_ENABLED: 'false',
+                TENANT_REGISTRATION_APPROVAL_MODE: 'manual',
+                PAYMENTS_ENABLED: 'false',
+                DB_AUTO_SYNC: 'false',
+                CORS_ORIGIN: 'https://staging.dgfy.ph',
+            },
+        },
+        {
+            name: 'sku-staging-frontend',
+            script: './node_modules/vite/bin/vite.js',
+            args: 'preview --config apps/skupervisor/vite.config.js --host --port 5183 --strictPort',
+            cwd: './frontend',
+            env_staging: {
                 NODE_ENV: 'production',
             },
         },

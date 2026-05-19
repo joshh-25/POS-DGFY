@@ -159,6 +159,26 @@ pm2 logs
 bash scripts/deploy-remote.sh
 ```
 
+## Staging (PM2 - Manual)
+`staging.dgfy.ph` runs the IMS (SKUpervisor) app against a separate backend.
+Staging is **not** deployed by `deploy.sh` — manage it manually.
+
+```bash
+# Start staging processes (first time or after ecosystem.config.cjs changes)
+pm2 start ecosystem.config.cjs --only sku-staging-backend,sku-staging-frontend --env staging
+pm2 save
+
+# Restart staging only
+pm2 restart sku-staging-backend sku-staging-frontend
+
+# Verify staging health
+curl -fsS http://127.0.0.1:5002/health
+curl -fsS http://127.0.0.1:5183
+```
+
+Port map: staging backend → `5002`, staging IMS frontend → `5183`.
+See `docs/ops/DEPLOYMENT_GUIDE.md` § Staging Environment for full setup runbook.
+
 ## Development (Local testing only)
 > ⚠️ These commands are for local development only. Use PM2 commands for production.
 
@@ -389,7 +409,9 @@ SKU-Inventory-Manager/                    # Monorepo root
 |-------|----------|
 | Port 5173 in use | `lsof -ti:5173 \| xargs kill -9` or change vite port |
 | Port 5000 in use | `lsof -ti:5000 \| xargs kill -9` |
+| Port 5002 or 5183 in use | Staging port conflict — `lsof -ti:5002 \| xargs kill -9` |
 | Frontend can't reach backend | Check CORS settings in `backend/src/server.js` |
+| `staging.dgfy.ph` blocked by Vite | Add `staging.dgfy.ph` to `allowedHosts` in `frontend/apps/skupervisor/vite.config.js` |
 | Components not rendering | Check import paths - use `@/Components/...` |
 | Backend won't start | Check `.env` file exists in `backend/` folder |
 | Database connection error | Verify MySQL is running, check credentials in `.env` |
