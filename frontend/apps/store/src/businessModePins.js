@@ -1,15 +1,15 @@
 export const BUSINESS_MODE_PIN_META = Object.freeze({
-  retail: { icon: 'ShoppingBag', label: 'Retail', color: '#2563eb' },
-  services: { icon: 'CalendarCheck', label: 'Services', color: '#0f766e' },
-  food_manufacturing: { icon: 'Factory', label: 'Food Manufacturing', color: '#b45309' },
-  manufacturing: { icon: 'Factory', label: 'Food Manufacturing', color: '#b45309' },
+  retail: { icon: 'ShoppingBag', label: 'Retail', color: '#ea580c' },
+  services: { icon: 'CalendarCheck', label: 'Services', color: '#1a4e8d' },
+  food_manufacturing: { icon: 'Factory', label: 'Food Manufacturing', color: '#16a34a' },
+  manufacturing: { icon: 'Factory', label: 'Food Manufacturing', color: '#16a34a' },
   fnb: { icon: 'Utensils', label: 'Food & Beverage', color: '#dc2626' },
-  hospitality: { icon: 'Hotel', label: 'Hospitality', color: '#7c3aed' },
-  healthcare: { icon: 'HeartPulse', label: 'Healthcare', color: '#be123c' },
-  ticketing_transport: { icon: 'Ticket', label: 'Ticketing & Transport', color: '#0891b2' },
-  logistics_distribution: { icon: 'Truck', label: 'Logistics & Distribution', color: '#475569' },
-  education_institutions: { icon: 'GraduationCap', label: 'Education & Institutions', color: '#4f46e5' },
-  msme: { icon: 'Store', label: 'Simple (MSME)', color: '#16a34a' }
+  hospitality: { icon: 'Hotel', label: 'Hospitality', color: '#d97706' },
+  healthcare: { icon: 'HeartPulse', label: 'Healthcare', color: '#0f766e' },
+  ticketing_transport: { icon: 'Ticket', label: 'Ticketing & Transport', color: '#1a4e8d' },
+  logistics_distribution: { icon: 'Truck', label: 'Logistics & Distribution', color: '#1e3a8a' },
+  education_institutions: { icon: 'GraduationCap', label: 'Education & Institutions', color: '#4338ca' },
+  msme: { icon: 'Store', label: 'Simple (MSME)', color: '#0f766e' }
 });
 
 const aliases = Object.freeze({ manufacturing: 'food_manufacturing' });
@@ -53,11 +53,11 @@ const iconPath = (icon) => {
 
 export const renderBusinessModePinSvg = (mode, selected = false) => {
   const meta = getBusinessModePinMeta(mode);
-  const color = selected ? meta.color : '#334155';
+  const color = meta.color;
   const size = selected ? 38 : 34;
   return `
     <div style="position:relative;width:${size}px;height:${size + 10}px;display:flex;align-items:flex-start;justify-content:center;">
-      <div style="width:${size}px;height:${size}px;border-radius:999px;border:3px solid #fff;box-shadow:0 8px 18px rgba(15,23,42,.35);background:${color};display:flex;align-items:center;justify-content:center;">
+      <div style="width:${size}px;height:${size}px;border-radius:999px;border:3px solid #fff;box-shadow:${selected ? '0 10px 22px rgba(15,23,42,.40)' : '0 8px 18px rgba(15,23,42,.28)'};background:${color};display:flex;align-items:center;justify-content:center;">
         <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="${meta.label}">
           ${iconPath(meta.icon)}
         </svg>

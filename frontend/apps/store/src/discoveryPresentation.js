@@ -25,15 +25,8 @@ export const selectDiscoveryPinLocations = ({
   }
 
   if (normalizedPinScope === 'all_matching_branches') {
-    const allowedLocationIds = new Set(
-      (Array.isArray(matchingLocationIds) ? matchingLocationIds : [])
-        .map((locationId) => toPositiveInt(locationId))
-        .filter((locationId) => locationId != null)
-    );
-    if (allowedLocationIds.size > 0) {
-      const scoped = activeLocations.filter((location) => allowedLocationIds.has(toPositiveInt(location?.location_id)));
-      if (scoped.length > 0) return scoped;
-    }
+    // For discovery-map exploration, show all active branches for matched tenants.
+    // This keeps branch pins visible after search instead of collapsing to one branch.
     return activeLocations;
   }
 
