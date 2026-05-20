@@ -60,6 +60,7 @@ const findMatchingItemIds = async (query) => {
 // Note: MySQL POINT(x, y) follows (longitude, latitude) order for SRID 4326.
 const runGeoQuery = async ({ itemIds, userLat, userLng, radiusKm, stockFilter, limit, offset }) => {
     const stockClause = stockFilter === 'in_stock_only' ? 'AND gsi.in_stock = 1' : '';
+    const visibilityClause = 'AND gsi.storefront_visible = 1';
 
     const [rows, countRows] = await Promise.all([
         sequelize.query(
@@ -98,6 +99,7 @@ const runGeoQuery = async ({ itemIds, userLat, userLng, radiusKm, stockFilter, l
                ON gsi.tenant_id = sdi.tenant_id
               AND gsi.item_id IN (:itemIds)
               ${stockClause}
+              ${visibilityClause}
              INNER JOIN geo_items gi ON gi.geo_item_id = gsi.item_id
              WHERE sdi.is_visible = 1
                AND sdi.latitude  IS NOT NULL
@@ -122,6 +124,7 @@ const runGeoQuery = async ({ itemIds, userLat, userLng, radiusKm, stockFilter, l
                ON gsi.tenant_id = sdi.tenant_id
               AND gsi.item_id IN (:itemIds)
               ${stockClause}
+              ${visibilityClause}
              WHERE sdi.is_visible = 1
                AND sdi.latitude  IS NOT NULL
                AND sdi.longitude IS NOT NULL

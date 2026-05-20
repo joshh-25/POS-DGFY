@@ -39,6 +39,11 @@ export default (sequelize) => {
             allowNull: false,
             defaultValue: 1
         },
+        storefront_visible: {
+            type: DataTypes.TINYINT(1),
+            allowNull: false,
+            defaultValue: 1
+        },
         last_updated_at: {
             type: DataTypes.DATE,
             allowNull: false,

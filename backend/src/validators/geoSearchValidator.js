@@ -23,7 +23,8 @@ const inventoryPushSchema = Joi.object({
                 sku_code: Joi.string().trim().max(100).allow(null, '').optional(),
                 price: Joi.number().min(0).allow(null).optional(),
                 quantity: Joi.number().integer().min(0).default(0),
-                in_stock: Joi.boolean().default(true)
+                in_stock: Joi.boolean().default(true),
+                storefront_visible: Joi.boolean().default(true)
             })
         )
         .min(1)
