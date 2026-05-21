@@ -23,10 +23,6 @@ import { isStockExemptServiceItem } from '../../shared/utils/stockBearingPolicy.
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const toDateStart = (value) => new Date(`${String(value).slice(0, 10)}T00:00:00.000Z`);
 const toDateEnd = (value) => new Date(`${String(value).slice(0, 10)}T23:59:59.999Z`);
-const toNumber = (value, fallback = 0) => {
-    const numeric = Number(value);
-    return Number.isFinite(numeric) ? numeric : fallback;
-};
 const toPositiveInt = (value) => {
     const normalized = Number.parseInt(value, 10);
     return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
@@ -697,7 +693,7 @@ export const posRepository = {
 
         let checkId = toPositiveInt(payload.check_id);
         const usesExistingCheck = Boolean(checkId);
-        let check = null;
+        let check;
         if (checkId) {
             check = await FnbCheck.findByPk(checkId, {
                 transaction,

@@ -41,7 +41,7 @@ export const authenticateDgfyAccount = async (req, res, next) => {
 
         req.dgfyAccount = account;
         return next();
-    } catch (error) {
+    } catch {
         return res.status(401).json({
             success: false,
             data: null,

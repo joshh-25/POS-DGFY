@@ -242,9 +242,8 @@ export const buildHospitalityUseCases = ({ hospitalityRepository }) => ({
         }
       }
 
-      let hold = null;
       if (payload.hold_token) {
-        hold = await hospitalityRepository.findActiveBookingHold(payload.hold_token, { transaction });
+        const hold = await hospitalityRepository.findActiveBookingHold(payload.hold_token, { transaction });
         if (!hold) return fail('HOSPITALITY_HOLD_INVALID', 'Booking hold is invalid or expired.');
         if (Number(hold.room_type_id) !== Number(payload.room_type_id)
           || String(hold.check_in_date) !== String(payload.check_in_date)
