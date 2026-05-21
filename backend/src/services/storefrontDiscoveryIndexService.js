@@ -115,6 +115,24 @@ const isMissingTableError = (error, tableName) => {
     return code === 'ER_NO_SUCH_TABLE' && (!tableName || message.includes(tableName));
 };
 
+const isMissingItemLocationStockSchemaError = (error) => {
+    if (!error) return false;
+    const code = error.original?.code || error.parent?.code || error.code;
+    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
+    if (code === 'ER_NO_SUCH_TABLE' && message.includes('item_location_stocks')) {
+        return true;
+    }
+    if (code === 'ER_BAD_FIELD_ERROR' && (
+        message.includes('item_location_stocks')
+        || message.includes("Unknown column 'quantity_on_hand'")
+        || message.includes("Unknown column 'location_id'")
+        || message.includes("Unknown column 'item_id'")
+    )) {
+        return true;
+    }
+    return false;
+};
+
 const mapWithConcurrency = async (items = [], limit = 4, worker) => {
     const normalizedLimit = Math.max(1, Number(limit) || 1);
     const results = new Array(items.length);
@@ -464,13 +482,25 @@ const buildTenantSnapshot = async (tenant) => {
 
     let locationStockRows = [];
     if (ItemLocationStock && visibleItemIds.length > 0 && activeLocationIds.length > 0) {
-        locationStockRows = await ItemLocationStock.findAll({
-            where: {
-                item_id: { [Op.in]: visibleItemIds },
-                location_id: { [Op.in]: activeLocationIds }
-            },
-            attributes: ['item_id', 'location_id', 'quantity_on_hand']
-        });
+        try {
+            locationStockRows = await ItemLocationStock.findAll({
+                where: {
+                    item_id: { [Op.in]: visibleItemIds },
+                    location_id: { [Op.in]: activeLocationIds }
+                },
+                attributes: ['item_id', 'location_id', 'quantity_on_hand']
+            });
+        } catch (error) {
+            if (!isMissingItemLocationStockSchemaError(error)) {
+                throw error;
+            }
+            logger.warn('[StorefrontDiscoveryIndex] item_location_stocks schema unavailable; indexing catalog with global stock fallback', {
+                event_type: 'storefront_discovery_location_stock_fallback',
+                tenantId: tenant?.id || null,
+                tenantName: tenant?.name || null
+            });
+            locationStockRows = [];
+        }
     }
 
     const stockByItemId = new Map();
