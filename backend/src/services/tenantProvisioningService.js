@@ -255,6 +255,7 @@ export const provisionTenant = async (options) => {
         name,
         adminEmail,
         adminPhone = null,
+        adminUsername = 'Admin',
         adminPassword,
         subscriptionId = null,    // Optional subscription ID for manual entry
         complianceMode = 'non_compliant',
@@ -269,7 +270,7 @@ export const provisionTenant = async (options) => {
     // Determine if this is an approval (existing tenant) or new provisioning
     const isApproval = !!tenantId;
 
-    let uuid, dbName, companyToken, passwordHash, tenantName, email, phoneNumber;
+    let uuid, dbName, companyToken, passwordHash, tenantName, email, phoneNumber, founderUsername;
     let subscriptionStatus;
     let currentPeriodEnd;
     let normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
@@ -286,6 +287,7 @@ export const provisionTenant = async (options) => {
         tenantName = name;
         email = adminEmail || options.adminEmail;
         phoneNumber = String(adminPhone || options.adminPhone || '').trim() || null;
+        founderUsername = String(options.adminUsername || adminUsername || 'Admin').trim() || 'Admin';
 
         logger.info(`[Provisioning] Approving existing tenant: ${tenantId} (DB: ${dbName})`);
     } else {
@@ -310,6 +312,7 @@ export const provisionTenant = async (options) => {
         tenantName = name;
         email = adminEmail;
         phoneNumber = String(adminPhone || '').trim() || null;
+        founderUsername = String(adminUsername || 'Admin').trim() || 'Admin';
 
         const effectivePlan = 'premium';
 
@@ -384,13 +387,14 @@ export const provisionTenant = async (options) => {
             // 4. Seed Admin User
             logger.info(`[Provisioning] Seeding Admin User...`);
             const adminDefaultPermissions = JSON.stringify(DEFAULT_ROLE_PERMISSIONS.admin || []);
-            await tenantSequelize.query(
+            const [adminInsertResult, adminInsertMetadata] = await tenantSequelize.query(
                 `INSERT INTO users (username, email, phone_number, password_hash, role, is_active, is_master_admin, permissions, created_at, updated_at)
                  VALUES (?, ?, ?, ?, 'admin', 1, 1, ?, NOW(), NOW())`,
                 {
-                    replacements: ['Admin', email, phoneNumber, passwordHash, adminDefaultPermissions]
+                    replacements: [founderUsername, email, phoneNumber, passwordHash, adminDefaultPermissions]
                 }
             );
+            const adminUserId = adminInsertResult?.insertId || adminInsertMetadata?.insertId || null;
 
             const seededWorkflowMode = await seedWorkflowModeSetting(tenantSequelize, normalizedWorkflowMode);
             logger.info('[Provisioning] Workflow mode setting seeded', {
@@ -448,6 +452,7 @@ export const provisionTenant = async (options) => {
                 name: tenantName,
                 company_token: companyToken,
                 admin_email: email,
+                admin_user_id: adminUserId,
                 status: 'active'
             };
 

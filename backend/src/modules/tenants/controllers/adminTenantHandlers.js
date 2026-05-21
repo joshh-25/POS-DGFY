@@ -59,6 +59,7 @@ export const registerCompanyRequest = async (req, res) => {
     const correlationId = req.requestId || req.headers['x-request-id'] || uuidv4();
     const result = await registerCompanyRequestUseCase({
         body: req.body,
+        dgfyAccount: req.dgfyAccount || null,
         correlationId
     });
     return sendUseCaseResult(res, result, {

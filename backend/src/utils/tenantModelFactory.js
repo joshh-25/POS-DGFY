@@ -8,6 +8,8 @@ const NON_TENANT_MODEL_EXPORTS = new Set([
     'UserTenantMapping',
     'UserInvitation',
     'EmailOtp',
+    'DgfyAccount',
+    'DgfyAccountTenantMembership',
     'Payment',
     'WebhookLog',
     'EngagementEvent',

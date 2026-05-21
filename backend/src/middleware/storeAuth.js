@@ -1,5 +1,7 @@
 import dbStore from '../utils/dbStore.js';
+import { verifyToken, isTokenBlacklisted } from '../services/authService.js';
 import { normalizeTenantIdentifier, verifyStoreToken } from '../modules/store/utils/storeJwtToken.js';
+import { dgfyAccountRepository } from '../modules/dgfy/index.js';
 
 const timestamp = () => new Date().toISOString();
 
@@ -22,6 +24,76 @@ const forbidden = (res, message) => res.status(403).json({
     timestamp: timestamp()
 });
 
+const resolveOrCreateCustomerForDgfyAccount = async (account) => {
+    const StoreCustomer = dbStore.get('StoreCustomer');
+    const email = String(account?.email || '').trim().toLowerCase();
+    if (!email) return null;
+
+    let customer = await StoreCustomer.findOne({ where: { email } });
+    const payload = {
+        email,
+        password_hash: account.password_hash,
+        name: `${account.first_name || ''} ${account.last_name || ''}`.trim() || account.username || email,
+        phone: account.phone || null,
+        is_active: true,
+        last_login: new Date()
+    };
+
+    if (customer) {
+        if (customer.is_active === false) return customer;
+        await customer.update({
+            name: payload.name,
+            phone: payload.phone,
+            last_login: payload.last_login
+        });
+        return customer.reload();
+    }
+
+    customer = await StoreCustomer.create(payload);
+    return customer;
+};
+
+const tryAuthenticateDgfyStoreCustomer = async (token, req, res, next) => {
+    if (await isTokenBlacklisted(token)) {
+        return unauthorized(res, 'DGFY session has been revoked');
+    }
+
+    let decoded;
+    try {
+        decoded = verifyToken(token);
+    } catch {
+        return null;
+    }
+
+    if (decoded?.token_scope !== 'dgfy' || !decoded?.dgfy_account_id) {
+        return null;
+    }
+
+    const account = await dgfyAccountRepository.findById(decoded.dgfy_account_id);
+    if (!account || account.is_active === false) {
+        return unauthorized(res, 'DGFY account is unavailable');
+    }
+
+    const customer = await resolveOrCreateCustomerForDgfyAccount(account);
+    if (!customer) {
+        return unauthorized(res, 'DGFY account cannot be linked to this storefront');
+    }
+    if (customer.is_active === false) {
+        return forbidden(res, 'Store customer account is inactive');
+    }
+
+    req.storeCustomer = {
+        customer_id: customer.customer_id,
+        email: customer.email,
+        name: customer.name,
+        phone: customer.phone,
+        is_active: customer.is_active,
+        auth_source: 'dgfy'
+    };
+
+    return next();
+};
+
 export const authenticateStoreCustomer = async (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
@@ -34,6 +106,10 @@ export const authenticateStoreCustomer = async (req, res, next) => {
         try {
             decoded = verifyStoreToken(token);
         } catch (error) {
+            const dgfyResult = await tryAuthenticateDgfyStoreCustomer(token, req, res, next);
+            if (dgfyResult !== null) {
+                return dgfyResult;
+            }
             if (error?.name === 'TokenExpiredError') {
                 return unauthorized(res, 'Store session expired');
             }
@@ -41,6 +117,10 @@ export const authenticateStoreCustomer = async (req, res, next) => {
         }
 
         if (decoded?.type !== 'store_customer') {
+            const dgfyResult = await tryAuthenticateDgfyStoreCustomer(token, req, res, next);
+            if (dgfyResult !== null) {
+                return dgfyResult;
+            }
             return unauthorized(res, 'Invalid store token type');
         }
 
