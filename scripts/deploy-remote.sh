@@ -107,6 +107,19 @@ load_env_file_if_present() {
 load_env_file_if_present "$QA_ENV_FILE"
 load_env_file_if_present "$QA_SECRETS_FILE"
 
+host_path() {
+    local path_value="$1"
+    if command -v cygpath >/dev/null 2>&1; then
+        cygpath -m "$path_value"
+        return 0
+    fi
+    if pwd -W >/dev/null 2>&1; then
+        printf '%s/%s\n' "$(pwd -W)" "$path_value"
+        return 0
+    fi
+    printf '%s\n' "$path_value"
+}
+
 echo -e "\n${CYAN}Remote Deployment Trigger${NC}"
 echo -e "   Target: ${YELLOW}$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR${NC}"
 echo -e "   Branch: ${YELLOW}$TARGET_BRANCH${NC}\n"
@@ -229,11 +242,15 @@ echo -e "${GREEN}Push successful.${NC}"
 # Step 5: Enforce no-staging release hard gate
 # ------------------------------------------
 if [[ "$DEPLOY_ENFORCE_NO_STAGING_GATE" == "1" ]]; then
-    QA_DEPLOY_SUMMARY_FILE_EFFECTIVE="${QA_DEPLOY_SUMMARY_FILE:-.tmp/release-gates/${LOCAL_COMMIT}/qa_deploy_summary.txt}"
-    RELEASE_VERDICT_FILE_EFFECTIVE="${RELEASE_VERDICT_FILE:-.tmp/release-gates/${LOCAL_COMMIT}/release_verdict.json}"
+    QA_DEPLOY_SUMMARY_FILE_EFFECTIVE="${QA_DEPLOY_SUMMARY_FILE:-$(host_path ".tmp/release-gates/${LOCAL_COMMIT}/qa_deploy_summary.txt")}"
+    RELEASE_VERDICT_FILE_EFFECTIVE="${RELEASE_VERDICT_FILE:-$(host_path ".tmp/release-gates/${LOCAL_COMMIT}/release_verdict.json")}"
     if [[ ! -f "$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" ]]; then
         echo -e "\n${YELLOW}QA deploy summary not found locally. Attempting fetch over SSH evidence path...${NC}"
         RELEASE_TARGET_SHA="$LOCAL_COMMIT" QA_DEPLOY_SUMMARY_FILE="$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" npm run evidence:qa:deploy-summary
+        if [[ ! -f "$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" ]]; then
+            echo -e "${RED}QA deploy summary fetch did not create expected file: ${QA_DEPLOY_SUMMARY_FILE_EFFECTIVE}${NC}"
+            exit 1
+        fi
         echo -e "${GREEN}Fetched QA deploy summary: ${QA_DEPLOY_SUMMARY_FILE_EFFECTIVE}${NC}"
     fi
 
