@@ -24,7 +24,8 @@ const createDgfyAccountForLabel = async (label) => {
         email: makeEmail(suffix),
         phone: `+63918${String(ts + dgfyAccountCounter).slice(-7).padStart(7, '0')}`,
         password_hash: '$2y$10$abcdefghijklmnopqrstuv',
-        is_active: true
+        is_active: true,
+        email_verified_at: new Date()
     });
     return {
         account,

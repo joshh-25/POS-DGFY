@@ -10,6 +10,10 @@ jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
             if (name === 'PosCatalogOverride') return {};
             if (name === 'StorefrontCatalogOverride') return {};
             if (name === 'ServiceItemDetail') return {};
+            if (name === 'ItemNutrition') return null;
+            if (name === 'ItemAllergen') return null;
+            if (name === 'FnbModifierGroup') return null;
+            if (name === 'FnbModifierOption') return null;
             if (name === 'ItemLocationStock') return { findAll: itemLocationStockFindAllMock };
             throw new Error(`Unexpected model lookup in test: ${name}`);
         },

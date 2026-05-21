@@ -53,6 +53,7 @@ jest.unstable_mockModule('../src/services/authService.js', () => ({
     comparePassword: jest.fn().mockResolvedValue(true),
     generateToken: jest.fn().mockReturnValue('token'),
     generateRefreshToken: jest.fn().mockReturnValue('refresh'),
+    blacklistToken: jest.fn().mockResolvedValue(true),
 }));
 
 // Helper placeholders
