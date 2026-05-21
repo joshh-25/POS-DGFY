@@ -310,7 +310,7 @@ describe('E2E Full Cycle: PO → JO → Loss → Void', () => {
         null,
         'E2E completion',
         10,
-        'passed',
+        'pass',
         sourceLocationId,
         destinationLocationId
       );
