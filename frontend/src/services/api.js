@@ -170,7 +170,7 @@ api.interceptors.request.use(
     const token = localStorage.getItem('authToken');
     const companyToken = localStorage.getItem('companyToken');
 
-    if (token) {
+    if (token && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     // Only add stored companyToken if request doesn't already have one set

@@ -1049,12 +1049,25 @@ const locationsMatchProfileSnapshot = (locations = [], profile = {}) => {
 
 const readStoreAuthToken = () => {
   if (typeof window === 'undefined') return '';
-  const keys = ['dgfy_store_customer_token', 'store_customer_token', 'store_token'];
+  const keys = ['dgfyAccountToken', 'dgfy_store_customer_token', 'store_customer_token', 'store_token'];
   for (const key of keys) {
     const token = String(window.localStorage.getItem(key) || '').trim();
     if (token) return token;
   }
   return '';
+};
+
+const getBusinessRegistrationUrl = () => {
+  if (typeof window === 'undefined') return 'https://skupervisor.dgfy.ph/register-company';
+  const configured = String(import.meta.env?.VITE_SKUPERVISOR_REGISTER_URL || '').trim();
+  if (configured) return configured;
+  return `${window.location.protocol}//skupervisor.dgfy.ph/register-company?source=dgfy`;
+};
+
+const openBusinessRegistration = () => {
+  if (typeof window !== 'undefined') {
+    window.location.href = getBusinessRegistrationUrl();
+  }
 };
 
 const requestJson = async (url, { method = 'GET', body, storeSlug, authToken = '', cache = 'default', signal } = {}) => {
@@ -7566,11 +7579,7 @@ export default function StorefrontApp() {
                 activeItem="Explore"
                 menuOpen={isDiscoveryNavMenuOpen}
                 onMenuToggle={() => setIsDiscoveryNavMenuOpen((open) => !open)}
-                  onRegisterClick={() => {
-                    if (typeof window !== 'undefined') {
-                      window.location.href = 'https://skupervisor.dgfy.ph/register-company';
-                    }
-                  }}
+                  onRegisterClick={openBusinessRegistration}
                 />
 
               {/* ── HERO ── */}
@@ -8166,7 +8175,7 @@ export default function StorefrontApp() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  if (typeof window !== 'undefined') window.location.href = 'https://skupervisor.dgfy.ph/register-company';
+                        openBusinessRegistration();
                                 }}
                                 style={{ marginTop: 22, width: '100%', minHeight: 52, borderRadius: 16, border: '1px solid #1a4e8d', background: 'linear-gradient(180deg, #1a4e8d 0%, #1a4e8d 100%)', color: '#fff', fontSize: 15, fontWeight: 800, boxShadow: '0 14px 28px rgba(37,99,235,.22)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer' }}
                               >
@@ -8628,7 +8637,7 @@ export default function StorefrontApp() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  if (typeof window !== 'undefined') window.location.href = 'https://skupervisor.dgfy.ph/register-company';
+                              openBusinessRegistration();
                                 }}
                                 style={{ marginTop: 22, width: '100%', minHeight: 52, borderRadius: 16, border: '1px solid #1a4e8d', background: 'linear-gradient(180deg, #1a4e8d 0%, #1a4e8d 100%)', color: '#fff', fontSize: 15, fontWeight: 800, boxShadow: '0 14px 28px rgba(37,99,235,.22)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer' }}
                               >
@@ -8778,7 +8787,7 @@ export default function StorefrontApp() {
                             {
                               title: 'For Business',
                               links: [
-                                { label: 'Register Your Business', href: 'https://skupervisor.dgfy.ph/register-company' },
+    { label: 'Register Your Business', href: getBusinessRegistrationUrl() },
                                 { label: 'Business Login', href: 'https://skupervisor.dgfy.ph/login' }
                               ]
                             },

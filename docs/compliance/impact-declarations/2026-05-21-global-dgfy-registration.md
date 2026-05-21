@@ -31,6 +31,7 @@ This declaration covers the current DGFY account registration and company-regist
 - Tenant provisioning, which seeds the tenant master-admin user from the DGFY account.
 - Landlord DGFY account membership links for founder and invitation flows.
 - Storefront optional customer authentication, where a DGFY token may lazily link to a tenant-local store customer.
+- Registration and login UI handoff, where the client stores the DGFY account session separately from tenant JWT sessions and then routes company registration through the tenant login handoff.
 
 ## Compliance Preconditions
 
