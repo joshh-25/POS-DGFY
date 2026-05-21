@@ -7639,7 +7639,7 @@ export default function StorefrontApp() {
                   subtitle="Find nearby products, services, and businesses—faster, smarter, and all in one place."
               />
 
-              <div ref={discoveryInteractiveAreaRef} style={{ display: 'grid', gap: isDiscoveryMobileViewport ? 10 : isDiscoveryTabletViewport ? 12 : 12, width: '100%', minWidth: 0 }}>
+              <div ref={discoveryInteractiveAreaRef} style={{ display: 'grid', gap: isDiscoveryMobileViewport ? 10 : isDiscoveryTabletViewport ? 12 : 12, width: '100%', minWidth: 0, paddingTop: isDiscoveryMobileViewport ? 132 : isDiscoveryTabletViewport ? 126 : 124 }}>
               <div className="discovery-search-sticky-shell" style={{ position: 'sticky', top: isDiscoveryMobileViewport ? 'calc(env(safe-area-inset-top, 0px) + 8px)' : discoveryLayout.navOffset, zIndex: 49, backgroundColor: '#ffffff', display: 'grid', gap: isDiscoveryMobileViewport ? 10 : isDiscoveryTabletViewport ? 12 : 12, width: '100%', minWidth: 0 }}>
 
                 {/* ── PERMANENT SEARCH ── */}
@@ -7914,6 +7914,7 @@ export default function StorefrontApp() {
                     }
                 </div>
                   </DiscoverySearchRegion>
+              </div>
 
 
                   {/* ── STATIC HERO MAP ── */}
@@ -8100,9 +8101,6 @@ export default function StorefrontApp() {
                     </>
                   )}
                 {hasDiscoverySearch && renderDiscoveryResultsStage()}
-              </div>
-              </div>
-            </section>
 
                     {/* ── WHY CHOOSE DGFY ── */}
                     {false && (
@@ -8843,6 +8841,8 @@ export default function StorefrontApp() {
                         </div>
                       </div>
                     </footer>
+              </div>
+            </section>
                 {/* ── DYNAMIC MAP & LIST ── */}
                 {false && hasDiscoverySearch && (
                 <div style={{ borderRadius: 20, overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 4px 24px rgba(15,23,42,.08)' }}>

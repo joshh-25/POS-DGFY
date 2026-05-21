@@ -83,9 +83,7 @@ Targeted matrix result:
 - Storefront production build: `PASS`
 - Discovery-index dry-run reconciliation: `PASS`, `status=healthy`, `upserted=4`, `failed=0`
 - Discovery-index write reconciliation: `PASS`, `status=healthy`, `upserted=4`, `failed=0`
-
-Known validation gap:
-- Browser screenshot-level QA was not completed in this checkout because local Playwright is not installed. The current evidence is unit/integration/build/reconciliation evidence, not rendered-browser proof.
+- Local browser QA: `PASS` after installing the Playwright Chromium runtime into the user cache. Local production-like backend headers were proxied in Playwright because the active local backend env enforces HTTPS/CORS. Search `aircon` returned 2 stores, no false no-match state appeared, 2 map markers rendered, marker preview was visible, and the fixed search shell remained visible after scrolling (`top=64`).
 
 ## Notes
 - This file intentionally tracks the frontend standing and test evidence snapshot only.
