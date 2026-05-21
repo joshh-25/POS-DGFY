@@ -2,8 +2,8 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-05-17
-applies_to: auth, tenant_registration, tenant_user_invitations, profile_email_change
+last_reviewed: 2026-05-21
+applies_to: auth, tenant_registration, tenant_user_invitations, profile_email_change, dgfy_accounts
 topic: email_otp_verification
 ---
 
@@ -27,11 +27,13 @@ Add a landlord-level `email_otps` registry for purpose-scoped email verification
    - `invitation_acceptance`
 4. Authenticated OTP request supports:
    - `email_change`
+   - `dgfy_account_verification`
 5. The final mutation must consume a matching OTP before:
    - public company registration creates a tenant request,
    - tenant user registration creates an account,
    - invitation acceptance activates an invited account,
    - authenticated profile update changes email and landlord email-to-tenant mapping.
+   - a DGFY account is marked email-verified for company registration eligibility.
 6. Configured email delivery failure is fail-closed for OTP requests. Delivery may use SMTP or the Brevo HTTPS API fallback, but account email ownership checks cannot be bypassed by manual links.
 7. OTP request routes use `RATE_LIMIT_EMAIL_OTP_WINDOW_MS` and `RATE_LIMIT_EMAIL_OTP_MAX_REQUESTS` with purpose, tenant, request IP, and email/invitation-token identity in the key.
 8. Invitation-acceptance OTP requests resolve tenant context from `invitation_token` when no `x-company-token` is present, matching token-only invite validation and acceptance links.
@@ -39,7 +41,7 @@ Add a landlord-level `email_otps` registry for purpose-scoped email verification
 
 ## Consequences
 1. Email ownership is proved before new login identities and email-to-tenant mappings are written.
-2. Company registration now depends on working email delivery for the first step, so production SMTP credentials or Brevo API credentials must be valid before the public registration journey is usable.
+2. Company registration now depends on working email delivery twice when the DGFY account is new: once to mark the global DGFY account email as verified, and once for the purpose-scoped `company_registration` OTP immediately before tenant creation.
 3. Invitation acceptance remains token-first, but the invited email must also receive and provide the OTP.
 4. Email changes no longer update tenant lookup mappings unless the new email is verified.
 5. OTP rows are auditable and disposable; expired/consumed rows can be cleaned by future maintenance without changing account state.

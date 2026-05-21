@@ -21,12 +21,12 @@ Introduce a landlord-scoped DGFY account identity.
 2. Public company registration requires an authenticated DGFY account.
 3. Founder email, phone, username seed, and password hash are derived server-side from the DGFY account. Registration clients must not provide or override founder contact, password, plan, or compliance mode.
 4. Every new company starts in `non_compliant_active`. Compliance activation remains a SKUpervisor Settings > Compliance lifecycle.
-5. Registration still requires purpose-scoped `company_registration` email OTP for the DGFY account email before tenant creation.
+5. Registration requires the DGFY account email to be verified with `dgfy_account_verification`, then still requires a fresh purpose-scoped `company_registration` email OTP for the DGFY account email before tenant creation.
 6. The tenant workflow selector remains required, but public-facing copy calls it Business Industry.
 7. A landlord membership registry links DGFY accounts to tenant users. Founder membership is accepted immediately after tenant provisioning.
 8. Existing tenant-local storefront customer auth and tenant staff auth remain valid compatibility surfaces while the shared DGFY identity is rolled across storefront Account, Orders, Track, and invitation notifications.
-9. Storefront account endpoints may accept a DGFY JWT, but they must lazily link/create a tenant-local `store_customers` row before using existing order/profile behavior.
-10. Company invitations to existing DGFY emails create pending DGFY memberships and can be accepted through `POST /api/v1/dgfy/invitations/:membership_id/accept`; the accept step activates the tenant-local staff row instead of reusing `store_customers`.
+9. Storefront account endpoints may accept a DGFY JWT, but they must lazily link/create a tenant-local `store_customers` row before using existing order/profile behavior. Storefront token resolution must prefer existing tenant-local store tokens over a global DGFY token so legacy customer sessions are not displaced.
+10. Company invitations to existing DGFY emails create pending DGFY memberships and can be accepted through `POST /api/v1/dgfy/invitations/:membership_id/accept`; the accept step activates the tenant-local staff row instead of reusing `store_customers`. Pending landlord invitations are backfilled into DGFY memberships when a matching DGFY account is later created or loaded.
 11. DGFY accounts support email verification with a dedicated `dgfy_account_verification` OTP purpose and nullable `email_verified_at`/`phone_verified_at` audit fields.
 12. DGFY browser handoff uses a short-lived `dgfy_handoff` JWT exchanged back into a normal DGFY account JWT; tenant-local SKUpervisor sessions remain separate.
 
@@ -44,6 +44,6 @@ Implementations must prove:
 
 1. `npm run check:architecture`
 2. `npm run lint:docs`
-3. DGFY auth tests for register/login/me.
-4. Company registration tests proving DGFY account requirement, OTP consumption, non-compliant default, and no client override of founder or compliance fields.
-5. Frontend tests proving DGFY-gated registration, Business Industry labeling, and password visibility controls.
+3. DGFY auth tests for register/login/me/email verification/handoff.
+4. Company registration tests proving DGFY account requirement, verified-account gate, OTP consumption, non-compliant default, and no client override of founder or compliance fields.
+5. Frontend tests proving DGFY-gated registration, verified-account gating, Business Industry labeling, and password visibility controls.

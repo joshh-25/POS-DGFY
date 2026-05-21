@@ -1,8 +1,12 @@
 import { jest } from '@jest/globals';
 import {
     buildAcceptDgfyInvitationUseCase,
+    buildCreateDgfyHandoffUseCase,
+    buildExchangeDgfyHandoffUseCase,
     buildGetDgfyMeUseCase,
     buildLoginDgfyAccountUseCase,
+    buildRequestDgfyEmailVerificationUseCase,
+    buildVerifyDgfyEmailUseCase,
     buildRegisterDgfyAccountUseCase
 } from '../src/modules/dgfy/usecases/dgfyAuthUseCases.js';
 
@@ -15,6 +19,8 @@ const createAccount = (overrides = {}) => ({
     phone: '+639123456789',
     password_hash: 'hashed-password',
     is_active: true,
+    email_verified_at: null,
+    phone_verified_at: null,
     last_login_at: null,
     update: jest.fn().mockResolvedValue(null),
     ...overrides
@@ -29,7 +35,8 @@ describe('dgfyAuthUseCases', () => {
         const repository = {
             findByEmail: jest.fn().mockResolvedValue(null),
             findByPhone: jest.fn().mockResolvedValue(null),
-            create: jest.fn().mockImplementation(async (payload) => createAccount(payload))
+            create: jest.fn().mockImplementation(async (payload) => createAccount(payload)),
+            mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([])
         };
         const useCase = buildRegisterDgfyAccountUseCase({
             repository,
@@ -57,6 +64,7 @@ describe('dgfyAuthUseCases', () => {
             phone: '+63 912 345 6789'
         }));
         expect(result.data.payload.data.token).toBeTruthy();
+        expect(repository.mirrorPendingInvitationsForAccount).toHaveBeenCalled();
     });
 
     it('logs in an active DGFY account', async () => {
@@ -64,7 +72,8 @@ describe('dgfyAuthUseCases', () => {
         const repository = {
             findByEmail: jest.fn().mockResolvedValue(account),
             findById: jest.fn().mockResolvedValue(account),
-            updateLastLogin: jest.fn().mockResolvedValue(null)
+            updateLastLogin: jest.fn().mockResolvedValue(null),
+            mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([])
         };
         const useCase = buildLoginDgfyAccountUseCase({
             repository,
@@ -82,6 +91,53 @@ describe('dgfyAuthUseCases', () => {
         expect(repository.updateLastLogin).toHaveBeenCalledWith(account);
         expect(result.data.payload.data.account.email).toBe('ada@example.test');
         expect(result.data.payload.data.token).toBeTruthy();
+    });
+
+    it('requests and verifies DGFY account email OTP', async () => {
+        const account = createAccount();
+        const requestUseCase = buildRequestDgfyEmailVerificationUseCase({
+            requestEmailOtp: jest.fn().mockResolvedValue({
+                otp_id: 'otp-1',
+                purpose: 'dgfy_account_verification',
+                email: account.email
+            })
+        });
+        const markEmailVerified = jest.fn().mockResolvedValue(createAccount({
+            email_verified_at: new Date('2026-05-21T00:00:00.000Z')
+        }));
+        const verifyUseCase = buildVerifyDgfyEmailUseCase({
+            repository: { markEmailVerified },
+            verifyEmailOtp: jest.fn().mockResolvedValue({ verified: true })
+        });
+
+        const requestResult = await requestUseCase({ account });
+        const verifyResult = await verifyUseCase({ account, body: { code: '123456' } });
+
+        expect(requestResult.success).toBe(true);
+        expect(requestResult.data.statusCode).toBe(202);
+        expect(verifyResult.success).toBe(true);
+        expect(markEmailVerified).toHaveBeenCalledWith(account);
+        expect(verifyResult.data.payload.data.account.is_email_verified).toBe(true);
+    });
+
+    it('exchanges a short-lived DGFY handoff token for a normal DGFY session', async () => {
+        const account = createAccount({ email_verified_at: new Date('2026-05-21T00:00:00.000Z') });
+        const createUseCase = buildCreateDgfyHandoffUseCase();
+        const handoffResult = await createUseCase({ account });
+        const exchangeUseCase = buildExchangeDgfyHandoffUseCase({
+            repository: {
+                findById: jest.fn().mockResolvedValue(account),
+                mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([])
+            }
+        });
+
+        const exchangeResult = await exchangeUseCase({
+            body: { handoff_token: handoffResult.data.payload.data.handoff_token }
+        });
+
+        expect(exchangeResult.success).toBe(true);
+        expect(exchangeResult.data.payload.data.account.email).toBe(account.email);
+        expect(exchangeResult.data.payload.data.token).toBeTruthy();
     });
 
     it('returns linked company memberships for the account profile', async () => {

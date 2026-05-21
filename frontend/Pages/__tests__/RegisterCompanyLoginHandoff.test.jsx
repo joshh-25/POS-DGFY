@@ -17,6 +17,9 @@ const dgfyAuthMock = vi.hoisted(() => ({
   getStoredDgfyAccount: vi.fn(() => null),
   getStoredDgfyToken: vi.fn(() => ''),
   loginDgfyAccount: vi.fn(),
+  logoutDgfyAccount: vi.fn(),
+  requestDgfyEmailVerification: vi.fn(),
+  verifyDgfyEmail: vi.fn(),
   registerDgfyAccount: vi.fn()
 }));
 
@@ -83,6 +86,9 @@ describe('RegisterCompany DGFY handoff', () => {
     dgfyAuthMock.getStoredDgfyToken.mockReset();
     dgfyAuthMock.getStoredDgfyToken.mockReturnValue('');
     dgfyAuthMock.loginDgfyAccount.mockReset();
+    dgfyAuthMock.logoutDgfyAccount.mockReset();
+    dgfyAuthMock.requestDgfyEmailVerification.mockReset();
+    dgfyAuthMock.verifyDgfyEmail.mockReset();
     dgfyAuthMock.registerDgfyAccount.mockReset();
     dgfyAuthMock.dgfyAuthHeader.mockReset();
     dgfyAuthMock.dgfyAuthHeader.mockReturnValue({ Authorization: 'Bearer dgfy-token' });
@@ -163,6 +169,30 @@ describe('RegisterCompany DGFY handoff', () => {
     expect(options.some((option) => option.value === 'manufacturing')).toBe(false);
     expect(options.filter((option) => option.label === 'Food Manufacturing')).toHaveLength(1);
     expect(options.some((option) => option.value === 'food_manufacturing')).toBe(true);
+  });
+
+  it('blocks company registration until the DGFY account email is verified', async () => {
+    dgfyAuthMock.loginDgfyAccount.mockResolvedValue({
+      token: 'dgfy-token',
+      account: {
+        ...dgfyAccount,
+        email_verified_at: null,
+        is_email_verified: false
+      }
+    });
+
+    renderRegistrationFlow();
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: dgfyAccount.email }
+    });
+    fireEvent.change(screen.getByLabelText('Password'), {
+      target: { value: 'password123' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /sign in with dgfy/i }));
+
+    expect(await screen.findByText('Verify your DGFY email')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /create company/i }).disabled).toBe(true);
   });
 
   it('prefills SKUpervisor login from registration router state without an API lookup', async () => {

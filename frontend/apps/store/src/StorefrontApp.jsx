@@ -56,7 +56,9 @@ import {
   ChevronRight,
   Info,
   ArrowUpDown,
-  ArrowUpNarrowWide
+  ArrowUpNarrowWide,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { canCheckout, getCheckoutBlockReason } from './checkoutRules.js';
 import { filterCatalogItems } from './catalogSearch.js';
@@ -3927,6 +3929,7 @@ export default function StorefrontApp() {
     confirmPassword: ''
   });
   const [accountAuthLoading, setAccountAuthLoading] = useState(false);
+  const [accountPasswordVisible, setAccountPasswordVisible] = useState(false);
 
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [checkoutTab, setCheckoutTab] = useState('checkout');
@@ -15615,10 +15618,60 @@ return (
                   </div>
                   {accountPanel.loading && <p style={{ color: '#64748b' }}>Loading account...</p>}
                   {accountPanel.error && <p style={{ color: '#b91c1c' }}>{accountPanel.error}</p>}
+                  {!accountPanel.me && (
+                    <form onSubmit={handleDgfyAccountAuth} style={{ marginTop: 12, display: 'grid', gap: 10 }}>
+                      <div style={{ display: 'inline-flex', border: '1px solid #cbd5e1', borderRadius: 999, padding: 3, justifySelf: 'start', background: '#f8fafc' }}>
+                        {[
+                          { id: 'login', label: 'Sign in' },
+                          { id: 'register', label: 'Create account' }
+                        ].map((option) => (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => setAccountAuthMode(option.id)}
+                            style={{
+                              border: 'none',
+                              borderRadius: 999,
+                              padding: '7px 12px',
+                              background: accountAuthMode === option.id ? '#0f766e' : 'transparent',
+                              color: accountAuthMode === option.id ? '#fff' : '#334155',
+                              fontWeight: 800,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                      {accountAuthMode === 'register' && (
+                        <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr' : '1fr', gap: 10 }}>
+                          <input value={accountAuthForm.firstName} onChange={(event) => setAccountAuthForm((current) => ({ ...current, firstName: event.target.value }))} placeholder="First name" required style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' }} />
+                          <input value={accountAuthForm.lastName} onChange={(event) => setAccountAuthForm((current) => ({ ...current, lastName: event.target.value }))} placeholder="Last name" required style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' }} />
+                          <input value={accountAuthForm.phone} onChange={(event) => setAccountAuthForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Phone number" required style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' }} />
+                          <input type={accountPasswordVisible ? 'text' : 'password'} value={accountAuthForm.confirmPassword} onChange={(event) => setAccountAuthForm((current) => ({ ...current, confirmPassword: event.target.value }))} placeholder="Confirm password" required style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' }} />
+                        </div>
+                      )}
+                      <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr auto' : '1fr', gap: 10 }}>
+                        <input type="email" value={accountAuthForm.email} onChange={(event) => setAccountAuthForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" required style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' }} />
+                        <div style={{ position: 'relative' }}>
+                          <input type={accountPasswordVisible ? 'text' : 'password'} value={accountAuthForm.password} onChange={(event) => setAccountAuthForm((current) => ({ ...current, password: event.target.value }))} placeholder="Password" required style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 42px 11px 12px' }} />
+                          <button type="button" onClick={() => setAccountPasswordVisible((current) => !current)} aria-label={accountPasswordVisible ? 'Hide password' : 'Show password'} style={{ position: 'absolute', top: '50%', right: 10, transform: 'translateY(-50%)', border: 'none', background: 'transparent', color: '#64748b', cursor: 'pointer', display: 'inline-flex' }}>
+                            {accountPasswordVisible ? <EyeOff size={17} /> : <Eye size={17} />}
+                          </button>
+                        </div>
+                        <button type="submit" disabled={accountAuthLoading} style={{ borderRadius: 12, border: '1px solid #0f766e', background: '#0f766e', color: '#fff', padding: '10px 14px', fontWeight: 800, cursor: 'pointer' }}>
+                          {accountAuthLoading ? 'Working...' : accountAuthMode === 'register' ? 'Create' : 'Sign in'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
                   {accountPanel.me && (
                     <div style={{ marginTop: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', padding: '10px 12px' }}>
                       <strong>{accountPanel.me.name || accountPanel.me.email || 'Customer'}</strong>
                       <div style={{ fontSize: 12, color: '#64748b' }}>{accountPanel.me.email || accountPanel.me.phone || 'Signed in'}</div>
+                      <button type="button" onClick={handleDgfyAccountLogout} style={{ marginTop: 8, borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '7px 10px', fontWeight: 700 }}>
+                        Sign out
+                      </button>
                     </div>
                   )}
                 </div>

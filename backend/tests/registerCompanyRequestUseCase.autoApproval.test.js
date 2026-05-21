@@ -170,6 +170,24 @@ describe('registerCompanyRequestUseCase approval mode', () => {
         expect(deps.tenantAdminRepository.createTenant).not.toHaveBeenCalled();
     });
 
+    it('rejects unverified DGFY accounts before creating a tenant', async () => {
+        const { deps, useCase } = createUseCase();
+
+        const result = await useCase({
+            body: validBody,
+            dgfyAccount: {
+                ...dgfyAccount,
+                email_verified_at: null
+            },
+            correlationId: 'req-unverified-dgfy'
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(403);
+        expect(result.error.message).toBe('Verify your DGFY email before registering a company.');
+        expect(deps.tenantAdminRepository.createTenant).not.toHaveBeenCalled();
+    });
+
     it('auto-provisions standard registration when auto_standard mode is explicitly configured', async () => {
         const { deps, useCase } = createUseCase({
             getTenantRegistrationApprovalMode: jest.fn().mockReturnValue(TENANT_REGISTRATION_APPROVAL_MODES.AUTO_STANDARD)
