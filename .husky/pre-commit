@@ -1,0 +1,35 @@
+#!/bin/sh
+# Pre-commit guardrails
+# To skip: git commit --no-verify
+
+set -e
+
+STAGED_FILES="$(git diff --cached --name-only)"
+
+AI_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "(aiTools|aiToolExecutor|aiSystemPrompt)" || true)"
+if [ -n "$AI_FILES" ]; then
+  echo "[pre-commit] AI-related files changed. Running AI validation..."
+  echo "$AI_FILES"
+  (cd backend && npm run validate:ai)
+  echo "[pre-commit] AI validation passed."
+fi
+
+ARCH_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^backend/(src/modules/|src/controllers/|src/config/controllerModelImportAllowlist.js|src/config/architectureModelImportAllowlist.js|src/config/architectureGuardrailsAllowlist.js|scripts/check-controller-boundaries.js|scripts/check-architecture-guardrails.js)" || true)"
+if [ -n "$ARCH_FILES" ]; then
+  echo "[pre-commit] Architecture-sensitive files changed. Running architecture guardrails..."
+  echo "$ARCH_FILES"
+  (cd backend && npm run check:architecture-guardrails && npm run check:controller-boundaries)
+  echo "[pre-commit] Architecture guardrails passed."
+fi
+
+echo "[pre-commit] Running compliance impact guardrail (single shared gate logic)..."
+npm run check:compliance -- --staged
+echo "[pre-commit] Compliance impact guardrail passed."
+
+DOC_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^(docs/|AGENTS.md|scripts/lint-docs.js|.github/workflows/ci.yml|package.json)" || true)"
+if [ -n "$DOC_FILES" ]; then
+  echo "[pre-commit] Documentation-sensitive files changed. Running docs lint..."
+  echo "$DOC_FILES"
+  npm run lint:docs
+  echo "[pre-commit] Documentation lint passed."
+fi

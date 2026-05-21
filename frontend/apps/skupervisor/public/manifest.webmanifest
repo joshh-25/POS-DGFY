@@ -1,0 +1,47 @@
+{
+  "name": "SKUpervisor Inventory Manager",
+  "short_name": "SKUpervisor",
+  "start_url": "/settings",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f766e",
+  "description": "Inventory, POS, storefront, and tenant administration workspace.",
+  "icons": [
+    {
+      "src": "/logo-icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Settings",
+      "short_name": "Settings",
+      "description": "Open tenant and workspace settings.",
+      "url": "/settings",
+      "icons": [{ "src": "/logo-icon.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "POS Terminal",
+      "short_name": "POS",
+      "description": "Open the POS terminal workspace.",
+      "url": "/terminal",
+      "icons": [{ "src": "/logo-icon.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Inventory Items",
+      "short_name": "Items",
+      "description": "Open inventory items.",
+      "url": "/items",
+      "icons": [{ "src": "/logo-icon.png", "sizes": "192x192" }]
+    }
+  ]
+}

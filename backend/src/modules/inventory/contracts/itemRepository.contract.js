@@ -1,0 +1,41 @@
+/**
+ * Item repository contract.
+ *
+ * During migration, this repository is a compatibility adapter that shields
+ * controllers/use-cases from legacy service wiring.
+ */
+export const ItemRepositoryContract = Object.freeze([
+    'getItems',
+    'getItemById',
+    'createItem',
+    'updateItem',
+    'finalizeItem',
+    'deleteItem',
+    'getItemStockHistory',
+    'getItemBatches',
+    'getItemMovements',
+    'validateComposition',
+    'getItemSupplierCoverage',
+    'replaceItemSuppliers',
+    'listItemBarcodes',
+    'attachItemBarcode',
+    'generateItemBarcode',
+    'updateItemBarcode',
+    'deactivateItemBarcode',
+    'setPrimaryItemBarcode',
+    'resolveItemBarcode',
+    'auditBarcodeConflictResolution',
+    'buildItemBarcodeLabelPayload',
+    'listFolders',
+    'createFolder',
+    'updateFolder',
+    'deleteFolder'
+]);
+
+export const assertItemRepositoryContract = (repository) => {
+    ItemRepositoryContract.forEach((method) => {
+        if (typeof repository?.[method] !== 'function') {
+            throw new Error(`ItemRepository missing required method: ${method}`);
+        }
+    });
+};

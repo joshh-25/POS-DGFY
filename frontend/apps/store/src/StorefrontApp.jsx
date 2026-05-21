@@ -1,0 +1,15561 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import QRCode from 'qrcode';
+import maplibregl from 'maplibre-gl';
+import { toast } from 'sonner';
+import dgfyHeaderLogo from '../../../public/dgfy-logo.png';
+import dgfySymbolLogo from '../../../public/dgfy-symbologo.png';
+import {
+  ArrowLeft,
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  FileText,
+  ClipboardList,
+  Fish,
+  HeartHandshake,
+  Mail,
+  MapPin,
+  MessageCircle,
+  MousePointer2,
+  Phone,
+  Plus,
+  Pizza,
+  Search,
+  ShoppingBag,
+  ShoppingCart,
+  SlidersHorizontal,
+  Sparkles,
+  Star,
+  List,
+  LayoutGrid,
+  Shirt,
+  Snowflake,
+  Scissors,
+  SprayCan,
+  Droplets,
+  Wrench,
+  CupSoda,
+  Coffee,
+  Sandwich,
+  Drumstick,
+  Soup,
+  UtensilsCrossed,
+  ChevronUp,
+  ChevronDown,
+  Share2,
+  Trash2,
+  X,
+  Navigation,
+  Map,
+  MoreHorizontal,
+  Store,
+  ShieldCheck,
+  Zap,
+  Heart,
+  ChevronLeft,
+  ChevronRight,
+  Info,
+  ArrowUpDown,
+  ArrowUpNarrowWide
+} from 'lucide-react';
+import { canCheckout, getCheckoutBlockReason } from './checkoutRules.js';
+import { filterCatalogItems } from './catalogSearch.js';
+import {
+  getDiscoveryEmptyStateMessage,
+  getDiscoveryMatchBadges,
+  getPreferredDiscoveryLocationId,
+  selectDiscoveryPinLocations
+} from './discoveryPresentation.js';
+import {
+  classifyStoreCatalogError,
+  normalizeStorefrontErrorMessage
+} from './storefrontErrorMessages.js';
+import {
+  canUseBooking,
+  canUseCheckout,
+  canUseProductCart,
+  canViewCatalog,
+  getAccessCapabilities,
+  getInventoryDisplayLabel
+} from './customerAccess.js';
+import { getFoodBeverageStorefrontViewModel } from './fnbStorefrontViewModel.js';
+import { renderBusinessModePinSvg } from './businessModePins.js';
+import {
+  createSharedCoordinatePreviewNode,
+  getDiscoveryMarkerKey,
+  makeClusterElement
+} from './discoveryMapDom.js';
+import { normalizeStorefrontPageModel } from './normalizeStorefrontPageModel.js';
+import { createStoreMarkerPreviewNode } from './storefrontMarkerPreview.js';
+import {
+  DiscoveryCategoryRail,
+  DiscoveryHeader,
+  DiscoveryHero,
+  DiscoveryMapCard,
+  DiscoverySearchRegion,
+  getDiscoveryLayoutTokens,
+  getDiscoveryViewportState
+} from './Components/store/DiscoveryResponsiveLayout.jsx';
+import {
+  WORKFLOW_MODE_LABELS,
+  WORKFLOW_MODE_SELECT_VALUES
+} from '../../../src/features/settings/workflowMode.js';
+import HospitalityBookingPanel from './HospitalityBookingPanel.jsx';
+import 'maplibre-gl/dist/maplibre-gl.css';
+
+/* Legacy storefront contract anchors (frontend-only compatibility)
+id: 'reservation'
+/api/v1/store/fnb/reservations
+fnb_modifier_groups
+Allergens:
+getDefaultFnbLineModifiers
+line_modifiers
+/api/v1/store/services/bookings/batch
+bookings: heldServiceCartLines.map
+quantity: Math.max(1, Number(line.quantity || 1))
+idempotency_key: createStorefrontIdempotencyKey('service-batch')
+serviceBatchFailureMessage(error, serviceCartLines)
+/api/v1/store/services/availability?
+buildServiceAvailabilitySlotOptions
+serviceAvailabilityMessage
+Live capacity checked
+No available slots for this date and quantity
+This quantity needs a service resource with more capacity.
+/api/v1/store/services/holds
+replace_hold_token
+hasFreshServiceHold
+ensureServiceBookingHold(line)
+service_hold_token
+Reserving...
+openServiceCartEditor(line)
+serviceCartValidationIssues
+line?.intake_responses || {}
+Booking references
+checkoutResult.payments.filter
+cart_line_id
+/api/v1/store/hospitality/availability?
+/api/v1/store/hospitality/quote
+/api/v1/store/hospitality/booking-holds
+/api/v1/store/hospitality/bookings
+HospitalityBookingPanel
+Direct Booking
+Room Availability
+Paid add-ons
+Booking confirmed
+*/
+
+const DEFAULT_CENTER = { latitude: 10.7202, longitude: 122.5621 };
+const TILE_BASE = import.meta.env.VITE_TILE_BASE || 'https://tiles.openfreemap.org';
+
+const TILING_SERVER = import.meta.env.DEV
+  ? '/openfreemap/styles/liberty'
+  : `${TILE_BASE}/styles/liberty`;
+
+const tileTransformRequest = import.meta.env.DEV
+  ? (url) => {
+    if (url.startsWith(TILE_BASE)) {
+      return { url: url.replace(TILE_BASE, `${window.location.origin}/openfreemap`) };
+    }
+    return { url };
+  }
+  : undefined;
+
+const ORDER_METHOD_OPTIONS = [
+  { value: 'delivery', label: 'Delivery' },
+  { value: 'pickup', label: 'Pickup' },
+  { value: 'dine_in', label: 'Dine In' },
+  { value: 'takeout', label: 'Takeout' }
+];
+const SERVICE_CATEGORY_ICON_MAP = Object.freeze({
+  aircon: Snowflake,
+  laundry: Shirt,
+  pressing: Scissors,
+  addon: Sparkles,
+  repair: Wrench,
+  cleaning: SprayCan,
+  consultation: ClipboardList,
+  grooming: HeartHandshake,
+  wellness: Droplets,
+  service: Sparkles
+});
+const DGFY_BRAND_NAME = 'DGFY';
+const DGFY_ACRONYM = 'Discover Goods For You';
+const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
+const DGFY_CONVENIENCE_FEE_RATE = 0.01;
+const DISCOVERY_BADGE_TONE_STYLES = {
+  teal: { color: '#0f766e', background: '#ecfeff', borderColor: '#99f6e4' },
+  blue: { color: '#1a4e8d', background: '#eff6ff', borderColor: '#bfdbfe' },
+  slate: { color: '#334155', background: '#f8fafc', borderColor: '#cbd5e1' },
+  emerald: { color: '#047857', background: '#ecfdf5', borderColor: '#a7f3d0' },
+  amber: { color: '#92400e', background: '#fff7ed', borderColor: '#fed7aa' }
+};
+const POPULAR_DISCOVERY_CATEGORIES = Object.freeze([
+  { label: 'Food', query: 'Food' },
+  { label: 'Grocery', query: 'Grocery' },
+  { label: 'Laundry', query: 'Laundry' },
+  { label: 'Salon', query: 'Salon' },
+  { label: 'Hardware', query: 'Hardware' },
+  { label: 'More', query: 'Services' }
+]);
+const DISCOVERY_CATEGORY_FILTER_OPTIONS = Object.freeze([
+  ['all', 'All'],
+  ['food', 'Food'],
+  ['grocery', 'Grocery'],
+  ['laundry', 'Laundry'],
+  ['salon', 'Salon'],
+  ['hardware', 'Hardware'],
+  ['services', 'Services'],
+  ['pharmacy', 'Pharmacy'],
+  ['electronics', 'Electronics'],
+  ['bakery', 'Bakery'],
+  ['clothing', 'Clothing'],
+  ['drinks', 'Drinks'],
+  ['food stall', 'Food Stall'],
+  ['frozen', 'Frozen']
+]);
+const DISCOVERY_CATEGORY_MATCHERS = Object.freeze({
+  food: ['food', 'cafe', 'coffee', 'bakery', 'drinks', 'food stall', 'frozen', 'f&b'],
+  grocery: ['grocery', 'supermarket', 'mart'],
+  laundry: ['laundry', 'wash'],
+  salon: ['salon', 'beauty', 'spa'],
+  hardware: ['hardware', 'repair', 'auto'],
+  services: ['services', 'service'],
+  pharmacy: ['pharmacy', 'health', 'medical'],
+  electronics: ['electronics', 'gadget', 'device', 'tech'],
+  bakery: ['bakery', 'bread', 'pastry'],
+  clothing: ['clothing', 'fashion', 'apparel'],
+  drinks: ['drinks', 'beverage', 'juice', 'milk tea'],
+  'food stall': ['food stall', 'stall'],
+  frozen: ['frozen', 'ice cream']
+});
+
+const money = (v) => `PHP ${Number(v || 0).toFixed(2)}`;
+const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
+const toSlug = (v) => String(v || '').trim().toLowerCase();
+const normalizeServiceFormFields = (schema) => {
+  const fields = Array.isArray(schema?.fields) ? schema.fields : Array.isArray(schema?.questions) ? schema.questions : [];
+  return fields
+    .map((field, index) => ({
+      id: String(field.id || field.key || field.name || `field_${index}`),
+      label: String(field.label || field.question || field.name || `Question ${index + 1}`),
+      type: ['textarea', 'select', 'checkbox', 'number', 'date', 'text'].includes(String(field.type || '').trim()) ? String(field.type).trim() : 'text',
+      required: field.required === true,
+      options: Array.isArray(field.options) ? field.options.map((option) => String(option)) : []
+    }))
+    .filter((field) => field.id && field.label);
+};
+const shouldBookingFieldSpanFullWidth = (field) => {
+  const label = String(field?.label || '').trim().toLowerCase();
+  const type = String(field?.type || '').trim().toLowerCase();
+  if (type === 'textarea' || type === 'date' || type === 'checkbox') return true;
+  return ['address', 'location', 'schedule', 'instruction', 'instructions', 'notes', 'message', 'details'].some((token) => label.includes(token));
+};
+const buildServicePaymentOptions = (servicePaymentPolicy) => {
+  if (servicePaymentPolicy === 'prepaid_required') return [{ value: 'prepaid', label: 'Pay Now' }];
+  if (servicePaymentPolicy === 'postpaid_only') return [{ value: 'postpaid', label: 'Pay Later' }];
+  if (servicePaymentPolicy === 'deposit_allowed') {
+    return [
+      { value: 'postpaid', label: 'Pay Later' },
+      { value: 'prepaid', label: 'Pay Now' },
+      { value: 'deposit', label: 'Deposit' }
+    ];
+  }
+  return [
+    { value: 'postpaid', label: 'Pay Later' },
+    { value: 'prepaid', label: 'Pay Now' }
+  ];
+};
+const normalizeBookingFieldText = (value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const getBookingFieldSearchText = (field) => normalizeBookingFieldText(`${field?.id || ''} ${field?.label || ''}`);
+const bookingFieldMatchesAny = (field, tokens) => {
+  const haystack = ` ${getBookingFieldSearchText(field)} `;
+  return tokens.some((token) => haystack.includes(` ${normalizeBookingFieldText(token)} `));
+};
+const isServiceAreaOnSite = (serviceItem) => {
+  const value = normalizeBookingFieldText(serviceItem?.serviceAreaLabel || serviceItem?.service_detail?.service_area_type || '');
+  return value.includes('home') || value.includes('on site') || value.includes('onsite') || value.includes('customer location');
+};
+const buildServiceBookingFieldPlan = ({ fields, serviceItem }) => {
+  const usedIds = new Set();
+  const takeField = (predicate) => {
+    const match = fields.find((field) => !usedIds.has(field.id) && predicate(field));
+    if (match) usedIds.add(match.id);
+    return match || null;
+  };
+
+  const customerNameField = takeField((field) => (
+    bookingFieldMatchesAny(field, ['customer name', 'full name', 'client name', 'contact person', 'name'])
+    && !bookingFieldMatchesAny(field, ['business name', 'branch name', 'service name'])
+  ));
+  const contactNumberField = takeField((field) => bookingFieldMatchesAny(field, ['contact number', 'phone number', 'mobile number', 'contact no', 'telephone', 'phone']));
+  const emailField = takeField((field) => bookingFieldMatchesAny(field, ['email', 'email address']));
+  const addressField = takeField((field) => bookingFieldMatchesAny(field, ['full service address', 'service address', 'full address', 'address', 'pickup address', 'location']));
+  const preferredDateField = takeField((field) => (
+    field.type === 'date'
+    || bookingFieldMatchesAny(field, ['preferred schedule', 'schedule', 'appointment date', 'booking date', 'preferred date', 'service date', 'date'])
+  ));
+  const preferredTimeField = takeField((field) => bookingFieldMatchesAny(field, ['preferred time slot', 'time slot', 'preferred time', 'time window', 'appointment time', 'service time']));
+  const unitTypeField = takeField((field) => bookingFieldMatchesAny(field, ['unit type', 'service type', 'appliance type', 'unit variant']));
+  const unitCountField = takeField((field) => (
+    field.type === 'number'
+      ? bookingFieldMatchesAny(field, ['number of units', 'unit count', 'units', 'quantity', 'qty'])
+      : bookingFieldMatchesAny(field, ['number of units', 'unit count', 'quantity', 'qty'])
+  ));
+  const instructionField = takeField((field) => bookingFieldMatchesAny(field, ['special instructions', 'special instruction', 'instructions', 'instruction', 'notes', 'message', 'additional details']));
+
+  const remainingFields = fields.filter((field) => !usedIds.has(field.id));
+  return {
+    customerNameField,
+    contactNumberField,
+    emailField,
+    addressField,
+    preferredDateField,
+    preferredTimeField,
+    unitTypeField,
+    unitCountField,
+    instructionField,
+    remainingFields,
+    requiresAddress: Boolean(addressField) || isServiceAreaOnSite(serviceItem)
+  };
+};
+const isBookingFieldComplete = (field, value) => {
+  if (!field?.required) return true;
+  return field.type === 'checkbox' ? value === true : String(value || '').trim().length > 0;
+};
+const formatBookingReviewValue = (field, value) => {
+  if (field?.type === 'checkbox') return value === true ? 'Confirmed' : 'Not confirmed';
+  return String(value || '').trim() || 'Not provided';
+};
+const BOOKING_FIELD_STYLE = {
+  width: '100%',
+  maxWidth: '100%',
+  boxSizing: 'border-box',
+  marginTop: 6,
+  border: '1px solid #cbd5e1',
+  borderRadius: 14,
+  padding: '12px 13px',
+  background: '#fff',
+  fontSize: 14,
+  outline: 'none',
+  transition: 'border-color 0.2s'
+};
+const DROPDOWN_MENU_BASE_STYLE = {
+  position: 'absolute',
+  top: 'calc(100% + 10px)',
+  left: 0,
+  right: 0,
+  zIndex: 2400,
+  border: '1px solid #dbe5ee',
+  borderRadius: 18,
+  background: '#ffffff',
+  boxShadow: '0 20px 48px rgba(15,23,42,0.14)',
+  padding: 8,
+  display: 'grid',
+  gap: 6,
+  maxHeight: 280,
+  overflowY: 'auto'
+};
+function StorefrontDropdown({
+  value,
+  options,
+  onChange,
+  placeholder = 'Select',
+  disabled = false,
+  label = '',
+  leading = null,
+  trailingMeta = null,
+  triggerStyle = {},
+  containerStyle = {},
+  menuStyle = {},
+  optionStyle = {},
+  selectedLabelStyle = {},
+  labelStyle = {},
+  compactLabel = false
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+  const selectedOption = useMemo(
+    () => options.find((option) => String(option.value) === String(value)) || null,
+    [options, value]
+  );
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const handlePointerDown = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isOpen]);
+
+  return (
+    <div ref={dropdownRef} style={{ position: 'relative', minWidth: 0, ...containerStyle }}>
+      <button
+        type="button"
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        onClick={() => {
+          if (disabled) return;
+          setIsOpen((previous) => !previous);
+        }}
+        style={{
+          width: '100%',
+          minHeight: 44,
+          borderRadius: 18,
+          border: '1px solid #dbe5ee',
+          background: disabled ? '#f8fafc' : '#ffffff',
+          color: disabled ? '#94a3b8' : '#0f172a',
+          padding: compactLabel ? '10px 52px 10px 16px' : '11px 52px 11px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          textAlign: 'left',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          boxSizing: 'border-box',
+          position: 'relative',
+          outline: 'none',
+          transition: 'border-color 0.2s, box-shadow 0.2s, background 0.2s',
+          ...triggerStyle
+        }}
+      >
+        {leading ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', flexShrink: 0 }}>
+            {leading}
+          </span>
+        ) : null}
+        {!leading && selectedOption?.icon ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', flexShrink: 0 }}>
+            {React.createElement(selectedOption.icon, { size: 16 })}
+          </span>
+        ) : null}
+        <span style={{ display: 'grid', gap: label ? 3 : 0, minWidth: 0, flex: 1 }}>
+          {label ? (
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 800,
+                color: '#64748b',
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                lineHeight: 1.1,
+                ...labelStyle
+              }}
+            >
+              {label}
+            </span>
+          ) : null}
+          <span
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              color: disabled ? '#94a3b8' : '#0f172a',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              lineHeight: 1.25,
+              ...selectedLabelStyle
+            }}
+          >
+            {selectedOption?.label || placeholder}
+          </span>
+        </span>
+        {trailingMeta ? (
+          <span style={{ fontSize: 12, fontWeight: 800, color: '#64748b', flexShrink: 0 }}>
+            {trailingMeta}
+          </span>
+        ) : null}
+        <ChevronDown
+          size={18}
+          color={disabled ? '#cbd5e1' : '#475569'}
+          style={{
+            position: 'absolute',
+            right: 16,
+            top: '50%',
+            transform: `translateY(-50%) rotate(${isOpen ? 180 : 0}deg)`,
+            transition: 'transform 0.2s',
+            pointerEvents: 'none'
+          }}
+        />
+      </button>
+
+      {isOpen && !disabled ? (
+        <div role="listbox" style={{ ...DROPDOWN_MENU_BASE_STYLE, ...menuStyle }}>
+          {options.map((option) => {
+            const isSelected = String(option.value) === String(value);
+            return (
+              <button
+                key={`${option.value}`}
+                type="button"
+                onClick={() => {
+                  onChange(option.value);
+                  setIsOpen(false);
+                }}
+                style={{
+                  width: '100%',
+                  borderRadius: 14,
+                  border: isSelected ? '1px solid #fed7aa' : '1px solid transparent',
+                  background: isSelected ? '#fff7ed' : '#ffffff',
+                  color: '#0f172a',
+                  padding: option.description ? '10px 14px' : '11px 14px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  display: 'grid',
+                  gap: option.description ? 4 : 0,
+                  boxSizing: 'border-box',
+                  ...optionStyle
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                  {option.icon ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: isSelected ? '#c2410c' : '#64748b', flexShrink: 0 }}>
+                      {React.createElement(option.icon, { size: 16 })}
+                    </span>
+                  ) : null}
+                  <span style={{ fontSize: 14, fontWeight: isSelected ? 800 : 700, lineHeight: 1.3, minWidth: 0 }}>
+                    {option.label}
+                  </span>
+                </span>
+                {option.description ? (
+                  <span style={{ fontSize: 12, color: '#64748b', lineHeight: 1.35 }}>
+                    {option.description}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+const formatServiceAppointmentSummary = (appointmentAt) => {
+  const raw = String(appointmentAt || '').trim();
+  if (!raw) return 'Schedule needed';
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return 'Schedule needed';
+  return parsed.toLocaleString('en-PH', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+};
+const SERVICE_FALLBACK_TIME_SLOTS = ['09:00', '11:00', '13:00', '15:00', '17:00'];
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DAY_KEY_ALIASES = {
+  0: ['0', 'sun', 'sunday'],
+  1: ['1', 'mon', 'monday'],
+  2: ['2', 'tue', 'tues', 'tuesday'],
+  3: ['3', 'wed', 'wednesday'],
+  4: ['4', 'thu', 'thur', 'thurs', 'thursday'],
+  5: ['5', 'fri', 'friday'],
+  6: ['6', 'sat', 'saturday']
+};
+const pad2 = (value) => String(value).padStart(2, '0');
+const formatLocalDateInputValue = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+const formatLongDateLabel = (dateString) => {
+  if (!dateString) return 'Pick a date';
+  const parsed = new Date(`${dateString}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return 'Pick a date';
+  return parsed.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
+};
+const formatShortDateLabel = (dateString) => {
+  if (!dateString) return 'Pick a date';
+  const parsed = new Date(`${dateString}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return 'Pick a date';
+  return parsed.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
+};
+const formatTimeSlotLabel = (timeString) => {
+  if (!timeString) return 'Pick a time';
+  const [hourRaw, minuteRaw = '00'] = String(timeString).split(':');
+  const hour = Number(hourRaw);
+  const minute = Number(minuteRaw);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return 'Pick a time';
+  const normalized = new Date(2000, 0, 1, hour, minute, 0, 0);
+  return normalized.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' });
+};
+const getDatePartFromAppointment = (appointmentAt) => {
+  const raw = String(appointmentAt || '').trim();
+  return raw.includes('T') ? raw.split('T')[0] : '';
+};
+const getTimePartFromAppointment = (appointmentAt) => {
+  const raw = String(appointmentAt || '').trim();
+  if (!raw.includes('T')) return '';
+  const timePart = raw.split('T')[1] || '';
+  return timePart.slice(0, 5);
+};
+const combineDateAndTimeParts = (datePart, timePart) => {
+  if (!datePart || !timePart) return '';
+  return `${datePart}T${timePart}`;
+};
+const normalizeSlotClockValue = (value) => {
+  const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return '';
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return '';
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return '';
+  return `${pad2(hour)}:${pad2(minute)}`;
+};
+const toMinutesFromClock = (clockValue) => {
+  const normalized = normalizeSlotClockValue(clockValue);
+  if (!normalized) return null;
+  const [hour, minute] = normalized.split(':').map(Number);
+  return (hour * 60) + minute;
+};
+const parseWeeklyAvailabilitySlot = (entry) => {
+  if (typeof entry === 'string') {
+    const [startRaw, endRaw] = entry.split('-');
+    const start = normalizeSlotClockValue(startRaw);
+    const end = normalizeSlotClockValue(endRaw);
+    return start && end ? { start, end } : null;
+  }
+  if (entry && typeof entry === 'object') {
+    const start = normalizeSlotClockValue(entry.start || entry.from || entry.open);
+    const end = normalizeSlotClockValue(entry.end || entry.to || entry.close);
+    return start && end ? { start, end } : null;
+  }
+  return null;
+};
+const getServiceWeeklyAvailability = (serviceItem) => (
+  serviceItem?.service_resources?.weekly_availability
+  || serviceItem?.service_detail?.service_resources?.weekly_availability
+  || serviceItem?.service_detail?.weekly_availability
+  || null
+);
+const getServiceDurationMinutes = (serviceItem) => {
+  const duration = Number(serviceItem?.service_detail?.duration_minutes || serviceItem?.duration_minutes || 0);
+  return Number.isFinite(duration) && duration > 0 ? duration : 120;
+};
+const getNormalizedWeeklyAvailabilityByDay = (serviceItem) => {
+  const raw = getServiceWeeklyAvailability(serviceItem);
+  const resolved = {};
+  for (let dayIndex = 0; dayIndex <= 6; dayIndex += 1) {
+    let dayValue = null;
+    const aliases = DAY_KEY_ALIASES[dayIndex] || [];
+    for (const alias of aliases) {
+      if (raw && Object.prototype.hasOwnProperty.call(raw, alias)) {
+        dayValue = raw[alias];
+        break;
+      }
+    }
+    const normalizedEntries = (Array.isArray(dayValue) ? dayValue : dayValue != null ? [dayValue] : [])
+      .map(parseWeeklyAvailabilitySlot)
+      .filter(Boolean);
+    resolved[dayIndex] = normalizedEntries;
+  }
+  return resolved;
+};
+const buildServiceDateOptions = (serviceItem, maxOptions = 7) => {
+  const dayMap = getNormalizedWeeklyAvailabilityByDay(serviceItem);
+  const hasAvailabilityRules = Object.values(dayMap).some((entries) => entries.length > 0);
+  const leadTimeMinutes = Math.max(0, Number(serviceItem?.service_detail?.lead_time_minutes || 0));
+  const firstAllowed = new Date(Date.now() + (leadTimeMinutes * 60 * 1000));
+  const options = [];
+  for (let offset = 0; offset < 30 && options.length < maxOptions; offset += 1) {
+    const candidate = new Date(firstAllowed);
+    candidate.setHours(0, 0, 0, 0);
+    candidate.setDate(candidate.getDate() + offset);
+    const daySlots = dayMap[candidate.getDay()] || [];
+    if (hasAvailabilityRules && daySlots.length === 0) continue;
+    options.push({
+      value: formatLocalDateInputValue(candidate),
+      label: formatShortDateLabel(formatLocalDateInputValue(candidate)),
+      weekday: DAY_LABELS[candidate.getDay()],
+      hasAvailability: daySlots.length > 0
+    });
+  }
+  return options;
+};
+const buildServiceTimeSlotOptions = (serviceItem, dateString) => {
+  if (!dateString) return [];
+  const selectedDate = new Date(`${dateString}T00:00:00`);
+  if (Number.isNaN(selectedDate.getTime())) return [];
+  const dayMap = getNormalizedWeeklyAvailabilityByDay(serviceItem);
+  const daySlots = dayMap[selectedDate.getDay()] || [];
+  if (daySlots.length === 0) {
+    return SERVICE_FALLBACK_TIME_SLOTS.map((value) => ({ value, label: formatTimeSlotLabel(value), source: 'fallback' }));
+  }
+  const intervalMinutes = Math.max(60, Math.min(120, getServiceDurationMinutes(serviceItem)));
+  const values = [];
+  daySlots.forEach((slot) => {
+    const startMinutes = toMinutesFromClock(slot.start);
+    const endMinutes = toMinutesFromClock(slot.end);
+    if (startMinutes == null || endMinutes == null || endMinutes <= startMinutes) return;
+    for (let minute = startMinutes; minute < endMinutes; minute += intervalMinutes) {
+      const clockValue = `${pad2(Math.floor(minute / 60))}:${pad2(minute % 60)}`;
+      values.push(clockValue);
+    }
+  });
+  return [...new Set(values)].map((value) => ({ value, label: formatTimeSlotLabel(value), source: 'availability' }));
+};
+const getPreferredBookingTimeForDate = (serviceItem, dateString, currentTime = '') => {
+  const availableSlots = buildServiceTimeSlotOptions(serviceItem, dateString);
+  if (currentTime && availableSlots.some((slot) => slot.value === currentTime)) return currentTime;
+  return availableSlots[0]?.value || '09:00';
+};
+const TENANT_STORE_BASE_PATH = '/tenant-store';
+const STORE_BOOKING_SUBPAGE = 'book';
+const STORE_ORDER_SUBPAGE = 'order';
+const STORE_SERVICE_SUBPAGE = 'service';
+const storePath = (slug, subpage = null, query = '') => `${TENANT_STORE_BASE_PATH}/${encodeURIComponent(toSlug(slug))}${subpage ? `/${subpage}` : ''}${query || ''}`;
+const toNumberOrNull = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
+  const toRad = (value) => value * (Math.PI / 180);
+  const earthRadiusKm = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const lat1Rad = toRad(lat1);
+  const lat2Rad = toRad(lat2);
+  const a = Math.sin(dLat / 2) ** 2 + (Math.sin(dLon / 2) ** 2) * Math.cos(lat1Rad) * Math.cos(lat2Rad);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadiusKm * c;
+};
+const readRouteSlug = () => {
+  if (typeof window === 'undefined') return null;
+  const path = window.location.pathname || '';
+  const patterns = [
+    /^\/tenant-store\/([^/]+)(?:\/[^/]+)?$/i,
+    /^\/store\/([^/]+)(?:\/[^/]+)?$/i
+  ];
+  for (const pattern of patterns) {
+    const match = path.match(pattern);
+    if (match?.[1]) return decodeURIComponent(match[1]).toLowerCase();
+  }
+  const hashPatterns = [
+    /^#\/tenant-store\/([^/]+)(?:\/[^/]+)?$/i,
+    /^#\/store\/([^/]+)(?:\/[^/]+)?$/i
+  ];
+  for (const pattern of hashPatterns) {
+    const match = (window.location.hash || '').match(pattern);
+    if (match?.[1]) return decodeURIComponent(match[1]).toLowerCase();
+  }
+  return null;
+};
+const readStoreSubpage = () => {
+  if (typeof window === 'undefined') return null;
+  const path = window.location.pathname || '';
+  const patterns = [
+    /^\/tenant-store\/[^/]+\/([^/]+)$/i,
+    /^\/store\/[^/]+\/([^/]+)$/i
+  ];
+  for (const pattern of patterns) {
+    const match = path.match(pattern);
+    if (match?.[1]) return decodeURIComponent(match[1]).toLowerCase();
+  }
+  const hashPatterns = [
+    /^#\/tenant-store\/[^/]+\/([^/]+)$/i,
+    /^#\/store\/[^/]+\/([^/]+)$/i
+  ];
+  for (const pattern of hashPatterns) {
+    const match = (window.location.hash || '').match(pattern);
+    if (match?.[1]) return decodeURIComponent(match[1]).toLowerCase();
+  }
+  return null;
+};
+const readStoreServiceItemId = () => {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search || '');
+  const raw = String(params.get('service') || '').trim();
+  return raw || null;
+};
+
+const buildRequestError = (message, meta = {}) => {
+  const error = new Error(message);
+  Object.assign(error, meta);
+  return error;
+};
+
+const inferRuntimeApiOrigin = () => {
+  if (typeof window === 'undefined') return '';
+  const { hostname, port, protocol } = window.location;
+  const numericPort = Number(port);
+  const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+  const isLikelyViteStorePort = Number.isInteger(numericPort) && (
+    (numericPort >= 5173 && numericPort <= 5185)
+    || (numericPort >= 4173 && numericPort <= 4185)
+  );
+  if (!isLocalHost || !isLikelyViteStorePort) return '';
+  return `${protocol}//${hostname}:5000`;
+};
+
+const resolveConfiguredOrigin = (rawValue = '') => {
+  const raw = String(rawValue || '').trim();
+  if (!raw || raw.startsWith('/')) return '';
+  try {
+    const parsed = new URL(raw, window.location.origin);
+    return parsed.protocol.startsWith('http') ? parsed.origin : '';
+  } catch {
+    return '';
+  }
+};
+
+const configuredApiOrigin = resolveConfiguredOrigin(import.meta.env.VITE_API_BASE_URL);
+const apiOrigin = configuredApiOrigin || inferRuntimeApiOrigin();
+const configuredAssetOrigin = resolveConfiguredOrigin(import.meta.env.VITE_ASSET_BASE_URL);
+const assetOrigin = configuredAssetOrigin || apiOrigin;
+const configuredPublicStorefrontOrigin = resolveConfiguredOrigin(import.meta.env.VITE_PUBLIC_STOREFRONT_ORIGIN);
+const publicStorefrontOrigin = configuredPublicStorefrontOrigin || 'https://dgfy.ph';
+const buildStamp = String(import.meta.env.VITE_BUILD_STAMP || '').trim();
+const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/';
+const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`;
+const withApiOrigin = (url) => {
+  if (!url || typeof url !== 'string') return url;
+  if (!url.startsWith('/')) return url;
+  return apiOrigin ? `${apiOrigin}${url}` : url;
+};
+
+const withAssetOrigin = (url) => {
+  if (!url || typeof url !== 'string') return url;
+  const trimmed = url.trim();
+  if (trimmed.startsWith('storefront-assets/')) {
+    const normalized = `/uploads/${trimmed}`;
+    return assetOrigin ? `${assetOrigin}${normalized}` : normalized;
+  }
+  if (trimmed.startsWith('/')) {
+    return assetOrigin ? `${assetOrigin}${trimmed}` : trimmed;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.toString() : '';
+  } catch {
+    return '';
+  }
+};
+const buildPublicStorefrontUrl = (slug) => {
+  const normalizedSlug = toSlug(slug);
+  if (!normalizedSlug) return '';
+  return `${publicStorefrontOrigin}${storePath(normalizedSlug)}`;
+};
+
+const parseOptionalArray = (value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string' || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const parseOptionalObject = (value) => {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+  if (typeof value !== 'string' || !value.trim()) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const parseBooleanFlag = (value, fallback = false) => {
+  if (value === true || value === false) return value;
+  if (value == null || value === '') return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+};
+const buildAccessPolicyStorePatch = (accessPolicy = null) => {
+  if (!accessPolicy || typeof accessPolicy !== 'object') return null;
+  return {
+    customer_access_mode: accessPolicy.customer_access_mode,
+    effective_customer_access_mode: accessPolicy.effective_customer_access_mode,
+    max_customer_access_mode: accessPolicy.max_customer_access_mode,
+    inventory_display_mode: accessPolicy.inventory_display_mode,
+    inventory_low_stock_display_threshold: accessPolicy.inventory_low_stock_display_threshold,
+    access_capabilities: accessPolicy.access_capabilities,
+    access_limitation_reason: accessPolicy.limitation_reason || accessPolicy.access_limitation_reason || null,
+    customer_access_modes_enabled: accessPolicy.customer_access_modes_enabled
+  };
+};
+
+export const findCanonicalStorefrontSlug = (requestedSlug, stores = []) => {
+  const normalizedRequestedSlug = toSlug(requestedSlug);
+  if (!normalizedRequestedSlug) return '';
+
+  const candidates = Array.isArray(stores) ? stores : [];
+  const exactSlugMatch = candidates.find((store) => toSlug(store?.slug) === normalizedRequestedSlug);
+  if (exactSlugMatch?.slug) return toSlug(exactSlugMatch.slug);
+
+  const slugPrefixMatch = candidates.find((store) => toSlug(store?.slug).startsWith(`${normalizedRequestedSlug}-`));
+  if (slugPrefixMatch?.slug) return toSlug(slugPrefixMatch.slug);
+
+  const tenantNameMatch = candidates.find((store) => toSlug(store?.tenant_name) === normalizedRequestedSlug);
+  if (tenantNameMatch?.slug) return toSlug(tenantNameMatch.slug);
+
+  return '';
+};
+
+const normalizeStorefrontCategories = (value) => parseOptionalArray(value)
+  .map((entry) => String(entry || '').trim())
+  .filter(Boolean)
+  .slice(0, 12);
+const normalizeDiscoveryCategoryKey = (value) => String(value || '').trim().toLowerCase();
+const resolveDiscoveryCategoryFilterValue = (label) => {
+  const normalized = normalizeDiscoveryCategoryKey(label);
+  if (!normalized || normalized === 'all categories') return 'all';
+  if (normalized === 'beauty' || normalized === 'spa') return 'salon';
+  return normalized;
+};
+
+const normalizeStorefrontGallery = (value) => parseOptionalArray(value)
+  .map((entry, index) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+    const url = String(entry.url || '').trim();
+    const path = String(entry.path || '').trim();
+    if (!url && !path) return null;
+    return {
+      url: withAssetOrigin(url) || '',
+      path: withAssetOrigin(path) || '',
+      caption: String(entry.caption || '').trim(),
+      alt: String(entry.alt || '').trim(),
+      sort_order: Number.isInteger(Number(entry.sort_order)) ? Number(entry.sort_order) : index
+    };
+  })
+  .filter(Boolean)
+  .sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0))
+  .slice(0, 24);
+
+const normalizeStorefrontDeliveryPartners = (value) => parseOptionalArray(value)
+  .map((entry) => {
+    if (typeof entry === 'string') {
+      const partner = String(entry || '').trim().toLowerCase();
+      if (!partner) return null;
+      return { partner, label: partner, url: '' };
+    }
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+    const partner = String(entry.partner || '').trim().toLowerCase();
+    if (!partner) return null;
+    return {
+      partner,
+      label: String(entry.label || '').trim() || partner,
+      url: sanitizeExternalLink(entry.url)
+    };
+  })
+  .filter(Boolean)
+  .slice(0, 8);
+
+const normalizeStorefrontReviewSummary = (value) => {
+  const raw = parseOptionalObject(value);
+  if (!raw) return null;
+  const score = Number(raw.score);
+  const totalCount = Number(raw.total_count);
+  const starDistributionRaw = raw.star_distribution && typeof raw.star_distribution === 'object' ? raw.star_distribution : {};
+  const starDistribution = [5, 4, 3, 2, 1].map((star) => ({
+    star,
+    count: Number.isInteger(Number(starDistributionRaw[star])) ? Number(starDistributionRaw[star]) : 0
+  }));
+  return {
+    score: Number.isFinite(score) ? Math.max(0, Math.min(5, score)) : null,
+    total_count: Number.isInteger(totalCount) && totalCount >= 0 ? totalCount : null,
+    star_distribution: starDistribution
+  };
+};
+
+const sanitizeExternalLink = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const parsed = new URL(raw, window.location.origin);
+    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.toString() : '';
+  } catch {
+    return '';
+  }
+};
+
+const createStorePopupNode = (store = {}) => {
+  const container = document.createElement('div');
+  container.style.display = 'grid';
+  container.style.gap = '4px';
+
+  const row = document.createElement('div');
+  row.style.display = 'flex';
+  row.style.alignItems = 'center';
+  row.style.gap = '8px';
+
+  const profileImageUrl = withAssetOrigin(store?.storefront_profile_image_url);
+  if (profileImageUrl) {
+    const img = document.createElement('img');
+    img.setAttribute('src', profileImageUrl);
+    img.setAttribute('alt', '');
+    img.style.width = '28px';
+    img.style.height = '28px';
+    img.style.borderRadius = '999px';
+    img.style.objectFit = 'cover';
+    img.style.border = '1px solid #d1d5db';
+    img.onerror = () => {
+      img.remove();
+    };
+    row.appendChild(img);
+  }
+
+  const title = document.createElement('strong');
+  title.textContent = String(store?.location_name || store?.tenant_name || 'Store');
+  row.appendChild(title);
+  container.appendChild(row);
+
+  const address = document.createElement('div');
+  address.textContent = String(store?.address_line || '');
+  container.appendChild(address);
+
+  return container;
+};
+
+const normalizeProfileLocations = (profile = {}) => (
+  (Array.isArray(profile?.active_location_snapshot) ? profile.active_location_snapshot : [])
+    .map((location) => ({
+      location_id: location.location_id ?? null,
+      name: location.name || profile.location_name || 'Main Branch',
+      address_line: location.address_line || profile.address_line || '',
+      latitude: location.latitude ?? profile.latitude ?? null,
+      longitude: location.longitude ?? profile.longitude ?? null,
+      is_open: location.is_open !== false,
+      is_active: location.is_active !== false,
+      is_primary_storefront: location.is_primary_storefront === true,
+      supports_delivery: location.supports_delivery !== false,
+      supports_pickup: location.supports_pickup !== false,
+      supports_dine_in: location.supports_dine_in !== false
+    }))
+    .filter((location) => location.location_id != null)
+);
+
+const locationsMatchProfileSnapshot = (locations = [], profile = {}) => {
+  const profileLocations = normalizeProfileLocations(profile);
+  if (!profileLocations.length) return true;
+  const profilePrimary = profileLocations.find((location) => location.is_primary_storefront) || profileLocations[0];
+  const returnedPrimary = (Array.isArray(locations) ? locations : [])
+    .find((location) => Number(location.location_id) === Number(profilePrimary.location_id));
+  if (!returnedPrimary) return false;
+  return String(returnedPrimary.name || '').trim() === String(profilePrimary.name || '').trim()
+    && String(returnedPrimary.address_line || '').trim() === String(profilePrimary.address_line || '').trim();
+};
+
+const readStoreAuthToken = () => {
+  if (typeof window === 'undefined') return '';
+  const keys = ['dgfy_store_customer_token', 'store_customer_token', 'store_token'];
+  for (const key of keys) {
+    const token = String(window.localStorage.getItem(key) || '').trim();
+    if (token) return token;
+  }
+  return '';
+};
+
+const requestJson = async (url, { method = 'GET', body, storeSlug, authToken = '', cache = 'default', signal } = {}) => {
+  let response;
+  try {
+    const token = String(authToken || '').trim();
+    response = await fetch(withApiOrigin(url), {
+      method,
+      cache,
+      signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(storeSlug ? { 'x-store-slug': storeSlug } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+  } catch (networkError) {
+    if (networkError?.name === 'AbortError') {
+      throw networkError;
+    }
+    throw buildRequestError('Request failed before reaching API. Check server/proxy/CORS connectivity.', {
+      isNetworkError: true,
+      cause: networkError
+    });
+  }
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.success === false) {
+    throw buildRequestError(payload?.message || `Request failed (${response.status})`, {
+      status: response.status,
+      errorCode: payload?.error_code || null,
+      details: payload?.errors || payload?.details || null,
+      requestId: payload?.request_id || null,
+      payload
+    });
+  }
+  return payload?.data ?? payload;
+};
+
+const extractStockViolation = (error) => {
+  const details = error?.details;
+  if (!details) return null;
+
+  if (details?.stock_violation && typeof details.stock_violation === 'object') {
+    return details.stock_violation;
+  }
+
+  if (Array.isArray(details?.stock_violations) && details.stock_violations.length > 0) {
+    return details.stock_violations[0];
+  }
+
+  if (Array.isArray(details)) {
+    return details.find((entry) => entry && typeof entry === 'object' && Number.isFinite(Number(entry.available_stock)) && Number.isFinite(Number(entry.requested_qty))) || null;
+  }
+
+  return null;
+};
+
+const buildStockExceededMessage = (violation = {}) => {
+  const itemName = violation.item_name || 'item';
+  return `${itemName} is currently unavailable at the selected location.`;
+};
+
+const formatStorefrontAddress = (source = {}) => {
+  if (!source || typeof source !== 'object') return '';
+  const firstLine = [
+    source.barangay,
+    source.street_address || source.streetAddress,
+    source.subdivision
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(', ');
+  const secondLine = [
+    source.city,
+    source.state,
+    source.province
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(', ');
+  const formatted = [firstLine, secondLine].filter(Boolean).join(', ');
+  if (formatted) return formatted;
+  return String(source.address_line || source.addressLine || '').trim();
+};
+
+const isItemAvailable = (item = {}) => {
+  if (item?.is_available === true) return true;
+  if (item?.is_available === false) return false;
+  const status = String(item?.availability_status || '').toLowerCase();
+  if (status === 'in_stock' || status === 'bookable') return true;
+  return Number(item?.current_stock || 0) > 0;
+};
+
+const isServiceCatalogItem = (item = {}) => String(item?.category || '').trim().toLowerCase() === 'service';
+
+const downloadDataUrl = (dataUrl, filename) => {
+  const link = document.createElement('a');
+  link.href = dataUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+};
+
+const loadImage = (src) => new Promise((resolve, reject) => {
+  const image = new Image();
+  image.onload = () => resolve(image);
+  image.onerror = reject;
+  image.src = src;
+});
+
+const buildTicketImage = async ({ result = {}, storeName = '', cartLines = [], totals = {} } = {}) => {
+  const booking = result.booking || null;
+  const reference = booking?.public_reference || result.tracking_pin || result.order?.tracking_pin || 'PENDING';
+  const typeLabel = booking ? 'SERVICE TICKET' : 'ORDER RECEIPT';
+  const paymentStatus = booking?.payment_status || result.order?.payment_status || result.payment_status || 'unpaid';
+  const canvas = document.createElement('canvas');
+  canvas.width = 900;
+  canvas.height = 1250;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#0f172a';
+  ctx.font = '700 42px Arial';
+  ctx.fillText(typeLabel, 64, 88);
+  ctx.font = '700 26px Arial';
+  ctx.fillText(storeName || DGFY_BRAND_NAME, 64, 132);
+  ctx.font = '400 22px Arial';
+  ctx.fillStyle = '#475569';
+  ctx.fillText(`Reference: ${reference}`, 64, 182);
+  ctx.fillText(`Payment: ${paymentStatus}`, 64, 218);
+  if (booking?.start_at) ctx.fillText(`Appointment: ${formatTicketDate(booking.start_at)}`, 64, 254);
+  if (booking?.service?.name || booking?.service_name) ctx.fillText(`Service: ${booking.service?.name || booking.service_name}`, 64, 290);
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.beginPath();
+  ctx.moveTo(64, 330);
+  ctx.lineTo(836, 330);
+  ctx.stroke();
+  ctx.fillStyle = '#0f172a';
+  ctx.font = '700 24px Arial';
+  ctx.fillText('Line Items', 64, 382);
+  ctx.font = '400 22px Arial';
+  let y = 426;
+  cartLines.slice(0, 10).forEach((line) => {
+    ctx.fillStyle = '#0f172a';
+    ctx.fillText(`${Number(line.quantity || 1)} x ${line.name}`, 64, y);
+    ctx.fillStyle = '#475569';
+    ctx.fillText(money(Number(line.quantity || 1) * Number(line.price || 0)), 650, y);
+    y += 38;
+  });
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.beginPath();
+  ctx.moveTo(64, y + 8);
+  ctx.lineTo(836, y + 8);
+  ctx.stroke();
+  y += 58;
+  ctx.fillStyle = '#0f172a';
+  ctx.font = '700 28px Arial';
+  ctx.fillText('Total', 64, y);
+  ctx.fillText(money(totals.total_amount || booking?.total_amount || result.order?.total_amount || 0), 650, y);
+  y += 56;
+  ctx.font = '400 20px Arial';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText(booking ? 'Booking ticket - not a fiscal receipt unless marked paid.' : 'Digital order receipt/ticket. Keep this image for your records.', 64, y);
+  const qrPayload = JSON.stringify({ type: booking ? 'service_booking' : 'store_order', reference, store: storeName || '' });
+  const qrDataUrl = await QRCode.toDataURL(qrPayload, { margin: 1, width: 220 });
+  const qrImage = await loadImage(qrDataUrl);
+  ctx.drawImage(qrImage, 340, 900, 220, 220);
+  ctx.font = '700 22px Arial';
+  ctx.fillStyle = '#0f172a';
+  ctx.textAlign = 'center';
+  ctx.fillText(reference, 450, 1156);
+  ctx.textAlign = 'left';
+  return canvas.toDataURL('image/png');
+};
+
+const formatTicketDate = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unscheduled';
+  return date.toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+
+const STOREFRONT_VISITOR_ID_STORAGE_KEY = 'dgfy_storefront_visitor_id';
+const getOrCreateStorefrontVisitorId = () => {
+  if (typeof window === 'undefined') return '';
+  const existing = String(window.localStorage.getItem(STOREFRONT_VISITOR_ID_STORAGE_KEY) || '').trim();
+  if (existing && existing.length >= 16) return existing;
+  const generated = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID().replace(/-/g, '')
+    : `${Date.now()}${Math.random().toString(36).slice(2, 18)}`;
+  window.localStorage.setItem(STOREFRONT_VISITOR_ID_STORAGE_KEY, generated);
+  return generated;
+};
+
+const makePinElement = (mode, selected = false, ariaLabel = 'Store marker') => {
+  const el = document.createElement('div');
+  el.style.cssText = `width:${selected ? 38 : 34}px;height:${selected ? 48 : 44}px;display:flex;align-items:center;justify-content:center;cursor:pointer;`;
+  el.className = 'discovery-result-pin';
+  el.setAttribute('role', 'button');
+  el.setAttribute('tabindex', '0');
+  el.setAttribute('aria-label', ariaLabel);
+  const visual = document.createElement('span');
+  visual.className = `discovery-result-pin-visual${selected ? ' is-glowing' : ''}`;
+  visual.innerHTML = renderBusinessModePinSvg(mode, selected);
+  el.appendChild(visual);
+  return el;
+};
+
+const makeUserLocationElement = () => {
+  const el = document.createElement('div');
+  el.style.cssText = 'width:20px;height:20px;border-radius:999px;background:#1a4e8d;border:3px solid #fff;box-shadow:0 6px 14px rgba(15,23,42,.35);';
+  return el;
+};
+
+function StoresMap({
+  stores,
+  selectedKey,
+  onSelectStore,
+  onOpenStore = null,
+  userLocation = null,
+  height = 360,
+  autoOpenPopups = false,
+  openPopupOnHover = false
+}) {
+  const ref = useRef(null);
+  const mapRef = useRef(null);
+  const markersRef = useRef([]);
+  const popupsRef = useRef([]);
+  const userMarkerRef = useRef(null);
+  const markerElementsRef = useRef([]);
+  const selectedKeyRef = useRef(selectedKey);
+  const onSelectStoreRef = useRef(onSelectStore);
+  const onOpenStoreRef = useRef(onOpenStore);
+  const autoOpenFrameRef = useRef(null);
+  const popupGenerationRef = useRef(0);
+
+  useEffect(() => {
+    onSelectStoreRef.current = onSelectStore;
+  }, [onSelectStore]);
+
+  useEffect(() => {
+    onOpenStoreRef.current = onOpenStore;
+  }, [onOpenStore]);
+
+  const setActiveMarkerElement = useCallback((activeElement = null, activeKey = '') => {
+    const normalizedActiveKey = String(activeKey || '');
+    markerElementsRef.current.forEach((entry) => {
+      if (!entry?.element) return;
+      const entryKeys = Array.isArray(entry.keys) ? entry.keys : [entry.key].filter(Boolean);
+      const isActive = activeElement
+        ? entry.element === activeElement
+        : normalizedActiveKey.length > 0 && entryKeys.some((key) => String(key) === normalizedActiveKey);
+      if (entry.type === 'cluster') {
+        entry.element.classList.toggle('is-selected', isActive);
+        return;
+      }
+      const visual = entry.element.querySelector('.discovery-result-pin-visual');
+      visual?.classList?.toggle('is-glowing', isActive);
+    });
+  }, []);
+
+  useEffect(() => {
+    selectedKeyRef.current = selectedKey;
+    setActiveMarkerElement(null, selectedKey);
+  }, [selectedKey, setActiveMarkerElement]);
+
+  useEffect(() => {
+    if (!ref.current || mapRef.current) return;
+    const map = new maplibregl.Map({
+      container: ref.current,
+      style: TILING_SERVER,
+      transformRequest: tileTransformRequest,
+      center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
+      zoom: 11,
+      bearing: 0,
+      pitch: 0,
+    });
+    mapRef.current = map;
+
+    map.on('error', (e) => console.error('[MapLibre error]', e));
+    map.on('style.load', () => console.log('[MapLibre] style loaded'));
+    map.on('sourcedata', (e) => console.log('[MapLibre] sourcedata', e.sourceId, e.isSourceLoaded));
+    map.on('tileerror', (e) => console.error('[MapLibre] tile error', e));
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return undefined;
+    const generation = popupGenerationRef.current + 1;
+    popupGenerationRef.current = generation;
+    if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
+      window.cancelAnimationFrame(autoOpenFrameRef.current);
+      autoOpenFrameRef.current = null;
+    }
+
+    popupsRef.current.forEach((popup) => {
+      try { popup?.remove?.(); } catch {
+        // Ignore stale MapLibre popup disposal failures during marker refresh.
+      }
+    });
+    popupsRef.current = [];
+    markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
+    markerElementsRef.current = [];
+
+    const rows = Array.isArray(stores) ? stores : [];
+    const uniqueRows = [];
+    const seenMarkerKeys = new Set();
+    rows.forEach((store) => {
+      if (!store) return;
+      const markerKey = getDiscoveryMarkerKey(store);
+      if (!markerKey) {
+        uniqueRows.push(store);
+        return;
+      }
+      if (seenMarkerKeys.has(markerKey)) return;
+      seenMarkerKeys.add(markerKey);
+      uniqueRows.push(store);
+    });
+
+    const groupsByCoordinate = new globalThis.Map();
+    uniqueRows.forEach((store) => {
+      const lat = Number(store?.latitude);
+      const lng = Number(store?.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const key = `${lat.toFixed(6)}:${lng.toFixed(6)}`;
+      if (!groupsByCoordinate.has(key)) {
+        groupsByCoordinate.set(key, { lat, lng, stores: [] });
+      }
+      groupsByCoordinate.get(key).stores.push(store);
+    });
+
+    const markerGroups = Array.from(groupsByCoordinate.values());
+    const bounds = [];
+    const autoOpenCallbacks = [];
+    const popupOffset = { bottom: [0, -50], top: [0, 12], left: [14, 0], right: [-14, 0] };
+    const shouldAutoOpenSingleMapObject = autoOpenPopups && markerGroups.length === 1;
+
+    const registerInteractivePreview = ({ el, popup, previewNode, coordinate, onActivate }) => {
+      let closeTimer = null;
+      let markerHovered = false;
+      let previewHovered = false;
+      let popupOpening = false;
+      let popupPinned = false;
+      const clearCloseTimer = () => {
+        if (closeTimer) {
+          window.clearTimeout(closeTimer);
+          closeTimer = null;
+        }
+      };
+      const openPopup = ({ pinned = false } = {}) => {
+        clearCloseTimer();
+        if (pinned) popupPinned = true;
+        const popupAlreadyOpen = typeof popup.isOpen === 'function' ? popup.isOpen() : false;
+        if (popupGenerationRef.current !== generation || popupOpening || popupAlreadyOpen) return;
+        popupOpening = true;
+        try {
+          if (popupGenerationRef.current !== generation) return;
+          popup.setLngLat(coordinate).addTo(map);
+          if (typeof document !== 'undefined' && previewNode && !previewNode.isConnected) {
+            document.body.appendChild(previewNode);
+          }
+        } finally {
+          popupOpening = false;
+        }
+      };
+      const schedulePopupClose = () => {
+        clearCloseTimer();
+        closeTimer = window.setTimeout(() => {
+          if (popupGenerationRef.current === generation && !popupPinned && !markerHovered && !previewHovered) {
+            popup.remove();
+          }
+        }, 120);
+      };
+      previewNode.addEventListener('mouseenter', () => {
+        previewHovered = true;
+        clearCloseTimer();
+      });
+      previewNode.addEventListener('mouseleave', () => {
+        previewHovered = false;
+        schedulePopupClose();
+      });
+      previewNode.addEventListener('focusin', () => {
+        previewHovered = true;
+        clearCloseTimer();
+      });
+      previewNode.addEventListener('focusout', (event) => {
+        const nextFocused = event.relatedTarget;
+        if (nextFocused && previewNode.contains(nextFocused)) return;
+        previewHovered = false;
+        schedulePopupClose();
+      });
+      previewNode.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          popupPinned = false;
+          popup.remove();
+          el.focus();
+        }
+      });
+      popup.setDOMContent(previewNode);
+      const hoverPreviewEnabled = openPopupOnHover
+        && typeof window !== 'undefined'
+        && window.matchMedia?.('(hover: hover)').matches;
+      const openPopupFromPointer = (event) => {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        setActiveMarkerElement(el);
+        openPopup({ pinned: true });
+        onActivate?.();
+      };
+      el.addEventListener('click', openPopupFromPointer);
+      el.addEventListener('pointerup', openPopupFromPointer);
+      el.addEventListener('touchend', openPopupFromPointer, { passive: false });
+      el.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          setActiveMarkerElement(el);
+          openPopup({ pinned: true });
+          onActivate?.();
+        }
+      });
+      if (hoverPreviewEnabled) {
+        el.addEventListener('mouseenter', () => {
+          markerHovered = true;
+          openPopup();
+        });
+        el.addEventListener('mouseleave', () => {
+          markerHovered = false;
+          schedulePopupClose();
+        });
+        el.addEventListener('focus', () => {
+          markerHovered = true;
+          openPopup();
+        });
+        el.addEventListener('blur', () => {
+          markerHovered = false;
+          schedulePopupClose();
+        });
+      }
+      return {
+        open: () => openPopup({ pinned: true }),
+        close: () => {
+          popupPinned = false;
+          clearCloseTimer();
+          popup.remove();
+        }
+      };
+    };
+
+    const currentSelectedKey = String(selectedKeyRef.current || '');
+    markerGroups.forEach((group) => {
+      const coordinate = [group.lng, group.lat];
+      const groupStores = group.stores;
+      bounds.push(coordinate);
+      if (groupStores.length > 1) {
+        const groupMarkerKeys = groupStores
+          .map((store) => getDiscoveryMarkerKey(store))
+          .filter(Boolean);
+        const selectedInGroup = currentSelectedKey
+          ? groupMarkerKeys.some((key) => key === currentSelectedKey)
+          : false;
+        const label = `${groupStores.length} storefronts at this location`;
+        const el = makeClusterElement(groupStores.length, selectedInGroup, label);
+        markerElementsRef.current.push({ element: el, type: 'cluster', keys: groupMarkerKeys });
+        const popup = new maplibregl.Popup({
+          anchor: 'bottom',
+          offset: popupOffset,
+          closeOnClick: false,
+          focusAfterOpen: false
+        });
+        popupsRef.current.push(popup);
+        let controls = null;
+        const previewNode = createSharedCoordinatePreviewNode(groupStores, {
+          onSelect: (store) => {
+            onSelectStoreRef.current?.(store);
+            controls?.close?.();
+          },
+          onClose: () => controls?.close?.()
+        });
+        controls = registerInteractivePreview({
+          el,
+          popup,
+          previewNode,
+          coordinate
+        });
+        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+          .setLngLat(coordinate)
+          .addTo(map);
+        markersRef.current.push(marker);
+        if (shouldAutoOpenSingleMapObject) {
+          autoOpenCallbacks.push({ key: `${group.lat}:${group.lng}:cluster`, open: controls.open });
+        }
+        return;
+      }
+
+      const store = groupStores[0];
+      const markerKey = getDiscoveryMarkerKey({ ...store, latitude: group.lat, longitude: group.lng });
+      const highlighted = currentSelectedKey
+        ? markerKey === currentSelectedKey
+        : store.is_primary_storefront === true;
+      const branchName = String(store?.location_name || store?.nearest_location_name || 'Branch');
+      const tenantName = String(store?.tenant_name || 'Storefront');
+      const markerAriaLabel = `Preview ${tenantName} at ${branchName}`;
+      const el = makePinElement(store.workflow_mode || store.business_mode, highlighted, markerAriaLabel);
+      markerElementsRef.current.push({ element: el, type: 'pin', key: markerKey });
+      const popup = new maplibregl.Popup({
+        anchor: 'bottom',
+        offset: popupOffset,
+        closeOnClick: false,
+        focusAfterOpen: false
+      });
+      popupsRef.current.push(popup);
+      let controls = null;
+      const previewNode = createStoreMarkerPreviewNode(store, {
+        resolveAssetUrl: withAssetOrigin,
+        onAction: () => onOpenStoreRef.current?.(store),
+        onClose: () => controls?.close?.()
+      });
+      controls = registerInteractivePreview({
+        el,
+        popup,
+        previewNode,
+        coordinate,
+        onActivate: () => onSelectStoreRef.current?.(store)
+      });
+      const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+        .setLngLat(coordinate)
+        .addTo(map);
+      markersRef.current.push(marker);
+      if (shouldAutoOpenSingleMapObject || (currentSelectedKey && markerKey === currentSelectedKey)) {
+        autoOpenCallbacks.push({ key: markerKey, open: controls.open });
+      }
+    });
+
+    if (userMarkerRef.current) {
+      userMarkerRef.current.remove();
+      userMarkerRef.current = null;
+    }
+    if (userLocation?.latitude != null && userLocation?.longitude != null) {
+      const uLat = Number(userLocation.latitude);
+      const uLng = Number(userLocation.longitude);
+      if (Number.isFinite(uLat) && Number.isFinite(uLng)) {
+        const el = makeUserLocationElement();
+        userMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'center' })
+          .setLngLat([uLng, uLat])
+          .setPopup(new maplibregl.Popup({ offset: 25 }).setHTML('<strong>Your location</strong>'))
+          .addTo(map);
+      }
+    }
+
+    if (bounds.length === 1) {
+      map.flyTo({
+        center: bounds[0],
+        zoom: autoOpenPopups ? 15 : 14,
+        offset: autoOpenPopups ? [0, 80] : [0, 0]
+      });
+    }
+    if (bounds.length > 1) {
+      const lngs = bounds.map((b) => b[0]);
+      const lats = bounds.map((b) => b[1]);
+      map.fitBounds(
+        [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+        {
+          padding: autoOpenPopups
+            ? { top: 96, right: 64, bottom: 64, left: 64 }
+            : 32,
+          maxZoom: autoOpenPopups ? 14 : 13.5
+        }
+      );
+    }
+    if (autoOpenCallbacks.length > 0 && typeof window !== 'undefined') {
+      autoOpenFrameRef.current = window.requestAnimationFrame(() => {
+        autoOpenFrameRef.current = null;
+        if (popupGenerationRef.current !== generation) return;
+        autoOpenCallbacks.slice(0, 1).forEach((entry) => entry?.open?.());
+      });
+    }
+    return () => {
+      if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
+        window.cancelAnimationFrame(autoOpenFrameRef.current);
+        autoOpenFrameRef.current = null;
+      }
+    };
+  }, [stores, userLocation, autoOpenPopups, openPopupOnHover, setActiveMarkerElement]);
+
+  return <div ref={ref} style={{ height, border: '1px solid #d6e2e8', borderRadius: 24, overflow: 'hidden' }} />;
+}
+
+function DeliveryPinMap({ pin = null, onPinChange, disabled = false }) {
+  const ref = useRef(null);
+  const mapRef = useRef(null);
+  const markerRef = useRef(null);
+
+  useEffect(() => {
+    if (!ref.current || mapRef.current) return undefined;
+    const map = new maplibregl.Map({
+      container: ref.current,
+      style: TILING_SERVER,
+      transformRequest: tileTransformRequest,
+      center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
+      zoom: 13
+    });
+    map.getCanvas().style.zIndex = '0';
+    map.on('error', (e) => console.error('[DeliveryPinMap] MapLibre error', e));
+    mapRef.current = map;
+    return () => {
+      if (markerRef.current) {
+        markerRef.current.remove();
+        markerRef.current = null;
+      }
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (markerRef.current) {
+      markerRef.current.remove();
+      markerRef.current = null;
+    }
+
+    if (pin?.latitude != null && pin?.longitude != null) {
+      const lat = Number(pin.latitude);
+      const lng = Number(pin.longitude);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        const el = makeUserLocationElement();
+        markerRef.current = new maplibregl.Marker({ element: el })
+          .setLngLat([lng, lat])
+          .addTo(map);
+        map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 15) });
+      }
+    }
+  }, [pin]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (disabled) return undefined;
+
+    const handleClick = (event) => {
+      const lat = Number(event?.lngLat?.lat);
+      const lng = Number(event?.lngLat?.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      onPinChange?.({
+        latitude: Number(lat.toFixed(6)),
+        longitude: Number(lng.toFixed(6))
+      });
+    };
+
+    map.on('click', handleClick);
+    return () => map.off('click', handleClick);
+  }, [disabled, onPinChange]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return undefined;
+    const timer = setTimeout(() => map.resize(), 120);
+    return () => clearTimeout(timer);
+  }, [disabled]);
+
+  return (
+    <div style={{ position: 'relative', marginBottom: 10, width: '100%', maxWidth: '100%', aspectRatio: '16 / 10', minHeight: 260, overflow: 'hidden', border: '1px solid #cbd5e1', borderRadius: 12, isolation: 'isolate', zIndex: 0 }}>
+      <div ref={ref} style={{ height: '100%', width: '100%' }} />
+      {disabled && (
+        <div style={{ position: 'absolute', inset: 0, borderRadius: 10, background: 'rgba(255,255,255,.6)' }} />
+      )}
+    </div>
+  );
+}
+
+function StoreCatalogEmptyState({ mode = 'setup_pending', searchQuery = '', onRefreshTenantPage }) {
+  const normalizedMode = String(mode || 'setup_pending').trim().toLowerCase();
+  const title = normalizedMode === 'search_on_empty'
+    ? 'No items are available to search yet'
+    : 'Storefront items are not set up yet';
+  const description = normalizedMode === 'search_on_empty'
+    ? `No catalog is published for this tenant yet, so search for "${searchQuery}" cannot return results.`
+    : 'This tenant has not configured any storefront-visible items yet. Ask the tenant admin to enable items for storefront selling.';
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        border: '1px solid #cbd5e1',
+        borderRadius: 14,
+        background: 'linear-gradient(180deg,#f8fafc 0%,#ffffff 100%)',
+        padding: 16
+      }}
+    >
+      <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{title}</div>
+      <p style={{ margin: '8px 0 0 0', color: '#475569', fontSize: 14 }}>{description}</p>
+      <div style={{ marginTop: 10, fontSize: 13, color: '#0f766e', fontWeight: 700 }}>
+        Customer checkout will be available once at least one storefront item is enabled.
+      </div>
+      <div style={{ marginTop: 12 }}>
+        <button
+          type="button"
+          onClick={onRefreshTenantPage}
+          style={{ borderRadius: 10, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 700 }}
+        >
+          Check Again
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const STYLES = {
+  colors: {
+    brand: '#ea580c',
+    brandDark: '#c2410c',
+    brandLight: '#fff7ed',
+    teal: '#0f766e',
+    tealLight: '#ecfeff',
+    amber: '#f59e0b',
+    dark: '#0f172a',
+    text: '#334155',
+    muted: '#64748b',
+    border: '#e2e8f0',
+    bg: '#f8fafc'
+  },
+  radius: { card: '24px', input: '14px', button: '12px' },
+  shadow: { sm: '0 4px 12px rgba(15,23,42,0.04)', md: '0 12px 34px rgba(15,23,42,0.08)', lg: '0 24px 58px rgba(15,23,42,0.12)' },
+  fonts: {
+    body: '"Open Sans", "Segoe UI", system-ui, sans-serif',
+    heading: '"Inter", "Open Sans", "Segoe UI", system-ui, sans-serif',
+    main: '"Open Sans", "Segoe UI", system-ui, sans-serif'
+  }
+};
+
+const Badge = ({ children, background, color, border, style }) => (
+  <span style={{
+    display: 'inline-flex', alignItems: 'center', padding: '6px 12px',
+    borderRadius: 99, fontSize: 11, fontWeight: 800, letterSpacing: '0.04em',
+    textTransform: 'uppercase', background: background || STYLES.colors.tealLight,
+    color: color || STYLES.colors.teal, border: `1px solid ${border || 'transparent'}`,
+    ...style
+  }}>
+    {children}
+  </span>
+);
+
+const PrimaryButton = ({ children, onClick, disabled, style }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    style={{
+      background: disabled ? STYLES.colors.border : `linear-gradient(135deg, ${STYLES.colors.brand}, ${STYLES.colors.brandDark})`,
+      color: '#fff', border: 'none', borderRadius: STYLES.radius.button,
+      padding: '12px 24px', fontSize: 14, fontWeight: 800, cursor: disabled ? 'not-allowed' : 'pointer',
+      boxShadow: disabled ? 'none' : '0 10px 24px rgba(234,88,12,0.2)', transition: 'all 0.2s ease',
+      ...style
+    }}
+  >
+    {children}
+  </button>
+);
+
+const GhostButton = ({ children, onClick, disabled, style }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    style={{
+      background: '#fff', color: STYLES.colors.dark, border: `1px solid ${STYLES.colors.border}`,
+      borderRadius: STYLES.radius.button, padding: '12px 24px', fontSize: 14, fontWeight: 700,
+      cursor: disabled ? 'not-allowed' : 'pointer', transition: 'all 0.2s ease',
+      ...style
+    }}
+  >
+    {children}
+  </button>
+);
+
+const HERO_CANVAS_MAX_WIDTH = 1320;
+const DGFY_HEADER_LOGO_URL = dgfyHeaderLogo;
+const DGFY_LOGO_ICON_URL = dgfySymbolLogo;
+
+const StorefrontHeroShell = ({
+  fullBleed = false,
+  sectionStyle = {},
+  backgroundChildren = null,
+  children,
+  outerStyle = {}
+}) => (
+  <div
+    style={{
+      position: 'relative',
+      ...(fullBleed
+        ? { width: '100vw', marginLeft: 'calc(50% - 50vw)' }
+        : { width: '100%' }),
+      ...outerStyle
+    }}
+  >
+    <section
+      style={{
+        position: 'relative',
+        overflow: 'hidden',
+        ...sectionStyle
+      }}
+    >
+      {backgroundChildren}
+      {children}
+    </section>
+  </div>
+);
+
+const StorefrontShareQr = ({
+  storeUrl,
+  isMobileViewport,
+  accentColor = '#f97316'
+}) => {
+  const [qrImageUrl, setQrImageUrl] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    if (!storeUrl) {
+      setQrImageUrl('');
+      return undefined;
+    }
+    QRCode.toDataURL(storeUrl, {
+      margin: 1,
+      width: isMobileViewport ? 88 : 112,
+      errorCorrectionLevel: 'H',
+      color: {
+        dark: '#0f172a',
+        light: '#ffffff'
+      }
+    })
+      .then((url) => {
+        if (active) setQrImageUrl(url);
+      })
+      .catch(() => {
+        if (active) setQrImageUrl('');
+      });
+    return () => {
+      active = false;
+    };
+  }, [isMobileViewport, storeUrl]);
+
+  const copyStoreUrl = useCallback(async () => {
+    if (!storeUrl) return;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(storeUrl);
+        toast.success('Storefront link copied.');
+        return;
+      }
+      throw new Error('Clipboard unavailable');
+    } catch {
+      toast.info(storeUrl);
+    }
+  }, [storeUrl]);
+
+  const shareStoreUrl = useCallback(async () => {
+    if (!storeUrl) return;
+    const payload = {
+      title: 'Storefront',
+      text: 'Open this storefront',
+      url: storeUrl
+    };
+    try {
+      if (navigator?.share) {
+        await navigator.share(payload);
+        return;
+      }
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(storeUrl);
+        toast.success('Storefront link copied.');
+        return;
+      }
+      throw new Error('Share unavailable');
+    } catch {
+      if (navigator?.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(storeUrl);
+          toast.success('Storefront link copied.');
+          return;
+        } catch {
+          // Fall through.
+        }
+      }
+      toast.info(storeUrl);
+    }
+  }, [storeUrl]);
+
+  if (!qrImageUrl) return null;
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: isMobileViewport ? 48 : 22,
+        left: isMobileViewport ? '50%' : 'auto',
+        right: isMobileViewport ? 'auto' : `max(41px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 41px))`,
+        transform: isMobileViewport ? 'translateX(-50%)' : 'none',
+        zIndex: 14,
+        display: 'grid',
+        gap: 8
+      }}
+    >
+      <button
+        type="button"
+        onClick={copyStoreUrl}
+        style={{
+          position: 'relative',
+          width: isMobileViewport ? 90 : 116,
+          height: isMobileViewport ? 90 : 116,
+          borderRadius: 22,
+          border: '1px solid rgba(255,255,255,0.24)',
+          background: 'rgba(255,255,255,0.96)',
+          boxShadow: '0 18px 42px rgba(15, 23, 42, 0.18)',
+          backdropFilter: 'blur(10px)',
+          padding: 10,
+          cursor: 'pointer'
+        }}
+        aria-label="Copy storefront link"
+        title="Copy storefront link"
+      >
+        <img
+          src={qrImageUrl}
+          alt="Storefront QR code"
+          style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', borderRadius: 14 }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'grid',
+            placeItems: 'center',
+            pointerEvents: 'none'
+          }}
+        >
+          <div
+            style={{
+              width: isMobileViewport ? 24 : 30,
+              height: isMobileViewport ? 24 : 30,
+              borderRadius: 10,
+              background: 'rgba(255,255,255,0.92)',
+              border: '1px solid rgba(15,23,42,0.08)',
+              display: 'grid',
+              placeItems: 'center',
+              boxShadow: '0 8px 16px rgba(15, 23, 42, 0.12)'
+            }}
+          >
+            <img
+              src={DGFY_LOGO_ICON_URL}
+              alt=""
+              style={{ width: isMobileViewport ? 16 : 20, height: isMobileViewport ? 16 : 20, objectFit: 'contain', opacity: 0.96 }}
+            />
+          </div>
+        </div>
+      </button>
+
+      <button
+        type="button"
+        onClick={shareStoreUrl}
+        style={{
+          position: 'absolute',
+          right: -6,
+          bottom: -6,
+          width: isMobileViewport ? 32 : 36,
+          height: isMobileViewport ? 32 : 36,
+          borderRadius: 999,
+          border: 'none',
+          background: accentColor,
+          color: '#ffffff',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 10px 24px rgba(15, 23, 42, 0.24)',
+          cursor: 'pointer'
+        }}
+        aria-label="Share storefront"
+        title="Share storefront"
+      >
+        <Share2 size={16} />
+      </button>
+    </div>
+  );
+};
+
+const DefaultStorefrontHero = ({
+  modeAdapter,
+  selectedStore,
+  isMobileViewport,
+  handleShareAction,
+  setIsCheckoutOpen
+}) => {
+  const heroTheme = modeAdapter.heroTheme || {};
+  return (
+    <StorefrontHeroShell
+      sectionStyle={{
+        background: STYLES.colors.dark,
+        borderRadius: STYLES.radius.card,
+        padding: isMobileViewport ? 24 : 48,
+        marginBottom: 24,
+        color: '#fff',
+        boxShadow: STYLES.shadow.lg
+      }}
+      backgroundChildren={<div style={{ position: 'absolute', top: 0, right: 0, width: '40%', height: '100%', background: `linear-gradient(225deg, ${STYLES.colors.brand}22, transparent)`, pointerEvents: 'none' }} />}
+    >
+      <div style={{ position: 'relative', zIndex: 1, maxWidth: 800 }}>
+        <Badge style={{ marginBottom: 16 }}>{modeAdapter.heroEyebrow}</Badge>
+        <h1 style={{ margin: 0, fontSize: isMobileViewport ? 32 : 56, fontWeight: 900, lineHeight: 1.1, letterSpacing: '-0.04em', fontFamily: heroTheme.displayFont }}>{selectedStore?.tenant_name || 'Loading Storefront...'}</h1>
+        <p style={{ margin: '16px 0 0 0', fontSize: isMobileViewport ? 16 : 20, opacity: 0.8, lineHeight: 1.5, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
+        <div style={{ marginTop: 32, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <PrimaryButton onClick={() => setIsCheckoutOpen(true)}>{modeAdapter.primaryActionLabel}</PrimaryButton>
+          <GhostButton style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }} onClick={handleShareAction}>Share Storefront</GhostButton>
+        </div>
+      </div>
+    </StorefrontHeroShell>
+  );
+};
+
+const buildFnbFallbackReasons = ({ fnbViewModel = null, categories = [] } = {}) => {
+  const reasons = [];
+  if (Array.isArray(categories) && categories.length > 0) {
+    reasons.push(...categories.slice(0, 2));
+  }
+  const menuSections = Array.isArray(fnbViewModel?.menuSections) ? fnbViewModel.menuSections : [];
+  menuSections.slice(0, 2).forEach((section) => {
+    const count = Number(section?.items?.length || 0);
+    if (count > 0) {
+      reasons.push(`${section.sectionLabel || 'Menu'} favorites (${count})`);
+    }
+  });
+  const beverageCount = Number(fnbViewModel?.beverageCount || 0);
+  if (beverageCount > 0) {
+    reasons.push(`${beverageCount} drinks ready to serve`);
+  }
+  const readyNowCount = Number(fnbViewModel?.readyNowCount || 0);
+  if (readyNowCount > 0) {
+    reasons.push(`${readyNowCount} items available now`);
+  }
+  return [...new Set(reasons.map((entry) => String(entry || '').trim()).filter(Boolean))].slice(0, 4);
+};
+
+const FnbHero = ({
+  modeAdapter,
+  heroSectionModel,
+  fnbViewModel,
+  selectedStore,
+  isMobileViewport,
+  cartCount,
+  setIsCheckoutOpen,
+  goDiscovery,
+  hasMultipleStoreBranches,
+  hasSelectedBranchFromMenu,
+  selectedLocationId,
+  handleBranchMenuSelection,
+  storeLocations,
+  catalogSearch,
+  setCatalogSearch,
+  isBrandingImageBlocked,
+  markBrandingImageError,
+  selectedLocation,
+  openStorefrontActionLink,
+  openTrackPanel,
+  openAccountPanel
+}) => {
+  const heroTheme = modeAdapter.heroTheme || {};
+  const addressText = String(heroSectionModel.addressLine || heroSectionModel.locationLabel || '').trim();
+  const galleryImages = Array.isArray(heroSectionModel.galleryPreview) ? heroSectionModel.galleryPreview.filter(Boolean) : [];
+  const aboutText = String(heroSectionModel.aboutText || '').trim();
+  const hasAboutToggle = aboutText.length > 180;
+  const hasAddress = Boolean(addressText);
+  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
+    && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
+  const whyChooseUs = Array.isArray(heroSectionModel.whyChooseUs) && heroSectionModel.whyChooseUs.length > 0
+    ? heroSectionModel.whyChooseUs
+    : buildFnbFallbackReasons({
+        fnbViewModel,
+        categories: [heroSectionModel.primaryCategoryLabel, heroSectionModel.locationSummary]
+      });
+  const hasWhyChooseUs = whyChooseUs.length > 0;
+  const hasContactRows = heroSectionModel.contactRows.length > 0
+    || Boolean(heroSectionModel.facebookLink)
+    || Boolean(heroSectionModel.hours)
+    || hasAddress;
+  const desktopColumns = hasWhyChooseUs ? '1fr 1.45fr 1fr' : '1fr 1.45fr';
+  const searchPlaceholder = modeAdapter.catalogSearchPlaceholder || 'Search meals, drinks, desserts, or combo items...';
+  const orderLabel = cartCount > 0 ? 'Open Cart' : (heroSectionModel.actions?.orderLabel || 'Browse Menu');
+  const profileImageKey = `hero-profile:${selectedStore.slug}`;
+  const mapStores = storeLocations.length > 0
+    ? storeLocations.map((location) => ({
+        ...location,
+        tenant_name: selectedStore?.tenant_name
+      }))
+    : [selectedStore];
+  const mapSelectedKey = selectedLocationId != null ? `loc-${selectedLocationId}` : `tenant-${selectedStore?.tenant_id || selectedStore?.slug || 'store'}`;
+  const storefrontShareUrl = selectedStore?.slug ? buildPublicStorefrontUrl(selectedStore.slug) : '';
+
+  return (
+    <section style={{ marginBottom: 40 }}>
+      <div style={{
+        background: '#ffffff',
+        borderRadius: 0,
+        borderBottom: '1px solid #e2e8f0',
+        boxShadow: '0 6px 18px rgba(15,23,42,.05)',
+        marginBottom: 0,
+        width: '100vw',
+        marginLeft: 'calc(50% - 50vw)'
+      }}>
+        <div style={{
+          maxWidth: HERO_CANVAS_MAX_WIDTH,
+          margin: '0 auto',
+          padding: isMobileViewport ? '12px 16px' : '14px 24px',
+          display: 'flex',
+          alignItems: isMobileViewport ? 'stretch' : 'center',
+          gap: 16,
+          flexDirection: isMobileViewport ? 'column' : 'row'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: isMobileViewport ? '0 0 auto' : '0 1 180px' }}>
+            <button type="button" onClick={goDiscovery} style={{ border: 'none', background: '#f8fafc', color: STYLES.colors.dark, width: 44, height: 44, borderRadius: 999, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <ArrowLeft size={18} />
+            </button>
+            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <img
+                src={DGFY_HEADER_LOGO_URL}
+                alt="DGFY logo"
+                style={{ height: 28, width: 'auto', display: 'block' }}
+              />
+            </div>
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #dbe5ee', borderRadius: 999, background: '#f8fafc', padding: isMobileViewport ? '0 10px 0 16px' : '0 10px 0 14px', minHeight: isMobileViewport ? 46 : 40, width: '100%', maxWidth: isMobileViewport ? '100%' : 420, flex: isMobileViewport ? '0 0 auto' : '0 1 420px', minWidth: isMobileViewport ? 0 : 260, margin: isMobileViewport ? 0 : '0 auto' }}>
+            <input
+              value={catalogSearch}
+              onChange={(event) => setCatalogSearch(event.target.value)}
+              placeholder={searchPlaceholder}
+              style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, fontSize: 14, color: STYLES.colors.text, fontFamily: heroTheme.bodyFont }}
+            />
+            <span style={{ width: isMobileViewport ? 32 : 28, height: isMobileViewport ? 32 : 28, borderRadius: 999, background: heroTheme.accent || STYLES.colors.brand, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Search size={16} />
+            </span>
+          </label>
+
+          <div style={{ display: 'flex', justifyContent: isMobileViewport ? 'space-between' : 'flex-end', alignItems: 'center', gap: 18, flexWrap: 'nowrap', minWidth: 0, whiteSpace: 'nowrap', marginLeft: isMobileViewport ? 0 : 'auto', flex: '0 1 auto' }}>
+            {hasMultipleStoreBranches && (
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: hasSelectedBranchFromMenu ? 6 : 8, color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: heroTheme.bodyFont, minWidth: 0, maxWidth: isMobileViewport ? 196 : 236, flex: '0 1 236px' }}>
+                <MapPin size={16} />
+                {!hasSelectedBranchFromMenu && <span>Branch:</span>}
+                <StorefrontDropdown
+                  value={selectedLocationId ?? ''}
+                  onChange={handleBranchMenuSelection}
+                  options={storeLocations.map((location) => ({
+                    value: location.location_id,
+                    label: location.name || location.address_line || `Branch ${location.location_id}`
+                  }))}
+                  triggerStyle={{
+                    minHeight: 34,
+                    border: 'none',
+                    background: 'transparent',
+                    boxShadow: 'none',
+                    padding: '4px 34px 4px 2px',
+                    fontFamily: heroTheme.bodyFont
+                  }}
+                  containerStyle={{ minWidth: 0, flex: '1 1 auto' }}
+                  menuStyle={{ minWidth: 240 }}
+                  selectedLabelStyle={{ fontSize: 14, fontWeight: 700 }}
+                />
+              </label>
+            )}
+            <button
+              type="button"
+              onClick={() => document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: heroTheme.bodyFont }}
+            >
+              <ShoppingBag size={16} />
+              Shop
+            </button>
+            <button
+              type="button"
+              onClick={openTrackPanel}
+              style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: heroTheme.bodyFont }}
+            >
+              <FileText size={16} />
+              Track
+            </button>
+            <button
+              type="button"
+              onClick={openAccountPanel}
+              style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: heroTheme.bodyFont }}
+            >
+              <HeartHandshake size={16} />
+              Account
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <StorefrontHeroShell
+        fullBleed
+        sectionStyle={{
+          minHeight: isMobileViewport ? 290 : 316,
+          borderRadius: 0,
+          overflow: 'visible',
+          background: heroSectionModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`)
+            ? `url(${heroSectionModel.coverImageUrl}) center/cover`
+            : `linear-gradient(135deg, ${heroTheme.surface || '#172033'} 0%, #22324b 50%, #40516c 100%)`,
+          boxShadow: STYLES.shadow.lg
+        }}
+        backgroundChildren={
+          <>
+            {heroSectionModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`) && (
+              <img
+                src={heroSectionModel.coverImageUrl}
+                alt=""
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={() => markBrandingImageError(`hero-cover:${selectedStore.slug}`)}
+              />
+            )}
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0.22) 0%, rgba(15,23,42,0.72) 76%, rgba(15,23,42,0.92) 100%)' }} />
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(6,10,18,0.68) 0%, rgba(6,10,18,0.36) 46%, rgba(6,10,18,0.1) 100%)' }} />
+          </>
+        }
+      >
+        <StorefrontShareQr
+          storeUrl={storefrontShareUrl}
+          isMobileViewport={isMobileViewport}
+          accentColor={heroTheme.accent || '#f97316'}
+        />
+        <div style={{
+          position: 'absolute',
+          left: isMobileViewport ? 20 : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
+          right: isMobileViewport ? 20 : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
+          bottom: isMobileViewport ? -45 : -25,
+          zIndex: 10,
+          display: 'flex',
+          alignItems: 'center',
+          gap: isMobileViewport ? 16 : 28,
+          paddingLeft: isMobileViewport ? 126 : 218
+        }}>
+          <div style={{ display: 'grid', gap: 12, maxWidth: 700, minWidth: 0, flex: 1, marginBottom: isMobileViewport ? 8 : 35 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff" style={{ fontFamily: heroTheme.bodyFont }}>{heroSectionModel.statusLabel}</Badge>
+              {Number.isFinite(Number(fnbViewModel.startingPrice)) && (
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#fde68a', fontFamily: heroTheme.bodyFont }}>
+                  Starts at {money(fnbViewModel.startingPrice)}
+                </span>
+              )}
+              {heroSectionModel.hours && (
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.82)', fontFamily: heroTheme.bodyFont }}>{heroSectionModel.hours}</span>
+              )}
+            </div>
+            <div style={{ display: 'grid', gap: 8, maxWidth: 760 }}>
+              <h1 style={{ margin: 0, color: '#fff', fontSize: isMobileViewport ? 38 : 50, fontWeight: 900, lineHeight: 1.05, letterSpacing: '-0.03em', fontFamily: heroTheme.displayFont }}>{heroSectionModel.name}</h1>
+              {heroSectionModel.tagline ? (
+                <p style={{ margin: 0, color: '#fbbf24', fontSize: isMobileViewport ? 18 : 20, fontWeight: 700, lineHeight: 1.3, fontFamily: heroTheme.bodyFont }}>{heroSectionModel.tagline}</p>
+              ) : (
+                <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: 16, maxWidth: 620, lineHeight: 1.6, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, color: '#fff', fontSize: 14, fontWeight: 600, opacity: 0.95, marginBottom: 6, fontFamily: heroTheme.bodyFont }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Star size={16} fill="#fbbf24" color="#fbbf24" />{heroSectionModel.ratingLabel || 'Fresh menu'}</span>
+              <span style={{ opacity: 0.5 }}>|</span>
+              <span>{heroSectionModel.modeLabel}</span>
+              <span style={{ opacity: 0.5 }}>|</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><MapPin size={16} />{heroSectionModel.locationLabel}</span>
+            </div>
+          </div>
+
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            flexDirection: isMobileViewport ? 'column' : 'row',
+            flexShrink: 0,
+            marginLeft: 'auto',
+            marginBottom: isMobileViewport ? 8 : 35
+          }}>
+            {heroSectionModel.actions?.canCall && (
+              <GhostButton onClick={() => openStorefrontActionLink(heroSectionModel.actions.callHref)} style={{ minWidth: isMobileViewport ? '100%' : 110, background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(12px)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, fontFamily: heroTheme.bodyFont }}>
+                <Phone size={18} />
+                Call
+              </GhostButton>
+            )}
+            <PrimaryButton onClick={() => {
+              if (cartCount > 0) {
+                setIsCheckoutOpen(true);
+                return;
+              }
+              document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }} style={{ minWidth: isMobileViewport ? '100%' : 150, background: heroTheme.accent || '#f97316', color: '#000', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: '0 10px 25px rgba(249,115,22,0.3)', border: 'none', fontWeight: 900, fontFamily: heroTheme.bodyFont }}>
+              <MousePointer2 size={18} />
+              {orderLabel}
+            </PrimaryButton>
+          </div>
+        </div>
+
+        <div style={{
+          position: 'absolute',
+          left: isMobileViewport ? '20px' : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
+          bottom: isMobileViewport ? '-45px' : '-25px',
+          width: isMobileViewport ? 110 : 190,
+          height: isMobileViewport ? 110 : 190,
+          borderRadius: '50%',
+          background: '#fff',
+          border: '3px solid #fff',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+          overflow: 'hidden',
+          zIndex: 20,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          {heroSectionModel.profileImageUrl && !isBrandingImageBlocked(profileImageKey) ? (
+            <img
+              src={heroSectionModel.profileImageUrl}
+              alt={`${heroSectionModel.name} profile`}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              onError={() => markBrandingImageError(profileImageKey)}
+            />
+          ) : (
+            <div style={{ fontSize: isMobileViewport ? 52 : 66, fontWeight: 900, color: heroTheme.accentDark || STYLES.colors.brandDark, fontFamily: heroTheme.displayFont }}>{heroSectionModel.name.charAt(0)}</div>
+          )}
+        </div>
+      </StorefrontHeroShell>
+
+      <div style={{
+        maxWidth: 1180,
+        margin: isMobileViewport ? '40px 16px 32px' : '70px auto 40px',
+        padding: isMobileViewport ? 18 : 24,
+        background: '#ffffff',
+        border: '1px solid #e5e7eb',
+        borderRadius: 18,
+        boxShadow: '0 14px 35px rgba(15, 23, 42, 0.08)',
+        display: 'grid',
+        gridTemplateColumns: isMobileViewport ? '1fr' : desktopColumns,
+        gap: isMobileViewport ? 24 : 24
+      }}>
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: heroTheme.bodyFont }}>Overview</div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <p style={{
+              fontSize: 13,
+              lineHeight: 1.55,
+              color: '#111827',
+              margin: 0,
+              display: '-webkit-box',
+              WebkitLineClamp: hasAboutToggle ? 3 : 'unset',
+              WebkitBoxOrient: 'vertical',
+              overflow: hasAboutToggle ? 'hidden' : 'visible',
+              fontFamily: heroTheme.bodyFont
+            }}>
+              {aboutText || 'This menu storefront is connected to live SKUpervisor product data and the food and beverage backend.'}
+            </p>
+          </div>
+
+          {galleryImages.length > 0 && (
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ display: isMobileViewport ? 'flex' : 'grid', gridTemplateColumns: isMobileViewport ? undefined : 'repeat(4, 1fr)', gap: 8, marginTop: 2, overflowX: isMobileViewport ? 'auto' : 'visible', paddingBottom: isMobileViewport ? 4 : 0 }}>
+                {galleryImages.slice(0, 4).map((url, index) => (
+                  <div key={`${url}-${index}`} style={{ width: isMobileViewport ? 84 : '100%', minWidth: isMobileViewport ? 84 : 0, height: 56, borderRadius: 8, overflow: 'hidden', position: 'relative', background: '#e2e8f0', flexShrink: 0 }}>
+                    <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'grid', gap: 12, paddingLeft: isMobileViewport ? 0 : 24, borderLeft: isMobileViewport ? 'none' : '1px solid #e5e7eb' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: heroTheme.bodyFont }}>Contact & Location</div>
+          <div style={{ display: 'grid', gridTemplateColumns: hasMapData && !isMobileViewport ? '0.9fr 1.1fr' : '1fr', gap: 18, alignItems: 'start' }}>
+            {hasContactRows && (
+              <div style={{ display: 'grid', gap: 10 }}>
+                {heroSectionModel.contactRows.map((row) => {
+                  const icon = row.label === 'Call' || row.label === 'Phone'
+                    ? <Phone size={16} />
+                    : row.label === 'Message'
+                      ? <MessageCircle size={16} />
+                      : row.label === 'Facebook'
+                        ? <MessageCircle size={16} />
+                        : row.label === 'Email'
+                          ? <Mail size={16} />
+                          : <Clock3 size={16} />;
+                  const content = (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827', fontFamily: heroTheme.bodyFont }}>
+                      <div style={{ color: heroTheme.accentDark || STYLES.colors.brandDark, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{icon}</div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', wordBreak: 'break-word' }}>{row.value}</div>
+                      </div>
+                    </div>
+                  );
+                  return row.href ? (
+                    <button key={row.label} type="button" onClick={() => openStorefrontActionLink(row.href)} style={{ padding: 0, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer' }}>
+                      {content}
+                    </button>
+                  ) : (
+                    <div key={row.label}>{content}</div>
+                  );
+                })}
+
+                {heroSectionModel.hours && !heroSectionModel.contactRows.some((row) => row.label === 'Hours') && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827', fontFamily: heroTheme.bodyFont }}>
+                    <div style={{ color: STYLES.colors.teal, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Clock3 size={16} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{heroSectionModel.hours}</div>
+                    </div>
+                  </div>
+                )}
+
+                {hasAddress && (
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#111827', fontFamily: heroTheme.bodyFont }}>
+                      <div style={{ color: '#1a4e8d', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <MapPin size={16} />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{addressText}</div>
+                      </div>
+                    </div>
+                    {selectedStore?.latitude && selectedStore?.longitude && (
+                      <button type="button" onClick={() => openStorefrontActionLink(buildGoogleMapsDirectionsUrl({ latitude: selectedLocation?.latitude ?? selectedStore?.latitude, longitude: selectedLocation?.longitude ?? selectedStore?.longitude, addressLine: addressText }))} style={{ padding: 0, border: 'none', background: 'transparent', color: heroTheme.accent || STYLES.colors.brand, fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start', fontFamily: heroTheme.bodyFont }}>
+                        Get directions
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {hasMapData && (
+              <div style={{ width: '100%', height: 150, borderRadius: 14, overflow: 'hidden', border: '1px solid #e5e7eb', background: '#f8fafc' }}>
+                <StoresMap stores={mapStores} selectedKey={mapSelectedKey} onSelectStore={() => { }} />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {hasWhyChooseUs && (
+          <div style={{ display: 'grid', gap: 12, paddingLeft: isMobileViewport ? 0 : 24, borderLeft: isMobileViewport ? 'none' : '1px solid #e5e7eb' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: heroTheme.bodyFont }}>Why Choose Us</div>
+            <div style={{ display: 'grid', gap: 12 }}>
+              {whyChooseUs.map((item, index) => (
+                <div key={`${item}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#111827', lineHeight: 1.4, fontFamily: heroTheme.bodyFont }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 999, background: heroTheme.accentSoft || '#fff7ed', color: heroTheme.accent || '#f97316', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Sparkles size={14} />
+                  </div>
+                  <div>{item}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+};
+
+const FnbProductCard = ({
+  item,
+  imageUrl,
+  available,
+  modeAdapter,
+  addToCart,
+  isMobileViewport
+}) => {
+  const heroTheme = modeAdapter.heroTheme || {};
+  const sectionVisualMeta = item.sectionVisualMeta || {};
+  const accent = heroTheme.accent || '#c96a2b';
+  const accentSoft = sectionVisualMeta.accentSoft || heroTheme.accentSoft || '#fff7ed';
+  const accentDeep = heroTheme.accentDark || '#7c2d12';
+  const cardSurface = '#ffffff';
+  const cardSurfaceInset = heroTheme.surfaceMuted || '#fff8f0';
+  const cardBorder = heroTheme.borderSoft || '#edd4bc';
+  const cardTextPrimary = heroTheme.textPrimary || '#2f1f16';
+  const cardTextMuted = heroTheme.textMuted || '#7c6757';
+  const buttonTextOnAccent = heroTheme.buttonTextOnAccent || '#fffdf9';
+  const CategoryIcon = FNB_CATEGORY_ICON_MAP[sectionVisualMeta.iconToken] || Sparkles;
+  const [isHovered, setIsHovered] = useState(false);
+  const [isDetailsHovered, setIsDetailsHovered] = useState(false);
+  const [isCartHovered, setIsCartHovered] = useState(false);
+  const detailsCopy = item.descriptionPreview || 'Menu item available in this storefront.';
+  const cardUiFont = heroTheme.bodyFont || "'Trebuchet MS', 'Segoe UI', sans-serif";
+  const cardTitleFont = heroTheme.menuTitleFont || heroTheme.displayFont || "'Palatino Linotype', 'Book Antiqua', Palatino, serif";
+  const cardTitleFontSize = isMobileViewport ? 19 : 22;
+  const imageHeight = isMobileViewport ? 190 : 214;
+  const actionHeight = isMobileViewport ? 44 : 46;
+  const cartButtonWidth = isMobileViewport ? 62 : 70;
+  const availabilityTone = item.availabilityMeta?.tone || (available ? 'ready' : 'sold_out');
+  const availabilityColor = availabilityTone === 'sold_out' ? '#be123c' : availabilityTone === 'limited' ? '#b45309' : '#047857';
+  const descriptionLineClamp = isMobileViewport ? 2 : 3;
+
+  return (
+    <article
+      style={{
+        background: cardSurface,
+        borderRadius: 28,
+        padding: 0,
+        boxShadow: isHovered ? '0 22px 44px rgba(73, 38, 20, 0.14)' : '0 14px 32px rgba(73, 38, 20, 0.09)',
+        border: `1px solid ${cardBorder}`,
+        overflow: 'hidden',
+        position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
+        transform: isHovered ? 'translateY(-3px)' : 'translateY(0)',
+        transition: 'all 0.2s ease'
+      }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <div style={{ position: 'relative', width: '100%', height: imageHeight, overflow: 'hidden', borderRadius: '0 0 22px 22px' }}>
+        {imageUrl ? (
+          <img src={imageUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        ) : (
+          <div style={{
+            width: '100%',
+            height: '100%',
+            display: 'grid',
+            placeItems: 'center',
+            color: accentDeep,
+            fontWeight: 800,
+            fontFamily: cardUiFont,
+            background: `radial-gradient(circle at top, ${accentSoft} 0%, ${cardSurfaceInset} 58%, #f8e3cf 100%)`
+          }}>
+            <div style={{ display: 'grid', gap: 10, justifyItems: 'center' }}>
+              <div style={{
+                width: 64,
+                height: 64,
+                borderRadius: 20,
+                background: '#ffffffd9',
+                color: accent,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 12px 24px rgba(73,38,20,0.08)'
+              }}>
+                <CategoryIcon size={28} />
+              </div>
+              <div style={{ fontSize: 14, letterSpacing: '-0.01em' }}>{item.sectionLabel || item.productKind || 'Menu Item'}</div>
+            </div>
+          </div>
+        )}
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(35,23,18,0.02) 0%, rgba(35,23,18,0.08) 100%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(255,255,255,0) 44%, rgba(32,20,15,0.18) 100%)', pointerEvents: 'none' }} />
+        <div style={{
+          position: 'absolute',
+          right: 16,
+          bottom: 16,
+          background: accent,
+          color: buttonTextOnAccent,
+          padding: isMobileViewport ? '8px 14px' : '9px 16px',
+          borderRadius: 999,
+          fontSize: isMobileViewport ? 14 : 15,
+          fontWeight: 900,
+          boxShadow: isHovered ? '0 12px 26px rgba(217,119,6,0.32)' : '0 10px 22px rgba(217,119,6,0.24)',
+          transform: isHovered ? 'translateY(-2px)' : 'translateY(0)',
+          transition: 'all 0.2s ease',
+          fontFamily: cardUiFont,
+          lineHeight: 1
+        }}>
+          {money(item.default_sale_price ?? 0).replace('PHP ', '₱')}
+        </div>
+      </div>
+      <div style={{ padding: isMobileViewport ? '15px 14px 14px' : '18px 18px 16px', flex: 1, display: 'grid', gap: 14 }}>
+        <div style={{ display: 'grid', gap: 8 }}>
+          <h4 style={{ margin: 0, fontSize: cardTitleFontSize, fontWeight: 800, lineHeight: 1.1, color: cardTextPrimary, fontFamily: cardTitleFont, letterSpacing: '-0.025em' }}>{item.name}</h4>
+          <p style={{
+            margin: 0,
+            fontSize: isMobileViewport ? 13 : 14,
+            lineHeight: 1.5,
+            color: cardTextMuted,
+            fontFamily: cardUiFont,
+            display: '-webkit-box',
+            WebkitLineClamp: descriptionLineClamp,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden'
+          }}>
+            {detailsCopy}
+          </p>
+        </div>
+        <div style={{
+          marginTop: 'auto',
+          display: 'grid',
+          gridTemplateColumns: '1fr auto',
+          gap: 12,
+          alignItems: 'center'
+        }}>
+          <button
+            type="button"
+            onClick={() => toast('Product details page is the next F&B storefront step.')}
+            onMouseEnter={() => setIsDetailsHovered(true)}
+            onMouseLeave={() => setIsDetailsHovered(false)}
+            style={{
+              minHeight: actionHeight,
+              height: actionHeight,
+              borderRadius: 18,
+              border: `1px solid ${cardBorder}`,
+              background: cardSurfaceInset,
+              fontSize: isMobileViewport ? 14 : 15,
+              fontWeight: 700,
+              color: cardTextMuted,
+              cursor: 'pointer',
+              fontFamily: cardUiFont,
+              transform: isDetailsHovered ? 'translateY(-2px)' : 'translateY(0)',
+              transition: 'all 0.2s ease',
+              padding: '0 18px',
+              boxShadow: isDetailsHovered ? '0 10px 22px rgba(73,38,20,0.08)' : 'none'
+            }}
+          >
+            View Details
+          </button>
+          <button
+            type="button"
+            onClick={() => addToCart(item)}
+            disabled={!available}
+            onMouseEnter={() => available && setIsCartHovered(true)}
+            onMouseLeave={() => setIsCartHovered(false)}
+            style={{
+              width: cartButtonWidth,
+              minHeight: actionHeight,
+              height: actionHeight,
+              borderRadius: 18,
+              border: 'none',
+              background: available ? accent : '#e5e7eb',
+              color: buttonTextOnAccent,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              cursor: available ? 'pointer' : 'not-allowed',
+              boxShadow: available ? (isCartHovered ? '0 12px 26px rgba(217,119,6,0.28)' : '0 10px 20px rgba(217,119,6,0.22)') : 'none',
+              transform: available && isCartHovered ? 'translateY(-2px)' : 'translateY(0)',
+              transition: 'all 0.2s ease',
+              padding: '0 14px',
+              fontFamily: cardUiFont,
+              fontSize: 14,
+              fontWeight: 800
+            }}
+          >
+            <span style={{ position: 'relative', width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+              <ShoppingCart size={20} strokeWidth={2.2} />
+              <span style={{
+                position: 'absolute',
+                top: -3,
+                right: -4,
+                width: 14,
+                height: 14,
+                borderRadius: 999,
+                background: '#ffffff',
+                color: available ? '#f59e0b' : '#94a3b8',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: available ? '0 2px 8px rgba(255,255,255,0.45)' : 'none'
+              }}>
+                <Plus size={10} strokeWidth={3} />
+              </span>
+            </span>
+          </button>
+        </div>
+        {!available && (
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#be123c', fontFamily: cardUiFont }}>
+            {item.availabilityMeta?.label || 'Currently unavailable'}
+          </div>
+        )}
+      </div>
+    </article>
+  );
+};
+
+const SimpleProductCard = ({
+  item,
+  imageUrl,
+  available,
+  modeAdapter,
+  addToCart
+}) => {
+  const heroTheme = modeAdapter.heroTheme || {};
+  const accentDark = heroTheme.accentDark || '#134e4a';
+  const accentSoft = heroTheme.accentSoft || '#ecfeff';
+  const categoryLabel = item.folder_name || item.category || 'Product';
+  const availabilityLabel = item?.inventory_display?.label || (available ? 'Available' : 'Not available');
+
+  return (
+    <article style={{
+      background: '#fff',
+      borderRadius: 18,
+      border: '1px solid #dbe5ee',
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
+      boxShadow: '0 12px 26px rgba(15, 23, 42, 0.06)'
+    }}>
+      <div style={{ width: '100%', height: 184, background: '#f8fafc', position: 'relative', overflow: 'hidden' }}>
+        {imageUrl ? (
+          <img src={imageUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        ) : (
+          <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: '#64748b', fontSize: 13, fontWeight: 700 }}>
+            No image yet
+          </div>
+        )}
+        <div style={{ position: 'absolute', top: 10, left: 10 }}>
+          <Badge background={accentSoft} color={accentDark} border="#bfe8e4">{categoryLabel}</Badge>
+        </div>
+      </div>
+      <div style={{ padding: 14, display: 'grid', gap: 10, flex: 1 }}>
+        <div>
+          <h4 style={{ margin: 0, fontSize: 18, fontWeight: 800, lineHeight: 1.2, color: '#0f172a' }}>{item.name}</h4>
+          <p style={{ margin: '6px 0 0 0', fontSize: 13, color: '#475569', lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+            {item.description || 'Simple mode product ready for quick ordering.'}
+          </p>
+        </div>
+        <div style={{ marginTop: 'auto', display: 'grid', gap: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+            <strong style={{ fontSize: 19, color: accentDark }}>{money(item.default_sale_price ?? 0)}</strong>
+            <span style={{ fontSize: 12, fontWeight: 700, color: available ? '#047857' : '#be123c' }}>{availabilityLabel}</span>
+          </div>
+          <PrimaryButton
+            style={{ minHeight: 40, padding: '8px 12px' }}
+            onClick={() => addToCart(item)}
+            disabled={!available}
+          >
+            {available ? 'Add to Order' : 'Unavailable'}
+          </PrimaryButton>
+        </div>
+      </div>
+    </article>
+  );
+};
+
+const FNB_CATEGORY_ICON_MAP = Object.freeze({
+  coffee: Coffee,
+  drink: CupSoda,
+  dessert: Sparkles,
+  burger: Sandwich,
+  chicken: Drumstick,
+  pizza: Pizza,
+  seafood: Fish,
+  meal: UtensilsCrossed,
+  snack: Soup,
+  menu: Sparkles
+});
+
+const ServicesHero = ({
+  serviceHeroModel,
+  selectedStore,
+  isMobileViewport,
+  hasMultipleStoreBranches,
+  hasSelectedBranchFromMenu,
+  selectedLocationId,
+  handleBranchMenuSelection,
+  storeLocations,
+  catalogSearch,
+  setCatalogSearch,
+  goDiscovery,
+  hasServiceCart,
+  goStoreBookingPage,
+  cartCount,
+  modeAdapter,
+  isBrandingImageBlocked,
+  markBrandingImageError,
+  selectedLocation,
+  isAboutExpanded,
+  setIsAboutExpanded,
+  isServiceGalleryExpanded,
+  setIsServiceGalleryExpanded,
+  openStorefrontActionLink
+}) => {
+  const addressText = String(serviceHeroModel.addressLine || serviceHeroModel.locationLabel || '').trim();
+  const galleryImages = Array.isArray(serviceHeroModel.galleryImages) ? serviceHeroModel.galleryImages.filter(Boolean) : [];
+  const previewImages = isServiceGalleryExpanded ? galleryImages : galleryImages.slice(0, 4);
+  const aboutText = String(serviceHeroModel.aboutText || '').trim();
+  const hasAboutToggle = aboutText.length > 180;
+  const hasAddress = Boolean(addressText);
+  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
+    && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
+  const hasWhyChooseUs = Array.isArray(serviceHeroModel.whyChooseUs) && serviceHeroModel.whyChooseUs.length > 0;
+  const hasContactRows = serviceHeroModel.contactRows.length > 0
+    || Boolean(serviceHeroModel.facebookLink)
+    || Boolean(serviceHeroModel.hours)
+    || hasAddress;
+  const desktopColumns = hasWhyChooseUs ? '1fr 1.45fr 1fr' : '1fr 1.45fr';
+  const servicesPrimary = modeAdapter?.heroTheme?.accent || '#0f766e';
+  const servicesPrimaryDark = modeAdapter?.heroTheme?.accentDark || '#134e4a';
+  const servicesPrimarySoft = modeAdapter?.heroTheme?.accentSoft || '#ecfeff';
+  const servicesBodyFont = modeAdapter?.heroTheme?.bodyFont || "'Avenir Next', 'Segoe UI', sans-serif";
+  const servicesDisplayFont = modeAdapter?.heroTheme?.displayFont || servicesBodyFont;
+  const servicesHighlight = '#f59e0b';
+  const servicesPrimaryShadow = 'rgba(15,118,110,0.24)';
+  const storefrontShareUrl = selectedStore?.slug ? buildPublicStorefrontUrl(selectedStore.slug) : '';
+
+  return (
+    <section style={{ marginBottom: 40 }}>
+      <div style={{
+        background: '#ffffff',
+        borderRadius: 0,
+        borderBottom: '1px solid #e2e8f0',
+        boxShadow: '0 6px 18px rgba(15,23,42,.05)',
+        marginBottom: 0,
+        width: '100vw',
+        marginLeft: 'calc(50% - 50vw)'
+      }}>
+        <div style={{
+          maxWidth: HERO_CANVAS_MAX_WIDTH,
+          margin: '0 auto',
+          padding: isMobileViewport ? '12px 16px' : '14px 24px',
+          display: 'flex',
+          alignItems: isMobileViewport ? 'stretch' : 'center',
+          gap: 16,
+          flexDirection: isMobileViewport ? 'column' : 'row'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: isMobileViewport ? '0 0 auto' : '0 1 180px' }}>
+            <button type="button" onClick={goDiscovery} style={{ border: 'none', background: '#f8fafc', color: STYLES.colors.dark, width: 44, height: 44, borderRadius: 999, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <ArrowLeft size={18} />
+            </button>
+            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <img
+                src={DGFY_HEADER_LOGO_URL}
+                alt="DGFY logo"
+                style={{ height: 28, width: 'auto', display: 'block' }}
+              />
+            </div>
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #dbe5ee', borderRadius: 999, background: '#f8fafc', padding: isMobileViewport ? '0 10px 0 16px' : '0 10px 0 14px', minHeight: isMobileViewport ? 46 : 40, width: '100%', maxWidth: isMobileViewport ? '100%' : 420, flex: isMobileViewport ? '0 0 auto' : '0 1 420px', minWidth: isMobileViewport ? 0 : 260, margin: isMobileViewport ? 0 : '0 auto' }}>
+            <input
+              value={catalogSearch}
+              onChange={(event) => setCatalogSearch(event.target.value)}
+              placeholder="Search Products or Services"
+              style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, fontSize: 14, color: STYLES.colors.text }}
+            />
+            <span style={{ width: isMobileViewport ? 32 : 28, height: isMobileViewport ? 32 : 28, borderRadius: 999, background: STYLES.colors.brand, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Search size={16} />
+            </span>
+          </label>
+
+          <div style={{ display: 'flex', justifyContent: isMobileViewport ? 'space-between' : 'flex-end', alignItems: 'center', gap: 18, flexWrap: 'nowrap', minWidth: 0, whiteSpace: 'nowrap', marginLeft: isMobileViewport ? 0 : 'auto', flex: '0 1 auto' }}>
+            {hasMultipleStoreBranches && (
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: hasSelectedBranchFromMenu ? 6 : 8, color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', minWidth: 0, maxWidth: isMobileViewport ? 196 : 236, flex: '0 1 236px' }}>
+                <MapPin size={16} />
+                {!hasSelectedBranchFromMenu && <span>Branch:</span>}
+                <StorefrontDropdown
+                  value={selectedLocationId ?? ''}
+                  onChange={handleBranchMenuSelection}
+                  options={storeLocations.map((location) => ({
+                    value: location.location_id,
+                    label: location.name || location.address_line || `Branch ${location.location_id}`
+                  }))}
+                  triggerStyle={{
+                    minHeight: 34,
+                    border: 'none',
+                    background: 'transparent',
+                    boxShadow: 'none',
+                    padding: '4px 34px 4px 2px'
+                  }}
+                  containerStyle={{ minWidth: 0, flex: '1 1 auto' }}
+                  menuStyle={{ minWidth: 240 }}
+                  selectedLabelStyle={{ fontSize: 14, fontWeight: 700 }}
+                />
+              </label>
+            )}
+            <button
+              type="button"
+              onClick={() => document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <ShoppingBag size={16} />
+              Shop
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <StorefrontHeroShell
+        fullBleed
+        sectionStyle={{
+          minHeight: isMobileViewport ? 290 : 316,
+          borderRadius: 0,
+          overflow: 'visible',
+          background: serviceHeroModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`)
+            ? `url(${serviceHeroModel.coverImageUrl}) center/cover`
+            : 'linear-gradient(135deg,#172033 0%,#22324b 50%,#40516c 100%)',
+          boxShadow: STYLES.shadow.lg
+        }}
+        backgroundChildren={
+          <>
+            {serviceHeroModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`) && (
+              <img
+                src={serviceHeroModel.coverImageUrl}
+                alt=""
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={() => markBrandingImageError(`hero-cover:${selectedStore.slug}`)}
+              />
+            )}
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0.22) 0%, rgba(15,23,42,0.72) 76%, rgba(15,23,42,0.92) 100%)' }} />
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(6,10,18,0.68) 0%, rgba(6,10,18,0.36) 46%, rgba(6,10,18,0.1) 100%)' }} />
+          </>
+        }
+      >
+        <StorefrontShareQr
+          storeUrl={storefrontShareUrl}
+          isMobileViewport={isMobileViewport}
+          accentColor={servicesPrimary}
+        />
+        <div style={{
+          position: 'absolute',
+          left: isMobileViewport ? 20 : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
+          right: isMobileViewport ? 20 : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
+          bottom: isMobileViewport ? -45 : -25,
+          zIndex: 10,
+          display: 'flex',
+          alignItems: 'center',
+          gap: isMobileViewport ? 16 : 28,
+          paddingLeft: isMobileViewport ? 126 : 218
+        }}>
+          <div style={{ display: 'grid', gap: 12, maxWidth: 700, minWidth: 0, flex: 1, marginBottom: isMobileViewport ? 8 : 35 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff">{serviceHeroModel.statusLabel}</Badge>
+              {serviceHeroModel.hours && (
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.82)' }}>{serviceHeroModel.hours}</span>
+              )}
+            </div>
+            <div style={{ display: 'grid', gap: 8, maxWidth: 760 }}>
+              <h1 style={{ margin: 0, color: '#fff', fontSize: isMobileViewport ? 38 : 50, fontWeight: 900, lineHeight: 1.05, letterSpacing: '-0.03em', fontFamily: servicesDisplayFont }}>{serviceHeroModel.name}</h1>
+              {serviceHeroModel.tagline ? (
+                <p style={{ margin: 0, color: '#ccfbf1', fontSize: isMobileViewport ? 18 : 20, fontWeight: 700, lineHeight: 1.3, fontFamily: servicesBodyFont }}>{serviceHeroModel.tagline}</p>
+              ) : (
+                <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: 16, maxWidth: 620, lineHeight: 1.6, fontFamily: servicesBodyFont }}>{modeAdapter.heroDescription}</p>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, color: '#fff', fontSize: 14, fontWeight: 600, opacity: 0.95, marginBottom: 6, fontFamily: servicesBodyFont }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Star size={16} fill={servicesHighlight} color={servicesHighlight} />{serviceHeroModel.ratingLabel}</span>
+              <span style={{ opacity: 0.5 }}>|</span>
+              <span>{serviceHeroModel.modeLabel}</span>
+              <span style={{ opacity: 0.5 }}>|</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><MapPin size={16} />{serviceHeroModel.locationLabel}</span>
+            </div>
+          </div>
+
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            flexDirection: isMobileViewport ? 'column' : 'row',
+            flexShrink: 0,
+            marginLeft: 'auto',
+            marginBottom: isMobileViewport ? 8 : 35
+          }}>
+            {serviceHeroModel.actions.canCall && (
+              <GhostButton onClick={() => openStorefrontActionLink(serviceHeroModel.actions.callHref)} style={{ minWidth: isMobileViewport ? '100%' : 110, background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(12px)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, fontFamily: servicesBodyFont }}>
+                <Phone size={18} />
+                Call
+              </GhostButton>
+            )}
+            <PrimaryButton onClick={() => {
+              if (hasServiceCart) {
+                goStoreBookingPage();
+                return;
+              }
+              document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }} style={{ minWidth: isMobileViewport ? '100%' : 150, background: servicesPrimary, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: `0 10px 25px ${servicesPrimaryShadow}`, border: 'none', fontWeight: 900, fontFamily: servicesBodyFont }}>
+              <MousePointer2 size={18} />
+              {hasServiceCart ? 'Continue Booking' : 'Order Now'}
+            </PrimaryButton>
+          </div>
+        </div>
+
+        <div style={{
+          position: 'absolute',
+          left: isMobileViewport ? '20px' : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
+          bottom: isMobileViewport ? '-45px' : '-25px',
+          width: isMobileViewport ? 110 : 190,
+          height: isMobileViewport ? 110 : 190,
+          borderRadius: '50%',
+          background: '#fff',
+          border: '3px solid #fff',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+          overflow: 'hidden',
+          zIndex: 20,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          {serviceHeroModel.profileImageUrl && !isBrandingImageBlocked(`hero-profile:${selectedStore.slug}`) ? (
+            <img
+              src={serviceHeroModel.profileImageUrl}
+              alt={`${serviceHeroModel.name} profile`}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              onError={() => markBrandingImageError(`hero-profile:${selectedStore.slug}`)}
+            />
+          ) : (
+            <div style={{ fontSize: isMobileViewport ? 52 : 66, fontWeight: 900, color: servicesPrimaryDark, fontFamily: servicesDisplayFont }}>{serviceHeroModel.name.charAt(0)}</div>
+          )}
+        </div>
+      </StorefrontHeroShell>
+
+      <div style={{
+        maxWidth: 1180,
+        margin: isMobileViewport ? '40px 16px 32px' : '70px auto 40px',
+        padding: isMobileViewport ? 18 : 24,
+        background: '#ffffff',
+        border: '1px solid #e5e7eb',
+        borderRadius: 18,
+        boxShadow: '0 14px 35px rgba(15, 23, 42, 0.08)',
+        display: 'grid',
+        gridTemplateColumns: isMobileViewport ? '1fr' : desktopColumns,
+        gap: isMobileViewport ? 24 : 24
+      }}>
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Overview</div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <p style={{
+              fontSize: 13,
+              lineHeight: 1.55,
+              color: '#111827',
+              margin: 0,
+              display: isAboutExpanded ? 'block' : '-webkit-box',
+              WebkitLineClamp: isAboutExpanded ? 'unset' : 3,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden'
+            }}>
+              {aboutText || 'Business details will appear soon.'}
+            </p>
+            {hasAboutToggle && (
+              <button type="button" onClick={() => setIsAboutExpanded((previous) => !previous)} style={{ border: 'none', background: 'transparent', color: servicesPrimary, fontWeight: 700, fontSize: 12, cursor: 'pointer', padding: 0, justifySelf: 'start', fontFamily: servicesBodyFont }}>
+                {isAboutExpanded ? 'See less' : 'See more'}
+              </button>
+            )}
+          </div>
+
+          {galleryImages.length > 0 && (
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ display: isMobileViewport ? 'flex' : 'grid', gridTemplateColumns: isMobileViewport ? undefined : 'repeat(4, 1fr)', gap: 8, marginTop: 2, overflowX: isMobileViewport ? 'auto' : 'visible', paddingBottom: isMobileViewport ? 4 : 0 }}>
+                {previewImages.map((url, index) => (
+                  <div key={`${url}-${index}`} style={{ width: isMobileViewport ? 84 : '100%', minWidth: isMobileViewport ? 84 : 0, height: 56, borderRadius: 8, overflow: 'hidden', position: 'relative', background: '#e2e8f0', flexShrink: 0 }}>
+                    <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                ))}
+              </div>
+              {galleryImages.length > 4 && (
+                <button type="button" onClick={() => setIsServiceGalleryExpanded((previous) => !previous)} style={{ border: 'none', background: 'transparent', color: servicesPrimary, fontWeight: 700, fontSize: 12, cursor: 'pointer', padding: 0, justifySelf: 'start', fontFamily: servicesBodyFont }}>
+                  {isServiceGalleryExpanded ? 'Show fewer photos' : 'View all photos'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'grid', gap: 12, paddingLeft: isMobileViewport ? 0 : 24, borderLeft: isMobileViewport ? 'none' : '1px solid #e5e7eb' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Contact & Location</div>
+          <div style={{ display: 'grid', gridTemplateColumns: hasMapData && !isMobileViewport ? '0.9fr 1.1fr' : '1fr', gap: 18, alignItems: 'start' }}>
+            {hasContactRows && (
+              <div style={{ display: 'grid', gap: 10 }}>
+                {serviceHeroModel.contactRows.map((row) => {
+                  const icon = row.label === 'Call' || row.label === 'Phone'
+                    ? <Phone size={16} />
+                    : row.label === 'Message'
+                      ? <MessageCircle size={16} />
+                      : row.label === 'Facebook'
+                        ? <MessageCircle size={16} />
+                        : row.label === 'Email'
+                          ? <Mail size={16} />
+                          : <Clock3 size={16} />;
+                  const content = (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827' }}>
+                      <div style={{ color: servicesPrimaryDark, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{icon}</div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', wordBreak: 'break-word' }}>{row.value}</div>
+                      </div>
+                    </div>
+                  );
+                  return row.href ? (
+                    <button key={row.label} type="button" onClick={() => openStorefrontActionLink(row.href)} style={{ padding: 0, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer' }}>
+                      {content}
+                    </button>
+                  ) : (
+                    <div key={row.label}>{content}</div>
+                  );
+                })}
+
+                {serviceHeroModel.hours && !serviceHeroModel.contactRows.some((row) => row.label === 'Hours') && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827' }}>
+                    <div style={{ color: STYLES.colors.teal, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Clock3 size={16} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{serviceHeroModel.hours}</div>
+                    </div>
+                  </div>
+                )}
+
+                {hasAddress && (
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#111827' }}>
+                      <div style={{ color: servicesPrimary, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <MapPin size={16} />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{addressText}</div>
+                      </div>
+                    </div>
+                    {serviceHeroModel.directionsUrl && (
+                      <button type="button" onClick={() => openStorefrontActionLink(serviceHeroModel.directionsUrl)} style={{ padding: 0, border: 'none', background: 'transparent', color: servicesPrimary, fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start', fontFamily: servicesBodyFont }}>
+                        Get directions
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {hasMapData && (
+              <div style={{ width: '100%', height: 150, borderRadius: 14, overflow: 'hidden', border: '1px solid #e5e7eb', background: '#f8fafc' }}>
+                <StoresMap stores={serviceHeroModel.mapStores} selectedKey={serviceHeroModel.mapSelectedKey} onSelectStore={() => { }} />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {hasWhyChooseUs && (
+          <div style={{ display: 'grid', gap: 12, paddingLeft: isMobileViewport ? 0 : 24, borderLeft: isMobileViewport ? 'none' : '1px solid #e5e7eb' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Why Choose Us</div>
+            <div style={{ display: 'grid', gap: 12 }}>
+              {serviceHeroModel.whyChooseUs.map((item, index) => (
+                <div key={`${item}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#111827', lineHeight: 1.4 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 999, background: servicesPrimarySoft, color: servicesPrimary, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Sparkles size={14} />
+                  </div>
+                  <div>{item}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+};
+
+const buildGoogleMapsDirectionsUrl = ({ latitude, longitude, addressLine }) => {
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`;
+  }
+  const address = String(addressLine || '').trim();
+  if (!address) return '';
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+};
+
+const openStorefrontActionLink = (href) => {
+  const target = String(href || '').trim();
+  if (!target || typeof window === 'undefined') return;
+  if (target.startsWith('tel:') || target.startsWith('mailto:')) {
+    window.location.href = target;
+    return;
+  }
+  window.open(target, '_blank', 'noopener,noreferrer');
+};
+
+const formatRatingSummary = (reviewSummary = null) => {
+  const score = Number(reviewSummary?.score);
+  if (!Number.isFinite(score) || score <= 0) return 'New storefront';
+  const count = Number(reviewSummary?.total_count ?? reviewSummary?.totalCount);
+  return Number.isFinite(count) && count > 0
+    ? `${score.toFixed(1)} (${count})`
+    : score.toFixed(1);
+};
+
+const getPreferredSocialContact = ({ messengerLink = '', facebookLink = '' } = {}) => {
+  const normalizedMessengerLink = String(messengerLink || '').trim();
+  const normalizedFacebookLink = String(facebookLink || '').trim();
+  if (normalizedMessengerLink) {
+    return { label: 'Messenger', value: 'Messenger', href: normalizedMessengerLink };
+  }
+  if (normalizedFacebookLink) {
+    return { label: 'Facebook', value: 'Facebook', href: normalizedFacebookLink };
+  }
+  return null;
+};
+
+const maskReviewerName = (value) => {
+  const name = String(value || '').trim();
+  if (!name) return 'Anonymous';
+  const words = name.split(/\s+/).filter(Boolean);
+  return words
+    .map((word) => {
+      if (word.length <= 2) return `${word.charAt(0)}*`;
+      return `${word.slice(0, 2)}${'*'.repeat(Math.max(2, word.length - 2))}`;
+    })
+    .join(' ');
+};
+
+const deriveStorefrontRegistrationYear = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return '';
+  return String(date.getFullYear());
+};
+
+const FooterSocialIcon = ({ label }) => {
+  const iconColor = '#e2e8f0';
+  if (label === 'Facebook') {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M13.5 22V13.2H16.4L16.9 9.8H13.5V7.64C13.5 6.66 13.78 5.98 15.18 5.98H17V2.94C16.11 2.84 15.22 2.79 14.32 2.8C11.66 2.8 9.84 4.42 9.84 7.4V9.8H7V13.2H9.84V22H13.5Z" fill={iconColor} />
+      </svg>
+    );
+  }
+  if (label === 'Instagram') {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="3.5" y="3.5" width="17" height="17" rx="5" stroke={iconColor} strokeWidth="1.8" />
+        <circle cx="12" cy="12" r="4.1" stroke={iconColor} strokeWidth="1.8" />
+        <circle cx="17.3" cy="6.8" r="1.2" fill={iconColor} />
+      </svg>
+    );
+  }
+  if (label === 'Messenger') {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M12 3.5C7.03 3.5 3 7.24 3 11.86C3 14.5 4.32 16.86 6.39 18.41V21l2.51-1.39c.95.26 1.99.4 3.1.4 4.97 0 9-3.74 9-8.35S16.97 3.5 12 3.5Z" stroke={iconColor} strokeWidth="1.8" strokeLinejoin="round" />
+        <path d="M8.35 13.33l2.6-2.76 2.15 1.74 2.56-2.76-2.56 3.88-2.2-1.74-2.55 1.64Z" fill={iconColor} />
+      </svg>
+    );
+  }
+  return null;
+};
+
+const STOREFRONT_FOOTER_SOCIAL_LABELS = ['Website', 'Facebook', 'Instagram', 'TikTok', 'Messenger'];
+const STOREFRONT_FOOTER_CONTACT_LABELS = ['Call', 'Email'];
+
+const getStorefrontSocialFooterLinks = (links = []) => (
+  (Array.isArray(links) ? links : []).filter((link) => STOREFRONT_FOOTER_SOCIAL_LABELS.includes(link?.label))
+);
+
+const getStorefrontContactFooterLinks = (links = []) => (
+  (Array.isArray(links) ? links : []).filter((link) => STOREFRONT_FOOTER_CONTACT_LABELS.includes(link?.label))
+);
+
+const buildSimpleFallbackReasons = ({ categories = [], catalog = [] } = {}) => {
+  const reasons = [];
+  if (Array.isArray(categories) && categories.length > 0) {
+    reasons.push(...categories.slice(0, 2));
+  }
+  const normalizedCatalog = Array.isArray(catalog) ? catalog : [];
+  const productCount = normalizedCatalog.length;
+  if (productCount > 0) {
+    reasons.push(`${productCount} products currently available`);
+  }
+  const uniqueGroups = [...new Set(normalizedCatalog
+    .map((item) => String(item?.categoryMeta?.label || item?.category_name || item?.category || '').trim())
+    .filter(Boolean))];
+  if (uniqueGroups.length > 0) {
+    reasons.push(...uniqueGroups.slice(0, 2).map((label) => `${label} selections ready`));
+  }
+  return [...new Set(reasons.map((entry) => String(entry || '').trim()).filter(Boolean))].slice(0, 4);
+};
+
+const buildServiceFallbackReasons = ({ serviceGroups = [], servicesViewModel = null, categories = [] } = {}) => {
+  const reasons = [];
+  if (Array.isArray(categories) && categories.length > 0) {
+    reasons.push(...categories.slice(0, 2));
+  }
+  if (Array.isArray(serviceGroups) && serviceGroups.length > 0) {
+    serviceGroups.slice(0, 2).forEach((group) => {
+      const count = Number(group?.items?.length || 0);
+      if (count > 0) {
+        reasons.push(`${group.categoryMeta?.label || 'Service'} options (${count})`);
+      }
+    });
+  }
+  const totalServices = Number(servicesViewModel?.totalServices || 0);
+  if (totalServices > 0) {
+    reasons.push(`${totalServices} services currently listed`);
+  }
+  return [...new Set(reasons.map((entry) => String(entry || '').trim()).filter(Boolean))].slice(0, 4);
+};
+
+const SimpleHero = ({
+  simpleHeroModel,
+  selectedStore,
+  isMobileViewport,
+  hasMultipleStoreBranches,
+  hasSelectedBranchFromMenu,
+  selectedLocationId,
+  handleBranchMenuSelection,
+  storeLocations,
+  catalogSearch,
+  setCatalogSearch,
+  goDiscovery,
+  cartCount,
+  setIsCheckoutOpen,
+  modeAdapter,
+  isBrandingImageBlocked,
+  markBrandingImageError,
+  selectedLocation,
+  openStorefrontActionLink,
+  openTrackPanel,
+  openAccountPanel
+}) => {
+  const heroTheme = modeAdapter.heroTheme || {};
+  const addressText = String(simpleHeroModel.addressLine || simpleHeroModel.locationLabel || '').trim();
+  const aboutText = String(simpleHeroModel.aboutText || '').trim();
+  const hasAboutToggle = aboutText.length > 180;
+  const hasAddress = Boolean(addressText);
+  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
+    && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
+  const hasWhyChooseUs = Array.isArray(simpleHeroModel.whyChooseUs) && simpleHeroModel.whyChooseUs.length > 0;
+  const hasContactRows = simpleHeroModel.contactRows.length > 0 || Boolean(simpleHeroModel.hours) || hasAddress;
+  const desktopColumns = hasWhyChooseUs ? '1fr 1.45fr 1fr' : '1fr 1.45fr';
+  const storefrontShareUrl = selectedStore?.slug ? buildPublicStorefrontUrl(selectedStore.slug) : '';
+
+  return (
+    <section style={{ marginBottom: 40 }}>
+      <div style={{
+        background: '#ffffff',
+        borderRadius: 0,
+        borderBottom: '1px solid #e2e8f0',
+        boxShadow: '0 6px 18px rgba(15,23,42,.05)',
+        marginBottom: 0,
+        width: '100vw',
+        marginLeft: 'calc(50% - 50vw)'
+      }}>
+        <div style={{
+          maxWidth: HERO_CANVAS_MAX_WIDTH,
+          margin: '0 auto',
+          padding: isMobileViewport ? '12px 16px' : '14px 24px',
+          display: 'flex',
+          alignItems: isMobileViewport ? 'stretch' : 'center',
+          gap: 16,
+          flexDirection: isMobileViewport ? 'column' : 'row'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: isMobileViewport ? '0 0 auto' : '0 1 180px' }}>
+            <button type="button" onClick={goDiscovery} style={{ border: 'none', background: '#f8fafc', color: STYLES.colors.dark, width: 44, height: 44, borderRadius: 999, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <ArrowLeft size={18} />
+            </button>
+            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <img
+                src={DGFY_HEADER_LOGO_URL}
+                alt="DGFY logo"
+                style={{ height: 28, width: 'auto', display: 'block' }}
+              />
+            </div>
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #dbe5ee', borderRadius: 999, background: '#f8fafc', padding: isMobileViewport ? '0 10px 0 16px' : '0 10px 0 14px', minHeight: isMobileViewport ? 46 : 40, width: '100%', maxWidth: isMobileViewport ? '100%' : 420, flex: isMobileViewport ? '0 0 auto' : '0 1 420px', minWidth: isMobileViewport ? 0 : 260, margin: isMobileViewport ? 0 : '0 auto' }}>
+            <input
+              value={catalogSearch}
+              onChange={(event) => setCatalogSearch(event.target.value)}
+              placeholder={modeAdapter.catalogSearchPlaceholder || 'Search products in this store'}
+              style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, fontSize: 14, color: STYLES.colors.text, fontFamily: heroTheme.bodyFont }}
+            />
+            <span style={{ width: isMobileViewport ? 32 : 28, height: isMobileViewport ? 32 : 28, borderRadius: 999, background: heroTheme.accent || STYLES.colors.brand, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Search size={16} />
+            </span>
+          </label>
+
+          <div style={{ display: 'flex', justifyContent: isMobileViewport ? 'space-between' : 'flex-end', alignItems: 'center', gap: 18, flexWrap: 'nowrap', minWidth: 0, whiteSpace: 'nowrap', marginLeft: isMobileViewport ? 0 : 'auto', flex: '0 1 auto' }}>
+            {hasMultipleStoreBranches && (
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: hasSelectedBranchFromMenu ? 6 : 8, color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: heroTheme.bodyFont, minWidth: 0, maxWidth: isMobileViewport ? 196 : 236, flex: '0 1 236px' }}>
+                <MapPin size={16} />
+                {!hasSelectedBranchFromMenu && <span>Branch:</span>}
+                <StorefrontDropdown
+                  value={selectedLocationId ?? ''}
+                  onChange={handleBranchMenuSelection}
+                  options={storeLocations.map((location) => ({
+                    value: location.location_id,
+                    label: location.name || location.address_line || `Branch ${location.location_id}`
+                  }))}
+                  triggerStyle={{
+                    minHeight: 34,
+                    border: 'none',
+                    background: 'transparent',
+                    boxShadow: 'none',
+                    padding: '4px 34px 4px 2px',
+                    fontFamily: heroTheme.bodyFont
+                  }}
+                  containerStyle={{ minWidth: 0, flex: '1 1 auto' }}
+                  menuStyle={{ minWidth: 240 }}
+                  selectedLabelStyle={{ fontSize: 14, fontWeight: 700 }}
+                />
+              </label>
+            )}
+            <button
+              type="button"
+              onClick={() => document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: heroTheme.bodyFont }}
+            >
+              <ShoppingBag size={16} />
+              Shop
+            </button>
+            <button
+              type="button"
+              onClick={openTrackPanel}
+              style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: heroTheme.bodyFont }}
+            >
+              <FileText size={16} />
+              Track
+            </button>
+            <button
+              type="button"
+              onClick={openAccountPanel}
+              style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: heroTheme.bodyFont }}
+            >
+              <HeartHandshake size={16} />
+              Account
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <StorefrontHeroShell
+        fullBleed
+        sectionStyle={{
+          minHeight: isMobileViewport ? 290 : 316,
+          borderRadius: 0,
+          overflow: 'visible',
+          background: simpleHeroModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`)
+            ? `url(${simpleHeroModel.coverImageUrl}) center/cover`
+            : `linear-gradient(135deg, ${heroTheme.surface || '#0f172a'} 0%, ${heroTheme.accentDark || '#134e4a'} 52%, ${heroTheme.accent || '#0f766e'} 100%)`,
+          boxShadow: STYLES.shadow.lg
+        }}
+        backgroundChildren={
+          <>
+            {simpleHeroModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`) && (
+              <img
+                src={simpleHeroModel.coverImageUrl}
+                alt=""
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={() => markBrandingImageError(`hero-cover:${selectedStore.slug}`)}
+              />
+            )}
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0.22) 0%, rgba(15,23,42,0.72) 76%, rgba(15,23,42,0.92) 100%)' }} />
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(6,10,18,0.68) 0%, rgba(6,10,18,0.36) 46%, rgba(6,10,18,0.1) 100%)' }} />
+          </>
+        }
+      >
+        <StorefrontShareQr
+          storeUrl={storefrontShareUrl}
+          isMobileViewport={isMobileViewport}
+          accentColor={heroTheme.accent || '#0f766e'}
+        />
+        <div style={{
+          position: 'absolute',
+          left: isMobileViewport ? 20 : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
+          right: isMobileViewport ? 20 : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
+          bottom: isMobileViewport ? -45 : -25,
+          zIndex: 10,
+          display: 'flex',
+          alignItems: 'center',
+          gap: isMobileViewport ? 16 : 28,
+          paddingLeft: isMobileViewport ? 126 : 218
+        }}>
+          <div style={{ display: 'grid', gap: 12, maxWidth: 700, minWidth: 0, flex: 1, marginBottom: isMobileViewport ? 8 : 35 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff" style={{ fontFamily: heroTheme.bodyFont }}>{simpleHeroModel.statusLabel}</Badge>
+              {simpleHeroModel.hours && (
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.82)', fontFamily: heroTheme.bodyFont }}>{simpleHeroModel.hours}</span>
+              )}
+            </div>
+            <div style={{ display: 'grid', gap: 8, maxWidth: 760 }}>
+              <h1 style={{ margin: 0, color: '#fff', fontSize: isMobileViewport ? 38 : 50, fontWeight: 900, lineHeight: 1.05, letterSpacing: '-0.03em', fontFamily: heroTheme.displayFont }}>{simpleHeroModel.name}</h1>
+              {simpleHeroModel.tagline ? (
+                <p style={{ margin: 0, color: '#ccfbf1', fontSize: isMobileViewport ? 18 : 20, fontWeight: 700, lineHeight: 1.3, fontFamily: heroTheme.bodyFont }}>{simpleHeroModel.tagline}</p>
+              ) : (
+                <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: 16, maxWidth: 620, lineHeight: 1.6, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, color: '#fff', fontSize: 14, fontWeight: 600, opacity: 0.95, marginBottom: 6, fontFamily: heroTheme.bodyFont }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Star size={16} fill="#5eead4" color="#5eead4" />{simpleHeroModel.ratingLabel}</span>
+              <span style={{ opacity: 0.5 }}>|</span>
+              <span>{simpleHeroModel.modeLabel}</span>
+              <span style={{ opacity: 0.5 }}>|</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><MapPin size={16} />{simpleHeroModel.locationLabel}</span>
+            </div>
+          </div>
+
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            flexDirection: isMobileViewport ? 'column' : 'row',
+            flexShrink: 0,
+            marginLeft: 'auto',
+            marginBottom: isMobileViewport ? 8 : 35
+          }}>
+            {simpleHeroModel.actions.canCall && (
+              <GhostButton onClick={() => openStorefrontActionLink(simpleHeroModel.actions.callHref)} style={{ minWidth: isMobileViewport ? '100%' : 110, background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(12px)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, fontFamily: heroTheme.bodyFont }}>
+                <Phone size={18} />
+                Call
+              </GhostButton>
+            )}
+            <PrimaryButton onClick={() => {
+              if (cartCount > 0) {
+                setIsCheckoutOpen(true);
+                return;
+              }
+              document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }} style={{ minWidth: isMobileViewport ? '100%' : 150, background: heroTheme.accent || '#0f766e', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: '0 10px 25px rgba(15,118,110,0.28)', border: 'none', fontWeight: 900, fontFamily: heroTheme.bodyFont }}>
+              <MousePointer2 size={18} />
+              {cartCount > 0 ? 'Open Cart' : (modeAdapter.primaryActionLabel || 'Start Ordering')}
+            </PrimaryButton>
+          </div>
+        </div>
+
+        <div style={{
+          position: 'absolute',
+          left: isMobileViewport ? '20px' : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
+          bottom: isMobileViewport ? '-45px' : '-25px',
+          width: isMobileViewport ? 110 : 190,
+          height: isMobileViewport ? 110 : 190,
+          borderRadius: '50%',
+          background: '#fff',
+          border: '3px solid #fff',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+          overflow: 'hidden',
+          zIndex: 20,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          {simpleHeroModel.profileImageUrl && !isBrandingImageBlocked(`hero-profile:${selectedStore.slug}`) ? (
+            <img
+              src={simpleHeroModel.profileImageUrl}
+              alt={`${simpleHeroModel.name} profile`}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              onError={() => markBrandingImageError(`hero-profile:${selectedStore.slug}`)}
+            />
+          ) : (
+            <div style={{ fontSize: isMobileViewport ? 52 : 66, fontWeight: 900, color: heroTheme.accentDark || '#134e4a', fontFamily: heroTheme.displayFont }}>{simpleHeroModel.name.charAt(0)}</div>
+          )}
+        </div>
+      </StorefrontHeroShell>
+
+      <div style={{
+        maxWidth: 1180,
+        margin: isMobileViewport ? '40px 16px 32px' : '70px auto 40px',
+        padding: isMobileViewport ? 18 : 24,
+        background: '#ffffff',
+        border: '1px solid #e5e7eb',
+        borderRadius: 18,
+        boxShadow: '0 14px 35px rgba(15, 23, 42, 0.08)',
+        display: 'grid',
+        gridTemplateColumns: isMobileViewport ? '1fr' : desktopColumns,
+        gap: isMobileViewport ? 24 : 24
+      }}>
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Overview</div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <p style={{
+              fontSize: 13,
+              lineHeight: 1.55,
+              color: '#111827',
+              margin: 0,
+              display: '-webkit-box',
+              WebkitLineClamp: hasAboutToggle ? 3 : 'unset',
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden'
+            }}>
+              {aboutText || 'Business details will appear soon.'}
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gap: 12, paddingLeft: isMobileViewport ? 0 : 24, borderLeft: isMobileViewport ? 'none' : '1px solid #e5e7eb' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Contact & Location</div>
+          <div style={{ display: 'grid', gridTemplateColumns: hasMapData && !isMobileViewport ? '0.9fr 1.1fr' : '1fr', gap: 18, alignItems: 'start' }}>
+            {hasContactRows && (
+              <div style={{ display: 'grid', gap: 10 }}>
+                {simpleHeroModel.contactRows.map((row) => {
+                  const icon = row.label === 'Call' || row.label === 'Phone'
+                    ? <Phone size={16} />
+                    : row.label === 'Message'
+                      ? <MessageCircle size={16} />
+                      : row.label === 'Facebook'
+                        ? <MessageCircle size={16} />
+                        : row.label === 'Email'
+                          ? <Mail size={16} />
+                          : <Clock3 size={16} />;
+                  const content = (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827' }}>
+                      <div style={{ color: heroTheme.accentDark || STYLES.colors.brandDark, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{icon}</div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', wordBreak: 'break-word' }}>{row.value}</div>
+                      </div>
+                    </div>
+                  );
+                  return row.href ? (
+                    <button key={row.label} type="button" onClick={() => openStorefrontActionLink(row.href)} style={{ padding: 0, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer' }}>
+                      {content}
+                    </button>
+                  ) : (
+                    <div key={row.label}>{content}</div>
+                  );
+                })}
+
+                {simpleHeroModel.hours && !simpleHeroModel.contactRows.some((row) => row.label === 'Hours') && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827' }}>
+                    <div style={{ color: heroTheme.accent || STYLES.colors.teal, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Clock3 size={16} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{simpleHeroModel.hours}</div>
+                    </div>
+                  </div>
+                )}
+
+                {hasAddress && (
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#111827' }}>
+                      <div style={{ color: '#1a4e8d', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <MapPin size={16} />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{addressText}</div>
+                      </div>
+                    </div>
+                    {simpleHeroModel.directionsUrl && (
+                      <button type="button" onClick={() => openStorefrontActionLink(simpleHeroModel.directionsUrl)} style={{ padding: 0, border: 'none', background: 'transparent', color: heroTheme.accent || STYLES.colors.brand, fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start' }}>
+                        Get directions
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {hasMapData && (
+              <div style={{ width: '100%', height: 150, borderRadius: 14, overflow: 'hidden', border: '1px solid #e5e7eb', background: '#f8fafc' }}>
+                <StoresMap stores={simpleHeroModel.mapStores} selectedKey={simpleHeroModel.mapSelectedKey} onSelectStore={() => { }} />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {hasWhyChooseUs && (
+          <div style={{ display: 'grid', gap: 12, paddingLeft: isMobileViewport ? 0 : 24, borderLeft: isMobileViewport ? 'none' : '1px solid #e5e7eb' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Why Shop Here</div>
+            <div style={{ display: 'grid', gap: 12 }}>
+              {simpleHeroModel.whyChooseUs.map((item, index) => (
+                <div key={`${item}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#111827', lineHeight: 1.4 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 999, background: '#ecfeff', color: heroTheme.accent || '#0f766e', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Sparkles size={14} />
+                  </div>
+                  <div>{item}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+};
+
+export default function StorefrontApp() {
+  const [routeSlug, setRouteSlug] = useState(() => readRouteSlug());
+  const [routeSubpage, setRouteSubpage] = useState(() => readStoreSubpage());
+  const [routeServiceItemId, setRouteServiceItemId] = useState(() => readStoreServiceItemId());
+  const previousRouteSlugRef = useRef(routeSlug);
+  const bookingPreferredDateInputRef = useRef(null);
+
+  const [stores, setStores] = useState([]);
+  const [loadingStores, setLoadingStores] = useState(true);
+  const [storesError, setStoresError] = useState('');
+  const [search, setSearch] = useState('');
+  const [debouncedDiscoverySearch, setDebouncedDiscoverySearch] = useState('');
+  const searchRef = useRef(search);
+  const discoveryMapPinsPersistenceRef = useRef([]);
+  const heroDiscoveryMapPinsPersistenceRef = useRef([]);
+  const lastDiscoveryNoMatchToastRef = useRef('');
+  const discoveryNoMatchToastTimerRef = useRef(null);
+  const discoveryInteractiveAreaRef = useRef(null);
+  const featuredCarouselRef = useRef(null);
+  const featuredCategoryRailRef = useRef(null);
+  const featuredSectionRef = useRef(null);
+  const discoveryFilterToolbarRef = useRef(null);
+  const [discoveryResultMode, setDiscoveryResultMode] = useState('union');
+  const [discoveryStockFilter, setDiscoveryStockFilter] = useState('include_out_of_stock');
+  const [discoveryPinScope, setDiscoveryPinScope] = useState('tenant_primary');
+  const [discoveryIncludeMatchMeta, setDiscoveryIncludeMatchMeta] = useState(true);
+  const [discoveryAppliedFilters, setDiscoveryAppliedFilters] = useState(null);
+  const [isDiscoverySearchFocused, setIsDiscoverySearchFocused] = useState(false);
+  const [hasDiscoveryExplorationStarted, setHasDiscoveryExplorationStarted] = useState(false);
+  const [isDiscoveryNoMatchToastActive, setIsDiscoveryNoMatchToastActive] = useState(false);
+  const [isCategoryRowExpanded, setIsCategoryRowExpanded] = useState(false);
+  const mobileCategoryRailRef = useRef(null);
+  const [mobileCategoryGroupIndex, setMobileCategoryGroupIndex] = useState(0);
+  const [selectedMapPin, setSelectedMapPin] = useState(null);
+  const [isStoreListVisible, setIsStoreListVisible] = useState(false);
+  const [isMobileResultsCollapsed, setIsMobileResultsCollapsed] = useState(false);
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [viewMode, setViewMode] = useState('list');
+  const [discoveryResultsPage, setDiscoveryResultsPage] = useState(1);
+  const [discoverySortBy, setDiscoverySortBy] = useState('nearest');
+  const [discoveryCategoryFilter, setDiscoveryCategoryFilter] = useState('all');
+  const [discoveryDistanceFilter, setDiscoveryDistanceFilter] = useState('all');
+  const [discoveryOpenFilter, setDiscoveryOpenFilter] = useState('all');
+  const [discoveryRatingFilter, setDiscoveryRatingFilter] = useState('all');
+  const [discoveryAvailabilityFilter, setDiscoveryAvailabilityFilter] = useState('all');
+  const [activeDiscoveryFilterDropdown, setActiveDiscoveryFilterDropdown] = useState(null);
+  const [featuredCategoryFilter, setFeaturedCategoryFilter] = useState('all');
+  const [featuredBaseStores, setFeaturedBaseStores] = useState([]);
+  const [renderDiscoveryResetButton, setRenderDiscoveryResetButton] = useState(false);
+  const [showDiscoveryResetButton, setShowDiscoveryResetButton] = useState(false);
+  const [highlightedStoreSlug, setHighlightedStoreSlug] = useState('');
+  const [selectedStore, setSelectedStore] = useState(null);
+  const isStorePage = Boolean(routeSlug);
+  const currentPathSubpage = readStoreSubpage();
+  const isBookingSubpage = routeSubpage === STORE_BOOKING_SUBPAGE;
+  const isOrderSubpage = routeSubpage === STORE_ORDER_SUBPAGE;
+  const isServiceDetailsSubpage = routeSubpage === STORE_SERVICE_SUBPAGE;
+  const isResolvedOrderSubpage = isOrderSubpage || currentPathSubpage === STORE_ORDER_SUBPAGE;
+
+  const [selectedServiceDetail, setSelectedServiceDetail] = useState(null);
+  const [serviceDraftQuantity, setServiceDraftQuantity] = useState(1);
+  const [serviceDraftNotes, setServiceDraftNotes] = useState('');
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [reviewDraft, setReviewDraft] = useState({
+    name: '',
+    anonymous: false,
+    rating: 0,
+    message: ''
+  });
+  const discoverySortLabelByValue = {
+    nearest: 'Nearest',
+    catalog: 'Most Popular',
+    rating: 'Highest Rated',
+    open: 'Open Now'
+  };
+  useEffect(() => {
+    const onPointerDown = (event) => {
+      if (!discoveryFilterToolbarRef.current?.contains(event.target)) {
+        setActiveDiscoveryFilterDropdown(null);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, []);
+  const openServiceDetail = (service) => {
+    const normalized = toSlug(selectedStore?.slug || routeSlug);
+    const serviceItemId = String(service?.item_id || '').trim();
+    if (!normalized || !serviceItemId || typeof window === 'undefined') return;
+    const target = storePath(normalized, STORE_SERVICE_SUBPAGE, `?service=${encodeURIComponent(serviceItemId)}`);
+    if (`${window.location.pathname}${window.location.search}` !== target) {
+      window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_SERVICE_SUBPAGE, serviceItemId }, '', target);
+    }
+    setSelectedServiceDetail(service);
+    setRouteSlug(normalized);
+    setRouteSubpage(STORE_SERVICE_SUBPAGE);
+    setRouteServiceItemId(serviceItemId);
+  };
+  const closeServiceDetail = () => {
+    setSelectedServiceDetail(null);
+    setRouteServiceItemId(null);
+    goStoreCatalogPage();
+  };
+  const [activeServiceTab, setActiveServiceTab] = useState(null);
+  const [serviceSortOption, setServiceSortOption] = useState('recommended');
+  const [isServiceFilterOpen, setIsServiceFilterOpen] = useState(false);
+  const [serviceAvailabilityFilter, setServiceAvailabilityFilter] = useState('all');
+  const [serviceAreaFilter, setServiceAreaFilter] = useState('all');
+  const [serviceDurationFilter, setServiceDurationFilter] = useState('all');
+  const [serviceBookingStep, setServiceBookingStep] = useState(1);
+  const [servicePage, setServicePage] = useState(1);
+  const [servicePageSize, setServicePageSize] = useState(8);
+  const [fnbPage, setFnbPage] = useState(1);
+  const [fnbPageSize, setFnbPageSize] = useState(8);
+  const [fnbSortOption, setFnbSortOption] = useState('name_asc');
+  const [fnbOrderStep, setFnbOrderStep] = useState(2);
+  const [simpleOrderStep, setSimpleOrderStep] = useState(1);
+  const [fnbPaymentType, setFnbPaymentType] = useState('cash');
+  const [fnbScheduledFor, setFnbScheduledFor] = useState('');
+  const [fnbSpecialInstructions, setFnbSpecialInstructions] = useState('');
+  const [isFnbCategoryDropdownOpen, setIsFnbCategoryDropdownOpen] = useState(false);
+  const [isAboutExpanded, setIsAboutExpanded] = useState(false);
+  const [isServiceGalleryExpanded, setIsServiceGalleryExpanded] = useState(false);
+  const [discoveryCoords, setDiscoveryCoords] = useState(null);
+  const discoveryCoordsRef = useRef(discoveryCoords);
+  const [discoveryLocationMap, setDiscoveryLocationMap] = useState({});
+  const [loadingDiscoveryLocations, setLoadingDiscoveryLocations] = useState(false);
+  const [highlightedDiscoveryMarkerKey, setHighlightedDiscoveryMarkerKey] = useState('');
+  const [storeLocations, setStoreLocations] = useState([]);
+  const [primaryLocationId, setPrimaryLocationId] = useState(null);
+  const [selectedLocationId, setSelectedLocationId] = useState(null);
+  const [hasSelectedBranchFromMenu, setHasSelectedBranchFromMenu] = useState(false);
+  const fnbCategoryDropdownRef = useRef(null);
+  const [preferredStoreLocationSelection, setPreferredStoreLocationSelection] = useState(null);
+  const [catalog, setCatalog] = useState([]);
+  const [loadingCatalog, setLoadingCatalog] = useState(false);
+  const [catalogError, setCatalogError] = useState('');
+  const [catalogErrorGuidance, setCatalogErrorGuidance] = useState('');
+
+  const [orderMethod, setOrderMethod] = useState('delivery');
+  const [cart, setCart] = useState([]);
+  const [catalogImageErrors, setCatalogImageErrors] = useState(() => new Set());
+  const [cartImageErrors, setCartImageErrors] = useState(() => new Set());
+  const [brandingImageErrors, setBrandingImageErrors] = useState(() => new Set());
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerAddress, setCustomerAddress] = useState('');
+  const [serviceUnitType, setServiceUnitType] = useState('');
+  const [customerPin, setCustomerPin] = useState(null);
+  const [serviceAppointmentAt, setServiceAppointmentAt] = useState('');
+  const [servicePaymentTiming, setServicePaymentTiming] = useState('postpaid');
+  const [servicePaymentPreviewMethod, setServicePaymentPreviewMethod] = useState('qr');
+  const [servicePaymentPreviewCard, setServicePaymentPreviewCard] = useState({
+    cardholder: '',
+    cardNumber: '',
+    expiry: '',
+    cvv: ''
+  });
+  const [servicePaymentPreviewReceiptName, setServicePaymentPreviewReceiptName] = useState('');
+  const [serviceIntakeResponses, setServiceIntakeResponses] = useState({});
+  const bookingFieldRefs = useRef({});
+  const [pendingBookingFocusKey, setPendingBookingFocusKey] = useState('');
+  const [pinLocationLoading, setPinLocationLoading] = useState(false);
+  const [pinLocationError, setPinLocationError] = useState('');
+  const [quoteResult, setQuoteResult] = useState(null);
+  const [quoteNeedsRefresh, setQuoteNeedsRefresh] = useState(true);
+  const [quoteError, setQuoteError] = useState('');
+  const [checkoutResult, setCheckoutResult] = useState(null);
+  const [checkoutError, setCheckoutError] = useState('');
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+
+  const [trackingPinInput, setTrackingPinInput] = useState('');
+  const [trackingResult, setTrackingResult] = useState(null);
+  const [trackingError, setTrackingError] = useState('');
+  const [accountPanel, setAccountPanel] = useState({ loading: false, error: '', me: null, orders: [], bookings: [] });
+
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [checkoutTab, setCheckoutTab] = useState('checkout');
+  const [followState, setFollowState] = useState({
+    loading: false,
+    isFollowing: false,
+    followersCount: 0,
+    error: ''
+  });
+  const storefrontVisitorId = useMemo(() => getOrCreateStorefrontVisitorId(), []);
+  const [viewportWidth, setViewportWidth] = useState(() => (
+    typeof window === 'undefined' ? 1280 : window.innerWidth
+  ));
+  const [openDiscoveryFaqIndex, setOpenDiscoveryFaqIndex] = useState(0);
+  const [isDiscoveryNavMenuOpen, setIsDiscoveryNavMenuOpen] = useState(false);
+  const isMobileViewport = viewportWidth < 840;
+  const isDesktopViewport = viewportWidth >= 1024;
+  const discoveryViewport = useMemo(() => getDiscoveryViewportState(viewportWidth), [viewportWidth]);
+  const {
+    viewportMode: discoveryViewportMode,
+    isMobileViewport: isDiscoveryMobileViewport,
+    isTabletViewport: isDiscoveryTabletViewport,
+    isDesktopViewport: isDiscoveryDesktopViewport
+  } = discoveryViewport;
+  const discoveryLayout = useMemo(() => getDiscoveryLayoutTokens(discoveryViewportMode), [discoveryViewportMode]);
+  const discoveryRequestSequenceRef = useRef(0);
+  const discoveryIntentSequenceRef = useRef(0);
+  const discoveryAbortControllerRef = useRef(null);
+  const storeLoadRequestSequenceRef = useRef(0);
+  const locationCatalogRequestSequenceRef = useRef(0);
+  const lastImmediateDiscoveryRequestRef = useRef({ search: '', at: 0 });
+  const markBrandingImageError = useCallback((key) => {
+    const normalizedKey = String(key || '').trim();
+    if (!normalizedKey) return;
+    setBrandingImageErrors((previous) => {
+      if (previous.has(normalizedKey)) return previous;
+      const next = new Set(previous);
+      next.add(normalizedKey);
+      return next;
+    });
+  }, []);
+  const isBrandingImageBlocked = useCallback((key) => brandingImageErrors.has(String(key || '').trim()), [brandingImageErrors]);
+
+  const pageModel = useMemo(() => (
+    normalizeStorefrontPageModel({
+      selectedStore,
+      catalog
+    })
+  ), [selectedStore, catalog]);
+  const {
+    isServicesMode,
+    isFnbMode,
+    isSimpleMode,
+    isHospitalityMode,
+    modeAdapter,
+    servicesViewModel,
+    fnbViewModel,
+    servicesLayoutMode,
+    hero: heroSectionModel,
+    overview: overviewSectionModel,
+    supporting: supportingSectionModel
+  } = pageModel;
+  const isFnbOrderSubpage = isFnbMode && isOrderSubpage;
+  const promoSectionModel = useMemo(() => {
+    const rawPromo = supportingSectionModel?.promo && typeof supportingSectionModel.promo === 'object'
+      ? supportingSectionModel.promo
+      : null;
+    const normalizePromoEntry = (entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const title = String(entry.title || '').trim();
+      const subtitle = String(entry.subtitle || '').trim();
+      const badge = String(entry.badge || '').trim();
+      const validityText = String(entry.validity_text || entry.validityText || '').trim();
+      const headline = String(entry.headline || entry.primary_text || '').trim();
+      const supportingText = String(entry.supporting_text || entry.secondary_text || '').trim();
+      if (!title && !subtitle && !badge && !validityText && !headline && !supportingText) return null;
+      return {
+        title,
+        subtitle,
+        badge,
+        validityText,
+        headline,
+        supportingText
+      };
+    };
+
+    let promoItems = [];
+    if (rawPromo?.active === true) {
+      const rawItems = Array.isArray(rawPromo.items) ? rawPromo.items : [];
+      promoItems = rawItems.map(normalizePromoEntry).filter(Boolean);
+      if (promoItems.length === 0) {
+        const normalizedSingle = normalizePromoEntry(rawPromo);
+        if (normalizedSingle) promoItems = [normalizedSingle];
+      }
+    }
+    return promoItems.slice(0, 3);
+  }, [supportingSectionModel?.promo]);
+  const servicesPrimary = modeAdapter?.heroTheme?.accent || '#0f766e';
+  const servicesPrimaryDark = modeAdapter?.heroTheme?.accentDark || '#134e4a';
+  const servicesPrimarySoft = modeAdapter?.heroTheme?.accentSoft || '#ecfeff';
+  const servicesBodyFont = modeAdapter?.heroTheme?.bodyFont || "'Avenir Next', 'Segoe UI', sans-serif";
+  const servicesDisplayFont = modeAdapter?.heroTheme?.displayFont || servicesBodyFont;
+  const servicesPrimaryBorder = `${servicesPrimary}33`;
+  const servicesPrimaryShadow = 'rgba(15,118,110,0.24)';
+  const servicesPrimaryShadowStrong = 'rgba(15,118,110,0.32)';
+  const servicesHighlight = '#f59e0b';
+  const servicesHighlightSoft = '#fffbeb';
+
+
+  const loadStores = useCallback(async (coords = undefined, options = {}) => {
+    const useImmediateSearch = options?.useImmediateSearch === true;
+    const requestIntentSequence = Number(options?.intentSequence || 0);
+    if (requestIntentSequence > 0 && requestIntentSequence !== discoveryIntentSequenceRef.current) {
+      return;
+    }
+    const requestPinScope = options?.pinScope || discoveryPinScope;
+    const requestSearch = useImmediateSearch ? String(searchRef.current || '').trim() : debouncedDiscoverySearch.trim();
+    if (useImmediateSearch) {
+      lastImmediateDiscoveryRequestRef.current = { search: requestSearch, at: Date.now() };
+    }
+    discoveryAbortControllerRef.current?.abort?.();
+    const abortController = typeof AbortController === 'function' ? new AbortController() : null;
+    discoveryAbortControllerRef.current = abortController;
+    const requestSequence = discoveryRequestSequenceRef.current + 1;
+    discoveryRequestSequenceRef.current = requestSequence;
+    setLoadingStores(true);
+    setStoresError('');
+    try {
+      const resolvedCoords = coords === undefined ? discoveryCoordsRef.current : coords;
+      const q = new URLSearchParams();
+      if (requestSearch) q.set('search', requestSearch);
+      q.set('result_mode', discoveryResultMode);
+      q.set('stock_filter', discoveryStockFilter);
+      q.set('pin_scope', requestPinScope);
+      q.set('include_match_meta', discoveryIncludeMatchMeta ? 'true' : 'false');
+      const resolvedLatitude = Number(resolvedCoords?.latitude);
+      const resolvedLongitude = Number(resolvedCoords?.longitude);
+      if (Number.isFinite(resolvedLatitude) && Number.isFinite(resolvedLongitude)) {
+        q.set('latitude', String(resolvedLatitude));
+        q.set('longitude', String(resolvedLongitude));
+        const nextCoords = {
+          latitude: resolvedLatitude,
+          longitude: resolvedLongitude
+        };
+        discoveryCoordsRef.current = nextCoords;
+        setDiscoveryCoords((previous) => {
+          if (
+            previous
+            && Number(previous.latitude) === Number(nextCoords.latitude)
+            && Number(previous.longitude) === Number(nextCoords.longitude)
+          ) {
+            return previous;
+          }
+          return nextCoords;
+        });
+      } else {
+        discoveryCoordsRef.current = null;
+        setDiscoveryCoords(null);
+      }
+      q.set('limit', '100');
+      const data = await requestJson(`/api/v1/storefront/discovery?${q.toString()}`, {
+        signal: abortController?.signal
+      });
+      if (requestSequence === discoveryRequestSequenceRef.current) {
+        setStores(Array.isArray(data?.stores) ? data.stores : []);
+        setDiscoveryAppliedFilters(data?.applied_filters || null);
+      }
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        return;
+      }
+      if (requestSequence === discoveryRequestSequenceRef.current) {
+        setDiscoveryAppliedFilters(null);
+        setStoresError(error.message || 'Failed to load discovery stores.');
+      }
+    } finally {
+      if (discoveryAbortControllerRef.current === abortController) {
+        discoveryAbortControllerRef.current = null;
+      }
+      if (requestSequence === discoveryRequestSequenceRef.current) {
+        setLoadingStores(false);
+      }
+    }
+  }, [debouncedDiscoverySearch, discoveryResultMode, discoveryStockFilter, discoveryPinScope, discoveryIncludeMatchMeta]);
+
+  const openStoreBySlug = useCallback(async (slug) => {
+    const normalized = toSlug(slug);
+    if (!normalized) return;
+    const requestSequence = ++storeLoadRequestSequenceRef.current;
+
+    setLoadingCatalog(true);
+    setCatalogError('');
+    setCatalogErrorGuidance('');
+    setStoreLocations([]);
+    setPrimaryLocationId(null);
+    setSelectedLocationId(null);
+    try {
+      let profile;
+      try {
+        profile = await requestJson(`/api/v1/storefront/discovery/${encodeURIComponent(normalized)}`, { cache: 'no-store' });
+      } catch (profileError) {
+        if (Number(profileError?.status) !== 404) throw profileError;
+
+        const discoveryFallback = await requestJson(`/api/v1/storefront/discovery?search=${encodeURIComponent(normalized)}&limit=20&result_mode=union&stock_filter=include_out_of_stock&pin_scope=tenant_primary&include_match_meta=true`, { cache: 'no-store' });
+        const fallbackStores = Array.isArray(discoveryFallback?.stores) ? discoveryFallback.stores : [];
+        const canonicalSlug = findCanonicalStorefrontSlug(normalized, fallbackStores);
+        if (!canonicalSlug) throw profileError;
+
+        profile = await requestJson(`/api/v1/storefront/discovery/${encodeURIComponent(canonicalSlug)}`, { cache: 'no-store' });
+      }
+      if (requestSequence !== storeLoadRequestSequenceRef.current) return;
+
+      if (profile?.slug && toSlug(profile.slug) !== normalized && typeof window !== 'undefined') {
+        const canonicalPath = routeSubpage === STORE_BOOKING_SUBPAGE
+          ? storePath(profile.slug, STORE_BOOKING_SUBPAGE)
+          : routeSubpage === STORE_ORDER_SUBPAGE
+            ? storePath(profile.slug, STORE_ORDER_SUBPAGE)
+          : routeSubpage === STORE_SERVICE_SUBPAGE && routeServiceItemId
+            ? storePath(profile.slug, STORE_SERVICE_SUBPAGE, `?service=${encodeURIComponent(routeServiceItemId)}`)
+            : storePath(profile.slug);
+        if (`${window.location.pathname}${window.location.search}` !== canonicalPath) {
+          window.history.replaceState({ storeSlug: profile.slug, storeSubpage: routeSubpage }, '', canonicalPath);
+        }
+        setRouteSlug(toSlug(profile.slug));
+      }
+      setSelectedStore(profile);
+      let resolvedCatalogLocationId = null;
+      const profileLocations = normalizeProfileLocations(profile);
+
+      try {
+        const locationsData = await requestJson('/api/v1/store/locations', { storeSlug: profile.slug, cache: 'no-store' });
+        if (requestSequence !== storeLoadRequestSequenceRef.current) return;
+        const apiLocations = Array.isArray(locationsData?.locations) ? locationsData.locations : [];
+        const useProfileSnapshot = !locationsMatchProfileSnapshot(apiLocations, profile);
+        const locations = useProfileSnapshot ? profileLocations : apiLocations;
+        const nextPrimaryLocationId = useProfileSnapshot
+          ? (profileLocations.find((location) => location.is_primary_storefront)?.location_id ?? profile.location_id ?? null)
+          : (locationsData?.primary_location_id ?? null);
+        setStoreLocations(locations);
+        setPrimaryLocationId(nextPrimaryLocationId);
+        if (locations.length > 0) {
+          const preferredLocationId = (
+            preferredStoreLocationSelection?.slug
+            && toSlug(preferredStoreLocationSelection.slug) === toSlug(profile.slug)
+          )
+            ? preferredStoreLocationSelection.locationId
+            : null;
+          const preferredLocation = preferredLocationId == null
+            ? null
+            : (locations.find((location) => Number(location.location_id) === Number(preferredLocationId)) || null);
+          const primaryLocation = nextPrimaryLocationId == null
+            ? null
+            : (locations.find((location) => Number(location.location_id) === Number(nextPrimaryLocationId)) || null);
+          const firstOpenLocation = locations.find((location) => location?.is_open !== false) || null;
+          const fallbackLocationId = (
+            preferredLocation?.location_id
+            ?? firstOpenLocation?.location_id
+            ?? primaryLocation?.location_id
+            ?? locations[0]?.location_id
+            ?? null
+          );
+          resolvedCatalogLocationId = fallbackLocationId;
+          setSelectedLocationId(fallbackLocationId);
+        } else {
+          resolvedCatalogLocationId = null;
+          setSelectedLocationId(null);
+        }
+      } catch {
+        const fallbackPrimaryLocationId = profileLocations.find((location) => location.is_primary_storefront)?.location_id ?? profile.location_id ?? null;
+        setStoreLocations(profileLocations);
+        setPrimaryLocationId(fallbackPrimaryLocationId);
+        resolvedCatalogLocationId = fallbackPrimaryLocationId;
+        setSelectedLocationId(fallbackPrimaryLocationId);
+      }
+
+      const catalogQuery = resolvedCatalogLocationId == null
+        ? '/api/v1/store/catalog?limit=120'
+        : `/api/v1/store/catalog?limit=120&location_id=${encodeURIComponent(resolvedCatalogLocationId)}`;
+      const catalogData = await requestJson(catalogQuery, { storeSlug: profile.slug, cache: 'no-store' });
+      if (requestSequence !== storeLoadRequestSequenceRef.current) return;
+      const accessPatch = buildAccessPolicyStorePatch(catalogData?.access_policy);
+      if (accessPatch) {
+        setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch } : prev));
+      }
+      setCatalog(Array.isArray(catalogData?.items) ? catalogData.items : []);
+    } catch (error) {
+      if (requestSequence !== storeLoadRequestSequenceRef.current) return;
+      const normalizedError = classifyStoreCatalogError(error, 'Failed to load tenant storefront page.');
+      setSelectedStore(null);
+      setStoreLocations([]);
+      setCatalog([]);
+      setCatalogError(normalizedError.message);
+      setCatalogErrorGuidance(normalizedError.guidance);
+    } finally {
+      if (requestSequence === storeLoadRequestSequenceRef.current) {
+        setLoadingCatalog(false);
+      }
+    }
+  }, [preferredStoreLocationSelection, routeServiceItemId, routeSubpage]);
+
+  const refreshStorePageForTenantSetup = useCallback(() => {
+    if (!routeSlug) return;
+    openStoreBySlug(routeSlug);
+  }, [openStoreBySlug, routeSlug]);
+
+
+
+  useEffect(() => {
+    searchRef.current = search;
+  }, [search]);
+
+  useEffect(() => {
+    const lastImmediate = lastImmediateDiscoveryRequestRef.current;
+    const debouncedSearch = debouncedDiscoverySearch.trim();
+    if (
+      debouncedSearch
+      && lastImmediate?.search === debouncedSearch
+      && Date.now() - Number(lastImmediate.at || 0) < 5000
+    ) {
+      return;
+    }
+    loadStores();
+  }, [loadStores, debouncedDiscoverySearch]);
+
+  useEffect(() => () => {
+    discoveryAbortControllerRef.current?.abort?.();
+    discoveryAbortControllerRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    discoveryCoordsRef.current = discoveryCoords;
+  }, [discoveryCoords]);
+
+  useEffect(() => {
+    if (!routeSlug) return;
+    openStoreBySlug(routeSlug);
+  }, [routeSlug, openStoreBySlug]);
+
+  useEffect(() => {
+    if (isStorePage) return;
+    setCatalogSearch('');
+  }, [isStorePage]);
+
+  useEffect(() => {
+    const previousRouteSlug = previousRouteSlugRef.current;
+    const currentRouteSlug = routeSlug;
+    if (previousRouteSlug && currentRouteSlug && previousRouteSlug !== currentRouteSlug) {
+      setCatalogSearch('');
+      setActiveServiceTab(null);
+      setServiceSortOption('recommended');
+      setServiceAvailabilityFilter('all');
+      setServiceAreaFilter('all');
+      setServiceDurationFilter('all');
+      setServicePage(1);
+      setIsServiceFilterOpen(false);
+      setFnbSortOption('name_asc');
+      setFnbPage(1);
+    }
+    previousRouteSlugRef.current = currentRouteSlug;
+  }, [routeSlug]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const requestSequence = ++locationCatalogRequestSequenceRef.current;
+    const loadLocationAwareCatalog = async () => {
+      if (!isStorePage || !selectedStore?.slug) return;
+      setLoadingCatalog(true);
+      setCatalogError('');
+      setCatalogErrorGuidance('');
+      try {
+        const catalogQuery = selectedLocationId == null
+          ? '/api/v1/store/catalog?limit=120'
+          : `/api/v1/store/catalog?limit=120&location_id=${encodeURIComponent(selectedLocationId)}`;
+        const catalogData = await requestJson(catalogQuery, { storeSlug: selectedStore.slug, cache: 'no-store' });
+        if (cancelled || requestSequence !== locationCatalogRequestSequenceRef.current) return;
+        const accessPatch = buildAccessPolicyStorePatch(catalogData?.access_policy);
+        if (accessPatch) {
+          setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch } : prev));
+        }
+        setCatalog(Array.isArray(catalogData?.items) ? catalogData.items : []);
+      } catch (error) {
+        if (cancelled || requestSequence !== locationCatalogRequestSequenceRef.current) return;
+        const normalizedError = classifyStoreCatalogError(error, 'Failed to load tenant catalog for selected location.');
+        setCatalog([]);
+        setCatalogError(normalizedError.message);
+        setCatalogErrorGuidance(normalizedError.guidance);
+      } finally {
+        if (!cancelled && requestSequence === locationCatalogRequestSequenceRef.current) setLoadingCatalog(false);
+      }
+    };
+
+    loadLocationAwareCatalog();
+    return () => {
+      cancelled = true;
+    };
+  }, [isStorePage, selectedStore?.slug, selectedLocationId]);
+
+  useEffect(() => {
+    setCatalogImageErrors(new Set());
+  }, [catalog]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDiscoveryLocations = async () => {
+      if (!Array.isArray(stores) || stores.length === 0) {
+        setDiscoveryLocationMap({});
+        return;
+      }
+
+      setLoadingDiscoveryLocations(true);
+      try {
+        const locationPairs = await Promise.all(
+          stores.map(async (store) => {
+            const slug = toSlug(store?.slug);
+            if (!slug) return [slug, { locations: [], primary_location_id: null }];
+            try {
+              const data = await requestJson('/api/v1/store/locations', { storeSlug: slug });
+              const locations = Array.isArray(data?.locations) ? data.locations : [];
+              return [slug, { locations, primary_location_id: data?.primary_location_id ?? null }];
+            } catch {
+              return [slug, { locations: [], primary_location_id: null }];
+            }
+          })
+        );
+        if (cancelled) return;
+        setDiscoveryLocationMap(Object.fromEntries(locationPairs.filter(([slug]) => Boolean(slug))));
+      } finally {
+        if (!cancelled) setLoadingDiscoveryLocations(false);
+      }
+    };
+
+    loadDiscoveryLocations();
+    return () => {
+      cancelled = true;
+    };
+  }, [stores]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      setRouteSlug(readRouteSlug());
+      setRouteSubpage(readStoreSubpage());
+      setRouteServiceItemId(readStoreServiceItemId());
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+  useEffect(() => {
+    if (!isFnbOrderSubpage) return;
+    setCheckoutTab('checkout');
+    setIsCheckoutOpen(false);
+  }, [isFnbOrderSubpage]);
+
+  useEffect(() => {
+    const handleResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (!isDiscoveryMobileViewport) {
+      setIsDiscoveryNavMenuOpen(false);
+    }
+  }, [isDiscoveryMobileViewport]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+    if (import.meta.env.DEV) {
+      navigator.serviceWorker.getRegistrations()
+        .then((regs) => Promise.all(regs.map((r) => r.unregister())))
+        .catch(() => { });
+      if ('caches' in window) {
+        caches.keys()
+          .then((keys) => Promise.all(
+            keys
+              .filter((k) => k.startsWith('sku-store-shell-') || k.startsWith('sku-store-runtime-'))
+              .map((k) => caches.delete(k))
+          ))
+          .catch(() => { });
+      }
+      return;
+    }
+
+    const registerServiceWorker = async () => {
+      try {
+        const probe = await fetch(serviceWorkerUrl, { method: 'GET', cache: 'no-store' });
+        const contentType = String(probe.headers.get('content-type') || '').toLowerCase();
+        const scriptLike = contentType.includes('javascript') || contentType.includes('ecmascript');
+        if (!probe.ok || !scriptLike) {
+          console.warn('[StorefrontPWA] Skipping service worker registration due to invalid script response', {
+            status: probe.status,
+            contentType
+          });
+          return;
+        }
+        await navigator.serviceWorker.register(serviceWorkerUrl, { scope: appBasePath === '/' ? '/' : `${appBasePath}/` });
+      } catch (error) {
+        console.warn('[StorefrontPWA] Service worker registration failed', {
+          error: error?.message || 'unknown_error'
+        });
+      }
+    };
+
+    registerServiceWorker();
+  }, []);
+
+  const goStore = (slug, locationId = null) => {
+    const normalized = toSlug(slug);
+    if (!normalized) return;
+    setPreferredStoreLocationSelection(locationId == null ? null : {
+      slug: normalized,
+      locationId: Number(locationId)
+    });
+    const target = storePath(normalized);
+    if (window.location.pathname !== target) {
+      window.history.pushState({ storeSlug: normalized, storeSubpage: null }, '', target);
+    }
+    setRouteSlug(normalized);
+    setRouteSubpage(null);
+    setRouteServiceItemId(null);
+  };
+  const goStoreOrderForDiscovery = (slug, locationId = null) => {
+    const normalized = toSlug(slug);
+    if (!normalized || typeof window === 'undefined') return;
+    setPreferredStoreLocationSelection(locationId == null ? null : {
+      slug: normalized,
+      locationId: Number(locationId)
+    });
+    const target = storePath(normalized, STORE_ORDER_SUBPAGE);
+    if (`${window.location.pathname}${window.location.search}` !== target) {
+      window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_ORDER_SUBPAGE }, '', target);
+    }
+    setRouteSlug(normalized);
+    setRouteSubpage(STORE_ORDER_SUBPAGE);
+    setRouteServiceItemId(null);
+    setFnbOrderStep(checkoutResult ? 4 : 2);
+    setSimpleOrderStep(checkoutResult ? 4 : 1);
+    setCheckoutTab('checkout');
+    setIsCheckoutOpen(false);
+  };
+  const goStoreBookingPage = ({ preserveSelectedService = false } = {}) => {
+    const normalized = toSlug(selectedStore?.slug || routeSlug);
+    if (!normalized || typeof window === 'undefined') return;
+    const target = storePath(normalized, STORE_BOOKING_SUBPAGE);
+    if (`${window.location.pathname}${window.location.search}` !== target) {
+      window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_BOOKING_SUBPAGE }, '', target);
+    }
+    setRouteSlug(normalized);
+    setRouteSubpage(STORE_BOOKING_SUBPAGE);
+    setRouteServiceItemId(null);
+    if (!preserveSelectedService) {
+      setSelectedServiceDetail(null);
+    }
+    setIsCheckoutOpen(false);
+  };
+  const goStoreOrderPage = () => {
+    const normalized = toSlug(selectedStore?.slug || routeSlug);
+    if (!normalized || typeof window === 'undefined') return;
+    const target = storePath(normalized, STORE_ORDER_SUBPAGE);
+    if (`${window.location.pathname}${window.location.search}` !== target) {
+      window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_ORDER_SUBPAGE }, '', target);
+    }
+    setRouteSlug(normalized);
+    setRouteSubpage(STORE_ORDER_SUBPAGE);
+    setRouteServiceItemId(null);
+    setFnbOrderStep(checkoutResult ? 4 : 2);
+    setSimpleOrderStep(checkoutResult ? 4 : 1);
+    setCheckoutTab('checkout');
+    setIsCheckoutOpen(false);
+  };
+  const goStoreCatalogPage = () => {
+    const normalized = toSlug(selectedStore?.slug || routeSlug);
+    if (!normalized || typeof window === 'undefined') return;
+    const target = storePath(normalized);
+    if (`${window.location.pathname}${window.location.search}` !== target) {
+      window.history.pushState({ storeSlug: normalized, storeSubpage: null }, '', target);
+    }
+    setRouteSlug(normalized);
+    setRouteSubpage(null);
+    setRouteServiceItemId(null);
+    setFnbOrderStep(2);
+    setSimpleOrderStep(1);
+  };
+
+  const goDiscovery = () => {
+    if (window.location.pathname !== TENANT_STORE_BASE_PATH) window.history.pushState({}, '', TENANT_STORE_BASE_PATH);
+    setRouteSlug(null);
+    setRouteSubpage(null);
+    setRouteServiceItemId(null);
+    setSelectedStore(null);
+    setStoreLocations([]);
+    setPrimaryLocationId(null);
+    setSelectedLocationId(null);
+    setHasSelectedBranchFromMenu(false);
+    setPreferredStoreLocationSelection(null);
+    setCatalog([]);
+    setCatalogError('');
+    setCatalogErrorGuidance('');
+    setDiscoveryAppliedFilters(null);
+    setIsCheckoutOpen(false);
+  };
+
+  const handleBranchMenuSelection = useCallback((nextValue) => {
+    const nextLocationId = nextValue ? Number(nextValue) : null;
+    setSelectedLocationId(nextLocationId);
+    setHasSelectedBranchFromMenu(true);
+  }, []);
+
+  const cartTotal = useMemo(() => cart.reduce((sum, line) => sum + (Number(line.quantity) * Number(line.price)), 0), [cart]);
+  const cartCount = useMemo(() => cart.reduce((sum, line) => sum + Number(line.quantity || 0), 0), [cart]);
+  const hasDiscoverySearch = debouncedDiscoverySearch.trim().length > 0;
+  const storesWithNearestBranch = useMemo(() => {
+    const discoveryLat = toNumberOrNull(discoveryCoords?.latitude);
+    const discoveryLng = toNumberOrNull(discoveryCoords?.longitude);
+    const hasDiscoveryLocation = discoveryLat != null && discoveryLng != null;
+    return (Array.isArray(stores) ? stores : [])
+      .map((store) => {
+        const slug = toSlug(store?.slug);
+        const locationBundle = discoveryLocationMap[slug] || {};
+        const allLocations = Array.isArray(locationBundle.locations) ? locationBundle.locations : [];
+        const activeLocations = allLocations.filter((location) => location?.is_active !== false);
+        const pins = activeLocations
+          .map((location) => ({
+            ...location,
+            latitude: toNumberOrNull(location?.latitude),
+            longitude: toNumberOrNull(location?.longitude)
+          }))
+          .filter((location) => location.latitude != null && location.longitude != null);
+        const matchingLocationIds = Array.isArray(store?.matching_location_ids)
+          ? store.matching_location_ids
+            .map((locationId) => Number(locationId))
+            .filter((locationId) => Number.isInteger(locationId) && locationId > 0)
+          : [];
+        const nearestMatchingLocationId = Number(store?.nearest_matching_location_id);
+        const nearestMatchingLocation = Number.isInteger(nearestMatchingLocationId)
+          ? (pins.find((location) => Number(location.location_id) === nearestMatchingLocationId) || null)
+          : null;
+        const primaryLocation = pins.find((location) => Number(location.location_id) === Number(locationBundle.primary_location_id))
+          || pins.find((location) => location?.is_primary_storefront === true)
+          || null;
+        const fallbackLocation = nearestMatchingLocation || primaryLocation || pins[0] || null;
+        const fallbackLat = toNumberOrNull(store?.latitude);
+        const fallbackLng = toNumberOrNull(store?.longitude);
+        const anchorLatitude = fallbackLocation?.latitude ?? fallbackLat ?? DEFAULT_CENTER.latitude;
+        const anchorLongitude = fallbackLocation?.longitude ?? fallbackLng ?? DEFAULT_CENTER.longitude;
+        const nearestPinWithDistance = hasDiscoveryLocation
+          ? pins
+            .map((location) => ({
+              location,
+              distance_km: haversineDistanceKm(discoveryLat, discoveryLng, location.latitude, location.longitude)
+            }))
+            .sort((a, b) => a.distance_km - b.distance_km)[0] || null
+          : null;
+        const nearestDistanceKm = nearestPinWithDistance?.distance_km
+          ?? (Number.isFinite(Number(store?.distance_km)) ? Number(store.distance_km) : null);
+        const nearestLocation = nearestPinWithDistance?.location || fallbackLocation;
+        return {
+          ...store,
+          latitude: anchorLatitude,
+          longitude: anchorLongitude,
+          active_location_count: activeLocations.length,
+          nearest_distance_km: nearestDistanceKm,
+          nearest_location_name: nearestLocation?.name || null,
+          nearest_location_hours: String(
+            nearestLocation?.business_hours_label
+            || nearestLocation?.business_hours
+            || nearestLocation?.operating_hours
+            || nearestLocation?.hours_label
+            || nearestLocation?.hours_text
+            || nearestLocation?.hours
+            || ''
+          ).trim(),
+          nearest_location_id: nearestLocation?.location_id ?? null,
+          nearest_is_primary: nearestLocation?.is_primary_storefront === true,
+          match_reasons: Array.isArray(store?.match_reasons) ? store.match_reasons : [],
+          matching_item_count: Number(store?.matching_item_count || 0),
+          matching_item_sample: Array.isArray(store?.matching_item_sample) ? store.matching_item_sample : [],
+          has_in_stock_match: store?.has_in_stock_match === true,
+          matching_location_ids: matchingLocationIds,
+          nearest_matching_location_id: Number.isInteger(nearestMatchingLocationId) ? nearestMatchingLocationId : null
+        };
+      })
+      .sort((a, b) => {
+        const left = Number.isFinite(a.nearest_distance_km) ? a.nearest_distance_km : Number.POSITIVE_INFINITY;
+        const right = Number.isFinite(b.nearest_distance_km) ? b.nearest_distance_km : Number.POSITIVE_INFINITY;
+        if (left !== right) return left - right;
+        return String(a?.tenant_name || '').localeCompare(String(b?.tenant_name || ''));
+      });
+  }, [stores, discoveryCoords, discoveryLocationMap]);
+  const discoveryResultStores = useMemo(() => {
+    const hasDiscoveryLocation = discoveryCoords?.latitude != null && discoveryCoords?.longitude != null;
+    const searcherRadiusKm = 0.1;
+    const radiusScoped = hasDiscoverySearch && hasDiscoveryLocation
+      ? storesWithNearestBranch.filter((store) => {
+          const distanceKm = Number(store?.nearest_distance_km);
+          if (!Number.isFinite(distanceKm) || distanceKm > searcherRadiusKm) return false;
+
+          // Also honor each business-configured delivery radius when present.
+          const deliveryRadiusKm = Number(store?.delivery_radius_km);
+          if (Number.isFinite(deliveryRadiusKm) && deliveryRadiusKm > 0) {
+            return distanceKm <= deliveryRadiusKm;
+          }
+          return true;
+        })
+      : storesWithNearestBranch;
+    const sorted = [...radiusScoped];
+    sorted.sort((a, b) => {
+      if (discoverySortBy === 'open') {
+        if (Boolean(a?.storefront_open) !== Boolean(b?.storefront_open)) return a?.storefront_open ? -1 : 1;
+      } else if (discoverySortBy === 'rating') {
+        const leftRating = Number(normalizeStorefrontReviewSummary(a?.storefront_review_summary)?.score || 0);
+        const rightRating = Number(normalizeStorefrontReviewSummary(b?.storefront_review_summary)?.score || 0);
+        if (leftRating !== rightRating) return rightRating - leftRating;
+      } else if (discoverySortBy === 'wait') {
+        const leftWait = Number(a?.estimated_wait_minutes || Number.POSITIVE_INFINITY);
+        const rightWait = Number(b?.estimated_wait_minutes || Number.POSITIVE_INFINITY);
+        if (leftWait !== rightWait) return leftWait - rightWait;
+      } else if (discoverySortBy === 'catalog') {
+        const leftCatalog = Number(a?.catalog_count || 0);
+        const rightCatalog = Number(b?.catalog_count || 0);
+        if (leftCatalog !== rightCatalog) return rightCatalog - leftCatalog;
+      }
+      const leftDistance = Number.isFinite(Number(a?.nearest_distance_km)) ? Number(a.nearest_distance_km) : Number.POSITIVE_INFINITY;
+      const rightDistance = Number.isFinite(Number(b?.nearest_distance_km)) ? Number(b.nearest_distance_km) : Number.POSITIVE_INFINITY;
+      if (leftDistance !== rightDistance) return leftDistance - rightDistance;
+      return String(a?.tenant_name || '').localeCompare(String(b?.tenant_name || ''));
+    });
+    return sorted;
+  }, [storesWithNearestBranch, hasDiscoverySearch, discoveryCoords, discoverySortBy]);
+  const filteredDiscoveryStores = useMemo(() => {
+    return discoveryResultStores.filter((store) => {
+      const categories = normalizeStorefrontCategories(store?.storefront_categories).map((entry) => String(entry || '').trim().toLowerCase());
+      const primaryCategory = categories[0] || String(store?.workflow_mode || store?.business_mode || 'store').replace(/_/g, ' ').trim().toLowerCase();
+      const ratingSummary = normalizeStorefrontReviewSummary(store?.storefront_review_summary);
+      const ratingValue = Number(ratingSummary?.score || 0);
+      const distanceValue = Number(store?.nearest_distance_km);
+
+      if (discoveryCategoryFilter !== 'all') {
+        const haystack = [
+          primaryCategory,
+          ...categories,
+          String(store?.workflow_mode || '').replace(/_/g, ' ').trim().toLowerCase(),
+          String(store?.business_mode || '').replace(/_/g, ' ').trim().toLowerCase()
+        ].filter(Boolean);
+        const matchers = DISCOVERY_CATEGORY_MATCHERS[normalizeDiscoveryCategoryKey(discoveryCategoryFilter)] || [normalizeDiscoveryCategoryKey(discoveryCategoryFilter)];
+        const hasCategoryMatch = matchers.some((matcher) => haystack.some((entry) => entry.includes(matcher) || matcher.includes(entry)));
+        if (!hasCategoryMatch) return false;
+      }
+      if (discoveryOpenFilter === 'open' && store?.storefront_open !== true) return false;
+      if (discoveryAvailabilityFilter === 'in_stock' && store?.has_in_stock_match !== true) return false;
+      if (discoveryRatingFilter !== 'all') {
+        const minimum = Number(discoveryRatingFilter);
+        if (!Number.isFinite(ratingValue) || ratingValue < minimum) return false;
+      }
+      if (discoveryDistanceFilter !== 'all') {
+        const maxDistance = Number(discoveryDistanceFilter);
+        if (!Number.isFinite(distanceValue) || distanceValue > maxDistance) return false;
+      }
+      return true;
+    });
+  }, [
+    discoveryResultStores,
+    discoveryCategoryFilter,
+    discoveryDistanceFilter,
+    discoveryOpenFilter,
+    discoveryRatingFilter,
+    discoveryAvailabilityFilter
+  ]);
+  const discoveryMapPins = useMemo(() => {
+    const discoveryLat = toNumberOrNull(discoveryCoords?.latitude);
+    const discoveryLng = toNumberOrNull(discoveryCoords?.longitude);
+    const hasDiscoveryLocation = discoveryLat != null && discoveryLng != null;
+    const hasSearchQuery = search.trim().length > 0;
+    const pins = [];
+    filteredDiscoveryStores.forEach((store) => {
+      const slug = toSlug(store?.slug);
+      const locationBundle = discoveryLocationMap[slug] || {};
+      const locations = Array.isArray(locationBundle.locations) ? locationBundle.locations : [];
+      const activeWithCoords = locations
+        .filter((location) => location?.is_active !== false)
+        .map((location) => ({
+          ...location,
+          latitude: toNumberOrNull(location?.latitude),
+          longitude: toNumberOrNull(location?.longitude)
+        }))
+        .filter((location) => location.latitude != null && location.longitude != null);
+      const matchingLocationIds = Array.isArray(store?.matching_location_ids)
+        ? store.matching_location_ids
+          .map((locationId) => Number(locationId))
+          .filter((locationId) => Number.isInteger(locationId) && locationId > 0)
+        : [];
+      const nearestMatchingLocationId = Number(store?.nearest_matching_location_id);
+      const nearestMatchingLocation = Number.isInteger(nearestMatchingLocationId)
+        ? (activeWithCoords.find((location) => Number(location.location_id) === nearestMatchingLocationId) || null)
+        : null;
+      if (activeWithCoords.length === 0) {
+        const lat = toNumberOrNull(store?.latitude);
+        const lng = toNumberOrNull(store?.longitude);
+        if (lat == null || lng == null) return;
+        pins.push({
+          ...store,
+          marker_key: `${slug}:fallback`,
+          latitude: lat,
+          longitude: lng,
+          location_id: store?.location_id ?? null,
+          location_name: store?.nearest_location_name || store?.tenant_name,
+          branch_label: 'Storefront pin',
+          distance_km: Number.isFinite(Number(store?.nearest_distance_km)) ? Number(store.nearest_distance_km) : null
+        });
+        return;
+      }
+
+        const scopedLocations = selectDiscoveryPinLocations({
+          activeLocations: activeWithCoords,
+          hasSearchQuery,
+          pinScope: discoveryPinScope,
+          matchingLocationIds,
+          nearestMatchingLocationId: nearestMatchingLocation?.location_id ?? null
+        });
+        const scopedLocationMap = new globalThis.Map();
+        scopedLocations.forEach((location) => {
+          if (!location) return;
+          const numericLocationId = Number(location.location_id);
+          const locationIdentity = Number.isInteger(numericLocationId) && numericLocationId > 0
+            ? `loc:${numericLocationId}`
+            : `coord:${Number(location.latitude).toFixed(6)}:${Number(location.longitude).toFixed(6)}:${toSlug(location?.name || '')}`;
+          const current = scopedLocationMap.get(locationIdentity);
+          if (!current || location?.is_primary_storefront === true) {
+            scopedLocationMap.set(locationIdentity, location);
+          }
+        });
+        if (discoveryPinScope === 'all_matching_branches') {
+          const primaryScoped = activeWithCoords.find((location) => location?.is_primary_storefront === true);
+          if (primaryScoped) {
+            const numericLocationId = Number(primaryScoped.location_id);
+            const locationIdentity = Number.isInteger(numericLocationId) && numericLocationId > 0
+              ? `loc:${numericLocationId}`
+              : `coord:${Number(primaryScoped.latitude).toFixed(6)}:${Number(primaryScoped.longitude).toFixed(6)}:${toSlug(primaryScoped?.name || '')}`;
+            if (!scopedLocationMap.has(locationIdentity)) {
+              scopedLocationMap.set(locationIdentity, primaryScoped);
+            }
+          }
+        }
+        const scopedLocationsUnique = Array.from(scopedLocationMap.values());
+
+        scopedLocationsUnique.forEach((location) => {
+          const numericLocationId = Number(location.location_id);
+          const stableLocationId = Number.isInteger(numericLocationId) && numericLocationId > 0
+            ? String(numericLocationId)
+            : `${Number(location.latitude).toFixed(6)}:${Number(location.longitude).toFixed(6)}`;
+          pins.push({
+            ...store,
+            marker_key: `${slug}:${stableLocationId}`,
+            location_id: location.location_id,
+            location_name: location.name || store?.tenant_name,
+            address_line: location.address_line || store?.address_line || '',
+            latitude: location.latitude,
+          longitude: location.longitude,
+          is_primary_storefront: location.is_primary_storefront === true,
+          branch_label: location.is_primary_storefront ? 'Primary branch' : 'Branch',
+          distance_km: hasDiscoveryLocation
+            ? haversineDistanceKm(discoveryLat, discoveryLng, location.latitude, location.longitude)
+            : null
+        });
+      });
+    });
+      const uniquePins = [];
+      const seenPinKeys = new globalThis.Map();
+      const scorePin = (pin) => {
+        let score = 0;
+        if (pin?.is_primary_storefront === true) score += 5;
+        if (Number.isFinite(Number(pin?.location_id)) && Number(pin.location_id) > 0) score += 4;
+        if (pin?.address_line) score += 2;
+        if (pin?.location_name) score += 1;
+        return score;
+      };
+      pins.forEach((pin, index) => {
+        if (!pin) return;
+        const numericLocationId = Number(pin.location_id);
+        const dedupeKey = Number.isInteger(numericLocationId) && numericLocationId > 0
+          ? `${pin.slug || toSlug(pin?.tenant_name)}:loc:${numericLocationId}`
+          : `${pin.slug || toSlug(pin?.tenant_name)}:coord:${Number(pin.latitude).toFixed(6)}:${Number(pin.longitude).toFixed(6)}`;
+        const existingIndex = seenPinKeys.get(dedupeKey);
+        if (existingIndex == null) {
+          seenPinKeys.set(dedupeKey, uniquePins.length);
+          uniquePins.push(pin);
+          return;
+        }
+        if (scorePin(pin) > scorePin(uniquePins[existingIndex])) {
+          uniquePins[existingIndex] = pin;
+        }
+      });
+      return uniquePins.sort((a, b) => {
+        const left = Number.isFinite(Number(a.distance_km)) ? Number(a.distance_km) : Number.POSITIVE_INFINITY;
+        const right = Number.isFinite(Number(b.distance_km)) ? Number(b.distance_km) : Number.POSITIVE_INFINITY;
+        if (left !== right) return left - right;
+      return String(a?.tenant_name || '').localeCompare(String(b?.tenant_name || ''));
+    });
+  }, [filteredDiscoveryStores, discoveryLocationMap, discoveryCoords, discoveryPinScope, search]);
+  const discoveryPinsBySlug = useMemo(() => {
+    const map = {};
+    discoveryMapPins.forEach((pin) => {
+      const slug = toSlug(pin?.slug);
+      if (!slug) return;
+      if (!Array.isArray(map[slug])) {
+        map[slug] = [];
+      }
+      map[slug].push(pin);
+    });
+    return map;
+  }, [discoveryMapPins]);
+  const fallbackDiscoveryMapPins = useMemo(() => (
+    (Array.isArray(filteredDiscoveryStores) ? filteredDiscoveryStores : [])
+      .map((store) => {
+        const lat = toNumberOrNull(store?.latitude);
+        const lng = toNumberOrNull(store?.longitude);
+        if (lat == null || lng == null) return null;
+        const slug = toSlug(store?.slug || store?.tenant_name);
+        return {
+          ...store,
+          marker_key: `${slug || 'store'}:anchor`,
+          latitude: lat,
+          longitude: lng,
+          location_id: store?.nearest_location_id ?? store?.location_id ?? null,
+          location_name: store?.nearest_location_name || store?.tenant_name || 'Storefront',
+          address_line: store?.address_line || '',
+          is_primary_storefront: true,
+          branch_label: 'Storefront pin',
+          distance_km: Number.isFinite(Number(store?.nearest_distance_km)) ? Number(store.nearest_distance_km) : null
+        };
+      })
+      .filter(Boolean)
+  ), [filteredDiscoveryStores]);
+  const heroDiscoveryMapPins = useMemo(() => {
+    const discoveryLat = toNumberOrNull(discoveryCoords?.latitude);
+    const discoveryLng = toNumberOrNull(discoveryCoords?.longitude);
+    const hasDiscoveryLocation = discoveryLat != null && discoveryLng != null;
+    const pins = [];
+
+    (Array.isArray(storesWithNearestBranch) ? storesWithNearestBranch : []).forEach((store) => {
+      const slug = toSlug(store?.slug || store?.tenant_name);
+      const locationBundle = discoveryLocationMap[slug] || {};
+      const activeLocations = (Array.isArray(locationBundle.locations) ? locationBundle.locations : [])
+        .filter((location) => location?.is_active !== false)
+        .map((location) => ({
+          ...location,
+          latitude: toNumberOrNull(location?.latitude),
+          longitude: toNumberOrNull(location?.longitude)
+        }))
+        .filter((location) => location.latitude != null && location.longitude != null);
+
+      if (activeLocations.length === 0) {
+        const lat = toNumberOrNull(store?.latitude);
+        const lng = toNumberOrNull(store?.longitude);
+        if (lat == null || lng == null) return;
+        pins.push({
+          ...store,
+          marker_key: `${slug || 'store'}:hero-anchor`,
+          latitude: lat,
+          longitude: lng,
+          location_id: store?.nearest_location_id ?? store?.location_id ?? null,
+          location_name: store?.nearest_location_name || store?.tenant_name || 'Storefront',
+          address_line: store?.address_line || '',
+          is_primary_storefront: true,
+          branch_label: store?.nearest_is_primary ? 'Primary branch' : 'Storefront pin',
+          distance_km: Number.isFinite(Number(store?.nearest_distance_km)) ? Number(store.nearest_distance_km) : null
+        });
+        return;
+      }
+
+      const uniqueLocationMap = new globalThis.Map();
+      activeLocations.forEach((location) => {
+        const numericLocationId = Number(location.location_id);
+        const identity = Number.isInteger(numericLocationId) && numericLocationId > 0
+          ? `loc:${numericLocationId}`
+          : `coord:${Number(location.latitude).toFixed(6)}:${Number(location.longitude).toFixed(6)}`;
+        const current = uniqueLocationMap.get(identity);
+        if (!current || location?.is_primary_storefront === true) {
+          uniqueLocationMap.set(identity, location);
+        }
+      });
+
+      Array.from(uniqueLocationMap.values()).forEach((location) => {
+        const numericLocationId = Number(location.location_id);
+        const stableLocationId = Number.isInteger(numericLocationId) && numericLocationId > 0
+          ? String(numericLocationId)
+          : `${Number(location.latitude).toFixed(6)}:${Number(location.longitude).toFixed(6)}`;
+        pins.push({
+          ...store,
+          marker_key: `${slug || 'store'}:hero:${stableLocationId}`,
+          latitude: location.latitude,
+          longitude: location.longitude,
+          location_id: location.location_id ?? null,
+          location_name: location.name || store?.tenant_name || 'Storefront',
+          address_line: location.address_line || store?.address_line || '',
+          is_primary_storefront: location.is_primary_storefront === true,
+          branch_label: location.is_primary_storefront === true ? 'Primary branch' : 'Branch',
+          distance_km: hasDiscoveryLocation
+            ? haversineDistanceKm(discoveryLat, discoveryLng, location.latitude, location.longitude)
+            : null
+        });
+      });
+    });
+
+    const uniquePins = [];
+    const seenPinKeys = new globalThis.Map();
+    pins.forEach((pin) => {
+      if (!pin) return;
+      const numericLocationId = Number(pin.location_id);
+      const dedupeKey = Number.isInteger(numericLocationId) && numericLocationId > 0
+        ? `${pin.slug || toSlug(pin?.tenant_name)}:loc:${numericLocationId}`
+        : `${pin.slug || toSlug(pin?.tenant_name)}:coord:${Number(pin.latitude).toFixed(6)}:${Number(pin.longitude).toFixed(6)}`;
+      if (seenPinKeys.has(dedupeKey)) return;
+      seenPinKeys.set(dedupeKey, true);
+      uniquePins.push(pin);
+    });
+
+    return uniquePins.sort((a, b) => {
+      const left = Number.isFinite(Number(a.distance_km)) ? Number(a.distance_km) : Number.POSITIVE_INFINITY;
+      const right = Number.isFinite(Number(b.distance_km)) ? Number(b.distance_km) : Number.POSITIVE_INFINITY;
+      if (left !== right) return left - right;
+      return String(a?.tenant_name || '').localeCompare(String(b?.tenant_name || ''));
+    });
+  }, [storesWithNearestBranch, discoveryLocationMap, discoveryCoords]);
+  const rememberedHeroDiscoveryMapPins = Array.isArray(heroDiscoveryMapPinsPersistenceRef.current)
+    ? heroDiscoveryMapPinsPersistenceRef.current
+    : [];
+  const stableHeroDiscoveryMapPins = heroDiscoveryMapPins.length > 0
+    ? heroDiscoveryMapPins
+    : rememberedHeroDiscoveryMapPins;
+  const activeDiscoveryMapPins = discoveryMapPins.length > 0 ? discoveryMapPins : fallbackDiscoveryMapPins;
+  const rememberedDiscoveryMapPins = Array.isArray(discoveryMapPinsPersistenceRef.current)
+    ? discoveryMapPinsPersistenceRef.current
+    : [];
+  const persistentDiscoveryMapPins = hasDiscoverySearch
+    && !loadingStores
+    && !storesError
+    && filteredDiscoveryStores.length === 0
+    ? (isDiscoveryNoMatchToastActive ? [] : rememberedDiscoveryMapPins)
+    : (activeDiscoveryMapPins.length > 0 ? activeDiscoveryMapPins : rememberedDiscoveryMapPins);
+  const searchedDiscoveryMapPins = hasDiscoverySearch && filteredDiscoveryStores.length > 0
+    ? discoveryMapPins
+    : persistentDiscoveryMapPins;
+  const discoveryResultsMapKey = useMemo(() => {
+    const searchKey = String(search || '').trim().toLowerCase();
+    const pinKey = (Array.isArray(searchedDiscoveryMapPins) ? searchedDiscoveryMapPins : [])
+      .map((pin) => getDiscoveryMarkerKey(pin) || `${toSlug(pin?.slug || pin?.tenant_name)}:${pin?.location_id ?? `${pin?.latitude}:${pin?.longitude}`}`)
+      .join('|');
+    return `discovery-results-map:${searchKey}:${filteredDiscoveryStores.length}:${pinKey}`;
+  }, [searchedDiscoveryMapPins, filteredDiscoveryStores.length, search]);
+  const discoverySummary = useMemo(() => {
+    const totalStores = filteredDiscoveryStores.length;
+    const openStores = filteredDiscoveryStores.filter((store) => store.storefront_open).length;
+    const totalCatalogItems = filteredDiscoveryStores.reduce((sum, store) => sum + Number(store.catalog_count || 0), 0);
+    const waitTotals = filteredDiscoveryStores.reduce((sum, store) => sum + Number(store.estimated_wait_minutes || 0), 0);
+    const avgWait = totalStores > 0 ? Math.round(waitTotals / totalStores) : 0;
+    return {
+      totalStores,
+      openStores,
+      totalCatalogItems,
+      avgWait
+    };
+  }, [filteredDiscoveryStores]);
+  const nearestDistanceKm = useMemo(() => {
+    const withDistance = filteredDiscoveryStores
+      .map((store) => Number(store?.nearest_distance_km))
+      .filter((distance) => Number.isFinite(distance));
+    if (withDistance.length === 0) return null;
+    return Math.min(...withDistance);
+  }, [filteredDiscoveryStores]);
+  const highlightedStore = useMemo(() => {
+    if (!filteredDiscoveryStores.length) return null;
+    if (!highlightedStoreSlug) return filteredDiscoveryStores[0];
+    return filteredDiscoveryStores.find((store) => store.slug === highlightedStoreSlug) || filteredDiscoveryStores[0];
+  }, [filteredDiscoveryStores, highlightedStoreSlug]);
+  useEffect(() => {
+    return () => {
+      if (discoveryNoMatchToastTimerRef.current) {
+        window.clearTimeout(discoveryNoMatchToastTimerRef.current);
+        discoveryNoMatchToastTimerRef.current = null;
+      }
+    };
+  }, []);
+  useEffect(() => {
+    if (heroDiscoveryMapPins.length > 0) {
+      heroDiscoveryMapPinsPersistenceRef.current = heroDiscoveryMapPins;
+    }
+  }, [heroDiscoveryMapPins]);
+  useEffect(() => {
+    if (activeDiscoveryMapPins.length > 0) {
+      discoveryMapPinsPersistenceRef.current = activeDiscoveryMapPins;
+    }
+  }, [activeDiscoveryMapPins]);
+  useEffect(() => {
+    if (!hasDiscoverySearch || loadingStores || storesError) {
+      if (discoveryNoMatchToastTimerRef.current) {
+        window.clearTimeout(discoveryNoMatchToastTimerRef.current);
+        discoveryNoMatchToastTimerRef.current = null;
+      }
+      setIsDiscoveryNoMatchToastActive(false);
+      lastDiscoveryNoMatchToastRef.current = '';
+      return;
+    }
+    if (filteredDiscoveryStores.length > 0) {
+      if (discoveryNoMatchToastTimerRef.current) {
+        window.clearTimeout(discoveryNoMatchToastTimerRef.current);
+        discoveryNoMatchToastTimerRef.current = null;
+      }
+      setIsDiscoveryNoMatchToastActive(false);
+      lastDiscoveryNoMatchToastRef.current = '';
+      return;
+    }
+    const queryLabel = String(debouncedDiscoverySearch || search || discoveryCategoryFilter || '').trim() || 'your search';
+    const toastKey = `${queryLabel}::${discoveryCategoryFilter}::${discoveryDistanceFilter}::${discoveryOpenFilter}::${discoveryRatingFilter}::${discoveryAvailabilityFilter}`;
+    setIsDiscoveryNoMatchToastActive(true);
+    if (discoveryNoMatchToastTimerRef.current) {
+      window.clearTimeout(discoveryNoMatchToastTimerRef.current);
+    }
+    discoveryNoMatchToastTimerRef.current = window.setTimeout(() => {
+      setIsDiscoveryNoMatchToastActive(false);
+      discoveryNoMatchToastTimerRef.current = null;
+    }, 2600);
+    if (lastDiscoveryNoMatchToastRef.current === toastKey) return;
+    lastDiscoveryNoMatchToastRef.current = toastKey;
+    toast.info(`No storefronts matched "${queryLabel}". Try another category or broader search.`);
+  }, [
+    hasDiscoverySearch,
+    loadingStores,
+    storesError,
+    filteredDiscoveryStores.length,
+    debouncedDiscoverySearch,
+    search,
+    discoveryCategoryFilter,
+    discoveryDistanceFilter,
+    discoveryOpenFilter,
+    discoveryRatingFilter,
+    discoveryAvailabilityFilter
+  ]);
+  useEffect(() => {
+    if (!hasDiscoveryExplorationStarted || hasDiscoverySearch || isDiscoverySearchFocused) return undefined;
+
+    const handlePointerDownOutsideDiscovery = (event) => {
+      const interactionArea = discoveryInteractiveAreaRef.current;
+      if (!interactionArea) return;
+      if (interactionArea.contains(event.target)) return;
+      setHasDiscoveryExplorationStarted(false);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDownOutsideDiscovery);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDownOutsideDiscovery);
+    };
+  }, [hasDiscoveryExplorationStarted, hasDiscoverySearch, isDiscoverySearchFocused]);
+  const selectedLocation = useMemo(() => {
+    if (!Array.isArray(storeLocations) || storeLocations.length === 0) return null;
+    if (selectedLocationId == null) return null;
+    return storeLocations.find((location) => Number(location.location_id) === Number(selectedLocationId)) || null;
+  }, [storeLocations, selectedLocationId]);
+  const hasMultipleStoreBranches = Array.isArray(storeLocations) && storeLocations.length > 1;
+  const accessCapabilities = useMemo(() => getAccessCapabilities(selectedStore), [selectedStore]);
+  const catalogPermitted = canViewCatalog(selectedStore);
+  const productCartPermitted = canUseProductCart(selectedStore);
+  const checkoutPermitted = canUseCheckout(selectedStore);
+  const bookingPermitted = canUseBooking(selectedStore);
+  const serviceHeroModel = useMemo(() => {
+    if (!selectedStore || !isServicesMode) return null;
+    const mapStores = storeLocations.length > 0
+      ? storeLocations.map((location) => ({ ...location, tenant_name: selectedStore?.tenant_name }))
+      : [selectedStore];
+    const locationName = String(selectedLocation?.name || overviewSectionModel?.location?.label || selectedStore?.location_name || '').trim();
+    const addressLine = formatStorefrontAddress(selectedLocation || overviewSectionModel?.location || selectedStore || {});
+    const galleryPreview = Array.isArray(supportingSectionModel?.galleryImages)
+      ? supportingSectionModel.galleryImages.slice(0, 4).map((entry) => withAssetOrigin(entry.url || entry.path)).filter(Boolean)
+      : [];
+    const reviewSummary = supportingSectionModel?.reviewSummary || null;
+    const serviceGroups = Array.isArray(servicesViewModel?.serviceGroups) ? servicesViewModel.serviceGroups : [];
+    const socialLinks = parseOptionalObject(selectedStore?.storefront_social_links) || {};
+    const facebookLink = String(socialLinks.facebook || '').trim();
+    const instagramLink = String(socialLinks.instagram || '').trim();
+    const tiktokLink = String(socialLinks.tiktok || '').trim();
+    const websiteLink = String(socialLinks.website || socialLinks.web || '').trim();
+    const messengerLink = String(heroSectionModel?.messengerLink || socialLinks.messenger || '').trim();
+    const preferredSocialContact = getPreferredSocialContact({ messengerLink, facebookLink });
+    const email = String(heroSectionModel?.email || '').trim();
+    const phone = String(heroSectionModel?.phone || '').trim();
+    const hours = String(heroSectionModel?.hours || selectedStore?.storefront_hours || '').trim();
+    const registrationYear = deriveStorefrontRegistrationYear(
+      selectedStore?.business_registered_at
+      || selectedStore?.registered_at
+      || selectedStore?.tenant_created_at
+      || selectedStore?.created_at
+    );
+    const directionsUrl = buildGoogleMapsDirectionsUrl({
+      latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
+      longitude: selectedLocation?.longitude ?? selectedStore?.longitude,
+      addressLine
+    });
+    const servicePreviewImages = serviceGroups
+      .flatMap((group) => (Array.isArray(group?.items) ? group.items : []))
+      .map((item) => withAssetOrigin(item?.image_url))
+      .filter(Boolean);
+    const mergedGalleryImages = [...new Set([...galleryPreview, ...servicePreviewImages])];
+    const mergedGalleryPreview = mergedGalleryImages.slice(0, 4);
+    const whyChooseUs = Array.isArray(overviewSectionModel?.whyChooseUs) && overviewSectionModel.whyChooseUs.length > 0
+      ? overviewSectionModel.whyChooseUs.slice(0, 4)
+      : buildServiceFallbackReasons({
+        serviceGroups,
+        servicesViewModel,
+        categories: Array.isArray(overviewSectionModel?.categories) ? overviewSectionModel.categories : []
+      });
+    const ratingLabel = formatRatingSummary(reviewSummary);
+    const reviewCount = Number((reviewSummary?.total_count ?? reviewSummary?.totalCount) || 0);
+    const serviceCounts = {
+      total: Number(servicesViewModel?.totalServices || 0),
+      families: Number(servicesViewModel?.serviceFamilyCount || 0),
+      onSite: Number(servicesViewModel?.onSiteCount || 0)
+    };
+    const quickStats = [
+      serviceCounts.total > 0 ? { label: 'Services', value: String(serviceCounts.total) } : null,
+      serviceCounts.families > 0 ? { label: 'Categories', value: String(serviceCounts.families) } : null,
+      reviewCount > 0 ? { label: 'Reviews', value: String(reviewCount) } : null
+    ].filter(Boolean);
+
+    return {
+      coverImageUrl: withAssetOrigin(heroSectionModel?.coverImageUrl),
+      profileImageUrl: withAssetOrigin(heroSectionModel?.profileImageUrl),
+      name: heroSectionModel?.storeName || selectedStore?.tenant_name || 'Storefront',
+      tagline: heroSectionModel?.tagline || '',
+      statusLabel: heroSectionModel?.statusLabel || (selectedStore?.storefront_open ? 'Open' : 'Closed'),
+      ratingLabel,
+      modeLabel: heroSectionModel?.primaryCategoryLabel || modeAdapter.heroEyebrow,
+      locationLabel: addressLine || locationName || 'Location details coming soon',
+      aboutText: heroSectionModel?.aboutText || modeAdapter.heroDescription,
+      categories: Array.isArray(overviewSectionModel?.categories) ? overviewSectionModel.categories.slice(0, 3) : [],
+      whyChooseUs,
+      galleryImages: mergedGalleryImages,
+      galleryPreview: mergedGalleryPreview,
+      galleryOverflowCount: Math.max(0, (Array.isArray(supportingSectionModel?.galleryImages) ? supportingSectionModel.galleryImages.length : mergedGalleryPreview.length) - mergedGalleryPreview.length),
+      reviewSummary,
+      reviewHighlights: Array.isArray(supportingSectionModel?.reviewHighlights) ? supportingSectionModel.reviewHighlights : [],
+      reviewCount,
+      quickStats,
+      serviceCounts,
+      servicesLayoutMode,
+      servicesWithRequiredIntakeCount: Number(servicesViewModel?.servicesWithRequiredIntakeCount || 0),
+      servicesWithAvailabilityCount: Number(servicesViewModel?.servicesWithAvailabilityCount || 0),
+      servicesWithStructuredScheduleCount: Number(servicesViewModel?.servicesWithStructuredScheduleCount || 0),
+      prepaidServiceCount: Number(servicesViewModel?.prepaidServiceCount || 0),
+      postpaidServiceCount: Number(servicesViewModel?.postpaidServiceCount || 0),
+      hours,
+      contactRows: [
+        phone ? { icon: null, label: 'Call', value: phone, href: `tel:${phone}` } : null,
+        preferredSocialContact ? { icon: null, label: preferredSocialContact.label, value: preferredSocialContact.value, href: preferredSocialContact.href } : null,
+        email ? { icon: null, label: 'Email', value: email, href: `mailto:${email}` } : null
+      ].filter(Boolean),
+      actions: {
+        canCall: Boolean(phone),
+        callHref: phone ? `tel:${phone}` : '',
+        canMessage: Boolean(messengerLink || email),
+        messageHref: messengerLink || (email ? `mailto:${email}` : ''),
+        canOrder: bookingPermitted || checkoutPermitted,
+        orderLabel: modeAdapter.primaryActionLabel || 'Order Now'
+      },
+      footerLinks: [
+        websiteLink ? { label: 'Website', href: websiteLink } : null,
+        facebookLink ? { label: 'Facebook', href: facebookLink } : null,
+        instagramLink ? { label: 'Instagram', href: instagramLink } : null,
+        tiktokLink ? { label: 'TikTok', href: tiktokLink } : null,
+        messengerLink ? { label: 'Messenger', href: messengerLink } : null,
+        phone ? { label: 'Call', href: `tel:${phone}` } : null,
+        email ? { label: 'Email', href: `mailto:${email}` } : null
+      ].filter(Boolean),
+      mapStores,
+      mapSelectedKey: selectedLocation?.location_id != null ? `loc-${selectedLocation.location_id}` : null,
+      addressLine,
+      facebookLink,
+      directionsUrl,
+      serviceGroups,
+      registrationYear
+    };
+  }, [
+    selectedStore,
+    isServicesMode,
+    storeLocations,
+    selectedLocation,
+    overviewSectionModel,
+    supportingSectionModel,
+    servicesViewModel,
+    servicesLayoutMode,
+    heroSectionModel,
+    modeAdapter.heroDescription,
+    modeAdapter.heroEyebrow,
+    modeAdapter.primaryActionLabel,
+    bookingPermitted,
+    checkoutPermitted
+  ]);
+  useEffect(() => {
+    setIsAboutExpanded(false);
+    setIsServiceGalleryExpanded(false);
+  }, [selectedStore?.slug, selectedLocationId]);
+  useEffect(() => {
+    setIsReviewModalOpen(false);
+    resetReviewDraft();
+  }, [selectedStore?.slug]);
+  useEffect(() => {
+    setHasSelectedBranchFromMenu(false);
+  }, [selectedStore?.slug]);
+  const filteredCatalog = useMemo(() => filterCatalogItems(catalog, catalogSearch), [catalog, catalogSearch]);
+  const baseFilteredFnbViewModel = useMemo(() => getFoodBeverageStorefrontViewModel(filteredCatalog), [filteredCatalog]);
+  const filteredFnbCatalog = useMemo(() => (
+    Array.isArray(baseFilteredFnbViewModel?.menuItems) ? baseFilteredFnbViewModel.menuItems : []
+  ), [baseFilteredFnbViewModel]);
+  const filteredFnbViewModel = useMemo(() => getFoodBeverageStorefrontViewModel(filteredFnbCatalog), [filteredFnbCatalog]);
+  const fnbCommunityModel = useMemo(() => {
+    if (!selectedStore) return null;
+    const socialLinks = parseOptionalObject(selectedStore?.storefront_social_links) || {};
+    const facebookLink = String(socialLinks.facebook || '').trim();
+    const instagramLink = String(socialLinks.instagram || '').trim();
+    const tiktokLink = String(socialLinks.tiktok || '').trim();
+    const websiteLink = String(socialLinks.website || socialLinks.web || '').trim();
+    const messengerLink = String(heroSectionModel?.messengerLink || socialLinks.messenger || '').trim();
+    const email = String(heroSectionModel?.email || '').trim();
+    const phone = String(heroSectionModel?.phone || '').trim();
+    const hours = String(heroSectionModel?.hours || selectedStore?.storefront_hours || '').trim();
+    const locationName = String(selectedLocation?.name || overviewSectionModel?.location?.label || selectedStore?.location_name || '').trim();
+    const addressLine = formatStorefrontAddress(selectedLocation || overviewSectionModel?.location || selectedStore || {});
+    const registrationYear = deriveStorefrontRegistrationYear(
+      selectedStore?.business_registered_at
+      || selectedStore?.registered_at
+      || selectedStore?.tenant_created_at
+      || selectedStore?.created_at
+    );
+    const rawReviewSummary = supportingSectionModel?.reviewSummary || parseOptionalObject(selectedStore?.storefront_review_summary) || null;
+    const reviewSummary = normalizeStorefrontReviewSummary(rawReviewSummary);
+    const reviewHighlights = Array.isArray(supportingSectionModel?.reviewHighlights)
+      ? supportingSectionModel.reviewHighlights.filter(Boolean)
+      : [];
+    const menuCategories = Array.isArray(filteredFnbViewModel?.menuSections)
+      ? filteredFnbViewModel.menuSections.map((section) => ({
+        key: section.sectionKey,
+        label: section.sectionLabel,
+        count: Number(section?.items?.length || 0)
+      }))
+      : [];
+    return {
+      name: heroSectionModel?.storeName || selectedStore?.tenant_name || 'Storefront',
+      tagline: heroSectionModel?.tagline || '',
+      aboutText: heroSectionModel?.aboutText || modeAdapter.heroDescription,
+      locationLabel: addressLine || locationName || 'Location details coming soon',
+      hours,
+      reviewSummary,
+      reviewHighlights,
+      menuCategories,
+      registrationYear,
+      footerLinks: [
+        websiteLink ? { label: 'Website', href: websiteLink } : null,
+        facebookLink ? { label: 'Facebook', href: facebookLink } : null,
+        instagramLink ? { label: 'Instagram', href: instagramLink } : null,
+        tiktokLink ? { label: 'TikTok', href: tiktokLink } : null,
+        messengerLink ? { label: 'Messenger', href: messengerLink } : null,
+        phone ? { label: 'Call', href: `tel:${phone}` } : null,
+        email ? { label: 'Email', href: `mailto:${email}` } : null
+      ].filter(Boolean)
+    };
+  }, [
+    selectedStore,
+    heroSectionModel,
+    selectedLocation,
+    overviewSectionModel,
+    supportingSectionModel,
+    filteredFnbViewModel,
+    modeAdapter.heroDescription
+  ]);
+  const simpleStorefrontModel = useMemo(() => {
+    if (!selectedStore || !isSimpleMode) return null;
+    const socialLinks = parseOptionalObject(selectedStore?.storefront_social_links) || {};
+    const facebookLink = String(socialLinks.facebook || '').trim();
+    const instagramLink = String(socialLinks.instagram || '').trim();
+    const tiktokLink = String(socialLinks.tiktok || '').trim();
+    const websiteLink = String(socialLinks.website || socialLinks.web || '').trim();
+    const messengerLink = String(heroSectionModel?.messengerLink || socialLinks.messenger || '').trim();
+    const preferredSocialContact = getPreferredSocialContact({ messengerLink, facebookLink });
+    const email = String(heroSectionModel?.email || '').trim();
+    const phone = String(heroSectionModel?.phone || '').trim();
+    const hours = String(heroSectionModel?.hours || selectedStore?.storefront_hours || '').trim();
+    const locationName = String(selectedLocation?.name || overviewSectionModel?.location?.label || selectedStore?.location_name || '').trim();
+    const addressLine = formatStorefrontAddress(selectedLocation || overviewSectionModel?.location || selectedStore || {});
+    const reviewSummary = supportingSectionModel?.reviewSummary || parseOptionalObject(selectedStore?.storefront_review_summary) || null;
+    const reviewHighlights = Array.isArray(supportingSectionModel?.reviewHighlights)
+      ? supportingSectionModel.reviewHighlights.filter(Boolean)
+      : [];
+    const productGroups = [...new Set(
+      (Array.isArray(catalog) ? catalog : [])
+        .map((item) => String(item?.categoryMeta?.label || item?.category_name || item?.category || '').trim())
+        .filter(Boolean)
+    )].slice(0, 5);
+    const registrationYear = deriveStorefrontRegistrationYear(
+      selectedStore?.business_registered_at
+      || selectedStore?.registered_at
+      || selectedStore?.tenant_created_at
+      || selectedStore?.created_at
+    );
+    const mapStores = storeLocations.length > 0
+      ? storeLocations.map((location) => ({ ...location, tenant_name: selectedStore?.tenant_name }))
+      : [selectedStore];
+    const whyChooseUs = Array.isArray(overviewSectionModel?.whyChooseUs) && overviewSectionModel.whyChooseUs.length > 0
+      ? overviewSectionModel.whyChooseUs.slice(0, 4)
+      : buildSimpleFallbackReasons({
+          categories: Array.isArray(overviewSectionModel?.categories) ? overviewSectionModel.categories : [],
+          catalog
+        });
+    const directionsUrl = buildGoogleMapsDirectionsUrl({
+      latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
+      longitude: selectedLocation?.longitude ?? selectedStore?.longitude,
+      addressLine
+    });
+    return {
+      coverImageUrl: withAssetOrigin(heroSectionModel?.coverImageUrl),
+      profileImageUrl: withAssetOrigin(heroSectionModel?.profileImageUrl),
+      name: heroSectionModel?.storeName || selectedStore?.tenant_name || 'Storefront',
+      tagline: heroSectionModel?.tagline || '',
+      statusLabel: heroSectionModel?.statusLabel || (selectedStore?.storefront_open ? 'Open' : 'Closed'),
+      ratingLabel: formatRatingSummary(reviewSummary),
+      modeLabel: heroSectionModel?.primaryCategoryLabel || modeAdapter.heroEyebrow,
+      locationLabel: addressLine || locationName || 'Location details coming soon',
+      addressLine,
+      aboutText: heroSectionModel?.aboutText || modeAdapter.heroDescription,
+      whyChooseUs,
+      hours,
+      reviewSummary,
+      reviewHighlights,
+      productGroups,
+      registrationYear,
+      directionsUrl,
+      footerLinks: [
+        websiteLink ? { label: 'Website', href: websiteLink } : null,
+        facebookLink ? { label: 'Facebook', href: facebookLink } : null,
+        instagramLink ? { label: 'Instagram', href: instagramLink } : null,
+        tiktokLink ? { label: 'TikTok', href: tiktokLink } : null,
+        messengerLink ? { label: 'Messenger', href: messengerLink } : null,
+        phone ? { label: 'Call', href: `tel:${phone}` } : null,
+        email ? { label: 'Email', href: `mailto:${email}` } : null
+      ].filter(Boolean),
+      contactRows: [
+        phone ? { icon: null, label: 'Call', value: phone, href: `tel:${phone}` } : null,
+        preferredSocialContact ? { icon: null, label: preferredSocialContact.label, value: preferredSocialContact.value, href: preferredSocialContact.href } : null,
+        email ? { icon: null, label: 'Email', value: email, href: `mailto:${email}` } : null
+      ].filter(Boolean),
+      actions: {
+        canCall: Boolean(phone),
+        callHref: phone ? `tel:${phone}` : '',
+        canOrder: checkoutPermitted || productCartPermitted,
+        orderLabel: modeAdapter.primaryActionLabel || 'Start Ordering'
+      },
+      mapStores,
+      mapSelectedKey: selectedLocation?.location_id != null ? `loc-${selectedLocation.location_id}` : null
+    };
+  }, [
+    selectedStore,
+    isSimpleMode,
+    heroSectionModel,
+    selectedLocation,
+    overviewSectionModel,
+    supportingSectionModel,
+    catalog,
+    storeLocations,
+    modeAdapter.heroDescription,
+    modeAdapter.heroEyebrow,
+    modeAdapter.primaryActionLabel,
+    checkoutPermitted,
+    productCartPermitted
+  ]);
+  const hasCatalogSearchQuery = catalogSearch.trim().length > 0;
+  const catalogState = useMemo(() => {
+    if (loadingCatalog) return 'loading';
+    if (catalogError) return 'error';
+    if (catalog.length === 0 && hasCatalogSearchQuery) return 'empty_search_on_zero';
+    if (catalog.length === 0) return 'empty_setup';
+    if (hasCatalogSearchQuery && filteredCatalog.length === 0) return 'empty_no_match';
+    return 'ready';
+  }, [loadingCatalog, catalogError, catalog.length, hasCatalogSearchQuery, filteredCatalog.length]);
+  const isDeliveryOrder = orderMethod === 'delivery';
+  const serviceCartLines = useMemo(() => cart.filter((line) => line.category === 'service'), [cart]);
+  const productCartLines = useMemo(() => cart.filter((line) => line.category !== 'service'), [cart]);
+  const serviceCartCount = useMemo(() => serviceCartLines.reduce((sum, line) => sum + Number(line.quantity || 0), 0), [serviceCartLines]);
+  const serviceCartTotal = useMemo(() => serviceCartLines.reduce((sum, line) => sum + (Number(line.quantity || 0) * Number(line.price || 0)), 0), [serviceCartLines]);
+  const hasServiceCart = serviceCartLines.length > 0;
+  const hasMixedServiceCart = hasServiceCart && serviceCartLines.length !== cart.length;
+  const firstServiceLine = serviceCartLines[0] || null;
+  const isServicesCartDrawerMode = isServicesMode && !isBookingSubpage;
+  const isSimpleCartSurfaceMode = isSimpleMode && !isResolvedOrderSubpage;
+  const servicePaymentPolicy = firstServiceLine?.service_detail?.payment_policy || 'customer_choice';
+  const selectedServicePaymentPolicy = selectedServiceDetail?.service_detail?.payment_policy || 'customer_choice';
+  const serviceIntakeFields = useMemo(() => {
+    return normalizeServiceFormFields(firstServiceLine?.service_detail?.intake_form_schema);
+  }, [firstServiceLine]);
+  const selectedServiceIntakeFields = useMemo(() => (
+    normalizeServiceFormFields(selectedServiceDetail?.service_detail?.intake_form_schema)
+  ), [selectedServiceDetail]);
+  const missingRequiredIntake = useMemo(() => (
+    serviceIntakeFields.filter((field) => {
+      if (!field.required) return false;
+      const value = serviceIntakeResponses[field.id];
+      return field.type === 'checkbox' ? value !== true : !String(value || '').trim();
+    })
+  ), [serviceIntakeFields, serviceIntakeResponses]);
+  const missingRequiredSelectedServiceIntake = useMemo(() => (
+    selectedServiceIntakeFields.filter((field) => {
+      if (!field.required) return false;
+      const value = serviceIntakeResponses[field.id];
+      return field.type === 'checkbox' ? value !== true : !String(value || '').trim();
+    })
+  ), [selectedServiceIntakeFields, serviceIntakeResponses]);
+  const servicePaymentOptions = useMemo(() => {
+    return buildServicePaymentOptions(servicePaymentPolicy);
+  }, [servicePaymentPolicy]);
+  const selectedServicePaymentOptions = useMemo(() => (
+    buildServicePaymentOptions(selectedServicePaymentPolicy)
+  ), [selectedServicePaymentPolicy]);
+  const hasStockViolation = useMemo(() => (
+    cart.some((line) => Number(line.quantity) > Number(line.max_stock ?? Number.POSITIVE_INFINITY))
+  ), [cart]);
+  const totalsForDisplay = useMemo(() => {
+    const subtotal = quoteResult?.subtotal_amount != null ? Number(quoteResult.subtotal_amount) : cartTotal;
+    const serviceFee = quoteResult?.service_fee_amount != null
+      ? Number(quoteResult.service_fee_amount)
+      : round4(Math.max(0, subtotal) * DGFY_CONVENIENCE_FEE_RATE);
+    const deliveryFee = quoteResult?.delivery_fee != null ? Number(quoteResult.delivery_fee) : 0;
+    const totalAmount = quoteResult?.total_amount != null ? Number(quoteResult.total_amount) : subtotal + deliveryFee + serviceFee;
+    return {
+      subtotal_amount: subtotal,
+      service_fee_amount: serviceFee,
+      service_fee_label: quoteResult?.service_fee_label || DGFY_CONVENIENCE_FEE_LABEL,
+      delivery_fee: deliveryFee,
+      vatable_sales: quoteResult?.vatable_sales != null ? Number(quoteResult.vatable_sales) : 0,
+      vat_amount: quoteResult?.vat_amount != null ? Number(quoteResult.vat_amount) : 0,
+      vat_exempt_sales: quoteResult?.vat_exempt_sales != null ? Number(quoteResult.vat_exempt_sales) : 0,
+      zero_rated_sales: quoteResult?.zero_rated_sales != null ? Number(quoteResult.zero_rated_sales) : 0,
+      total_amount: totalAmount
+    };
+  }, [quoteResult, cartTotal]);
+  const activeOrderMethodLabel = ORDER_METHOD_OPTIONS.find((option) => option.value === orderMethod)?.label || 'Checkout';
+  const simpleOrderMethodOptions = ORDER_METHOD_OPTIONS.filter((option) => option.value === 'pickup' || option.value === 'delivery');
+  const isDesktopCheckout = isDesktopViewport;
+  const requireQuoteForCheckout = !hasServiceCart && !isFnbMode && !isSimpleMode;
+  const isStorefrontV2 = parseBooleanFlag(selectedStore?.storefront_ui_v2_enabled, false);
+  const followEnabledForStore = parseBooleanFlag(selectedStore?.storefront_follow_enabled, false);
+  const checkoutBlockReason = getCheckoutBlockReason({
+    selectedStore,
+    cartCount,
+    checkoutLoading,
+    hasStockViolation,
+    hasServiceCart,
+    accessCapabilities,
+    quoteResult,
+    quoteNeedsRefresh,
+    requireQuote: requireQuoteForCheckout
+  });
+  const checkoutAllowed = canCheckout({
+    selectedStore,
+    cartCount,
+    checkoutLoading,
+    hasStockViolation,
+    hasServiceCart,
+    accessCapabilities,
+    quoteResult,
+    quoteNeedsRefresh,
+    requireQuote: requireQuoteForCheckout
+  }) && !hasMixedServiceCart && (!hasServiceCart || (Boolean(serviceAppointmentAt) && missingRequiredIntake.length === 0));
+  const fnbCartStatusLabel = useMemo(() => {
+    if (cartCount === 0) return 'Browse menu';
+    if (hasStockViolation) return 'Update quantities';
+    if (!quoteResult) return 'Quote required';
+    if (quoteNeedsRefresh) return 'Refresh quote';
+    if (checkoutAllowed) return 'Ready to checkout';
+    return 'Review order';
+  }, [cartCount, hasStockViolation, quoteResult, quoteNeedsRefresh, checkoutAllowed]);
+  const fnbCartActionLabel = useMemo(() => {
+    if (cartCount === 0) return 'Browse menu';
+    if (isCheckoutOpen) return 'Close cart';
+    if (hasStockViolation) return 'Review cart';
+    if (!quoteResult || quoteNeedsRefresh) return 'Review and quote';
+    return isMobileViewport ? 'Checkout' : 'View cart and checkout';
+  }, [cartCount, hasStockViolation, isCheckoutOpen, isMobileViewport, quoteResult, quoteNeedsRefresh]);
+  const fnbDrawerSupportLabel = useMemo(() => {
+    if (cartCount === 0) return 'Add menu items to start an order.';
+    if (hasStockViolation) return 'Adjust quantities that exceed available stock before checkout.';
+    if (!quoteResult) return 'Review the cart, then request a fresh quote before checkout.';
+    if (quoteNeedsRefresh) return 'Cart changed. Refresh the quote to sync totals and enable checkout.';
+    return 'Everything is synced. You can continue through checkout.';
+  }, [cartCount, hasStockViolation, quoteResult, quoteNeedsRefresh]);
+  const activeBookingService = firstServiceLine || selectedServiceDetail || null;
+  const bookingPageIntakeFields = hasServiceCart ? serviceIntakeFields : selectedServiceIntakeFields;
+  const bookingPageMissingRequiredIntake = hasServiceCart ? missingRequiredIntake : missingRequiredSelectedServiceIntake;
+  const bookingPagePaymentOptions = hasServiceCart ? servicePaymentOptions : selectedServicePaymentOptions;
+  const bookingFieldPlan = useMemo(() => (
+    buildServiceBookingFieldPlan({
+      fields: bookingPageIntakeFields,
+      serviceItem: activeBookingService
+    })
+  ), [bookingPageIntakeFields, activeBookingService]);
+  const bookingStepOneAdditionalFields = useMemo(() => (
+    [bookingFieldPlan.instructionField, ...bookingFieldPlan.remainingFields].filter(Boolean)
+  ), [bookingFieldPlan.instructionField, bookingFieldPlan.remainingFields]);
+  const selectedServiceDatePart = getDatePartFromAppointment(serviceAppointmentAt);
+  const selectedServiceTimePart = getTimePartFromAppointment(serviceAppointmentAt);
+  const bookingDateOptions = useMemo(() => buildServiceDateOptions(activeBookingService), [activeBookingService]);
+  const bookingTimeSlotOptions = useMemo(() => buildServiceTimeSlotOptions(activeBookingService, selectedServiceDatePart), [activeBookingService, selectedServiceDatePart]);
+  const missingStepOneAdditionalFields = useMemo(() => (
+    bookingStepOneAdditionalFields.filter((field) => !isBookingFieldComplete(field, serviceIntakeResponses[field.id]))
+  ), [bookingStepOneAdditionalFields, serviceIntakeResponses]);
+  const isAddressRequired = bookingFieldPlan.addressField?.required === true || bookingFieldPlan.requiresAddress;
+  const missingCustomerInformation = useMemo(() => {
+    const missing = [];
+    if (!String(customerName || '').trim()) missing.push('Customer Name');
+    if (!String(customerPhone || '').trim()) missing.push('Contact Number');
+    if (bookingFieldPlan.emailField?.required && !String(customerEmail || '').trim()) missing.push('Email');
+    if (isAddressRequired && !String(customerAddress || '').trim()) missing.push('Full Address');
+    return missing;
+  }, [bookingFieldPlan.emailField?.required, customerAddress, customerEmail, customerName, customerPhone, isAddressRequired]);
+  const missingScheduleAndServiceInfo = useMemo(() => {
+    const missing = [];
+    if (!selectedServiceDatePart) missing.push('Preferred Date');
+    if (!selectedServiceTimePart) missing.push('Preferred Time Slot');
+    if (bookingFieldPlan.unitTypeField && bookingFieldPlan.unitTypeField.required && !String(serviceUnitType || '').trim()) {
+      missing.push(bookingFieldPlan.unitTypeField.label);
+    }
+    if (bookingFieldPlan.unitCountField && bookingFieldPlan.unitCountField.required && !(Number(serviceDraftQuantity || 0) > 0)) {
+      missing.push(bookingFieldPlan.unitCountField.label);
+    }
+    return missing;
+  }, [bookingFieldPlan.unitCountField, bookingFieldPlan.unitTypeField, selectedServiceDatePart, selectedServiceTimePart, serviceDraftQuantity, serviceUnitType]);
+  const stepOneComplete = missingCustomerInformation.length === 0
+    && missingScheduleAndServiceInfo.length === 0
+    && missingStepOneAdditionalFields.length === 0;
+  const paymentStepComplete = Boolean(servicePaymentTiming);
+  const reviewStepReady = stepOneComplete && paymentStepComplete;
+  const serviceBookingSummaryTitle = activeBookingService?.variantName || activeBookingService?.name || 'Service booking';
+  const serviceBookingSummarySchedule = formatServiceAppointmentSummary(serviceAppointmentAt);
+  const bookingSummaryUnitPrice = hasServiceCart
+    ? (Number(firstServiceLine?.price ?? 0) || 0)
+    : (Number(activeBookingService?.default_sale_price ?? 0) || 0);
+  const bookingSummaryQuantity = Math.max(1, Number(serviceDraftQuantity || 1));
+  const bookingSummaryAmount = bookingSummaryUnitPrice * bookingSummaryQuantity;
+  const openPreferredBookingDatePicker = useCallback(() => {
+    const input = bookingPreferredDateInputRef.current;
+    if (!input) return;
+    if (typeof input.showPicker === 'function') {
+      try {
+        input.showPicker();
+        return;
+      } catch {
+        // Fall through to focus/click for browsers that block showPicker.
+      }
+    }
+    input.focus();
+    input.click();
+  }, []);
+  const registerBookingFieldRef = useCallback((key) => (node) => {
+    if (!key) return;
+    if (node) {
+      bookingFieldRefs.current[key] = node;
+    } else {
+      delete bookingFieldRefs.current[key];
+    }
+  }, []);
+  const jumpToBookingField = useCallback((step, fieldKey) => {
+    setServiceBookingStep(step);
+    setPendingBookingFocusKey(fieldKey);
+  }, []);
+
+  useEffect(() => {
+    if (productCartPermitted && checkoutPermitted && bookingPermitted) return;
+    if (cart.length === 0 && !quoteResult && !isCheckoutOpen) return;
+    setCart([]);
+    setQuoteResult(null);
+    setQuoteNeedsRefresh(true);
+    setIsCheckoutOpen(false);
+  }, [productCartPermitted, checkoutPermitted, bookingPermitted, cart.length, quoteResult, isCheckoutOpen]);
+  useEffect(() => {
+    if (!isBookingSubpage) return;
+    setIsCheckoutOpen(false);
+  }, [isBookingSubpage]);
+
+  useEffect(() => {
+    if (!filteredDiscoveryStores.length) {
+      setHighlightedStoreSlug('');
+      setHighlightedDiscoveryMarkerKey('');
+      return;
+    }
+    if (!highlightedStoreSlug || !filteredDiscoveryStores.some((store) => store.slug === highlightedStoreSlug)) {
+      setHighlightedStoreSlug(filteredDiscoveryStores[0].slug);
+    }
+    if (!highlightedDiscoveryMarkerKey || !activeDiscoveryMapPins.some((pin) => getDiscoveryMarkerKey(pin) === highlightedDiscoveryMarkerKey)) {
+      setHighlightedDiscoveryMarkerKey(getDiscoveryMarkerKey(activeDiscoveryMapPins[0]));
+    }
+  }, [filteredDiscoveryStores, highlightedStoreSlug, activeDiscoveryMapPins, highlightedDiscoveryMarkerKey]);
+  useEffect(() => {
+    if (!isStorePage) return;
+    setQuoteNeedsRefresh(true);
+  }, [cart, orderMethod, selectedLocationId, customerPin, serviceAppointmentAt, servicePaymentTiming, isStorePage]);
+  useEffect(() => {
+    if (!isSimpleMode) return;
+    if (orderMethod === 'pickup' || orderMethod === 'delivery') return;
+    setOrderMethod('pickup');
+  }, [isSimpleMode, orderMethod]);
+  useEffect(() => {
+    setServicePage(1);
+  }, [catalogSearch, activeServiceTab, serviceSortOption, serviceAvailabilityFilter, serviceAreaFilter, serviceDurationFilter, servicePageSize, routeSlug, selectedLocationId]);
+  useEffect(() => {
+    setFnbPage(1);
+  }, [catalogSearch, activeServiceTab, fnbPageSize, routeSlug, selectedLocationId, fnbSortOption]);
+  useEffect(() => {
+    setIsFnbCategoryDropdownOpen(false);
+  }, [catalogSearch, activeServiceTab, routeSlug, selectedLocationId, fnbSortOption]);
+  useEffect(() => {
+    if (!isFnbCategoryDropdownOpen) return undefined;
+    const handlePointerDown = (event) => {
+      if (fnbCategoryDropdownRef.current && !fnbCategoryDropdownRef.current.contains(event.target)) {
+        setIsFnbCategoryDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [isFnbCategoryDropdownOpen]);
+  useEffect(() => {
+    if (!hasServiceCart) return;
+    if (!servicePaymentOptions.some((option) => option.value === servicePaymentTiming)) {
+      setServicePaymentTiming(servicePaymentOptions[0]?.value || 'postpaid');
+    }
+  }, [hasServiceCart, servicePaymentOptions, servicePaymentTiming]);
+  useEffect(() => {
+    if (!selectedServiceDetail) return;
+    if (!selectedServicePaymentOptions.some((option) => option.value === servicePaymentTiming)) {
+      setServicePaymentTiming(selectedServicePaymentOptions[0]?.value || 'postpaid');
+    }
+  }, [selectedServiceDetail, selectedServicePaymentOptions, servicePaymentTiming]);
+  useEffect(() => {
+    if (!selectedServiceDetail) return;
+    const matchesCurrentService = Number(selectedServiceDetail.item_id) === Number(firstServiceLine?.item_id);
+    setServiceDraftQuantity(matchesCurrentService ? Math.max(1, Number(firstServiceLine?.quantity || 1)) : 1);
+    setServiceDraftNotes(matchesCurrentService ? String(firstServiceLine?.service_notes || '') : '');
+    if (!matchesCurrentService) {
+      setServiceAppointmentAt('');
+      setServiceIntakeResponses({});
+      setServiceUnitType('');
+    }
+  }, [selectedServiceDetail, firstServiceLine]);
+  useEffect(() => {
+    setServiceIntakeResponses({});
+    setServiceUnitType('');
+    setServicePaymentPreviewMethod('qr');
+    setServicePaymentPreviewCard({ cardholder: '', cardNumber: '', expiry: '', cvv: '' });
+    setServicePaymentPreviewReceiptName('');
+  }, [firstServiceLine?.item_id]);
+  useEffect(() => {
+    if (!hasServiceCart || !firstServiceLine) {
+      setServiceDraftQuantity(1);
+      setServiceDraftNotes('');
+      if (!selectedServiceDetail) {
+        setServiceAppointmentAt('');
+        setServiceIntakeResponses({});
+      }
+      return;
+    }
+    setServiceDraftQuantity(Math.max(1, Number(firstServiceLine.quantity || 1)));
+    setServiceDraftNotes(String(firstServiceLine.service_notes || ''));
+  }, [hasServiceCart, firstServiceLine, selectedServiceDetail]);
+  useEffect(() => {
+    if (!isBookingSubpage) return;
+    if (activeBookingService) {
+      setServiceBookingStep(1);
+    }
+  }, [isBookingSubpage, hasServiceCart, activeBookingService?.item_id]);
+  useEffect(() => {
+    if (bookingFieldPlan.customerNameField?.id) {
+      setServiceIntakeResponses((previous) => (
+        previous[bookingFieldPlan.customerNameField.id] === customerName
+          ? previous
+          : { ...previous, [bookingFieldPlan.customerNameField.id]: customerName }
+      ));
+    }
+    if (bookingFieldPlan.contactNumberField?.id) {
+      setServiceIntakeResponses((previous) => (
+        previous[bookingFieldPlan.contactNumberField.id] === customerPhone
+          ? previous
+          : { ...previous, [bookingFieldPlan.contactNumberField.id]: customerPhone }
+      ));
+    }
+    if (bookingFieldPlan.emailField?.id) {
+      setServiceIntakeResponses((previous) => (
+        previous[bookingFieldPlan.emailField.id] === customerEmail
+          ? previous
+          : { ...previous, [bookingFieldPlan.emailField.id]: customerEmail }
+      ));
+    }
+    if (bookingFieldPlan.addressField?.id) {
+      setServiceIntakeResponses((previous) => (
+        previous[bookingFieldPlan.addressField.id] === customerAddress
+          ? previous
+          : { ...previous, [bookingFieldPlan.addressField.id]: customerAddress }
+      ));
+    }
+    if (bookingFieldPlan.preferredDateField?.id) {
+      setServiceIntakeResponses((previous) => (
+        previous[bookingFieldPlan.preferredDateField.id] === selectedServiceDatePart
+          ? previous
+          : { ...previous, [bookingFieldPlan.preferredDateField.id]: selectedServiceDatePart }
+      ));
+    }
+    if (bookingFieldPlan.preferredTimeField?.id) {
+      setServiceIntakeResponses((previous) => (
+        previous[bookingFieldPlan.preferredTimeField.id] === selectedServiceTimePart
+          ? previous
+          : { ...previous, [bookingFieldPlan.preferredTimeField.id]: selectedServiceTimePart }
+      ));
+    }
+    if (bookingFieldPlan.unitTypeField?.id) {
+      setServiceIntakeResponses((previous) => (
+        previous[bookingFieldPlan.unitTypeField.id] === serviceUnitType
+          ? previous
+          : { ...previous, [bookingFieldPlan.unitTypeField.id]: serviceUnitType }
+      ));
+    }
+    if (bookingFieldPlan.unitCountField?.id) {
+      const nextQuantity = String(Math.max(1, Number(serviceDraftQuantity || 1)));
+      setServiceIntakeResponses((previous) => (
+        previous[bookingFieldPlan.unitCountField.id] === nextQuantity
+          ? previous
+          : { ...previous, [bookingFieldPlan.unitCountField.id]: nextQuantity }
+      ));
+    }
+  }, [
+    bookingFieldPlan.addressField?.id,
+    bookingFieldPlan.contactNumberField?.id,
+    bookingFieldPlan.customerNameField?.id,
+    bookingFieldPlan.emailField?.id,
+    bookingFieldPlan.preferredDateField?.id,
+    bookingFieldPlan.preferredTimeField?.id,
+    bookingFieldPlan.unitCountField?.id,
+    bookingFieldPlan.unitTypeField?.id,
+    customerAddress,
+    customerEmail,
+    customerName,
+    customerPhone,
+    selectedServiceDatePart,
+    selectedServiceTimePart,
+    serviceDraftQuantity,
+    serviceUnitType
+  ]);
+  useEffect(() => {
+    if (!pendingBookingFocusKey) return;
+    const node = bookingFieldRefs.current[pendingBookingFocusKey];
+    if (!node) return;
+    const timer = window.requestAnimationFrame(() => {
+      const focusTarget = typeof node.focus === 'function'
+        ? node
+        : node.querySelector?.('input, textarea, button, [tabindex]:not([tabindex="-1"])');
+      node.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+      focusTarget?.focus?.();
+      setPendingBookingFocusKey('');
+    });
+    return () => window.cancelAnimationFrame(timer);
+  }, [pendingBookingFocusKey, serviceBookingStep]);
+  useEffect(() => {
+    if (!isBookingSubpage || !activeBookingService || selectedServiceDatePart) return;
+    const firstDate = bookingDateOptions[0]?.value || '';
+    if (!firstDate) return;
+    setServiceAppointmentAt(combineDateAndTimeParts(firstDate, getPreferredBookingTimeForDate(activeBookingService, firstDate, selectedServiceTimePart)));
+  }, [isBookingSubpage, activeBookingService, bookingDateOptions, selectedServiceDatePart, selectedServiceTimePart]);
+  useEffect(() => {
+    if (!isServiceDetailsSubpage) return;
+    if (!routeServiceItemId) {
+      setSelectedServiceDetail(null);
+      return;
+    }
+    const matchedService = (Array.isArray(catalog) ? catalog : []).find((item) => String(item?.item_id) === String(routeServiceItemId));
+    if (matchedService) {
+      setSelectedServiceDetail((previous) => (String(previous?.item_id) === String(matchedService.item_id) ? previous : matchedService));
+    } else if (!loadingCatalog) {
+      setSelectedServiceDetail(null);
+    }
+  }, [catalog, isServiceDetailsSubpage, loadingCatalog, routeServiceItemId]);
+  useEffect(() => {
+    if (!Array.isArray(storeLocations) || storeLocations.length === 0) {
+      if (selectedLocationId != null) setSelectedLocationId(null);
+      return;
+    }
+    const exists = storeLocations.some((location) => Number(location.location_id) === Number(selectedLocationId));
+    if (!exists) {
+      const primaryLocation = primaryLocationId == null
+        ? null
+        : (storeLocations.find((location) => Number(location.location_id) === Number(primaryLocationId)) || null);
+      const firstOpenLocation = storeLocations.find((location) => location?.is_open !== false) || null;
+      const fallbackLocationId = (firstOpenLocation?.location_id ?? primaryLocation?.location_id ?? storeLocations[0]?.location_id ?? null);
+      setSelectedLocationId(fallbackLocationId);
+    }
+  }, [storeLocations, selectedLocationId, primaryLocationId]);
+
+  const playCartAddedSound = () => {
+    if (typeof window === 'undefined') return;
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextCtor) return;
+    try {
+      const audioContext = new AudioContextCtor();
+      const gainNode = audioContext.createGain();
+      gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+      gainNode.connect(audioContext.destination);
+
+      const notes = [
+        { frequency: 523.25, start: 0, duration: 0.09 },
+        { frequency: 659.25, start: 0.1, duration: 0.12 }
+      ];
+
+      notes.forEach((note) => {
+        const oscillator = audioContext.createOscillator();
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(note.frequency, audioContext.currentTime + note.start);
+        oscillator.connect(gainNode);
+        gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime + note.start);
+        gainNode.gain.exponentialRampToValueAtTime(0.05, audioContext.currentTime + note.start + 0.02);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + note.start + note.duration);
+        oscillator.start(audioContext.currentTime + note.start);
+        oscillator.stop(audioContext.currentTime + note.start + note.duration);
+      });
+
+      window.setTimeout(() => {
+        try {
+          audioContext.close();
+        } catch {
+          // Ignore close failures.
+        }
+      }, 320);
+    } catch {
+      // Ignore sound failures and keep cart interaction silent.
+    }
+  };
+
+  const addToCart = (item) => {
+    if (isServiceCatalogItem(item) ? !bookingPermitted : !productCartPermitted) {
+      toast.error('This storefront is not accepting online checkout right now.');
+      return;
+    }
+    let stockWarning = '';
+    const normalizedItemId = Number(item?.item_id);
+    if (Number.isFinite(normalizedItemId)) {
+      setCartImageErrors((prev) => {
+        if (!prev.has(normalizedItemId)) return prev;
+        const next = new Set(prev);
+        next.delete(normalizedItemId);
+        return next;
+      });
+    }
+    setCart((prev) => {
+      const found = prev.find((l) => Number(l.item_id) === Number(item.item_id));
+      const price = Number(item.default_sale_price ?? 0);
+      const maxStock = isItemAvailable(item) ? Number.POSITIVE_INFINITY : 0;
+      const baseLine = {
+        item_id: item.item_id,
+        name: item.name,
+        variantName: item.variantName || '',
+        category: isServiceCatalogItem(item) ? 'service' : String(item.category || '').trim().toLowerCase(),
+        service_detail: item.service_detail || null,
+        quantity: 1,
+        price,
+        image_url: withAssetOrigin(item.image_url) || null,
+        unit_of_measure: item.unit_of_measure || '',
+        max_stock: maxStock,
+        serviceAreaLabel: item.serviceAreaLabel || '',
+        durationLabel: item.durationLabel || ''
+      };
+      if (found) {
+        const requestedQty = Number(found.quantity) + 1;
+        const safeQty = Math.max(0, Math.min(requestedQty, maxStock));
+        if (requestedQty > maxStock) {
+          stockWarning = buildStockExceededMessage({
+            item_name: item.name,
+            requested_qty: requestedQty,
+            available_stock: maxStock,
+            unit_of_measure: item.unit_of_measure || ''
+          });
+        }
+        return prev.map((line) => Number(line.item_id) === Number(item.item_id)
+          ? { ...line, quantity: safeQty, max_stock: maxStock }
+          : line);
+      }
+      if (isServiceCatalogItem(item)) {
+        const nextNonServiceLines = prev.filter((line) => line.category !== 'service');
+        const existingDifferentService = prev.find((line) => line.category === 'service');
+        if (existingDifferentService) {
+          stockWarning = 'Only one service booking at a time. The current service in cart was replaced.';
+        }
+        return [...nextNonServiceLines, baseLine];
+      }
+      return [...prev, {
+        ...baseLine,
+        quantity: maxStock > 0 ? 1 : 0
+      }];
+    });
+    setCheckoutTab(isFnbMode ? 'cart' : 'review');
+    setIsCheckoutOpen(true);
+    playCartAddedSound();
+    toast.success(`${item?.variantName || item?.name || 'Item'} added successfully!`);
+    if (stockWarning) {
+      toast.error(stockWarning);
+    }
+  };
+  const handleServicesCartCheckout = () => {
+    if (cart.length === 0) {
+      toast.error('Your cart is empty.');
+      return;
+    }
+    if (hasMixedServiceCart) {
+      toast.error('Book services separately from regular product orders.');
+      return;
+    }
+    if (!hasServiceCart || !firstServiceLine) {
+      toast.error('Add a service to your cart first.');
+      return;
+    }
+    setIsCheckoutOpen(false);
+    goStoreBookingPage();
+  };
+  const openServiceBookingPanel = (nextTab = 'review') => {
+    setCheckoutTab(nextTab);
+    setIsCheckoutOpen(true);
+  };
+  const openTrackPanel = () => {
+    setCheckoutTab('track');
+    setIsCheckoutOpen(true);
+  };
+  const openAccountPanel = () => {
+    setCheckoutTab('account');
+    setIsCheckoutOpen(true);
+    handleLoadAccountPanel();
+  };
+  const beginServiceBooking = (serviceItem) => {
+    if (!serviceItem) return;
+    setSelectedServiceDetail(serviceItem);
+    setCheckoutError('');
+    setQuoteError('');
+    setCheckoutResult(null);
+    if (isServicesMode) {
+      goStoreBookingPage({ preserveSelectedService: true });
+      return;
+    }
+    openServiceBookingPanel('review');
+  };
+  const saveServiceBookingDraft = (serviceItem = selectedServiceDetail, nextTab = 'review') => {
+    if (!serviceItem) return;
+    if (!bookingPermitted || accessCapabilities.booking === false) {
+      const message = 'This storefront is not accepting service bookings right now.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (cart.some((line) => line.category !== 'service')) {
+      const message = 'Book services separately from regular product orders.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (!serviceAppointmentAt) {
+      const message = 'Choose a preferred appointment date and time before adding this booking.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (missingRequiredSelectedServiceIntake.length > 0) {
+      const message = `Complete required intake question: ${missingRequiredSelectedServiceIntake[0].label}`;
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    const replacingDifferentService = hasServiceCart && Number(firstServiceLine?.item_id) !== Number(serviceItem.item_id);
+    setCart([{
+      item_id: serviceItem.item_id,
+      name: serviceItem.name,
+      variantName: serviceItem.variantName || '',
+      category: 'service',
+      service_detail: serviceItem.service_detail || null,
+      quantity: Math.max(1, Number(serviceDraftQuantity || 1)),
+      price: Number(serviceItem.default_sale_price ?? 0),
+      image_url: withAssetOrigin(serviceItem.image_url) || null,
+      unit_of_measure: serviceItem.unit_of_measure || '',
+      max_stock: Number.POSITIVE_INFINITY,
+      service_notes: String(serviceDraftNotes || '').trim(),
+      service_schedule_at: serviceAppointmentAt,
+      payment_timing: servicePaymentTiming,
+      intake_responses: selectedServiceIntakeFields.length > 0 ? serviceIntakeResponses : null
+    }]);
+    setCheckoutError('');
+    setQuoteError('');
+    setQuoteResult(null);
+    setQuoteNeedsRefresh(true);
+    setSelectedServiceDetail(null);
+    if (isServicesMode) {
+      goStoreBookingPage();
+    } else {
+      openServiceBookingPanel(nextTab);
+    }
+    toast.success(replacingDifferentService ? 'Booking summary updated.' : 'Service added to your booking summary.');
+  };
+  const openServiceCartEditor = () => {
+    if (!firstServiceLine) return;
+    setSelectedServiceDetail(firstServiceLine);
+  };
+
+  const removeCartItem = (itemId) => {
+    setCart((prev) => prev.filter((line) => Number(line.item_id) !== Number(itemId)));
+  };
+
+  const updateQty = (itemId, qty) => {
+    const parsed = Number(qty);
+    if (!Number.isFinite(parsed)) return;
+    if (parsed <= 0) {
+      setCart((prev) => prev.filter((line) => Number(line.item_id) !== Number(itemId)));
+      return;
+    }
+    let stockWarning = '';
+    setCart((prev) => prev.map((line) => {
+      if (Number(line.item_id) !== Number(itemId)) return line;
+      const maxStock = Number.isFinite(Number(line.max_stock)) ? Number(line.max_stock) : Number.POSITIVE_INFINITY;
+      const safeQty = Math.min(parsed, maxStock);
+      if (parsed > maxStock) {
+        stockWarning = buildStockExceededMessage({
+          item_name: line.name,
+          requested_qty: parsed,
+          available_stock: maxStock,
+          unit_of_measure: line.unit_of_measure || ''
+        });
+      }
+      return { ...line, quantity: safeQty };
+    }));
+    if (stockWarning) {
+      toast.error(stockWarning);
+    }
+  };
+
+  const checkoutPayload = () => ({
+    location_id: selectedLocationId ?? selectedStore?.location_id,
+    order_method: orderMethod,
+    customer_name: customerName,
+    customer_phone: customerPhone,
+    customer_email: customerEmail,
+    delivery_address: isDeliveryOrder ? customerAddress : '',
+    delivery_latitude: isDeliveryOrder ? toNumberOrNull(customerPin?.latitude) : null,
+    delivery_longitude: isDeliveryOrder ? toNumberOrNull(customerPin?.longitude) : null,
+    scheduled_for: fnbScheduledFor ? new Date(fnbScheduledFor).toISOString() : null,
+    special_instructions: String(fnbSpecialInstructions || '').trim(),
+    lines: cart.map((line) => ({ item_id: Number(line.item_id), quantity: Number(line.quantity) }))
+  });
+
+  const handlePinMyLocation = () => {
+    if (!navigator?.geolocation) {
+      setPinLocationError('Geolocation is not supported on this device/browser.');
+      return;
+    }
+    setPinLocationError('');
+    setPinLocationLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setCustomerPin({
+          latitude: Number(position.coords.latitude.toFixed(6)),
+          longitude: Number(position.coords.longitude.toFixed(6))
+        });
+        setPinLocationLoading(false);
+      },
+      () => {
+        setPinLocationError('Unable to get your current location.');
+        setPinLocationLoading(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000
+      }
+    );
+  };
+
+  useEffect(() => {
+    const slug = String(selectedStore?.slug || '').trim().toLowerCase();
+    if (!isStorePage || !isStorefrontV2 || !followEnabledForStore || !slug || !storefrontVisitorId) {
+      setFollowState({ loading: false, isFollowing: false, followersCount: 0 });
+      return;
+    }
+    let cancelled = false;
+    const loadFollowStatus = async () => {
+      setFollowState((prev) => ({ ...prev, loading: true }));
+      try {
+        const token = readStoreAuthToken();
+        const status = await requestJson(`/api/v1/store/follow/status?storefront_slug=${encodeURIComponent(slug)}&visitor_id=${encodeURIComponent(storefrontVisitorId)}`, {
+          method: 'GET',
+          storeSlug: slug,
+          authToken: token
+        });
+        if (cancelled) return;
+        setFollowState({
+          loading: false,
+          isFollowing: status?.is_following === true,
+          followersCount: Number(status?.followers_count || 0),
+          error: ''
+        });
+      } catch {
+        if (cancelled) return;
+        setFollowState({ loading: false, isFollowing: false, followersCount: 0, error: 'Follow status unavailable.' });
+      }
+    };
+    loadFollowStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [isStorePage, isStorefrontV2, followEnabledForStore, selectedStore?.slug, storefrontVisitorId]);
+
+  const handleFollowAction = async () => {
+    const slug = String(selectedStore?.slug || '').trim().toLowerCase();
+    if (!slug || !storefrontVisitorId || followState.loading) return;
+    const nextIsFollowing = !followState.isFollowing;
+    setFollowState((prev) => ({ ...prev, loading: true, error: '' }));
+    try {
+      const token = readStoreAuthToken();
+      const response = await requestJson('/api/v1/store/follow', {
+        method: nextIsFollowing ? 'POST' : 'DELETE',
+        storeSlug: slug,
+        authToken: token,
+        body: {
+          storefront_slug: slug,
+          visitor_id: storefrontVisitorId
+        }
+      });
+      setFollowState({
+        loading: false,
+        isFollowing: response?.is_following === true,
+        followersCount: Number(response?.followers_count || 0),
+        error: ''
+      });
+      toast.success(response?.is_following ? 'Storefront followed.' : 'Storefront unfollowed.');
+    } catch (error) {
+      let followError = normalizeStorefrontErrorMessage(error, 'Unable to update follow status.');
+      if (Number(error?.status) === 404) {
+        followError = 'Storefront is unavailable for follow.';
+      } else if (Number(error?.status) === 429) {
+        followError = 'Too many follow requests. Please wait and retry.';
+      }
+      setFollowState((prev) => ({ ...prev, loading: false, error: followError }));
+      toast.error(followError);
+    }
+  };
+
+  const handleShareAction = async () => {
+    const targetUrl = typeof window !== 'undefined' ? window.location.href : '';
+    const sharePayload = {
+      title: selectedStore?.tenant_name || 'Storefront',
+      text: selectedStore?.storefront_tagline || `${DGFY_BRAND_NAME} tenant storefront`,
+      url: targetUrl
+    };
+    try {
+      if (navigator?.share) {
+        await navigator.share(sharePayload);
+        return;
+      }
+      if (navigator?.clipboard?.writeText && targetUrl) {
+        await navigator.clipboard.writeText(targetUrl);
+        toast.success('Storefront link copied.');
+        return;
+      }
+    } catch {
+      // fallback to toast below
+    }
+    toast.info('Sharing is unavailable in this browser.');
+  };
+
+  const resetReviewDraft = () => {
+    setReviewDraft({
+      name: '',
+      anonymous: false,
+      rating: 0,
+      message: ''
+    });
+  };
+
+  const handleReviewDraftSubmit = () => {
+    if (!String(reviewDraft.name || '').trim()) {
+      toast.error('Enter your name before sending a review.');
+      return;
+    }
+    if (!Number(reviewDraft.rating)) {
+      toast.error('Choose a star rating before sending a review.');
+      return;
+    }
+    if (!String(reviewDraft.message || '').trim()) {
+      toast.error('Write a short review message before sending.');
+      return;
+    }
+    toast.info('Review submission UI is ready. Backend publishing will be connected later.');
+    setIsReviewModalOpen(false);
+    resetReviewDraft();
+  };
+
+  const handleQuote = async () => {
+    if (!selectedStore) return;
+    setQuoteError('');
+    if (!checkoutPermitted || accessCapabilities.quote === false) {
+      const message = 'This storefront is not accepting online checkout right now.';
+      setQuoteError(message);
+      toast.error(message);
+      return;
+    }
+    try {
+      const data = await requestJson('/api/v1/store/cart/quote', {
+        method: 'POST',
+        storeSlug: selectedStore.slug,
+        authToken: readStoreAuthToken(),
+        body: checkoutPayload()
+      });
+      setQuoteResult(data);
+      setQuoteNeedsRefresh(false);
+      toast.success('Quote updated.');
+    } catch (error) {
+      const violation = extractStockViolation(error);
+      if (violation) {
+        const message = buildStockExceededMessage(violation);
+        setQuoteError(message);
+        toast.error(message);
+        return;
+      }
+      const message = normalizeStorefrontErrorMessage(error, 'Unable to compute quote.');
+      setQuoteError(message);
+      toast.error(message);
+    }
+  };
+
+  const handleCheckout = async () => {
+    if (!selectedStore) return;
+    setCheckoutError('');
+    setCheckoutResult(null);
+    const serviceBookingLine = hasServiceCart
+      ? firstServiceLine
+      : (isServicesMode && activeBookingService
+        ? {
+          item_id: activeBookingService.item_id,
+          name: activeBookingService.name,
+          variantName: activeBookingService.variantName || '',
+          category: 'service',
+          service_detail: activeBookingService.service_detail || null,
+          quantity: Math.max(1, Number(serviceDraftQuantity || 1)),
+          price: Number(activeBookingService.default_sale_price ?? 0),
+          image_url: withAssetOrigin(activeBookingService.image_url) || null,
+          unit_of_measure: activeBookingService.unit_of_measure || '',
+          max_stock: Number.POSITIVE_INFINITY,
+          service_notes: '',
+          service_schedule_at: serviceAppointmentAt,
+          payment_timing: servicePaymentTiming,
+          intake_responses: bookingPageIntakeFields.length > 0 ? serviceIntakeResponses : null
+        }
+        : null);
+    if (checkoutBlockReason === 'stock_violation') {
+      const message = 'Cannot checkout: one or more items exceed current stock.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (checkoutBlockReason === 'access_mode') {
+      const message = 'This storefront is not accepting online checkout right now.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (requireQuoteForCheckout && !hasServiceCart && checkoutBlockReason === 'missing_quote') {
+      const message = 'Please click Quote first before checkout.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (requireQuoteForCheckout && !hasServiceCart && checkoutBlockReason === 'stale_quote') {
+      const message = 'Your cart changed. Please refresh Quote before checkout.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (hasMixedServiceCart) {
+      const message = 'Book services separately from regular product orders.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if ((hasServiceCart || (isServicesMode && activeBookingService)) && !serviceAppointmentAt) {
+      const message = 'Choose an appointment date and time before booking.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if ((hasServiceCart && missingRequiredIntake.length > 0) || (!hasServiceCart && isServicesMode && bookingPageMissingRequiredIntake.length > 0)) {
+      const firstMissingField = hasServiceCart ? missingRequiredIntake[0] : bookingPageMissingRequiredIntake[0];
+      const message = `Complete required intake question: ${firstMissingField.label}`;
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    const cartSnapshot = cart.map((line) => ({ ...line }));
+    setCheckoutLoading(true);
+    try {
+      const authToken = readStoreAuthToken();
+      const data = (hasServiceCart || (isServicesMode && serviceBookingLine))
+        ? await requestJson('/api/v1/store/services/bookings', {
+          method: 'POST',
+          storeSlug: selectedStore.slug,
+          authToken,
+          body: {
+            service_item_id: Number(serviceBookingLine.item_id),
+            start_at: new Date(serviceAppointmentAt).toISOString(),
+            customer_name: customerName,
+            customer_email: customerEmail,
+            customer_phone: customerPhone,
+            location_id: selectedLocationId ?? selectedStore?.location_id,
+            payment_timing: servicePaymentTiming,
+            intake_responses: bookingPageIntakeFields.length > 0 ? serviceIntakeResponses : null,
+            notes: [
+              Number(serviceBookingLine.quantity || 1) > 1 ? `Service quantity/package count: ${serviceBookingLine.quantity}` : '',
+              !bookingFieldPlan.addressField && String(customerAddress || '').trim()
+                ? `Service address: ${String(customerAddress || '').trim()}`
+                : '',
+              String(serviceBookingLine.service_notes || '').trim()
+            ].filter(Boolean).join('\n')
+          }
+        })
+        : await requestJson('/api/v1/store/checkout', {
+          method: 'POST',
+          storeSlug: selectedStore.slug,
+          authToken,
+          body: {
+            ...checkoutPayload(),
+            idempotency_key: window.crypto?.randomUUID?.() || `store-${Date.now()}`,
+            payment_type: fnbPaymentType
+          }
+        });
+      setCheckoutResult({
+        ...data,
+        cart_lines: hasServiceCart
+          ? (serviceBookingLine ? [serviceBookingLine] : cart)
+          : cartSnapshot,
+        totals: totalsForDisplay
+      });
+      if (data?.tracking_pin) {
+        setTrackingPinInput(data.tracking_pin);
+        if (!isSimpleMode) {
+          setCheckoutTab('track');
+        }
+      }
+      if (data?.booking?.public_reference) {
+        setTrackingPinInput(data.booking.public_reference);
+      }
+      if (hasServiceCart && serviceBookingLine) {
+        setCart((prev) => prev.filter((line) => Number(line.item_id) !== Number(serviceBookingLine.item_id)));
+      } else {
+        setCart([]);
+      }
+      setQuoteResult(null);
+      setQuoteNeedsRefresh(true);
+      setServiceAppointmentAt('');
+      setServiceDraftQuantity(1);
+      setServiceDraftNotes('');
+      setServiceIntakeResponses({});
+      setServicePaymentPreviewMethod('qr');
+      setServicePaymentPreviewCard({ cardholder: '', cardNumber: '', expiry: '', cvv: '' });
+      setServicePaymentPreviewReceiptName('');
+      setFnbOrderStep(4);
+      if (isSimpleMode) {
+        setSimpleOrderStep(4);
+      }
+      toast.success(hasServiceCart ? 'Booking created.' : 'Checkout completed.');
+    } catch (error) {
+      const violation = extractStockViolation(error);
+      if (violation) {
+        const message = buildStockExceededMessage(violation);
+        setCheckoutError(message);
+        toast.error(message);
+        return;
+      }
+      const message = normalizeStorefrontErrorMessage(error, 'Unable to complete checkout.');
+      setCheckoutError(message);
+      toast.error(message);
+    } finally {
+      setCheckoutLoading(false);
+    }
+  };
+
+  const handleDownloadCheckoutImage = async () => {
+    if (!checkoutResult) return;
+    try {
+      const reference = checkoutResult.booking?.public_reference || checkoutResult.tracking_pin || checkoutResult.order?.tracking_pin || 'ticket';
+      const dataUrl = await buildTicketImage({
+        result: checkoutResult,
+        storeName: selectedStore?.tenant_name || routeSlug || DGFY_BRAND_NAME,
+        cartLines: Array.isArray(checkoutResult.cart_lines) ? checkoutResult.cart_lines : cart,
+        totals: checkoutResult.totals || totalsForDisplay
+      });
+      downloadDataUrl(dataUrl, `${String(reference).toLowerCase()}-ticket.png`);
+    } catch {
+      toast.error('Unable to generate ticket image.');
+    }
+  };
+
+  const handleTrack = async () => {
+    setTrackingError('');
+    setTrackingResult(null);
+    try {
+      const pin = trackingPinInput.trim().toUpperCase();
+      if (!pin || !selectedStore?.slug) throw new Error('Select a storefront and enter a valid tracking pin.');
+      const data = await requestJson(`/api/v1/store/track/${encodeURIComponent(pin)}`, { storeSlug: selectedStore.slug });
+      setTrackingResult(data);
+    } catch (error) {
+      setTrackingError(normalizeStorefrontErrorMessage(error, 'Tracking failed.'));
+    }
+  };
+
+  const handleLoadAccountPanel = async () => {
+    if (!selectedStore?.slug) return;
+    const authToken = readStoreAuthToken();
+    if (!authToken) {
+      setAccountPanel({ loading: false, error: 'Sign in to view saved bookings, orders, tickets, and receipts.', me: null, orders: [], bookings: [] });
+      return;
+    }
+    setAccountPanel((prev) => ({ ...prev, loading: true, error: '' }));
+    try {
+      const [me, ordersData, bookingsData] = await Promise.all([
+        requestJson('/api/v1/store/auth/me', { storeSlug: selectedStore.slug, authToken }),
+        requestJson('/api/v1/store/orders?limit=25', { storeSlug: selectedStore.slug, authToken }),
+        requestJson('/api/v1/store/services/bookings?limit=25', { storeSlug: selectedStore.slug, authToken }).catch(() => ({ bookings: [] }))
+      ]);
+      setAccountPanel({
+        loading: false,
+        error: '',
+        me: me?.customer || me || null,
+        orders: Array.isArray(ordersData?.orders) ? ordersData.orders : [],
+        bookings: Array.isArray(bookingsData?.bookings) ? bookingsData.bookings : []
+      });
+    } catch (error) {
+      setAccountPanel({ loading: false, error: normalizeStorefrontErrorMessage(error, 'Unable to load account.'), me: null, orders: [], bookings: [] });
+    }
+  };
+
+  const handleNearMe = () => {
+    const currentSearch = String(searchRef.current || search || '').trim();
+    const intentSequence = discoveryIntentSequenceRef.current + 1;
+    discoveryIntentSequenceRef.current = intentSequence;
+    setHasDiscoveryExplorationStarted(true);
+    setIsStoreListVisible(true);
+    setIsMobileResultsCollapsed(false);
+    lastImmediateDiscoveryRequestRef.current = { search: currentSearch, at: Date.now() };
+    if (!navigator?.geolocation) {
+      setDebouncedDiscoverySearch(currentSearch);
+      loadStores(undefined, { useImmediateSearch: true, intentSequence });
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        if (intentSequence !== discoveryIntentSequenceRef.current) return;
+        setDiscoveryPinScope('nearest_matching_branch');
+        setDebouncedDiscoverySearch(currentSearch);
+        loadStores({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        }, { useImmediateSearch: true, pinScope: 'nearest_matching_branch', intentSequence });
+      },
+      () => {
+        if (intentSequence !== discoveryIntentSequenceRef.current) return;
+        setDebouncedDiscoverySearch(currentSearch);
+        loadStores(undefined, { useImmediateSearch: true, intentSequence });
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 8000
+      }
+    );
+  };
+  const handleDiscoverySearch = () => {
+    const currentSearch = String(searchRef.current || search || '').trim();
+    const intentSequence = discoveryIntentSequenceRef.current + 1;
+    discoveryIntentSequenceRef.current = intentSequence;
+    setHasDiscoveryExplorationStarted(true);
+    setIsStoreListVisible(true);
+    setIsMobileResultsCollapsed(false);
+    setSelectedMapPin(null);
+    setDiscoveryPinScope('tenant_primary');
+    lastImmediateDiscoveryRequestRef.current = { search: currentSearch, at: Date.now() };
+    setDebouncedDiscoverySearch(currentSearch);
+    if (!navigator?.geolocation) {
+      loadStores(undefined, { useImmediateSearch: true, intentSequence });
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        if (intentSequence !== discoveryIntentSequenceRef.current) return;
+        loadStores({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        }, { useImmediateSearch: true, intentSequence });
+      },
+      () => {
+        if (intentSequence !== discoveryIntentSequenceRef.current) return;
+        loadStores(undefined, { useImmediateSearch: true, intentSequence });
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 8000
+      }
+    );
+  };
+  const handlePopularDiscoveryCategory = (query) => {
+    const normalized = String(query || '').trim();
+    const categoryFilterValue = resolveDiscoveryCategoryFilterValue(normalized);
+    const nextSearch = categoryFilterValue === 'all' ? '' : normalized;
+    setHasDiscoveryExplorationStarted(true);
+    setIsMobileResultsCollapsed(false);
+    setSearch(nextSearch);
+    searchRef.current = nextSearch;
+    setDebouncedDiscoverySearch(nextSearch);
+    setDiscoveryCategoryFilter(categoryFilterValue);
+    handleDiscoverySearch();
+  };
+  const handleFeaturedCategoryFilter = (event, categoryKey) => {
+    if (event?.preventDefault) event.preventDefault();
+    if (event?.stopPropagation) event.stopPropagation();
+    setFeaturedCategoryFilter(String(categoryKey || 'all'));
+    featuredSectionRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+  };
+  const featuredCategoryOptions = [
+    { key: 'all', label: 'All Categories', icon: null },
+    { key: 'food', label: 'Food', icon: <UtensilsCrossed size={14} /> },
+    { key: 'grocery', label: 'Grocery', icon: <ShoppingCart size={14} /> },
+    { key: 'pharmacy', label: 'Pharmacy', icon: <HeartHandshake size={14} /> },
+    { key: 'services', label: 'Services', icon: <Wrench size={14} /> },
+    { key: 'electronics', label: 'Electronics', icon: <Zap size={14} /> }
+  ];
+  const featuredVisibleStores = useMemo(() => {
+    const base = Array.isArray(featuredBaseStores) ? featuredBaseStores : [];
+    if (featuredCategoryFilter === 'all') return base.slice(0, 10);
+
+    const categoryKeywords = {
+      food: ['food', 'f&b', 'restaurant', 'cafe', 'coffee', 'pizza', 'bakery'],
+      grocery: ['grocery', 'market', 'mart', 'supermarket', 'convenience'],
+      pharmacy: ['pharmacy', 'medical', 'health', 'drugstore', 'clinic'],
+      services: ['service', 'laundry', 'salon', 'spa', 'hardware', 'repair', 'auto'],
+      electronics: ['electronics', 'electronic', 'gadget', 'tech', 'computer', 'mobile']
+    };
+
+    const terms = categoryKeywords[featuredCategoryFilter] || [];
+    return base
+      .filter((store) => {
+        const categories = normalizeStorefrontCategories(store?.storefront_categories);
+        const categoryText = categories.join(' ').toLowerCase();
+        const modeText = String(store?.workflow_mode || store?.business_mode || '').toLowerCase();
+        const searchText = `${categoryText} ${modeText}`;
+        return terms.some((term) => searchText.includes(term));
+      })
+      .slice(0, 10);
+  }, [featuredBaseStores, featuredCategoryFilter]);
+  const discoveryBusinessModeOptions = useMemo(() => ([
+    ['all', 'Category: All'],
+    ...WORKFLOW_MODE_SELECT_VALUES.map((modeKey) => [
+      modeKey,
+      WORKFLOW_MODE_LABELS[modeKey] || String(modeKey || '').replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
+    ])
+  ]), []);
+  const fnbHasCustomerName = String(customerName || '').trim().length > 0;
+  const fnbHasPrimaryContact = String(customerPhone || '').trim().length > 0 || String(customerEmail || '').trim().length > 0;
+  const fnbHasDeliveryAddress = !isDeliveryOrder || String(customerAddress || '').trim().length > 0;
+  const fnbCustomerStepComplete = fnbHasCustomerName && fnbHasPrimaryContact && fnbHasDeliveryAddress;
+  const simpleHasCustomerName = String(customerName || '').trim().length > 0;
+  const simpleHasPrimaryContact = String(customerPhone || '').trim().length > 0 || String(customerEmail || '').trim().length > 0;
+  const simpleHasDeliveryAddress = !isDeliveryOrder || String(customerAddress || '').trim().length > 0;
+  const simpleCustomerStepComplete = simpleHasCustomerName && simpleHasPrimaryContact && simpleHasDeliveryAddress;
+  const simpleCheckoutAllowed = checkoutAllowed && simpleCustomerStepComplete;
+  const discoveryResultsPerPage = useMemo(() => {
+    if (viewMode === 'list') return 3;
+    if (isDiscoveryMobileViewport) return 4;
+    if (isDiscoveryTabletViewport) return 4;
+    return 6;
+  }, [viewMode, isDiscoveryMobileViewport, isDiscoveryTabletViewport]);
+  const discoveryTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredDiscoveryStores.length / discoveryResultsPerPage)),
+    [filteredDiscoveryStores.length, discoveryResultsPerPage]
+  );
+  const paginatedDiscoveryStores = useMemo(() => {
+    const startIndex = (discoveryResultsPage - 1) * discoveryResultsPerPage;
+    return filteredDiscoveryStores.slice(startIndex, startIndex + discoveryResultsPerPage);
+  }, [filteredDiscoveryStores, discoveryResultsPage, discoveryResultsPerPage]);
+  const hasActiveDiscoveryFilters = (
+    discoverySortBy !== 'nearest'
+    || discoveryCategoryFilter !== 'all'
+    || discoveryOpenFilter !== 'all'
+    || discoveryDistanceFilter !== 'all'
+    || discoveryRatingFilter !== 'all'
+    || discoveryAvailabilityFilter !== 'all'
+  );
+  const isOpenNowFilterActive = discoveryOpenFilter === 'open';
+  const isSortFilterActive = discoverySortBy !== 'nearest';
+  const isCategoryFilterActive = discoveryCategoryFilter !== 'all';
+  const activeDiscoveryFilterCount = Number(isOpenNowFilterActive) + Number(isSortFilterActive) + Number(isCategoryFilterActive);
+  useEffect(() => {
+    if (!hasDiscoverySearch) {
+      setFeaturedBaseStores(Array.isArray(storesWithNearestBranch) ? storesWithNearestBranch : []);
+    }
+  }, [hasDiscoverySearch, storesWithNearestBranch]);
+  useEffect(() => {
+    if (hasActiveDiscoveryFilters) {
+      setRenderDiscoveryResetButton(true);
+      const frame = requestAnimationFrame(() => setShowDiscoveryResetButton(true));
+      return () => cancelAnimationFrame(frame);
+    }
+    setShowDiscoveryResetButton(false);
+    const timeoutId = setTimeout(() => setRenderDiscoveryResetButton(false), 180);
+    return () => clearTimeout(timeoutId);
+  }, [hasActiveDiscoveryFilters]);
+  useEffect(() => {
+    setDiscoveryResultsPage(1);
+  }, [
+    viewMode,
+    search,
+    debouncedDiscoverySearch,
+    discoverySortBy,
+    discoveryCategoryFilter,
+    discoveryDistanceFilter,
+    discoveryOpenFilter,
+    discoveryRatingFilter,
+    discoveryAvailabilityFilter
+  ]);
+  useEffect(() => {
+    setDiscoveryResultsPage((currentPage) => Math.min(currentPage, discoveryTotalPages));
+  }, [discoveryTotalPages]);
+  const resetDiscoveryResultsView = () => {
+    setDiscoveryCategoryFilter('all');
+    setDiscoveryDistanceFilter('all');
+    setDiscoveryOpenFilter('all');
+    setDiscoveryRatingFilter('all');
+    setDiscoveryAvailabilityFilter('all');
+    setDiscoverySortBy('nearest');
+    setDiscoveryResultsPage(1);
+  };
+  const discoveryPaginationItems = useMemo(() => {
+    if (discoveryTotalPages <= 1) return [];
+    if (discoveryTotalPages <= 6) return Array.from({ length: discoveryTotalPages }, (_, index) => index + 1);
+    const items = [1];
+    if (discoveryResultsPage > 3) items.push('ellipsis-left');
+    const middlePages = [];
+    for (let page = Math.max(2, discoveryResultsPage - 1); page <= Math.min(discoveryTotalPages - 1, discoveryResultsPage + 1); page += 1) {
+      middlePages.push(page);
+    }
+    if (!middlePages.includes(2) && discoveryResultsPage <= 3) middlePages.unshift(2);
+    if (!middlePages.includes(discoveryTotalPages - 1) && discoveryResultsPage >= discoveryTotalPages - 2) middlePages.push(discoveryTotalPages - 1);
+    items.push(...middlePages);
+    if (discoveryResultsPage < discoveryTotalPages - 2) items.push('ellipsis-right');
+    items.push(discoveryTotalPages);
+    return items;
+  }, [discoveryResultsPage, discoveryTotalPages]);
+  const renderDiscoveryResultsStage = () => {
+    const cityLabel = discoveryCoords ? 'your selected area' : 'Iloilo City';
+    const resultCountLabel = `${filteredDiscoveryStores.length} ${filteredDiscoveryStores.length === 1 ? 'Store' : 'Stores'} Found`;
+    const resultsSubtitle = hasDiscoverySearch && String(search || '').trim()
+      ? `Showing businesses related to "${String(search || '').trim()}" near ${cityLabel}`
+      : `Showing businesses within your selected area near ${cityLabel}`;
+      const viewButtonStyle = (mode) => ({
+        minHeight: isDiscoveryMobileViewport ? 36 : 34,
+        minWidth: isDiscoveryMobileViewport ? 40 : 96,
+        borderRadius: isDiscoveryMobileViewport ? 10 : 10,
+        border: `1px solid ${viewMode === mode ? '#bfdbfe' : '#e2e8f0'}`,
+        background: viewMode === mode ? '#eff6ff' : '#ffffff',
+        color: viewMode === mode ? '#1a4e8d' : '#334155',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+        gap: isDiscoveryMobileViewport ? 0 : 6,
+        padding: isDiscoveryMobileViewport ? '0' : '0 11px',
+        fontSize: isDiscoveryMobileViewport ? 12 : 12,
+        fontWeight: 700,
+        cursor: 'pointer',
+        boxShadow: viewMode === mode ? '0 8px 18px rgba(37,99,235,.12)' : 'none'
+      });
+      const renderDiscoveryStoreCard = (store) => {
+      const storeSlug = toSlug(store?.slug);
+      const imgUrl = withAssetOrigin(store?.storefront_cover_image_url);
+      const imgKey = `discovery-cover:${storeSlug}:${imgUrl}`;
+      const storePins = Array.isArray(discoveryPinsBySlug[storeSlug]) ? discoveryPinsBySlug[storeSlug] : [];
+      const preferredLocationId = getPreferredDiscoveryLocationId({ store, storePins });
+      const categories = normalizeStorefrontCategories(store?.storefront_categories);
+      const primaryCategory = categories[0] || String(store?.workflow_mode || 'Store').replace(/_/g, ' ');
+      const secondaryCategory = categories[1] || null;
+      const categoryLabel = [primaryCategory, secondaryCategory].filter(Boolean).join(' • ');
+        const reviewSummary = normalizeStorefrontReviewSummary(store?.storefront_review_summary);
+        const ratingValue = Number.isFinite(Number(reviewSummary?.score)) ? Number(reviewSummary.score).toFixed(1) : '0.0';
+        const ratingCount = Number(reviewSummary?.total_count || store?.matching_item_count || 0);
+      const distanceLabel = Number.isFinite(Number(store?.nearest_distance_km)) ? `${Number(store.nearest_distance_km).toFixed(1)} km away` : 'Distance unavailable';
+      const waitBase = Number(store?.estimated_wait_minutes || 10);
+      const etaLabel = `${waitBase}-${waitBase + 5} min`;
+        const branchCount = Number(store?.active_location_count || 0);
+        const branchLabel = branchCount > 0 ? `${branchCount} ${branchCount === 1 ? 'Branch' : 'Branches'}` : null;
+        const isStoreOpenNow = store?.storefront_open === true;
+          const businessHoursLabel = String(store?.nearest_location_hours || store?.storefront_hours || '').trim();
+          const closingTimeLabel = businessHoursLabel
+            ? (/\bclose/i.test(businessHoursLabel) ? businessHoursLabel : `Closes at ${businessHoursLabel}`)
+            : '';
+        const closedStoreNote = !isStoreOpenNow
+          ? `Store closed for now${businessHoursLabel ? ` • ${businessHoursLabel}` : ''}`
+          : '';
+            const isActive = highlightedStoreSlug === store.slug;
+              const isGridView = viewMode === 'grid';
+          const isMobileListView = isDiscoveryMobileViewport && !isGridView;
+          const isDesktopListView = !isGridView && !isDiscoveryMobileViewport && !isDiscoveryTabletViewport;
+        const isMobileGridView = isGridView && isDiscoveryMobileViewport;
+        const showFeaturedBadge = Number(store?.matching_item_count || 0) > 2;
+        const statusChipLabel = isStoreOpenNow ? 'Open' : 'Closed';
+        const compactListHeaderGap = !isGridView && !showFeaturedBadge ? 4 : 8;
+        const showInlineNonFeaturedListRating = !isGridView && !showFeaturedBadge;
+            const cardImageHeight = isGridView
+                ? (isDiscoveryMobileViewport ? 132 : isDiscoveryTabletViewport ? 166 : 116)
+                : (isMobileListView ? 72 : isDiscoveryMobileViewport ? 112 : isDiscoveryTabletViewport ? 96 : 104);
+                const actionButtonStyle = (kind) => ({
+                    minHeight: isMobileListView ? 36 : isGridView ? (isDiscoveryMobileViewport ? 36 : isDiscoveryTabletViewport ? 38 : 36) : isDiscoveryTabletViewport ? 30 : (isDesktopListView ? 32 : 36),
+                    height: isMobileListView ? 36 : isGridView ? (isDiscoveryMobileViewport ? 36 : isDiscoveryTabletViewport ? 38 : 36) : isDiscoveryTabletViewport ? 30 : (isDesktopListView ? 32 : 36),
+                    borderRadius: isGridView ? 12 : 9,
+                  border: kind === 'primary' ? 'none' : '1px solid #bfdbfe',
+                    background: kind === 'primary' ? '#FF6B1A' : '#ffffff',
+                    color: kind === 'primary' ? '#ffffff' : '#2563EB',
+                    fontSize: isGridView ? (isDiscoveryMobileViewport ? 12 : 13) : 11,
+                  fontWeight: 700,
+                  lineHeight: 1.2,
+                  padding: isGridView
+                    ? (isDiscoveryMobileViewport ? '0 8px' : '0 10px')
+                    : '0 12px',
+                  cursor: 'pointer',
+                    boxShadow: kind === 'primary' ? '0 10px 24px rgba(249,115,22,.18)' : 'none',
+                    width: '100%',
+                    minWidth: isMobileListView ? 102 : 0,
+                    whiteSpace: isGridView && isDiscoveryMobileViewport ? 'normal' : 'nowrap'
+                });
+          if (isGridView) {
+            return (
+              <article
+                key={`${store.slug}:${preferredLocationId ?? 'store'}`}
+                className="discovery-grid-card"
+                onMouseEnter={() => setHighlightedStoreSlug(store.slug)}
+                style={{
+                  borderRadius: 16,
+                  border: '1px solid #E5EAF3',
+                  background: '#ffffff',
+                  boxShadow: isActive ? '0 18px 34px rgba(15,23,42,.10)' : '0 10px 28px rgba(15,23,42,.06)',
+                  opacity: isStoreOpenNow ? 1 : 0.76,
+                  overflow: 'hidden',
+                  display: 'grid',
+                  gridTemplateRows: `${cardImageHeight}px auto`,
+                  transition: 'transform .18s ease, box-shadow .18s ease, border-color .18s ease',
+                  width: '100%',
+                  minWidth: 0,
+                      minHeight: isMobileGridView ? 0 : 268
+                  }}
+                >
+                <div style={{ position: 'relative', height: cardImageHeight, background: '#f8fafc', overflow: 'hidden' }}>
+                  {imgUrl && !isBrandingImageBlocked(imgKey)
+                    ? <img src={imgUrl} alt={store.tenant_name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={() => markBrandingImageError(imgKey)} />
+                    : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg,#dbeafe,#f8fafc)', display: 'grid', placeItems: 'center', color: '#94a3b8', fontSize: 12, fontWeight: 800 }}>DGFY</div>}
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: 12,
+                      left: 12,
+                      borderRadius: 999,
+                      padding: isMobileGridView ? '5px 10px' : '6px 12px',
+                      background: isStoreOpenNow ? 'rgba(220,252,231,.98)' : 'rgba(254,226,226,.98)',
+                      color: isStoreOpenNow ? '#22C55E' : '#DC2626',
+                      fontSize: isMobileGridView ? 11 : 12,
+                      fontWeight: 800,
+                      lineHeight: 1
+                    }}
+                  >
+                    {statusChipLabel}
+                  </span>
+                </div>
+                  <div style={{ minWidth: 0, display: 'grid', gap: isMobileGridView ? 8 : 10, padding: isMobileGridView ? '14px' : '16px 18px', alignContent: 'start' }}>
+                    <div style={{ display: 'grid', gap: isMobileGridView ? 7 : 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: isMobileGridView ? 8 : 10, flexWrap: isMobileGridView ? 'wrap' : 'nowrap', minWidth: 0 }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, minWidth: 0, flex: '1 1 auto' }}>
+                          <h3 style={{ margin: 0, fontSize: isMobileGridView ? 17 : 18, lineHeight: 1.18, fontWeight: 800, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                            {store.tenant_name}
+                          </h3>
+                        <span title={isStoreOpenNow ? 'Open' : 'Closed'} aria-label={isStoreOpenNow ? 'Open' : 'Closed'} style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: isStoreOpenNow ? '#22C55E' : '#EF4444', boxShadow: `0 0 0 3px ${isStoreOpenNow ? 'rgba(34,197,94,.14)' : 'rgba(239,68,68,.12)'}` }} />
+                        </span>
+                      </div>
+                      {showFeaturedBadge ? (
+                          <span style={{ borderRadius: 999, padding: isMobileGridView ? '3px 8px' : '4px 10px', fontSize: 10, fontWeight: 800, background: '#fff7ed', color: '#F97316', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0, maxWidth: '100%' }}>
+                          <Star size={11} fill="currentColor" />
+                          Featured
+                        </span>
+                      ) : (
+                          <span style={{ borderRadius: 999, padding: isMobileGridView ? '3px 8px' : '4px 10px', fontSize: 10, fontWeight: 800, background: '#fffbeb', color: '#d97706', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                          <Star size={11} fill="currentColor" />
+                          {ratingValue}
+                        </span>
+                      )}
+                    </div>
+                      <div style={{ fontSize: isMobileGridView ? 12 : 13, fontWeight: 600, color: '#64748B', textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.35 }}>
+                        {categoryLabel || 'Local storefront'}
+                      </div>
+                    </div>
+                      <div style={{ display: 'grid', gap: isMobileGridView ? 7 : 8, fontSize: isMobileGridView ? 11 : 12, color: '#64748B', minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: isMobileGridView ? 8 : 10, flexWrap: 'wrap', lineHeight: 1.45 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                            <MapPin size={13} color="#94a3b8" />
+                            {distanceLabel}
+                          </span>
+                          <span style={{ color: '#cbd5e1' }}>•</span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                          <Clock3 size={13} color="#94a3b8" />
+                          {etaLabel}
+                        </span>
+                        </div>
+                        <div style={{ lineHeight: 1.4 }}>
+                          {closingTimeLabel || 'Closing time unavailable'}
+                        </div>
+                      </div>
+                      <div style={{ display: 'grid', gap: isMobileGridView ? 8 : 10, gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', marginTop: isMobileGridView ? 0 : 2 }}>
+                    <button type="button" className="discovery-grid-action discovery-grid-action-secondary" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
+                    <button type="button" className="discovery-grid-action discovery-grid-action-primary" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={actionButtonStyle('primary')}>Order Now</button>
+                  </div>
+                </div>
+              </article>
+            );
+          }
+          return (
+          isMobileListView ? (
+              <article
+              key={`${store.slug}:${preferredLocationId ?? 'store'}`}
+              onMouseEnter={() => setHighlightedStoreSlug(store.slug)}
+                style={{
+                  borderRadius: 18,
+                  border: `1px solid ${isActive ? '#bfdbfe' : '#e5edf5'}`,
+                  background: '#ffffff',
+                  boxShadow: isActive ? '0 14px 30px rgba(37,99,235,.08)' : '0 8px 22px rgba(15,23,42,.05)',
+                  opacity: isStoreOpenNow ? 1 : 0.7,
+                  padding: 12,
+                  display: 'grid',
+                gap: 10,
+                transition: 'transform .18s ease, box-shadow .18s ease, border-color .18s ease'
+              }}
+            >
+                <div style={{ display: 'grid', gridTemplateColumns: '84px minmax(0,1fr)', gap: 10, alignItems: 'start' }}>
+                <div
+                  style={{
+                    borderRadius: 14,
+                    overflow: 'hidden',
+                    background: '#f8fafc',
+                      height: 90
+                  }}
+                >
+                  {imgUrl && !isBrandingImageBlocked(imgKey)
+                    ? <img src={imgUrl} alt={store.tenant_name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={() => markBrandingImageError(imgKey)} />
+                    : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg,#dbeafe,#f8fafc)', display: 'grid', placeItems: 'center', color: '#94a3b8', fontSize: 11, fontWeight: 800 }}>DGFY</div>}
+                </div>
+                <div style={{ minWidth: 0, display: 'grid', gap: 5 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: compactListHeaderGap, flexWrap: 'nowrap', minWidth: 0 }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, flex: '1 1 auto' }}>
+                          <h3 style={{ margin: 0, fontSize: 15, lineHeight: 1.12, fontWeight: 800, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{store.tenant_name}</h3>
+                          <span
+                            title={isStoreOpenNow ? 'Open' : 'Closed'}
+                            aria-label={isStoreOpenNow ? 'Open' : 'Closed'}
+                            style={{ display: 'inline-flex', alignItems: 'center', transform: 'translateY(1px)', flexShrink: 0 }}
+                          >
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: isStoreOpenNow ? '#22c55e' : '#ef4444', boxShadow: `0 0 0 3px ${isStoreOpenNow ? 'rgba(34,197,94,.14)' : 'rgba(239,68,68,.12)'}` }} />
+                          </span>
+                        </div>
+                        {Number(store?.matching_item_count || 0) > 2 && (
+                          <span style={{ borderRadius: 999, padding: '2px 7px', fontSize: 10, fontWeight: 800, background: '#fff7ed', color: '#f97316', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <Star size={10} fill="currentColor" />
+                          Featured
+                        </span>
+                      )}
+                        {showInlineNonFeaturedListRating && <span style={{ fontSize: 11, fontWeight: 800, color: '#d97706', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                          <Star size={11} fill="currentColor" />
+                          {ratingValue}
+                        </span>}
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {categoryLabel || 'Local storefront'}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 11, color: '#64748b' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <MapPin size={12} color="#94a3b8" />
+                      {distanceLabel}
+                    </span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <Clock3 size={12} color="#94a3b8" />
+                      {etaLabel}
+                    </span>
+                  </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 11, color: '#64748b' }}>
+                      {branchLabel && <span style={{ fontWeight: 600 }}>{branchLabel}</span>}
+                    {Number(store?.catalog_count || 0) > 0 && (
+                      <>
+                        <span style={{ color: '#cbd5e1' }}>•</span>
+                        <span style={{ fontWeight: 600, color: '#94a3b8' }}>{Number(store.catalog_count)} item(s)</span>
+                      </>
+                    )}
+                    </div>
+                    {!isStoreOpenNow && (
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#b45309', marginTop: 1 }}>
+                        {closedStoreNote}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              <div style={{ display: 'grid', gap: 8, gridTemplateColumns: '1fr 1fr' }}>
+                <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={actionButtonStyle('primary')}>Order Now</button>
+                <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
+              </div>
+            </article>
+          ) : (
+              <article
+              key={`${store.slug}:${preferredLocationId ?? 'store'}`}
+              onMouseEnter={() => setHighlightedStoreSlug(store.slug)}
+                style={{
+              borderRadius: 20,
+              border: `1px solid ${isActive ? '#bfdbfe' : '#e5edf5'}`,
+              background: '#ffffff',
+                boxShadow: isActive ? '0 16px 34px rgba(37,99,235,.08)' : '0 10px 28px rgba(15,23,42,.05)',
+                opacity: isStoreOpenNow ? 1 : 0.72,
+                    padding: isGridView ? 12 : isDiscoveryMobileViewport ? 12 : 14,
+                  display: 'grid',
+                  gap: isGridView ? 12 : isDiscoveryMobileViewport ? 10 : 14,
+                  gridTemplateColumns: isGridView
+                    ? '1fr'
+                    : isMobileListView
+                      ? '72px minmax(0,1fr) auto'
+                    : '104px minmax(0,1fr) 126px',
+            alignItems: isGridView ? 'stretch' : isDesktopListView ? 'stretch' : 'center',
+            transition: 'transform .18s ease, box-shadow .18s ease, border-color .18s ease'
+          }}
+        >
+              <div
+              style={{
+                  borderRadius: 16,
+                  overflow: 'hidden',
+                  background: '#f8fafc',
+                height: cardImageHeight,
+                minWidth: 0,
+                position: 'relative'
+              }}
+            >
+              {imgUrl && !isBrandingImageBlocked(imgKey)
+                ? <img src={imgUrl} alt={store.tenant_name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={() => markBrandingImageError(imgKey)} />
+                : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg,#dbeafe,#f8fafc)', display: 'grid', placeItems: 'center', color: '#94a3b8', fontSize: 12, fontWeight: 800 }}>DGFY</div>}
+              {isGridView && (
+                <>
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,.18) 0%, rgba(15,23,42,0) 42%, rgba(15,23,42,.08) 100%)', pointerEvents: 'none' }} />
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: 10,
+                      left: 10,
+                      borderRadius: 999,
+                      padding: isMobileGridView ? '4px 8px' : '4px 10px',
+                      background: isStoreOpenNow ? 'rgba(220,252,231,.96)' : 'rgba(254,226,226,.96)',
+                      color: isStoreOpenNow ? '#15803d' : '#b91c1c',
+                      fontSize: isMobileGridView ? 10 : 11,
+                      fontWeight: 800,
+                      lineHeight: 1
+                    }}
+                  >
+                    {statusChipLabel}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Save ${store.tenant_name}`}
+                    style={{
+                      position: 'absolute',
+                      top: 10,
+                      right: 10,
+                      width: isMobileGridView ? 28 : 30,
+                      height: isMobileGridView ? 28 : 30,
+                      borderRadius: '50%',
+                      border: '1px solid rgba(255,255,255,.55)',
+                      background: 'rgba(15,23,42,.44)',
+                      color: '#ffffff',
+                      display: 'grid',
+                      placeItems: 'center',
+                      cursor: 'default',
+                      pointerEvents: 'none',
+                      backdropFilter: 'blur(10px)'
+                    }}
+                  >
+                    <Heart size={isMobileGridView ? 14 : 15} />
+                  </button>
+                </>
+              )}
+            </div>
+
+                    <div style={{ minWidth: 0, display: 'grid', gap: isGridView ? 8 : isMobileListView ? 4 : 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: compactListHeaderGap, flexWrap: isDesktopListView ? 'nowrap' : 'wrap' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, maxWidth: '100%', flex: isDesktopListView ? '1 1 auto' : '0 1 auto' }}>
+                          <h3 style={{ margin: 0, fontSize: isGridView ? (isMobileGridView ? 15 : 16) : isMobileListView ? 15 : 19, lineHeight: 1.15, fontWeight: 800, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{store.tenant_name}</h3>
+                          <span
+                            title={isStoreOpenNow ? 'Open' : 'Closed'}
+                            aria-label={isStoreOpenNow ? 'Open' : 'Closed'}
+                          style={{ display: 'inline-flex', alignItems: 'center', transform: 'translateY(1px)', flexShrink: 0 }}
+                          >
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: isStoreOpenNow ? '#22c55e' : '#ef4444', boxShadow: `0 0 0 3px ${isStoreOpenNow ? 'rgba(34,197,94,.14)' : 'rgba(239,68,68,.12)'}` }} />
+                        </span>
+                            {showInlineNonFeaturedListRating && !isDesktopListView && (
+                              <span style={{ borderRadius: 999, padding: '4px 9px', fontSize: 10, fontWeight: 800, background: '#fffbeb', color: '#d97706', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                                <Star size={11} fill="currentColor" />
+                                {ratingValue}
+                                <span style={{ color: '#a16207', fontWeight: 700 }}>({ratingCount})</span>
+                              </span>
+                          )}
+                          </div>
+                      {showFeaturedBadge && (
+                        <span style={{ borderRadius: 999, padding: isGridView ? '3px 8px' : '4px 9px', fontSize: 10, fontWeight: 800, background: '#fff7ed', color: '#f97316', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <Star size={11} fill="currentColor" />
+                        Featured
+                      </span>
+                    )}
+                    {!isGridView && isDesktopListView && (
+                      <span style={{ borderRadius: 999, padding: '4px 9px', fontSize: 10, fontWeight: 800, background: '#fffbeb', color: '#d97706', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                        <Star size={11} fill="currentColor" />
+                        {ratingValue}
+                        <span style={{ color: '#a16207', fontWeight: 700 }}>({ratingCount})</span>
+                      </span>
+                    )}
+                  </div>
+                    <div style={{ fontSize: isGridView ? 12 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#64748b', textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{categoryLabel || 'Local storefront'}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: isGridView ? 8 : isMobileListView ? 8 : 10, flexWrap: 'wrap', fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, color: '#64748b' }}>
+                  {isGridView && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#d97706', fontWeight: 800 }}>
+                      <Star size={11} fill="currentColor" />
+                      {ratingValue}
+                      <span style={{ color: '#94a3b8', fontWeight: 700 }}>({ratingCount})</span>
+                    </span>
+                  )}
+                  {isGridView && <span style={{ color: '#cbd5e1' }}>•</span>}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  <MapPin size={13} color="#94a3b8" />
+                  {distanceLabel}
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                <Clock3 size={13} color="#94a3b8" />
+                {etaLabel}
+              </span>
+            </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          {branchLabel && <span style={{ fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#64748b' }}>{branchLabel}</span>}
+                          {Number(store?.catalog_count || 0) > 0 && <span style={{ fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#94a3b8' }}>{Number(store.catalog_count)} item(s)</span>}
+                      </div>
+                      {!isStoreOpenNow && (
+                        <div style={{ fontSize: isGridView ? 10 : 11, fontWeight: 700, color: '#b45309' }}>
+                          {closedStoreNote}
+                        </div>
+                      )}
+                  </div>
+
+            <div style={{ display: 'grid', gap: 8, alignSelf: isMobileListView ? 'start' : 'stretch', alignContent: isDesktopListView ? 'end' : 'start', justifyContent: isDesktopListView ? 'end' : 'stretch', gridTemplateColumns: isGridView ? '1fr 1fr' : '1fr', gridColumn: 'auto', marginTop: isGridView ? 2 : 0, minWidth: isMobileListView ? 104 : (isDesktopListView ? 126 : 0) }}>
+              {isGridView ? (
+                <>
+                  <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
+                  <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={actionButtonStyle('primary')}>Order Now</button>
+                </>
+              ) : (
+                <>
+                  <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={actionButtonStyle('primary')}>Order Now</button>
+                  <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
+                </>
+              )}
+            </div>
+          </article>
+          )
+        );
+      };
+        const isResultsPanelVisible = isDiscoveryMobileViewport ? !isMobileResultsCollapsed : isStoreListVisible;
+          const desktopResultsPanelWidth = isDiscoveryMobileViewport
+            ? '100%'
+            : isDiscoveryTabletViewport
+              ? '100%'
+              : `${discoveryLayout.resultsPanelWidth}px`;
+        const discoveryStageMapHeight = isDiscoveryMobileViewport
+          ? '312px'
+          : (!isDiscoveryTabletViewport && viewMode === 'grid'
+            ? 'calc(100vh - 164px)'
+            : discoveryLayout.discoveryMapHeight);
+      return (
+      <DiscoveryMapCard viewportMode={discoveryViewportMode}>
+        <div
+          className={`discovery-results-card ${isDiscoveryMobileViewport ? 'discovery-results-card--mobile-fullbleed-map' : ''}`}
+          style={{ borderRadius: 24, overflow: isDiscoveryMobileViewport ? 'visible' : 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 12px 42px rgba(15,23,42,.08)', background: '#ffffff' }}
+        >
+          <div
+            className={`discovery-results-stage ${isDiscoveryMobileViewport ? 'discovery-results-stage--mobile discovery-results-stage--mobile-fullbleed-map' : (isDiscoveryTabletViewport ? 'discovery-results-stage--tablet' : 'discovery-results-stage--desktop')}`}
+            style={{ display: 'flex', flexDirection: isDiscoveryMobileViewport || isDiscoveryTabletViewport ? 'column' : 'row', alignItems: 'stretch', position: 'relative', overflow: isDiscoveryMobileViewport ? 'visible' : 'hidden', transition: 'all 350ms cubic-bezier(0.4,0,0.2,1)' }}
+          >
+            <div
+              className={`discovery-results-stage__map ${isDiscoveryMobileViewport ? `discovery-results-stage__map--mobile-fullbleed ${isResultsPanelVisible ? 'is-results-visible' : 'is-results-hidden'}` : ''}`}
+              style={{ position: 'relative', zIndex: 20, flex: '1 1 auto', minWidth: 0, height: discoveryStageMapHeight }}
+            >
+              {!loadingStores && !storesError && (searchedDiscoveryMapPins.length > 0 || (hasDiscoverySearch && filteredDiscoveryStores.length === 0)) ? (
+                <StoresMap
+                  key={discoveryResultsMapKey}
+                  stores={searchedDiscoveryMapPins}
+                  selectedKey={highlightedDiscoveryMarkerKey || null}
+                  userLocation={discoveryCoords}
+                  height="100%"
+                    onSelectStore={(pin) => {
+                      setHasDiscoveryExplorationStarted(true);
+                      setIsStoreListVisible(true);
+                      setIsMobileResultsCollapsed(false);
+                      setHighlightedStoreSlug(pin.slug);
+                    setHighlightedDiscoveryMarkerKey(getDiscoveryMarkerKey(pin));
+                    const matched = filteredDiscoveryStores.find((s) => s.slug === pin.slug)
+                      || discoveryResultStores.find((s) => s.slug === pin.slug)
+                      || storesWithNearestBranch.find((s) => s.slug === pin.slug)
+                      || null;
+                    setSelectedMapPin(matched || pin || null);
+                  }}
+                  onOpenStore={(pin) => goStore(pin.slug, pin.location_id ?? null)}
+                  autoOpenPopups={filteredDiscoveryStores.length > 0}
+                  openPopupOnHover={true}
+                />
+              ) : (
+                <div style={{ height: '100%', background: '#f8fafc', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>
+                  {loadingStores ? 'Loading map...' : storesError || 'No storefront pins available right now.'}
+                </div>
+              )}
+              {isDiscoveryMobileViewport && (
+                <button
+                  type="button"
+                  onClick={() => setIsMobileResultsCollapsed((v) => !v)}
+                  className="discovery-results-stage__mobile-toggle"
+                  style={{
+                    position: 'absolute',
+                    left: '50%',
+                    bottom: isResultsPanelVisible ? 12 : 46,
+                    transform: 'translateX(-50%)',
+                    zIndex: 40,
+                    border: 'none',
+                    borderRadius: 14,
+                    background: '#1a4e8d',
+                    color: '#fff',
+                    height: 38,
+                    padding: '0 14px',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    boxShadow: '0 10px 24px rgba(37,99,235,.28)',
+                    opacity: isResultsPanelVisible ? 0.9 : 1
+                  }}
+                >
+                  {isResultsPanelVisible ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                  {isResultsPanelVisible
+                    ? 'Hide Results'
+                    : `View Results${filteredDiscoveryStores.length >= 0 ? ` (${filteredDiscoveryStores.length})` : ''}`}
+                </button>
+              )}
+              {!isDiscoveryMobileViewport && <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 11 }}>
+                <button
+                  type="button"
+                  onClick={() => setIsStoreListVisible((value) => !value)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 7,
+                    borderRadius: 12,
+                    border: 'none',
+                    background: isStoreListVisible ? '#0f172a' : '#1a4e8d',
+                    color: '#fff',
+                    padding: '10px 16px',
+                    fontWeight: 700,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    boxShadow: '0 8px 24px rgba(15,23,42,.24)',
+                    transition: 'background 200ms'
+                  }}
+                >
+                  {isStoreListVisible ? <X size={14} /> : <List size={14} />}
+                  {isStoreListVisible ? 'Hide Results' : `View All Stores${filteredDiscoveryStores.length ? ` (${filteredDiscoveryStores.length})` : ''}`}
+                </button>
+              </div>}
+            </div>
+
+            <aside
+              className={`discovery-results-stage__panel ${isDiscoveryMobileViewport ? 'discovery-results-stage__panel--mobile' : (isDiscoveryTabletViewport ? 'discovery-results-stage__panel--tablet' : 'discovery-results-stage__panel--desktop')}`}
+              style={{
+                background: '#fff',
+                borderLeft: isResultsPanelVisible ? '1px solid #e2e8f0' : 'none',
+                display: 'grid',
+                  gridTemplateRows: isDiscoveryMobileViewport ? 'auto auto auto' : 'auto 1fr auto',
+                    overflow: isDiscoveryMobileViewport ? 'visible' : 'hidden',
+                position: 'static',
+                zIndex: 10,
+                  width: isResultsPanelVisible ? desktopResultsPanelWidth : '0px',
+                minWidth: 0,
+                  maxHeight: isDiscoveryMobileViewport ? (isResultsPanelVisible ? 'calc(100vh - 220px)' : '0px') : discoveryLayout.resultsPanelMaxHeight,
+                  opacity: isResultsPanelVisible ? 1 : 0,
+                  transition: 'width 350ms cubic-bezier(0.4,0,0.2,1), opacity 300ms ease, border-color 350ms, max-height 280ms ease, transform 280ms ease',
+                  marginTop: isDiscoveryMobileViewport ? -20 : 0,
+                borderTopLeftRadius: isDiscoveryMobileViewport ? 26 : 0,
+                borderTopRightRadius: isDiscoveryMobileViewport ? 26 : 0,
+                  boxShadow: isDiscoveryMobileViewport ? '0 -8px 24px rgba(15,23,42,.12)' : 'none',
+                  transform: isDiscoveryMobileViewport ? (isResultsPanelVisible ? 'translateY(0)' : 'translateY(14px)') : 'none',
+                  pointerEvents: isResultsPanelVisible ? 'auto' : 'none'
+                }}
+              >
+                <div style={{ padding: isDiscoveryMobileViewport ? '34px 18px 14px' : '24px 22px 16px', borderBottom: '1px solid #edf2f7', display: 'grid', gap: 14 }}>
+                  <div style={{ display: 'flex', alignItems: isDiscoveryMobileViewport ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: '#1a4e8d', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Discover Nearby</div>
+                      <h2 style={{ margin: '6px 0 0', fontSize: isDiscoveryMobileViewport ? 24 : 29, lineHeight: 1.08, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.03em' }}>Best Shops Today</h2>
+                      <p
+                        style={{
+                          margin: '8px 0 0',
+                          fontSize: isDiscoveryMobileViewport ? 12 : 14,
+                          lineHeight: isDiscoveryMobileViewport ? 1.4 : 1.6,
+                          color: '#64748b',
+                          maxWidth: isDiscoveryMobileViewport ? 360 : 430
+                        }}
+                      >
+                        {resultsSubtitle}
+                      </p>
+                    </div>
+                  </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'nowrap' }}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'nowrap', justifyContent: 'flex-end', marginLeft: 'auto', order: 2 }}>
+                        <button
+                          type="button"
+                          onClick={() => setViewMode('list')}
+                          style={viewButtonStyle('list')}
+                          aria-label="List view"
+                          title="List view"
+                        >
+                          <List size={15} />
+                          {!isDiscoveryMobileViewport && 'List View'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setViewMode('grid')}
+                          style={viewButtonStyle('grid')}
+                          aria-label="Grid view"
+                          title="Grid view"
+                        >
+                          <LayoutGrid size={15} />
+                          {!isDiscoveryMobileViewport && 'Grid View'}
+                        </button>
+                      </div>
+                      <div style={{ fontSize: isDiscoveryMobileViewport ? 16 : 18, fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', order: 1 }}>
+                        {resultCountLabel}
+                      </div>
+                    </div>
+
+                  <div
+                    ref={discoveryFilterToolbarRef}
+                    style={{
+                      display: 'grid',
+                          gridTemplateColumns: isDiscoveryMobileViewport
+                            ? (renderDiscoveryResetButton
+                                      ? 'max-content 44px 44px max-content'
+                                      : 'max-content 44px 44px')
+                          : isDiscoveryTabletViewport
+                            ? (renderDiscoveryResetButton
+                              ? 'minmax(0, 1.15fr) minmax(0, 1.15fr) minmax(0, 0.7fr) minmax(0, 0.9fr)'
+                                : 'minmax(0, 1.3fr) minmax(0, 1.3fr) minmax(0, 0.84fr)')
+                            : (renderDiscoveryResetButton
+                              ? 'minmax(0, 0.74fr) minmax(0, 1fr) minmax(0, 1.24fr) minmax(0, 0.86fr)'
+                              : 'minmax(0, 0.74fr) minmax(0, 1fr) minmax(0, 1.24fr)'),
+                        gap: 8,
+                        alignItems: 'stretch',
+                      justifyContent: isDiscoveryMobileViewport ? 'start' : 'stretch',
+                      position: 'relative',
+                      zIndex: 30
+                      }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setDiscoveryOpenFilter((value) => (value === 'open' ? 'all' : 'open'))}
+                        style={{
+                          minHeight: 34,
+                          borderRadius: 10,
+                          border: `1px solid ${isOpenNowFilterActive ? '#86efac' : '#dcfce7'}`,
+                          background: isOpenNowFilterActive ? '#16a34a' : '#f0fdf4',
+                          color: isOpenNowFilterActive ? '#ffffff' : '#16a34a',
+                          padding: '0 14px',
+                          fontSize: 12,
+                          fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                          width: isDiscoveryMobileViewport ? 'auto' : '100%',
+                          minWidth: isDiscoveryMobileViewport ? 88 : 0,
+                          maxWidth: isDiscoveryMobileViewport ? 'none' : 148,
+                          boxShadow: isOpenNowFilterActive ? '0 10px 22px rgba(22,163,74,.24)' : 'none',
+                          transition: 'all 180ms ease'
+                        }}
+                      >
+                        Open Now
+                      </button>
+                      <div style={{ position: 'relative', minWidth: 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => setActiveDiscoveryFilterDropdown((current) => (current === 'sort' ? null : 'sort'))}
+                            style={{ minHeight: 34, borderRadius: 10, border: `1px solid ${isSortFilterActive ? '#93c5fd' : '#e2e8f0'}`, padding: isDiscoveryMobileViewport ? '0' : '0 10px', fontSize: 12, fontWeight: 700, color: isSortFilterActive ? '#1a4e8d' : '#334155', background: isSortFilterActive ? '#eff6ff' : '#fff', cursor: 'pointer', minWidth: 0, width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: isDiscoveryMobileViewport ? 'center' : 'space-between', gap: 8, boxShadow: isSortFilterActive ? '0 8px 18px rgba(37,99,235,.16)' : 'none', transition: 'all 180ms ease' }}
+                          >
+                              {isDiscoveryMobileViewport ? (
+                                <ArrowUpDown size={14} color={isSortFilterActive ? '#1a4e8d' : '#64748b'} />
+                            ) : (
+                              <>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>Sort: {discoverySortLabelByValue[discoverySortBy] || 'Nearest'}</span>
+                              <ChevronDown size={14} color="#64748b" />
+                              </>
+                            )}
+                          </button>
+                      {activeDiscoveryFilterDropdown === 'sort' && (
+                          <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: isDiscoveryMobileViewport ? 0 : 0, right: isDiscoveryMobileViewport ? 'auto' : 0, minWidth: isDiscoveryMobileViewport ? 180 : 0, borderRadius: 10, border: '1px solid #dbe5f2', background: '#fff', boxShadow: '0 14px 30px rgba(15,23,42,.10)', overflow: 'hidden', zIndex: 1200 }}>
+                          {[
+                            ['nearest', 'Nearest'],
+                            ['catalog', 'Most Popular'],
+                            ['rating', 'Highest Rated']
+                            ].map(([value, label]) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => {
+                                setDiscoverySortBy(value);
+                                setActiveDiscoveryFilterDropdown(null);
+                              }}
+                              style={{
+                                width: '100%',
+                                border: 'none',
+                                borderTop: value === 'nearest' ? 'none' : '1px solid #eef2f7',
+                                background: discoverySortBy === value ? '#eff6ff' : '#fff',
+                                color: discoverySortBy === value ? '#1a4e8d' : '#334155',
+                                textAlign: 'left',
+                                padding: '8px 10px',
+                                fontSize: 12,
+                                fontWeight: discoverySortBy === value ? 800 : 700,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ position: 'relative', minWidth: 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => setActiveDiscoveryFilterDropdown((current) => (current === 'category' ? null : 'category'))}
+                            style={{ minHeight: 34, borderRadius: 10, border: `1px solid ${isCategoryFilterActive ? '#93c5fd' : '#e2e8f0'}`, padding: isDiscoveryMobileViewport ? '0' : '0 10px', fontSize: 12, fontWeight: 700, color: isCategoryFilterActive ? '#1a4e8d' : '#334155', background: isCategoryFilterActive ? '#eff6ff' : '#fff', cursor: 'pointer', minWidth: 0, width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: isDiscoveryMobileViewport ? 'center' : 'space-between', gap: 8, boxShadow: isCategoryFilterActive ? '0 8px 18px rgba(37,99,235,.16)' : 'none', transition: 'all 180ms ease' }}
+                          >
+                                {isDiscoveryMobileViewport ? (
+                                  <ArrowUpNarrowWide size={14} color={isCategoryFilterActive ? '#1a4e8d' : '#64748b'} />
+                                ) : (
+                            <>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>{discoveryBusinessModeOptions.find(([value]) => value === discoveryCategoryFilter)?.[1] || 'Category: All'}</span>
+                              <ChevronDown size={14} color="#64748b" />
+                              </>
+                            )}
+                          </button>
+                            {activeDiscoveryFilterDropdown === 'category' && (
+                              <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: isDiscoveryMobileViewport ? 0 : 0, right: isDiscoveryMobileViewport ? 'auto' : 0, minWidth: isDiscoveryMobileViewport ? 184 : 250, maxWidth: isDiscoveryMobileViewport ? 196 : 320, borderRadius: 10, border: '1px solid #dbe5f2', background: '#fff', boxShadow: '0 14px 30px rgba(15,23,42,.10)', zIndex: 1200, overflow: 'hidden' }}>
+                                  <div style={{ maxHeight: 214, overflowY: 'auto', overflowX: 'hidden' }}>
+                            {discoveryBusinessModeOptions.map(([value, label], index) => (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() => {
+                                  setDiscoveryCategoryFilter(value);
+                                  setActiveDiscoveryFilterDropdown(null);
+                                }}
+                                style={{
+                                  width: '100%',
+                                  border: 'none',
+                                  borderTop: index === 0 ? 'none' : '1px solid #eef2f7',
+                                  background: discoveryCategoryFilter === value ? '#eff6ff' : '#fff',
+                                  color: discoveryCategoryFilter === value ? '#1a4e8d' : '#334155',
+                                  textAlign: 'left',
+                                  padding: '8px 10px',
+                                  fontSize: 12,
+                                  fontWeight: discoveryCategoryFilter === value ? 800 : 700,
+                                  cursor: 'pointer',
+                                  whiteSpace: 'nowrap'
+                                }}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                              </div>
+                              <div style={{ borderTop: '1px solid #eef2f7', background: '#f8fafc', color: '#94a3b8', fontSize: 10, fontWeight: 700, letterSpacing: '0.02em', padding: '4px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <span>↕ Scroll</span>
+                                <span>↔ Drag</span>
+                              </div>
+                          </div>
+                        )}
+                    </div>
+                      {renderDiscoveryResetButton && (
+                      <button
+                        type="button"
+                          onClick={resetDiscoveryResultsView}
+                          aria-label="Reset discovery filters"
+                          title="Reset filters"
+                          style={{
+                            minHeight: 34,
+                            borderRadius: 10,
+                            border: '1px solid rgba(220, 38, 38, 0.18)',
+                            background: 'rgba(220, 38, 38, 0.06)',
+                            color: '#dc2626',
+                            padding: isDiscoveryMobileViewport ? '0 9px' : '0 12px',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            justifyContent: 'center',
+                            width: isDiscoveryMobileViewport ? 'auto' : '100%',
+                            opacity: showDiscoveryResetButton ? 1 : 0,
+                            transform: showDiscoveryResetButton ? 'translateY(0)' : 'translateY(-4px)',
+                            transition: 'opacity 180ms ease, transform 180ms ease',
+                            pointerEvents: showDiscoveryResetButton ? 'auto' : 'none'
+                          }}
+                        >
+                            <X size={12} />
+                          <span style={{ whiteSpace: 'nowrap' }}>{isDiscoveryMobileViewport ? 'Filters' : 'Reset Filters'}</span>
+                          {activeDiscoveryFilterCount > 0 ? (
+                            <span
+                              style={{
+                                minWidth: 16,
+                                height: 16,
+                                borderRadius: 999,
+                                padding: '0 5px',
+                                background: '#1a4e8d',
+                                color: '#fff',
+                                fontSize: 10,
+                                fontWeight: 800,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                            >
+                              {activeDiscoveryFilterCount}
+                            </span>
+                          ) : null}
+                        </button>
+                      )}
+                      {activeDiscoveryFilterCount > 0 && !isDiscoveryMobileViewport && !renderDiscoveryResetButton ? (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: -9,
+                            right: renderDiscoveryResetButton ? 6 : -4,
+                            minWidth: 18,
+                            height: 18,
+                            borderRadius: 999,
+                            padding: '0 6px',
+                            background: '#1a4e8d',
+                            color: '#fff',
+                            fontSize: 10,
+                            fontWeight: 800,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 6px 14px rgba(26,78,141,.28)',
+                            pointerEvents: 'none'
+                          }}
+                        >
+                          {activeDiscoveryFilterCount}
+                        </div>
+                      ) : null}
+                    </div>
+              </div>
+
+                <div style={{ overflowY: 'auto', padding: isDiscoveryMobileViewport ? '14px 14px 18px' : viewMode === 'grid' ? '18px 22px 24px' : '16px 18px 22px' }}>
+                {loadingStores && <div style={{ padding: 24, color: '#94a3b8', fontSize: 14, textAlign: 'center' }}>Loading stores...</div>}
+                {!loadingStores && filteredDiscoveryStores.length === 0 && (
+                  <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#f8fbff', padding: 18, display: 'grid', gap: 8 }}>
+                    <div style={{ fontSize: 24, color: '#0f172a', fontWeight: 800 }}>{getDiscoveryEmptyStateMessage(search)}</div>
+                    <div style={{ fontSize: 24 }}>🏪</div>
+                    <div style={{ color: '#64748b', fontSize: 14, lineHeight: 1.5 }}>Try changing your search keyword or category.</div>
+                    {hasActiveDiscoveryFilters && (
+                      <button type="button" onClick={resetDiscoveryResultsView} style={{ marginTop: 4, border: 'none', borderRadius: 12, background: '#1a4e8d', color: '#fff', padding: '10px 14px', fontSize: 13, fontWeight: 700, width: 'fit-content' }}>
+                        Clear Filters
+                      </button>
+                    )}
+                  </div>
+                )}
+                    <div style={{ display: 'grid', gap: viewMode === 'grid' ? (isDiscoveryMobileViewport ? 14 : isDiscoveryTabletViewport ? 18 : 20) : (isDiscoveryMobileViewport ? 14 : 18), gridTemplateColumns: viewMode === 'grid' ? (isDiscoveryMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))') : '1fr' }}>
+                    {paginatedDiscoveryStores.map(renderDiscoveryStoreCard)}
+                  </div>
+              </div>
+
+              {filteredDiscoveryStores.length > 0 && discoveryTotalPages > 1 && (
+                <div style={{ padding: '0 18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => setDiscoveryResultsPage((page) => Math.max(1, page - 1))}
+                    disabled={discoveryResultsPage === 1}
+                    style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: discoveryResultsPage === 1 ? '#cbd5e1' : '#64748b', cursor: discoveryResultsPage === 1 ? 'not-allowed' : 'pointer' }}
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  {discoveryPaginationItems.map((item) => (
+                    item === 'ellipsis-left' || item === 'ellipsis-right'
+                      ? <span key={item} style={{ minWidth: 24, textAlign: 'center', color: '#94a3b8', fontWeight: 700 }}>…</span>
+                      : (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() => setDiscoveryResultsPage(Number(item))}
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 10,
+                            border: `1px solid ${Number(item) === discoveryResultsPage ? '#1a4e8d' : '#e2e8f0'}`,
+                            background: Number(item) === discoveryResultsPage ? '#1a4e8d' : '#fff',
+                            color: Number(item) === discoveryResultsPage ? '#fff' : '#64748b',
+                            fontWeight: 800,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {item}
+                        </button>
+                      )
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setDiscoveryResultsPage((page) => Math.min(discoveryTotalPages, page + 1))}
+                    disabled={discoveryResultsPage === discoveryTotalPages}
+                    style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: discoveryResultsPage === discoveryTotalPages ? '#cbd5e1' : '#64748b', cursor: discoveryResultsPage === discoveryTotalPages ? 'not-allowed' : 'pointer' }}
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              )}
+            </aside>
+          </div>
+        </div>
+      </DiscoveryMapCard>
+    );
+  };
+  const isModeSpecificStorefront = isServicesMode || isFnbMode || isSimpleMode || isHospitalityMode;
+
+  return (
+    <main style={{ fontFamily: isFnbMode ? "'Trebuchet MS', 'Segoe UI', sans-serif" : ((isServicesMode || isHospitalityMode) ? servicesBodyFont : STYLES.fonts.body), background: isStorePage ? 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)' : '#ffffff', minHeight: '100vh', color: '#0f172a', overflowX: 'clip' }}>
+      <div style={{
+        maxWidth: 1320,
+        width: '100%',
+        boxSizing: 'border-box',
+        margin: '0 auto',
+        paddingTop: isStorePage && isModeSpecificStorefront ? 0 : (isMobileViewport ? 6 : 10),
+        paddingRight: isStorePage && isModeSpecificStorefront ? 0 : (isMobileViewport ? 12 : 20),
+        paddingLeft: isStorePage && isModeSpecificStorefront ? 0 : (isMobileViewport ? 12 : 20),
+        paddingBottom: isStorePage ? ((isModeSpecificStorefront || !hasDiscoverySearch) ? 0 : (isMobileViewport ? 96 : 120)) : 0
+      }}>
+        {!isStorePage && (
+          <>
+            <section style={{ display: 'grid', gap: 0, paddingBottom: 8 }}>
+
+              {/* ── NAV ── */}
+              <DiscoveryHeader
+                viewportMode={discoveryViewportMode}
+                logoSrc={dgfyHeaderLogo}
+                onLogoClick={() => goDiscovery()}
+                navItems={['Explore', 'Solutions', 'About Us', 'Contact Us']}
+                activeItem="Explore"
+                menuOpen={isDiscoveryNavMenuOpen}
+                onMenuToggle={() => setIsDiscoveryNavMenuOpen((open) => !open)}
+                  onRegisterClick={() => {
+                    if (typeof window !== 'undefined') {
+                      window.location.href = 'https://skupervisor.dgfy.ph/register-company';
+                    }
+                  }}
+                />
+
+              {/* ── HERO ── */}
+              <div
+                style={{
+                  display: 'none',
+                  overflow: 'hidden',
+                  maxHeight: (isDiscoverySearchFocused || hasDiscoverySearch || hasDiscoveryExplorationStarted) ? 0 : 220,
+                  opacity: (isDiscoverySearchFocused || hasDiscoverySearch || hasDiscoveryExplorationStarted) ? 0 : 1,
+                  paddingTop: (isDiscoverySearchFocused || hasDiscoverySearch || hasDiscoveryExplorationStarted) ? 0 : (isMobileViewport ? 32 : 48),
+                  paddingBottom: (isDiscoverySearchFocused || hasDiscoverySearch || hasDiscoveryExplorationStarted) ? 0 : (isMobileViewport ? 24 : 28),
+                  transition: 'all 500ms cubic-bezier(0.4, 0, 0.2, 1)',
+                  pointerEvents: (isDiscoverySearchFocused || hasDiscoverySearch || hasDiscoveryExplorationStarted) ? 'none' : 'auto',
+                  textAlign: isMobileViewport ? 'left' : 'center'
+                }}
+              >
+                <h1
+                  style={{
+                    margin: isMobileViewport ? '0' : '0 auto',
+                    fontSize: isMobileViewport ? 42 : 54,
+                    lineHeight: 1.05,
+                    letterSpacing: '-0.03em',
+                    fontWeight: 900,
+                    color: '#0f172a',
+                    maxWidth: isMobileViewport ? '100%' : 680,
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  Discover{' '}
+                  <span
+                    style={{
+                      background: 'linear-gradient(135deg, #1a4e8d, #1a4e8d)',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      backgroundClip: 'text'
+                    }}
+                  >
+                    Goods
+                  </span>
+                  {' '}For You
+                </h1>
+                  <p style={{ margin: isMobileViewport ? '16px auto 0' : '14px auto 0', maxWidth: isMobileViewport ? 332 : 800, color: '#94a3b8', fontSize: isMobileViewport ? 14 : 16.5, lineHeight: isMobileViewport ? 1.45 : 1.6, boxSizing: 'border-box' }}>
+                  Find nearby products, services, and businesses—faster, smarter, and all in one place.
+                </p>
+              </div>
+
+              <DiscoveryHero
+                viewportMode={discoveryViewportMode}
+                collapsed={isDiscoverySearchFocused || hasDiscoverySearch || hasDiscoveryExplorationStarted}
+                title={(
+                  <>
+                    Discover{' '}
+                    <span
+                      style={{
+                        background: 'linear-gradient(135deg, #1a4e8d, #1a4e8d)',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        backgroundClip: 'text'
+                      }}
+                    >
+                      Goods
+                    </span>
+                    {' '}For You
+                  </>
+                )}
+                  subtitle="Find nearby products, services, and businesses—faster, smarter, and all in one place."
+              />
+
+              <div ref={discoveryInteractiveAreaRef} style={{ display: 'grid', gap: isDiscoveryMobileViewport ? 10 : isDiscoveryTabletViewport ? 12 : 12, width: '100%', minWidth: 0, paddingTop: isDiscoveryMobileViewport ? 132 : isDiscoveryTabletViewport ? 126 : 124 }}>
+              <div className="discovery-search-sticky-shell" style={{ position: 'sticky', top: isDiscoveryMobileViewport ? 'calc(env(safe-area-inset-top, 0px) + 8px)' : discoveryLayout.navOffset, zIndex: 49, backgroundColor: '#ffffff', display: 'grid', gap: isDiscoveryMobileViewport ? 10 : isDiscoveryTabletViewport ? 12 : 12, width: '100%', minWidth: 0 }}>
+
+                {/* ── PERMANENT SEARCH ── */}
+                  <DiscoverySearchRegion viewportMode={discoveryViewportMode}>
+                  <div style={{ width: '100%', minWidth: 0, padding: discoveryLayout.searchPadding, boxSizing: 'border-box' }}>
+
+                      {/* Input row */}
+                      <div style={{ maxWidth: discoveryLayout.searchMaxWidth, margin: '0 auto', width: '100%', minWidth: 0 }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                        alignItems: 'center',
+                        gap: 0,
+                        background: '#fff',
+                        border: '1.5px solid',
+                        borderColor: isDiscoverySearchFocused ? '#1a4e8d' : '#e2e8f0',
+                        borderRadius: 14,
+                        padding: '3px 4px 3px 16px',
+                        boxShadow: isDiscoverySearchFocused
+                          ? '0 0 0 4px rgba(59,130,246,.10), 0 8px 30px rgba(15,23,42,.09)'
+                          : '0 2px 12px rgba(15,23,42,.07)',
+                        transition: 'border-color 220ms ease, box-shadow 220ms ease'
+                      }}
+                    >
+                      <Search
+                        size={18}
+                        style={{
+                          color: isDiscoverySearchFocused ? '#1a4e8d' : '#94a3b8',
+                          flexShrink: 0,
+                          transition: 'color 220ms ease'
+                        }}
+                      />
+                      <input
+                        id="discovery-search-input"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        onFocus={(e) => {
+                          setIsDiscoverySearchFocused(true);
+                          setHasDiscoveryExplorationStarted(true);
+                          const inputEl = e.currentTarget;
+                          const textLength = String(inputEl.value || '').length;
+                          if (!textLength) return;
+                          // Keep caret editable after repeated searches: avoid full-text select replacement.
+                          requestAnimationFrame(() => {
+                            const isAllSelected = inputEl.selectionStart === 0 && inputEl.selectionEnd === textLength;
+                            if (isAllSelected) {
+                              inputEl.setSelectionRange(textLength, textLength);
+                            }
+                          });
+                        }}
+                        onBlur={() => setTimeout(() => setIsDiscoverySearchFocused(false), 180)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleDiscoverySearch(); }}
+                        placeholder="Search products, services or stores nearby..."
+                        autoComplete="off"
+                        style={{
+                          flex: 1,
+                          border: 'none',
+                          outline: 'none',
+                          fontSize: isDiscoveryMobileViewport ? 16 : 15,
+                          color: '#0f172a',
+                          background: 'transparent',
+                          padding: '7px 10px',
+                          minWidth: 0
+                        }}
+                      />
+                      {search && (
+                        <button
+                          type="button"
+                          onClick={() => { setSearch(''); setDebouncedDiscoverySearch(''); loadStores(undefined, { useImmediateSearch: true }); }}
+                          style={{ border: 'none', background: 'none', color: '#94a3b8', cursor: 'pointer', padding: '6px', display: 'inline-flex', marginRight: 4 }}
+                        >
+                          <X size={15} />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleNearMe}
+                        title="Use my current location"
+                        style={{ border: 'none', background: 'none', color: '#1a4e8d', cursor: 'pointer', padding: '6px', display: isDiscoveryMobileViewport ? 'none' : 'inline-flex', marginRight: 4 }}
+                      >
+                        <Navigation size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDiscoverySearch}
+                        style={{
+                          borderRadius: 12,
+                          border: 'none',
+                          background: '#1a4e8d',
+                          color: '#fff',
+                          padding: isDiscoveryMobileViewport ? '9px 16px' : discoveryViewportMode === 'tablet' ? '10px 20px' : '10px 24px',
+                          fontWeight: 700,
+                          fontSize: 14,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0,
+                          boxShadow: '0 8px 20px rgba(37,99,235,.25)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          letterSpacing: '0.01em',
+                          transition: 'all 200ms ease'
+                        }}
+                      >
+                        <Search size={16} />
+                          Search
+                        </button>
+                      </div>
+                      </div>
+                      {
+                      (() => {
+                        const primaryCats = [
+                          { label: 'Food', icon: <UtensilsCrossed size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#f97316', bg: '#fff7ed', border: '#fed7aa' },
+                          { label: 'Grocery', icon: <ShoppingCart size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
+                          { label: 'Laundry', icon: <Droplets size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#0284c7', bg: '#f0f9ff', border: '#bae6fd' },
+                          { label: 'Salon', icon: <Scissors size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#9333ea', bg: '#faf5ff', border: '#e9d5ff' },
+                          { label: 'Pharmacy', icon: <HeartHandshake size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#e11d48', bg: '#fff1f2', border: '#fecdd3' }
+                        ];
+                          const extendedCats = [
+                          { label: 'Bakery', icon: <Coffee size={14} />, color: '#92400e', bg: '#fffbeb', border: '#fde68a' },
+                          { label: 'Clothing', icon: <Shirt size={14} />, color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
+                          { label: 'Drinks', icon: <CupSoda size={14} />, color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc' },
+                          { label: 'Food Stall', icon: <Sandwich size={14} />, color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+                          { label: 'Frozen', icon: <Snowflake size={14} />, color: '#1a4e8d', bg: '#eff6ff', border: '#bfdbfe' },
+                          { label: 'Beauty', icon: <SprayCan size={14} />, color: '#db2777', bg: '#fdf2f8', border: '#fbcfe8' },
+                            { label: 'Hardware', icon: <Wrench size={14} />, color: '#64748b', bg: '#f8fafc', border: '#e2e8f0' }
+                          ];
+                            const mobileCategoryStep = 3;
+                            const mobilePrimaryCount = 5;
+                            const allMobileCategories = [...primaryCats, ...extendedCats];
+                            const mobileOverflowCount = Math.max(0, allMobileCategories.length - mobilePrimaryCount);
+                            const mobileOverflowGroups = Math.ceil(mobileOverflowCount / mobileCategoryStep);
+                            const cardStyle = (cat) => ({
+                              borderRadius: 999,
+                              background: cat.bg,
+                              color: cat.color,
+                              padding: isDiscoveryMobileViewport ? '6px 12px' : '6px 14px',
+                              minHeight: isDiscoveryMobileViewport ? 34 : 34,
+                              height: 'auto',
+                              fontSize: isDiscoveryMobileViewport ? 13 : 13,
+                              lineHeight: 1.15,
+                              fontWeight: isDiscoveryMobileViewport ? 600 : 600,
+                              cursor: 'pointer',
+                            display: 'flex',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                              gap: isDiscoveryMobileViewport ? 6 : 6,
+                              flexShrink: 0,
+                              width: 'auto',
+                              border: `1.5px solid ${cat.border}`,
+                              boxShadow: '0 2px 8px rgba(15,23,42,.04)',
+                              transition: 'all 200ms ease'
+                          });
+                            const visibleCategories = isDiscoveryMobileViewport
+                              ? allMobileCategories
+                              : (isCategoryRowExpanded ? [...primaryCats, ...extendedCats] : primaryCats);
+                        return (
+                          <DiscoveryCategoryRail viewportMode={discoveryViewportMode}>
+                            <div style={{ marginTop: isDiscoveryMobileViewport ? 18 : 24 }}>
+                              <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 14, display: isDiscoveryMobileViewport ? 'block' : 'none' }}>Categories</div>
+                              <div style={{ display: 'flex', justifyContent: isDiscoveryMobileViewport ? 'flex-start' : 'center', width: '100%', minWidth: 0 }}>
+                                  <div
+                                    style={{
+                                      position: 'relative',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: isDiscoveryMobileViewport ? 'flex-start' : 'center',
+                                      gap: isDiscoveryMobileViewport ? 10 : 8,
+                                      overflowX: 'auto',
+                                    paddingBottom: isDiscoveryMobileViewport ? 8 : 2,
+                                    width: isDiscoveryMobileViewport ? '100%' : 'max-content',
+                                    maxWidth: '100%',
+                                    minWidth: 0,
+                                    margin: isDiscoveryMobileViewport ? '0' : '0 auto',
+                                    scrollbarWidth: 'none',
+                                      msOverflowStyle: 'none'
+                                    }}
+                                  >
+                                  {!isDiscoveryMobileViewport && <span style={{ fontSize: 12, lineHeight: 1, color: '#94a3b8', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginRight: 2, flexShrink: 0 }}>Categories</span>}
+                                      {visibleCategories.map((cat, index) => (
+                                      <button
+                                        key={cat.label}
+                                        type="button"
+                                        data-mobile-category-index={isDiscoveryMobileViewport ? index : undefined}
+                                        onClick={() => handlePopularDiscoveryCategory(cat.label)}
+                                        style={cardStyle(cat)}
+                                      >
+                                          <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            width: isDiscoveryMobileViewport ? 16 : 18,
+                                            height: isDiscoveryMobileViewport ? 16 : 18
+                                          }}>
+                                            {cat.icon}
+                                          </div>
+                                        <span style={{ display: 'block', textAlign: 'center', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cat.label}</span>
+                                        </button>
+                                      ))}
+                                      {isDiscoveryMobileViewport && mobileOverflowGroups > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const nextGroup = (mobileCategoryGroupIndex + 1) % (mobileOverflowGroups + 1);
+                                            setMobileCategoryGroupIndex(nextGroup);
+                                            const targetIndex = nextGroup === 0
+                                              ? 0
+                                              : Math.min(
+                                                allMobileCategories.length - 1,
+                                                mobilePrimaryCount + ((nextGroup - 1) * mobileCategoryStep)
+                                              );
+                                            const railElement = mobileCategoryRailRef.current;
+                                            if (!railElement) return;
+                                            const targetButton = railElement.querySelector(`[data-mobile-category-index="${targetIndex}"]`);
+                                            if (targetButton && typeof targetButton.scrollIntoView === 'function') {
+                                              targetButton.scrollIntoView({
+                                                behavior: 'smooth',
+                                                block: 'nearest',
+                                                inline: 'start'
+                                              });
+                                            }
+                                          }}
+                                        style={{
+                                          position: 'sticky',
+                                          right: 0,
+                                          top: 0,
+                                          height: 34,
+                                          minWidth: 46,
+                                          borderRadius: 999,
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.78) 40%, rgba(255,255,255,.98) 100%)',
+                                          backdropFilter: 'blur(6px)',
+                                          WebkitBackdropFilter: 'blur(6px)',
+                                          pointerEvents: 'auto',
+                                          color: '#94a3b8',
+                                          border: '1px solid rgba(226,232,240,.85)',
+                                          boxShadow: '0 6px 16px rgba(15,23,42,.08)',
+                                          cursor: 'pointer'
+                                        }}
+                                        aria-label="Show more categories"
+                                      >
+                                        <ChevronRight size={16} />
+                                      </button>
+                                    )}
+                                    {!isDiscoveryMobileViewport && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsCategoryRowExpanded(!isCategoryRowExpanded)}
+                                      style={{
+                                        ...cardStyle({ bg: '#fff', color: '#64748b', border: '#dbe3ee' }),
+                                        border: '1.5px solid #dbe3ee',
+                                        minHeight: 34,
+                                        minWidth: 84
+                                      }}
+                                    >
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <MoreHorizontal size={16} />
+                                      </div>
+                                      {isCategoryRowExpanded ? 'Less' : 'More'}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                            </div>
+                          </DiscoveryCategoryRail>
+                        );
+                      })()
+                    }
+                </div>
+                  </DiscoverySearchRegion>
+              </div>
+
+
+                  {/* ── STATIC HERO MAP ── */}
+                  {!hasDiscoverySearch && (
+                    <>
+                      <DiscoveryMapCard viewportMode={discoveryViewportMode}>
+                      <div
+                    style={{
+                      position: 'relative',
+                      borderRadius: 18,
+                      overflow: 'hidden',
+                      border: '1px solid #e2e8f0',
+                      boxShadow: '0 8px 32px rgba(15,23,42,.10)'
+                    }}
+                  >
+                      <StoresMap
+                        stores={stableHeroDiscoveryMapPins}
+                        selectedKey={highlightedDiscoveryMarkerKey || null}
+                        userLocation={discoveryCoords}
+                        height={discoveryLayout.heroMapHeight}
+                        openPopupOnHover={true}
+                        onSelectStore={(pin) => {
+                          setHasDiscoveryExplorationStarted(true);
+                          setIsStoreListVisible(true);
+                          setIsMobileResultsCollapsed(false);
+                          setHighlightedStoreSlug(pin.slug);
+                          setHighlightedDiscoveryMarkerKey(getDiscoveryMarkerKey(pin));
+                      }}
+                        onOpenStore={(pin) => goStore(pin.slug, pin.location_id ?? null)}
+                    />
+                    {/* Subtle top gradient to blend search bar edge */}
+                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 48, background: 'linear-gradient(180deg, rgba(255,255,255,.20) 0%, transparent 100%)', pointerEvents: 'none' }} />
+                    {/* Bottom stat bar */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          bottom: isDiscoveryMobileViewport ? 12 : 0,
+                          left: isDiscoveryMobileViewport ? 12 : 0,
+                          right: isDiscoveryMobileViewport ? 12 : 0,
+                        background: isDiscoveryMobileViewport ? 'rgba(15, 23, 42, 0.75)' : 'linear-gradient(0deg, rgba(15,23,42,.72) 0%, transparent 100%)',
+                        backdropFilter: isDiscoveryMobileViewport ? 'blur(12px)' : 'none',
+                        borderRadius: isDiscoveryMobileViewport ? 20 : 0,
+                          padding: isDiscoveryMobileViewport ? '16px 18px' : discoveryViewportMode === 'tablet' ? '26px 22px 14px' : '32px 24px 16px',
+                          display: isDiscoveryMobileViewport ? 'none' : 'flex',
+                          alignItems: isDiscoveryMobileViewport ? 'center' : 'flex-end',
+                          justifyContent: 'space-between',
+                          border: isDiscoveryMobileViewport ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                          boxShadow: isDiscoveryMobileViewport ? '0 8px 32px rgba(0,0,0,0.25)' : 'none'
+                        }}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: isDiscoveryMobileViewport ? 10 : discoveryViewportMode === 'tablet' ? 18 : 20, width: '100%', justifyContent: isDiscoveryMobileViewport ? 'space-between' : 'flex-start' }}>
+                          {isDiscoveryMobileViewport ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', justifyContent: 'space-between' }}>
+                              <div style={{ minWidth: 0, borderRadius: 12, background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.16)', padding: '7px 10px', display: 'grid', gap: 3 }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#f8fafc' }}>
+                                  <MapPin size={13} />
+                                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', opacity: 0.9 }}>Location</span>
+                                </div>
+                                <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(248,250,252,.86)', lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 140 }}>
+                                  Store Label
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={handleNearMe}
+                                style={{
+                                  minWidth: 72,
+                                  borderRadius: 12,
+                                  background: 'rgba(255,255,255,.95)',
+                                  color: '#0f172a',
+                                  border: '1px solid rgba(148,163,184,.28)',
+                                  display: 'grid',
+                                  placeItems: 'center',
+                                  gap: 2,
+                                  padding: '6px 8px',
+                                  cursor: 'pointer',
+                                  boxShadow: '0 4px 10px rgba(15,23,42,.16)'
+                                }}
+                              >
+                                <Navigation size={15} fill="#0f172a" />
+                                <span style={{ fontSize: 9, fontWeight: 700, color: '#334155', lineHeight: 1.1 }}>Current Location</span>
+                              </button>
+                            </div>
+                          ) : (
+                          [
+                            { label: 'Stores', value: String(stableHeroDiscoveryMapPins.length || 0) },
+                            { label: 'Open Now', value: String(storesWithNearestBranch.filter((s) => s.storefront_open).length) }
+                          ].map((stat) => (
+                            <div key={stat.label}>
+                              <div style={{ fontSize: 20, fontWeight: 800, color: '#fff', lineHeight: 1.1 }}>{stat.value}</div>
+                              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.68)', fontWeight: 500, marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{stat.label}</div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                        {!isDiscoveryMobileViewport && (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.20)', borderRadius: 999, padding: '6px 12px', color: 'rgba(255,255,255,.88)', fontSize: 12, fontWeight: 600, backdropFilter: 'blur(8px)' }}>
+                            <MapPin size={12} />
+                            Live Map
+                          </div>
+                        )}
+                      </div>
+                      </div>
+                      {isDiscoveryMobileViewport && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            right: 10,
+                            bottom: 12,
+                            zIndex: 12,
+                            display: 'grid',
+                            gap: 10,
+                            justifyItems: 'end'
+                          }}
+                        >
+                          <button
+                            type="button"
+                            style={{
+                              width: 84,
+                              minHeight: 80,
+                              borderRadius: 16,
+                              border: '1px solid rgba(148,163,184,0.28)',
+                              background: 'rgba(255,255,255,.96)',
+                              boxShadow: '0 6px 18px rgba(15,23,42,.16)',
+                              display: 'grid',
+                              placeItems: 'center',
+                              gap: 4,
+                              padding: '8px 6px',
+                              color: '#0f172a',
+                              cursor: 'default'
+                            }}
+                            aria-label="Store location"
+                          >
+                            <MapPin size={16} />
+                            <span style={{ fontSize: 7, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#64748b', lineHeight: 1 }}>Store</span>
+                            <span style={{ fontSize: 8, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>Location</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleNearMe}
+                            style={{
+                              width: 84,
+                              minHeight: 80,
+                              borderRadius: 16,
+                              border: '1px solid rgba(148,163,184,0.28)',
+                              background: 'rgba(255,255,255,.96)',
+                              boxShadow: '0 6px 18px rgba(15,23,42,.16)',
+                              display: 'grid',
+                              placeItems: 'center',
+                              gap: 4,
+                              padding: '8px 6px',
+                              color: '#0f172a',
+                              cursor: 'pointer'
+                            }}
+                            aria-label="Current location"
+                          >
+                            <Navigation size={16} fill="#0f172a" />
+                            <span style={{ fontSize: 7, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#64748b', lineHeight: 1 }}>Current</span>
+                            <span style={{ fontSize: 8, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>Location</span>
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Map information"
+                            style={{
+                              width: 38,
+                              height: 38,
+                              borderRadius: 999,
+                              border: '1px solid rgba(148,163,184,0.28)',
+                              background: 'rgba(255,255,255,.98)',
+                              color: '#0f172a',
+                              boxShadow: '0 6px 14px rgba(15,23,42,.16)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'default'
+                            }}
+                          >
+                            <Info size={15} />
+                          </button>
+                        </div>
+                      )}
+                        </DiscoveryMapCard>
+                    </>
+                  )}
+                {hasDiscoverySearch && renderDiscoveryResultsStage()}
+
+                    {/* ── WHY CHOOSE DGFY ── */}
+                    {false && (
+                    <section style={{ padding: isMobileViewport ? '56px 16px 28px' : '88px 0 44px', maxWidth: 1220, margin: '0 auto' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, .95fr) minmax(0, 1.15fr)', gap: isMobileViewport ? 28 : 34, alignItems: 'center' }}>
+                        <div style={{ display: 'grid', gap: 22 }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, borderRadius: 999, background: '#eff6ff', color: '#1a4e8d', border: '1px solid #dbeafe', padding: '10px 14px', fontSize: 12, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', width: 'fit-content' }}>
+                            <Store size={14} />
+                            For Business Owners
+                          </div>
+                          <div style={{ display: 'grid', gap: 14, maxWidth: 520 }}>
+                            <h2 style={{ margin: 0, fontSize: isMobileViewport ? 42 : 64, lineHeight: 0.98, letterSpacing: '-0.05em', fontWeight: 900, color: '#0f172a' }}>
+                              Put Your Business on the <span style={{ color: '#1a4e8d' }}>Map</span>
+                            </h2>
+                            <p style={{ margin: 0, fontSize: isMobileViewport ? 16 : 20, lineHeight: 1.65, color: '#64748b', maxWidth: 470 }}>
+                              Help customers discover your business and manage sales with DGFY.
+                            </p>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 14 }}>
+                            {[
+                              { icon: <MapPin size={22} color="#1a4e8d" />, bg: '#eff6ff', title: 'Get Discovered', body: 'Be found by nearby customers searching for what you offer.' },
+                              { icon: <ShoppingCart size={22} color="#16a34a" />, bg: '#ecfdf5', title: 'Manage Smarter', body: 'Use POS, inventory, and tools to run your business better.' },
+                              { icon: <Zap size={22} color="#8b5cf6" />, bg: '#f5f3ff', title: 'Grow Faster', body: 'Reach more customers and increase your sales with DGFY.' }
+                            ].map((item) => (
+                              <div key={item.title} style={{ display: 'grid', gap: 10, paddingRight: isMobileViewport ? 0 : 12 }}>
+                                <div style={{ width: 58, height: 58, borderRadius: '50%', background: item.bg, display: 'grid', placeItems: 'center', boxShadow: 'inset 0 0 0 1px rgba(226,232,240,.8)' }}>
+                                  {item.icon}
+                                </div>
+                                <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{item.title}</div>
+                                <div style={{ fontSize: 14, color: '#64748b', lineHeight: 1.7 }}>{item.body}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div style={{ position: 'relative' }}>
+                          <div style={{ position: 'relative', minHeight: isMobileViewport ? 420 : 540, borderRadius: 30, overflow: 'hidden', border: '1px solid rgba(15,23,42,.08)', boxShadow: '0 30px 70px rgba(15,23,42,.10)', background: 'linear-gradient(135deg, #1f2937 0%, #334155 18%, #475569 38%, #1f2937 100%)' }}>
+                            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 18% 18%, rgba(251,191,36,.22) 0%, transparent 18%), radial-gradient(circle at 78% 20%, rgba(255,255,255,.10) 0%, transparent 16%), linear-gradient(180deg, rgba(255,255,255,.03) 0%, rgba(15,23,42,.24) 100%)' }} />
+                            <div style={{ position: 'absolute', top: 26, left: 28, display: 'flex', gap: 14 }}>
+                              {[0, 1, 2].map((index) => (
+                                <div key={index} style={{ width: 16, height: 16, borderRadius: '50%', background: index === 0 ? '#f59e0b' : '#fde68a', boxShadow: '0 10px 24px rgba(0,0,0,.18)' }} />
+                              ))}
+                            </div>
+                            <div style={{ position: 'absolute', inset: '22% 10% 0 10%', borderRadius: 26, background: 'linear-gradient(180deg, rgba(255,255,255,.06) 0%, rgba(15,23,42,.20) 100%)', border: '1px solid rgba(255,255,255,.10)' }} />
+                            <div style={{ position: 'absolute', left: '14%', right: '24%', bottom: 0, height: '82%', borderRadius: '180px 180px 24px 24px', background: 'linear-gradient(180deg, #f4efe8 0%, #d7c8ba 100%)', boxShadow: '0 30px 60px rgba(0,0,0,.18)' }} />
+                            <div style={{ position: 'absolute', left: '28%', top: '18%', width: isMobileViewport ? 140 : 184, height: isMobileViewport ? 140 : 184, borderRadius: '50%', background: 'linear-gradient(180deg, #1f2937 0%, #111827 100%)', boxShadow: '0 16px 28px rgba(0,0,0,.22)' }} />
+                            <div style={{ position: 'absolute', left: '34%', top: '24%', width: isMobileViewport ? 92 : 124, height: isMobileViewport ? 118 : 152, borderRadius: '46% 46% 44% 44%', background: 'linear-gradient(180deg, #f3d6bf 0%, #e5b98d 100%)', boxShadow: '0 8px 16px rgba(0,0,0,.12)' }} />
+                            <div style={{ position: 'absolute', left: '22%', right: '30%', bottom: 0, height: '54%', borderRadius: '36px 36px 0 0', background: 'linear-gradient(180deg, #fbfaf8 0%, #ebe4db 18%, #243b53 18%, #102a43 100%)' }} />
+                            <div style={{ position: 'absolute', left: '20%', right: '28%', bottom: '30%', height: 10, background: '#8b5e3c', borderRadius: 999, transform: 'rotate(-2deg)' }} />
+                            <div style={{ position: 'absolute', left: '20%', right: '28%', bottom: '28%', height: 26, borderRadius: '0 0 18px 18px', borderLeft: '6px solid #8b5e3c', borderRight: '6px solid #8b5e3c', background: 'transparent' }} />
+                            <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '20%', background: 'linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,.26) 100%)' }} />
+
+                            <div style={{ position: 'absolute', left: isMobileViewport ? 18 : 'auto', right: isMobileViewport ? 18 : 18, top: isMobileViewport ? 'auto' : '18%', bottom: isMobileViewport ? 18 : 'auto', width: isMobileViewport ? 'auto' : 280, borderRadius: 28, background: 'rgba(255,255,255,.96)', border: '1px solid rgba(226,232,240,.9)', boxShadow: '0 24px 48px rgba(15,23,42,.18)', padding: isMobileViewport ? 18 : 24, backdropFilter: 'blur(12px)' }}>
+                              <div style={{ width: 58, height: 58, borderRadius: '50%', background: '#eff6ff', display: 'grid', placeItems: 'center', boxShadow: 'inset 0 0 0 1px #dbeafe' }}>
+                                <img src={dgfySymbolLogo} alt="DGFY" style={{ width: 28, height: 28, objectFit: 'contain' }} />
+                              </div>
+                              <div style={{ marginTop: 18, fontSize: isMobileViewport ? 28 : 38, lineHeight: 1.02, letterSpacing: '-0.04em', fontWeight: 900, color: '#0f172a' }}>
+                                Register Your <span style={{ color: '#1a4e8d' }}>Business</span>
+                              </div>
+                              <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #e2e8f0', fontSize: 15, lineHeight: 1.7, color: '#64748b' }}>
+                                List your products, services, and storefront with DGFY.
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (typeof window !== 'undefined') window.location.href = 'https://skupervisor.dgfy.ph/register-company';
+                                }}
+                                style={{ marginTop: 22, width: '100%', minHeight: 52, borderRadius: 16, border: '1px solid #1a4e8d', background: 'linear-gradient(180deg, #1a4e8d 0%, #1a4e8d 100%)', color: '#fff', fontSize: 15, fontWeight: 800, boxShadow: '0 14px 28px rgba(37,99,235,.22)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer' }}
+                              >
+                                Register Now
+                                <ChevronRight size={18} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+
+                    )}
+
+                    {/* ── HOW DGFY WORKS ── */}
+                    <section style={{ padding: isMobileViewport ? '60px 16px' : '100px 0 80px', maxWidth: 1140, margin: '0 auto', textAlign: 'center', position: 'relative' }}>
+                      <h2 style={{ fontSize: isMobileViewport ? 28 : 36, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em', marginBottom: 16 }}>
+                        How <span style={{ color: '#1a4e8d' }}>DGFY</span> Works
+                      </h2>
+                      <div style={{ fontSize: isMobileViewport ? 14 : 16, color: '#64748b', margin: '0 auto 60px', lineHeight: 1.6 }}>
+                        <span style={{ fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Discover. Compare. Choose. Done.</span>
+                        Find what you need in just a few simple steps.
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(4, 1fr)', gap: isMobileViewport ? 60 : 32, position: 'relative', alignItems: 'start' }}>
+
+                        {/* Connector Line (Desktop Only) */}
+                        {!isMobileViewport && (
+                          <div style={{ position: 'absolute', top: 92, left: '12%', right: '12%', height: 2, background: 'repeating-linear-gradient(to right, #cbd5e1 0, #cbd5e1 6px, transparent 6px, transparent 12px)', zIndex: 0 }} />
+                        )}
+
+                        {/* Step 1: Search */}
+                        <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: isMobileViewport ? 10 : 0 }}>
+                          <div style={{ position: 'absolute', top: -4, left: '50%', transform: 'translateX(-50%)', fontSize: isMobileViewport ? 64 : 72, fontWeight: 900, color: 'rgba(15,23,42,0.12)', lineHeight: 1, letterSpacing: '-0.02em', zIndex: 0, pointerEvents: 'none' }}>01</div>
+
+                          {/* Mock UI Card */}
+                          <div style={{ width: '100%', height: 260, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 20px 40px rgba(15,23,42,0.06)', padding: 18, marginTop: 18, marginBottom: 0, display: 'flex', flexDirection: 'column', gap: 12, position: 'relative', overflow: 'hidden', boxSizing: 'border-box', zIndex: 1, order: 2 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '10px 14px' }}>
+                              <Search size={16} color="#1a4e8d" />
+                              <div style={{ flex: 1, height: 6, background: '#cbd5e1', borderRadius: 4, opacity: 0.5 }} />
+                              <div style={{ width: 28, height: 28, background: '#1a4e8d', borderRadius: 8, display: 'grid', placeItems: 'center' }}><Search size={14} color="#fff" /></div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 6, overflow: 'hidden' }}>
+                              {['Food', 'Grocery', 'Pharmacy'].map(t => (
+                                <div key={t} style={{ fontSize: 10, fontWeight: 600, padding: '5px 12px', borderRadius: 99, border: '1px solid #e2e8f0', color: '#475569', flexShrink: 0 }}>{t}</div>
+                              ))}
+                            </div>
+                            {/* Mock Map */}
+                            <div style={{ flex: 1, background: '#f8fafc', borderRadius: 12, position: 'relative', overflow: 'hidden', backgroundImage: 'radial-gradient(circle at center, #e2e8f0 1px, transparent 1px)', backgroundSize: '16px 16px' }}>
+                              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 100, height: 100, borderRadius: '50%', border: '1px solid rgba(59,130,246,0.2)', background: 'rgba(59,130,246,0.05)' }} />
+                              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 50, height: 50, borderRadius: '50%', border: '1px solid rgba(59,130,246,0.4)', background: 'rgba(59,130,246,0.1)' }} />
+                              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: '#1a4e8d' }}><MapPin size={28} fill="#1a4e8d" color="#fff" strokeWidth={2} /></div>
+                            </div>
+                          </div>
+
+                          <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#1a4e8d', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, border: '4px solid #fff', boxShadow: '0 0 0 1px #e2e8f0', marginTop: isMobileViewport ? 34 : 42, order: 1 }}>
+                            <Search size={20} strokeWidth={2.5} />
+                          </div>
+                          <h3 style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 8, order: 1 }}>Search</h3>
+                          <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5, maxWidth: 200, order: 1 }}>Search for products or services near you.</p>
+                        </div>
+
+                        {/* Step 2: Compare */}
+                        <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: isMobileViewport ? 10 : 0 }}>
+                          <div style={{ position: 'absolute', top: -4, left: '50%', transform: 'translateX(-50%)', fontSize: isMobileViewport ? 64 : 72, fontWeight: 900, color: 'rgba(15,23,42,0.12)', lineHeight: 1, letterSpacing: '-0.02em', zIndex: 0, pointerEvents: 'none' }}>02</div>
+
+                          {/* Mock UI Card */}
+                          <div style={{ width: '100%', height: 260, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 20px 40px rgba(15,23,42,0.06)', padding: 14, marginTop: 18, marginBottom: 0, display: 'flex', gap: 10, position: 'relative', overflow: 'hidden', boxSizing: 'border-box', zIndex: 1, order: 2 }}>
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              {[
+                                { n: 'Kape Central', r: '4.8 (128)' },
+                                { n: 'Robinsons Mart', r: '4.6 (195)' },
+                                { n: 'J&M Hardware', r: '4.7 (66)' }
+                              ].map((s, i) => (
+                                <div key={s.n} style={{ background: '#fff', border: '1px solid #f1f5f9', borderRadius: 12, padding: 8, display: 'flex', gap: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                                  <div style={{ width: 36, height: 36, borderRadius: 8, background: i === 0 ? '#fde68a' : i === 1 ? '#bbf7d0' : '#e9d5ff' }} />
+                                  <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                                    <div style={{ fontSize: 10, fontWeight: 800, color: '#0f172a' }}>{s.n}</div>
+                                    <div style={{ fontSize: 8, color: '#64748b', margin: '2px 0 4px' }}>0.4 km • 10-15 min</div>
+                                    <div style={{ fontSize: 8, color: '#d97706', fontWeight: 700 }}>★ {s.r}</div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{ width: 44, background: '#f8fafc', borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-around', padding: '10px 0' }}>
+                              <div style={{ color: '#f59e0b' }}><MapPin size={20} fill="#fde68a" /></div>
+                              <div style={{ color: '#22c55e' }}><MapPin size={20} fill="#bbf7d0" /></div>
+                              <div style={{ color: '#a855f7' }}><MapPin size={20} fill="#e9d5ff" /></div>
+                            </div>
+                          </div>
+
+                          <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#1a4e8d', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, border: '4px solid #fff', boxShadow: '0 0 0 1px #e2e8f0', marginTop: isMobileViewport ? 34 : 42, order: 1 }}>
+                            <List size={20} strokeWidth={2.5} />
+                          </div>
+                          <h3 style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 8, order: 1 }}>Compare</h3>
+                          <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5, maxWidth: 200, order: 1 }}>Compare nearby stores and service providers.</p>
+                        </div>
+
+                        {/* Step 3: Choose */}
+                        <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: isMobileViewport ? 10 : 0 }}>
+                          <div style={{ position: 'absolute', top: -4, left: '50%', transform: 'translateX(-50%)', fontSize: isMobileViewport ? 64 : 72, fontWeight: 900, color: 'rgba(15,23,42,0.12)', lineHeight: 1, letterSpacing: '-0.02em', zIndex: 0, pointerEvents: 'none' }}>03</div>
+
+                          {/* Mock UI Card */}
+                          <div style={{ width: '100%', height: 260, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 20px 40px rgba(15,23,42,0.06)', overflow: 'hidden', marginTop: 18, marginBottom: 0, display: 'flex', flexDirection: 'column', textAlign: 'left', boxSizing: 'border-box', zIndex: 1, order: 2 }}>
+                            <div style={{ height: 110, background: 'linear-gradient(135deg, #fcd34d, #f59e0b)' }} />
+                            <div style={{ padding: '16px' }}>
+                              <div style={{ fontSize: 14, fontWeight: 900, color: '#0f172a' }}>Kape Central</div>
+                              <div style={{ fontSize: 10, color: '#64748b', marginTop: 4 }}>Coffee Shop</div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                                <div style={{ fontSize: 9, color: '#64748b', fontWeight: 600 }}>0.4 km • 10-15 min</div>
+                                <div style={{ fontSize: 9, color: '#16a34a', fontWeight: 800, background: '#f0fdf4', padding: '3px 6px', borderRadius: 6 }}>★ 4.8 (128)</div>
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginTop: 20 }}>
+                                {['Directions', 'Call', 'Message', 'Save'].map((a, idx) => (
+                                  <div key={a} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                                    <div style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid #f1f5f9', display: 'grid', placeItems: 'center', color: '#64748b' }}>
+                                      {idx === 0 ? <Navigation size={14} /> : idx === 1 ? <Phone size={14} /> : idx === 2 ? <MessageCircle size={14} /> : <MapPin size={14} />}
+                                    </div>
+                                    <div style={{ fontSize: 8, fontWeight: 700, color: '#475569' }}>{a}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#1a4e8d', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, border: '4px solid #fff', boxShadow: '0 0 0 1px #e2e8f0', marginTop: isMobileViewport ? 34 : 42, order: 1 }}>
+                            <ShoppingBag size={20} strokeWidth={2.5} />
+                          </div>
+                          <h3 style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 8, order: 1 }}>Choose</h3>
+                          <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5, maxWidth: 200, order: 1 }}>Choose your preferred merchant or service.</p>
+                        </div>
+
+                        {/* Step 4: Order */}
+                        <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: isMobileViewport ? 10 : 0 }}>
+                          <div style={{ position: 'absolute', top: -4, left: '50%', transform: 'translateX(-50%)', fontSize: isMobileViewport ? 64 : 72, fontWeight: 900, color: 'rgba(15,23,42,0.12)', lineHeight: 1, letterSpacing: '-0.02em', zIndex: 0, pointerEvents: 'none' }}>04</div>
+
+                          {/* Mock UI Card */}
+                          <div style={{ width: '100%', height: 260, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 20px 40px rgba(15,23,42,0.06)', padding: 24, marginTop: 18, marginBottom: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', boxSizing: 'border-box', zIndex: 1, order: 2 }}>
+                            <div style={{ width: 68, height: 68, borderRadius: '50%', background: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                              <CheckCircle2 size={36} strokeWidth={3} />
+                            </div>
+                            <div style={{ fontSize: 16, fontWeight: 900, color: '#0f172a' }}>You&apos;re All Set!</div>
+                            <div style={{ fontSize: 11, color: '#64748b', margin: '8px 0 24px', lineHeight: 1.5 }}>Your order has been placed successfully.</div>
+                            <div style={{ background: '#1a4e8d', color: '#fff', fontSize: 11, fontWeight: 700, padding: '12px 0', width: '100%', borderRadius: 10, marginBottom: 12 }}>View Order</div>
+                            <div style={{ color: '#1a4e8d', fontSize: 11, fontWeight: 700 }}>Track Your Order</div>
+                          </div>
+
+                          <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#1a4e8d', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, border: '4px solid #fff', boxShadow: '0 0 0 1px #e2e8f0', marginTop: isMobileViewport ? 34 : 42, order: 1 }}>
+                            <CheckCircle2 size={20} strokeWidth={2.5} />
+                          </div>
+                          <h3 style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 8, order: 1 }}>Order</h3>
+                          <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5, maxWidth: 200, order: 1 }}>Place your order, book a service, or get in touch instantly.</p>
+                        </div>
+
+                      </div>
+                    </section>
+
+                    {/* ── FEATURED MERCHANTS ── */}
+                    <section ref={featuredSectionRef} style={{ padding: isMobileViewport ? '40px 16px 80px' : '40px 0 100px', maxWidth: 1200, margin: '0 auto', textAlign: 'center', overflow: 'hidden' }}>
+                      <h2 style={{ fontSize: isMobileViewport ? 28 : 36, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em', marginBottom: 12 }}>
+                        Featured <span style={{ color: '#1a4e8d' }}>Local Merchants</span>
+                      </h2>
+                      <p style={{ fontSize: isMobileViewport ? 14 : 16, color: '#64748b', maxWidth: 600, margin: '0 auto 40px', lineHeight: 1.6 }}>
+                        Explore top-rated stores and trusted service providers near you.
+                      </p>
+
+                      {/* Category Pills */}
+                      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 40, width: '100%' }}>
+                        <div
+                          ref={featuredCategoryRailRef}
+                          style={{
+                            position: 'relative',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: isMobileViewport ? 'flex-start' : 'center',
+                            gap: 10,
+                            width: isMobileViewport ? '100%' : 'max-content',
+                            maxWidth: '100%',
+                            overflowX: 'auto',
+                            overflowY: 'hidden',
+                            flexWrap: 'nowrap',
+                            scrollbarWidth: 'none',
+                            msOverflowStyle: 'none',
+                            paddingBottom: 6
+                          }}
+                        >
+                          {featuredCategoryOptions.map((cat) => {
+                            const isActive = featuredCategoryFilter === cat.key;
+                            return (
+                              <button
+                                key={cat.label}
+                                type="button"
+                                onClick={(event) => handleFeaturedCategoryFilter(event, cat.key)}
+                                style={{
+                                  padding: '10px 18px',
+                                  borderRadius: 99,
+                                  border: isActive ? '1px solid #1a4e8d' : '1px solid #e2e8f0',
+                                  background: isActive ? '#1a4e8d' : '#fff',
+                                  color: isActive ? '#fff' : '#475569',
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: 6,
+                                  boxShadow: isActive ? '0 4px 12px rgba(37,99,235,0.2)' : '0 2px 8px rgba(15,23,42,0.02)',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s ease',
+                                  whiteSpace: 'nowrap',
+                                  flexShrink: 0
+                                }}
+                              >
+                                {cat.icon}
+                                {cat.label}
+                              </button>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            onClick={() => featuredCategoryRailRef.current?.scrollBy({ left: isMobileViewport ? 220 : 280, behavior: 'smooth' })}
+                            aria-label="Show more featured categories"
+                            style={{
+                              position: 'sticky',
+                              right: 0,
+                              top: 0,
+                              minWidth: 42,
+                              height: 34,
+                              borderRadius: 999,
+                              border: '1px solid rgba(226,232,240,.9)',
+                              background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.82) 45%, rgba(255,255,255,.98) 100%)',
+                              color: '#94a3b8',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              boxShadow: '0 6px 16px rgba(15,23,42,.08)',
+                              cursor: 'pointer',
+                              flexShrink: 0
+                            }}
+                          >
+                            <ChevronRight size={16} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Cards Grid/Carousel */}
+                      <div ref={featuredCarouselRef} style={{ display: 'flex', gap: 24, overflowX: isMobileViewport ? 'auto' : 'hidden', paddingBottom: 24, paddingLeft: isMobileViewport ? 16 : 4, paddingRight: isMobileViewport ? 16 : 4, scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', margin: isMobileViewport ? '0 -16px' : '0', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                        {featuredVisibleStores.map((store, i) => {
+                          const storeSlug = toSlug(store?.slug);
+                          const storePins = Array.isArray(discoveryPinsBySlug[storeSlug]) ? discoveryPinsBySlug[storeSlug] : [];
+                          const preferredLocationId = getPreferredDiscoveryLocationId({ store, storePins });
+                          const n = store.tenant_name || store.name || 'Store';
+                          const storeCategories = normalizeStorefrontCategories(store?.storefront_categories);
+                          const c = storeCategories[0] || String(store?.workflow_mode || store?.business_mode || 'Local Business').replace(/_/g, ' ');
+                          const reviewSummary = normalizeStorefrontReviewSummary(store?.storefront_review_summary);
+                          const ratingValue = Number.isFinite(Number(reviewSummary?.score)) ? Number(reviewSummary.score).toFixed(1) : '4.7';
+                          const ratingCount = Number(reviewSummary?.total_count || store?.matching_item_count || 0);
+                          const d = Number.isFinite(Number(store?.nearest_distance_km)) ? `${Number(store.nearest_distance_km).toFixed(1)} km` : '0.4 km';
+                          const t = [
+                            Number(store?.active_location_count || 0) > 0 ? `${Number(store.active_location_count)} Branches` : null,
+                            store?.has_in_stock_match === true ? 'Available Now' : null,
+                            store.matching_item_count > 2 ? 'Featured' : 'Local'
+                          ].filter(Boolean);
+                            const isOpen = store.storefront_open ?? true;
+                            const featuredHoursLabel = String(store?.nearest_location_hours || store?.storefront_hours || '').trim();
+                            const featuredClosedNote = !isOpen
+                              ? `Store closed for now${featuredHoursLabel ? ` • ${featuredHoursLabel}` : ''}`
+                              : '';
+                          const coverImageUrl = withAssetOrigin(store?.storefront_cover_image_url) || withAssetOrigin(store?.storefront_profile_image_url) || '';
+                          const profileImageUrl = withAssetOrigin(store?.storefront_profile_image_url) || coverImageUrl || '';
+                          const coverImageKey = `featured-cover:${storeSlug}:${coverImageUrl}`;
+                          const profileImageKey = `featured-profile:${storeSlug}:${profileImageUrl}`;
+
+                          const catStr = String(c).toLowerCase();
+                          let icon = <Store size={40} color="#fff" />;
+                          let color = '#1a4e8d';
+                          let bg = 'linear-gradient(135deg, #1a4e8d 0%, #1a4e8d 100%)';
+
+                          if (catStr.includes('coffee') || catStr.includes('cafe') || catStr.includes('f&b') || catStr.includes('food')) {
+                            icon = <Coffee size={40} color="#fff" />;
+                            color = '#78350f';
+                            bg = 'linear-gradient(135deg, #fcd34d 0%, #b45309 100%)';
+                          } else if (catStr.includes('grocery') || catStr.includes('supermarket') || catStr.includes('mart')) {
+                            icon = <ShoppingCart size={40} color="#fff" />;
+                            color = '#dc2626';
+                            bg = 'linear-gradient(135deg, #fca5a5 0%, #dc2626 100%)';
+                          } else if (catStr.includes('hardware') || catStr.includes('repair') || catStr.includes('auto')) {
+                            icon = <Wrench size={40} color="#fff" />;
+                            color = '#ca8a04';
+                            bg = 'linear-gradient(135deg, #fef08a 0%, #ca8a04 100%)';
+                          } else if (catStr.includes('salon') || catStr.includes('spa') || catStr.includes('beauty')) {
+                            icon = <Scissors size={40} color="#fff" />;
+                            color = '#be185d';
+                            bg = 'linear-gradient(135deg, #f9a8d4 0%, #be185d 100%)';
+                          } else if (catStr.includes('pharmacy') || catStr.includes('health') || catStr.includes('medical')) {
+                            icon = <HeartHandshake size={40} color="#fff" />;
+                            color = '#115e59';
+                            bg = 'linear-gradient(135deg, #2dd4bf 0%, #115e59 100%)';
+                          }
+
+                          return (
+                              <div key={store.id || store.slug || i} style={{ minWidth: 280, width: 280, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 12px 32px rgba(15,23,42,0.05)', display: 'flex', flexDirection: 'column', textAlign: 'left', overflow: 'hidden', scrollSnapAlign: 'start', flexShrink: 0, position: 'relative', opacity: isOpen ? 1 : 0.72 }}>
+
+                              {/* Cover Area */}
+                              <div style={{ height: 160, background: bg, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {coverImageUrl && !isBrandingImageBlocked(coverImageKey) ? (
+                                  <img
+                                    src={coverImageUrl}
+                                    alt={`${n} cover`}
+                                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                                    onError={() => markBrandingImageError(coverImageKey)}
+                                  />
+                                ) : null}
+                                <div style={{ position: 'absolute', inset: 0, background: coverImageUrl && !isBrandingImageBlocked(coverImageKey) ? 'linear-gradient(180deg, rgba(15,23,42,.12) 0%, rgba(15,23,42,.48) 100%)' : 'transparent' }} />
+                                {/* Subtle pattern overlay */}
+                                <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle at center, rgba(255,255,255,0.2) 1px, transparent 1px)', backgroundSize: '16px 16px', opacity: 0.5 }} />
+
+                                  {isOpen && <div style={{ position: 'absolute', top: 16, left: 16, background: '#16a34a', color: '#fff', fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 8, letterSpacing: '0.02em', boxShadow: '0 2px 8px rgba(22,163,74,0.3)' }}>Open Now</div>}
+                                  {!isOpen && <div style={{ position: 'absolute', top: 16, left: 16, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 8, letterSpacing: '0.02em', boxShadow: '0 2px 8px rgba(239,68,68,0.3)' }}>Closed</div>}
+
+                                {/* Big thematic icon */}
+                                {!coverImageUrl || isBrandingImageBlocked(coverImageKey) ? <div style={{ opacity: 0.8, position: 'relative', zIndex: 1 }}>{icon}</div> : null}
+                              </div>
+
+                              {/* Profile Pic overlapping */}
+                              <div style={{ padding: '0 20px', position: 'relative' }}>
+                                <div style={{ width: 64, height: 64, borderRadius: '50%', background: color, border: '4px solid #fff', marginTop: -32, display: 'grid', placeItems: 'center', color: '#fff', fontSize: 24, fontWeight: 900, boxShadow: '0 4px 12px rgba(0,0,0,0.08)', position: 'relative', zIndex: 2, overflow: 'hidden' }}>
+                                  {profileImageUrl && !isBrandingImageBlocked(profileImageKey) ? (
+                                    <img
+                                      src={profileImageUrl}
+                                      alt={`${n} profile`}
+                                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                      onError={() => markBrandingImageError(profileImageKey)}
+                                    />
+                                  ) : (
+                                    n.charAt(0)
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Info */}
+                              <div style={{ padding: '16px 20px 24px', display: 'flex', flexDirection: 'column', flex: 1 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                                    <h3 style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{n}</h3>
+                                    <span
+                                      title={isOpen ? 'Open' : 'Closed'}
+                                      aria-label={isOpen ? 'Open' : 'Closed'}
+                                      style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0, transform: 'translateY(1px)' }}
+                                    >
+                                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: isOpen ? '#22c55e' : '#ef4444', boxShadow: `0 0 0 3px ${isOpen ? 'rgba(34,197,94,.14)' : 'rgba(239,68,68,.12)'}` }} />
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: 12, color: '#64748b', margin: '4px 0 12px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c}</div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 20 }}>
+                                  <span style={{ color: '#f59e0b', fontSize: 14 }}>★</span> {ratingValue} ({ratingCount}) <span style={{ color: '#cbd5e1', margin: '0 2px' }}>•</span> {d}
+                                </div>
+
+                                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 24, height: 26, overflow: 'hidden' }}>
+                                    {t.slice(0, 3).map((tag) => (
+                                      <div key={tag} style={{ fontSize: 10, fontWeight: 700, color: '#1a4e8d', background: '#eff6ff', padding: '5px 12px', borderRadius: 8, whiteSpace: 'nowrap' }}>
+                                        {tag}
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {!isOpen && (
+                                    <div style={{ fontSize: 11, fontWeight: 700, color: '#b45309', marginTop: -8, marginBottom: 12 }}>
+                                      {featuredClosedNote}
+                                    </div>
+                                  )}
+
+                                <button onClick={() => goStore(store.slug, preferredLocationId)} style={{ marginTop: 'auto', width: '100%', padding: '12px 0', borderRadius: 12, border: '1.5px solid #1a4e8d', background: 'transparent', color: '#1a4e8d', fontSize: 13, fontWeight: 800, cursor: 'pointer', transition: 'all 0.2s ease', letterSpacing: '0.01em' }} onMouseOver={(e) => {e.target.style.background = '#1a4e8d'; e.target.style.color = '#fff';}} onMouseOut={(e) => {e.target.style.background = 'transparent'; e.target.style.color = '#1a4e8d';}}>
+                                  View Store
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {featuredVisibleStores.length === 0 && (
+                        <div style={{ marginTop: 14, borderRadius: 16, border: '1px solid #dbeafe', background: '#eff6ff', color: '#1a4e8d', padding: isMobileViewport ? '12px 14px' : '14px 16px', fontSize: 14, fontWeight: 600 }}>
+                          This category is not available in Featured Local Merchants for now. Please try another category.
+                        </div>
+                      )}
+
+                      {/* Carousel Controls */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 20, marginTop: 16 }}>
+                        <div onClick={() => featuredCarouselRef.current?.scrollBy({ left: -304, behavior: 'smooth' })} style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: '#94a3b8', cursor: 'pointer', transition: 'all 0.2s', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }} onMouseOver={(e)=>e.currentTarget.style.color='#1a4e8d'} onMouseOut={(e)=>e.currentTarget.style.color='#94a3b8'}><ChevronLeft size={20} /></div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#1a4e8d' }} />
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 304, behavior: 'smooth' })} />
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 608, behavior: 'smooth' })} />
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 912, behavior: 'smooth' })} />
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 1216, behavior: 'smooth' })} />
+                        </div>
+                        <div onClick={() => featuredCarouselRef.current?.scrollBy({ left: 304, behavior: 'smooth' })} style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: '#1a4e8d', cursor: 'pointer', transition: 'all 0.2s', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }} onMouseOver={(e)=>{e.currentTarget.style.background='#f8fafc'}} onMouseOut={(e)=>{e.currentTarget.style.background='#fff'}}><ChevronRight size={20} /></div>
+                      </div>
+                    </section>
+
+                    {/* ── FOR BUSINESS OWNERS ── */}
+                    <section style={{ padding: isMobileViewport ? '16px 16px 80px' : '8px 0 108px', maxWidth: 1220, margin: '0 auto' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, .95fr) minmax(0, 1.15fr)', gap: isMobileViewport ? 28 : 34, alignItems: 'center' }}>
+                        <div style={{ display: 'grid', gap: 22 }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, borderRadius: 999, background: '#eff6ff', color: '#1a4e8d', border: '1px solid #dbeafe', padding: '10px 14px', fontSize: 12, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', width: 'fit-content' }}>
+                            <Store size={14} />
+                            For Business Owners
+                          </div>
+                          <div style={{ display: 'grid', gap: 14, maxWidth: 520 }}>
+                            <h2 style={{ margin: 0, fontSize: isMobileViewport ? 42 : 64, lineHeight: 0.98, letterSpacing: '-0.05em', fontWeight: 900, color: '#0f172a' }}>
+                              Put Your Business on the <span style={{ color: '#1a4e8d' }}>Map</span>
+                            </h2>
+                            <p style={{ margin: 0, fontSize: isMobileViewport ? 16 : 20, lineHeight: 1.65, color: '#64748b', maxWidth: 470 }}>
+                              Help customers discover your business and manage sales with DGFY.
+                            </p>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 14 }}>
+                            {[
+                              { icon: <MapPin size={22} color="#1a4e8d" />, bg: '#eff6ff', title: 'Get Discovered', body: 'Be found by nearby customers searching for what you offer.' },
+                              { icon: <ShoppingCart size={22} color="#16a34a" />, bg: '#ecfdf5', title: 'Manage Smarter', body: 'Use POS, inventory, and tools to run your business better.' },
+                              { icon: <Zap size={22} color="#8b5cf6" />, bg: '#f5f3ff', title: 'Grow Faster', body: 'Reach more customers and increase your sales with DGFY.' }
+                            ].map((item) => (
+                              <div key={item.title} style={{ display: 'grid', gap: 10, paddingRight: isMobileViewport ? 0 : 12 }}>
+                                <div style={{ width: 58, height: 58, borderRadius: '50%', background: item.bg, display: 'grid', placeItems: 'center', boxShadow: 'inset 0 0 0 1px rgba(226,232,240,.8)' }}>
+                                  {item.icon}
+                                </div>
+                                <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{item.title}</div>
+                                <div style={{ fontSize: 14, color: '#64748b', lineHeight: 1.7 }}>{item.body}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div style={{ position: 'relative' }}>
+                          <div style={{ position: 'relative', minHeight: isMobileViewport ? 420 : 540, borderRadius: 30, overflow: 'hidden', border: '1px solid rgba(15,23,42,.08)', boxShadow: '0 30px 70px rgba(15,23,42,.10)', background: 'linear-gradient(135deg, #1f2937 0%, #334155 18%, #475569 38%, #1f2937 100%)' }}>
+                            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 18% 18%, rgba(251,191,36,.22) 0%, transparent 18%), radial-gradient(circle at 78% 20%, rgba(255,255,255,.10) 0%, transparent 16%), linear-gradient(180deg, rgba(255,255,255,.03) 0%, rgba(15,23,42,.24) 100%)' }} />
+                            <div style={{ position: 'absolute', top: 26, left: 28, display: 'flex', gap: 14 }}>
+                              {[0, 1, 2].map((index) => (
+                                <div key={index} style={{ width: 16, height: 16, borderRadius: '50%', background: index === 0 ? '#f59e0b' : '#fde68a', boxShadow: '0 10px 24px rgba(0,0,0,.18)' }} />
+                              ))}
+                            </div>
+                            <div style={{ position: 'absolute', inset: '22% 10% 0 10%', borderRadius: 26, background: 'linear-gradient(180deg, rgba(255,255,255,.06) 0%, rgba(15,23,42,.20) 100%)', border: '1px solid rgba(255,255,255,.10)' }} />
+                            <div style={{ position: 'absolute', left: '14%', right: '24%', bottom: 0, height: '82%', borderRadius: '180px 180px 24px 24px', background: 'linear-gradient(180deg, #f4efe8 0%, #d7c8ba 100%)', boxShadow: '0 30px 60px rgba(0,0,0,.18)' }} />
+                            <div style={{ position: 'absolute', left: '28%', top: '18%', width: isMobileViewport ? 140 : 184, height: isMobileViewport ? 140 : 184, borderRadius: '50%', background: 'linear-gradient(180deg, #1f2937 0%, #111827 100%)', boxShadow: '0 16px 28px rgba(0,0,0,.22)' }} />
+                            <div style={{ position: 'absolute', left: '34%', top: '24%', width: isMobileViewport ? 92 : 124, height: isMobileViewport ? 118 : 152, borderRadius: '46% 46% 44% 44%', background: 'linear-gradient(180deg, #f3d6bf 0%, #e5b98d 100%)', boxShadow: '0 8px 16px rgba(0,0,0,.12)' }} />
+                            <div style={{ position: 'absolute', left: '22%', right: '30%', bottom: 0, height: '54%', borderRadius: '36px 36px 0 0', background: 'linear-gradient(180deg, #fbfaf8 0%, #ebe4db 18%, #243b53 18%, #102a43 100%)' }} />
+                            <div style={{ position: 'absolute', left: '20%', right: '28%', bottom: '30%', height: 10, background: '#8b5e3c', borderRadius: 999, transform: 'rotate(-2deg)' }} />
+                            <div style={{ position: 'absolute', left: '20%', right: '28%', bottom: '28%', height: 26, borderRadius: '0 0 18px 18px', borderLeft: '6px solid #8b5e3c', borderRight: '6px solid #8b5e3c', background: 'transparent' }} />
+                            <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '20%', background: 'linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,.26) 100%)' }} />
+
+                            <div style={{ position: 'absolute', left: isMobileViewport ? 18 : 'auto', right: isMobileViewport ? 18 : 18, top: isMobileViewport ? 'auto' : '18%', bottom: isMobileViewport ? 18 : 'auto', width: isMobileViewport ? 'auto' : 280, borderRadius: 28, background: 'rgba(255,255,255,.96)', border: '1px solid rgba(226,232,240,.9)', boxShadow: '0 24px 48px rgba(15,23,42,.18)', padding: isMobileViewport ? 18 : 24, backdropFilter: 'blur(12px)' }}>
+                              <div style={{ width: 58, height: 58, borderRadius: '50%', background: '#eff6ff', display: 'grid', placeItems: 'center', boxShadow: 'inset 0 0 0 1px #dbeafe' }}>
+                                <img src={dgfySymbolLogo} alt="DGFY" style={{ width: 28, height: 28, objectFit: 'contain' }} />
+                              </div>
+                              <div style={{ marginTop: 18, fontSize: isMobileViewport ? 28 : 38, lineHeight: 1.02, letterSpacing: '-0.04em', fontWeight: 900, color: '#0f172a' }}>
+                                Register Your <span style={{ color: '#1a4e8d' }}>Business</span>
+                              </div>
+                              <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #e2e8f0', fontSize: 15, lineHeight: 1.7, color: '#64748b' }}>
+                                List your products, services, and storefront with DGFY.
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (typeof window !== 'undefined') window.location.href = 'https://skupervisor.dgfy.ph/register-company';
+                                }}
+                                style={{ marginTop: 22, width: '100%', minHeight: 52, borderRadius: 16, border: '1px solid #1a4e8d', background: 'linear-gradient(180deg, #1a4e8d 0%, #1a4e8d 100%)', color: '#fff', fontSize: 15, fontWeight: 800, boxShadow: '0 14px 28px rgba(37,99,235,.22)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer' }}
+                              >
+                                Register Now
+                                <ChevronRight size={18} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+
+                    {/* ── DISCOVERY FAQ ── */}
+                    <section style={{ padding: isMobileViewport ? '0 16px 88px' : '0 0 112px', maxWidth: 1180, margin: '0 auto' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, .82fr) minmax(0, 1.18fr)', gap: isMobileViewport ? 28 : 42, alignItems: 'start' }}>
+                        <div style={{ display: 'grid', gap: 18 }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, borderRadius: 999, background: '#eff6ff', color: '#1a4e8d', border: '1px solid #dbeafe', padding: '10px 14px', fontSize: 12, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', width: 'fit-content' }}>
+                            <MessageCircle size={14} />
+                            Frequently Asked Questions
+                          </div>
+                          <div style={{ display: 'grid', gap: 14, maxWidth: 460 }}>
+                            <h2 style={{ margin: 0, fontSize: isMobileViewport ? 34 : 50, lineHeight: 1.02, letterSpacing: '-0.04em', fontWeight: 900, color: '#0f172a' }}>
+                              Answers Before You <span style={{ color: '#1a4e8d' }}>Explore</span>
+                            </h2>
+                            <p style={{ margin: 0, fontSize: isMobileViewport ? 15 : 18, lineHeight: 1.75, color: '#64748b' }}>
+                              Everything shoppers and business owners usually ask before using DGFY discovery.
+                            </p>
+                          </div>
+                          <div style={{ display: 'grid', gap: 12, padding: isMobileViewport ? '20px 18px' : '22px 24px', borderRadius: 26, background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)', border: '1px solid #e2e8f0', boxShadow: '0 16px 40px rgba(15,23,42,.06)' }}>
+                            {[
+                              { label: 'Search nearby', value: 'Product- and service-based discovery within your area' },
+                              { label: 'Business signup', value: 'Fast onboarding for merchants ready to be found' },
+                              { label: 'Customer trust', value: 'Clear status, distance, branches, and storefront details' }
+                            ].map((item) => (
+                              <div key={item.label} style={{ display: 'grid', gap: 4 }}>
+                                <div style={{ fontSize: 12, fontWeight: 800, color: '#1a4e8d', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{item.label}</div>
+                                <div style={{ fontSize: 14, lineHeight: 1.7, color: '#475569' }}>{item.value}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gap: 14 }}>
+                          {[
+                            {
+                              question: 'How does DGFY find businesses near me?',
+                              answer: 'When you search, DGFY uses your current location when available and matches nearby businesses that offer the product or service you need. Results are then organized into an easier map-and-list discovery view.'
+                            },
+                            {
+                              question: 'Do I need to enable location to use storefront discovery?',
+                              answer: 'Location gives you more accurate nearby results and distance estimates. If location is unavailable, the page can still show broader discovery results, but the experience is less precise.'
+                            },
+                            {
+                              question: 'What does Register Your Business do?',
+                              answer: 'It takes merchants to the DGFY registration flow so they can list their storefront, products, and services, then become discoverable to nearby customers on the platform.'
+                            },
+                            {
+                              question: 'Can customers compare multiple stores before choosing?',
+                              answer: 'Yes. The discovery experience is designed to help customers compare business cards, location distance, store status, and storefront details before visiting or ordering.'
+                            }
+                          ].map((item, index) => {
+                            const isOpen = openDiscoveryFaqIndex === index;
+                            return (
+                              <div
+                                key={item.question}
+                                style={{
+                                  borderRadius: 24,
+                                  background: '#fff',
+                                  border: isOpen ? '1px solid #bfdbfe' : '1px solid #e2e8f0',
+                                  boxShadow: isOpen ? '0 18px 40px rgba(37,99,235,.10)' : '0 10px 26px rgba(15,23,42,.05)',
+                                  overflow: 'hidden',
+                                  transition: 'all 220ms ease'
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => setOpenDiscoveryFaqIndex((current) => current === index ? -1 : index)}
+                                  style={{
+                                    width: '100%',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    padding: isMobileViewport ? '20px 18px' : '22px 24px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: 16,
+                                    textAlign: 'left',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  <div style={{ display: 'grid', gap: 6 }}>
+                                    <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', lineHeight: 1.35 }}>{item.question}</div>
+                                    <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>
+                                      {isOpen ? 'Tap to collapse' : 'Tap to expand'}
+                                    </div>
+                                  </div>
+                                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: isOpen ? '#1a4e8d' : '#eff6ff', color: isOpen ? '#fff' : '#1a4e8d', display: 'grid', placeItems: 'center', flexShrink: 0, transition: 'all 200ms ease' }}>
+                                    <ChevronDown size={18} style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 200ms ease' }} />
+                                  </div>
+                                </button>
+                                {isOpen ? (
+                                  <div style={{ padding: isMobileViewport ? '0 18px 20px' : '0 24px 22px' }}>
+                                    <div style={{ height: 1, background: '#e2e8f0', marginBottom: 16 }} />
+                                    <p style={{ margin: 0, fontSize: 15, lineHeight: 1.8, color: '#475569' }}>
+                                      {item.answer}
+                                    </p>
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </section>
+
+                    <footer style={{ marginLeft: 'calc(50% - 50vw)', width: '100%', minWidth: '100vw', background: 'linear-gradient(180deg, #0c3c86 0%, #0a3475 38%, #082c63 100%)', color: '#fff', position: 'relative', overflow: 'hidden' }}>
+                      <div style={{ position: 'absolute', top: -42, left: '-4%', right: '-4%', height: 88, background: 'linear-gradient(90deg, rgba(59,130,246,.38) 0%, rgba(96,165,250,.18) 35%, rgba(59,130,246,.34) 100%)', borderBottomLeftRadius: '50% 100%', borderBottomRightRadius: '50% 100%', opacity: 0.9 }} />
+                      <div style={{ position: 'absolute', top: -20, left: '-8%', right: '-8%', height: 54, background: 'linear-gradient(90deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,.04) 50%, rgba(255,255,255,.10) 100%)', borderBottomLeftRadius: '50% 100%', borderBottomRightRadius: '50% 100%', opacity: 0.75 }} />
+
+                      <div style={{ position: 'relative', zIndex: 1, maxWidth: 1200, margin: '0 auto', padding: isMobileViewport ? '96px 20px 42px' : '108px 24px 48px' }}>
+                        <div
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: isMobileViewport ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))',
+                            gap: isMobileViewport ? 28 : 36,
+                            justifyItems: isMobileViewport ? 'center' : 'stretch'
+                          }}
+                        >
+                          {[
+                            {
+                              title: 'Company',
+                              links: [
+                                { label: 'About Us', href: '/about' },
+                                { label: 'Contact', href: '/contact' },
+                                { label: 'Privacy Policy', href: '/privacy' },
+                                { label: 'Terms & Conditions', href: '/terms' }
+                              ]
+                            },
+                            {
+                              title: 'Explore',
+                              links: [
+                                { label: 'Products', href: '/' },
+                                { label: 'Services', href: '/' },
+                                { label: 'Merchants', href: '/' }
+                              ]
+                            },
+                            {
+                              title: 'For Business',
+                              links: [
+                                { label: 'Register Your Business', href: 'https://skupervisor.dgfy.ph/register-company' },
+                                { label: 'Business Login', href: 'https://skupervisor.dgfy.ph/login' }
+                              ]
+                            },
+                            {
+                              title: 'Contact',
+                              links: [
+                                { label: 'Email', href: 'mailto:hello@dgfy.ph' },
+                                { label: 'Facebook', href: 'https://facebook.com' },
+                                { label: 'Instagram', href: 'https://instagram.com' },
+                                { label: 'LinkedIn', href: 'https://linkedin.com' }
+                              ]
+                            }
+                          ].map((group) => (
+                            <div
+                              key={group.title}
+                              style={{
+                                display: 'grid',
+                                gap: 16,
+                                alignContent: 'start',
+                                justifyItems: isMobileViewport ? 'center' : 'start',
+                                textAlign: isMobileViewport ? 'center' : 'left'
+                              }}
+                            >
+                              <div style={{ fontSize: 14, fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#ffffff' }}>
+                                {group.title}
+                              </div>
+                              <div style={{ display: 'grid', gap: 12 }}>
+                                {group.links.map((link) => (
+                                  <a
+                                    key={`${group.title}-${link.label}`}
+                                    href={link.href}
+                                    target={String(link.href).startsWith('http') ? '_blank' : undefined}
+                                    rel={String(link.href).startsWith('http') ? 'noreferrer' : undefined}
+                                    style={{ fontSize: 16, lineHeight: 1.55, color: 'rgba(226,232,240,.96)', textDecoration: 'none' }}
+                                  >
+                                    {link.label}
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div style={{ marginTop: isMobileViewport ? 42 : 54, height: 1, background: 'rgba(226,232,240,.18)' }} />
+
+                        <div style={{ display: 'grid', justifyItems: 'center', textAlign: 'center', gap: 14, paddingTop: isMobileViewport ? 28 : 34 }}>
+                          <img src={dgfyHeaderLogo} alt="DGFY logo" style={{ width: isMobileViewport ? 220 : 340, maxWidth: '88%', height: 'auto', display: 'block' }} />
+                          <div style={{ fontSize: isMobileViewport ? 28 : 40, fontWeight: 900, letterSpacing: '-0.04em', color: '#ffffff' }}>
+                            <span style={{ color: '#aee8f4' }}>D</span>iscover{' '}
+                            <span style={{ color: '#aee8f4' }}>G</span>oods{' '}
+                            <span style={{ color: '#aee8f4' }}>F</span>or{' '}
+                            <span style={{ color: '#aee8f4' }}>Y</span>ou
+                          </div>
+                          <div style={{ fontSize: 14, lineHeight: 1.7, color: 'rgba(226,232,240,.86)', maxWidth: 540 }}>
+                            Search nearby products, services, and businesses faster with a discovery experience built for modern local commerce.
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: 13, color: 'rgba(203,213,225,.78)' }}>
+                            © {new Date().getFullYear()} DGFY. Powered by SKUpervisor. All Rights Reserved.
+                          </div>
+                        </div>
+                      </div>
+                    </footer>
+              </div>
+            </section>
+                {/* ── DYNAMIC MAP & LIST ── */}
+                {false && hasDiscoverySearch && (
+                <div style={{ borderRadius: 20, overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 4px 24px rgba(15,23,42,.08)' }}>
+                  <div style={{ display: 'flex', flexDirection: isDiscoveryTabletViewport ? 'column' : 'row', alignItems: 'stretch', position: 'relative', overflow: 'hidden', transition: 'all 350ms cubic-bezier(0.4,0,0.2,1)' }}>
+
+                    {/* MAP */}
+                    <div style={{ position: 'relative', flex: '1 1 auto', minWidth: 0, height: isDiscoveryMobileViewport ? 'calc(100vh - 192px)' : discoveryLayout.discoveryMapHeight }}>
+
+                      {/* Map */}
+                      {!loadingStores && !storesError && activeDiscoveryMapPins.length > 0 ? (
+                        <StoresMap
+                          stores={activeDiscoveryMapPins}
+                          selectedKey={highlightedDiscoveryMarkerKey || null}
+                          userLocation={discoveryCoords}
+                          height="100%"
+                          onSelectStore={(pin) => {
+                            setHighlightedStoreSlug(pin.slug);
+                            setHighlightedDiscoveryMarkerKey(getDiscoveryMarkerKey(pin));
+                            const matched = filteredDiscoveryStores.find((s) => s.slug === pin.slug);
+                            setSelectedMapPin(matched || null);
+                          }}
+                          autoOpenPopups={true}
+                        />
+                      ) : (
+                        <div style={{ height: '100%', background: '#f8fafc', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>
+                          {loadingStores ? 'Loading map...' : storesError || getDiscoveryEmptyStateMessage(search)}
+                        </div>
+                      )}
+                      {/* View All Stores / Hide List — top-right overlay */}
+                      <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 11 }}>
+                        <button
+                          type="button"
+                          onClick={() => setIsStoreListVisible((v) => !v)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 7,
+                            borderRadius: 10,
+                            border: 'none',
+                            background: isStoreListVisible ? '#0f172a' : '#1a4e8d',
+                            color: '#fff',
+                            padding: '9px 16px',
+                            fontWeight: 700,
+                            fontSize: 13,
+                            cursor: 'pointer',
+                            boxShadow: '0 4px 16px rgba(15,23,42,.22)',
+                            transition: 'background 200ms'
+                          }}
+                        >
+                          {isStoreListVisible ? <X size={14} /> : <List size={14} />}
+                          {isStoreListVisible ? 'Hide List' : `View All Stores${filteredDiscoveryStores.length ? ` (${filteredDiscoveryStores.length})` : ''}`}
+                        </button>
+                      </div>
+
+
+                    </div>
+
+                    {/* RESULTS PANEL — slides in from right */}
+                    <aside
+                      style={{
+                        background: '#fff',
+                        borderLeft: isStoreListVisible ? '1px solid #f1f5f9' : 'none',
+                        display: 'grid',
+                        gridTemplateRows: 'auto 1fr',
+                        overflow: 'hidden',
+                        position: isDiscoveryMobileViewport ? 'absolute' : 'static',
+                        top: 0,
+                        right: 0,
+                        bottom: 0,
+                        zIndex: 10,
+                        width: isStoreListVisible ? (isDiscoveryMobileViewport ? '100%' : isDiscoveryTabletViewport ? '100%' : `${discoveryLayout.resultsPanelWidth}px`) : '0px',
+                        minWidth: 0,
+                        maxHeight: discoveryLayout.resultsPanelMaxHeight,
+                        opacity: isStoreListVisible ? 1 : 0,
+                        transition: 'width 350ms cubic-bezier(0.4,0,0.2,1), opacity 300ms ease, border-color 350ms'
+                      }}
+                    >
+                      {/* Panel header */}
+                      <div style={{ padding: '18px 20px 14px', borderBottom: '1px solid #f1f5f9' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Business Matches</div>
+                            <h2 style={{ margin: '4px 0 0', fontSize: 24, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>Discover Nearby</h2>
+                            <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>{filteredDiscoveryStores.length} {filteredDiscoveryStores.length === 1 ? 'store' : 'stores'} found near {discoveryCoords ? 'your location' : 'Iloilo City'}</p>
+                            {!discoveryCoords && <p style={{ margin: '2px 0 0', fontSize: 11, color: '#94a3b8' }}>Enable location for radius-based results.</p>}
+                          </div>
+                          <button type="button" onClick={() => { setSearch(''); searchRef.current = ''; setDebouncedDiscoverySearch(''); setDiscoveryCategoryFilter('all'); setDiscoveryDistanceFilter('all'); setDiscoveryOpenFilter('all'); setDiscoveryRatingFilter('all'); setDiscoveryAvailabilityFilter('all'); setDiscoverySortBy('nearest'); loadStores(undefined, { useImmediateSearch: true }); }} style={{ border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', padding: '6px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}><X size={12} />Reset</button>
+                        </div>
+                        {/* Sort + view toggle in one row */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, gap: 8 }}>
+                          <select value={discoverySortBy} onChange={(e) => setDiscoverySortBy(e.target.value)} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 10px', fontSize: 13, color: '#334155', fontWeight: 600, background: '#fff', cursor: 'pointer' }}>
+                            <option value="nearest">Sort by: Nearest</option>
+                            <option value="catalog">Sort by: Popular</option>
+                            <option value="rating">Sort by: Top Rated</option>
+                            <option value="open">Sort by: Open Now</option>
+                          </select>
+                          <div style={{ display: 'flex', gap: 5 }}>
+                            <button type="button" onClick={() => setViewMode('list')} style={{ width: 32, height: 32, borderRadius: 7, border: `1px solid ${viewMode === 'list' ? '#1a4e8d' : '#e2e8f0'}`, background: viewMode === 'list' ? '#eff6ff' : '#fff', color: viewMode === 'list' ? '#1a4e8d' : '#94a3b8', display: 'grid', placeItems: 'center', cursor: 'pointer' }}><List size={14} /></button>
+                            <button type="button" onClick={() => setViewMode('grid')} style={{ width: 32, height: 32, borderRadius: 7, border: `1px solid ${viewMode === 'grid' ? '#1a4e8d' : '#e2e8f0'}`, background: viewMode === 'grid' ? '#eff6ff' : '#fff', color: viewMode === 'grid' ? '#1a4e8d' : '#94a3b8', display: 'grid', placeItems: 'center', cursor: 'pointer' }}><LayoutGrid size={14} /></button>
+                          </div>
+                        </div>
+                        {/* Filter selects */}
+                        <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+                          {[
+                            { value: discoveryCategoryFilter, setter: setDiscoveryCategoryFilter, label: 'Category', options: discoveryBusinessModeOptions },
+                            { value: discoveryDistanceFilter, setter: setDiscoveryDistanceFilter, label: 'Distance', options: [['all','Any'],['0.1','100m'],['1','1km'],['3','3km']] },
+                            { value: discoveryOpenFilter, setter: setDiscoveryOpenFilter, label: 'Status', options: [['all','All'],['open','Open']] }
+                          ].map((f) => (
+                            <select key={f.label} value={f.value} onChange={(e) => f.setter(e.target.value)} style={{ borderRadius: 7, border: '1px solid #e2e8f0', padding: '5px 8px', fontSize: 12, fontWeight: 600, color: f.value !== 'all' ? '#1a4e8d' : '#64748b', background: f.value !== 'all' ? '#eff6ff' : '#fff', cursor: 'pointer' }}>
+                              {f.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                            </select>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Scrollable store list */}
+                      <div style={{ overflowY: 'auto', padding: '12px 16px 16px' }}>
+                        {loadingStores && <div style={{ padding: 20, color: '#94a3b8', fontSize: 14, textAlign: 'center' }}>Loading stores...</div>}
+                        {!loadingStores && filteredDiscoveryStores.length === 0 && <div style={{ padding: 20, color: '#94a3b8', fontSize: 14, textAlign: 'center' }}>{getDiscoveryEmptyStateMessage(search)}</div>}
+                        <div style={{ display: 'grid', gap: 10 }}>
+                          {filteredDiscoveryStores.map((store) => {
+                            const storeSlug = toSlug(store?.slug);
+                            const imgUrl = withAssetOrigin(store?.storefront_cover_image_url);
+                            const imgKey = `discovery-cover:${storeSlug}:${imgUrl}`;
+                            const storePins = Array.isArray(discoveryPinsBySlug[storeSlug]) ? discoveryPinsBySlug[storeSlug] : [];
+                            const preferredLocationId = getPreferredDiscoveryLocationId({ store, storePins });
+                            const cats = normalizeStorefrontCategories(store?.storefront_categories);
+                            const catLabel = cats[0] || String(store?.workflow_mode || 'Store').replace(/_/g, ' ');
+                            const rev = normalizeStorefrontReviewSummary(store?.storefront_review_summary);
+                            const rating = Number.isFinite(Number(rev?.score)) ? Number(rev.score).toFixed(1) : '4.7';
+                            const ratingCount = Number(rev?.total_count || store?.matching_item_count || 0);
+                            const isActive = highlightedStoreSlug === store.slug;
+                            return (
+                              <article key={store.slug} onMouseEnter={() => setHighlightedStoreSlug(store.slug)} style={{ borderRadius: 14, border: `1px solid ${isActive ? '#bfdbfe' : '#f1f5f9'}`, background: isActive ? '#fafcff' : '#fff', padding: 10, display: 'grid', gridTemplateColumns: '76px 1fr', gap: 10, alignItems: 'start', transition: 'border-color .15s, background .15s', cursor: 'default' }}>
+                                <div style={{ borderRadius: 10, overflow: 'hidden', height: 76, background: '#f1f5f9' }}>
+                                  {imgUrl && !isBrandingImageBlocked(imgKey) ? <img src={imgUrl} alt={store.tenant_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => markBrandingImageError(imgKey)} /> : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg,#dbeafe,#f8fafc)', display: 'grid', placeItems: 'center', color: '#94a3b8', fontSize: 10, fontWeight: 700 }}>DGFY</div>}
+                                </div>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{store.tenant_name}</span>
+                                    {store.matching_item_count > 2 && <span style={{ borderRadius: 999, padding: '2px 7px', fontSize: 10, fontWeight: 800, background: '#eff6ff', color: '#1a4e8d' }}>Featured</span>}
+                                  </div>
+                                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, textTransform: 'capitalize' }}>{catLabel}</div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5, fontSize: 12 }}>
+                                    <span style={{ color: '#f59e0b', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}><Star size={12} fill="currentColor" />{rating}</span>
+                                    <span style={{ color: '#64748b' }}>({ratingCount})</span>
+                                    <span style={{ color: '#94a3b8' }}>·</span>
+                                    <span style={{ color: '#64748b' }}>{Number.isFinite(Number(store.nearest_distance_km)) ? `${Number(store.nearest_distance_km).toFixed(1)} km` : '—'}</span>
+                                    <span style={{ color: '#94a3b8' }}>·</span>
+                                    <span style={{ color: '#64748b' }}>{store.estimated_wait_minutes || 10}–{Number(store.estimated_wait_minutes || 10) + 5} min</span>
+                                    <span style={{ borderRadius: 999, padding: '2px 7px', fontSize: 10, fontWeight: 700, background: store.storefront_open ? '#ecfdf5' : '#fff7ed', color: store.storefront_open ? '#16a34a' : '#c2410c' }}>{store.storefront_open ? 'Open Now' : 'Closed'}</span>
+                                  </div>
+                                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                                    <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={{ flex: 1, borderRadius: 8, border: '1px solid #dbeafe', background: '#fff', color: '#1a4e8d', padding: '7px 0', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>View Store</button>
+                                    <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={{ flex: 1, borderRadius: 8, border: 'none', background: '#ff8a1f', color: '#fff', padding: '7px 0', fontWeight: 700, cursor: 'pointer', fontSize: 12, boxShadow: '0 4px 10px rgba(249,115,22,.20)' }}>Order Now</button>
+                                  </div>
+                                </div>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </aside>
+                  </div>
+                </div>
+              )}
+
+
+
+
+                  {selectedServiceDetail && !isBookingSubpage && !isServiceDetailsSubpage && (
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 2200, display: 'grid', placeItems: isMobileViewport ? 'end stretch' : 'center', padding: isMobileViewport ? 0 : 24 }}>
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Close service detail"
+                        onClick={closeServiceDetail}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') closeServiceDetail();
+                        }}
+                        style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,.58)', backdropFilter: 'blur(8px)' }}
+                      />
+                      <section
+                        style={{
+                          position: 'relative',
+                          zIndex: 2201,
+                          width: isMobileViewport ? '100%' : 'min(980px, calc(100vw - 48px))',
+                          maxHeight: isMobileViewport ? '92vh' : 'calc(100vh - 48px)',
+                          overflow: 'hidden',
+                          borderRadius: isMobileViewport ? '24px 24px 0 0' : 28,
+                          background: '#ffffff',
+                          border: '1px solid #dbe5ee',
+                          boxShadow: '0 30px 90px rgba(15,23,42,.24)',
+                          display: 'grid',
+                          gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(280px, 360px) minmax(0, 1fr)'
+                        }}
+                      >
+                        <div style={{ position: 'relative', minHeight: isMobileViewport ? 220 : '100%', background: '#f8fafc' }}>
+                          {withAssetOrigin(selectedServiceDetail.image_url) ? (
+                            <img
+                              src={withAssetOrigin(selectedServiceDetail.image_url)}
+                              alt={selectedServiceDetail.variantName || selectedServiceDetail.name}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                          ) : (
+                            <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: STYLES.colors.muted, fontSize: 14 }}>
+                              No image
+                            </div>
+                          )}
+                          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,.04) 0%, rgba(15,23,42,.26) 100%)' }} />
+                          <button
+                            type="button"
+                            onClick={closeServiceDetail}
+                            style={{
+                              position: 'absolute',
+                              top: 16,
+                              right: 16,
+                              width: 40,
+                              height: 40,
+                              borderRadius: 999,
+                              border: '1px solid rgba(255,255,255,.55)',
+                              background: 'rgba(15,23,42,.55)',
+                              color: '#fff',
+                              display: 'grid',
+                              placeItems: 'center',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <X size={18} />
+                          </button>
+                          <div style={{ position: 'absolute', left: 18, right: 18, bottom: 18, display: 'grid', gap: 10 }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                              <Badge background="rgba(255,255,255,.92)" color={STYLES.colors.brand} border="rgba(255,255,255,.92)">
+                                {selectedServiceDetail.categoryMeta?.label || 'Service'}
+                              </Badge>
+                              <Badge background="rgba(15,23,42,.72)" color="#fff" border="rgba(255,255,255,.14)">
+                                {selectedServiceDetail.serviceAreaLabel}
+                              </Badge>
+                            </div>
+                            <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, color: '#fff' }}>
+                              {selectedServiceDetail.variantName || selectedServiceDetail.name}
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, color: 'rgba(255,255,255,.92)', fontSize: 13, fontWeight: 700 }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                <Clock3 size={14} />
+                                {selectedServiceDetail.durationLabel}
+                              </span>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                <MousePointer2 size={14} />
+                                {selectedServicePaymentOptions.map((option) => option.label).join(' / ')}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateRows: 'auto 1fr auto', minHeight: 0 }}>
+                          <div style={{ padding: isMobileViewport ? '18px 18px 12px' : '24px 28px 16px', borderBottom: '1px solid #e2e8f0', display: 'grid', gap: 10 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+                              <div style={{ display: 'grid', gap: 8 }}>
+                                <div style={{ fontSize: 28, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.05 }}>
+                                  {money(selectedServiceDetail.default_sale_price ?? 0)}
+                                </div>
+                                <div style={{ fontSize: 14, color: STYLES.colors.text, lineHeight: 1.6, maxWidth: 540 }}>
+                                  {selectedServiceDetail.description || 'Service details are synced from SKUpervisor. Select your preferred schedule and booking requirements below.'}
+                                </div>
+                              </div>
+                              {!isMobileViewport && (
+                                <div style={{ minWidth: 180, borderRadius: 18, border: '1px solid #e2e8f0', background: '#f8fafc', padding: 14, display: 'grid', gap: 8 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Booking notes</div>
+                                  <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.5 }}>
+                                    SKUpervisor validates lead time, conflicts, and booking rules when you submit.
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div style={{ overflowY: 'auto', padding: isMobileViewport ? '16px 18px' : '20px 28px', display: 'grid', gap: 18 }}>
+                            <section style={{ display: 'grid', gap: 12 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <CalendarDays size={18} color="#f97316" />
+                                <div>
+                                  <div style={{ fontSize: 16, fontWeight: 800, color: STYLES.colors.dark }}>Preferred Schedule</div>
+                                  <div style={{ fontSize: 12, color: STYLES.colors.muted }}>Choose the requested appointment time. Final availability is confirmed by SKUpervisor.</div>
+                                </div>
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr 160px', gap: 12 }}>
+                                <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                                  Preferred date and time
+                                  <input
+                                    type="datetime-local"
+                                    value={serviceAppointmentAt}
+                                    onChange={(event) => setServiceAppointmentAt(event.target.value)}
+                                    style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
+                                  />
+                                </label>
+                                <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                                  Payment timing
+                                  <select
+                                    value={servicePaymentTiming}
+                                    onChange={(event) => setServicePaymentTiming(event.target.value)}
+                                    style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
+                                  >
+                                    {selectedServicePaymentOptions.map((option) => (
+                                      <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                                  Units / count
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    value={serviceDraftQuantity}
+                                    onChange={(event) => setServiceDraftQuantity(Math.max(1, Number(event.target.value || 1)))}
+                                    style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
+                                  />
+                                </label>
+                              </div>
+                            </section>
+
+                            <section style={{ display: 'grid', gap: 12 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <FileText size={18} color="#f97316" />
+                                <div>
+                                  <div style={{ fontSize: 16, fontWeight: 800, color: STYLES.colors.dark }}>Service instructions</div>
+                                  <div style={{ fontSize: 12, color: STYLES.colors.muted }}>Add any practical notes that will help the service team prepare.</div>
+                                </div>
+                              </div>
+                              <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                                Special instructions
+                                <textarea
+                                  value={serviceDraftNotes}
+                                  onChange={(event) => setServiceDraftNotes(event.target.value)}
+                                  placeholder="Access notes, unit details, pickup preferences, or anything the service team should know."
+                                  style={{ width: '100%', minHeight: 92, marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff', resize: 'vertical' }}
+                                />
+                              </label>
+                            </section>
+
+                            {selectedServiceIntakeFields.length > 0 && (
+                              <section style={{ display: 'grid', gap: 12 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                  <CheckCircle2 size={18} color="#f97316" />
+                                  <div>
+                                    <div style={{ fontSize: 16, fontWeight: 800, color: STYLES.colors.dark }}>Booking requirements</div>
+                                    <div style={{ fontSize: 12, color: STYLES.colors.muted }}>These fields come from the service intake form configured in SKUpervisor.</div>
+                                  </div>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
+                                  {selectedServiceIntakeFields.map((field) => (
+                                    <label key={field.id} style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                                      {field.label}{field.required ? ' *' : ''}
+                                      {field.type === 'textarea' ? (
+                                        <textarea
+                                          value={serviceIntakeResponses[field.id] || ''}
+                                          onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))}
+                                          style={{ width: '100%', minHeight: 92, marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff', resize: 'vertical' }}
+                                        />
+                                      ) : field.type === 'select' ? (
+                                        <select
+                                          value={serviceIntakeResponses[field.id] || ''}
+                                          onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))}
+                                          style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
+                                        >
+                                          <option value="">Select</option>
+                                          {field.options.map((option) => (
+                                            <option key={option} value={option}>{option}</option>
+                                          ))}
+                                        </select>
+                                      ) : field.type === 'checkbox' ? (
+                                        <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, padding: '12px 13px', border: '1px solid #cbd5e1', borderRadius: 14, background: '#fff' }}>
+                                          <input
+                                            type="checkbox"
+                                            checked={serviceIntakeResponses[field.id] === true}
+                                            onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.checked }))}
+                                          />
+                                          <span style={{ fontSize: 13, color: STYLES.colors.text }}>Confirm</span>
+                                        </div>
+                                      ) : (
+                                        <input
+                                          type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                                          value={serviceIntakeResponses[field.id] || ''}
+                                          onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))}
+                                          style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 14, padding: '12px 13px', background: '#fff' }}
+                                        />
+                                      )}
+                                    </label>
+                                  ))}
+                                </div>
+                              </section>
+                            )}
+                          </div>
+
+                          <div style={{ padding: isMobileViewport ? '14px 18px 18px' : '18px 28px 24px', borderTop: '1px solid #e2e8f0', background: '#fff', display: 'grid', gap: 12 }}>
+                            {checkoutError && (
+                              <div style={{ fontSize: 13, color: '#b91c1c', border: '1px solid #fecaca', background: '#fff1f2', borderRadius: 14, padding: '10px 12px' }}>
+                                {checkoutError}
+                              </div>
+                            )}
+                            {missingRequiredSelectedServiceIntake.length > 0 && (
+                              <div style={{ fontSize: 13, color: '#b45309', border: '1px solid #fde68a', background: '#fffbeb', borderRadius: 14, padding: '10px 12px' }}>
+                                Complete the required booking details before adding this service to your booking summary.
+                              </div>
+                            )}
+                            <div style={{ display: 'flex', flexDirection: isMobileViewport ? 'column-reverse' : 'row', justifyContent: 'space-between', alignItems: isMobileViewport ? 'stretch' : 'center', gap: 12 }}>
+                              <div style={{ display: 'grid', gap: 4 }}>
+                                <div style={{ fontSize: 13, color: STYLES.colors.muted }}>Current estimate</div>
+                                <div style={{ fontSize: 24, fontWeight: 900, color: STYLES.colors.dark }}>
+                                  {money((Number(selectedServiceDetail.default_sale_price ?? 0) || 0) * Math.max(1, Number(serviceDraftQuantity || 1)))}
+                                </div>
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: isMobileViewport ? 'column' : 'row', gap: 10 }}>
+                                <GhostButton style={{ minHeight: 46, minWidth: 150 }} onClick={closeServiceDetail}>
+                                  Cancel
+                                </GhostButton>
+                                <PrimaryButton style={{ minHeight: 46, minWidth: 190 }} onClick={() => saveServiceBookingDraft(selectedServiceDetail, 'review')}>
+                                  Add to Booking
+                                </PrimaryButton>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </section>
+                    </div>
+                  )}
+
+          </>
+        )}
+
+        {isStorePage && (
+          <>
+            {selectedStore && (
+              <div style={{ position: 'absolute', left: -99999, top: 'auto', width: 1, height: 1, overflow: 'hidden' }}>
+                {selectedStore.storefront_profile_image_url ? (
+                  <img alt={`${selectedStore.tenant_name} profile`} src={withAssetOrigin(selectedStore.storefront_profile_image_url)} />
+                ) : null}
+                {selectedStore.storefront_cover_image_url ? (
+                  <img alt={`${selectedStore.tenant_name} cover`} src={withAssetOrigin(selectedStore.storefront_cover_image_url)} />
+                ) : null}
+              </div>
+            )}
+            {isServicesMode && !isBookingSubpage && !isServiceDetailsSubpage && selectedStore && serviceHeroModel && (
+              <ServicesHero
+                serviceHeroModel={serviceHeroModel}
+                selectedStore={selectedStore}
+                isMobileViewport={isMobileViewport}
+                hasMultipleStoreBranches={hasMultipleStoreBranches}
+                hasSelectedBranchFromMenu={hasSelectedBranchFromMenu}
+                selectedLocationId={selectedLocationId}
+                handleBranchMenuSelection={handleBranchMenuSelection}
+                storeLocations={storeLocations}
+                catalogSearch={catalogSearch}
+                setCatalogSearch={setCatalogSearch}
+                goDiscovery={goDiscovery}
+                hasServiceCart={hasServiceCart}
+                goStoreBookingPage={goStoreBookingPage}
+                cartCount={cartCount}
+                modeAdapter={modeAdapter}
+                isBrandingImageBlocked={isBrandingImageBlocked}
+                markBrandingImageError={markBrandingImageError}
+                selectedLocation={selectedLocation}
+                isAboutExpanded={isAboutExpanded}
+                setIsAboutExpanded={setIsAboutExpanded}
+                isServiceGalleryExpanded={isServiceGalleryExpanded}
+                setIsServiceGalleryExpanded={setIsServiceGalleryExpanded}
+                openStorefrontActionLink={openStorefrontActionLink}
+              />
+            )}
+            {isHospitalityMode && selectedStore && (
+              <HospitalityBookingPanel
+                selectedStore={selectedStore}
+                selectedLocationId={selectedLocationId}
+                isMobileViewport={isMobileViewport}
+              />
+            )}
+            {false && isServicesMode && selectedStore && serviceHeroModel && (
+              <section style={{ marginBottom: 40 }}>
+                {/* Modernized Header/Nav */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobileViewport ? '1fr' : 'auto minmax(240px, 1fr) auto',
+                  alignItems: 'center',
+                  gap: 14,
+                  padding: isMobileViewport ? '14px 16px' : '14px 24px',
+                  background: '#fff',
+                  borderRadius: 20,
+                  border: '1px solid #e2e8f0',
+                  boxShadow: '0 14px 34px rgba(15,23,42,.05)',
+                  marginBottom: 16
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                    <button type="button" onClick={goDiscovery} style={{ border: 'none', background: '#f8fafc', color: STYLES.colors.dark, width: 42, height: 42, borderRadius: 999, cursor: 'pointer', fontSize: 20, fontWeight: 700 }}>
+                      {'<'}
+                    </button>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 17, fontWeight: 800, color: STYLES.colors.dark, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{serviceHeroModel.name}</div>
+                      <div style={{ fontSize: 12, color: STYLES.colors.muted }}>{routeSlug || 'service storefront'}</div>
+                    </div>
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #dbe5ee', borderRadius: 999, background: '#f8fafc', padding: '0 14px', minHeight: 48 }}>
+                    <input
+                      value={catalogSearch}
+                      onChange={(event) => setCatalogSearch(event.target.value)}
+                      placeholder={modeAdapter.catalogSearchPlaceholder}
+                      style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', fontSize: 14, color: STYLES.colors.text }}
+                    />
+                    <span style={{ width: 28, height: 28, borderRadius: 999, background: STYLES.colors.brand, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 900 }}>S</span>
+                  </label>
+                  <div style={{ display: 'flex', justifyContent: isMobileViewport ? 'space-between' : 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                      style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Shop
+                    </button>
+                    {!isServicesMode && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (hasServiceCart) {
+                            goStoreBookingPage();
+                            return;
+                          }
+                          document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }}
+                        style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Cart ({cartCount})
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Hero Section with Overlapping Avatar */}
+                <div style={{ position: 'relative' }}>
+                  <section style={{
+                    position: 'relative',
+                    minHeight: isMobileViewport ? 300 : 340,
+                    borderRadius: '28px 28px 0 0',
+                    overflow: 'hidden',
+                    background: serviceHeroModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`)
+                      ? `url(${serviceHeroModel.coverImageUrl}) center/cover`
+                      : 'linear-gradient(120deg,#1e293b 0%,#334155 100%)',
+                    boxShadow: STYLES.shadow.lg
+                  }}>
+                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,0.4)' }} />
+                    <div style={{ position: 'relative', zIndex: 1, padding: isMobileViewport ? '40px 20px' : '60px 40px 60px 280px', minHeight: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                        <Badge background={selectedStore?.storefront_open ? '#16a34a' : '#b45309'} color="#fff">{serviceHeroModel.statusLabel}</Badge>
+                        <Badge background="rgba(15,23,42,0.6)" color="#fff">Closes 10:00 PM</Badge>
+                      </div>
+                      <h1 style={{ margin: 0, color: '#fff', fontSize: isMobileViewport ? 36 : 52, fontWeight: 900, lineHeight: 1.1 }}>{serviceHeroModel.name}</h1>
+                      {serviceHeroModel.tagline && (
+                        <p style={{ margin: '8px 0 0 0', color: '#fbbf24', fontSize: isMobileViewport ? 18 : 24, fontWeight: 700 }}>{serviceHeroModel.tagline}</p>
+                      )}
+                      <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 16, color: '#fff', fontSize: 14, fontWeight: 600 }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Star size={14} fill="#fbbf24" color="#fbbf24" />{serviceHeroModel.ratingLabel}</span>
+                        <span>| {serviceHeroModel.modeLabel}</span>
+                        <span><MapPin size={14} style={{ display: 'inline-block', verticalAlign: 'text-bottom', marginRight: 4 }} />{serviceHeroModel.locationLabel}</span>
+                      </div>
+                      <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
+                        <GhostButton onClick={() => openStorefrontActionLink(serviceHeroModel.actions.callHref)} style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', minWidth: 100 }}>
+                          Call
+                        </GhostButton>
+                        <PrimaryButton onClick={() => {
+                          if (hasServiceCart) {
+                            goStoreBookingPage();
+                            return;
+                          }
+                          document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }} style={{ minWidth: 140 }}>
+                          {serviceHeroModel.actions.orderLabel}
+                        </PrimaryButton>
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* Overlapping Avatar */}
+                  <div style={{
+                    position: 'absolute',
+                    left: isMobileViewport ? '50%' : '40px',
+                    bottom: '-60px',
+                    transform: isMobileViewport ? 'translateX(-50%)' : 'none',
+                    width: 200,
+                    height: 200,
+                    borderRadius: '50%',
+                    background: '#fff',
+                    border: '8px solid #fff',
+                    boxShadow: STYLES.shadow.lg,
+                    overflow: 'hidden',
+                    zIndex: 10,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    {serviceHeroModel.profileImageUrl && !isBrandingImageBlocked(`hero-profile:${selectedStore.slug}`) ? (
+                      <img src={serviceHeroModel.profileImageUrl} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ fontSize: 64, fontWeight: 900, color: STYLES.colors.brandDark }}>{serviceHeroModel.name.charAt(0)}</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Mission Control Info Panels */}
+                <div style={{
+                  background: '#fff',
+                  borderRadius: '0 0 28px 28px',
+                  padding: isMobileViewport ? '80px 20px 40px' : '40px 40px 40px 280px',
+                  border: '1px solid #e2e8f0',
+                  borderTop: 'none',
+                  display: 'grid',
+                  gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr 1fr',
+                  gap: 32,
+                  boxShadow: STYLES.shadow.sm
+                }}>
+                  {/* Column 1: Contact & Location */}
+                  <div style={{ display: 'grid', gap: 16 }}>
+                    <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contact & Location</h3>
+                    <div style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid #e2e8f0', height: 160 }}>
+                      <StoresMap
+                        stores={[{ ...selectedStore, location_id: selectedLocationId }]}
+                        selectedKey={selectedLocationId}
+                        onSelectStore={() => { }}
+                      />
+                    </div>
+                    <div style={{ display: 'grid', gap: 12 }}>
+                      {serviceHeroModel.contactRows.map((row, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <span style={{ color: row.label === 'Call' ? STYLES.colors.brand : row.label === 'Facebook' ? '#1a4e8d' : STYLES.colors.teal, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{row.label === 'Call' ? <Phone size={16} /> : row.label === 'Facebook' ? <MessageCircle size={16} /> : <Clock3 size={16} />}</span>
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: STYLES.colors.dark }}>{row.value}</div>
+                            {row.label === 'Hours' && <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 700 }}>Open Now</div>}
+                          </div>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ color: STYLES.colors.brand, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><MapPin size={16} /></span>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: STYLES.colors.dark }}>{serviceHeroModel.addressLine}</div>
+                          <button style={{ border: 'none', background: 'transparent', color: STYLES.colors.brand, fontSize: 12, fontWeight: 800, padding: 0, cursor: 'pointer' }}>Get Directions</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Column 2: Overview */}
+                  <div style={{ display: 'grid', gap: 16 }}>
+                    <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Overview</h3>
+                    <p style={{ margin: 0, fontSize: 14, color: STYLES.colors.text, lineHeight: 1.6 }}>
+                      {serviceHeroModel.aboutText || "Professional services tailored to your needs."}
+                    </p>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                      {serviceHeroModel.galleryPreview.map((url, i) => (
+                        <div key={i} style={{ aspectRatio: '1/1', borderRadius: 8, overflow: 'hidden', position: 'relative' }}>
+                          <img src={url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Gallery" />
+                          {i === 3 && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800 }}>+3</div>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Column 3: Why Choose Us */}
+                  <div style={{ display: 'grid', gap: 16 }}>
+                    <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Why Choose Us</h3>
+                    <div style={{ display: 'grid', gap: 14 }}>
+                      {[
+                        { icon: 'S', text: 'Laundry and aircon services in one place' },
+                        { icon: 'H', text: 'Suitable for regular household and small business needs' },
+                        { icon: 'M', text: 'Options for everyday garments, bulky laundry, and multiple aircon unit types' },
+                        { icon: 'B', text: 'Simple booking-friendly service catalog for faster inquiries and checkout' }
+                      ].map((item, i) => (
+                        <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'start' }}>
+                          <span style={{ fontSize: 18, color: STYLES.colors.brand }}>{item.icon}</span>
+                          <span style={{ fontSize: 14, color: STYLES.colors.text, lineHeight: 1.4 }}>{item.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
+            {!isServicesMode && (
+              <>
+                {/* ZONE 1: Navigation & Header */}
+                {!isFnbMode && !isSimpleMode && !isHospitalityMode && (
+                  <section style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                    <GhostButton onClick={goDiscovery} style={{ padding: '8px 16px', minHeight: 44, fontSize: 13 }}>
+                      Back to Discovery
+                    </GhostButton>
+                    <div style={{ color: STYLES.colors.muted, fontSize: 13, fontWeight: 700 }}>{routeSlug} / {selectedStore?.tenant_name}</div>
+                    <div style={{ position: 'absolute', left: -99999, top: 'auto', width: 1, height: 1, overflow: 'hidden' }}>
+                      Tenant page: {routeSlug}
+                    </div>
+                  </section>
+                )}
+
+                {/* ZONE 2: Hero Branding */}
+                {isFnbMode && !isOrderSubpage ? (
+                  <FnbHero
+                    modeAdapter={modeAdapter}
+                    heroSectionModel={heroSectionModel}
+                    fnbViewModel={fnbViewModel}
+                    selectedStore={selectedStore}
+                    isMobileViewport={isMobileViewport}
+                    cartCount={cartCount}
+                    setIsCheckoutOpen={setIsCheckoutOpen}
+                    goDiscovery={goDiscovery}
+                    hasMultipleStoreBranches={hasMultipleStoreBranches}
+                    hasSelectedBranchFromMenu={hasSelectedBranchFromMenu}
+                    selectedLocationId={selectedLocationId}
+                    handleBranchMenuSelection={handleBranchMenuSelection}
+                    storeLocations={storeLocations}
+                    catalogSearch={catalogSearch}
+                    setCatalogSearch={setCatalogSearch}
+                  isBrandingImageBlocked={isBrandingImageBlocked}
+                  markBrandingImageError={markBrandingImageError}
+                  selectedLocation={selectedLocation}
+                  openStorefrontActionLink={openStorefrontActionLink}
+                  openTrackPanel={openTrackPanel}
+                  openAccountPanel={openAccountPanel}
+                />
+                ) : isSimpleMode && !isResolvedOrderSubpage && simpleStorefrontModel ? (
+                  <SimpleHero
+                    simpleHeroModel={simpleStorefrontModel}
+                    selectedStore={selectedStore}
+                    isMobileViewport={isMobileViewport}
+                    hasMultipleStoreBranches={hasMultipleStoreBranches}
+                    hasSelectedBranchFromMenu={hasSelectedBranchFromMenu}
+                    selectedLocationId={selectedLocationId}
+                    handleBranchMenuSelection={handleBranchMenuSelection}
+                    storeLocations={storeLocations}
+                    catalogSearch={catalogSearch}
+                    setCatalogSearch={setCatalogSearch}
+                    goDiscovery={goDiscovery}
+                    cartCount={cartCount}
+                    setIsCheckoutOpen={setIsCheckoutOpen}
+                    modeAdapter={modeAdapter}
+                    isBrandingImageBlocked={isBrandingImageBlocked}
+                    markBrandingImageError={markBrandingImageError}
+                    selectedLocation={selectedLocation}
+                    openStorefrontActionLink={openStorefrontActionLink}
+                    openTrackPanel={openTrackPanel}
+                    openAccountPanel={openAccountPanel}
+                  />
+                ) : (!isFnbMode && !isSimpleMode && !isHospitalityMode) ? (
+                  <DefaultStorefrontHero
+                    modeAdapter={modeAdapter}
+                    selectedStore={selectedStore}
+                    isMobileViewport={isMobileViewport}
+                    handleShareAction={handleShareAction}
+                    setIsCheckoutOpen={setIsCheckoutOpen}
+                  />
+                ) : null}
+              </>
+            )}
+
+            {/* ZONE 3: Location Map Snapshot */}
+            {!isServicesMode && !isFnbMode && !isSimpleMode && !isHospitalityMode && selectedStore && (
+              <section style={{ background: '#fff', borderRadius: STYLES.radius.card, border: `1px solid ${STYLES.colors.border}`, padding: 16, marginBottom: 24, boxShadow: STYLES.shadow.sm }}>
+                <StoresMap
+                  stores={storeLocations.length > 0 ? storeLocations.map(l => ({ ...l, tenant_name: selectedStore?.tenant_name })) : [selectedStore]}
+                  selectedKey={selectedLocationId != null ? `loc-${selectedLocationId}` : null}
+                  onSelectStore={(l) => l?.location_id && setSelectedLocationId(l.location_id)}
+                />
+              </section>
+            )}
+
+            {/* ZONE 4: Catalog Grid with Sidebar */}
+            {catalogPermitted && selectedStore && (() => {
+              // --- Service Tab logic ---
+              const isMultiGroup = isServicesMode && servicesViewModel.serviceGroups.length > 1;
+              const resolvedTab = isMultiGroup
+                ? (activeServiceTab && servicesViewModel.serviceGroups.some((g) => g.categoryKey === activeServiceTab)
+                  ? activeServiceTab
+                  : '')
+                : '';
+              const activeGroup = resolvedTab
+                ? (servicesViewModel.serviceGroups.find((g) => g.categoryKey === resolvedTab) || null)
+                : null;
+              const fnbSections = isFnbMode ? filteredFnbViewModel.menuSections : [];
+              const isMultiFnbSection = isFnbMode && fnbSections.length > 1;
+              const resolvedFnbSection = isMultiFnbSection
+                ? (activeServiceTab && fnbSections.some((section) => section.sectionKey === activeServiceTab)
+                  ? activeServiceTab
+                  : fnbSections[0]?.sectionKey)
+                : null;
+              const activeFnbSection = isMultiFnbSection
+                ? (fnbSections.find((section) => section.sectionKey === resolvedFnbSection) || fnbSections[0])
+                : null;
+              const rawItemsToRender = isServicesMode
+                ? (resolvedTab ? (activeGroup?.items || []) : servicesViewModel.allServices)
+                : isFnbMode
+                  ? (isMultiFnbSection ? (activeFnbSection?.items || []) : filteredFnbViewModel.menuItems)
+                  : filteredCatalog;
+              const itemsToRender = isFnbMode
+                ? [...rawItemsToRender].sort((left, right) => {
+                    if (fnbSortOption === 'price_asc') return Number(left?.default_sale_price || 0) - Number(right?.default_sale_price || 0);
+                    if (fnbSortOption === 'price_desc') return Number(right?.default_sale_price || 0) - Number(left?.default_sale_price || 0);
+                    if (fnbSortOption === 'name_asc') return String(left?.name || '').localeCompare(String(right?.name || ''));
+                    return String(left?.name || '').localeCompare(String(right?.name || ''));
+                  })
+                : rawItemsToRender;
+              const totalFnbPages = isFnbMode
+                ? Math.max(1, Math.ceil(itemsToRender.length / Math.max(1, Number(fnbPageSize || 8))))
+                : 1;
+              const resolvedFnbPage = isFnbMode
+                ? Math.min(Math.max(1, Number(fnbPage || 1)), totalFnbPages)
+                : 1;
+              const paginatedFnbItems = isFnbMode
+                ? itemsToRender.slice((resolvedFnbPage - 1) * fnbPageSize, resolvedFnbPage * fnbPageSize)
+                : itemsToRender;
+              const fnbPageStart = !isFnbMode || itemsToRender.length === 0 ? 0 : ((resolvedFnbPage - 1) * fnbPageSize) + 1;
+              const fnbPageEnd = !isFnbMode ? itemsToRender.length : Math.min(itemsToRender.length, resolvedFnbPage * fnbPageSize);
+              const catalogItemsToRender = isFnbMode ? paginatedFnbItems : itemsToRender;
+              const activeGroupMeta = activeGroup?.categoryMeta;
+              const ActiveServiceGroupIcon = activeGroupMeta?.iconToken ? (SERVICE_CATEGORY_ICON_MAP[activeGroupMeta.iconToken] || Sparkles) : Sparkles;
+
+              if (isServicesMode) {
+                const searchFilteredServices = filterCatalogItems(itemsToRender, catalogSearch);
+                const availabilityFilteredServices = searchFilteredServices.filter((item) => {
+                  if (serviceAvailabilityFilter === 'available') return isItemAvailable(item);
+                  if (serviceAvailabilityFilter === 'unavailable') return !isItemAvailable(item);
+                  return true;
+                });
+                const areaFilteredServices = availabilityFilteredServices.filter((item) => {
+                  const areaType = String(item?.service_detail?.service_area_type || '').trim().toLowerCase();
+                  if (serviceAreaFilter === 'all') return true;
+                  return areaType === serviceAreaFilter;
+                });
+                const durationFilteredServices = areaFilteredServices.filter((item) => {
+                  const duration = Number(item?.service_detail?.duration_minutes || 0);
+                  if (serviceDurationFilter === 'all') return true;
+                  if (!Number.isFinite(duration) || duration <= 0) return false;
+                  if (serviceDurationFilter === 'short') return duration < 60;
+                  if (serviceDurationFilter === 'standard') return duration >= 60 && duration < 120;
+                  if (serviceDurationFilter === 'extended') return duration >= 120;
+                  return true;
+                });
+                const sortedServices = [...durationFilteredServices].sort((left, right) => {
+                  if (serviceSortOption === 'price_asc') return Number(left?.default_sale_price || 0) - Number(right?.default_sale_price || 0);
+                  if (serviceSortOption === 'price_desc') return Number(right?.default_sale_price || 0) - Number(left?.default_sale_price || 0);
+                  return String(left?.variantName || left?.name || '').localeCompare(String(right?.variantName || right?.name || ''));
+                });
+                const totalServicePages = Math.max(1, Math.ceil(sortedServices.length / Math.max(1, Number(servicePageSize || 8))));
+                const resolvedServicePage = Math.min(Math.max(1, Number(servicePage || 1)), totalServicePages);
+                const paginatedServices = sortedServices.slice((resolvedServicePage - 1) * servicePageSize, resolvedServicePage * servicePageSize);
+                const servicePageStart = sortedServices.length === 0 ? 0 : ((resolvedServicePage - 1) * servicePageSize) + 1;
+                const servicePageEnd = Math.min(sortedServices.length, resolvedServicePage * servicePageSize);
+                const hasActiveFilters = serviceAvailabilityFilter !== 'all' || serviceAreaFilter !== 'all' || serviceDurationFilter !== 'all';
+                const hasSearchQuery = catalogSearch.trim().length > 0;
+                const reviewHighlights = Array.isArray(serviceHeroModel?.reviewHighlights) ? serviceHeroModel.reviewHighlights.filter(Boolean) : [];
+                const reviewSummary = serviceHeroModel?.reviewSummary || null;
+                const reviewScore = Number(reviewSummary?.score);
+                const reviewCount = Number(reviewSummary?.total_count ?? reviewSummary?.totalCount ?? reviewHighlights.length);
+                const hasReviewSummary = Number.isFinite(reviewScore) && reviewScore > 0;
+                const reviewGridColumns = isMobileViewport ? '1fr' : viewportWidth < 1024 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))';
+                const resolvedServicesLayoutMode = String(serviceHeroModel?.servicesLayoutMode || servicesLayoutMode || 'directory').trim().toLowerCase();
+                const isLeadGenLayout = resolvedServicesLayoutMode === 'lead_gen';
+                const isBookingHeavyLayout = resolvedServicesLayoutMode === 'booking_heavy';
+                const isDirectoryLayout = !isLeadGenLayout && !isBookingHeavyLayout;
+                const controlRadius = 999;
+                const serviceCategoryOptions = [
+                  {
+                    key: '',
+                    label: 'All Services',
+                    count: servicesViewModel.allServices.length,
+                    icon: Sparkles
+                  },
+                  ...servicesViewModel.serviceGroups.map((group) => ({
+                    key: group.categoryKey,
+                    label: group.categoryMeta?.label || group.categoryKey,
+                    count: group.items.length,
+                    icon: SERVICE_CATEGORY_ICON_MAP[group.categoryMeta?.iconToken] || Sparkles
+                  }))
+                ];
+                const detailPageServiceItem = selectedServiceDetail || (routeServiceItemId ? catalog.find((item) => String(item?.item_id) === String(routeServiceItemId)) || null : null);
+                const detailPagePaymentOptions = buildServicePaymentOptions(detailPageServiceItem?.service_detail?.payment_policy || 'customer_choice');
+                const detailPageIntakeFields = normalizeServiceFormFields(detailPageServiceItem?.service_detail?.intake_form_schema);
+                const servicesSectionTitle = isLeadGenLayout
+                  ? 'Service Highlights'
+                  : isBookingHeavyLayout
+                    ? 'Choose a Service'
+                    : 'Services';
+                const servicesSectionSubtitle = isLeadGenLayout
+                  ? 'Start with the core services, then contact or book the team from the storefront.'
+                  : isBookingHeavyLayout
+                    ? 'Pick the service you need, review what to prepare, and continue to booking when you are ready.'
+                    : 'Browse available services from this storefront.';
+                const servicesGridColumns = isMobileViewport
+                  ? '1fr'
+                  : isLeadGenLayout
+                    ? 'repeat(2, minmax(0, 1fr))'
+                    : (viewportWidth < 1200 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))');
+                if (isServiceDetailsSubpage) {
+                  const supportHref = String(serviceHeroModel?.actions?.messageHref || serviceHeroModel?.actions?.callHref || '').trim();
+                  return (
+                    <section style={{ display: 'grid', gap: 0, paddingTop: 0 }}>
+                      <div style={{
+                        position: 'sticky',
+                        top: 0,
+                        zIndex: 100,
+                        background: '#ffffff',
+                        borderBottom: '1px solid #e5e7eb',
+                        boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+                        width: '100vw',
+                        marginLeft: 'calc(50% - 50vw)'
+                      }}>
+                        <div style={{ maxWidth: 1320, margin: '0 auto', padding: isMobileViewport ? '10px 16px' : '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: isMobileViewport ? 12 : 24, minWidth: 0, flex: 1 }}>
+                            <button type="button" onClick={goStoreCatalogPage} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', color: '#0f172a' }}>
+                              <ArrowLeft size={22} strokeWidth={2.5} />
+                            </button>
+                            <div style={{ display: 'grid', gap: 2, minWidth: 0 }}>
+                              <div style={{ fontSize: 11, fontWeight: 900, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                Service details
+                              </div>
+                              <div style={{ fontSize: isMobileViewport ? 14 : 16, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                Review the service before booking
+                              </div>
+                            </div>
+                          </div>
+
+                          {!isMobileViewport && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, justifyContent: 'center' }}>
+                              {serviceHeroModel.profileImageUrl ? (
+                                <img src={serviceHeroModel.profileImageUrl} alt="" style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', border: '2px solid #fff', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }} />
+                              ) : (
+                                <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center', border: '1px solid #e2e8f0' }}>
+                                  <ShoppingBag size={18} color="#f97316" />
+                                </div>
+                              )}
+                              <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.01em' }}>
+                                {serviceHeroModel.name}
+                              </div>
+                            </div>
+                          )}
+
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flex: 1 }}>
+                            {supportHref ? (
+                              <button type="button" onClick={() => openStorefrontActionLink(supportHref)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 42, padding: isMobileViewport ? '0 12px' : '0 20px', borderRadius: 12, background: '#f97316', color: '#fff', border: 'none', fontWeight: 800, fontSize: 14, cursor: 'pointer', boxShadow: '0 4px 12px rgba(249, 115, 22, 0.25)', whiteSpace: 'nowrap' }}>
+                                <MessageCircle size={18} fill="currentColor" fillOpacity={0.2} />
+                                {isMobileViewport ? 'Message' : 'Message Us'}
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', background: '#eef4fb', padding: isMobileViewport ? '24px 0 40px' : '32px 0 56px' }}>
+                        <div style={{ maxWidth: 1320, margin: '0 auto', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
+                          {!detailPageServiceItem ? (
+                            <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', padding: isMobileViewport ? 20 : 28, boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 16, maxWidth: 760 }}>
+                              <div style={{ display: 'grid', gap: 8 }}>
+                                <div style={{ fontSize: 24, fontWeight: 900, color: STYLES.colors.dark }}>No service details available</div>
+                                <p style={{ margin: 0, fontSize: 15, lineHeight: 1.65, color: STYLES.colors.muted }}>
+                                  Go back to the services page and choose a service to view its details.
+                                </p>
+                              </div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                                <PrimaryButton onClick={goStoreCatalogPage} style={{ minHeight: 46 }}>Browse Services</PrimaryButton>
+                              </div>
+                            </section>
+                          ) : (
+                            <div style={{ display: 'grid', gap: 24 }}>
+                              <div style={{ display: 'grid', gap: 10 }}>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                  <Badge background="#fff7ed" color={STYLES.colors.brand} border="#fdba74">
+                                    {detailPageServiceItem.categoryMeta?.label || 'Service'}
+                                  </Badge>
+                                  <Badge background="#ffffff" color={STYLES.colors.dark} border="#dbe5ee">
+                                    {detailPageServiceItem.serviceAreaLabel}
+                                  </Badge>
+                                </div>
+                                <h1 style={{ margin: 0, fontSize: isMobileViewport ? 28 : 40, lineHeight: 1.05, fontWeight: 900, color: STYLES.colors.dark, letterSpacing: '-0.03em' }}>
+                                  {detailPageServiceItem.variantName || detailPageServiceItem.name}
+                                </h1>
+                                <p style={{ margin: 0, maxWidth: 760, fontSize: 15, lineHeight: 1.7, color: STYLES.colors.muted }}>
+                                  {detailPageServiceItem.description || 'Service details are synced from SKUpervisor. Review the service information below before continuing to booking.'}
+                                </p>
+                              </div>
+
+                              <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(340px, 400px) minmax(0, 1fr)', gap: isMobileViewport ? 18 : 28, alignItems: 'start' }}>
+                                <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', overflow: 'hidden', boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 0, position: isMobileViewport ? 'static' : 'sticky', top: isMobileViewport ? 'auto' : 96 }}>
+                                  <div style={{ width: '100%', height: isMobileViewport ? 260 : 240, background: '#f8fafc' }}>
+                                    {withAssetOrigin(detailPageServiceItem.image_url) ? (
+                                      <img src={withAssetOrigin(detailPageServiceItem.image_url)} alt={detailPageServiceItem.variantName || detailPageServiceItem.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    ) : (
+                                      <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: STYLES.colors.muted, fontSize: 14 }}>
+                                        No image
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div style={{ padding: isMobileViewport ? 18 : 22, display: 'grid', gap: 18 }}>
+                                    <div style={{ display: 'grid', gap: 6, paddingTop: 2 }}>
+                                      <div style={{ fontSize: 12, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                        Starting at
+                                      </div>
+                                      <div style={{ fontSize: 30, fontWeight: 900, color: STYLES.colors.dark }}>
+                                        {money(detailPageServiceItem.default_sale_price ?? 0)}
+                                      </div>
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
+                                      <PrimaryButton style={{ minHeight: 46 }} onClick={() => addToCart(detailPageServiceItem)}>
+                                        Add to Cart
+                                      </PrimaryButton>
+                                      <GhostButton style={{ minHeight: 46 }} onClick={goStoreCatalogPage}>
+                                        Back to Services
+                                      </GhostButton>
+                                    </div>
+                                  </div>
+                                </section>
+
+                                <div style={{ display: 'grid', gap: 18 }}>
+                                  <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', padding: isMobileViewport ? 20 : 24, boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 16 }}>
+                                    <div style={{ display: 'grid', gap: 6 }}>
+                                      <div style={{ fontSize: 20, fontWeight: 900, color: STYLES.colors.dark }}>
+                                        Service details
+                                      </div>
+                                      <div style={{ fontSize: 14, lineHeight: 1.65, color: STYLES.colors.muted }}>
+                                        Core service information from SKUpervisor.
+                                      </div>
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 14 }}>
+                                      <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff', minWidth: 0 }}>
+                                        <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Category</div>
+                                        <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark, lineHeight: 1.35 }}>{detailPageServiceItem.categoryMeta?.label || 'Service'}</div>
+                                      </div>
+                                      <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff', minWidth: 0 }}>
+                                        <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Service area</div>
+                                        <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark, lineHeight: 1.35 }}>{detailPageServiceItem.serviceAreaLabel}</div>
+                                      </div>
+                                      <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff', minWidth: 0 }}>
+                                        <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Estimated duration</div>
+                                        <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark, lineHeight: 1.35 }}>{detailPageServiceItem.durationLabel}</div>
+                                      </div>
+                                      <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff', minWidth: 0 }}>
+                                        <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Payment options</div>
+                                        <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark, lineHeight: 1.35 }}>{detailPagePaymentOptions.map((option) => option.label).join(' / ')}</div>
+                                      </div>
+                                    </div>
+                                  </section>
+
+                                  <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', padding: isMobileViewport ? 20 : 24, boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 10 }}>
+                                    <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark }}>Description</div>
+                                    <div style={{ fontSize: 14, lineHeight: 1.7, color: '#334155' }}>
+                                      {detailPageServiceItem.description || 'This service does not have a detailed description yet in SKUpervisor.'}
+                                    </div>
+                                  </section>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </section>
+                  );
+                }
+                if (isBookingSubpage) {
+                  const currentStep = serviceBookingStep;
+                  const supportHref = String(serviceHeroModel?.actions?.messageHref || serviceHeroModel?.actions?.callHref || '').trim();
+                  const bookingConfirmation = checkoutResult?.booking || null;
+                  const confirmationLine = Array.isArray(checkoutResult?.cart_lines) ? checkoutResult.cart_lines[0] || null : null;
+                  const confirmationReference = String(bookingConfirmation?.public_reference || checkoutResult?.tracking_pin || '').trim();
+                  const confirmationServiceName = confirmationLine?.variantName || confirmationLine?.name || serviceBookingSummaryTitle;
+                  const confirmationAmount = bookingConfirmation?.total_amount ?? ((Number(confirmationLine?.price ?? 0) || 0) * Math.max(1, Number(confirmationLine?.quantity || 1)));
+                  const bookingSteps = [
+                    { step: 1, label: 'Customer and service info', complete: stepOneComplete },
+                    { step: 2, label: 'Payment information', complete: paymentStepComplete && serviceBookingStep > 2 },
+                    { step: 3, label: 'Review and submit', complete: false }
+                  ];
+                  const reviewSections = [
+                    {
+                      title: 'Customer Information',
+                      step: 1,
+                      rows: [
+                        { label: 'Customer Name', value: customerName || 'Not provided', fieldKey: 'customer_name' },
+                        { label: 'Contact Number', value: customerPhone || 'Not provided', fieldKey: 'customer_phone' },
+                        { label: 'Email', value: customerEmail || 'Not provided', fieldKey: 'customer_email' },
+                        ...(bookingFieldPlan.requiresAddress ? [{ label: 'Full Address', value: customerAddress || 'Not provided', fieldKey: 'customer_address' }] : [])
+                      ]
+                    },
+                    {
+                      title: 'Schedule and Service Information',
+                      step: 1,
+                      rows: [
+                        { label: 'Preferred Date', value: selectedServiceDatePart ? formatLongDateLabel(selectedServiceDatePart) : 'Not selected', fieldKey: 'preferred_date' },
+                        { label: 'Preferred Time Slot', value: selectedServiceTimePart ? formatTimeSlotLabel(selectedServiceTimePart) : 'Not selected', fieldKey: 'preferred_time' },
+                        ...(bookingFieldPlan.unitTypeField ? [{ label: bookingFieldPlan.unitTypeField.label, value: serviceUnitType || 'Not provided', fieldKey: 'unit_type' }] : []),
+                        { label: bookingFieldPlan.unitCountField?.label || 'Number of Units', value: String(bookingSummaryQuantity), fieldKey: 'unit_count' }
+                      ]
+                    },
+                    ...(bookingStepOneAdditionalFields.length > 0 ? [{
+                      title: 'Additional Service Details',
+                      step: 1,
+                      rows: bookingStepOneAdditionalFields.map((field) => ({
+                        label: field.label,
+                        value: formatBookingReviewValue(field, serviceIntakeResponses[field.id]),
+                        fieldKey: `intake_${field.id}`
+                      }))
+                    }] : []),
+                    {
+                      title: 'Payment Information',
+                      step: 2,
+                      rows: [
+                        {
+                          label: 'Payment Timing',
+                          value: bookingPagePaymentOptions.find((option) => option.value === servicePaymentTiming)?.label || 'Pending',
+                          fieldKey: 'payment_timing'
+                        }
+                      ]
+                    }
+                  ];
+                  return (
+                    <section style={{ display: 'grid', gap: 0, paddingTop: 0 }}>
+                      <div style={{
+                        position: 'sticky',
+                        top: 0,
+                        zIndex: 100,
+                        background: '#ffffff',
+                        borderBottom: '1px solid #e5e7eb',
+                        boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+                        width: '100vw',
+                        marginLeft: 'calc(50% - 50vw)',
+                        backdropFilter: 'blur(8px)'
+                      }}>
+                        <div style={{
+                          maxWidth: 1320,
+                          margin: '0 auto',
+                          padding: isMobileViewport ? '10px 16px' : '12px 24px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: 16
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: isMobileViewport ? 12 : 16, minWidth: 0, flex: 1 }}>
+                            <button
+                              type="button"
+                              onClick={goStoreCatalogPage}
+                              style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', color: '#0f172a' }}
+                            >
+                              <ArrowLeft size={22} strokeWidth={2.5} />
+                            </button>
+                            {serviceHeroModel.profileImageUrl ? (
+                              <img
+                                src={serviceHeroModel.profileImageUrl}
+                                alt=""
+                                style={{ width: isMobileViewport ? 36 : 38, height: isMobileViewport ? 36 : 38, borderRadius: '50%', objectFit: 'cover', border: '2px solid #fff', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
+                              />
+                            ) : (
+                              <div style={{ width: isMobileViewport ? 36 : 38, height: isMobileViewport ? 36 : 38, borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center', border: '1px solid #e2e8f0' }}>
+                                <ShoppingBag size={18} color="#f97316" />
+                              </div>
+                            )}
+                            <div style={{ fontSize: isMobileViewport ? 16 : 18, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {serviceHeroModel.name}
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', flex: 1 }}>
+                            {supportHref ? (
+                              <button
+                                type="button"
+                                onClick={() => openStorefrontActionLink(supportHref)}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  height: 42,
+                                  padding: isMobileViewport ? '0 12px' : '0 20px',
+                                  borderRadius: 12,
+                                  background: '#f97316',
+                                  color: '#fff',
+                                  border: 'none',
+                                  fontWeight: 800,
+                                  fontSize: 14,
+                                  cursor: 'pointer',
+                                  boxShadow: '0 4px 12px rgba(249, 115, 22, 0.25)',
+                                  whiteSpace: 'nowrap'
+                                }}
+                              >
+                                <MessageCircle size={18} fill="currentColor" fillOpacity={0.2} />
+                                {isMobileViewport ? 'Message' : 'Message Us'}
+                              </button>
+                            ) : <div style={{ width: 40 }} />}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', background: '#eef4fb', padding: isMobileViewport ? '24px 0 40px' : '32px 0 56px' }}>
+                        <div style={{ maxWidth: 1320, margin: '0 auto', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
+                          <div style={{ display: 'grid', gap: 18, marginBottom: 24 }}>
+                            <h1 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, lineHeight: 1.08, fontWeight: 900, color: STYLES.colors.dark, letterSpacing: '-0.03em' }}>
+                              Complete Your Service Booking
+                            </h1>
+                            <p style={{ margin: 0, maxWidth: 760, fontSize: isMobileViewport ? 15 : 17, lineHeight: 1.65, color: STYLES.colors.muted }}>
+                              Share your details once, choose the schedule that works for you, review the booking, and submit it to the store team.
+                            </p>
+                          </div>
+
+                          {bookingConfirmation ? (
+                            <section
+                              style={{
+                                border: '1px solid #dbe5ee',
+                                borderRadius: 28,
+                                background: '#fff',
+                                padding: isMobileViewport ? 20 : 28,
+                                boxShadow: '0 22px 56px rgba(15, 23, 42, 0.08)',
+                                display: 'grid',
+                                gap: 20,
+                                maxWidth: 860
+                              }}
+                            >
+                              <div style={{ display: 'grid', gap: 10 }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, width: 'fit-content', padding: '8px 12px', borderRadius: 999, background: '#ecfdf5', color: '#15803d', fontSize: 12, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                                  <CheckCircle2 size={16} />
+                                  Booking confirmed
+                                </div>
+                                <div style={{ fontSize: isMobileViewport ? 28 : 36, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.08 }}>
+                                  Your service booking is confirmed
+                                </div>
+                                <p style={{ margin: 0, fontSize: 15, lineHeight: 1.7, color: STYLES.colors.muted, maxWidth: 680 }}>
+                                  The request has been sent to the store team. They will message you using the contact details you provided to confirm the schedule and assist with the next steps.
+                                </p>
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 14 }}>
+                                <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff' }}>
+                                  <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Reference</div>
+                                  <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark }}>{confirmationReference || 'Pending'}</div>
+                                </div>
+                                <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff' }}>
+                                  <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Service</div>
+                                  <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark }}>{confirmationServiceName}</div>
+                                </div>
+                                <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff' }}>
+                                  <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Estimated total</div>
+                                  <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark }}>{money(confirmationAmount)}</div>
+                                </div>
+                              </div>
+                              <div style={{ display: 'grid', gap: 8, fontSize: 14, color: '#334155', lineHeight: 1.65 }}>
+                                <div>Keep your booking reference in case you need to follow up with the team.</div>
+                                <div>You can return to the services page anytime to browse other services.</div>
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: isMobileViewport ? 'column' : 'row', gap: 12, flexWrap: 'wrap' }}>
+                                {checkoutResult?.payment?.checkout_url && (
+                                  <a
+                                    href={checkoutResult.payment.checkout_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      minHeight: 46,
+                                      borderRadius: 14,
+                                      background: '#0f766e',
+                                      color: '#fff',
+                                      padding: '0 18px',
+                                      fontWeight: 800,
+                                      textDecoration: 'none'
+                                    }}
+                                  >
+                                    Continue to Payment
+                                  </a>
+                                )}
+                                <PrimaryButton
+                                  onClick={() => {
+                                    setCheckoutResult(null);
+                                    goStoreCatalogPage();
+                                  }}
+                                  style={{ minHeight: 46 }}
+                                >
+                                  Back to Services
+                                </PrimaryButton>
+                              </div>
+                            </section>
+                          ) : !activeBookingService ? (
+                            <section
+                              style={{
+                                border: '1px solid #dbe5ee',
+                                borderRadius: 24,
+                                background: '#fff',
+                                padding: isMobileViewport ? 20 : 28,
+                                boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)',
+                                display: 'grid',
+                                gap: 16,
+                                maxWidth: 760
+                              }}
+                            >
+                              <div style={{ display: 'grid', gap: 8 }}>
+                                <div style={{ fontSize: 24, fontWeight: 900, color: STYLES.colors.dark }}>
+                                  No service selected yet
+                                </div>
+                                <p style={{ margin: 0, fontSize: 15, lineHeight: 1.65, color: STYLES.colors.muted }}>
+                                  Choose a service first so we can load its booking details and requirements here.
+                                </p>
+                              </div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                                <PrimaryButton onClick={goStoreCatalogPage} style={{ minHeight: 46 }}>
+                                  Browse Services
+                                </PrimaryButton>
+                              </div>
+                            </section>
+                          ) : (
+                          <div style={{ display: 'grid', gap: 24, gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.18fr) minmax(340px, 390px)', alignItems: 'start' }}>
+                            <div style={{ display: 'grid', gap: 18 }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+                                {bookingSteps.map((item) => (
+                                  <button
+                                    key={`booking-step-${item.step}`}
+                                    type="button"
+                                    onClick={() => setServiceBookingStep(item.step)}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      gap: 12,
+                                      padding: '14px 16px',
+                                      borderRadius: 18,
+                                      border: `1px solid ${serviceBookingStep === item.step ? servicesPrimaryBorder : '#e2e8f0'}`,
+                                      background: serviceBookingStep === item.step ? servicesPrimarySoft : '#ffffff',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                      <div style={{ width: 30, height: 30, borderRadius: 999, background: item.complete ? '#16a34a' : serviceBookingStep === item.step ? servicesPrimary : '#e2e8f0', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 900, fontSize: 13 }}>
+                                        {item.complete ? 'OK' : item.step}
+                                      </div>
+                                      <div style={{ textAlign: 'left' }}>
+                                        <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark }}>{item.label}</div>
+                                      </div>
+                                    </div>
+                                    <div style={{ fontSize: 12, fontWeight: 700, color: item.complete ? '#15803d' : '#64748b' }}>
+                                      {item.complete ? 'Complete' : item.step === serviceBookingStep ? 'In progress' : 'Pending'}
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+
+                              <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', padding: isMobileViewport ? 20 : 24, boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 18 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                                  <div>
+                                    <div style={{ fontSize: 12, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Selected service</div>
+                                    <div style={{ marginTop: 4, fontSize: 26, fontWeight: 900, color: STYLES.colors.dark }}>{activeBookingService?.variantName || activeBookingService?.name}</div>
+                                    <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                      <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '5px 10px' }}>
+                                        {activeBookingService?.serviceAreaLabel || activeBookingService?.service_detail?.service_area_type || 'Service'}
+                                      </span>
+                                      <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '5px 10px' }}>
+                                        {activeBookingService?.durationLabel || `${Number(activeBookingService?.service_detail?.duration_minutes || 0) || 0} min`}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {serviceBookingStep === 1 && (
+                                  <div style={{ display: 'grid', gap: 20 }}>
+                                    <div>
+                                      <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark, fontFamily: servicesDisplayFont }}>Step 1: Customer and Service Information</div>
+                                      <div style={{ marginTop: 4, fontSize: 13, color: STYLES.colors.muted }}>
+                                        Capture contact details once, then choose the preferred schedule and service specifics for this booking.
+                                      </div>
+                                    </div>
+
+                                    <div style={{ display: 'grid', gap: 18 }}>
+                                      <section style={{ display: 'grid', gap: 14 }}>
+                                        <div style={{ fontSize: 13, fontWeight: 900, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Customer Information</div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
+                                          <label ref={registerBookingFieldRef('customer_name')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                            Customer Name *
+                                            <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Who is booking this service?" style={BOOKING_FIELD_STYLE} />
+                                          </label>
+                                          <label ref={registerBookingFieldRef('customer_phone')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                            Contact Number *
+                                            <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="Mobile number" style={BOOKING_FIELD_STYLE} />
+                                          </label>
+                                          <label ref={registerBookingFieldRef('customer_email')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                            Email{bookingFieldPlan.emailField?.required ? ' *' : ''}
+                                            <input value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} placeholder="For confirmations or booking updates" style={BOOKING_FIELD_STYLE} />
+                                          </label>
+                                          {bookingFieldPlan.requiresAddress && (
+                                            <label ref={registerBookingFieldRef('customer_address')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0, gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
+                                              Full Address{isAddressRequired ? ' *' : ''}
+                                              <textarea
+                                                value={customerAddress}
+                                                onChange={(event) => setCustomerAddress(event.target.value)}
+                                                placeholder="Barangay, street, subdivision, city, and other address details"
+                                                style={{ ...BOOKING_FIELD_STYLE, minHeight: 92, resize: 'vertical' }}
+                                              />
+                                              {!bookingFieldPlan.addressField && (
+                                                <span style={{ display: 'block', marginTop: 8, fontSize: 12, color: '#64748b' }}>
+                                                  This address will be included with the booking notes for the service team.
+                                                </span>
+                                              )}
+                                            </label>
+                                          )}
+                                        </div>
+                                      </section>
+
+                                      <section style={{ display: 'grid', gap: 14 }}>
+                                        <div style={{ fontSize: 13, fontWeight: 900, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Schedule and Service Information</div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 16, alignItems: 'start' }}>
+                                          <label ref={registerBookingFieldRef('preferred_date')} style={{ display: 'grid', gap: 8, minWidth: 0 }}>
+                                            <div style={{ fontSize: 12, color: '#475569' }}>Preferred Date *</div>
+                                            <div style={{ position: 'relative', minWidth: 0 }}>
+                                              <div
+                                                role="button"
+                                                tabIndex={0}
+                                                onMouseDown={(event) => {
+                                                  event.preventDefault();
+                                                  openPreferredBookingDatePicker();
+                                                }}
+                                                onClick={openPreferredBookingDatePicker}
+                                                onKeyDown={(event) => {
+                                                  if (event.key === 'Enter' || event.key === ' ') {
+                                                    event.preventDefault();
+                                                    openPreferredBookingDatePicker();
+                                                  }
+                                                }}
+                                                style={{ ...BOOKING_FIELD_STYLE, marginTop: 0, minHeight: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, color: selectedServiceDatePart ? STYLES.colors.dark : '#94a3b8', fontWeight: selectedServiceDatePart ? 700 : 500, cursor: 'pointer' }}
+                                              >
+                                                <span>{selectedServiceDatePart ? formatLongDateLabel(selectedServiceDatePart) : 'Pick a preferred date'}</span>
+                                                <CalendarDays size={18} color={servicesPrimary} />
+                                              </div>
+                                              <input
+                                                ref={bookingPreferredDateInputRef}
+                                                type="date"
+                                                value={selectedServiceDatePart}
+                                                min={bookingDateOptions[0]?.value || undefined}
+                                                onChange={(event) => setServiceAppointmentAt(combineDateAndTimeParts(event.target.value, getPreferredBookingTimeForDate(activeBookingService, event.target.value, selectedServiceTimePart)))}
+                                                aria-hidden="true"
+                                                tabIndex={-1}
+                                                style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none', inset: 'auto' }}
+                                              />
+                                            </div>
+                                          </label>
+
+                                          <label ref={registerBookingFieldRef('preferred_time')} style={{ display: 'grid', gap: 8, minWidth: 0 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                                              <div style={{ fontSize: 12, color: '#475569' }}>Preferred Time Slot *</div>
+                                              {selectedServiceDatePart ? (
+                                                <div style={{ fontSize: 12, color: '#64748b' }}>
+                                                  {bookingTimeSlotOptions.some((slot) => slot.source === 'availability')
+                                                    ? 'Available from service schedule'
+                                                    : 'Suggested times based on service duration'}
+                                                </div>
+                                              ) : null}
+                                            </div>
+                                            <StorefrontDropdown
+                                              value={selectedServiceTimePart}
+                                              disabled={!selectedServiceDatePart || bookingTimeSlotOptions.length === 0}
+                                              onChange={(nextValue) => setServiceAppointmentAt(combineDateAndTimeParts(selectedServiceDatePart, nextValue))}
+                                              options={bookingTimeSlotOptions.map((slot) => ({
+                                                value: slot.value,
+                                                label: slot.label
+                                              }))}
+                                              placeholder={
+                                                !selectedServiceDatePart
+                                                  ? 'Choose a date first'
+                                                  : bookingTimeSlotOptions.length === 0
+                                                    ? 'No suggested time slots available'
+                                                    : 'Select a time slot'
+                                              }
+                                              triggerStyle={{ ...BOOKING_FIELD_STYLE, marginTop: 0, minHeight: 52, padding: '12px 48px 12px 13px' }}
+                                              menuStyle={{ borderRadius: 18 }}
+                                              selectedLabelStyle={{ fontWeight: selectedServiceDatePart && bookingTimeSlotOptions.length > 0 ? 700 : 500 }}
+                                            />
+                                          </label>
+
+                                          {bookingFieldPlan.unitTypeField ? (
+                                            <label ref={registerBookingFieldRef('unit_type')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                              {bookingFieldPlan.unitTypeField.label}{bookingFieldPlan.unitTypeField.required ? ' *' : ''}
+                                              {bookingFieldPlan.unitTypeField.type === 'select' ? (
+                                                <StorefrontDropdown
+                                                  value={serviceUnitType}
+                                                  onChange={setServiceUnitType}
+                                                  options={bookingFieldPlan.unitTypeField.options.map((option) => ({ value: option, label: option }))}
+                                                  placeholder="Select"
+                                                  triggerStyle={{ ...BOOKING_FIELD_STYLE, marginTop: 6, padding: '12px 48px 12px 13px' }}
+                                                  menuStyle={{ borderRadius: 18 }}
+                                                />
+                                              ) : (
+                                                <input value={serviceUnitType} onChange={(event) => setServiceUnitType(event.target.value)} placeholder="Specify the unit type" style={BOOKING_FIELD_STYLE} />
+                                              )}
+                                            </label>
+                                          ) : <div />}
+
+                                          <label ref={registerBookingFieldRef('unit_count')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                            {bookingFieldPlan.unitCountField?.label || 'Number of Units'} *
+                                            <input
+                                              type="number"
+                                              min="1"
+                                              step="1"
+                                              value={serviceDraftQuantity}
+                                              onChange={(event) => setServiceDraftQuantity(Math.max(1, Number(event.target.value || 1)))}
+                                              style={BOOKING_FIELD_STYLE}
+                                            />
+                                          </label>
+                                        </div>
+                                      </section>
+
+                                      {bookingStepOneAdditionalFields.length > 0 && (
+                                        <section style={{ display: 'grid', gap: 14 }}>
+                                          <div style={{ fontSize: 13, fontWeight: 900, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Additional Service Details</div>
+                                          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 16, alignItems: 'start' }}>
+                                            {bookingStepOneAdditionalFields.map((field) => (
+                                              <label
+                                                ref={registerBookingFieldRef(`intake_${field.id}`)}
+                                                key={`booking-step-one-${field.id}`}
+                                                style={{
+                                                  display: 'block',
+                                                  fontSize: 12,
+                                                  color: '#475569',
+                                                  minWidth: 0,
+                                                  gridColumn: !isMobileViewport && shouldBookingFieldSpanFullWidth(field) ? '1 / -1' : 'auto'
+                                                }}
+                                              >
+                                                {field.label}{field.required ? ' *' : ''}
+                                                {field.type === 'textarea' ? (
+                                                  <textarea value={serviceIntakeResponses[field.id] || ''} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))} style={{ ...BOOKING_FIELD_STYLE, minHeight: 92, resize: 'vertical' }} />
+                                                ) : field.type === 'select' ? (
+                                                  <StorefrontDropdown
+                                                    value={serviceIntakeResponses[field.id] || ''}
+                                                    onChange={(nextValue) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: nextValue }))}
+                                                    options={field.options.map((option) => ({ value: option, label: option }))}
+                                                    placeholder="Select"
+                                                    triggerStyle={{ ...BOOKING_FIELD_STYLE, marginTop: 6, padding: '12px 48px 12px 13px' }}
+                                                    menuStyle={{ borderRadius: 18 }}
+                                                  />
+                                                ) : field.type === 'checkbox' ? (
+                                                  <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, padding: '12px 13px', border: '1px solid #cbd5e1', borderRadius: 14, background: '#fff' }}>
+                                                    <input type="checkbox" checked={serviceIntakeResponses[field.id] === true} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.checked }))} />
+                                                    <span style={{ fontSize: 13, color: STYLES.colors.text }}>Confirm</span>
+                                                  </div>
+                                                ) : (
+                                                  <input type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'} value={serviceIntakeResponses[field.id] || ''} onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, [field.id]: event.target.value }))} style={BOOKING_FIELD_STYLE} />
+                                                )}
+                                              </label>
+                                            ))}
+                                          </div>
+                                        </section>
+                                      )}
+                                    </div>
+
+                                    {(missingCustomerInformation.length > 0 || missingScheduleAndServiceInfo.length > 0 || missingStepOneAdditionalFields.length > 0) && (
+                                      <div style={{ fontSize: 13, color: '#b91c1c', border: '1px solid #fecaca', background: '#fff1f2', borderRadius: 14, padding: '10px 12px', lineHeight: 1.6 }}>
+                                        Complete the required customer, schedule, and service details before continuing.
+                                      </div>
+                                    )}
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                      <PrimaryButton
+                                        onClick={() => {
+                                          const firstMissingField = missingCustomerInformation[0]
+                                            || missingScheduleAndServiceInfo[0]
+                                            || missingStepOneAdditionalFields[0]?.label
+                                            || '';
+                                          if (!stepOneComplete) {
+                                            toast.error(firstMissingField ? `Complete "${firstMissingField}" before continuing.` : 'Complete the required booking details before continuing.');
+                                            return;
+                                          }
+                                          setServiceBookingStep(2);
+                                        }}
+                                        style={{ minHeight: 46 }}
+                                      >
+                                        Continue to Payment
+                                      </PrimaryButton>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {serviceBookingStep === 2 && (
+                                  <div style={{ display: 'grid', gap: 18 }}>
+                                    <div>
+                                      <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark, fontFamily: servicesDisplayFont }}>Step 2: Payment Information</div>
+                                      <div style={{ marginTop: 4, fontSize: 13, color: STYLES.colors.muted }}>
+                                        Choose how the service will be paid. The booking itself is still submitted through the current services contract.
+                                      </div>
+                                    </div>
+                                    <div style={{ display: 'grid', gap: 16 }}>
+                                      <label ref={registerBookingFieldRef('payment_timing')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0, maxWidth: isMobileViewport ? '100%' : 360 }}>
+                                        Payment Timing
+                                        <StorefrontDropdown
+                                          value={servicePaymentTiming}
+                                          onChange={setServicePaymentTiming}
+                                          options={bookingPagePaymentOptions.map((option) => ({
+                                            value: option.value,
+                                            label: option.label
+                                          }))}
+                                          triggerStyle={{ ...BOOKING_FIELD_STYLE, marginTop: 6, padding: '12px 48px 12px 13px' }}
+                                          menuStyle={{ borderRadius: 18 }}
+                                        />
+                                      </label>
+
+                                      {servicePaymentTiming === 'prepaid' || servicePaymentTiming === 'deposit' ? (
+                                        <div style={{ display: 'grid', gap: 16 }}>
+                                          <div style={{ display: 'grid', gap: 10, padding: '16px 18px', borderRadius: 18, border: '1px solid #fed7aa', background: '#fff7ed' }}>
+                                            <div style={{ fontSize: 14, fontWeight: 900, color: '#9a3412' }}>
+                                              {servicePaymentTiming === 'deposit' ? 'Deposit payment preview' : 'Pay now preview'}
+                                            </div>
+                                            <div style={{ fontSize: 13, lineHeight: 1.7, color: '#9a3412' }}>
+                                              This is a temporary storefront payment UI. The current services backend still completes the actual payment handoff after the booking is submitted and returns a secure checkout link.
+                                            </div>
+                                          </div>
+
+                                          <div style={{ display: 'grid', gap: 14, padding: isMobileViewport ? 16 : 18, borderRadius: 22, border: '1px solid #dbe5ee', background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)', boxShadow: '0 14px 36px rgba(15, 23, 42, 0.06)' }}>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                                              {[
+                                                { value: 'qr', label: 'QR Payment' },
+                                                { value: 'card', label: 'Card Details' }
+                                              ].map((option) => {
+                                                const isActive = servicePaymentPreviewMethod === option.value;
+                                                return (
+                                                  <button
+                                                    key={option.value}
+                                                    type="button"
+                                                    onClick={() => setServicePaymentPreviewMethod(option.value)}
+                                                    style={{
+                                                      minHeight: 40,
+                                                      padding: '0 16px',
+                                                      borderRadius: 999,
+                                                      border: `1px solid ${isActive ? '#67e8f9' : '#dbe5ee'}`,
+                                                      background: isActive ? '#ecfeff' : '#fff',
+                                                      color: isActive ? '#155e75' : '#334155',
+                                                      fontSize: 13,
+                                                      fontWeight: 800,
+                                                      cursor: 'pointer',
+                                                      transition: 'all 0.2s ease'
+                                                    }}
+                                                  >
+                                                    {option.label}
+                                                  </button>
+                                                );
+                                              })}
+                                            </div>
+
+                                            {servicePaymentPreviewMethod === 'qr' && (
+                                              <div style={{ display: 'grid', gap: 16 }}>
+                                                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '220px minmax(0, 1fr)', gap: 16, alignItems: 'stretch' }}>
+                                                  <div style={{ display: 'grid', placeItems: 'center', minHeight: 220, borderRadius: 22, background: 'radial-gradient(circle at top, #ecfeff 0%, #e0f2fe 52%, #ffffff 100%)', border: '1px dashed #67e8f9', padding: 18 }}>
+                                                    <div style={{ width: 160, height: 160, borderRadius: 20, background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', display: 'grid', placeItems: 'center', boxShadow: '0 18px 36px rgba(14, 165, 233, 0.18)' }}>
+                                                      <div style={{ width: 112, height: 112, borderRadius: 12, background: 'repeating-linear-gradient(90deg, #ffffff 0 10px, #0f172a 10px 20px), repeating-linear-gradient(0deg, #ffffff 0 10px, #0f172a 10px 20px)', backgroundBlendMode: 'screen' }} />
+                                                    </div>
+                                                  </div>
+                                                  <div style={{ display: 'grid', gap: 10 }}>
+                                                    <div style={{ fontSize: 16, fontWeight: 900, color: STYLES.colors.dark }}>QR payment preview</div>
+                                                    <div style={{ fontSize: 13, lineHeight: 1.7, color: '#475569' }}>
+                                                      Use this area later for bank transfer, e-wallet, or generated QR payment instructions. For now, the final payment link still appears only after the booking is submitted.
+                                                    </div>
+                                                    <div style={{ display: 'grid', gap: 8 }}>
+                                                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '12px 14px', borderRadius: 16, background: '#ffffff', border: '1px solid #e2e8f0' }}>
+                                                        <span style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>Reference amount</span>
+                                                        <strong style={{ fontSize: 14, color: STYLES.colors.dark }}>{money(bookingSummaryAmount)}</strong>
+                                                      </div>
+                                                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '12px 14px', borderRadius: 16, background: '#ffffff', border: '1px solid #e2e8f0' }}>
+                                                        <span style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>Payment mode</span>
+                                                        <strong style={{ fontSize: 14, color: STYLES.colors.dark }}>{servicePaymentTiming === 'deposit' ? 'Deposit' : 'Full payment'}</strong>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                </div>
+
+                                                <label style={{ display: 'grid', gap: 10, fontSize: 12, color: '#475569' }}>
+                                                  Upload Receipt
+                                                  <div style={{ display: 'grid', gap: 10, padding: '18px 16px', borderRadius: 20, border: '1px dashed #94a3b8', background: '#fff' }}>
+                                                    <input
+                                                      type="file"
+                                                      accept="image/*,.pdf"
+                                                      onChange={(event) => setServicePaymentPreviewReceiptName(event.target.files?.[0]?.name || '')}
+                                                      style={{ fontSize: 13, color: '#334155' }}
+                                                    />
+                                                    <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
+                                                      {servicePaymentPreviewReceiptName
+                                                        ? `Selected file: ${servicePaymentPreviewReceiptName}`
+                                                        : 'Attach a screenshot or receipt file here for the future QR payment flow preview.'}
+                                                    </div>
+                                                  </div>
+                                                </label>
+                                                <div style={{ fontSize: 12, lineHeight: 1.7, color: '#64748b' }}>
+                                                  This receipt upload is temporary UI only. The file is not sent anywhere in the current storefront booking contract.
+                                                </div>
+                                              </div>
+                                            )}
+
+                                            {servicePaymentPreviewMethod === 'card' && (
+                                              <div style={{ display: 'grid', gap: 14 }}>
+                                                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 14 }}>
+                                                  <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0, gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
+                                                    Cardholder Name
+                                                    <input
+                                                      value={servicePaymentPreviewCard.cardholder}
+                                                      onChange={(event) => setServicePaymentPreviewCard((previous) => ({ ...previous, cardholder: event.target.value }))}
+                                                      placeholder="Name on card"
+                                                      style={BOOKING_FIELD_STYLE}
+                                                    />
+                                                  </label>
+                                                  <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0, gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
+                                                    Card Number
+                                                    <input
+                                                      value={servicePaymentPreviewCard.cardNumber}
+                                                      onChange={(event) => setServicePaymentPreviewCard((previous) => ({ ...previous, cardNumber: event.target.value }))}
+                                                      placeholder="0000 0000 0000 0000"
+                                                      style={BOOKING_FIELD_STYLE}
+                                                    />
+                                                  </label>
+                                                  <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                                    Expiry
+                                                    <input
+                                                      value={servicePaymentPreviewCard.expiry}
+                                                      onChange={(event) => setServicePaymentPreviewCard((previous) => ({ ...previous, expiry: event.target.value }))}
+                                                      placeholder="MM/YY"
+                                                      style={BOOKING_FIELD_STYLE}
+                                                    />
+                                                  </label>
+                                                  <label style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
+                                                    CVV
+                                                    <input
+                                                      value={servicePaymentPreviewCard.cvv}
+                                                      onChange={(event) => setServicePaymentPreviewCard((previous) => ({ ...previous, cvv: event.target.value }))}
+                                                      placeholder="123"
+                                                      style={BOOKING_FIELD_STYLE}
+                                                    />
+                                                  </label>
+                                                </div>
+                                                <div style={{ fontSize: 12, lineHeight: 1.7, color: '#64748b' }}>
+                                                  Temporary preview only. These card fields are not submitted to the backend and are here to simulate the future pay-now experience.
+                                                </div>
+                                              </div>
+                                            )}
+
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div style={{ display: 'grid', gap: 10, padding: '16px 18px', borderRadius: 18, border: '1px solid #dbeafe', background: '#eff6ff' }}>
+                                          <div style={{ fontSize: 14, fontWeight: 900, color: '#1a4e8d' }}>
+                                            Pay later selected
+                                          </div>
+                                          <div style={{ fontSize: 13, lineHeight: 1.7, color: '#334155' }}>
+                                            No advance payment details are needed here. The store team will assist you with the next payment step after they review the booking.
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                                      <GhostButton onClick={() => setServiceBookingStep(1)} style={{ minHeight: 46 }}>Back</GhostButton>
+                                      <PrimaryButton onClick={() => setServiceBookingStep(3)} style={{ minHeight: 46 }}>
+                                        Continue to Review
+                                      </PrimaryButton>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {serviceBookingStep === 3 && (
+                                  <div style={{ display: 'grid', gap: 18 }}>
+                                    <div>
+                                      <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark, fontFamily: servicesDisplayFont }}>Step 3: Review and Submit</div>
+                                      <div style={{ marginTop: 4, fontSize: 13, color: STYLES.colors.muted }}>
+                                        Check the booking details before submitting. Use the edit actions to jump straight back to the relevant step.
+                                      </div>
+                                    </div>
+                                    <div style={{ display: 'grid', gap: 16 }}>
+                                      {reviewSections.map((section) => (
+                                        <section key={section.title} style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fcfdff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 12 }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                                            <div style={{ fontSize: 15, fontWeight: 900, color: STYLES.colors.dark }}>{section.title}</div>
+                                            <GhostButton onClick={() => jumpToBookingField(section.step, section.rows[0]?.fieldKey || '')} style={{ minHeight: 38, padding: '0 14px' }}>
+                                              Edit section
+                                            </GhostButton>
+                                          </div>
+                                          <div style={{ display: 'grid', gap: 10 }}>
+                                            {section.rows.map((row) => (
+                                              <div key={`${section.title}-${row.label}`} style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(140px, 180px) minmax(0, 1fr) auto', gap: 10, alignItems: 'center', paddingTop: 10, borderTop: '1px solid #edf2f7' }}>
+                                                <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{row.label}</div>
+                                                <div style={{ fontSize: 14, color: '#0f172a', lineHeight: 1.55, wordBreak: 'break-word' }}>{row.value}</div>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => jumpToBookingField(section.step, row.fieldKey)}
+                                                  style={{ border: 'none', background: 'transparent', color: servicesPrimary, fontWeight: 800, cursor: 'pointer', padding: 0, justifySelf: isMobileViewport ? 'start' : 'end' }}
+                                                >
+                                                  Edit
+                                                </button>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </section>
+                                      ))}
+                                    </div>
+                                    {selectedLocation?.is_open === false && (
+                                      <div style={{ fontSize: 12, color: '#b45309', fontWeight: 700, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 12px' }}>
+                                        Selected location is closed and cannot accept bookings right now.
+                                      </div>
+                                    )}
+                                    {checkoutError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                                      <GhostButton onClick={() => setServiceBookingStep(2)} style={{ minHeight: 46 }}>Back</GhostButton>
+                                      <PrimaryButton
+                                        onClick={() => {
+                                          const firstMissingField = missingCustomerInformation[0]
+                                            || missingScheduleAndServiceInfo[0]
+                                            || missingStepOneAdditionalFields[0]?.label
+                                            || '';
+                                          if (!stepOneComplete) {
+                                            toast.error(firstMissingField ? `Complete "${firstMissingField}" before submitting the booking.` : 'Complete the required booking details before submitting.');
+                                            setServiceBookingStep(1);
+                                            return;
+                                          }
+                                          if (!paymentStepComplete) {
+                                            toast.error('Select a payment timing before submitting the booking.');
+                                            setServiceBookingStep(2);
+                                            return;
+                                          }
+                                          handleCheckout();
+                                        }}
+                                        style={{ minHeight: 46 }}
+                                      >
+                                        {checkoutLoading ? 'Submitting...' : 'Submit Booking'}
+                                      </PrimaryButton>
+                                    </div>
+                                  </div>
+                                )}
+                              </section>
+                            </div>
+
+                            <aside style={{ display: 'grid', gap: 16, position: isMobileViewport ? 'static' : 'sticky', top: 100 }}>
+                              <div style={{ border: '1px solid #dbe5ee', borderRadius: 28, background: '#fff', padding: 24, boxShadow: '0 22px 56px rgba(15, 23, 42, 0.12)', display: 'grid', gap: 16 }}>
+                                <div>
+                                  <div style={{ fontSize: 12, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Booking Summary</div>
+                                  <div style={{ marginTop: 6, fontSize: 32, fontWeight: 900, color: STYLES.colors.dark }}>
+                                    {money(bookingSummaryAmount)}
+                                  </div>
+                                </div>
+                                <div style={{ display: 'grid', gap: 10 }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}>
+                                    <span>Service</span>
+                                    <strong>{serviceBookingSummaryTitle}</strong>
+                                  </div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}>
+                                    <span>Schedule</span>
+                                    <strong>{serviceBookingSummarySchedule}</strong>
+                                  </div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}>
+                                    <span>Units</span>
+                                    <strong>{bookingSummaryQuantity}</strong>
+                                  </div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#334155' }}>
+                                    <span>Payment</span>
+                                    <strong>{bookingPagePaymentOptions.find((option) => option.value === servicePaymentTiming)?.label || 'Pending'}</strong>
+                                  </div>
+                                </div>
+                                <div style={{ display: 'grid', gap: 8, paddingTop: 4 }}>
+                                  {[{ label: 'Customer and service info ready', done: stepOneComplete }, { label: 'Payment choice selected', done: paymentStepComplete }, { label: 'Ready for final review', done: reviewStepReady }].map((item) => (
+                                    <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: item.done ? '#15803d' : '#64748b' }}>
+                                      <span style={{ width: 18, height: 18, borderRadius: 999, background: item.done ? '#16a34a' : '#e2e8f0', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 900 }}>
+                                        {item.done ? 'OK' : '-'}
+                                      </span>
+                                      {item.label}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </aside>
+                          </div>
+                          )}
+                        </div>
+                      </div>
+                    </section>
+                  );
+                }
+                return (
+                  <>
+                    <section
+                      id="storefront-catalog-section"
+                      style={{
+                        display: 'grid',
+                        gap: 18,
+                        background: '#ffffff',
+                        borderRadius: 0,
+                        padding: isMobileViewport ? '24px 0 44px' : '34px 0 64px',
+                        marginLeft: 'calc(50% - 50vw)',
+                        width: '100vw'
+                      }}
+                    >
+                      <div
+                        style={{
+                          maxWidth: 1320,
+                          width: '100%',
+                          margin: '0 auto',
+                          paddingLeft: isMobileViewport ? 16 : 24,
+                          paddingRight: isMobileViewport ? 16 : 24,
+                          display: 'grid',
+                          gap: 18
+                        }}
+                      >
+                        <div style={{ display: 'grid', gap: 6 }}>
+                          <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, fontWeight: 900, color: STYLES.colors.dark }}>
+                            {servicesSectionTitle}
+                          </h2>
+                          <p style={{ margin: 0, fontSize: 14, color: STYLES.colors.muted }}>{servicesSectionSubtitle}</p>
+                        </div>
+
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexDirection: isMobileViewport ? 'column' : 'row',
+                            gap: 12,
+                            alignItems: isMobileViewport ? 'stretch' : 'center',
+                            width: '100%'
+                          }}
+                        >
+                          <label
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 10,
+                              border: '1px solid #e5e7eb',
+                              borderRadius: controlRadius,
+                              background: '#f8fafc',
+                              padding: '0 12px 0 14px',
+                              minHeight: 44,
+                              width: '100%',
+                              flex: isMobileViewport ? '0 0 auto' : '1 1 0',
+                              maxWidth: isMobileViewport ? '100%' : 620
+                            }}
+                          >
+                            <Search size={16} color="#64748b" />
+                            <input
+                              value={catalogSearch}
+                              onChange={(event) => setCatalogSearch(event.target.value)}
+                              placeholder="Search services"
+                              style={{
+                                border: 'none',
+                                outline: 'none',
+                                background: 'transparent',
+                                width: '100%',
+                                minWidth: 0,
+                                fontSize: 14,
+                                color: STYLES.colors.text
+                              }}
+                            />
+                          </label>
+
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexDirection: isMobileViewport ? 'column' : 'row',
+                              gap: 12,
+                              alignItems: isMobileViewport ? 'stretch' : 'center',
+                              marginLeft: isMobileViewport ? 0 : 'auto',
+                              width: isMobileViewport ? '100%' : 'auto',
+                              flexShrink: 0
+                            }}
+                          >
+                            <StorefrontDropdown
+                              value={resolvedTab}
+                              onChange={setActiveServiceTab}
+                              options={serviceCategoryOptions.map((option) => ({
+                                value: option.key,
+                                label: `${option.label} (${option.count})`,
+                                icon: option.icon
+                              }))}
+                              triggerStyle={{
+                                minHeight: 44,
+                                borderRadius: controlRadius,
+                                width: isMobileViewport ? '100%' : 240,
+                                flexShrink: 0,
+                                boxShadow: '0 10px 24px rgba(15,23,42,0.06)'
+                              }}
+                              containerStyle={{
+                                width: isMobileViewport ? '100%' : 240,
+                                flexShrink: 0
+                              }}
+                              menuStyle={{ borderRadius: 20 }}
+                            />
+
+                            <StorefrontDropdown
+                              value={serviceSortOption}
+                              onChange={setServiceSortOption}
+                              options={[
+                                { value: 'recommended', label: 'Recommended' },
+                                { value: 'price_asc', label: 'Price: Low to High' },
+                                { value: 'price_desc', label: 'Price: High to Low' }
+                              ]}
+                              triggerStyle={{
+                                minHeight: 44,
+                                borderRadius: controlRadius,
+                                width: isMobileViewport ? '100%' : 240,
+                                flexShrink: 0,
+                                boxShadow: '0 10px 24px rgba(15,23,42,0.06)'
+                              }}
+                              containerStyle={{
+                                width: isMobileViewport ? '100%' : 240,
+                                flexShrink: 0
+                              }}
+                              menuStyle={{ borderRadius: 20 }}
+                            />
+
+                            <button
+                              type="button"
+                              onClick={() => setIsServiceFilterOpen((prev) => !prev)}
+                              style={{
+                                minHeight: 44,
+                                borderRadius: controlRadius,
+                                border: `1px solid ${servicesPrimary}`,
+                                background: isServiceFilterOpen || hasActiveFilters ? servicesPrimaryDark : servicesPrimary,
+                                color: '#ffffff',
+                                padding: '0 18px',
+                                fontSize: 14,
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 8,
+                                width: isMobileViewport ? '100%' : 'auto',
+                                minWidth: isMobileViewport ? 0 : 128,
+                                flexShrink: 0,
+                                boxShadow:
+                                  isServiceFilterOpen || hasActiveFilters
+                                    ? `0 10px 24px ${servicesPrimaryShadowStrong}`
+                                    : `0 8px 20px ${servicesPrimaryShadow}`
+                              }}
+                            >
+                              <SlidersHorizontal size={16} />
+                              Filters
+                            </button>
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'flex-end',
+                            gap: 12,
+                            flexWrap: 'wrap'
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: isMobileViewport ? 'flex-start' : 'flex-end',
+                              gap: 12,
+                              flexWrap: 'wrap',
+                              marginLeft: isMobileViewport ? 0 : 'auto'
+                            }}
+                          >
+                            <div style={{ fontSize: 13, color: STYLES.colors.muted }}>
+                              {sortedServices.length} service{sortedServices.length === 1 ? '' : 's'} shown
+                            </div>
+                            {sortedServices.length > 0 && (
+                              <div style={{ fontSize: 13, color: STYLES.colors.muted }}>
+                                Showing {servicePageStart}-{servicePageEnd}
+                              </div>
+                            )}
+                            {hasActiveFilters && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setServiceAvailabilityFilter('all');
+                                  setServiceAreaFilter('all');
+                                  setServiceDurationFilter('all');
+                                }}
+                                style={{
+                                  border: 'none',
+                                  background: 'transparent',
+                                  color: servicesPrimary,
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                  padding: 0,
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                Clear filters
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {isServiceFilterOpen && (
+                          <div
+                            style={{
+                              position: 'fixed',
+                              inset: 0,
+                              zIndex: 2200,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              padding: isMobileViewport ? 16 : 24
+                            }}
+                          >
+                            <div
+                              style={{
+                                position: 'absolute',
+                                inset: 0,
+                                background: 'rgba(15,23,42,0.45)',
+                                backdropFilter: 'blur(4px)'
+                              }}
+                            />
+                            <div
+                              style={{
+                                position: 'relative',
+                                zIndex: 1,
+                                width: '100%',
+                                maxWidth: 560,
+                                background: '#ffffff',
+                                borderRadius: 22,
+                                border: '1px solid #e5e7eb',
+                                boxShadow: '0 24px 60px rgba(15,23,42,0.18)',
+                                padding: isMobileViewport ? 18 : 22,
+                                display: 'grid',
+                                gap: 16
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                                <div>
+                                  <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark }}>Filter Services</div>
+                                  <div style={{ marginTop: 4, fontSize: 13, color: STYLES.colors.muted }}>
+                                    Applies services-mode filters using storefront availability, service area, and duration fields from SKUpervisor-backed catalog records.
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsServiceFilterOpen(false)}
+                                  style={{
+                                    width: 36,
+                                    height: 36,
+                                    borderRadius: 999,
+                                    border: '1px solid #e5e7eb',
+                                    background: '#fff',
+                                    color: STYLES.colors.dark,
+                                    cursor: 'pointer',
+                                    fontWeight: 800
+                                  }}
+                                >
+                                  ×
+                                </button>
+                              </div>
+
+                              <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
+                                <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
+                                  Availability
+                                  <StorefrontDropdown
+                                    value={serviceAvailabilityFilter}
+                                    onChange={setServiceAvailabilityFilter}
+                                    options={[
+                                      { value: 'all', label: 'All services' },
+                                      { value: 'available', label: 'Available now' },
+                                      { value: 'unavailable', label: 'Unavailable' }
+                                    ]}
+                                    triggerStyle={{ minHeight: 42, borderRadius: 14 }}
+                                    menuStyle={{ borderRadius: 18 }}
+                                  />
+                                </label>
+                                <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
+                                  Service area
+                                  <StorefrontDropdown
+                                    value={serviceAreaFilter}
+                                    onChange={setServiceAreaFilter}
+                                    options={[
+                                      { value: 'all', label: 'All areas' },
+                                      { value: 'in_store', label: 'In-store' },
+                                      { value: 'customer_location', label: 'Home / on-site' }
+                                    ]}
+                                    triggerStyle={{ minHeight: 42, borderRadius: 14 }}
+                                    menuStyle={{ borderRadius: 18 }}
+                                  />
+                                </label>
+                                <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
+                                  Duration
+                                  <StorefrontDropdown
+                                    value={serviceDurationFilter}
+                                    onChange={setServiceDurationFilter}
+                                    options={[
+                                      { value: 'all', label: 'Any duration' },
+                                      { value: 'short', label: 'Short under 1 hr' },
+                                      { value: 'standard', label: 'Standard 1-2 hrs' },
+                                      { value: 'extended', label: 'Extended 2+ hrs' }
+                                    ]}
+                                    triggerStyle={{ minHeight: 42, borderRadius: 14 }}
+                                    menuStyle={{ borderRadius: 18 }}
+                                  />
+                                </label>
+                              </div>
+
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+                                <GhostButton
+                                  style={{ minHeight: 42, fontSize: 13 }}
+                                  onClick={() => {
+                                    setServiceAvailabilityFilter('all');
+                                    setServiceAreaFilter('all');
+                                    setServiceDurationFilter('all');
+                                  }}
+                                >
+                                  Clear filters
+                                </GhostButton>
+                                <PrimaryButton style={{ minHeight: 42, fontSize: 13 }} onClick={() => setIsServiceFilterOpen(false)}>
+                                  Apply filters
+                                </PrimaryButton>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        <div style={{ display: 'grid', gridTemplateColumns: servicesGridColumns, gap: 22 }}>
+                          {paginatedServices.map((item) => {
+                            const imageUrl = withAssetOrigin(item.image_url);
+                            const available = isItemAvailable(item);
+                            const ServiceCategoryIcon = SERVICE_CATEGORY_ICON_MAP[item.categoryMeta?.iconToken] || Sparkles;
+                            return (
+                              <div
+                                key={item.item_id}
+                                style={{
+                                  background: '#ffffff',
+                                  border: '1px solid #e5e7eb',
+                                  borderRadius: 18,
+                                  overflow: 'hidden',
+                                  boxShadow: '0 10px 28px rgba(15, 23, 42, 0.08)',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  cursor: 'pointer'
+                                }}
+                                onClick={() => openServiceDetail(item)}
+                              >
+                                <div style={{ width: '100%', height: 184, minHeight: 184, maxHeight: 184, background: '#f3f4f6', position: 'relative', overflow: 'hidden' }}>
+                                  {imageUrl ? (
+                                    <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                                  ) : (
+                                    <div
+                                      style={{
+                                        width: '100%',
+                                        height: '100%',
+                                        display: 'grid',
+                                        placeItems: 'center',
+                                        color: STYLES.colors.muted,
+                                        fontSize: 13
+                                      }}
+                                    >
+                                      No image
+                                    </div>
+                                  )}
+                                  {!available && (
+                                    <div style={{ position: 'absolute', top: 12, right: 12 }}>
+                                      <Badge background="#fff7ed" color="#c2410c" border="#fdba74">
+                                        Unavailable
+                                      </Badge>
+                                    </div>
+                                  )}
+                                </div>
+                                <div style={{ padding: 16, display: 'grid', gap: 10, flex: 1 }}>
+                                  <div>
+                                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', marginBottom: 4 }}>
+                                      <ServiceCategoryIcon size={13} />
+                                      <span>{item.categoryMeta?.label || 'Service'}</span>
+                                    </div>
+                                    <h4 style={{ margin: 0, fontSize: 16, fontWeight: 800, lineHeight: 1.25, color: STYLES.colors.dark }}>
+                                      {item.variantName || item.name}
+                                    </h4>
+                                  </div>
+                                  <p
+                                    style={{
+                                      margin: 0,
+                                      fontSize: 12,
+                                      color: STYLES.colors.text,
+                                      lineHeight: 1.45,
+                                      display: '-webkit-box',
+                                      WebkitLineClamp: 2,
+                                      WebkitBoxOrient: 'vertical',
+                                      overflow: 'hidden'
+                                    }}
+                                  >
+                                    {item.description || 'Professional service options synced from SKUpervisor.'}
+                                  </p>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 999, padding: '4px 8px' }}>
+                                      {item.serviceAreaLabel}
+                                    </span>
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 999, padding: '4px 8px' }}>
+                                      {item.durationLabel}
+                                    </span>
+                                  </div>
+                                  <div style={{ marginTop: 'auto', display: 'grid', gap: 10 }}>
+                                    <div style={{ fontSize: 13, color: STYLES.colors.muted }}>Starting at</div>
+                                    <div style={{ fontSize: 18, fontWeight: 900, color: servicesPrimaryDark }}>{money(item.default_sale_price ?? 0)}</div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 8 }}>
+                                      <GhostButton style={{ minHeight: 38, fontSize: 13 }} onClick={(event) => { event.stopPropagation(); openServiceDetail(item); }}>
+                                        View Details
+                                      </GhostButton>
+                                      <PrimaryButton style={{ minHeight: 38, fontSize: 13 }} onClick={(event) => { event.stopPropagation(); addToCart(item); }} disabled={!available}>
+                                        Add to Cart
+                                      </PrimaryButton>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          {sortedServices.length === 0 && (
+                            <div
+                              style={{
+                                gridColumn: '1 / -1',
+                                textAlign: 'center',
+                                padding: isMobileViewport ? 24 : 48,
+                                color: STYLES.colors.muted,
+                                border: '1px dashed #cbd5e1',
+                                borderRadius: 18,
+                                background: '#f8fafc'
+                              }}
+                            >
+                              {hasSearchQuery ? 'No services found. Try another keyword.' : 'No services available in this category yet.'}
+                            </div>
+                          )}
+                        </div>
+
+                        {sortedServices.length > 0 && totalServicePages > 1 && (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: isMobileViewport ? 'center' : 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                              <div style={{ fontSize: 13, color: STYLES.colors.muted }}>
+                                Page {resolvedServicePage} of {totalServicePages}
+                              </div>
+                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
+                                Per page
+                                <StorefrontDropdown
+                                  value={servicePageSize}
+                                  onChange={(nextValue) => setServicePageSize(Number(nextValue) || 8)}
+                                  options={[4, 8, 12, 16].map((size) => ({ value: size, label: String(size) }))}
+                                  triggerStyle={{ minHeight: 36, borderRadius: 14, minWidth: 88, padding: '8px 42px 8px 12px' }}
+                                  containerStyle={{ minWidth: 88 }}
+                                  menuStyle={{ borderRadius: 16 }}
+                                  selectedLabelStyle={{ fontSize: 13 }}
+                                />
+                              </label>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              <GhostButton
+                                style={{ minHeight: 38, padding: '0 14px', opacity: resolvedServicePage === 1 ? 0.5 : 1 }}
+                                onClick={() => setServicePage((previous) => Math.max(1, previous - 1))}
+                                disabled={resolvedServicePage === 1}
+                              >
+                                Previous
+                              </GhostButton>
+                              {Array.from({ length: totalServicePages }, (_, index) => index + 1)
+                                .slice(Math.max(0, resolvedServicePage - 3), Math.max(0, resolvedServicePage - 3) + 5)
+                                .map((pageNumber) => (
+                                  <button
+                                    key={`service-page-${pageNumber}`}
+                                    type="button"
+                                    onClick={() => setServicePage(pageNumber)}
+                                    style={{
+                                      minWidth: 38,
+                                      minHeight: 38,
+                                      borderRadius: 10,
+                                      border: `1px solid ${pageNumber === resolvedServicePage ? servicesPrimary : '#e5e7eb'}`,
+                                      background: pageNumber === resolvedServicePage ? servicesPrimary : '#fff',
+                                      color: pageNumber === resolvedServicePage ? '#fff' : STYLES.colors.dark,
+                                      fontWeight: 800,
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    {pageNumber}
+                                  </button>
+                                ))}
+                              <GhostButton
+                                style={{ minHeight: 38, padding: '0 14px', opacity: resolvedServicePage === totalServicePages ? 0.5 : 1 }}
+                                onClick={() => setServicePage((previous) => Math.min(totalServicePages, previous + 1))}
+                                disabled={resolvedServicePage === totalServicePages}
+                              >
+                                Next
+                              </GhostButton>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </section>
+
+                    {Array.isArray(promoSectionModel) && promoSectionModel.length > 0 && (
+                      <section
+                        style={{
+                          marginLeft: 'calc(50% - 50vw)',
+                          width: '100vw',
+                          marginTop: isMobileViewport ? 20 : 28,
+                          padding: isMobileViewport ? '24px 0 20px' : '32px 0 26px',
+                          background: 'linear-gradient(180deg, #f4fffd 0%, #ffffff 100%)',
+                          borderTop: `1px solid ${servicesPrimaryBorder}`,
+                          borderBottom: '1px solid #d8f3ef',
+                          display: 'grid',
+                          gap: 14
+                        }}
+                      >
+                        <div
+                          style={{
+                            maxWidth: 1220,
+                            width: '100%',
+                            margin: '0 auto',
+                            paddingLeft: isMobileViewport ? 16 : 24,
+                            paddingRight: isMobileViewport ? 16 : 24,
+                            display: 'grid',
+                            gap: 14
+                          }}
+                        >
+                          <div style={{ display: 'grid', gap: 4 }}>
+                            <h2 style={{ margin: 0, fontSize: isMobileViewport ? 22 : 26, fontWeight: 900, color: STYLES.colors.dark, fontFamily: servicesDisplayFont }}>
+                              Current Promos
+                            </h2>
+                            <p style={{ margin: 0, fontSize: 13, color: STYLES.colors.muted }}>
+                              Limited-time offers available from this storefront.
+                            </p>
+                          </div>
+
+                          <div
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))',
+                              gap: 18
+                            }}
+                          >
+                            {promoSectionModel.map((promoEntry, index) => (
+                              <article
+                                key={`promo-card-${index}`}
+                                style={{
+                                  position: 'relative',
+                                  borderRadius: 26,
+                                  border: `1px solid ${servicesPrimaryBorder}`,
+                                  background: 'linear-gradient(135deg, #ffffff 0%, #f5fffd 58%, #ecfeff 100%)',
+                                  boxShadow: '0 14px 28px rgba(15, 118, 110, 0.10)',
+                                  padding: isMobileViewport ? '18px 16px' : '18px 20px',
+                                  display: 'grid',
+                                  gap: 14,
+                                  overflow: 'hidden',
+                                  transition: 'transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease',
+                                  animation: 'promoCardFloatIn 420ms ease both',
+                                  animationDelay: `${index * 90}ms`
+                                }}
+                                onMouseEnter={(event) => {
+                                  if (isMobileViewport) return;
+                                  event.currentTarget.style.transform = 'translateY(-4px)';
+                                  event.currentTarget.style.boxShadow = '0 22px 36px rgba(15, 118, 110, 0.16)';
+                                  event.currentTarget.style.borderColor = servicesPrimary;
+                                }}
+                                onMouseLeave={(event) => {
+                                  if (isMobileViewport) return;
+                                  event.currentTarget.style.transform = 'translateY(0)';
+                                  event.currentTarget.style.boxShadow = '0 14px 28px rgba(15, 118, 110, 0.10)';
+                                  event.currentTarget.style.borderColor = servicesPrimaryBorder;
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    position: 'absolute',
+                                    inset: '0 auto 0 0',
+                                    width: 4,
+                                    background: `linear-gradient(180deg, ${servicesPrimary} 0%, ${servicesPrimaryDark} 100%)`,
+                                    boxShadow: '0 0 22px rgba(15, 118, 110, 0.22)'
+                                  }}
+                                />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                  <div
+                                    style={{
+                                      width: 34,
+                                      height: 34,
+                                      borderRadius: 999,
+                                      border: `1px solid ${servicesPrimaryBorder}`,
+                                      background: servicesPrimarySoft,
+                                      color: servicesPrimary,
+                                      display: 'grid',
+                                      placeItems: 'center',
+                                      flexShrink: 0
+                                    }}
+                                  >
+                                    <Sparkles size={17} />
+                                  </div>
+                                  <div style={{ fontSize: isMobileViewport ? 14 : 16, fontWeight: 900, color: STYLES.colors.dark, textTransform: 'uppercase', lineHeight: 1.2 }}>
+                                    {promoEntry.title || promoEntry.badge || 'Promo'}
+                                  </div>
+                                </div>
+
+                                <div
+                                  style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(96px, 124px) minmax(0, 1fr)',
+                                    gap: isMobileViewport ? 12 : 14,
+                                    alignItems: 'stretch'
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      display: 'grid',
+                                      alignContent: 'center',
+                                      justifyItems: isMobileViewport ? 'start' : 'start',
+                                      paddingRight: isMobileViewport ? 0 : 14,
+                                      borderRight: isMobileViewport ? 'none' : '1px solid #d8f3ef'
+                                    }}
+                                  >
+                                    <div style={{ fontSize: isMobileViewport ? 38 : 48, fontWeight: 900, lineHeight: 0.92, color: servicesPrimary, letterSpacing: '-0.04em' }}>
+                                      {promoEntry.headline || promoEntry.badge || 'Promo'}
+                                    </div>
+                                  </div>
+
+                                  <div style={{ display: 'grid', alignContent: 'center', gap: 6, minWidth: 0 }}>
+                                    <div style={{ fontSize: isMobileViewport ? 18 : 20, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.15 }}>
+                                      {promoEntry.subtitle || 'Storefront offer'}
+                                    </div>
+                                    {promoEntry.supportingText && (
+                                      <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                                        {promoEntry.supportingText}
+                                      </div>
+                                    )}
+                                    {promoEntry.validityText && (
+                                      <div style={{ fontSize: 13, color: '#6b7280' }}>
+                                        {promoEntry.validityText}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </article>
+                            ))}
+                          </div>
+                        </div>
+                      </section>
+                    )}
+
+                    <section
+                      style={{
+                        marginTop: 0,
+                        marginLeft: 'calc(50% - 50vw)',
+                        width: '100vw',
+                        padding: isMobileViewport ? '36px 0 30px' : '72px 0 42px',
+                        background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
+                        borderTop: '1px solid #e2e8f0',
+                        borderBottom: '1px solid #e2e8f0',
+                        display: 'grid',
+                        gap: 18
+                      }}
+                    >
+                      <div
+                        style={{
+                          maxWidth: 1320,
+                          width: '100%',
+                          margin: '0 auto',
+                          paddingLeft: isMobileViewport ? 16 : 24,
+                          paddingRight: isMobileViewport ? 16 : 24,
+                          display: 'grid',
+                          gap: 18
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: isMobileViewport ? 'flex-start' : 'center',
+                            justifyContent: 'space-between',
+                            flexDirection: isMobileViewport ? 'column' : 'row',
+                            gap: 16
+                          }}
+                        >
+                          <div>
+                            <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, fontWeight: 900, color: STYLES.colors.dark }}>
+                              Customer Reviews
+                            </h2>
+                            <p style={{ margin: '6px 0 0 0', fontSize: 14, color: STYLES.colors.muted }}>
+                              See what customers say about this storefront
+                            </p>
+                          </div>
+                          <div style={{ display: 'grid', gap: 10, justifyItems: isMobileViewport ? 'stretch' : 'end', width: isMobileViewport ? '100%' : 'auto' }}>
+                            <PrimaryButton
+                              onClick={() => setIsReviewModalOpen(true)}
+                              style={{
+                                minHeight: 46,
+                                minWidth: isMobileViewport ? '100%' : 168,
+                                justifyContent: 'center'
+                              }}
+                            >
+                              Write a Review
+                            </PrimaryButton>
+                            {hasReviewSummary && (
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 12,
+                                  padding: '10px 14px',
+                                  border: '1px solid #dbe5ee',
+                                  borderRadius: 16,
+                                  background: '#fcfdff',
+                                  boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)'
+                                }}
+                              >
+                                <div style={{ fontSize: 24, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1 }}>
+                                  {reviewScore.toFixed(1)}
+                                </div>
+                                <div style={{ display: 'grid', gap: 4 }}>
+                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: STYLES.colors.amber, fontSize: 14, lineHeight: 1 }}>
+                                    {Array.from({ length: 5 }, (_, index) => (
+                                      <span key={`review-summary-star-${index}`} style={{ opacity: index < Math.round(reviewScore) ? 1 : 0.25 }}>
+                                        *
+                                      </span>
+                                    ))}
+                                  </div>
+                                  <div style={{ fontSize: 12, color: STYLES.colors.muted }}>
+                                    from {reviewCount} review{reviewCount === 1 ? '' : 's'}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {reviewHighlights.length > 0 ? (
+                          <div style={{ display: 'grid', gridTemplateColumns: reviewGridColumns, gap: 18 }}>
+                            {reviewHighlights.map((review, index) => {
+                              const reviewerName = String(review?.reviewer_name || '').trim() || 'Customer';
+                              const rating = Number(review?.rating);
+                              const comment = String(review?.comment || '').trim();
+                              return (
+                                <article
+                                  key={`customer-review-${index}`}
+                                  style={{
+                                    background: '#fcfdff',
+                                    border: '1px solid #dbe5ee',
+                                    borderRadius: 18,
+                                    padding: 18,
+                                    boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)',
+                                    display: 'grid',
+                                    gap: 12,
+                                    alignContent: 'start'
+                                  }}
+                                >
+                                  <div style={{ display: 'grid', gap: 6 }}>
+                                    <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark }}>{reviewerName}</div>
+                                    {Number.isFinite(rating) && rating > 0 && (
+                                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: STYLES.colors.amber, fontSize: 14, lineHeight: 1 }}>
+                                        {Array.from({ length: 5 }, (_, starIndex) => (
+                                          <span key={`review-card-star-${index}-${starIndex}`} style={{ opacity: starIndex < Math.round(rating) ? 1 : 0.25 }}>
+                                            *
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#334155' }}>{comment}</p>
+                                </article>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              background: '#fcfdff',
+                              border: '1px solid #dbe5ee',
+                              borderRadius: 18,
+                              padding: isMobileViewport ? 20 : 24,
+                              boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)',
+                              fontSize: 14,
+                              color: STYLES.colors.muted
+                            }}
+                          >
+                            {hasReviewSummary
+                              ? 'Customer review highlights will appear here once detailed review entries are added in SKUpervisor.'
+                              : 'Customer reviews will appear here once this storefront adds review data in SKUpervisor.'}
+                          </div>
+                        )}
+                      </div>
+                    </section>
+
+                    {isReviewModalOpen && (
+                      <div
+                        style={{
+                          position: 'fixed',
+                          inset: 0,
+                          zIndex: 2300,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: isMobileViewport ? 16 : 24
+                        }}
+                      >
+                        <div
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            background: 'rgba(15,23,42,0.52)',
+                            backdropFilter: 'blur(5px)'
+                          }}
+                        />
+                        <section
+                          style={{
+                            position: 'relative',
+                            zIndex: 1,
+                            width: '100%',
+                            maxWidth: 640,
+                            maxHeight: 'min(90vh, 760px)',
+                            overflowY: 'auto',
+                            borderRadius: 28,
+                            border: '1px solid #dbe5ee',
+                            background: '#ffffff',
+                            boxShadow: '0 28px 64px rgba(15,23,42,0.22)',
+                            padding: isMobileViewport ? 20 : 28,
+                            display: 'grid',
+                            gap: 20
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+                            <div style={{ display: 'grid', gap: 8 }}>
+                              <div style={{ fontSize: 12, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                Customer Review
+                              </div>
+                              <div style={{ fontSize: isMobileViewport ? 26 : 30, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.08, fontFamily: servicesDisplayFont }}>
+                                Share your experience
+                              </div>
+                              <div style={{ fontSize: 14, lineHeight: 1.65, color: STYLES.colors.muted }}>
+                                Rate the storefront experience and leave a short message. Publishing will be connected once the review backend is ready.
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setIsReviewModalOpen(false)}
+                              style={{
+                                width: 40,
+                                height: 40,
+                                borderRadius: 999,
+                                border: '1px solid #cbd5e1',
+                                background: '#fff',
+                                color: '#0f172a',
+                                cursor: 'pointer',
+                                display: 'grid',
+                                placeItems: 'center',
+                                flexShrink: 0
+                              }}
+                              aria-label="Close review modal"
+                            >
+                              <X size={18} />
+                            </button>
+                          </div>
+
+                          <div style={{ display: 'grid', gap: 16 }}>
+                            <label style={{ display: 'grid', gap: 8, fontSize: 13, color: '#334155' }}>
+                              Your name
+                              <input
+                                value={reviewDraft.name}
+                                onChange={(event) => setReviewDraft((previous) => ({ ...previous, name: event.target.value }))}
+                                placeholder="How should we identify your review?"
+                                style={BOOKING_FIELD_STYLE}
+                              />
+                            </label>
+
+                            <div style={{ display: 'grid', gap: 10 }}>
+                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#334155', cursor: 'pointer', width: 'fit-content' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={reviewDraft.anonymous}
+                                  onChange={(event) => setReviewDraft((previous) => ({ ...previous, anonymous: event.target.checked }))}
+                                />
+                                Post this review anonymously
+                              </label>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>
+                                Public name preview: <strong style={{ color: '#0f172a' }}>{reviewDraft.anonymous ? maskReviewerName(reviewDraft.name) : (String(reviewDraft.name || '').trim() || 'Your name')}</strong>
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'grid', gap: 10 }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Your rating</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                {Array.from({ length: 5 }, (_, index) => {
+                                  const starValue = index + 1;
+                                  const selected = reviewDraft.rating >= starValue;
+                                  return (
+                                    <button
+                                      key={`review-rating-${starValue}`}
+                                      type="button"
+                                      onClick={() => setReviewDraft((previous) => ({ ...previous, rating: starValue }))}
+                                      style={{
+                                        width: 46,
+                                        height: 46,
+                                        borderRadius: 14,
+                                        border: `1px solid ${selected ? '#f59e0b' : '#dbe5ee'}`,
+                                        background: selected ? '#fff7ed' : '#ffffff',
+                                        color: selected ? '#f59e0b' : '#94a3b8',
+                                        cursor: 'pointer',
+                                        display: 'grid',
+                                        placeItems: 'center',
+                                        boxShadow: selected ? '0 10px 20px rgba(245,158,11,0.16)' : 'none'
+                                      }}
+                                      aria-label={`Rate ${starValue} star${starValue === 1 ? '' : 's'}`}
+                                    >
+                                      <Star size={18} fill={selected ? '#f59e0b' : 'none'} color={selected ? '#f59e0b' : '#94a3b8'} />
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            <label style={{ display: 'grid', gap: 8, fontSize: 13, color: '#334155' }}>
+                              Your review
+                              <textarea
+                                value={reviewDraft.message}
+                                onChange={(event) => setReviewDraft((previous) => ({ ...previous, message: event.target.value }))}
+                                placeholder="Tell customers what stood out about the service, response time, or booking experience."
+                                style={{ ...BOOKING_FIELD_STYLE, minHeight: 144, resize: 'vertical' }}
+                              />
+                            </label>
+                          </div>
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobileViewport ? 'stretch' : 'center', flexDirection: isMobileViewport ? 'column' : 'row', gap: 12 }}>
+                            <div style={{ fontSize: 12, lineHeight: 1.6, color: '#64748b' }}>
+                              Reviews are prepared on the storefront now. Submission and moderation will connect once backend review support is available.
+                            </div>
+                            <PrimaryButton
+                              onClick={handleReviewDraftSubmit}
+                              style={{ minHeight: 46, minWidth: isMobileViewport ? '100%' : 180, justifyContent: 'center' }}
+                            >
+                              Send Review
+                            </PrimaryButton>
+                          </div>
+                        </section>
+                      </div>
+                    )}
+
+                    <footer
+                      style={{
+                        marginLeft: 'calc(50% - 50vw)',
+                        width: '100vw',
+                        background: '#090b0f',
+                        borderTop: '1px solid rgba(148, 163, 184, 0.18)'
+                      }}
+                    >
+                      <div
+                        style={{
+                          maxWidth: 1320,
+                          width: '100%',
+                          margin: '0 auto',
+                          padding: isMobileViewport ? '28px 16px 32px' : '48px 24px 36px',
+                          display: 'grid',
+                          gap: 28
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)',
+                            gap: isMobileViewport ? 24 : 36
+                          }}
+                        >
+                          <div style={{ display: 'grid', gap: 18 }}>
+                            <div style={{ display: 'grid', gap: 10 }}>
+                              <div style={{ fontSize: 28, fontWeight: 900, color: '#ffffff', letterSpacing: '-0.03em' }}>{serviceHeroModel.name}</div>
+                              <div style={{ maxWidth: 360, fontSize: 15, lineHeight: 1.7, color: '#94a3b8' }}>
+                                {serviceHeroModel.tagline || serviceHeroModel.aboutText || 'Service storefront powered by SKUpervisor content.'}
+                              </div>
+                            </div>
+
+                            {serviceHeroModel.footerLinks.length > 0 && (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                                {serviceHeroModel.footerLinks
+                                  .filter((link) => ['Website', 'Facebook', 'Instagram', 'TikTok', 'Messenger'].includes(link.label))
+                                  .map((link) => (
+                                    <a
+                                      key={`footer-social-${link.label}`}
+                                      href={link.href}
+                                      target={String(link.href).startsWith('http') ? '_blank' : undefined}
+                                      rel={String(link.href).startsWith('http') ? 'noreferrer' : undefined}
+                                    style={{
+                                        width: 42,
+                                        height: 42,
+                                        borderRadius: 12,
+                                        border: '1px solid rgba(148, 163, 184, 0.18)',
+                                        background: 'rgba(15, 23, 42, 0.55)',
+                                        color: '#e2e8f0',
+                                        fontSize: 12,
+                                        fontWeight: 800,
+                                        display: 'grid',
+                                        placeItems: 'center',
+                                        textDecoration: 'none'
+                                      }}
+                                      title={link.label}
+                                    >
+                                      <FooterSocialIcon label={link.label} />
+                                    </a>
+                                  ))}
+                              </div>
+                            )}
+                          </div>
+
+                          <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+                            <div style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                              Services
+                            </div>
+                            <div style={{ display: 'grid', gap: 12 }}>
+                              {(serviceHeroModel.serviceGroups || []).slice(0, 5).map((group) => (
+                                <div key={`footer-group-${group.categoryKey}`} style={{ fontSize: 15, color: '#cbd5e1' }}>
+                                  {group.categoryMeta?.label || group.categoryKey}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+                            <div style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                              Socials
+                            </div>
+                            <div style={{ display: 'grid', gap: 12 }}>
+                              {serviceHeroModel.footerLinks
+                                .filter((link) => ['Website', 'Facebook', 'Instagram', 'TikTok', 'Messenger'].includes(link.label))
+                                .map((link) => (
+                                  <a
+                                    key={`footer-social-link-${link.label}`}
+                                    href={link.href}
+                                    target={String(link.href).startsWith('http') ? '_blank' : undefined}
+                                    rel={String(link.href).startsWith('http') ? 'noreferrer' : undefined}
+                                    style={{ fontSize: 15, color: '#cbd5e1', textDecoration: 'none' }}
+                                  >
+                                    {link.label}
+                                  </a>
+                                ))}
+                              {serviceHeroModel.footerLinks.filter((link) => ['Website', 'Facebook', 'Instagram', 'TikTok', 'Messenger'].includes(link.label)).length === 0 && (
+                                <div style={{ fontSize: 15, color: '#64748b' }}>No social links yet.</div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+                            <div style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                              Contact
+                            </div>
+                            <div style={{ display: 'grid', gap: 12 }}>
+                              {serviceHeroModel.footerLinks
+                                .filter((link) => ['Call', 'Email'].includes(link.label))
+                                .map((link) => (
+                                  <a key={`footer-contact-${link.label}`} href={link.href} style={{ fontSize: 15, color: '#cbd5e1', textDecoration: 'none' }}>
+                                    {link.label === 'Call' ? String(link.href).replace('tel:', '') : String(link.href).replace('mailto:', '')}
+                                  </a>
+                                ))}
+                              {serviceHeroModel.hours && <div style={{ fontSize: 15, color: '#cbd5e1' }}>{serviceHeroModel.hours}</div>}
+                              <div style={{ fontSize: 15, color: '#cbd5e1' }}>{serviceHeroModel.locationLabel}</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            paddingTop: 18,
+                            borderTop: '1px solid rgba(148, 163, 184, 0.12)',
+                            display: 'flex',
+                            alignItems: isMobileViewport ? 'flex-start' : 'center',
+                            justifyContent: 'space-between',
+                            flexDirection: isMobileViewport ? 'column' : 'row',
+                            gap: 10
+                          }}
+                        >
+                          <div style={{ fontSize: 13, color: '#64748b' }}>
+                            {serviceHeroModel.name}{serviceHeroModel.registrationYear ? ` ${serviceHeroModel.registrationYear}` : ''}
+                          </div>
+                          <div style={{ fontSize: 13, color: '#64748b' }}>Powered by SKUpervisor</div>
+                        </div>
+                      </div>
+                    </footer>
+                  </>
+                );
+              }
+
+return (
+  <>
+    <style>{`
+      @keyframes promoCardFloatIn {
+        0% {
+          opacity: 0;
+          transform: translateY(10px) scale(0.985);
+        }
+        100% {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+    `}</style>
+  <div style={{
+    display: 'grid',
+    gap: 24,
+    gridTemplateColumns: (isServicesMode && !isMobileViewport) ? '1fr 340px' : '1fr'
+  }}>
+    <div style={{ display: 'grid', gap: 24 }}>
+      {!isHospitalityMode && !(isSimpleMode && isResolvedOrderSubpage) && (
+      <section id="storefront-catalog-section" style={{
+        display: 'grid',
+        gap: isFnbMode ? (isMobileViewport ? 18 : 24) : (isSimpleMode ? 22 : undefined),
+        marginTop: isFnbMode
+          ? (isMobileViewport ? 20 : 34)
+          : (isSimpleMode ? (isMobileViewport ? 28 : 36) : undefined),
+        background: isSimpleMode ? 'transparent' : '#fff',
+        border: isFnbMode ? 'none' : (isSimpleMode ? 'none' : `1px solid ${STYLES.colors.border}`),
+        borderRadius: isFnbMode ? 0 : (isSimpleMode ? 0 : STYLES.radius.card),
+        padding: isFnbMode
+          ? (isMobileViewport ? '24px 0 56px' : '34px 0 64px')
+          : (isSimpleMode ? 0 : (isMobileViewport ? 16 : 32)),
+        boxShadow: isFnbMode ? 'none' : (isSimpleMode ? 'none' : STYLES.shadow.sm),
+        marginLeft: isFnbMode ? 'calc(50% - 50vw)' : undefined,
+        width: isFnbMode ? '100vw' : undefined
+      }}>
+        {isFnbMode && (
+          <>
+            <div style={{ maxWidth: 1320, margin: '0 auto', width: '100%', padding: isMobileViewport ? '0 16px' : '0 24px', display: 'grid', gap: isMobileViewport ? 18 : 22 }}>
+              <div style={{
+                display: 'flex',
+                alignItems: isMobileViewport ? 'flex-start' : 'flex-end',
+                justifyContent: 'space-between',
+                gap: 14,
+                flexDirection: isMobileViewport ? 'column' : 'row'
+              }}>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 800, color: modeAdapter.heroTheme?.accentDark || '#6f3415', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                    <span style={{ width: 30, height: 1, background: modeAdapter.heroTheme?.accent || '#c96a2b' }} />
+                    Curated Menu
+                  </div>
+                  <h2 style={{ margin: 0, fontSize: isMobileViewport ? 26 : 36, fontWeight: 900, color: modeAdapter.heroTheme?.textPrimary || STYLES.colors.dark, letterSpacing: '-0.03em', fontFamily: modeAdapter.heroTheme?.displayFont }}>{modeAdapter.catalogHeading}</h2>
+                  <p style={{ margin: 0, color: modeAdapter.heroTheme?.textMuted || STYLES.colors.muted, fontSize: 15, maxWidth: 720 }}>{modeAdapter.catalogSubtitle}</p>
+                </div>
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 14px',
+                  borderRadius: 999,
+                  background: modeAdapter.heroTheme?.surfaceInset || '#fff3e8',
+                  border: `1px solid ${modeAdapter.heroTheme?.borderSoft || '#edd4bc'}`,
+                  color: modeAdapter.heroTheme?.textPrimary || STYLES.colors.dark,
+                  fontSize: 13,
+                  fontWeight: 800
+                }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 999, background: modeAdapter.heroTheme?.accent || '#c96a2b' }} />
+                  {filteredFnbViewModel.totalItems || 0} menu item{Number(filteredFnbViewModel.totalItems || 0) === 1 ? '' : 's'} available
+                </div>
+              </div>
+
+              {(() => {
+                const fnbTheme = modeAdapter.heroTheme || {};
+                const toolbarAccent = fnbTheme.accent || '#c96a2b';
+                const toolbarAccentDark = fnbTheme.accentDark || '#6f3415';
+                const toolbarAccentSoft = fnbTheme.accentSoft || '#fff0e2';
+                const toolbarSurface = '#ffffff';
+                const toolbarSurfaceInset = fnbTheme.surfaceInset || '#fff3e8';
+                const toolbarBorder = fnbTheme.borderSoft || '#edd4bc';
+                const toolbarTextPrimary = fnbTheme.textPrimary || '#2f1f16';
+                const toolbarTextMuted = fnbTheme.textMuted || '#7c6757';
+                const categoryOptions = [
+                  {
+                    key: '',
+                    label: 'All',
+                    count: filteredFnbViewModel.menuItems.length,
+                    iconToken: 'menu',
+                    glyph: 'A',
+                    accent: toolbarAccent,
+                    accentSoft: toolbarAccentSoft
+                  },
+                  ...fnbSections.map((section) => ({
+                    key: section.sectionKey,
+                    label: section.sectionLabel,
+                    count: section.items.length,
+                    iconToken: section.visualMeta?.iconToken || 'menu',
+                    glyph: section.visualMeta?.glyph || String(section.sectionLabel || '').charAt(0).toUpperCase(),
+                    accent: section.visualMeta?.accent || '#475569',
+                    accentSoft: section.visualMeta?.accentSoft || '#f1f5f9'
+                  }))
+                ];
+                const activeCategoryOption = categoryOptions.find((option) => option.key === (resolvedFnbSection || '')) || categoryOptions[0];
+                const ActiveCategoryIcon = FNB_CATEGORY_ICON_MAP[activeCategoryOption.iconToken] || Sparkles;
+                const controlHeight = isMobileViewport ? 54 : 56;
+                const controlRadius = 999;
+
+                return (
+                  <div style={{ display: 'grid', gap: 14 }}>
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: isMobileViewport ? 'column' : 'row',
+                      alignItems: isMobileViewport ? 'stretch' : 'center',
+                      gap: 12,
+                      flexWrap: 'wrap'
+                    }}>
+                      <label style={{
+                        position: 'relative',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        border: `1px solid ${toolbarBorder}`,
+                        borderRadius: controlRadius,
+                        background: '#fff',
+                        padding: '0 18px 0 42px',
+                        minHeight: controlHeight,
+                        flex: '1 1 320px',
+                        minWidth: 0,
+                        boxShadow: '0 14px 28px rgba(73,38,20,0.06)'
+                      }}>
+                        <span style={{
+                          width: 2,
+                          position: 'absolute',
+                          left: 28,
+                          top: 12,
+                          bottom: 12,
+                          borderRadius: 999,
+                          background: toolbarAccent,
+                          opacity: 0.65,
+                          pointerEvents: 'none'
+                        }} />
+                        <input
+                          value={catalogSearch}
+                          onChange={(event) => setCatalogSearch(event.target.value)}
+                          placeholder={modeAdapter.catalogSearchPlaceholder}
+                          style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, fontSize: 14, color: toolbarTextPrimary }}
+                        />
+                        <span style={{
+                          width: 42,
+                          height: 42,
+                          borderRadius: 999,
+                          background: toolbarAccent,
+                          color: '#fff',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: '0 10px 20px rgba(201,106,43,0.24)',
+                          flexShrink: 0
+                        }}>
+                          <Search size={20} />
+                        </span>
+                      </label>
+
+                      <StorefrontDropdown
+                        value={fnbSortOption}
+                        onChange={(nextValue) => setFnbSortOption(String(nextValue))}
+                        options={[
+                          { value: 'name_asc', label: 'All Prices' },
+                          { value: 'price_asc', label: 'Price: Low to High' },
+                          { value: 'price_desc', label: 'Price: High to Low' }
+                        ]}
+                        leading={(
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, color: toolbarAccent }}>
+                            <SlidersHorizontal size={18} />
+                            <span style={{ width: 1, height: '60%', minHeight: 24, borderRadius: 999, background: 'rgba(201,106,43,0.18)' }} />
+                          </span>
+                        )}
+                        containerStyle={{
+                          minWidth: isMobileViewport ? '100%' : 240,
+                          flex: isMobileViewport ? '1 1 100%' : '0 0 240px'
+                        }}
+                        triggerStyle={{
+                          minHeight: controlHeight,
+                          borderRadius: controlRadius,
+                          border: `1px solid ${toolbarBorder}`,
+                          background: '#fff',
+                          boxShadow: '0 14px 28px rgba(73,38,20,0.06)',
+                          padding: '0 44px 0 16px'
+                        }}
+                        selectedLabelStyle={{ color: toolbarTextPrimary, fontSize: 14, fontWeight: 700 }}
+                      />
+
+                      <div
+                        ref={fnbCategoryDropdownRef}
+                        style={{ position: 'relative', width: isMobileViewport ? '100%' : 290, flex: isMobileViewport ? '1 1 100%' : '0 0 290px' }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setIsFnbCategoryDropdownOpen((previous) => !previous)}
+                          style={{
+                            position: 'relative',
+                            width: '100%',
+                            minHeight: controlHeight,
+                            borderRadius: controlRadius,
+                            border: `1px solid ${toolbarBorder}`,
+                            background: '#fff',
+                            padding: '0 18px 0 20px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                            cursor: 'pointer',
+                            boxShadow: '0 14px 28px rgba(73,38,20,0.06)'
+                          }}
+                        >
+                          <span style={{
+                            width: 38,
+                            height: 38,
+                            borderRadius: 14,
+                            background: activeCategoryOption.accentSoft,
+                            color: activeCategoryOption.accent,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            position: 'relative',
+                            flexShrink: 0
+                          }}>
+                            {React.createElement(ActiveCategoryIcon, { size: 18 })}
+                            <span style={{
+                              position: 'absolute',
+                              right: -4,
+                              bottom: -4,
+                              width: 18,
+                              height: 18,
+                              borderRadius: 999,
+                              background: '#fff',
+                              border: `1px solid ${toolbarBorder}`,
+                              color: toolbarTextPrimary,
+                              fontSize: 10,
+                              fontWeight: 900,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}>
+                              {String(activeCategoryOption.glyph || 'A').slice(0, 1)}
+                            </span>
+                          </span>
+                        <span style={{ display: 'grid', gap: 2, minWidth: 0, textAlign: 'left', flex: 1 }}>
+                            <span style={{ fontSize: 12, fontWeight: 800, color: toolbarAccentDark, textTransform: 'uppercase', letterSpacing: '0.06em', lineHeight: 1 }}>Category</span>
+                            <span style={{ fontSize: 14, fontWeight: 800, color: toolbarTextPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.15 }}>
+                              {activeCategoryOption.label}
+                            </span>
+                          </span>
+                          <span style={{ fontSize: 12, fontWeight: 800, color: toolbarTextMuted }}>{activeCategoryOption.count}</span>
+                          <ChevronDown size={18} color={toolbarTextMuted} />
+                        </button>
+
+                        {isFnbCategoryDropdownOpen && (
+                          <div style={{
+                            position: 'absolute',
+                            top: 'calc(100% + 10px)',
+                            left: 0,
+                            right: 0,
+                            zIndex: 40,
+                            padding: 10,
+                            borderRadius: 18,
+                            border: `1px solid ${toolbarBorder}`,
+                            background: toolbarSurface,
+                            boxShadow: '0 22px 48px rgba(15,23,42,0.14)',
+                            display: 'grid',
+                            gap: 8,
+                            maxHeight: 360,
+                            overflowY: 'auto'
+                          }}>
+                            {categoryOptions.map((option) => {
+                              const isActive = option.key === (resolvedFnbSection || '');
+                              const OptionIcon = FNB_CATEGORY_ICON_MAP[option.iconToken] || Sparkles;
+                              return (
+                                <button
+                                  key={`fnb-category-dropdown-${option.key || 'all'}`}
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveServiceTab(option.key);
+                                    setIsFnbCategoryDropdownOpen(false);
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    borderRadius: 16,
+                                    border: isActive ? '1px solid transparent' : `1px solid ${toolbarBorder}`,
+                                    background: isActive ? toolbarAccent : toolbarSurface,
+                                    color: isActive ? '#fff' : toolbarTextPrimary,
+                                    padding: '10px 12px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 12,
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  <span style={{
+                                    width: 38,
+                                    height: 38,
+                                    borderRadius: 14,
+                                    background: isActive ? 'rgba(255,255,255,0.16)' : option.accentSoft,
+                                    color: isActive ? '#fff' : option.accent,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    position: 'relative',
+                                    flexShrink: 0
+                                  }}>
+                                    {React.createElement(OptionIcon, { size: 18 })}
+                                    <span style={{
+                                      position: 'absolute',
+                                      right: -4,
+                                      bottom: -4,
+                                      width: 18,
+                                      height: 18,
+                                      borderRadius: 999,
+                                      background: '#fff',
+                                      border: `1px solid ${isActive ? 'rgba(255,255,255,0.3)' : toolbarBorder}`,
+                                      color: toolbarTextPrimary,
+                                      fontSize: 10,
+                                      fontWeight: 900,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center'
+                                    }}>
+                                      {String(option.glyph || 'A').slice(0, 1)}
+                                    </span>
+                                  </span>
+                                  <span style={{ display: 'grid', gap: 2, minWidth: 0, textAlign: 'left', flex: 1 }}>
+                                    <span style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.15 }}>{option.label}</span>
+                                    <span style={{ fontSize: 11, fontWeight: 700, opacity: isActive ? 0.82 : 0.6 }}>
+                                      {option.count} item{option.count === 1 ? '' : 's'}
+                                    </span>
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </>
+        )}
+
+        {/* Section header */}
+        {((!isFnbMode && !isSimpleMode && !isHospitalityMode) || isMultiGroup) && (
+          <div style={{ marginBottom: isMultiGroup ? 20 : 32 }}>
+            <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, fontWeight: 900, color: STYLES.colors.dark }}>{modeAdapter.catalogHeading}</h2>
+            <p style={{ margin: '4px 0 0 0', color: STYLES.colors.muted, fontSize: 15 }}>{modeAdapter.catalogSubtitle}</p>
+          </div>
+        )}
+
+        {/* Service Family Tabs (only shown when multiple groups exist) */}
+        {isMultiGroup && (
+          <div style={{ marginBottom: 28 }}>
+            {/* Tab scrollable strip */}
+            <div style={{
+              display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4,
+              scrollbarWidth: 'none'
+            }}>
+              {servicesViewModel.serviceGroups.map(group => {
+                const isActive = resolvedTab === group.categoryKey;
+                const meta = group.categoryMeta;
+                const GroupIcon = SERVICE_CATEGORY_ICON_MAP[meta?.iconToken] || Sparkles;
+                return (
+                  <button
+                    key={group.categoryKey}
+                    type="button"
+                    onClick={() => setActiveServiceTab(group.categoryKey)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      flexShrink: 0,
+                      padding: isMobileViewport ? '10px 16px' : '12px 20px',
+                      borderRadius: 14,
+                      border: isActive ? `2px solid ${meta.accent}` : `1.5px solid ${STYLES.colors.border}`,
+                      background: isActive ? meta.accentBg || '#f0fdfa' : '#fff',
+                      color: isActive ? meta.accent : STYLES.colors.text,
+                      fontWeight: isActive ? 800 : 600,
+                      fontSize: 14,
+                      cursor: 'pointer',
+                      transition: 'all 0.18s ease',
+                      boxShadow: isActive ? `0 4px 16px ${meta.accent}22` : 'none'
+                    }}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                      <GroupIcon size={18} />
+                    </span>
+                    <span>{meta.label}</span>
+                    <span style={{
+                      marginLeft: 4, padding: '2px 8px', borderRadius: 99,
+                      fontSize: 11, fontWeight: 800,
+                      background: isActive ? meta.accent : STYLES.colors.bg,
+                      color: isActive ? '#fff' : STYLES.colors.muted
+                    }}>
+                      {group.items.length}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Active tab description bar */}
+            {activeGroupMeta && (
+              <div style={{
+                marginTop: 14, padding: '14px 18px',
+                borderRadius: 14, border: `1px solid ${activeGroupMeta.accent}33`,
+                background: activeGroupMeta.accentBg || '#f0fdfa',
+                display: 'flex', alignItems: 'center', gap: 14
+              }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: activeGroupMeta.accent }}>
+                  <ActiveServiceGroupIcon size={26} />
+                </span>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 15, color: activeGroupMeta.accent }}>{activeGroupMeta.label}</div>
+                  <div style={{ fontSize: 13, color: STYLES.colors.text, marginTop: 2 }}>{activeGroupMeta.description}</div>
+                </div>
+                <div style={{ marginLeft: 'auto', textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: STYLES.colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Area</div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: activeGroupMeta.accent }}>{activeGroupMeta.areaLabel}</div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {isSimpleMode && (
+          <div style={{ display: 'grid', gap: 16, padding: isMobileViewport ? '0 4px' : '0 2px 4px' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: isMobileViewport ? 'flex-start' : 'center',
+              justifyContent: 'space-between',
+              gap: 14,
+              flexDirection: isMobileViewport ? 'column' : 'row'
+            }}>
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  color: modeAdapter.heroTheme?.accentDark || '#134e4a',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.1em'
+                }}>
+                  <span style={{ width: 30, height: 1, background: modeAdapter.heroTheme?.accent || '#0f766e' }} />
+                  Product Section
+                </div>
+                <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 34, fontWeight: 900, color: modeAdapter.heroTheme?.textPrimary || STYLES.colors.dark, letterSpacing: '-0.03em', fontFamily: modeAdapter.heroTheme?.displayFont }}>
+                  {modeAdapter.catalogHeading}
+                </h2>
+                <p style={{ margin: 0, color: modeAdapter.heroTheme?.textMuted || STYLES.colors.muted, fontSize: 15, maxWidth: 720, lineHeight: 1.6 }}>
+                  {modeAdapter.catalogSubtitle}
+                </p>
+              </div>
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 14px',
+                borderRadius: 999,
+                background: modeAdapter.heroTheme?.accentSoft || '#ecfeff',
+                border: `1px solid ${modeAdapter.heroTheme?.borderSoft || '#bfe8e4'}`,
+                color: modeAdapter.heroTheme?.textPrimary || STYLES.colors.dark,
+                fontSize: 13,
+                fontWeight: 800
+              }}>
+                <span style={{ width: 8, height: 8, borderRadius: 999, background: modeAdapter.heroTheme?.accent || '#0f766e' }} />
+                {filteredCatalog.length} product{Number(filteredCatalog.length) === 1 ? '' : 's'} in this storefront
+              </div>
+            </div>
+            <div style={{ height: 1, background: 'linear-gradient(90deg, rgba(15,118,110,0.18) 0%, rgba(15,23,42,0.06) 100%)' }} />
+          </div>
+        )}
+
+        {/* Catalog items grid */}
+        {!isServicesMode && !isFnbMode && !isSimpleMode && !isHospitalityMode && (
+          <div style={{ maxWidth: 1320, margin: `${isMobileViewport ? 12 : 16}px auto 0`, width: '100%', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
+            <input
+              value={catalogSearch}
+              onChange={(event) => setCatalogSearch(event.target.value)}
+              placeholder="Search items in this store catalog..."
+              style={{
+                width: '100%',
+                border: '1px solid #cbd5e1',
+                borderRadius: 12,
+                padding: '11px 12px',
+                fontSize: 14,
+                background: '#fff'
+              }}
+            />
+          </div>
+        )}
+
+        {catalogState === 'empty_setup' && (
+          <div style={{ maxWidth: 1320, margin: `${isMobileViewport ? 18 : 24}px auto 0`, width: '100%', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
+            <StoreCatalogEmptyState mode="setup_pending" onRefreshTenantPage={refreshStorePageForTenantSetup} />
+          </div>
+        )}
+
+        {catalogState === 'empty_search_on_zero' && (
+          <div style={{ maxWidth: 1320, margin: `${isMobileViewport ? 18 : 24}px auto 0`, width: '100%', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
+            <StoreCatalogEmptyState mode="search_on_empty" searchQuery={catalogSearch.trim()} onRefreshTenantPage={refreshStorePageForTenantSetup} />
+          </div>
+        )}
+
+        {(catalogState === 'ready' || catalogState === 'empty_no_match') && (
+          <div style={isFnbMode ? {
+            maxWidth: 1320,
+            margin: `${isMobileViewport ? 18 : 24}px auto 0`,
+            width: '100%',
+            padding: isMobileViewport ? '0 16px' : '0 24px'
+          } : undefined}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : viewportWidth < 1200 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: 24 }}>
+              {catalogItemsToRender.map((item) => {
+                const imageUrl = withAssetOrigin(item.image_url);
+                const available = isItemAvailable(item);
+                const ServiceCategoryIcon = SERVICE_CATEGORY_ICON_MAP[item.categoryMeta?.iconToken] || Sparkles;
+                return (
+                  isFnbMode ? (
+                    <FnbProductCard
+                      key={item.item_id}
+                      item={item}
+                      imageUrl={imageUrl}
+                      available={available}
+                      modeAdapter={modeAdapter}
+                      addToCart={addToCart}
+                      isMobileViewport={isMobileViewport}
+                    />
+                  ) : isSimpleMode ? (
+                    <SimpleProductCard
+                      key={item.item_id}
+                      item={item}
+                      imageUrl={imageUrl}
+                      available={available}
+                      modeAdapter={modeAdapter}
+                      addToCart={addToCart}
+                    />
+                  ) : (
+                    <div key={item.item_id} style={{
+                      background: '#fff', borderRadius: 20, border: `1px solid ${STYLES.colors.border}`,
+                      overflow: 'hidden', display: 'flex', flexDirection: 'column', transition: 'all 0.2s ease',
+                      boxShadow: STYLES.shadow.sm, cursor: 'pointer'
+                    }} onClick={() => openServiceDetail(item)}>
+                      <div style={{ width: '100%', height: 184, minHeight: 184, maxHeight: 184, background: STYLES.colors.bg, position: 'relative', overflow: 'hidden' }}>
+                        {imageUrl ? (
+                          <img src={imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        ) : (
+                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: STYLES.colors.muted }}>No image</div>
+                        )}
+                        <div style={{ position: 'absolute', top: 12, right: 12 }}>
+                          <Badge background="rgba(255,255,255,0.9)" color={STYLES.colors.dark} border={STYLES.colors.border}>{item.service_detail?.service_area === 'onsite' ? 'Home Visit' : 'In-Store'}</Badge>
+                        </div>
+                      </div>
+                      <div style={{ padding: 16, flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        <div>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', marginBottom: 4 }}>
+                            <ServiceCategoryIcon size={13} />
+                            <span>{item.categoryMeta?.label || 'General'}</span>
+                          </div>
+                          <h4 style={{ margin: 0, fontSize: 18, fontWeight: 800, lineHeight: 1.3, color: STYLES.colors.dark }}>{item.variantName || item.name}</h4>
+                        </div>
+                        <p style={{ margin: 0, fontSize: 13, color: STYLES.colors.text, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                          {item.description || 'Expert service selection.'}
+                        </p>
+                        <div style={{ marginTop: 'auto' }}>
+                          <div style={{ fontSize: 20, fontWeight: 900, color: servicesPrimaryDark, marginBottom: 12 }}>{money(item.default_sale_price ?? 0)}</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                            <GhostButton style={{ padding: '8px', minHeight: 40, fontSize: 13 }} onClick={(e) => { e.stopPropagation(); openServiceDetail(item); }}>Details</GhostButton>
+                            <PrimaryButton style={{ padding: '8px', minHeight: 40, fontSize: 13 }} onClick={(e) => { e.stopPropagation(); addToCart(item); }} disabled={!available}>Add</PrimaryButton>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                );
+              })}
+              {catalogItemsToRender.length === 0 && (
+                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 48, color: STYLES.colors.muted }}>
+                  {isFnbMode
+                    ? 'No menu items match the current search or section yet.'
+                    : (isSimpleMode ? 'No simple-mode products match the current search yet.' : 'No products available in this category yet.')}
+                </div>
+              )}
+            </div>
+
+            {isFnbMode && itemsToRender.length > 0 && totalFnbPages > 1 && (
+              <div style={{
+                marginTop: isMobileViewport ? 24 : 32,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: isMobileViewport ? 'center' : 'space-between',
+                gap: 14,
+                flexWrap: 'wrap'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 13, color: STYLES.colors.muted }}>
+                    Showing {fnbPageStart}-{fnbPageEnd} of {itemsToRender.length} menu items
+                  </div>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
+                    Per page
+                    <StorefrontDropdown
+                      value={fnbPageSize}
+                      onChange={(nextValue) => setFnbPageSize(Number(nextValue) || 8)}
+                      options={[4, 8, 12, 16].map((size) => ({ value: size, label: String(size) }))}
+                      containerStyle={{ minWidth: 88 }}
+                      triggerStyle={{ minHeight: 38, borderRadius: 12, minWidth: 88, padding: '8px 42px 8px 12px' }}
+                      menuStyle={{ borderRadius: 14 }}
+                      selectedLabelStyle={{ fontSize: 13 }}
+                    />
+                  </label>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <GhostButton
+                    style={{ minHeight: 38, padding: '0 14px', opacity: resolvedFnbPage === 1 ? 0.5 : 1 }}
+                    onClick={() => setFnbPage((previous) => Math.max(1, previous - 1))}
+                    disabled={resolvedFnbPage === 1}
+                  >
+                    Previous
+                  </GhostButton>
+                  {Array.from({ length: totalFnbPages }, (_, index) => index + 1)
+                    .slice(Math.max(0, resolvedFnbPage - 3), Math.max(0, resolvedFnbPage - 3) + 5)
+                    .map((pageNumber) => (
+                      <button
+                        key={`fnb-page-${pageNumber}`}
+                        type="button"
+                        onClick={() => setFnbPage(pageNumber)}
+                        style={{
+                          minWidth: 38,
+                          minHeight: 38,
+                          borderRadius: 12,
+                          border: `1px solid ${pageNumber === resolvedFnbPage ? '#f59e0b' : '#e5e7eb'}`,
+                          background: pageNumber === resolvedFnbPage ? '#f59e0b' : '#fff',
+                          color: pageNumber === resolvedFnbPage ? '#fff' : STYLES.colors.dark,
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          boxShadow: pageNumber === resolvedFnbPage ? '0 8px 18px rgba(245,158,11,0.22)' : 'none'
+                        }}
+                      >
+                        {pageNumber}
+                      </button>
+                    ))}
+                  <GhostButton
+                    style={{ minHeight: 38, padding: '0 14px', opacity: resolvedFnbPage === totalFnbPages ? 0.5 : 1 }}
+                    onClick={() => setFnbPage((previous) => Math.min(totalFnbPages, previous + 1))}
+                    disabled={resolvedFnbPage === totalFnbPages}
+                  >
+                    Next
+                  </GhostButton>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+      )}
+
+      {isSimpleMode && isResolvedOrderSubpage && simpleStorefrontModel && (
+        <div style={{ display: 'grid', gap: 18, maxWidth: 1240, margin: '0 auto', width: '100%', padding: isMobileViewport ? '8px 16px 18px' : '18px 24px 28px' }}>
+          <section style={{ border: '1px solid #e2e8f0', borderRadius: 0, background: '#fff', padding: isMobileViewport ? '12px 14px' : '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginLeft: 'calc(50% - 50vw)', width: '100vw', maxWidth: '100vw', boxSizing: 'border-box' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+              <button
+                type="button"
+                onClick={goStoreCatalogPage}
+                style={{ width: 40, height: 40, borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', color: '#0f172a', fontWeight: 900, cursor: 'pointer', flexShrink: 0 }}
+                aria-label="Back to catalog"
+              >
+                &larr;
+              </button>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #dbe5ee', overflow: 'hidden', background: '#f8fafc', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                {withAssetOrigin(selectedStore?.storefront_profile_image_url) ? (
+                  <img src={withAssetOrigin(selectedStore?.storefront_profile_image_url)} alt={`${selectedStore?.tenant_name || 'Business'} profile`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#64748b' }}>Logo</span>
+                )}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 20, fontWeight: 900, color: '#0f172a', lineHeight: 1.2, fontFamily: servicesDisplayFont, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {selectedStore?.tenant_name || 'Storefront'}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Journey</div>
+            <div style={{ fontSize: isMobileViewport ? 24 : 28, fontWeight: 900, color: '#0f172a', lineHeight: 1.1, fontFamily: servicesDisplayFont }}>Complete Your Product Order</div>
+            <div style={{ fontSize: 14, color: '#64748b' }}>Set fulfillment first, provide one reliable contact, then review payment and totals before submitting.</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#0f766e', background: '#ecfeff', border: '1px solid #99f6e4', borderRadius: 999, padding: '4px 10px' }}>
+                {cartCount} item{cartCount === 1 ? '' : 's'}
+              </span>
+              <span style={{ fontSize: 12, color: '#64748b' }}>
+                {isDeliveryOrder ? 'Delivery order flow' : 'Pickup order flow'}
+              </span>
+            </div>
+          </section>
+
+          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr 1fr' : 'repeat(4, minmax(0, 1fr))', gap: 10 }}>
+            {[
+              { realStep: 1, displayStep: 1, label: 'Fulfillment', allow: true },
+              { realStep: 2, displayStep: 2, label: 'Customer', allow: cart.length > 0 },
+              { realStep: 3, displayStep: 3, label: 'Review & Pay', allow: cart.length > 0 && simpleCustomerStepComplete },
+              { realStep: 4, displayStep: 4, label: 'Confirmation', allow: Boolean(checkoutResult) }
+            ].map((item) => {
+              const isActive = simpleOrderStep === item.realStep;
+              const done = simpleOrderStep > item.realStep || (item.realStep === 4 && Boolean(checkoutResult));
+              return (
+                <button
+                  key={`simple-order-step-${item.realStep}`}
+                  type="button"
+                  onClick={() => {
+                    if (!item.allow) return;
+                    setSimpleOrderStep(item.realStep);
+                  }}
+                  disabled={!item.allow}
+                  style={{
+                    borderRadius: 14,
+                    border: `1px solid ${isActive ? '#0f766e' : '#e2e8f0'}`,
+                    background: isActive ? '#ecfeff' : '#fff',
+                    color: isActive ? '#0f766e' : '#334155',
+                    minHeight: 52,
+                    fontSize: 13,
+                    fontWeight: 800,
+                    cursor: item.allow ? 'pointer' : 'not-allowed',
+                    opacity: item.allow ? 1 : 0.65
+                  }}
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900, background: done ? '#0f766e' : (isActive ? '#0f766e' : '#e2e8f0'), color: done || isActive ? '#fff' : '#64748b' }}>{item.displayStep}</span>
+                    <span>{item.label}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {simpleOrderStep === 1 && (
+            <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.45fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
+              <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
+                <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Step 1: Fulfillment</div>
+                <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Choose how the customer will receive the order, then add optional timing or notes once.</div>
+                {storeLocations.length > 0 && (
+                  <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                    Fulfillment Location
+                    <select
+                      value={selectedLocationId ?? ''}
+                      onChange={(event) => setSelectedLocationId(event.target.value ? Number(event.target.value) : null)}
+                      style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
+                    >
+                      {storeLocations.map((location) => (
+                        <option key={location.location_id} value={location.location_id} disabled={location.is_open === false || location.is_active === false}>
+                          {location.name} {location.is_primary_storefront ? '(Primary)' : ''} {location.is_open === false ? '(Closed)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
+                  {simpleOrderMethodOptions.map((option) => {
+                    const isActive = orderMethod === option.value;
+                    return (
+                      <button
+                        key={`simple-order-method-${option.value}`}
+                        type="button"
+                        onClick={() => {
+                          setOrderMethod(option.value);
+                          setPinLocationError('');
+                        }}
+                        style={{ minHeight: 48, borderRadius: 12, border: `1px solid ${isActive ? '#0f766e' : '#dbe5ee'}`, background: isActive ? '#ecfeff' : '#fff', color: isActive ? '#0f766e' : '#334155', fontWeight: 800, cursor: 'pointer' }}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
+                  <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                    Schedule time (optional)
+                    <input type="datetime-local" value={fnbScheduledFor} onChange={(event) => setFnbScheduledFor(event.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                  </label>
+                  <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                    Special instructions (optional)
+                    <textarea value={fnbSpecialInstructions} onChange={(event) => setFnbSpecialInstructions(event.target.value)} placeholder="Packing notes, landmark hints, or pickup reminders." rows={3} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical' }} />
+                  </label>
+                </div>
+                {selectedLocation?.is_open === false && (
+                  <div style={{ fontSize: 12, color: '#b45309', fontWeight: 700, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 12px' }}>
+                    Selected location is closed and cannot accept orders right now.
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                  <button type="button" onClick={goStoreCatalogPage} style={{ minHeight: 42, minWidth: isMobileViewport ? 156 : 172, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 18px', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>Back to Catalog</button>
+                  <button type="button" onClick={() => setSimpleOrderStep(2)} disabled={cart.length === 0} style={{ minHeight: 42, minWidth: isMobileViewport ? 140 : 156, borderRadius: 12, border: 'none', background: cart.length > 0 ? '#ea580c' : '#cbd5e1', color: '#fff', padding: '0 18px', fontWeight: 800, cursor: cart.length > 0 ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>Continue</button>
+                </div>
+              </section>
+              <aside style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 10, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Summary</div>
+                <div style={{ fontSize: 38, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{money(totalsForDisplay.total_amount)}</div>
+                <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Fulfillment</span><strong>{isDeliveryOrder ? 'Delivery' : 'Pickup'}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Schedule</span><strong>{fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'ASAP'}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Status</span><strong>Waiting for customer details</strong></div>
+                </div>
+              </aside>
+            </div>
+          )}
+
+          {simpleOrderStep === 2 && (
+            <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.45fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
+              <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
+                <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Step 2: Customer Details</div>
+                <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Ask only for one name, one contact method, and a delivery address when delivery is selected.</div>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
+                  <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                    Customer Name *
+                    <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Ex. Juan Dela Cruz" style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                  </label>
+                  <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                    Contact Number
+                    <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="09XX XXX XXXX" style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                  </label>
+                  <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
+                    Email {String(customerPhone || '').trim() ? '(optional)' : '*'}
+                    <input value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} placeholder="name@email.com" style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                  </label>
+                  {isDeliveryOrder && (
+                    <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
+                      Delivery Address *
+                      <textarea value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} placeholder="House no., street, barangay, landmark" rows={3} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical' }} />
+                    </label>
+                  )}
+                </div>
+
+                {isDeliveryOrder && (
+                  <div style={{ border: '1px solid #d9e4e8', borderRadius: 14, padding: 12, background: 'linear-gradient(180deg,#f8fffe 0%,#ffffff 100%)', display: 'grid', gap: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>Delivery Pin</div>
+                        <div style={{ fontSize: 12, color: '#64748b' }}>Optional, but recommended for faster handoff.</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button type="button" onClick={handlePinMyLocation} disabled={pinLocationLoading} style={{ borderRadius: 12, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 700, cursor: 'pointer' }}>
+                          {pinLocationLoading ? 'Pinning...' : 'Pin My Location'}
+                        </button>
+                        <button type="button" onClick={() => setCustomerPin(null)} disabled={!customerPin} style={{ borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '8px 12px', fontWeight: 700, cursor: !customerPin ? 'not-allowed' : 'pointer' }}>
+                          Clear Pin
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 12, color: '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '9px 12px' }}>
+                      {customerPin
+                        ? `Pinned at ${Number(customerPin.latitude).toFixed(6)}, ${Number(customerPin.longitude).toFixed(6)}`
+                        : 'No pin selected yet. Tap the map or use your current location.'}
+                    </div>
+                    <DeliveryPinMap pin={customerPin} onPinChange={setCustomerPin} disabled={false} />
+                    {pinLocationError && <p style={{ margin: 0, fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</p>}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                  <button type="button" onClick={() => setSimpleOrderStep(1)} style={{ minHeight: 42, minWidth: isMobileViewport ? 120 : 136, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 18px', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>Back</button>
+                  <button type="button" onClick={() => setSimpleOrderStep(3)} disabled={!simpleCustomerStepComplete} style={{ minHeight: 42, minWidth: isMobileViewport ? 140 : 156, borderRadius: 12, border: 'none', background: simpleCustomerStepComplete ? '#ea580c' : '#cbd5e1', color: '#fff', padding: '0 18px', fontWeight: 800, cursor: simpleCustomerStepComplete ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>Continue</button>
+                </div>
+                {!simpleCustomerStepComplete && (
+                  <div style={{ fontSize: 12, color: '#b45309' }}>
+                    Add customer name, one contact method, and a delivery address when delivery is selected.
+                  </div>
+                )}
+              </section>
+              <aside style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 10, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Summary</div>
+                <div style={{ fontSize: 38, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{money(totalsForDisplay.total_amount)}</div>
+                <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Fulfillment</span><strong>{isDeliveryOrder ? 'Delivery' : 'Pickup'}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Contact</span><strong>{simpleHasPrimaryContact ? 'Ready' : 'Needed'}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Status</span><strong>{simpleCustomerStepComplete ? 'Ready for review' : 'Waiting for details'}</strong></div>
+                </div>
+              </aside>
+            </div>
+          )}
+
+          {simpleOrderStep === 3 && !checkoutResult && (
+            <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.45fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
+              <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
+                <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Step 3: Review and Payment</div>
+                <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Review the cart, refresh the quote when needed, then choose payment and submit the order.</div>
+                <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                  Payment Type
+                  <StorefrontDropdown
+                    value={fnbPaymentType}
+                    onChange={(nextValue) => setFnbPaymentType(String(nextValue))}
+                    options={[
+                      { value: 'cash', label: 'Cash on delivery/pickup' },
+                      { value: 'gcash', label: 'GCash' },
+                      { value: 'maya', label: 'Maya' },
+                      { value: 'card', label: 'Card' },
+                      { value: 'bank_transfer', label: 'Bank transfer' }
+                    ]}
+                    triggerStyle={{ minHeight: 44, borderRadius: 12 }}
+                  />
+                </label>
+                <div style={{ maxHeight: isMobileViewport ? 260 : 320, overflowY: 'auto', display: 'grid', gap: 8 }}>
+                  {cart.map((line) => (
+                    <div key={`simple-order-summary-${line.item_id}`} style={{ border: '1px solid #e2e8f0', borderRadius: 12, background: '#fff', padding: '9px 10px', display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
+                      <span>{line.name} x {Math.max(1, Number(line.quantity || 1))}</span>
+                      <strong>{money((Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0))}</strong>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ minHeight: 44, borderRadius: 12, border: '1px solid #ea580c', background: '#fff', color: '#9a3412', fontWeight: 800, cursor: 'pointer' }}>
+                    {quoteResult ? 'Refresh Quote' : 'Get Quote'}
+                  </button>
+                  <button type="button" onClick={handleCheckout} disabled={!simpleCheckoutAllowed} style={{ minHeight: 44, borderRadius: 12, border: 'none', background: simpleCheckoutAllowed ? '#ea580c' : '#cbd5e1', color: '#fff', fontWeight: 800, cursor: simpleCheckoutAllowed ? 'pointer' : 'not-allowed' }}>
+                    {checkoutLoading ? 'Processing...' : 'Place Order'}
+                  </button>
+                </div>
+                <button type="button" onClick={() => setSimpleOrderStep(2)} style={{ justifySelf: 'start', minHeight: 40, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}>Back</button>
+                {quoteError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{quoteError}</p>}
+                {checkoutError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
+                {requireQuoteForCheckout && !quoteResult && cart.length > 0 && (
+                  <div style={{ fontSize: 12, color: '#b45309' }}>Quote the order first so totals and fees are synced before checkout.</div>
+                )}
+              </section>
+              <aside style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 10, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Summary</div>
+                <div style={{ fontSize: 38, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{money(totalsForDisplay.total_amount)}</div>
+                <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Fulfillment</span><strong>{isDeliveryOrder ? 'Delivery' : 'Pickup'}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Schedule</span><strong>{fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'ASAP'}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Payment</span><strong>{String(fnbPaymentType || 'cash').replace('_', ' ').toUpperCase()}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Status</span><strong>{simpleCheckoutAllowed ? 'Ready to submit' : (requireQuoteForCheckout ? 'Quote required' : 'Complete required fields')}</strong></div>
+                </div>
+                <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 8, display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Subtotal</span><strong>{money(totalsForDisplay.subtotal_amount)}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>{totalsForDisplay.service_fee_label}</span><strong>{money(totalsForDisplay.service_fee_amount)}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Delivery Fee</span><strong>{money(totalsForDisplay.delivery_fee)}</strong></div>
+                </div>
+              </aside>
+            </div>
+          )}
+
+          {simpleOrderStep === 4 && checkoutResult && (
+            <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.45fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
+              <section style={{ border: '1px solid #99f6e4', borderRadius: 16, background: '#ecfeff', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Confirmed</div>
+                <div style={{ fontSize: isMobileViewport ? 24 : 30, fontWeight: 900, color: '#0f172a', lineHeight: 1.1, fontFamily: servicesDisplayFont }}>Your order is now in the storefront queue.</div>
+                <div style={{ fontSize: 14, color: '#475569' }}>Reference: <strong>{checkoutResult?.tracking_pin || 'Pending'}</strong></div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {(Array.isArray(checkoutResult?.cart_lines) ? checkoutResult.cart_lines : []).map((line) => (
+                    <div key={`simple-confirm-line-${line.item_id}`} style={{ border: '1px solid #b6f2e9', borderRadius: 12, background: '#fff', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13 }}>
+                      <span>{line.name} x {Math.max(1, Number(line.quantity || 1))}</span>
+                      <strong>{money((Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0))}</strong>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  {checkoutResult?.payment?.checkout_url && (
+                    <a href={checkoutResult.payment.checkout_url} target="_blank" rel="noreferrer" style={{ minHeight: 42, borderRadius: 12, border: 'none', background: '#ea580c', color: '#fff', padding: '0 14px', fontWeight: 800, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                      Pay Now
+                    </a>
+                  )}
+                  <button type="button" onClick={handleDownloadCheckoutImage} style={{ minHeight: 42, borderRadius: 12, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}>
+                    Download Image
+                  </button>
+                  <button type="button" onClick={() => { setCheckoutResult(null); setSimpleOrderStep(1); goStoreCatalogPage(); }} style={{ minHeight: 42, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#0f172a', padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}>
+                    Back to Catalog
+                  </button>
+                </div>
+              </section>
+              <aside style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 10, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Receipt Snapshot</div>
+                <div style={{ fontSize: 38, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{money(checkoutResult?.totals?.total_amount ?? totalsForDisplay.total_amount)}</div>
+                <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Tracking PIN</span><strong>{checkoutResult?.tracking_pin || 'Pending'}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Payment</span><strong>{String(fnbPaymentType || 'cash').replace('_', ' ').toUpperCase()}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Fulfillment</span><strong>{isDeliveryOrder ? 'Delivery' : 'Pickup'}</strong></div>
+                </div>
+              </aside>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isSimpleMode && !isResolvedOrderSubpage && simpleStorefrontModel && (
+        <>
+          {Array.isArray(promoSectionModel) && promoSectionModel.length > 0 && (
+            <section
+              style={{
+                marginLeft: 'calc(50% - 50vw)',
+                width: '100vw',
+                marginTop: isMobileViewport ? 20 : 28,
+                padding: isMobileViewport ? '24px 0 20px' : '32px 0 26px',
+                background: 'linear-gradient(180deg, #fffaf5 0%, #ffffff 100%)',
+                borderTop: '1px solid #fed7aa',
+                borderBottom: '1px solid #ffedd5',
+                display: 'grid',
+                gap: 14
+              }}
+            >
+              <div
+                style={{
+                  maxWidth: 1220,
+                  width: '100%',
+                  margin: '0 auto',
+                  paddingLeft: isMobileViewport ? 16 : 24,
+                  paddingRight: isMobileViewport ? 16 : 24,
+                  display: 'grid',
+                  gap: 14
+                }}
+              >
+                <div style={{ display: 'grid', gap: 4 }}>
+                  <h2 style={{ margin: 0, fontSize: isMobileViewport ? 22 : 26, fontWeight: 900, color: STYLES.colors.dark }}>
+                    Current Promos
+                  </h2>
+                  <p style={{ margin: 0, fontSize: 13, color: STYLES.colors.muted }}>
+                    Limited-time offers available from this storefront.
+                  </p>
+                </div>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))',
+                    gap: 18
+                  }}
+                >
+                  {promoSectionModel.map((promoEntry, index) => (
+                    <article
+                      key={`simple-promo-card-${index}`}
+                      style={{
+                        position: 'relative',
+                        borderRadius: 26,
+                        border: '1px solid #fed7aa',
+                        background: 'linear-gradient(135deg, #ffffff 0%, #fffaf5 58%, #fff7ed 100%)',
+                        boxShadow: '0 14px 28px rgba(249, 115, 22, 0.10)',
+                        padding: isMobileViewport ? '18px 16px' : '18px 20px',
+                        display: 'grid',
+                        gap: 14,
+                        overflow: 'hidden',
+                        transition: 'transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease',
+                        animation: 'promoCardFloatIn 420ms ease both',
+                        animationDelay: `${index * 90}ms`
+                      }}
+                    >
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: '0 auto 0 0',
+                          width: 4,
+                          background: 'linear-gradient(180deg, #fb923c 0%, #f97316 100%)',
+                          boxShadow: '0 0 22px rgba(249, 115, 22, 0.25)'
+                        }}
+                      />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 999,
+                            border: '1px solid #fdba74',
+                            background: '#fff7ed',
+                            color: '#f97316',
+                            display: 'grid',
+                            placeItems: 'center',
+                            flexShrink: 0
+                          }}
+                        >
+                          <Sparkles size={17} />
+                        </div>
+                        <div style={{ fontSize: isMobileViewport ? 14 : 16, fontWeight: 900, color: STYLES.colors.dark, textTransform: 'uppercase', lineHeight: 1.2 }}>
+                          {promoEntry.title || promoEntry.badge || 'Promo'}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(96px, 124px) minmax(0, 1fr)',
+                          gap: isMobileViewport ? 12 : 14,
+                          alignItems: 'stretch'
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'grid',
+                            alignContent: 'center',
+                            justifyItems: 'start',
+                            paddingRight: isMobileViewport ? 0 : 14,
+                            borderRight: isMobileViewport ? 'none' : '1px solid #d4d4d8'
+                          }}
+                        >
+                          <div style={{ fontSize: isMobileViewport ? 38 : 48, fontWeight: 900, lineHeight: 0.92, color: '#f97316', letterSpacing: '-0.04em' }}>
+                            {promoEntry.headline || promoEntry.badge || 'Promo'}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'grid', alignContent: 'center', gap: 6, minWidth: 0 }}>
+                          <div style={{ fontSize: isMobileViewport ? 18 : 20, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.15 }}>
+                            {promoEntry.subtitle || 'Storefront offer'}
+                          </div>
+                          {promoEntry.supportingText && (
+                            <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                              {promoEntry.supportingText}
+                            </div>
+                          )}
+                          {promoEntry.validityText && (
+                            <div style={{ fontSize: 13, color: '#6b7280' }}>
+                              {promoEntry.validityText}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+
+          <section
+            style={{
+              marginTop: 0,
+              marginLeft: 'calc(50% - 50vw)',
+              width: '100vw',
+              padding: isMobileViewport ? '36px 0 30px' : '72px 0 42px',
+              background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
+              borderTop: '1px solid #e2e8f0',
+              borderBottom: '1px solid #e2e8f0',
+              display: 'grid',
+              gap: 18
+            }}
+          >
+            <div
+              style={{
+                maxWidth: 1320,
+                width: '100%',
+                margin: '0 auto',
+                paddingLeft: isMobileViewport ? 16 : 24,
+                paddingRight: isMobileViewport ? 16 : 24,
+                display: 'grid',
+                gap: 18
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: isMobileViewport ? 'flex-start' : 'center',
+                  justifyContent: 'space-between',
+                  flexDirection: isMobileViewport ? 'column' : 'row',
+                  gap: 16
+                }}
+              >
+                <div>
+                  <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, fontWeight: 900, color: STYLES.colors.dark }}>
+                    Customer Reviews
+                  </h2>
+                  <p style={{ margin: '6px 0 0 0', fontSize: 14, color: STYLES.colors.muted }}>
+                    See what customers say about this storefront
+                  </p>
+                </div>
+                <PrimaryButton
+                  onClick={() => setIsReviewModalOpen(true)}
+                  style={{
+                    minHeight: 46,
+                    minWidth: isMobileViewport ? '100%' : 168,
+                    justifyContent: 'center'
+                  }}
+                >
+                  Write a Review
+                </PrimaryButton>
+              </div>
+
+              {simpleStorefrontModel.reviewHighlights.length > 0 ? (
+                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : viewportWidth < 1024 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))', gap: 18 }}>
+                  {simpleStorefrontModel.reviewHighlights.map((review, index) => {
+                    const reviewerName = String(review?.reviewer_name || '').trim() || 'Customer';
+                    const rating = Number(review?.rating);
+                    const comment = String(review?.comment || '').trim();
+                    return (
+                      <article
+                        key={`simple-customer-review-${index}`}
+                        style={{
+                          background: '#fcfdff',
+                          border: '1px solid #dbe5ee',
+                          borderRadius: 18,
+                          padding: 18,
+                          boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)',
+                          display: 'grid',
+                          gap: 12,
+                          alignContent: 'start'
+                        }}
+                      >
+                        <div style={{ display: 'grid', gap: 6 }}>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark }}>{reviewerName}</div>
+                          {Number.isFinite(rating) && rating > 0 && (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: STYLES.colors.amber, fontSize: 14, lineHeight: 1 }}>
+                              {Array.from({ length: 5 }, (_, starIndex) => (
+                                <span key={`simple-review-card-star-${index}-${starIndex}`} style={{ opacity: starIndex < Math.round(rating) ? 1 : 0.25 }}>
+                                  *
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#334155' }}>{comment || 'Review comment will appear here once available in SKUpervisor.'}</p>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    background: '#fcfdff',
+                    border: '1px solid #dbe5ee',
+                    borderRadius: 18,
+                    padding: isMobileViewport ? 20 : 24,
+                    boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)',
+                    fontSize: 14,
+                    color: STYLES.colors.muted
+                  }}
+                >
+                  Customer reviews will appear here once this storefront adds review data in SKUpervisor.
+                </div>
+              )}
+            </div>
+          </section>
+
+          <footer
+            style={{
+              marginLeft: 'calc(50% - 50vw)',
+              width: '100vw',
+              background: '#090b0f',
+              borderTop: '1px solid rgba(148, 163, 184, 0.18)'
+            }}
+          >
+            <div
+              style={{
+                maxWidth: 1320,
+                width: '100%',
+                margin: '0 auto',
+                padding: isMobileViewport ? '28px 16px 32px' : '48px 24px 36px',
+                display: 'grid',
+                gap: 28
+              }}
+            >
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)',
+                  gap: isMobileViewport ? 24 : 36
+                }}
+              >
+                <div style={{ display: 'grid', gap: 18 }}>
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <div style={{ fontSize: 28, fontWeight: 900, color: '#ffffff', letterSpacing: '-0.03em' }}>{simpleStorefrontModel.name}</div>
+                    <div style={{ maxWidth: 360, fontSize: 15, lineHeight: 1.7, color: '#94a3b8' }}>
+                      {simpleStorefrontModel.tagline || simpleStorefrontModel.aboutText || 'Simple storefront powered by SKUpervisor content.'}
+                    </div>
+                  </div>
+
+                  {getStorefrontSocialFooterLinks(simpleStorefrontModel.footerLinks).length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                      {getStorefrontSocialFooterLinks(simpleStorefrontModel.footerLinks).map((link) => (
+                        <a
+                          key={`simple-footer-social-${link.label}`}
+                          href={link.href}
+                          target={String(link.href).startsWith('http') ? '_blank' : undefined}
+                          rel={String(link.href).startsWith('http') ? 'noreferrer' : undefined}
+                          style={{
+                            width: 42,
+                            height: 42,
+                            borderRadius: 12,
+                            border: '1px solid rgba(148, 163, 184, 0.18)',
+                            background: 'rgba(15, 23, 42, 0.55)',
+                            color: '#e2e8f0',
+                            fontSize: 12,
+                            fontWeight: 800,
+                            display: 'grid',
+                            placeItems: 'center',
+                            textDecoration: 'none'
+                          }}
+                          title={link.label}
+                        >
+                          <FooterSocialIcon label={link.label} />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    Products
+                  </div>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {simpleStorefrontModel.productGroups.map((group) => (
+                      <div key={`simple-footer-group-${group}`} style={{ fontSize: 15, color: '#cbd5e1' }}>
+                        {group}
+                      </div>
+                    ))}
+                    {simpleStorefrontModel.productGroups.length === 0 && (
+                      <div style={{ fontSize: 15, color: '#64748b' }}>No product categories yet.</div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    Socials
+                  </div>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {getStorefrontSocialFooterLinks(simpleStorefrontModel.footerLinks).map((link) => (
+                      <a
+                        key={`simple-footer-social-link-${link.label}`}
+                        href={link.href}
+                        target={String(link.href).startsWith('http') ? '_blank' : undefined}
+                        rel={String(link.href).startsWith('http') ? 'noreferrer' : undefined}
+                        style={{ fontSize: 15, color: '#cbd5e1', textDecoration: 'none' }}
+                      >
+                        {link.label}
+                      </a>
+                    ))}
+                    {getStorefrontSocialFooterLinks(simpleStorefrontModel.footerLinks).length === 0 && (
+                      <div style={{ fontSize: 15, color: '#64748b' }}>No social links yet.</div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    Contact
+                  </div>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {getStorefrontContactFooterLinks(simpleStorefrontModel.footerLinks).map((link) => (
+                      <a key={`simple-footer-contact-${link.label}`} href={link.href} style={{ fontSize: 15, color: '#cbd5e1', textDecoration: 'none' }}>
+                        {link.label === 'Call' ? String(link.href).replace('tel:', '') : String(link.href).replace('mailto:', '')}
+                      </a>
+                    ))}
+                    {simpleStorefrontModel.hours && <div style={{ fontSize: 15, color: '#cbd5e1' }}>{simpleStorefrontModel.hours}</div>}
+                    <div style={{ fontSize: 15, color: '#cbd5e1' }}>{simpleStorefrontModel.locationLabel}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  paddingTop: 18,
+                  borderTop: '1px solid rgba(148, 163, 184, 0.12)',
+                  display: 'flex',
+                  alignItems: isMobileViewport ? 'flex-start' : 'center',
+                  justifyContent: 'space-between',
+                  flexDirection: isMobileViewport ? 'column' : 'row',
+                  gap: 10
+                }}
+              >
+                <div style={{ fontSize: 13, color: '#64748b' }}>
+                  {simpleStorefrontModel.name}{simpleStorefrontModel.registrationYear ? ` ${simpleStorefrontModel.registrationYear}` : ''}
+                </div>
+                <div style={{ fontSize: 13, color: '#64748b' }}>Powered by SKUpervisor</div>
+              </div>
+            </div>
+          </footer>
+        </>
+      )}
+
+      {isFnbMode && !isOrderSubpage && fnbCommunityModel && (
+        <>
+          {Array.isArray(promoSectionModel) && promoSectionModel.length > 0 && (
+            <section
+              style={{
+                marginLeft: 'calc(50% - 50vw)',
+                width: '100vw',
+                marginTop: isMobileViewport ? 12 : 18,
+                padding: isMobileViewport ? '24px 0 20px' : '32px 0 26px',
+                background: 'linear-gradient(180deg, #fffaf5 0%, #ffffff 100%)',
+                borderTop: '1px solid #fed7aa',
+                borderBottom: '1px solid #ffedd5',
+                display: 'grid',
+                gap: 14
+              }}
+            >
+              <div
+                style={{
+                  maxWidth: 1220,
+                  width: '100%',
+                  margin: '0 auto',
+                  paddingLeft: isMobileViewport ? 16 : 24,
+                  paddingRight: isMobileViewport ? 16 : 24,
+                  display: 'grid',
+                  gap: 14
+                }}
+              >
+                <div style={{ display: 'grid', gap: 4 }}>
+                  <h2 style={{ margin: 0, fontSize: isMobileViewport ? 22 : 26, fontWeight: 900, color: STYLES.colors.dark }}>
+                    Current Promos
+                  </h2>
+                  <p style={{ margin: 0, fontSize: 13, color: STYLES.colors.muted }}>
+                    Limited-time offers available from this storefront.
+                  </p>
+                </div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))',
+                    gap: 18
+                  }}
+                >
+                  {promoSectionModel.map((promoEntry, index) => (
+                    <article
+                      key={`fnb-promo-card-${index}`}
+                      style={{
+                        position: 'relative',
+                        borderRadius: 26,
+                        border: '1px solid #fed7aa',
+                        background: 'linear-gradient(135deg, #ffffff 0%, #fffaf5 58%, #fff7ed 100%)',
+                        boxShadow: '0 14px 28px rgba(249, 115, 22, 0.10)',
+                        padding: isMobileViewport ? '18px 16px' : '18px 20px',
+                        display: 'grid',
+                        gap: 14
+                      }}
+                    >
+                      <div style={{ fontSize: 14, fontWeight: 900, color: '#f97316', textTransform: 'uppercase' }}>
+                        {promoEntry.title || promoEntry.badge || 'Promo'}
+                      </div>
+                      <div style={{ fontSize: isMobileViewport ? 34 : 42, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 0.95 }}>
+                        {promoEntry.headline || promoEntry.badge || 'Promo'}
+                      </div>
+                      <div style={{ fontSize: isMobileViewport ? 16 : 18, fontWeight: 800, color: '#111827' }}>
+                        {promoEntry.subtitle || 'Storefront offer'}
+                      </div>
+                      {promoEntry.supportingText && (
+                        <div style={{ fontSize: 14, color: '#374151' }}>{promoEntry.supportingText}</div>
+                      )}
+                      {promoEntry.validityText && (
+                        <div style={{ fontSize: 13, color: '#6b7280' }}>{promoEntry.validityText}</div>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+
+          <section
+            style={{
+              marginLeft: 'calc(50% - 50vw)',
+              width: '100vw',
+              padding: isMobileViewport ? '20px 0 24px' : '30px 0 34px',
+              background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
+              borderTop: '1px solid #e2e8f0',
+              borderBottom: '1px solid #e2e8f0',
+              display: 'grid',
+              gap: 18
+            }}
+          >
+            <div
+              style={{
+                maxWidth: 1320,
+                width: '100%',
+                margin: '0 auto',
+                paddingLeft: isMobileViewport ? 16 : 24,
+                paddingRight: isMobileViewport ? 16 : 24,
+                display: 'grid',
+                gap: 18
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: isMobileViewport ? 'stretch' : 'center', justifyContent: 'space-between', flexDirection: isMobileViewport ? 'column' : 'row', gap: 14 }}>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 30, fontWeight: 900, color: STYLES.colors.dark, fontFamily: modeAdapter.heroTheme?.displayFont }}>Customer Reviews</h2>
+                  <p style={{ margin: 0, fontSize: 14, color: STYLES.colors.muted }}>See what diners are saying about this menu storefront.</p>
+                </div>
+                <PrimaryButton
+                  style={{ minHeight: 44, minWidth: isMobileViewport ? '100%' : 170, justifyContent: 'center' }}
+                  onClick={() => setIsReviewModalOpen(true)}
+                >
+                  Write Review
+                </PrimaryButton>
+              </div>
+
+              {fnbCommunityModel.reviewHighlights.length > 0 ? (
+                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : viewportWidth < 1024 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))', gap: 18 }}>
+                  {fnbCommunityModel.reviewHighlights.map((review, index) => {
+                    const reviewerName = String(review?.reviewer_name || '').trim() || 'Customer';
+                    const rating = Number(review?.rating);
+                    const comment = String(review?.comment || '').trim();
+                    return (
+                      <article
+                        key={`fnb-customer-review-${index}`}
+                        style={{
+                          borderRadius: 20,
+                          border: '1px solid #dbe5ee',
+                          background: '#ffffff',
+                          boxShadow: '0 14px 28px rgba(15,23,42,0.06)',
+                          padding: isMobileViewport ? 16 : 18,
+                          display: 'grid',
+                          gap: 10
+                        }}
+                      >
+                        <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark }}>{reviewerName}</div>
+                        {Number.isFinite(rating) && rating > 0 && (
+                          <div style={{ color: '#f59e0b', fontSize: 14 }}>
+                            {Array.from({ length: 5 }, (_, starIndex) => (
+                              <span key={`fnb-review-card-star-${index}-${starIndex}`} style={{ opacity: starIndex < Math.round(rating) ? 1 : 0.25 }}>
+                                ★
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div style={{ fontSize: 14, lineHeight: 1.6, color: '#334155' }}>
+                          {comment || 'Review comment will appear here once available in SKUpervisor.'}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ borderRadius: 20, border: '1px dashed #cbd5e1', background: '#ffffff', padding: isMobileViewport ? 22 : 30, textAlign: 'center', color: '#64748b', fontSize: 14 }}>
+                  Customer reviews will appear here once this storefront adds review data in SKUpervisor.
+                </div>
+              )}
+            </div>
+          </section>
+
+          <footer
+            style={{
+              marginLeft: 'calc(50% - 50vw)',
+              width: '100vw',
+              background: '#090b0f',
+              borderTop: '1px solid rgba(148, 163, 184, 0.18)'
+            }}
+          >
+            <div
+              style={{
+                maxWidth: 1320,
+                width: '100%',
+                margin: '0 auto',
+                padding: isMobileViewport ? '28px 16px 32px' : '48px 24px 36px',
+                display: 'grid',
+                gap: 28
+              }}
+            >
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)',
+                  gap: isMobileViewport ? 24 : 36
+                }}
+              >
+                <div style={{ display: 'grid', gap: 18 }}>
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <div style={{ fontSize: 28, fontWeight: 900, color: '#ffffff', letterSpacing: '-0.03em', fontFamily: modeAdapter.heroTheme?.displayFont }}>{fnbCommunityModel.name}</div>
+                    <div style={{ maxWidth: 360, fontSize: 15, lineHeight: 1.7, color: '#94a3b8' }}>
+                      {fnbCommunityModel.tagline || fnbCommunityModel.aboutText || 'Food and beverage storefront powered by SKUpervisor content.'}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    Menu Categories
+                  </div>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {fnbCommunityModel.menuCategories.slice(0, 5).map((group) => (
+                      <div key={`fnb-footer-group-${group.key}`} style={{ fontSize: 15, color: '#cbd5e1' }}>
+                        {group.label}
+                      </div>
+                    ))}
+                    {fnbCommunityModel.menuCategories.length === 0 && (
+                      <div style={{ fontSize: 15, color: '#64748b' }}>No categories yet.</div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    Socials
+                  </div>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {fnbCommunityModel.footerLinks
+                      .filter((link) => ['Website', 'Facebook', 'Instagram', 'TikTok', 'Messenger'].includes(link.label))
+                      .map((link) => (
+                        <a
+                          key={`fnb-footer-social-link-${link.label}`}
+                          href={link.href}
+                          target={String(link.href).startsWith('http') ? '_blank' : undefined}
+                          rel={String(link.href).startsWith('http') ? 'noreferrer' : undefined}
+                          style={{ fontSize: 15, color: '#cbd5e1', textDecoration: 'none' }}
+                        >
+                          {link.label}
+                        </a>
+                      ))}
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    Contact
+                  </div>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {fnbCommunityModel.footerLinks
+                      .filter((link) => ['Call', 'Email'].includes(link.label))
+                      .map((link) => (
+                        <a key={`fnb-footer-contact-${link.label}`} href={link.href} style={{ fontSize: 15, color: '#cbd5e1', textDecoration: 'none' }}>
+                          {link.label === 'Call' ? String(link.href).replace('tel:', '') : String(link.href).replace('mailto:', '')}
+                        </a>
+                      ))}
+                    {fnbCommunityModel.hours && <div style={{ fontSize: 15, color: '#cbd5e1' }}>{fnbCommunityModel.hours}</div>}
+                    <div style={{ fontSize: 15, color: '#cbd5e1' }}>{fnbCommunityModel.locationLabel}</div>
+                  </div>
+                </div>
+              </div>
+              <div
+                style={{
+                  paddingTop: 18,
+                  borderTop: '1px solid rgba(148, 163, 184, 0.12)',
+                  display: 'flex',
+                  alignItems: isMobileViewport ? 'flex-start' : 'center',
+                  justifyContent: 'space-between',
+                  flexDirection: isMobileViewport ? 'column' : 'row',
+                  gap: 10
+                }}
+              >
+                <div style={{ fontSize: 13, color: '#64748b' }}>
+                  {fnbCommunityModel.name}{fnbCommunityModel.registrationYear ? ` ${fnbCommunityModel.registrationYear}` : ''}
+                </div>
+                <div style={{ fontSize: 13, color: '#64748b' }}>Powered by SKUpervisor</div>
+              </div>
+            </div>
+          </footer>
+        </>
+      )}
+    </div>
+
+    {/* ZONE 5: Sidebar (Desktop) */}
+    {isServicesMode && !isMobileViewport && (
+      <aside style={{ display: 'grid', gap: 24, alignContent: 'start' }}>
+        <div style={{ padding: 24, background: '#fff', borderRadius: STYLES.radius.card, border: `1px solid ${STYLES.colors.border}`, boxShadow: STYLES.shadow.sm }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: STYLES.colors.dark, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 20 }}>Performance Summary</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+            <div style={{ fontSize: 48, fontWeight: 900, color: STYLES.colors.dark }}>{selectedStore.storefront_review_summary?.score?.toFixed(1) || '0.0'}</div>
+            <div>
+              <div style={{ color: STYLES.colors.amber, fontSize: 18 }}>*****</div>
+              <div style={{ fontSize: 12, color: STYLES.colors.muted }}>from {selectedStore.storefront_review_summary?.total_count || 0} reviews</div>
+            </div>
+          </div>
+          {isMultiGroup && (
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: STYLES.colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Service Families</div>
+              {servicesViewModel.serviceGroups.map(group => {
+                const GroupIcon = SERVICE_CATEGORY_ICON_MAP[group.categoryMeta?.iconToken] || Sparkles;
+                return (
+                  <button
+                    key={group.categoryKey}
+                    type="button"
+                    onClick={() => setActiveServiceTab(group.categoryKey)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '10px 14px', borderRadius: 12,
+                      border: resolvedTab === group.categoryKey ? `1.5px solid ${group.categoryMeta.accent}` : `1px solid ${STYLES.colors.border}`,
+                      background: resolvedTab === group.categoryKey ? group.categoryMeta.accentBg || '#f0fdfa' : '#fff',
+                      color: resolvedTab === group.categoryKey ? group.categoryMeta.accent : STYLES.colors.text,
+                      fontWeight: 700, fontSize: 13, cursor: 'pointer', textAlign: 'left',
+                      transition: 'all 0.16s ease'
+                    }}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <GroupIcon size={16} />
+                      <span>{group.categoryMeta.label}</span>
+                    </span>
+                    <span style={{ fontSize: 12, fontWeight: 800, opacity: 0.8 }}>{group.items.length} services</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {(() => {
+          const promo = parseOptionalObject(selectedStore.storefront_promo);
+          if (!promo || !promo.active) return null;
+          return (
+            <div style={{
+              padding: 24, borderRadius: STYLES.radius.card, background: `linear-gradient(135deg, ${STYLES.colors.brand}, ${STYLES.colors.brandDark})`,
+              color: '#fff', boxShadow: STYLES.shadow.md
+            }}>
+              <Badge background="rgba(255,255,255,0.2)" color="#fff">{promo.badge || 'PROMO'}</Badge>
+              <div style={{ marginTop: 16, fontSize: 24, fontWeight: 900 }}>{promo.title}</div>
+              <p style={{ marginTop: 8, fontSize: 14, opacity: 0.9 }}>{promo.subtitle}</p>
+            </div>
+          );
+        })()}
+      </aside>
+    )}
+
+    {isReviewModalOpen && isSimpleMode && (
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 2300,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: isMobileViewport ? 16 : 24
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(15,23,42,0.52)',
+            backdropFilter: 'blur(5px)'
+          }}
+        />
+        <section
+          style={{
+            position: 'relative',
+            zIndex: 1,
+            width: '100%',
+            maxWidth: 640,
+            maxHeight: 'min(90vh, 760px)',
+            overflowY: 'auto',
+            borderRadius: 28,
+            border: '1px solid #dbe5ee',
+            background: '#ffffff',
+            boxShadow: '0 28px 64px rgba(15,23,42,0.22)',
+            padding: isMobileViewport ? 20 : 28,
+            display: 'grid',
+            gap: 20
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: modeAdapter.heroTheme?.accent || '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                Customer Review
+              </div>
+              <div style={{ fontSize: isMobileViewport ? 26 : 30, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.08 }}>
+                Share your experience
+              </div>
+              <div style={{ fontSize: 14, lineHeight: 1.65, color: STYLES.colors.muted }}>
+                Rate the storefront experience and leave a short message. Publishing will be connected once the review backend is ready.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsReviewModalOpen(false)}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 999,
+                border: '1px solid #cbd5e1',
+                background: '#fff',
+                color: '#0f172a',
+                cursor: 'pointer',
+                display: 'grid',
+                placeItems: 'center',
+                flexShrink: 0
+              }}
+              aria-label="Close review modal"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gap: 16 }}>
+            <label style={{ display: 'grid', gap: 8, fontSize: 13, color: '#334155' }}>
+              Your name
+              <input
+                value={reviewDraft.name}
+                onChange={(event) => setReviewDraft((previous) => ({ ...previous, name: event.target.value }))}
+                placeholder="How should we identify your review?"
+                style={BOOKING_FIELD_STYLE}
+              />
+            </label>
+
+            <div style={{ display: 'grid', gap: 10 }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#334155', cursor: 'pointer', width: 'fit-content' }}>
+                <input
+                  type="checkbox"
+                  checked={reviewDraft.anonymous}
+                  onChange={(event) => setReviewDraft((previous) => ({ ...previous, anonymous: event.target.checked }))}
+                />
+                Post this review anonymously
+              </label>
+              <div style={{ fontSize: 12, color: '#64748b' }}>
+                Public name preview: <strong style={{ color: '#0f172a' }}>{reviewDraft.anonymous ? maskReviewerName(reviewDraft.name) : (String(reviewDraft.name || '').trim() || 'Your name')}</strong>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Your rating</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                {Array.from({ length: 5 }, (_, index) => {
+                  const starValue = index + 1;
+                  const selected = reviewDraft.rating >= starValue;
+                  return (
+                    <button
+                      key={`simple-review-rating-${starValue}`}
+                      type="button"
+                      onClick={() => setReviewDraft((previous) => ({ ...previous, rating: starValue }))}
+                      style={{
+                        width: 46,
+                        height: 46,
+                        borderRadius: 14,
+                        border: `1px solid ${selected ? '#14b8a6' : '#dbe5ee'}`,
+                        background: selected ? '#ecfeff' : '#ffffff',
+                        color: selected ? '#14b8a6' : '#94a3b8',
+                        cursor: 'pointer',
+                        display: 'grid',
+                        placeItems: 'center',
+                        boxShadow: selected ? '0 10px 20px rgba(20,184,166,0.16)' : 'none'
+                      }}
+                      aria-label={`Rate ${starValue} star${starValue === 1 ? '' : 's'}`}
+                    >
+                      <Star size={18} fill={selected ? '#14b8a6' : 'none'} color={selected ? '#14b8a6' : '#94a3b8'} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <label style={{ display: 'grid', gap: 8, fontSize: 13, color: '#334155' }}>
+              Your review
+              <textarea
+                value={reviewDraft.message}
+                onChange={(event) => setReviewDraft((previous) => ({ ...previous, message: event.target.value }))}
+                placeholder="Tell customers what stood out about the product selection, ordering, or pickup experience."
+                style={{ ...BOOKING_FIELD_STYLE, minHeight: 144, resize: 'vertical' }}
+              />
+            </label>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobileViewport ? 'stretch' : 'center', flexDirection: isMobileViewport ? 'column' : 'row', gap: 12 }}>
+            <div style={{ fontSize: 12, lineHeight: 1.6, color: '#64748b' }}>
+              Reviews are prepared on the storefront now. Submission and moderation will connect once backend review support is available.
+            </div>
+            <PrimaryButton
+              onClick={handleReviewDraftSubmit}
+              style={{ minHeight: 46, minWidth: isMobileViewport ? '100%' : 180, justifyContent: 'center' }}
+            >
+              Send Review
+            </PrimaryButton>
+          </div>
+        </section>
+      </div>
+    )}
+
+    {isReviewModalOpen && isFnbMode && (
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 2300,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: isMobileViewport ? 16 : 24
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(15,23,42,0.52)',
+            backdropFilter: 'blur(5px)'
+          }}
+        />
+        <section
+          style={{
+            position: 'relative',
+            zIndex: 1,
+            width: '100%',
+            maxWidth: 640,
+            maxHeight: 'min(90vh, 760px)',
+            overflowY: 'auto',
+            borderRadius: 28,
+            border: '1px solid #dbe5ee',
+            background: '#ffffff',
+            boxShadow: '0 28px 64px rgba(15,23,42,0.22)',
+            padding: isMobileViewport ? 20 : 28,
+            display: 'grid',
+            gap: 20
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                Customer Review
+              </div>
+              <div style={{ fontSize: isMobileViewport ? 26 : 30, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.08 }}>
+                Share your dining experience
+              </div>
+              <div style={{ fontSize: 14, lineHeight: 1.65, color: STYLES.colors.muted }}>
+                Rate this menu storefront and leave a short message. Publishing connects once review backend submission is enabled.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsReviewModalOpen(false)}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 999,
+                border: '1px solid #cbd5e1',
+                background: '#fff',
+                color: '#0f172a',
+                cursor: 'pointer',
+                display: 'grid',
+                placeItems: 'center',
+                flexShrink: 0
+              }}
+              aria-label="Close review modal"
+            >
+              <X size={18} />
+            </button>
+          </div>
+          <div style={{ display: 'grid', gap: 16 }}>
+            <label style={{ display: 'grid', gap: 8, fontSize: 13, color: '#334155' }}>
+              Your name
+              <input
+                value={reviewDraft.name}
+                onChange={(event) => setReviewDraft((previous) => ({ ...previous, name: event.target.value }))}
+                placeholder="How should we identify your review?"
+                style={BOOKING_FIELD_STYLE}
+              />
+            </label>
+            <div style={{ display: 'grid', gap: 10 }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#334155', cursor: 'pointer', width: 'fit-content' }}>
+                <input
+                  type="checkbox"
+                  checked={reviewDraft.anonymous}
+                  onChange={(event) => setReviewDraft((previous) => ({ ...previous, anonymous: event.target.checked }))}
+                />
+                Post this review anonymously
+              </label>
+              <div style={{ fontSize: 12, color: '#64748b' }}>
+                Public name preview: <strong style={{ color: '#0f172a' }}>{reviewDraft.anonymous ? maskReviewerName(reviewDraft.name) : (String(reviewDraft.name || '').trim() || 'Your name')}</strong>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Your rating</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                {Array.from({ length: 5 }, (_, index) => {
+                  const starValue = index + 1;
+                  const selected = reviewDraft.rating >= starValue;
+                  return (
+                    <button
+                      key={`fnb-review-rating-${starValue}`}
+                      type="button"
+                      onClick={() => setReviewDraft((previous) => ({ ...previous, rating: starValue }))}
+                      style={{
+                        width: 46,
+                        height: 46,
+                        borderRadius: 14,
+                        border: `1px solid ${selected ? '#f59e0b' : '#dbe5ee'}`,
+                        background: selected ? '#fff7ed' : '#ffffff',
+                        color: selected ? '#f59e0b' : '#94a3b8',
+                        cursor: 'pointer',
+                        display: 'grid',
+                        placeItems: 'center',
+                        boxShadow: selected ? '0 10px 20px rgba(245,158,11,0.16)' : 'none'
+                      }}
+                      aria-label={`Rate ${starValue} star${starValue === 1 ? '' : 's'}`}
+                    >
+                      <Star size={18} fill={selected ? '#f59e0b' : 'none'} color={selected ? '#f59e0b' : '#94a3b8'} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <label style={{ display: 'grid', gap: 8, fontSize: 13, color: '#334155' }}>
+              Your review
+              <textarea
+                value={reviewDraft.message}
+                onChange={(event) => setReviewDraft((previous) => ({ ...previous, message: event.target.value }))}
+                placeholder="Tell customers what stood out about the food, drinks, and overall order experience."
+                style={{ ...BOOKING_FIELD_STYLE, minHeight: 144, resize: 'vertical' }}
+              />
+            </label>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobileViewport ? 'stretch' : 'center', flexDirection: isMobileViewport ? 'column' : 'row', gap: 12 }}>
+            <div style={{ fontSize: 12, lineHeight: 1.6, color: '#64748b' }}>
+              Reviews are prepared on the storefront now. Submission and moderation will connect once backend review support is available.
+            </div>
+            <PrimaryButton
+              onClick={handleReviewDraftSubmit}
+              style={{ minHeight: 46, minWidth: isMobileViewport ? '100%' : 180, justifyContent: 'center' }}
+            >
+              Send Review
+            </PrimaryButton>
+          </div>
+        </section>
+      </div>
+    )}
+  </div>
+  </>
+);
+            })()}
+          </>
+        )}
+
+      </div>
+
+  { isStorePage && (checkoutPermitted || bookingPermitted || productCartPermitted) && (
+    <>
+      {isStorefrontV2 && selectedStore && (() => {
+        const followEnabled = parseBooleanFlag(selectedStore.storefront_follow_enabled, false);
+        const shareEnabled = parseBooleanFlag(selectedStore.storefront_share_enabled, false);
+        if (!followEnabled && !shareEnabled) return null;
+        return (
+          <div
+            style={{
+              position: 'fixed',
+              zIndex: 2090,
+              left: isMobileViewport ? 10 : 'auto',
+              right: isMobileViewport ? 10 : 18,
+              bottom: isMobileViewport ? 78 : 84,
+              display: 'flex',
+              gap: 8,
+              justifyContent: 'flex-end',
+              flexWrap: 'wrap'
+            }}
+          >
+            {followEnabled && (
+              <div style={{ display: 'grid', gap: 4, justifyItems: 'end' }}>
+                <button type="button" aria-label="Follow this storefront" disabled={followState.loading} onClick={handleFollowAction} style={{ borderRadius: 10, border: '1px solid #cbd5e1', background: followState.isFollowing ? '#ecfeff' : '#fff', color: '#334155', padding: '8px 12px', minHeight: 44, minWidth: 96, fontWeight: 700, boxShadow: '0 8px 24px rgba(15,23,42,.12)', opacity: followState.loading ? 0.7 : 1, cursor: followState.loading ? 'not-allowed' : 'pointer' }}>
+                  {followState.isFollowing ? 'Following' : 'Follow'}
+                </button>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 999, padding: '3px 8px', boxShadow: '0 6px 16px rgba(15,23,42,.08)' }}>
+                  {followState.followersCount} follower(s)
+                </span>
+              </div>
+            )}
+            {shareEnabled && (
+              <button type="button" aria-label="Share this storefront" onClick={handleShareAction} style={{ borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '8px 12px', minHeight: 44, minWidth: 96, fontWeight: 700, boxShadow: '0 8px 24px rgba(15,23,42,.12)' }}>
+                Share
+              </button>
+            )}
+          </div>
+        );
+      })()}
+      {isServicesCartDrawerMode && (
+        <>
+          <button
+            type="button"
+            onClick={() => setIsCheckoutOpen((previous) => !previous)}
+            aria-label={isCheckoutOpen ? 'Close service cart' : 'Open service cart'}
+            style={{
+              position: 'fixed',
+              right: isMobileViewport ? 16 : 24,
+              bottom: isMobileViewport ? 16 : 24,
+              zIndex: 2100,
+              width: isMobileViewport ? 62 : 68,
+              height: isMobileViewport ? 62 : 68,
+              borderRadius: '50%',
+              border: '1px solid rgba(255,255,255,0.18)',
+              background: 'linear-gradient(135deg,#ea580c,#f97316)',
+              color: '#fff',
+              boxShadow: '0 18px 38px rgba(234,88,12,.34)',
+              cursor: 'pointer',
+              display: 'grid',
+              placeItems: 'center'
+            }}
+          >
+            <span
+              style={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                minWidth: 22,
+                height: 22,
+                padding: '0 6px',
+                borderRadius: 999,
+                background: '#0f172a',
+                color: '#fff',
+                fontSize: 11,
+                fontWeight: 900,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '2px solid #fff'
+              }}
+            >
+              {serviceCartCount}
+            </span>
+            <ShoppingCart size={24} strokeWidth={2.2} />
+          </button>
+
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 2095,
+              pointerEvents: isCheckoutOpen ? 'auto' : 'none'
+            }}
+          >
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => setIsCheckoutOpen(false)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  setIsCheckoutOpen(false);
+                }
+              }}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'rgba(15,23,42,.46)',
+                backdropFilter: 'blur(4px)',
+                opacity: isCheckoutOpen ? 1 : 0,
+                transition: 'opacity 180ms ease'
+              }}
+            />
+            <aside
+              style={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                bottom: 0,
+                width: isMobileViewport ? 'min(100vw, 100%)' : 'min(520px, calc(100vw - 40px))',
+                background: '#ffffff',
+                borderLeft: '1px solid #dbe5ee',
+                boxShadow: '0 24px 60px rgba(15,23,42,.18)',
+                display: 'flex',
+                flexDirection: 'column',
+                transform: isCheckoutOpen ? 'translateX(0)' : 'translateX(104%)',
+                transition: 'transform 220ms ease'
+              }}
+            >
+              <div style={{ padding: isMobileViewport ? '18px 16px 14px' : '22px 20px 16px', borderBottom: '1px solid #e2e8f0', display: 'grid', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ display: 'grid', gap: 4 }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Service Cart</div>
+                    <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', fontFamily: servicesDisplayFont }}>Added services</div>
+                    <div style={{ fontSize: 13, color: '#64748b' }}>Manage the service in cart, then continue to booking.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsCheckoutOpen(false)}
+                    style={{ width: 38, height: 38, borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', color: '#0f172a', fontWeight: 900, cursor: 'pointer' }}
+                  >
+                    x
+                  </button>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#0f766e', background: '#ecfeff', border: '1px solid #99f6e4', borderRadius: 999, padding: '4px 10px' }}>
+                    {serviceCartCount} item{serviceCartCount === 1 ? '' : 's'}
+                  </span>
+                  <span style={{ fontSize: 12, color: '#64748b' }}>
+                    One service booking is submitted at a time.
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 14 }}>
+                {serviceCartLines.length === 0 ? (
+                  <div style={{ border: '1px dashed #cbd5e1', borderRadius: 20, background: '#f8fafc', padding: '28px 20px', textAlign: 'center', display: 'grid', gap: 8 }}>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>No service added yet</div>
+                    <div style={{ fontSize: 13, lineHeight: 1.6, color: '#64748b' }}>
+                      Add a service from the catalog to continue to booking.
+                    </div>
+                  </div>
+                ) : (
+                  serviceCartLines.map((line) => (
+                    <div key={`services-cart-line-${line.item_id}`} style={{ border: '1px solid #e2e8f0', borderRadius: 22, background: '#fff', boxShadow: '0 12px 28px rgba(15,23,42,.06)', padding: isMobileViewport ? 14 : 16, display: 'grid', gap: 12 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: 14, alignItems: 'start' }}>
+                        <div style={{ width: 72, height: 72, borderRadius: 14, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                          {line.image_url && !cartImageErrors.has(Number(line.item_id)) ? (
+                            <img
+                              src={withAssetOrigin(line.image_url)}
+                              alt={line.variantName || line.name}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              onError={() => {
+                                const normalizedLineItemId = Number(line.item_id);
+                                if (!Number.isFinite(normalizedLineItemId)) return;
+                                setCartImageErrors((previous) => {
+                                  const next = new Set(previous);
+                                  next.add(normalizedLineItemId);
+                                  return next;
+                                });
+                              }}
+                            />
+                          ) : (
+                            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>No image</span>
+                          )}
+                        </div>
+                        <div style={{ display: 'grid', gap: 10, minWidth: 0 }}>
+                          <div style={{ display: 'grid', gap: 8 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto auto', alignItems: 'start', gap: 10 }}>
+                              <div style={{ minWidth: 0, display: 'grid', gap: 4 }}>
+                                <div style={{ fontSize: isMobileViewport ? 16 : 18, fontWeight: 900, color: '#0f172a', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {line.variantName || line.name}
+                                </div>
+                              </div>
+                              <div style={{ fontSize: 14, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap', alignSelf: 'center' }}>
+                                {money((Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0))}
+                              </div>
+                              <button
+                                type="button"
+                                aria-label={`Remove ${line.variantName || line.name}`}
+                                onClick={() => removeCartItem(line.item_id)}
+                                style={{ width: 28, height: 28, border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, alignSelf: 'center' }}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            {!!line.serviceAreaLabel && (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 8px' }}>
+                                {line.serviceAreaLabel}
+                              </span>
+                            )}
+                            {!!line.durationLabel && (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 8px' }}>
+                                {line.durationLabel}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, paddingTop: 2 }}>
+                            <button
+                              type="button"
+                              onClick={() => updateQty(line.item_id, Math.max(0, Number(line.quantity || 1) - 1))}
+                              style={{ width: 28, height: 28, borderRadius: 999, border: '1px solid #dbe5ee', background: '#fff', color: '#0f172a', fontSize: 16, fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                            >
+                              -
+                            </button>
+                            <span style={{ minWidth: 14, textAlign: 'center', fontSize: 14, fontWeight: 800, color: '#0f172a' }}>
+                              {Math.max(1, Number(line.quantity || 1))}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => updateQty(line.item_id, Number(line.quantity || 1) + 1)}
+                              style={{ width: 28, height: 28, borderRadius: 999, border: '1px solid #dbe5ee', background: '#fff', color: '#0f172a', fontSize: 16, fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+
+                {productCartLines.length > 0 && (
+                  <div style={{ border: '1px solid #fdba74', background: '#fff7ed', color: '#9a3412', borderRadius: 16, padding: '12px 14px', fontSize: 13, lineHeight: 1.6 }}>
+                    Product items are not included in service booking. Continue with service booking only, or remove non-service items first.
+                  </div>
+                )}
+              </div>
+
+              <div style={{ borderTop: '1px solid #e2e8f0', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 12, background: '#ffffff' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>Current total</div>
+                    <div style={{ fontSize: 28, fontWeight: 900, color: '#0f172a' }}>{money(serviceCartTotal)}</div>
+                  </div>
+                  <div style={{ fontSize: 13, color: '#64748b', textAlign: 'right' }}>
+                    {serviceCartCount} selected
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleServicesCartCheckout}
+                  disabled={!hasServiceCart || hasMixedServiceCart}
+                  style={{
+                    minHeight: 50,
+                    borderRadius: 16,
+                    border: 'none',
+                    background: !hasServiceCart || hasMixedServiceCart ? '#cbd5e1' : `linear-gradient(135deg,${servicesPrimary},${servicesPrimaryDark})`,
+                    color: '#fff',
+                    fontSize: 15,
+                    fontWeight: 900,
+                    cursor: !hasServiceCart || hasMixedServiceCart ? 'not-allowed' : 'pointer',
+                    boxShadow: !hasServiceCart || hasMixedServiceCart ? 'none' : `0 14px 30px ${servicesPrimaryShadowStrong}`
+                  }}
+                >
+                  Order &amp; Purchase
+                </button>
+              </div>
+            </aside>
+          </div>
+        </>
+      )}
+      {isSimpleCartSurfaceMode && (
+        <>
+          <button
+            type="button"
+            onClick={() => setIsCheckoutOpen((previous) => !previous)}
+            aria-label={isCheckoutOpen ? 'Close product cart' : 'Open product cart'}
+            style={{
+              position: 'fixed',
+              right: isMobileViewport ? 16 : 24,
+              bottom: isMobileViewport ? 16 : 24,
+              zIndex: 2100,
+              width: isMobileViewport ? 62 : 68,
+              height: isMobileViewport ? 62 : 68,
+              borderRadius: '50%',
+              border: '1px solid rgba(255,255,255,0.18)',
+              background: 'linear-gradient(135deg,#ea580c,#f97316)',
+              color: '#fff',
+              boxShadow: '0 18px 38px rgba(234,88,12,.34)',
+              cursor: 'pointer',
+              display: 'grid',
+              placeItems: 'center'
+            }}
+          >
+            <span
+              style={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                minWidth: 22,
+                height: 22,
+                padding: '0 6px',
+                borderRadius: 999,
+                background: '#0f172a',
+                color: '#fff',
+                fontSize: 11,
+                fontWeight: 900,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '2px solid #fff'
+              }}
+            >
+              {cartCount}
+            </span>
+            <ShoppingCart size={24} strokeWidth={2.2} />
+          </button>
+
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 2095,
+              pointerEvents: isCheckoutOpen ? 'auto' : 'none'
+            }}
+          >
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => setIsCheckoutOpen(false)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  setIsCheckoutOpen(false);
+                }
+              }}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'rgba(15,23,42,.46)',
+                backdropFilter: 'blur(4px)',
+                opacity: isCheckoutOpen ? 1 : 0,
+                transition: 'opacity 180ms ease'
+              }}
+            />
+            <aside
+              style={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                bottom: 0,
+                width: isMobileViewport ? 'min(100vw, 100%)' : 'min(520px, calc(100vw - 40px))',
+                background: '#ffffff',
+                borderLeft: '1px solid #dbe5ee',
+                boxShadow: '0 24px 60px rgba(15,23,42,.18)',
+                display: 'flex',
+                flexDirection: 'column',
+                transform: isCheckoutOpen ? 'translateX(0)' : 'translateX(104%)',
+                transition: 'transform 220ms ease'
+              }}
+            >
+              <div style={{ padding: isMobileViewport ? '18px 16px 14px' : '22px 20px 16px', borderBottom: '1px solid #e2e8f0', display: 'grid', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ display: 'grid', gap: 4 }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Product Cart</div>
+                    <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', fontFamily: servicesDisplayFont }}>Added products</div>
+                    <div style={{ fontSize: 13, color: '#64748b' }}>Manage the products in cart, then continue to checkout.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsCheckoutOpen(false)}
+                    style={{ width: 42, height: 42, borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', color: '#0f172a', fontWeight: 900, cursor: 'pointer' }}
+                  >
+                    x
+                  </button>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#0f766e', background: '#ecfeff', border: '1px solid #99f6e4', borderRadius: 999, padding: '4px 10px' }}>
+                    {cartCount} item{cartCount === 1 ? '' : 's'}
+                  </span>
+                  <span style={{ fontSize: 12, color: '#64748b' }}>
+                    {activeOrderMethodLabel}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 14 }}>
+                {cart.length === 0 ? (
+                  <div style={{ border: '1px dashed #cbd5e1', borderRadius: 20, background: '#f8fafc', padding: '28px 20px', textAlign: 'center', display: 'grid', gap: 8 }}>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>No product added yet</div>
+                    <div style={{ fontSize: 13, lineHeight: 1.6, color: '#64748b' }}>
+                      Add a product from the catalog to continue to checkout.
+                    </div>
+                  </div>
+                ) : (
+                  cart.map((line) => (
+                    <div key={`simple-cart-line-${line.item_id}`} style={{ border: '1px solid #e2e8f0', borderRadius: 22, background: '#fff', boxShadow: '0 12px 28px rgba(15,23,42,.06)', padding: isMobileViewport ? 14 : 16, display: 'grid', gap: 12 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: 14, alignItems: 'start' }}>
+                        <div style={{ width: 72, height: 72, borderRadius: 14, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                          {line.image_url && !cartImageErrors.has(Number(line.item_id)) ? (
+                            <img
+                              src={withAssetOrigin(line.image_url)}
+                              alt={line.name}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              onError={() => {
+                                const normalizedLineItemId = Number(line.item_id);
+                                if (!Number.isFinite(normalizedLineItemId)) return;
+                                setCartImageErrors((previous) => {
+                                  const next = new Set(previous);
+                                  next.add(normalizedLineItemId);
+                                  return next;
+                                });
+                              }}
+                            />
+                          ) : (
+                            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>No image</span>
+                          )}
+                        </div>
+                        <div style={{ display: 'grid', gap: 10, minWidth: 0 }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto auto', alignItems: 'start', gap: 10 }}>
+                            <div style={{ minWidth: 0, display: 'grid', gap: 4 }}>
+                              <div style={{ fontSize: isMobileViewport ? 16 : 18, fontWeight: 900, color: '#0f172a', lineHeight: 1.2 }}>
+                                {line.name}
+                              </div>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>
+                                Unit: {money(line.price)} {line.unit_of_measure ? `- ${line.unit_of_measure}` : ''}
+                              </div>
+                            </div>
+                            <div style={{ fontSize: 14, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap', alignSelf: 'center' }}>
+                              {money((Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0))}
+                            </div>
+                            <button
+                              type="button"
+                              aria-label={`Remove ${line.name}`}
+                              onClick={() => removeCartItem(line.item_id)}
+                              style={{ width: 28, height: 28, border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, alignSelf: 'center' }}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 8px' }}>
+                              {activeOrderMethodLabel}
+                            </span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 8px' }}>
+                              Qty {Math.max(1, Number(line.quantity || 1))}
+                            </span>
+                          </div>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, paddingTop: 2 }}>
+                            <button
+                              type="button"
+                              onClick={() => updateQty(line.item_id, Math.max(0, Number(line.quantity || 1) - 1))}
+                              style={{ width: 28, height: 28, borderRadius: 999, border: '1px solid #dbe5ee', background: '#fff', color: '#0f172a', fontSize: 16, fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                            >
+                              -
+                            </button>
+                            <span style={{ minWidth: 14, textAlign: 'center', fontSize: 14, fontWeight: 800, color: '#0f172a' }}>
+                              {Math.max(1, Number(line.quantity || 1))}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => updateQty(line.item_id, Number(line.quantity || 1) + 1)}
+                              style={{ width: 28, height: 28, borderRadius: 999, border: '1px solid #dbe5ee', background: '#fff', color: '#0f172a', fontSize: 16, fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div style={{ borderTop: '1px solid #e2e8f0', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 12, background: '#ffffff' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>Current total</div>
+                    <div style={{ fontSize: 28, fontWeight: 900, color: '#0f172a' }}>{money(cartTotal)}</div>
+                  </div>
+                  <div style={{ fontSize: 13, color: '#64748b', textAlign: 'right' }}>
+                    {cartCount} selected
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={goStoreOrderPage}
+                  disabled={cart.length === 0}
+                  style={{
+                    minHeight: 50,
+                    borderRadius: 16,
+                    border: 'none',
+                    background: cart.length === 0 ? '#cbd5e1' : `linear-gradient(135deg,${servicesPrimary},${servicesPrimaryDark})`,
+                    color: '#fff',
+                    fontSize: 15,
+                    fontWeight: 900,
+                    cursor: cart.length === 0 ? 'not-allowed' : 'pointer',
+                    boxShadow: cart.length === 0 ? 'none' : `0 14px 30px ${servicesPrimaryShadowStrong}`
+                  }}
+                >
+                  Order &amp; Purchase
+                </button>
+              </div>
+            </aside>
+          </div>
+        </>
+      )}
+      <button
+        type="button"
+        onClick={() => {
+          if (isServicesMode) {
+            goStoreBookingPage();
+            return;
+          }
+          setIsCheckoutOpen((prev) => {
+            const next = !prev;
+            if (next) setCheckoutTab(isServicesMode && hasServiceCart ? 'review' : (isFnbMode ? 'cart' : 'checkout'));
+            return next;
+          });
+        }}
+        style={{
+          position: 'fixed',
+          zIndex: 2100,
+          border: (isServicesMode && hasServiceCart)
+            ? '1px solid #dbe5ee'
+            : (isFnbMode ? 'none' : 'none'),
+          borderRadius: isFnbMode ? 999 : (isMobileViewport ? 16 : 22),
+          background: (isServicesMode && hasServiceCart)
+            ? '#ffffff'
+            : (isFnbMode ? 'linear-gradient(135deg,#ea580c,#f97316)' : 'linear-gradient(135deg,#ea580c,#f97316)'),
+          color: (isServicesMode && hasServiceCart)
+            ? '#0f172a'
+            : '#fff',
+          boxShadow: (isServicesMode && hasServiceCart)
+            ? '0 22px 48px rgba(15,23,42,.16)'
+            : '0 14px 34px rgba(234,88,12,.38)',
+          padding: (isServicesMode && hasServiceCart) ? (isMobileViewport ? '12px 14px' : '16px 18px') : (isFnbMode ? 0 : '12px 18px'),
+          width: isFnbMode ? (isMobileViewport ? 62 : 68) : undefined,
+          height: isFnbMode ? (isMobileViewport ? 62 : 68) : undefined,
+          minWidth: (isServicesMode && hasServiceCart) ? (isMobileViewport ? 0 : 320) : (isFnbMode ? undefined : (isMobileViewport ? 0 : 255)),
+          textAlign: 'left',
+          cursor: 'pointer',
+          right: isMobileViewport ? 10 : 18,
+          left: isFnbMode ? 'auto' : (isMobileViewport ? 10 : 'auto'),
+          bottom: isMobileViewport ? 10 : 18,
+          display: isHospitalityMode || isServicesCartDrawerMode
+            ? 'none'
+            : (
+              isServicesMode && isDesktopViewport
+                ? 'none'
+                : ((isFnbOrderSubpage || (isSimpleMode && isResolvedOrderSubpage) || isSimpleCartSurfaceMode) ? 'none' : 'block')
+            )
+        }}
+      >
+        {isServicesMode && hasServiceCart ? (
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Your Booking Summary</div>
+                <div style={{ marginTop: 3, fontSize: 18, fontWeight: 900, color: '#0f172a' }}>{serviceBookingSummaryTitle}</div>
+              </div>
+              {!isMobileViewport && (
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#0f766e', background: '#ecfeff', border: '1px solid #99f6e4', borderRadius: 999, padding: '4px 8px' }}>
+                  {cartCount} service
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12, color: '#475569' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <CalendarDays size={14} color={servicesPrimary} />
+                {serviceBookingSummarySchedule}
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <CheckCircle2 size={14} color={servicesPrimary} />
+                {servicePaymentOptions.find((option) => option.value === servicePaymentTiming)?.label || 'Payment pending'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ fontSize: 22, fontWeight: 900, color: '#0f172a' }}>{money(cartTotal)}</div>
+              <div style={{ fontSize: 13, color: '#0f766e', fontWeight: 800 }}>
+                {isCheckoutOpen ? 'Close booking' : (isMobileViewport ? 'View booking' : 'View cart and checkout')}
+              </div>
+            </div>
+          </div>
+        ) : isFnbMode ? (
+          <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <ShoppingCart size={24} strokeWidth={2.2} />
+            <div
+              style={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                minWidth: 22,
+                height: 22,
+                padding: '0 6px',
+                borderRadius: 999,
+                background: '#0f172a',
+                color: '#fff',
+                border: '2px solid #fff',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 11,
+                fontWeight: 900,
+                lineHeight: 1
+              }}
+            >
+              {cartCount}
+            </div>
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: 13, opacity: .95 }}>{cartCount} item(s) in cart</div>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{money(cartTotal)}</div>
+            <div style={{ marginTop: 2, fontSize: 12, textDecoration: 'underline' }}>{isCheckoutOpen ? 'Close checkout' : 'View Cart'}</div>
+          </>
+        )}
+      </button>
+
+      <div style={{ position: 'fixed', inset: 0, zIndex: 2000, pointerEvents: (isServicesCartDrawerMode || isSimpleCartSurfaceMode || (isSimpleMode && isResolvedOrderSubpage)) ? 'none' : ((isCheckoutOpen || isFnbOrderSubpage) ? 'auto' : 'none'), display: (isServicesCartDrawerMode || isSimpleCartSurfaceMode || (isSimpleMode && isResolvedOrderSubpage)) ? 'none' : 'block' }}>
+        {!isFnbOrderSubpage && !(isSimpleMode && isResolvedOrderSubpage) && (
+          <div role="button" tabIndex={0} onClick={() => setIsCheckoutOpen(false)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setIsCheckoutOpen(false); }} style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,.50)', backdropFilter: 'blur(6px)', opacity: isCheckoutOpen ? 1 : 0, transition: 'opacity 180ms ease' }} />
+        )}
+        <aside
+          style={{
+            position: 'absolute',
+            zIndex: 2001,
+            background: (isFnbMode || isSimpleMode) ? '#ffffff' : 'linear-gradient(180deg,#ffffff 0%,#f7fbfb 100%)',
+            border: (isFnbMode || isSimpleMode) ? 'none' : '1px solid #d6e2e8',
+            borderLeft: (isDesktopCheckout && (isFnbMode || isSimpleMode)) ? '1px solid #dbe5ee' : undefined,
+            boxShadow: isDesktopCheckout
+              ? ((isFnbMode || isSimpleMode) ? '0 24px 60px rgba(15,23,42,.18)' : '0 30px 80px rgba(15,23,42,.18)')
+              : '0 -14px 34px rgba(15,23,42,.22)',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            transition: 'transform 220ms ease, opacity 220ms ease',
+            opacity: (isCheckoutOpen || isFnbOrderSubpage) ? 1 : 0,
+            ...(isFnbOrderSubpage
+              ? {
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                width: '100vw',
+                borderRadius: 0,
+                transform: 'translateX(0)'
+              }
+              : (isDesktopCheckout
+              ? {
+                top: (isFnbMode || isSimpleMode) ? 0 : 24,
+                right: 0,
+                bottom: 0,
+                width: (isFnbMode || isSimpleMode) ? 'min(520px, calc(100vw - 40px))' : 'min(1080px, calc(100vw - 48px))',
+                borderRadius: (isFnbMode || isSimpleMode) ? 0 : 26,
+                transform: isCheckoutOpen ? 'translateX(0)' : 'translateX(32px)'
+              }
+              : {
+                left: 0,
+                right: 0,
+                bottom: 0,
+                maxHeight: '92vh',
+                borderTopLeftRadius: 22,
+                borderTopRightRadius: 22,
+                transform: isCheckoutOpen ? 'translateY(0)' : 'translateY(105%)'
+              }))
+          }}
+        >
+          {!(isFnbMode && isFnbOrderSubpage) && (
+          <div style={{ padding: isDesktopCheckout ? ((isFnbMode || isSimpleMode) ? '22px 20px 16px' : '16px 18px 12px 18px') : '10px 14px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, background: (isFnbMode || isSimpleMode) ? '#ffffff' : 'rgba(255,255,255,.88)' }}>
+            <div>
+              {isFnbMode ? (
+                <div style={{ display: 'grid', gap: 4 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Menu Cart</div>
+                  <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a' }}>Added items</div>
+                  <div style={{ fontSize: 13, color: '#64748b' }}>{fnbDrawerSupportLabel}</div>
+                </div>
+              ) : isSimpleMode ? (
+                <div style={{ display: 'grid', gap: 4 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Product Cart</div>
+                  <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', fontFamily: servicesDisplayFont }}>Added products</div>
+                  <div style={{ fontSize: 13, color: '#64748b' }}>Review products, adjust quantities, then continue to checkout.</div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontWeight: 800, fontSize: 20 }}>
+                    {isServicesMode && hasServiceCart ? 'Booking Journey' : `${DGFY_BRAND_NAME} Checkout`}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>{selectedStore?.tenant_name || routeSlug || 'Tenant'}</div>
+                </>
+              )}
+              {!(isFnbMode && !isFnbOrderSubpage) && (
+                <div style={{ marginTop: 4, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#0f766e', background: '#e6fffb', border: '1px solid #99f6e4', borderRadius: 999, padding: '3px 8px' }}>
+                    {cartCount} {isServicesMode && hasServiceCart ? 'service' : 'item'}{cartCount === 1 ? '' : 's'}
+                  </span>
+                  {(!isServicesMode || !hasServiceCart) && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '3px 8px' }}>
+                      {activeOrderMethodLabel}
+                    </span>
+                  )}
+                  {isFnbMode && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#7c2d12', background: '#ffedd5', border: '1px solid #fdba74', borderRadius: 999, padding: '3px 8px' }}>
+                      {fnbCartStatusLabel}
+                    </span>
+                  )}
+                  {isServicesMode && hasServiceCart && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '3px 8px' }}>
+                      {serviceBookingSummarySchedule}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (isFnbOrderSubpage) {
+                  goStoreCatalogPage();
+                  return;
+                }
+                setIsCheckoutOpen(false);
+              }}
+              style={{ borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', width: 34, height: 34, fontWeight: 900, cursor: 'pointer' }}
+            >
+              {isFnbOrderSubpage ? '<' : 'x'}
+            </button>
+          </div>
+          )}
+
+          {!isFnbMode && (
+            <div style={{ display: 'flex', gap: 8, padding: isDesktopCheckout ? '14px 18px 8px 18px' : '12px 14px 6px 14px', background: 'rgba(255,255,255,.72)' }}>
+              {[
+                ...(isServicesMode && hasServiceCart ? [{ id: 'review', label: 'Booking Summary' }] : []),
+                { id: 'checkout', label: isServicesMode && hasServiceCart ? 'Customer Details' : 'Checkout' },
+                ...(!isFnbMode ? [
+                  { id: 'track', label: 'Track' },
+                  { id: 'account', label: 'Account' }
+                ] : [])
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => {
+                    setCheckoutTab(tab.id);
+                    if (tab.id === 'account') handleLoadAccountPanel();
+                  }}
+                  style={{ borderRadius: 999, border: `1px solid ${checkoutTab === tab.id ? '#0f766e' : '#cbd5e1'}`, background: checkoutTab === tab.id ? '#e6fffb' : '#fff', color: checkoutTab === tab.id ? '#0f766e' : '#334155', padding: '8px 14px', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div style={{ overflowY: 'auto', overflowX: 'hidden', padding: isDesktopCheckout ? '12px 18px 18px 18px' : '8px 14px 16px 14px' }}>
+            {isFnbOrderSubpage && isFnbMode && (
+              <div style={{ display: 'grid', gap: 18, maxWidth: 1240, margin: '0 auto', width: '100%', padding: isMobileViewport ? '4px 0 10px' : '6px 4px 14px' }}>
+                <section style={{ border: '1px solid #e2e8f0', borderRadius: 0, background: '#fff', padding: isMobileViewport ? '12px 14px' : '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginLeft: 'calc(50% - 50vw)', width: '100vw', maxWidth: '100vw', boxSizing: 'border-box' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                    <button
+                      type="button"
+                      onClick={goStoreCatalogPage}
+                      style={{ width: 40, height: 40, borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', color: '#0f172a', fontWeight: 900, cursor: 'pointer', flexShrink: 0 }}
+                      aria-label="Back to menu"
+                    >
+                      &larr;
+                    </button>
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #dbe5ee', overflow: 'hidden', background: '#f8fafc', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                      {withAssetOrigin(selectedStore?.storefront_profile_image_url) ? (
+                        <img src={withAssetOrigin(selectedStore?.storefront_profile_image_url)} alt={`${selectedStore?.tenant_name || 'Business'} profile`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <span style={{ fontSize: 11, fontWeight: 800, color: '#64748b' }}>Logo</span>
+                      )}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 20, fontWeight: 900, color: '#0f172a', lineHeight: 1.2, fontFamily: servicesDisplayFont, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {selectedStore?.tenant_name || 'Storefront'}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    style={{
+                      minHeight: 44,
+                      padding: isMobileViewport ? '0 14px' : '0 22px',
+                      borderRadius: 14,
+                      border: 'none',
+                      background: '#f97316',
+                      color: '#fff',
+                      fontWeight: 800,
+                      fontSize: isMobileViewport ? 14 : 16,
+                      cursor: 'pointer',
+                      boxShadow: '0 10px 24px rgba(249,115,22,0.28)'
+                    }}
+                  >
+                    Message Us
+                  </button>
+                </section>
+
+                <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Journey</div>
+                  <div style={{ fontSize: isMobileViewport ? 24 : 28, fontWeight: 900, color: '#0f172a', lineHeight: 1.1, fontFamily: servicesDisplayFont }}>Complete Your Menu Order</div>
+                  <div style={{ fontSize: 14, color: '#64748b' }}>Share your details once, choose fulfillment, review the order, and submit payment to the store team.</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#0f766e', background: '#ecfeff', border: '1px solid #99f6e4', borderRadius: 999, padding: '4px 10px' }}>
+                      {cartCount} item{cartCount === 1 ? '' : 's'}
+                    </span>
+                    <span style={{ fontSize: 12, color: '#64748b' }}>
+                      {isDeliveryOrder ? 'Delivery order flow' : 'Pickup order flow'}
+                    </span>
+                  </div>
+                </section>
+
+                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr 1fr' : 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
+                  {[
+                    { realStep: 2, displayStep: 1, label: 'Fulfillment' },
+                    { realStep: 3, displayStep: 2, label: 'Customer' },
+                    { realStep: 4, displayStep: 3, label: 'Payment' }
+                  ].map((item) => {
+                    const isActive = fnbOrderStep === item.realStep;
+                    const done = fnbOrderStep > item.realStep;
+                    return (
+                      <button
+                        key={`fnb-order-step-${item.realStep}`}
+                        type="button"
+                        onClick={() => {
+                          if (item.realStep === 2 && cart.length > 0) {
+                            setFnbOrderStep(2);
+                            return;
+                          }
+                          if (item.realStep === 3 && cart.length > 0) {
+                            setFnbOrderStep(3);
+                            return;
+                          }
+                          if (item.realStep === 4 && cart.length > 0 && fnbCustomerStepComplete) {
+                            setFnbOrderStep(4);
+                          }
+                        }}
+                        style={{
+                          borderRadius: 14,
+                          border: `1px solid ${isActive ? '#ea580c' : '#e2e8f0'}`,
+                          background: isActive ? '#fff7ed' : '#fff',
+                          color: isActive ? '#9a3412' : '#334155',
+                          minHeight: 52,
+                          fontSize: 13,
+                          fontWeight: 800,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900, background: done ? '#0f766e' : (isActive ? '#0f766e' : '#e2e8f0'), color: done || isActive ? '#fff' : '#64748b' }}>{item.displayStep}</span>
+                          <span>{item.label}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {fnbOrderStep === 2 && (
+                  <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.5fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
+                    <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
+                      <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Step 1: Fulfillment</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
+                        <button type="button" onClick={() => setOrderMethod('delivery')} style={{ minHeight: 44, borderRadius: 12, border: `1px solid ${orderMethod === 'delivery' ? '#ea580c' : '#dbe5ee'}`, background: orderMethod === 'delivery' ? '#fff7ed' : '#fff', fontWeight: 800, cursor: 'pointer' }}>Delivery</button>
+                        <button type="button" onClick={() => setOrderMethod('pickup')} style={{ minHeight: 44, borderRadius: 12, border: `1px solid ${orderMethod === 'pickup' ? '#ea580c' : '#dbe5ee'}`, background: orderMethod === 'pickup' ? '#fff7ed' : '#fff', fontWeight: 800, cursor: 'pointer' }}>Pickup</button>
+                      </div>
+                      <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                        Schedule time (optional)
+                        <input type="datetime-local" value={fnbScheduledFor} onChange={(event) => setFnbScheduledFor(event.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                      </label>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
+                        <button type="button" onClick={goStoreCatalogPage} style={{ minHeight: 46, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 800, cursor: 'pointer' }}>Back to Menu</button>
+                        <button type="button" onClick={() => setFnbOrderStep(3)} style={{ minHeight: 46, borderRadius: 12, border: 'none', background: 'linear-gradient(180deg, #f97316 0%, #ea580c 100%)', color: '#fff', fontWeight: 900, boxShadow: '0 8px 20px rgba(234,88,12,.24)', cursor: 'pointer' }}>Continue</button>
+                      </div>
+                    </section>
+                    <aside style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 10, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Summary</div>
+                      <div style={{ fontSize: 38, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{money(totalsForDisplay.total_amount)}</div>
+                      <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Fulfillment</span><strong>{isDeliveryOrder ? 'Delivery' : 'Pickup'}</strong></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Schedule</span><strong>{fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'ASAP'}</strong></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Status</span><strong>Pending customer info</strong></div>
+                      </div>
+                    </aside>
+                  </div>
+                )}
+
+                {fnbOrderStep === 3 && (
+                  <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.5fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
+                    <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
+                      <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Customer Details</div>
+                      <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Provide one contact method: mobile number or email.</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
+                        <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                          Customer Name *
+                          <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Ex. Juan Dela Cruz" style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                        </label>
+                        <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                          Contact Number *
+                          <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="09XX XXX XXXX" style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                        </label>
+                        <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
+                          Email (optional)
+                          <input value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} placeholder="name@email.com" style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                        </label>
+                        {isDeliveryOrder && (
+                          <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
+                            Delivery Address *
+                            <textarea value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} placeholder="House no., street, barangay, landmark" rows={3} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical' }} />
+                          </label>
+                        )}
+                        <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
+                          Special Instructions (optional)
+                          <textarea value={fnbSpecialInstructions} onChange={(event) => setFnbSpecialInstructions(event.target.value)} placeholder="Ex. Less ice, no onions, gate color and unit number." rows={3} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical' }} />
+                        </label>
+                      </div>
+
+                      {isDeliveryOrder && (
+                        <div style={{ border: '1px solid #d9e4e8', borderRadius: 14, padding: 12, background: 'linear-gradient(180deg,#f8fffe 0%,#ffffff 100%)', display: 'grid', gap: 10 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                            <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>Delivery Pin (MapLibre)</div>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              <button type="button" onClick={handlePinMyLocation} disabled={pinLocationLoading} style={{ borderRadius: 12, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 700, cursor: 'pointer' }}>
+                                {pinLocationLoading ? 'Pinning...' : 'Pin My Location'}
+                              </button>
+                              <button type="button" onClick={() => setCustomerPin(null)} disabled={!customerPin} style={{ borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '8px 12px', fontWeight: 700, cursor: !customerPin ? 'not-allowed' : 'pointer' }}>
+                                Clear Pin
+                              </button>
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 12, color: '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '9px 12px' }}>
+                            {customerPin
+                              ? `Pinned at ${Number(customerPin.latitude).toFixed(6)}, ${Number(customerPin.longitude).toFixed(6)}`
+                              : 'No pin selected yet. Tap the map or use your current location.'}
+                          </div>
+                          <DeliveryPinMap pin={customerPin} onPinChange={setCustomerPin} disabled={false} />
+                          {pinLocationError && <p style={{ margin: 0, fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</p>}
+                        </div>
+                      )}
+
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
+                        <button type="button" onClick={() => setFnbOrderStep(2)} style={{ minHeight: 46, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 800, cursor: 'pointer' }}>Back</button>
+                        <button type="button" onClick={() => setFnbOrderStep(4)} disabled={!fnbCustomerStepComplete} style={{ minHeight: 46, borderRadius: 12, border: 'none', background: fnbCustomerStepComplete ? 'linear-gradient(180deg, #f97316 0%, #ea580c 100%)' : '#cbd5e1', color: '#fff', fontWeight: 900, boxShadow: fnbCustomerStepComplete ? '0 8px 20px rgba(234,88,12,.24)' : 'none', cursor: fnbCustomerStepComplete ? 'pointer' : 'not-allowed' }}>Continue</button>
+                      </div>
+                      {!fnbCustomerStepComplete && (
+                        <div style={{ fontSize: 12, color: '#b45309' }}>
+                          Complete required fields to continue.
+                        </div>
+                      )}
+                    </section>
+                    <aside style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 10, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Summary</div>
+                      <div style={{ fontSize: 38, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{money(totalsForDisplay.total_amount)}</div>
+                      <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Fulfillment</span><strong>{isDeliveryOrder ? 'Delivery' : 'Pickup'}</strong></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Schedule</span><strong>{fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'ASAP'}</strong></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Status</span><strong>Pending payment</strong></div>
+                      </div>
+                      <div style={{ maxHeight: isMobileViewport ? 180 : 220, overflowY: 'auto', display: 'grid', gap: 8 }}>
+                        {cart.map((line) => (
+                          <div key={`fnb-customer-step-summary-${line.item_id}`} style={{ border: '1px solid #e2e8f0', borderRadius: 12, background: '#fff', padding: '9px 10px', display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
+                            <span>{line.name} x {Math.max(1, Number(line.quantity || 1))}</span>
+                            <strong>{money((Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0))}</strong>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontWeight: 900, color: '#0f172a' }}>
+                        <span>Total</span>
+                        <span>{money(totalsForDisplay.total_amount)}</span>
+                      </div>
+                    </aside>
+                  </div>
+                )}
+
+                {fnbOrderStep === 4 && !checkoutResult && (
+                  <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.5fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
+                    <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
+                      <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Payment and Submit</div>
+                      <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                        Payment Type
+                        <StorefrontDropdown
+                          value={fnbPaymentType}
+                          onChange={(nextValue) => setFnbPaymentType(String(nextValue))}
+                          options={[
+                            { value: 'cash', label: 'Cash on delivery/pickup' },
+                            { value: 'online', label: 'Online payment' }
+                          ]}
+                          triggerStyle={{ minHeight: 44, borderRadius: 12 }}
+                        />
+                      </label>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ minHeight: 44, borderRadius: 12, border: '1px solid #ea580c', background: '#fff', color: '#9a3412', fontWeight: 800, cursor: 'pointer' }}>Refresh Quote</button>
+                        <button type="button" onClick={handleCheckout} disabled={!checkoutAllowed} style={{ minHeight: 44, borderRadius: 12, border: 'none', background: checkoutAllowed ? '#ea580c' : '#cbd5e1', color: '#fff', fontWeight: 800, cursor: checkoutAllowed ? 'pointer' : 'not-allowed' }}>{checkoutLoading ? 'Processing...' : 'Place Order'}</button>
+                      </div>
+                      {quoteError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{quoteError}</p>}
+                      {checkoutError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
+                      <button type="button" onClick={() => setFnbOrderStep(3)} style={{ justifySelf: 'start', minHeight: 40, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}>Back</button>
+                    </section>
+                    <aside style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 10, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Summary</div>
+                      <div style={{ fontSize: 38, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{money(totalsForDisplay.total_amount)}</div>
+                      <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Fulfillment</span><strong>{isDeliveryOrder ? 'Delivery' : 'Pickup'}</strong></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Schedule</span><strong>{fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'ASAP'}</strong></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Status</span><strong>{checkoutAllowed ? 'Ready to submit' : (requireQuoteForCheckout ? 'Quote required' : 'Complete required fields')}</strong></div>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#334155' }}><span>Items subtotal</span><strong>{money(totalsForDisplay.subtotal_amount)}</strong></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#334155' }}><span>{totalsForDisplay.service_fee_label}</span><strong>{money(totalsForDisplay.service_fee_amount)}</strong></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#334155' }}><span>Delivery fee</span><strong>{money(totalsForDisplay.delivery_fee)}</strong></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 8, borderTop: '1px solid #dbe5ee', fontSize: 15, color: '#0f172a' }}><span style={{ fontWeight: 800 }}>Total due</span><strong style={{ fontWeight: 900 }}>{money(totalsForDisplay.total_amount)}</strong></div>
+                    </aside>
+                  </div>
+                )}
+
+                {fnbOrderStep === 4 && checkoutResult && (
+                  <section style={{ border: '1px solid #dbe5ee', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Confirmation</div>
+                    <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a' }}>Order submitted successfully</div>
+                    <div style={{ display: 'grid', gap: 6, fontSize: 14, color: '#334155' }}>
+                      <div>Reference: <strong>{checkoutResult?.tracking_pin || 'Pending'}</strong></div>
+                      <div>Payment: <strong>{String(fnbPaymentType || 'cash').toUpperCase()}</strong></div>
+                      <div>Total: <strong>{money(checkoutResult?.totals?.total_amount ?? totalsForDisplay.total_amount)}</strong></div>
+                    </div>
+                    <div style={{ display: 'grid', gap: 8, maxHeight: 220, overflowY: 'auto', paddingRight: 2 }}>
+                      {(Array.isArray(checkoutResult?.cart_lines) ? checkoutResult.cart_lines : []).map((line) => (
+                        <div key={`fnb-confirm-line-${line.item_id}`} style={{ border: '1px solid #e2e8f0', borderRadius: 12, background: '#fff', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13 }}>
+                          <span>{line.name} x {Math.max(1, Number(line.quantity || 1))}</span>
+                          <strong>{money((Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0))}</strong>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {checkoutResult?.payment?.checkout_url && (
+                        <a href={checkoutResult.payment.checkout_url} target="_blank" rel="noreferrer" style={{ minHeight: 42, borderRadius: 12, border: 'none', background: '#ea580c', color: '#fff', padding: '0 14px', fontWeight: 800, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                          Continue to Payment
+                        </a>
+                      )}
+                      <button type="button" onClick={handleDownloadCheckoutImage} style={{ minHeight: 42, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}>Download Confirmation</button>
+                      <button type="button" onClick={() => { setCheckoutResult(null); setFnbOrderStep(2); goStoreCatalogPage(); }} style={{ minHeight: 42, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}>Back to Menu</button>
+                    </div>
+                  </section>
+                )}
+              </div>
+            )}
+
+            {checkoutTab === 'cart' && isFnbMode && !isFnbOrderSubpage && (
+              <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: isDesktopCheckout ? 'calc(100vh - 126px)' : 'calc(92vh - 122px)' }}>
+                <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 14 }}>
+                  {cart.length === 0 ? (
+                    <div style={{ border: '1px dashed #cbd5e1', borderRadius: 20, background: '#f8fafc', padding: '28px 20px', minHeight: isMobileViewport ? 240 : 320, textAlign: 'center', display: 'grid', alignContent: 'center', gap: 8 }}>
+                      <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>No menu item added yet</div>
+                      <div style={{ fontSize: 13, lineHeight: 1.6, color: '#64748b' }}>
+                        Add food or beverage items from the catalog to continue to ordering.
+                      </div>
+                    </div>
+                  ) : (
+                    cart.map((line) => (
+                      <div
+                        key={`fnb-cart-line-${line.item_id}`}
+                        style={{
+                          borderBottom: '1px solid #e2e8f0',
+                          padding: isMobileViewport ? '10px 2px 8px' : '12px 4px 10px',
+                          display: 'grid',
+                          gap: 8
+                        }}
+                      >
+                        <div style={{ display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: 14, alignItems: 'start' }}>
+                          <div style={{ width: 72, height: 72, borderRadius: 14, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                            {line.image_url && !cartImageErrors.has(Number(line.item_id)) ? (
+                              <img
+                                src={withAssetOrigin(line.image_url)}
+                                alt={line.name}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                onError={() => {
+                                  const normalizedLineItemId = Number(line.item_id);
+                                  if (!Number.isFinite(normalizedLineItemId)) return;
+                                  setCartImageErrors((previous) => {
+                                    const next = new Set(previous);
+                                    next.add(normalizedLineItemId);
+                                    return next;
+                                  });
+                                }}
+                              />
+                            ) : (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>No image</span>
+                            )}
+                          </div>
+                          <div style={{ display: 'grid', gap: 10, minWidth: 0 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto auto', alignItems: 'start', gap: 10 }}>
+                              <div style={{ minWidth: 0, display: 'grid', gap: 4 }}>
+                                <div style={{ fontSize: isMobileViewport ? 16 : 18, fontWeight: 900, color: '#0f172a', lineHeight: 1.2 }}>
+                                  {line.name}
+                                </div>
+                                <div style={{ fontSize: 12, color: '#64748b' }}>
+                                  Unit: {money(line.price)} {line.unit_of_measure ? `- ${line.unit_of_measure}` : ''}
+                                </div>
+                              </div>
+                              <div style={{ fontSize: 14, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap', alignSelf: 'center' }}>
+                                {money((Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0))}
+                              </div>
+                              <button
+                                type="button"
+                                aria-label={`Remove ${line.name}`}
+                                onClick={() => removeCartItem(line.item_id)}
+                                style={{ width: 28, height: 28, border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, alignSelf: 'center' }}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 8px' }}>
+                                {activeOrderMethodLabel}
+                              </span>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 8px' }}>
+                                Qty {Math.max(1, Number(line.quantity || 1))}
+                              </span>
+                            </div>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, paddingTop: 2 }}>
+                              <button
+                                type="button"
+                                onClick={() => updateQty(line.item_id, Math.max(0, Number(line.quantity || 1) - 1))}
+                                style={{ width: 28, height: 28, borderRadius: 999, border: '1px solid #dbe5ee', background: '#fff', color: '#0f172a', fontSize: 16, fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                              >
+                                -
+                              </button>
+                              <span style={{ minWidth: 14, textAlign: 'center', fontSize: 14, fontWeight: 800, color: '#0f172a' }}>
+                                {Math.max(1, Number(line.quantity || 1))}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => updateQty(line.item_id, Number(line.quantity || 1) + 1)}
+                                style={{ width: 28, height: 28, borderRadius: 999, border: '1px solid #dbe5ee', background: '#fff', color: '#0f172a', fontSize: 16, fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div style={{ borderTop: '1px solid #e2e8f0', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 12, background: '#ffffff' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: '#64748b' }}>Current total</div>
+                      <div style={{ fontSize: 28, fontWeight: 900, color: '#0f172a' }}>{money(cartTotal)}</div>
+                    </div>
+                    <div style={{ fontSize: 13, color: '#64748b', textAlign: 'right' }}>
+                      {cartCount} selected
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={goStoreOrderPage}
+                    disabled={cart.length === 0}
+                    style={{
+                      minHeight: 50,
+                      borderRadius: 16,
+                      border: 'none',
+                      background: cart.length === 0 ? '#cbd5e1' : 'linear-gradient(135deg,#ea580c,#f97316)',
+                      color: '#fff',
+                      fontSize: 15,
+                      fontWeight: 900,
+                      cursor: cart.length === 0 ? 'not-allowed' : 'pointer',
+                      boxShadow: cart.length === 0 ? 'none' : '0 14px 30px rgba(234,88,12,.24)'
+                    }}
+                  >
+                    Order &amp; Purchase
+                  </button>
+                </div>
+              </div>
+            )}
+            {checkoutTab === 'review' && hasServiceCart && (
+              <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.25fr) minmax(280px, 360px)' : '1fr', gap: 16, alignItems: 'start' }}>
+                <section style={{ display: 'grid', gap: 14 }}>
+                  <div style={{ border: '1px solid #d9e4e8', borderRadius: 20, padding: 18, background: '#ffffff', boxShadow: '0 12px 32px rgba(15,23,42,.06)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                      <div>
+                        <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Review Your Booking</div>
+                        <div style={{ marginTop: 4, fontSize: 13, color: '#64748b' }}>Confirm the selected service, schedule, and booking instructions before you continue.</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={openServiceCartEditor}
+                        style={{ borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '10px 14px', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Edit service
+                      </button>
+                    </div>
+
+                    <div style={{ marginTop: 16, border: '1px solid #e2e8f0', borderRadius: 18, padding: 16, background: '#fcfdff', display: 'grid', gap: 14 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '88px 1fr auto', gap: 14, alignItems: 'center' }}>
+                        <div style={{ width: 88, height: 88, borderRadius: 18, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', placeItems: 'center' }}>
+                          {firstServiceLine?.image_url && !cartImageErrors.has(Number(firstServiceLine.item_id)) ? (
+                            <img
+                              src={withAssetOrigin(firstServiceLine.image_url)}
+                              alt={firstServiceLine.name}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              onError={() => {
+                                const normalizedLineItemId = Number(firstServiceLine.item_id);
+                                if (!Number.isFinite(normalizedLineItemId)) return;
+                                setCartImageErrors((prev) => {
+                                  const next = new Set(prev);
+                                  next.add(normalizedLineItemId);
+                                  return next;
+                                });
+                              }}
+                            />
+                          ) : (
+                            <span style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>No image</span>
+                          )}
+                        </div>
+                        <div style={{ display: 'grid', gap: 8 }}>
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                              {firstServiceLine?.service_detail?.service_type || firstServiceLine?.category || 'Service'}
+                            </div>
+                            <div style={{ marginTop: 3, fontSize: 20, fontWeight: 900, color: '#0f172a' }}>
+                              {firstServiceLine?.variantName || firstServiceLine?.name}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '5px 10px' }}>
+                              {firstServiceLine?.service_detail?.service_area_type || firstServiceLine?.serviceAreaLabel || 'Service'}
+                            </span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '5px 10px' }}>
+                              Qty {firstServiceLine?.quantity || 1}
+                            </span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '5px 10px' }}>
+                              {servicePaymentOptions.find((option) => option.value === servicePaymentTiming)?.label || 'Payment pending'}
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', textAlign: isMobileViewport ? 'left' : 'right' }}>
+                          {money((Number(firstServiceLine?.price || 0) || 0) * Math.max(1, Number(firstServiceLine?.quantity || 1)))}
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+                        <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#fff', padding: 14, display: 'grid', gap: 6 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Preferred schedule</div>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>{serviceBookingSummarySchedule}</div>
+                        </div>
+                        <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#fff', padding: 14, display: 'grid', gap: 6 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Booking instructions</div>
+                          <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.5 }}>
+                            {String(firstServiceLine?.service_notes || '').trim() || 'No special instructions yet.'}
+                          </div>
+                        </div>
+                        <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#fff', padding: 14, display: 'grid', gap: 6 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Validation note</div>
+                          <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.5 }}>
+                            SKUpervisor confirms conflicts, lead time, and other booking rules when you submit.
+                          </div>
+                        </div>
+                      </div>
+
+                      {serviceIntakeFields.length > 0 && (
+                        <div style={{ display: 'grid', gap: 10 }}>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>Service requirements</div>
+                          <div style={{ display: 'grid', gap: 8 }}>
+                            {serviceIntakeFields.map((field) => (
+                              <div key={`review-${field.id}`} style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '180px 1fr', gap: 10, padding: '10px 0', borderTop: '1px solid #edf2f7' }}>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b' }}>{field.label}</div>
+                                <div style={{ fontSize: 13, color: '#334155' }}>
+                                  {field.type === 'checkbox'
+                                    ? (serviceIntakeResponses[field.id] === true ? 'Confirmed' : 'Not confirmed')
+                                    : (String(serviceIntakeResponses[field.id] || '').trim() || 'Not provided')}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </section>
+
+                <aside style={{ display: 'grid', gap: 12, position: isDesktopCheckout ? 'sticky' : 'static', top: 0 }}>
+                  <div style={{ border: '1px solid #d9e4e8', borderRadius: 20, padding: 16, background: '#ffffff', boxShadow: '0 12px 32px rgba(15,23,42,.06)', display: 'grid', gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>Booking Summary</div>
+                      <div style={{ fontSize: 12, color: '#64748b' }}>Move to customer details when the service details look correct.</div>
+                    </div>
+                    <div style={{ borderRadius: 16, background: 'linear-gradient(135deg,#0f766e,#1d8f86)', color: '#fff', padding: 14, display: 'grid', gap: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: 13, opacity: .95 }}>Service total</span>
+                        <strong style={{ fontSize: 18 }}>{money(cartTotal)}</strong>
+                      </div>
+                      <div style={{ fontSize: 12, opacity: .95 }}>
+                        {serviceBookingSummarySchedule}
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => setCheckoutTab('checkout')}
+                        style={{ borderRadius: 14, border: '1px solid rgba(15,118,110,.15)', background: '#0f766e', color: '#fff', padding: '12px 14px', fontWeight: 800, cursor: 'pointer' }}
+                      >
+                        Continue to Checkout
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeCartItem(firstServiceLine.item_id)}
+                        style={{ borderRadius: 14, border: '1px solid #fecaca', background: '#fff', color: '#b91c1c', padding: '12px 14px', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                      >
+                        <Trash2 size={16} />
+                        Remove Service
+                      </button>
+                    </div>
+                  </div>
+                </aside>
+              </div>
+            )}
+
+            {checkoutTab === 'checkout' && !isFnbOrderSubpage && !isFnbMode && !(isSimpleMode && isResolvedOrderSubpage) && (
+              <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.5fr) minmax(340px, 420px)' : '1fr', gap: 16, alignItems: 'start' }}>
+                <section style={{ display: 'grid', gap: 14 }}>
+                  <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: '#ffffff', boxShadow: '0 8px 24px rgba(15,23,42,.04)' }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 4 }}>{hasServiceCart ? 'Customer Details' : 'Delivery Details'}</div>
+                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
+                      {hasServiceCart
+                        ? 'Finish the booking with the customer contact details required by the current storefront contract.'
+                        : 'Group the must-fill fields together so checkout feels faster and calmer.'}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr' : '1fr', gap: 10 }}>
+                      {storeLocations.length > 0 && (
+                        <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                          Fulfillment Location
+                          <select
+                            value={selectedLocationId ?? ''}
+                            onChange={(e) => setSelectedLocationId(e.target.value ? Number(e.target.value) : null)}
+                            style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
+                          >
+                            {storeLocations.map((location) => (
+                              <option key={location.location_id} value={location.location_id} disabled={location.is_open === false || location.is_active === false}>
+                                {location.name} {location.is_primary_storefront ? '(Primary)' : ''} {location.is_open === false ? '(Closed)' : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                      {!hasServiceCart && (
+                        <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                          Order Method
+                          <select
+                            value={orderMethod}
+                            onChange={(e) => {
+                              setOrderMethod(e.target.value);
+                              setPinLocationError('');
+                            }}
+                            style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
+                          >
+                            {ORDER_METHOD_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                          </select>
+                        </label>
+                      )}
+                      <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                        Customer Name
+                        <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Who is receiving this?" style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                      </label>
+                      <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                        Phone Number
+                        <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Mobile number" style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                      </label>
+                      <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                        Email
+                        <input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="For ticket or account linking" style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                      </label>
+                    </div>
+                    {hasServiceCart && (
+                      <>
+                        <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr' : '1fr', gap: 10 }}>
+                          <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                            Appointment Date / Time
+                            <input type="datetime-local" value={serviceAppointmentAt} onChange={(e) => setServiceAppointmentAt(e.target.value)} style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                          </label>
+                          <label style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                            Payment Timing
+                            <select value={servicePaymentTiming} onChange={(e) => setServicePaymentTiming(e.target.value)} style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}>
+                              {servicePaymentOptions.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        {serviceIntakeFields.length > 0 && (
+                          <section style={{ marginTop: 10, border: '1px solid #d9e4e8', borderRadius: 14, padding: 12, background: '#f8fafc' }}>
+                            <h3 style={{ margin: 0, fontSize: 14, color: '#0f172a' }}>Service Intake</h3>
+                            <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr' : '1fr', gap: 10 }}>
+                              {serviceIntakeFields.map((field) => (
+                                <label key={field.id} style={{ display: 'block', fontSize: 12, color: '#475569' }}>
+                                  {field.label}{field.required ? ' *' : ''}
+                                  {field.type === 'textarea' ? (
+                                    <textarea
+                                      value={serviceIntakeResponses[field.id] || ''}
+                                      onChange={(e) => setServiceIntakeResponses((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                                      style={{ width: '100%', minHeight: 72, marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
+                                    />
+                                  ) : field.type === 'select' ? (
+                                    <select
+                                      value={serviceIntakeResponses[field.id] || ''}
+                                      onChange={(e) => setServiceIntakeResponses((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                                      style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
+                                    >
+                                      <option value="">Select</option>
+                                      {field.options.map((option) => <option key={option} value={option}>{option}</option>)}
+                                    </select>
+                                  ) : field.type === 'checkbox' ? (
+                                    <input
+                                      type="checkbox"
+                                      checked={serviceIntakeResponses[field.id] === true}
+                                      onChange={(e) => setServiceIntakeResponses((prev) => ({ ...prev, [field.id]: e.target.checked }))}
+                                      style={{ marginTop: 10 }}
+                                    />
+                                  ) : (
+                                    <input
+                                      type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                                      value={serviceIntakeResponses[field.id] || ''}
+                                      onChange={(e) => setServiceIntakeResponses((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                                      style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
+                                    />
+                                  )}
+                                </label>
+                              ))}
+                            </div>
+                          </section>
+                        )}
+                      </>
+                    )}
+                    {!hasServiceCart && (
+                      <label style={{ display: 'block', fontSize: 12, color: '#475569', marginTop: 10 }}>
+                        Delivery Address
+                        <input
+                          value={customerAddress}
+                          onChange={(e) => setCustomerAddress(e.target.value)}
+                          placeholder={isDeliveryOrder ? 'House number, street, landmark' : 'Address is only needed for delivery'}
+                          disabled={!isDeliveryOrder}
+                          style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: isDeliveryOrder ? '#fff' : '#f1f5f9' }}
+                        />
+                      </label>
+                    )}
+                    {selectedLocation?.is_open === false && (
+                      <div style={{ marginTop: 10, fontSize: 12, color: '#b45309', fontWeight: 700, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 12px' }}>
+                        Selected location is closed and cannot accept orders right now.
+                      </div>
+                    )}
+                  </div>
+
+                  {!hasServiceCart && (
+                    <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: 'linear-gradient(180deg,#f8fffe 0%,#ffffff 100%)', boxShadow: '0 8px 24px rgba(15,23,42,.04)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+                        <div>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>Location Pin</div>
+                          <div style={{ fontSize: 12, color: '#64748b' }}>
+                            {isDeliveryOrder ? 'Add a precise drop-off pin to help fulfillment.' : 'Pinning is available for delivery orders.'}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            onClick={handlePinMyLocation}
+                            disabled={!isDeliveryOrder || pinLocationLoading}
+                            style={{ borderRadius: 12, border: '1px solid #0f766e', background: isDeliveryOrder ? '#fff' : '#f8fafc', color: '#0f766e', padding: '9px 12px', fontWeight: 700, cursor: isDeliveryOrder ? 'pointer' : 'not-allowed' }}
+                          >
+                            {pinLocationLoading ? 'Pinning...' : 'Pin My Location'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCustomerPin(null)}
+                            disabled={!isDeliveryOrder || !customerPin}
+                            style={{ borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '9px 12px', fontWeight: 700, cursor: (!isDeliveryOrder || !customerPin) ? 'not-allowed' : 'pointer' }}
+                          >
+                            Clear Pin
+                          </button>
+                        </div>
+                      </div>
+                      <div style={{ marginBottom: 10, fontSize: 12, color: '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '10px 12px' }}>
+                        {isDeliveryOrder
+                          ? (customerPin
+                            ? `Pinned at ${Number(customerPin.latitude).toFixed(6)}, ${Number(customerPin.longitude).toFixed(6)}`
+                            : 'No pin selected yet. Tap the map or use your current location.')
+                          : 'Switch order method to Delivery if you want to save a location pin.'}
+                      </div>
+                      <div style={{ display: 'grid', gap: 10 }}>
+                        <DeliveryPinMap
+                          pin={customerPin}
+                          onPinChange={setCustomerPin}
+                          disabled={!isDeliveryOrder}
+                        />
+                        {pinLocationError && <p style={{ margin: 0, fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</p>}
+                      </div>
+                    </div>
+                  )}
+                </section>
+
+                <section style={{ display: 'grid', gap: 12, position: isDesktopCheckout ? 'sticky' : 'static', top: 0 }}>
+                  <div style={{ border: '1px solid #d9e4e8', borderRadius: 20, padding: 14, background: '#ffffff', boxShadow: '0 12px 32px rgba(15,23,42,.06)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>{isFnbMode ? 'Cart Summary' : 'Order Summary'}</div>
+                        <div style={{ fontSize: 12, color: '#64748b' }}>
+                          {isFnbMode ? 'Update quantities, then refresh the quote before checkout.' : 'Keep the total visible while editing.'}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 12, color: '#64748b' }}>{cartCount} item{cartCount === 1 ? '' : 's'}</div>
+                    </div>
+                    <div style={{ maxHeight: isDesktopCheckout ? 320 : 240, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 16, padding: 10, marginTop: 12, background: '#fbfeff' }}>
+                      {cart.length === 0 && (
+                        <p style={{ margin: 0, color: '#64748b' }}>
+                          {isFnbMode ? 'Your menu cart is empty. Add items from Menu Highlights to start an order.' : 'Cart is empty.'}
+                        </p>
+                      )}
+                      {cart.map((line) => (
+                        <div key={line.item_id} style={{ display: 'grid', gridTemplateColumns: '58px 1fr 78px 96px', gap: 10, alignItems: 'center', marginBottom: 10, padding: 10, border: '1px solid #e6edf2', borderRadius: 14, background: '#fff' }}>
+                          <div style={{ width: 58, height: 58, borderRadius: 12, overflow: 'hidden', border: '1px solid #e2e8f0', background: 'linear-gradient(135deg,#f8fafc,#eef2f7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {line.image_url && !cartImageErrors.has(Number(line.item_id)) ? (
+                              <img
+                                src={withAssetOrigin(line.image_url)}
+                                alt={line.name}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                onError={() => {
+                                  const normalizedLineItemId = Number(line.item_id);
+                                  if (!Number.isFinite(normalizedLineItemId)) return;
+                                  setCartImageErrors((prev) => {
+                                    const next = new Set(prev);
+                                    next.add(normalizedLineItemId);
+                                    return next;
+                                  });
+                                }}
+                              />
+                            ) : (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textAlign: 'center', padding: 6 }}>No Image</span>
+                            )}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 700, color: '#0f172a' }}>{line.name}</div>
+                            <div style={{ fontSize: 11, color: '#64748b' }}>
+                              Unit: {money(line.price)} {line.unit_of_measure ? `- ${line.unit_of_measure}` : ''}
+                            </div>
+                            <div style={{ fontSize: 11, color: '#0f766e', fontWeight: 700 }}>
+                              {line.category === 'service' ? 'Bookable appointment' : `${activeOrderMethodLabel} order item`}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeCartItem(line.item_id)}
+                              style={{ marginTop: 6, border: 'none', background: 'transparent', padding: 0, color: '#b91c1c', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                          <input type="number" min="1" step="1" value={line.quantity} onChange={(e) => updateQty(line.item_id, e.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '8px 10px', background: '#fff', fontWeight: 700 }} />
+                          <span style={{ textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>{money(line.quantity * line.price)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: 12, borderRadius: 16, background: 'linear-gradient(135deg,#0f766e,#1d8f86)', color: '#fff', padding: 14 }}>
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 13, opacity: .95 }}>Items Subtotal</span>
+                          <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.subtotal_amount)}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 13, opacity: .95 }}>{totalsForDisplay.service_fee_label} (1%)</span>
+                          <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.service_fee_amount)}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 13, opacity: .95 }}>Delivery Fee</span>
+                          <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.delivery_fee)}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 13, opacity: .95 }}>Vatable Sales</span>
+                          <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.vatable_sales)}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 13, opacity: .95 }}>VAT Amount</span>
+                          <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.vat_amount)}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 13, opacity: .95 }}>VAT-Exempt Sales</span>
+                          <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.vat_exempt_sales)}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 13, opacity: .95 }}>Zero-Rated Sales</span>
+                          <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.zero_rated_sales)}</strong>
+                        </div>
+                        <div style={{ marginTop: 4, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,.24)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 14, fontWeight: 800 }}>Total Amount Due</span>
+                          <strong style={{ fontSize: 22 }}>{money(totalsForDisplay.total_amount)}</strong>
+                        </div>
+                      </div>
+                      <div style={{ marginTop: 10, fontSize: 12, opacity: .95 }}>
+                        {hasServiceCart
+                          ? 'Service booking totals are estimated from the selected service. Complete appointment details to book.'
+                          : quoteResult
+                            ? (quoteNeedsRefresh ? 'Displayed totals are stale. Click Quote again to re-sync and unlock checkout.' : 'Totals are synced from the latest quote and checkout is enabled.')
+                            : 'No quote yet. Click Quote to unlock checkout.'}
+                      </div>
+                      <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        {!hasServiceCart && checkoutPermitted && accessCapabilities.quote !== false && (
+                          <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.55)', background: '#ffffff', color: '#0f766e', padding: '11px 12px', fontWeight: 800 }}>{isFnbMode ? 'Refresh Quote' : 'Quote'}</button>
+                        )}
+                        <button type="button" onClick={handleCheckout} disabled={!checkoutAllowed} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.2)', background: '#0b3d3a', color: '#fff', padding: '11px 12px', fontWeight: 800 }}>{checkoutLoading ? 'Processing...' : (hasServiceCart ? 'Submit Booking' : (isFnbMode ? 'Place Order' : 'Checkout'))}</button>
+                      </div>
+                    </div>
+                    {hasStockViolation && (
+                      <p style={{ marginTop: 10, fontSize: 13, color: '#b91c1c', fontWeight: 700 }}>
+                        Cannot checkout: one or more lines exceed current stock.
+                      </p>
+                    )}
+                    {!hasServiceCart && !quoteResult && cart.length > 0 && (
+                      <p style={{ marginTop: 10, fontSize: 13, color: '#b45309', fontWeight: 700 }}>
+                        Quote is required before checkout.
+                      </p>
+                    )}
+                    {!hasServiceCart && quoteResult && quoteNeedsRefresh && (
+                      <p style={{ marginTop: 10, fontSize: 13, color: '#b45309', fontWeight: 700 }}>
+                        Cart changed after quote. Click Quote again to proceed.
+                      </p>
+                    )}
+                    {hasMixedServiceCart && (
+                      <p style={{ marginTop: 10, fontSize: 13, color: '#b45309', fontWeight: 700 }}>
+                        Services must be booked separately from regular product orders.
+                      </p>
+                    )}
+                    {hasServiceCart && !serviceAppointmentAt && (
+                      <p style={{ marginTop: 10, fontSize: 13, color: '#b45309', fontWeight: 700 }}>
+                        Choose an appointment date and time before booking.
+                      </p>
+                    )}
+                    {quoteError && <p style={{ marginTop: 10, fontSize: 13, color: '#b91c1c' }}>{quoteError}</p>}
+                    {!hasServiceCart && quoteResult && (
+                      <p style={{ marginTop: 10, fontSize: 13, color: '#0f766e' }}>
+                        Quote synced. Total due: {money(totalsForDisplay.total_amount)}
+                      </p>
+                    )}
+                    {checkoutError && <p style={{ marginTop: 10, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
+                    {(checkoutResult?.tracking_pin || checkoutResult?.booking?.public_reference) && (
+                      <div style={{ marginTop: 10, display: 'grid', gap: 8, border: '1px solid #99f6e4', background: '#ecfeff', borderRadius: 12, padding: '10px 12px' }}>
+                        <p style={{ margin: 0, fontSize: 13, color: '#0f766e' }}>
+                          {checkoutResult?.booking ? 'Booking created.' : 'Order placed.'} Reference: <strong>{checkoutResult.booking?.public_reference || checkoutResult.tracking_pin}</strong>
+                        </p>
+                        {checkoutResult?.account_action?.show_signup === true && (
+                          <p style={{ margin: 0, fontSize: 12, color: '#0f766e' }}>
+                            You can sign in or register to save this latest transaction to your account.
+                          </p>
+                        )}
+                        {checkoutResult?.payment?.checkout_url && (
+                          <a href={checkoutResult.payment.checkout_url} target="_blank" rel="noreferrer" style={{ justifySelf: 'start', borderRadius: 10, border: '1px solid #0f766e', background: '#0f766e', color: '#fff', padding: '8px 12px', fontWeight: 800, textDecoration: 'none' }}>
+                            Pay Now
+                          </a>
+                        )}
+                        {checkoutResult?.account_action?.show_signup !== true && (
+                          <p style={{ margin: 0, fontSize: 12, color: '#0f766e' }}>
+                            This ticket can be kept as an image for your gallery.
+                          </p>
+                        )}
+                        <button type="button" onClick={handleDownloadCheckoutImage} style={{ justifySelf: 'start', borderRadius: 10, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 800 }}>
+                          Download Image
+                        </button>
+                      </div>
+                    )}
+                    <p style={{ marginTop: 10, fontSize: 12, color: '#64748b' }}>{DGFY_ACRONYM}</p>
+                  </div>
+                </section>
+              </div>
+            )}
+
+            {checkoutTab === 'track' && (
+              <div style={{ maxWidth: 560, border: '1px solid #d9e4e8', borderRadius: 18, padding: 16, background: '#fff', boxShadow: '0 8px 24px rgba(15,23,42,.04)' }}>
+                <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 22 }}>Track Order</h3>
+                <p style={{ marginTop: 0, color: '#64748b', fontSize: 13 }}>Enter a tracking PIN to check the latest status without leaving the sheet.</p>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input value={trackingPinInput} onChange={(e) => setTrackingPinInput(e.target.value.toUpperCase())} placeholder="SK-XXXXXX" style={{ flex: 1, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' }} />
+                  <button type="button" onClick={handleTrack} disabled={!selectedStore} style={{ borderRadius: 12, border: '1px solid #334155', background: '#334155', color: '#fff', padding: '11px 16px', fontWeight: 700 }}>Track</button>
+                </div>
+                {trackingError && <p style={{ color: '#b91c1c', marginTop: 10 }}>{trackingError}</p>}
+                {trackingResult && <div style={{ marginTop: 10, fontSize: 14, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 14px' }}>Status: <strong>{trackingResult.status_label || trackingResult.status}</strong></div>}
+              </div>
+            )}
+
+            {checkoutTab === 'account' && (
+              <div style={{ display: 'grid', gap: 14, maxWidth: 860 }}>
+                <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 16, background: '#fff', boxShadow: '0 8px 24px rgba(15,23,42,.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                    <div>
+                      <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 22 }}>My Account</h3>
+                      <p style={{ marginTop: 0, color: '#64748b', fontSize: 13 }}>Bookings, orders, tickets, receipts, and the latest linked transaction.</p>
+                    </div>
+                    <button type="button" onClick={handleLoadAccountPanel} style={{ borderRadius: 12, border: '1px solid #334155', background: '#334155', color: '#fff', padding: '10px 14px', fontWeight: 700 }}>Refresh</button>
+                  </div>
+                  {accountPanel.loading && <p style={{ color: '#64748b' }}>Loading account...</p>}
+                  {accountPanel.error && <p style={{ color: '#b91c1c' }}>{accountPanel.error}</p>}
+                  {accountPanel.me && (
+                    <div style={{ marginTop: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', padding: '10px 12px' }}>
+                      <strong>{accountPanel.me.name || accountPanel.me.email || 'Customer'}</strong>
+                      <div style={{ fontSize: 12, color: '#64748b' }}>{accountPanel.me.email || accountPanel.me.phone || 'Signed in'}</div>
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr' : '1fr', gap: 12 }}>
+                  <section style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: '#fff' }}>
+                    <h4 style={{ margin: '0 0 8px 0', fontSize: 16 }}>My Bookings</h4>
+                    {accountPanel.bookings.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No saved bookings yet.</p>}
+                    {accountPanel.bookings.map((booking) => (
+                      <div key={booking.booking_id} style={{ borderTop: '1px solid #e2e8f0', padding: '9px 0', fontSize: 13 }}>
+                        <strong>{booking.public_reference}</strong>
+                        <div style={{ color: '#475569' }}>{booking.service_name || booking.service?.name || 'Service'} Â· {booking.status}</div>
+                        <div style={{ color: '#64748b' }}>{booking.start_at ? formatTicketDate(booking.start_at) : 'Unscheduled'} Â· {booking.payment_status}</div>
+                      </div>
+                    ))}
+                  </section>
+                  <section style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: '#fff' }}>
+                    <h4 style={{ margin: '0 0 8px 0', fontSize: 16 }}>My Orders & Tickets</h4>
+                    {accountPanel.orders.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No saved orders yet.</p>}
+                    {accountPanel.orders.map((order) => (
+                      <div key={order.pos_transaction_id || order.tracking_pin} style={{ borderTop: '1px solid #e2e8f0', padding: '9px 0', fontSize: 13 }}>
+                        <strong>{order.tracking_pin || order.receipt_number || 'Order'}</strong>
+                        <div style={{ color: '#475569' }}>{order.status_label || order.status || 'Placed'} Â· {money(order.total_amount)}</div>
+                        <div style={{ color: '#64748b' }}>{order.created_at ? formatTicketDate(order.created_at) : 'Recent transaction'}</div>
+                      </div>
+                    ))}
+                  </section>
+                </div>
+              </div>
+            )}
+          </div>
+        </aside>
+      </div>
+    </>
+  )}
+    </main >
+  );
+}

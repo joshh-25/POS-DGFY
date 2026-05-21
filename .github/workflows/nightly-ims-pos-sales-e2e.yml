@@ -1,0 +1,87 @@
+name: Nightly IMS POS Sales Journey E2E
+
+on:
+  schedule:
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+
+jobs:
+  nightly-journey-matrix:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpassword
+          MYSQL_DATABASE: sku_inventory_manager
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: --health-cmd="redis-cli ping" --health-interval=10s --health-timeout=5s --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: ./backend
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: ./frontend
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+        working-directory: ./backend
+
+      - name: Prepare runtime schema
+        run: npx sequelize-cli db:migrate --env development --config src/config/sequelize.config.cjs --migrations-path migrations
+        working-directory: ./backend
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager
+          DB_NAME_TEST: sku_inventory_manager
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: nightly_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: nightly_refresh_secret_key_for_tests_only_123
+
+      - name: Run IMS->POS->Sales matrix browser journey
+        run: npm run test:frontend-ims-pos-sales-e2e:matrix
+        working-directory: ./backend
+        env:
+          RUN_BROWSER_E2E: 'true'
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager
+          DB_NAME_TEST: sku_inventory_manager
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: nightly_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: nightly_refresh_secret_key_for_tests_only_123
+          BROWSER_E2E_HEADLESS: 'true'
+
+      - name: Upload journey artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ims-pos-sales-journey-nightly-artifacts
+          path: |
+            backend/tests/artifacts/**
+            backend/test-results/**
+          if-no-files-found: ignore
+          retention-days: 21

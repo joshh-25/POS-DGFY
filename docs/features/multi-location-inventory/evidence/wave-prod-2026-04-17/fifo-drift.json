@@ -1,0 +1,73 @@
+{
+  "generated_at": "2026-04-17T18:38:27.030Z",
+  "tolerance": 0.0001,
+  "repair_positive_drift": true,
+  "tenant_count": 6,
+  "degraded_tenants": 0,
+  "total_drift_rows": 0,
+  "total_over_consumed_rows": 0,
+  "max_abs_drift": 0,
+  "status": "healthy",
+  "results": [
+    {
+      "tenantId": "32c595ee-01ce-11f1-a768-f23c9312ecc4",
+      "tenantName": "SureBiz Corp",
+      "dbName": "sku_inventory_manager",
+      "status": "healthy",
+      "driftRows": [],
+      "overConsumedRows": [],
+      "maxDriftAbs": 0,
+      "repairedCount": 1
+    },
+    {
+      "tenantId": "3a608773-edb7-46e8-be7f-29837e4944f1",
+      "tenantName": "Premium Corp",
+      "dbName": "tenant_premium",
+      "status": "healthy",
+      "driftRows": [],
+      "overConsumedRows": [],
+      "maxDriftAbs": 0,
+      "repairedCount": 3
+    },
+    {
+      "tenantId": "69443791-422d-463e-b96d-47666111e9f1",
+      "tenantName": "Reyven",
+      "dbName": "sku_tenant_reyven_69443791",
+      "status": "healthy",
+      "driftRows": [],
+      "overConsumedRows": [],
+      "maxDriftAbs": 0,
+      "repairedCount": 1
+    },
+    {
+      "tenantId": "c02dbd73-ad9f-4593-ab14-70bc046b2bba",
+      "tenantName": "Policy Sieitz",
+      "dbName": "sku_tenant_policysieitz_c02dbd73",
+      "status": "healthy",
+      "driftRows": [],
+      "overConsumedRows": [],
+      "maxDriftAbs": 0,
+      "repairedCount": 0
+    },
+    {
+      "tenantId": "c3636628-6348-4b01-9639-00f79624e9b6",
+      "tenantName": "Carlo Corp",
+      "dbName": "sku_tenant_carlocorp_c3636628",
+      "status": "healthy",
+      "driftRows": [],
+      "overConsumedRows": [],
+      "maxDriftAbs": 0,
+      "repairedCount": 0
+    },
+    {
+      "tenantId": "dd39259d-a7aa-4154-aa15-0cd84b2f553a",
+      "tenantName": "Carlo Hubo",
+      "dbName": "sku_tenant_carlohubo_dd39259d",
+      "status": "healthy",
+      "driftRows": [],
+      "overConsumedRows": [],
+      "maxDriftAbs": 0,
+      "repairedCount": 0
+    }
+  ]
+}

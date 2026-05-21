@@ -1,0 +1,25 @@
+{
+  "generated_at": "2026-04-17T18:26:48.587Z",
+  "tolerance": 0.0001,
+  "tenant_count": 1,
+  "degraded_tenants": 0,
+  "skipped_tenants": 1,
+  "total_drift_rows": 0,
+  "total_orphan_rows": 0,
+  "total_repaired_rows": 0,
+  "max_abs_drift": 0,
+  "status": "healthy",
+  "results": [
+    {
+      "tenantId": "07e932eb-fff2-46f4-aff7-ad78a4dc0d85",
+      "tenantName": "Original Legacy Data",
+      "dbName": "sku_inventory_manager",
+      "status": "skipped",
+      "missingTables": true,
+      "driftRows": [],
+      "orphanRows": [],
+      "maxDriftAbs": 0,
+      "repairedCount": 0
+    }
+  ]
+}

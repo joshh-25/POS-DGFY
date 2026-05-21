@@ -1,0 +1,357 @@
+name: Namecheap Shared Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI/CD Pipeline"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit SHA produced by a successful CI run
+        required: true
+      deploy_backend:
+        description: Backend deploy scope
+        required: true
+        default: auto
+        type: choice
+        options: [auto, "true", "false"]
+      deploy_ims:
+        description: SKUpervisor frontend deploy scope
+        required: true
+        default: auto
+        type: choice
+        options: [auto, "true", "false"]
+      deploy_pos:
+        description: POS frontend deploy scope
+        required: true
+        default: auto
+        type: choice
+        options: [auto, "true", "false"]
+      deploy_storefront:
+        description: Storefront deploy scope
+        required: true
+        default: auto
+        type: choice
+        options: [auto, "true", "false"]
+      confirm_production:
+        description: Type DEPLOY to upload to production
+        required: true
+
+concurrency:
+  group: namecheap-shared-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PROD_IMS_URL: ${{ vars.PROD_IMS_URL || 'https://skupervisor.dgfy.ph' }}
+  PROD_POS_URL: ${{ vars.PROD_POS_URL || 'https://pos.dgfy.ph' }}
+  PROD_STOREFRONT_URL: ${{ vars.PROD_STOREFRONT_URL || 'https://dgfy.ph' }}
+  PROD_BACKEND_URL: ${{ vars.PROD_BACKEND_URL }}
+  PROD_API_URL: ${{ vars.PROD_API_URL }}
+  PROD_DEPLOY_CONTROL_URL: ${{ vars.PROD_DEPLOY_CONTROL_URL || 'https://dgfy.ph' }}
+  PROD_STORE_TEST_SLUG: ${{ vars.PROD_STORE_TEST_SLUG }}
+  FTP_DEPLOY_CONTROL_DIR: ${{ vars.FTP_DEPLOY_CONTROL_DIR || 'public_html' }}
+  FTP_BACKEND_DIR: ${{ vars.FTP_BACKEND_DIR || 'backend' }}
+  FTP_IMS_DIR: ${{ vars.FTP_IMS_DIR || 'skupervisor.dgfy.ph' }}
+  FTP_POS_DIR: ${{ vars.FTP_POS_DIR || 'pos.dgfy.ph' }}
+  FTP_STOREFRONT_DIR: ${{ vars.FTP_STOREFRONT_DIR || 'public_html' }}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+      ci_run_id: ${{ steps.resolve.outputs.ci_run_id }}
+      deploy_backend: ${{ steps.scope.outputs.deploy_backend }}
+      deploy_ims: ${{ steps.scope.outputs.deploy_ims }}
+      deploy_pos: ${{ steps.scope.outputs.deploy_pos }}
+      deploy_storefront: ${{ steps.scope.outputs.deploy_storefront }}
+      has_scope: ${{ steps.scope.outputs.has_scope }}
+    steps:
+      - name: Resolve CI run
+        id: resolve
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            if [[ "${{ inputs.confirm_production }}" != "DEPLOY" ]]; then
+              echo "::error::Manual production dispatch requires confirm_production=DEPLOY"
+              exit 1
+            fi
+            SHA="${{ inputs.sha }}"
+            CI_RUN_ID="$(gh run list --workflow ci.yml --commit "$SHA" --status success --json databaseId --jq '.[0].databaseId')"
+            if [[ -z "$CI_RUN_ID" || "$CI_RUN_ID" == "null" ]]; then
+              echo "::error::No successful CI run found for SHA $SHA"
+              exit 1
+            fi
+          else
+            SHA="${{ github.event.workflow_run.head_sha }}"
+            CI_RUN_ID="${{ github.event.workflow_run.id }}"
+          fi
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "ci_run_id=$CI_RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: deploy-metadata-${{ steps.resolve.outputs.sha }}
+          run-id: ${{ steps.resolve.outputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          path: metadata
+
+      - name: Resolve deploy scopes
+        id: scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          META="metadata/deploy-metadata-${{ steps.resolve.outputs.sha }}.json"
+          test -f "$META"
+          jq . "$META"
+          resolve_scope() {
+            local input_value="$1"
+            local changed_value="$2"
+            case "$input_value" in
+              true|false) echo "$input_value" ;;
+              auto) echo "$changed_value" ;;
+              *) echo "::error::Invalid deploy scope: $input_value" >&2; exit 1 ;;
+            esac
+          }
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            backend="$(resolve_scope "${{ inputs.deploy_backend }}" "$(jq -r '.changed_backend' "$META")")"
+            ims="$(resolve_scope "${{ inputs.deploy_ims }}" "$(jq -r '.changed_ims' "$META")")"
+            pos="$(resolve_scope "${{ inputs.deploy_pos }}" "$(jq -r '.changed_pos' "$META")")"
+            storefront="$(resolve_scope "${{ inputs.deploy_storefront }}" "$(jq -r '.changed_storefront' "$META")")"
+          else
+            backend="$(jq -r '.changed_backend' "$META")"
+            ims="$(jq -r '.changed_ims' "$META")"
+            pos="$(jq -r '.changed_pos' "$META")"
+            storefront="$(jq -r '.changed_storefront' "$META")"
+          fi
+          if [[ "$backend" == "true" && "$(jq -r '.changed_migrations' "$META")" == "true" ]]; then
+            echo "::error::Backend migrations changed. FTP-only Namecheap shared deploy v1 intentionally blocks this deploy. Run the DB migration manually through an approved host path, then dispatch with deploy_backend=false or re-run after a migration-safe lane exists."
+            exit 1
+          fi
+          if [[ "$backend" != "true" && "$ims" != "true" && "$pos" != "true" && "$storefront" != "true" ]]; then
+            echo "No deploy scopes selected; this deploy run will no-op."
+            has_scope=false
+          else
+            has_scope=true
+          fi
+          echo "deploy_backend=$backend" >> "$GITHUB_OUTPUT"
+          echo "deploy_ims=$ims" >> "$GITHUB_OUTPUT"
+          echo "deploy_pos=$pos" >> "$GITHUB_OUTPUT"
+          echo "deploy_storefront=$storefront" >> "$GITHUB_OUTPUT"
+          echo "has_scope=$has_scope" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [prepare]
+    if: needs.prepare.outputs.has_scope == 'true'
+    env:
+      DEPLOY_SHA: ${{ needs.prepare.outputs.sha }}
+      CI_RUN_ID: ${{ needs.prepare.outputs.ci_run_id }}
+      DEPLOY_BACKEND: ${{ needs.prepare.outputs.deploy_backend }}
+      DEPLOY_IMS: ${{ needs.prepare.outputs.deploy_ims }}
+      DEPLOY_POS: ${{ needs.prepare.outputs.deploy_pos }}
+      DEPLOY_STOREFRONT: ${{ needs.prepare.outputs.deploy_storefront }}
+      FTP_SERVER: ${{ secrets.FTP_SERVER }}
+      FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+      FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+      DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Install deploy helper dependencies
+        run: npm ci
+
+      - name: Validate required production configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in FTP_SERVER FTP_USERNAME FTP_PASSWORD DEPLOY_TOKEN PROD_BACKEND_URL PROD_API_URL PROD_DEPLOY_CONTROL_URL; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing required secret/variable: $name"
+              exit 1
+            fi
+          done
+          if [[ "$DEPLOY_STOREFRONT" == "true" && -z "${PROD_STORE_TEST_SLUG:-}" ]]; then
+            echo "::warning::PROD_STORE_TEST_SLUG is not set. Storefront root and static assets will be checked, but tenant-route canary will be skipped for this empty/new host."
+          fi
+
+      - name: Download selected CI artifacts
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ env.CI_RUN_ID }}
+          github-token: ${{ github.token }}
+          path: artifacts
+
+      - name: Prepare local deploy payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p deploy-payload
+          if [[ "$DEPLOY_BACKEND" == "true" ]]; then
+            cp "artifacts/backend-shared-${DEPLOY_SHA}/backend-shared-${DEPLOY_SHA}.zip" deploy-payload/backend-shared.zip
+            unzip -l deploy-payload/backend-shared.zip | grep -q "app.js"
+            unzip -l deploy-payload/backend-shared.zip | grep -q "src/server.js"
+            unzip -l deploy-payload/backend-shared.zip | grep -q "node_modules/"
+            if unzip -l deploy-payload/backend-shared.zip | grep -Eq '(^|/)\.env($|[[:space:]])'; then
+              echo "::error::.env was found in backend artifact"
+              exit 1
+            fi
+          fi
+          if [[ "$DEPLOY_IMS" == "true" ]]; then
+            cp "artifacts/skupervisor-dist-${DEPLOY_SHA}/skupervisor-dist-${DEPLOY_SHA}.zip" deploy-payload/skupervisor.zip
+            unzip -l deploy-payload/skupervisor.zip | grep -q "index.html"
+          fi
+          if [[ "$DEPLOY_POS" == "true" ]]; then
+            cp "artifacts/pos-dist-${DEPLOY_SHA}/pos-dist-${DEPLOY_SHA}.zip" deploy-payload/pos.zip
+            unzip -l deploy-payload/pos.zip | grep -q "index.html"
+          fi
+          if [[ "$DEPLOY_STOREFRONT" == "true" ]]; then
+            cp "artifacts/storefront-dist-${DEPLOY_SHA}/storefront-dist-${DEPLOY_SHA}.zip" deploy-payload/storefront.zip
+            unzip -l deploy-payload/storefront.zip | grep -q "index.html"
+          fi
+
+      - name: Render and lint remote helper scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/deploy/namecheap-shared/tools/render-templates.py \
+            --token "$DEPLOY_TOKEN" \
+            --backend-dir "$FTP_BACKEND_DIR" \
+            --ims-dir "$FTP_IMS_DIR" \
+            --pos-dir "$FTP_POS_DIR" \
+            --storefront-dir "$FTP_STOREFRONT_DIR" \
+            --output deploy-payload/deploy-scripts
+          for file in deploy-payload/deploy-scripts/*.php; do
+            php -l "$file"
+          done
+
+      - name: Upload artifacts and helpers
+        shell: bash
+        working-directory: deploy-payload
+        env:
+          DEPLOY_SCRIPTS_DIR: deploy-scripts
+          BACKEND_ZIP: backend-shared.zip
+          IMS_ZIP: skupervisor.zip
+          POS_ZIP: pos.zip
+          STOREFRONT_ZIP: storefront.zip
+          UPLOAD_BACKEND: ${{ env.DEPLOY_BACKEND }}
+          UPLOAD_IMS: ${{ env.DEPLOY_IMS }}
+          UPLOAD_POS: ${{ env.DEPLOY_POS }}
+          UPLOAD_STOREFRONT: ${{ env.DEPLOY_STOREFRONT }}
+        run: node ../scripts/deploy/namecheap-shared/upload-artifacts.js | tee ../ftp-upload.log
+
+      - name: Remote preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONTROL="${PROD_DEPLOY_CONTROL_URL%/}"
+          curl -fsS "$CONTROL/preflight.php?token=${DEPLOY_TOKEN}" | tee remote-preflight.log
+          grep -q "PREFLIGHT_OK=1" remote-preflight.log
+
+      - name: Deploy selected scopes
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONTROL="${PROD_DEPLOY_CONTROL_URL%/}"
+          call_helper() {
+            local url="$1"
+            local expected="$2"
+            local output="$3"
+            curl -fsS "$url" | tee "$output"
+            grep -q "$expected" "$output"
+          }
+          if [[ "$DEPLOY_BACKEND" == "true" ]]; then
+            call_helper "$CONTROL/unzip-backend.php?token=${DEPLOY_TOKEN}" "BACKEND_UNZIP_OK=1" backend-unzip.log
+            call_helper "$CONTROL/restart-node.php?token=${DEPLOY_TOKEN}" "NODE_RESTART_OK=1" backend-restart.log
+          fi
+          if [[ "$DEPLOY_IMS" == "true" ]]; then
+            call_helper "$CONTROL/unzip-frontend.php?token=${DEPLOY_TOKEN}&surface=ims" "FRONTEND_UNZIP_OK=ims" ims-unzip.log
+          fi
+          if [[ "$DEPLOY_POS" == "true" ]]; then
+            call_helper "$CONTROL/unzip-frontend.php?token=${DEPLOY_TOKEN}&surface=pos" "FRONTEND_UNZIP_OK=pos" pos-unzip.log
+          fi
+          if [[ "$DEPLOY_STOREFRONT" == "true" ]]; then
+            call_helper "$CONTROL/unzip-frontend.php?token=${DEPLOY_TOKEN}&surface=storefront" "FRONTEND_UNZIP_OK=storefront" storefront-unzip.log
+          fi
+
+      - name: Health checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$DEPLOY_BACKEND" == "true" ]]; then
+            for attempt in {1..30}; do
+              if curl -fsS "${PROD_BACKEND_URL%/}/health" > backend-health.json; then
+                if grep -q '"hostingProfile"' backend-health.json && grep -q 'shared' backend-health.json; then
+                  break
+                fi
+              fi
+              sleep 5
+            done
+            grep -q '"hostingProfile"' backend-health.json
+            curl -fsS "${PROD_API_URL%/}/health" > backend-api-health.json
+          fi
+          if [[ "$DEPLOY_IMS" == "true" ]]; then curl -fsS "${PROD_IMS_URL%/}" | grep -qi "<html"; fi
+          if [[ "$DEPLOY_POS" == "true" ]]; then curl -fsS "${PROD_POS_URL%/}" | grep -qi "<html"; fi
+          if [[ "$DEPLOY_STOREFRONT" == "true" ]]; then
+            curl -fsS "${PROD_STOREFRONT_URL%/}" | tee store-root.html | grep -qi "<html"
+            tenant_check_file="store-root.html"
+            if [[ -n "${PROD_STORE_TEST_SLUG:-}" ]]; then
+              curl -fsS "${PROD_STOREFRONT_URL%/}/${PROD_STORE_TEST_SLUG}" | tee store-tenant.html | grep -qi "<html"
+              tenant_check_file="store-tenant.html"
+            else
+              echo "PROD_STORE_TEST_SLUG not set; skipping tenant-route canary on empty/new host."
+            fi
+            asset_path="$(grep -oE '/assets/[^"]+\\.js' "$tenant_check_file" | head -n 1 || true)"
+            if [[ -z "$asset_path" ]]; then
+              echo "::error::Could not find storefront JS asset on checked storefront HTML"
+              exit 1
+            fi
+            content_type="$(curl -fsSI "${PROD_STOREFRONT_URL%/}${asset_path}" | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print tolower($2); exit}')"
+            if [[ "$content_type" == text/html* ]]; then
+              echo "::error::Storefront static asset is being served as HTML fallback"
+              exit 1
+            fi
+          fi
+
+      - name: Roll back selected scopes on failure
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          CONTROL="${PROD_DEPLOY_CONTROL_URL%/}"
+          if [[ "$DEPLOY_BACKEND" == "true" ]]; then
+            curl -fsS "$CONTROL/rollback-backend.php?token=${DEPLOY_TOKEN}" | tee rollback-backend.log
+            curl -fsS "$CONTROL/restart-node.php?token=${DEPLOY_TOKEN}" | tee rollback-restart.log
+          fi
+          if [[ "$DEPLOY_IMS" == "true" ]]; then curl -fsS "$CONTROL/rollback-frontend.php?token=${DEPLOY_TOKEN}&surface=ims" | tee rollback-ims.log; fi
+          if [[ "$DEPLOY_POS" == "true" ]]; then curl -fsS "$CONTROL/rollback-frontend.php?token=${DEPLOY_TOKEN}&surface=pos" | tee rollback-pos.log; fi
+          if [[ "$DEPLOY_STOREFRONT" == "true" ]]; then curl -fsS "$CONTROL/rollback-frontend.php?token=${DEPLOY_TOKEN}&surface=storefront" | tee rollback-storefront.log; fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: namecheap-shared-deploy-logs-${{ env.DEPLOY_SHA }}
+          path: |
+            *.log
+            *.json
+            store-root.html
+            store-tenant.html
+            ftp-upload.log
+          if-no-files-found: ignore
+          retention-days: 14

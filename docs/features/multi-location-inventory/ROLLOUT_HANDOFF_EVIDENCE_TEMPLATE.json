@@ -1,0 +1,75 @@
+{
+  "metadata": {
+    "wave_id": "wave-<id>",
+    "stage": "local|production",
+    "generated_at": "2026-04-17T00:00:00.000Z",
+    "owner": "engineering",
+    "handoff_packet_path": "docs/features/multi-location-inventory/ROLLOUT_HANDOFF_PACKET_<wave>.md"
+  },
+  "evidence": {
+    "backup": {
+      "status": "pending",
+      "artifact_path": "",
+      "sha256": "",
+      "generated_at": "",
+      "command": "",
+      "waiver_reason": ""
+    },
+    "restore_drill": {
+      "status": "pending",
+      "artifact_path": "",
+      "sha256": "",
+      "generated_at": "",
+      "command": "",
+      "waiver_reason": ""
+    },
+    "backfill_parity": {
+      "status": "pending",
+      "artifact_path": "",
+      "sha256": "",
+      "generated_at": "",
+      "command": "npm run audit:location-stock-parity -- --json-output <artifact>",
+      "waiver_reason": ""
+    },
+    "fifo_integrity": {
+      "status": "pending",
+      "artifact_path": "",
+      "sha256": "",
+      "generated_at": "",
+      "command": "npm run audit:fifo-drift -- --json-output <artifact>",
+      "waiver_reason": ""
+    },
+    "drift_monitor_soak": {
+      "status": "pending",
+      "artifact_path": "",
+      "sha256": "",
+      "generated_at": "",
+      "command": "",
+      "waiver_reason": ""
+    },
+    "location_stock_parity": {
+      "status": "pending",
+      "artifact_path": "",
+      "sha256": "",
+      "generated_at": "",
+      "command": "npm run audit:location-stock-parity -- --json-output <artifact>",
+      "waiver_reason": ""
+    },
+    "rollback_rehearsal": {
+      "status": "pending",
+      "artifact_path": "",
+      "sha256": "",
+      "generated_at": "",
+      "command": "",
+      "waiver_reason": ""
+    },
+    "pilot_uat": {
+      "status": "pending",
+      "artifact_path": "",
+      "sha256": "",
+      "generated_at": "",
+      "command": "",
+      "waiver_reason": ""
+    }
+  }
+}

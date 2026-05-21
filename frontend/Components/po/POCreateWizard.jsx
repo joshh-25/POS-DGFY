@@ -1,0 +1,1091 @@
+import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import NumberStepper from "@/components/ui/number-stepper";
+import {
+  ArrowRight,
+  ArrowLeft,
+  Check,
+  Star,
+  Truck,
+  AlertTriangle,
+  Package,
+  Plus,
+  Search,
+  XCircle,
+  ExternalLink
+} from 'lucide-react';
+import { cn } from "../../src/lib/utils.js";
+import { getStockStatus, getQualityColor } from '@/components/data/dummyData';
+import { formatNumber, formatPeso, formatQty } from '../../src/lib/numberUtils.js';
+import { toast } from 'sonner';
+import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
+import { isPurchasable } from '@/components/utils/categoryHelpers';
+import { useWorkflowMode } from '@/src/features/settings/WorkflowModeContext.jsx';
+import { toUomAbbreviation } from '../../src/utils/uomDisplay';
+
+/**
+ * Calculate suggested order quantity based on purchase_allowance and supplier MOQ
+ * Must satisfy BOTH constraints - takes the higher value
+ */
+const calculateSuggestedQuantity = (item, supplierMOQ = 0) => {
+  const purchaseAllowance = parseFloat(item?.purchase_allowance) || 0;
+  return Math.max(Math.ceil(purchaseAllowance), Math.ceil(supplierMOQ), 1);
+};
+
+const getDisplayUom = (uom) => toUomAbbreviation(uom, 'u');
+
+const getItemWeightedAvgCost = (item) => {
+  const weighted = Number(item?.cost_metrics?.global?.weighted_avg_cost);
+  if (Number.isFinite(weighted) && weighted > 0) return weighted;
+  const fallback = Number(item?.cost_per_unit);
+  return Number.isFinite(fallback) && fallback > 0 ? fallback : 0;
+};
+
+const getUnitPriceVarianceMeta = ({ unitPrice = 0, baselineCost = 0 }) => {
+  if (!(baselineCost > 0)) return null;
+  const variancePerUnit = unitPrice - baselineCost;
+  const variancePercent = (variancePerUnit / baselineCost) * 100;
+  if (Math.abs(variancePercent) < 0.05) {
+    return {
+      label: 'At average',
+      className: 'bg-slate-100 text-slate-700 border-slate-200'
+    };
+  }
+
+  const isHigher = variancePerUnit > 0;
+  return {
+    label: `${isHigher ? '+' : ''}${formatNumber(variancePercent, 1)}% vs avg`,
+    className: isHigher
+      ? 'bg-amber-50 text-amber-700 border-amber-200'
+      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+  };
+};
+
+export default function POCreateWizard({ open, onClose, onSubmit, suppliers, items, initialItemId }) {
+  const navigate = useNavigate();
+  const { workflowMode } = useWorkflowMode();
+  const [step, setStep] = useState(1);
+  const [selectedItems, setSelectedItems] = useState(() => (
+    initialItemId ? [parseInt(initialItemId, 10)] : []
+  ));
+  const [selectedSuppliers, setSelectedSuppliers] = useState([]);
+  const [supplierItemMapping, setSupplierItemMapping] = useState({});
+  const [orderQuantities, setOrderQuantities] = useState({});
+  const [expectedDelivery, setExpectedDelivery] = useState('');
+  const [storageWarnings, setStorageWarnings] = useState([]);
+  const [showStorageWarning, setShowStorageWarning] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showNoSupplierWarning, setShowNoSupplierWarning] = useState(false);
+
+  // Filter items for restocking using workflow-mode purchasable semantics.
+  const restockItems = useMemo(() => {
+    return items.filter((item) => isPurchasable(item, workflowMode));
+  }, [items, workflowMode]);
+
+  // Filter restock items by search query
+  const filteredRestockItems = useMemo(() => {
+    if (!searchQuery.trim()) return restockItems;
+    const query = searchQuery.toLowerCase();
+    return restockItems.filter(item =>
+      item.name.toLowerCase().includes(query) ||
+      item.sku_code?.toLowerCase().includes(query)
+    );
+  }, [restockItems, searchQuery]);
+
+  // Calculate which selected items have NO supplier assigned
+  const itemsWithoutSupplier = useMemo(() => {
+    return selectedItems.filter(itemId => {
+      // Check if ANY supplier can provide this item
+      return !suppliers.some(supplier =>
+        supplier.items_supplied?.some(si => si.item_id === itemId)
+      );
+    });
+  }, [selectedItems, suppliers]);
+
+  // Get item details for items without supplier (for display in warning)
+  const itemsWithoutSupplierDetails = useMemo(() => {
+    return itemsWithoutSupplier.map(itemId => {
+      const item = items.find(i => i.id === itemId);
+      return item ? { id: itemId, name: item.name, sku_code: item.sku_code } : { id: itemId, name: 'Unknown Item' };
+    });
+  }, [itemsWithoutSupplier, items]);
+
+  // Calculate supplier recommendations
+  const supplierRecommendations = useMemo(() => {
+    if (selectedItems.length === 0) return [];
+
+    return suppliers.map(supplier => {
+      const canSupply = selectedItems.filter(itemId =>
+        supplier.items_supplied.some(si => si.item_id === itemId)
+      );
+
+      // Find additional low-stock items this supplier can provide
+      const additionalLowStock = restockItems
+        .filter(item => {
+          const status = getStockStatus(item);
+          return (status === 'critical' || status === 'warning') &&
+            !selectedItems.includes(item.id) &&
+            supplier.items_supplied.some(si => si.item_id === item.id);
+        });
+
+      const totalCost = canSupply.reduce((sum, itemId) => {
+        const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
+        const qty = orderQuantities[itemId] || supplierItem?.moq || 1;
+        return sum + (supplierItem?.price_per_unit || 0) * qty;
+      }, 0);
+      const baselineCost = canSupply.reduce((sum, itemId) => {
+        const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
+        const item = items.find(i => i.id === itemId);
+        const qty = orderQuantities[itemId] || supplierItem?.moq || 1;
+        return sum + (getItemWeightedAvgCost(item) * qty);
+      }, 0);
+
+      const moqCompatible = canSupply.every(itemId => {
+        const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
+        const qty = orderQuantities[itemId] || supplierItem?.moq || 1;
+        return qty >= (supplierItem?.moq || 0);
+      });
+
+      return {
+        ...supplier,
+        canSupplyItems: canSupply,
+        canSupplyCount: canSupply.length,
+        additionalLowStock,
+        totalCost,
+        baselineCost,
+        varianceValue: totalCost - baselineCost,
+        variancePercent: baselineCost > 0 ? ((totalCost - baselineCost) / baselineCost) * 100 : null,
+        moqCompatible,
+        coverage: (canSupply.length / selectedItems.length) * 100
+      };
+    })
+      .filter(s => s.canSupplyCount > 0)
+      .sort((a, b) => {
+        // Sort by coverage, then by price
+        if (b.coverage !== a.coverage) return b.coverage - a.coverage;
+        return a.totalCost - b.totalCost;
+      });
+  }, [selectedItems, suppliers, orderQuantities, restockItems, items]);
+
+  // Select all low stock items
+  const handleSelectAllLowStock = () => {
+    const lowStockIds = restockItems
+      .filter(item => {
+        const status = getStockStatus(item);
+        return status === 'critical' || status === 'warning';
+      })
+      .map(item => item.id);
+
+    setSelectedItems(prev => [...new Set([...prev, ...lowStockIds])]);
+  };
+
+  const toggleItem = (itemId) => {
+    setSelectedItems(prev => {
+      if (prev.includes(itemId)) {
+        // Deselect - remove from list
+        return prev.filter(id => id !== itemId);
+      } else {
+        // Select - auto-fill with suggested quantity based on purchase_allowance
+        const item = items.find(i => i.id === itemId);
+        const suggestedQty = calculateSuggestedQuantity(item);
+        setOrderQuantities(prevQty => ({ ...prevQty, [itemId]: suggestedQty }));
+
+        // Show inline toast if auto-filled
+        if (item?.purchase_allowance > 0) {
+          toast.info('Quantity Auto-filled', {
+            description: `Set to ${suggestedQty} based on purchase allowance`,
+            duration: 2000,
+          });
+        }
+
+        return [...prev, itemId];
+      }
+    });
+  };
+
+  const handleQuantityChange = (itemId, qty) => {
+    setOrderQuantities(prev => ({ ...prev, [itemId]: qty }));
+  };
+
+  const toggleSupplier = (supplier) => {
+    setSelectedSuppliers(prev => {
+      const isSelected = prev.some(s => (s.supplier_id || s.id) === (supplier.supplier_id || supplier.id));
+      if (isSelected) {
+        // Remove supplier and their item mappings
+        const newMapping = { ...supplierItemMapping };
+        delete newMapping[supplier.supplier_id || supplier.id];
+        setSupplierItemMapping(newMapping);
+        return prev.filter(s => (s.supplier_id || s.id) !== (supplier.supplier_id || supplier.id));
+      } else {
+        // Add supplier and auto-assign items they can supply
+        const newMapping = { ...supplierItemMapping };
+        newMapping[supplier.supplier_id || supplier.id] = supplier.canSupplyItems;
+        setSupplierItemMapping(newMapping);
+
+        // Check MOQ and purchase_allowance requirements and auto-adjust
+        const adjustments = [];
+        supplier.canSupplyItems.forEach(itemId => {
+          const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
+          const item = items.find(i => i.id === itemId);
+          const currentQty = orderQuantities[itemId] || 0;
+          const moq = supplierItem?.moq || 0;
+          const purchaseAllowance = parseFloat(item?.purchase_allowance) || 0;
+
+          // Must meet BOTH MOQ and purchase_allowance (take the higher)
+          const minRequired = Math.max(moq, purchaseAllowance);
+
+          if (currentQty < minRequired) {
+            setOrderQuantities(prevQty => ({ ...prevQty, [itemId]: minRequired }));
+            adjustments.push({
+              itemName: item?.name || 'Item',
+              minRequired,
+              reason: moq > purchaseAllowance ? 'Supplier MOQ' : 'Purchase Allowance'
+            });
+          }
+        });
+
+        // Show toast notification for adjustments
+        if (adjustments.length > 0) {
+          const message = adjustments.length === 1
+            ? `${adjustments[0].itemName} adjusted to ${adjustments[0].minRequired} (${adjustments[0].reason})`
+            : `${adjustments.length} items adjusted to meet requirements`;
+          toast.info('Quantity Adjusted', {
+            description: message,
+            duration: 4000,
+          });
+        }
+
+        return [...prev, supplier];
+      }
+    });
+  };
+
+  const addRecommendedItem = (supplierId, itemId) => {
+    // Add item to selected items
+    if (!selectedItems.includes(itemId)) {
+      setSelectedItems(prev => [...prev, itemId]);
+    }
+    // Add item to this supplier's mapping
+    setSupplierItemMapping(prev => ({
+      ...prev,
+      [supplierId]: [...(prev[supplierId] || []), itemId]
+    }));
+  };
+
+  // Check storage limits before proceeding to next step
+  const checkStorageLimits = () => {
+    const warnings = [];
+
+    selectedItems.forEach(itemId => {
+      const item = items.find(i => i.id === itemId);
+      const qty = orderQuantities[itemId] || 0;
+
+      if (item && item.max_capacity) {
+        const projectedStock = parseFloat(item.current_stock || 0) + parseFloat(qty);
+        const maxCapacity = parseFloat(item.max_capacity);
+
+        if (projectedStock > maxCapacity) {
+          warnings.push({
+            itemName: item.name,
+            currentStock: item.current_stock,
+            orderQty: qty,
+            projectedStock,
+            maxCapacity,
+            excess: projectedStock - maxCapacity,
+            unit: getDisplayUom(item.unit_of_measure)
+          });
+        }
+      }
+    });
+
+    setStorageWarnings(warnings);
+    return warnings;
+  };
+
+  // Handle step transition with validation
+  const handleNextStep = () => {
+    if (step === 1) {
+      // Check for items without suppliers before going to supplier selection
+      if (itemsWithoutSupplier.length > 0) {
+        setShowNoSupplierWarning(true);
+        return;
+      }
+    }
+    if (step === 2) {
+      // Check storage limits before going to review
+      const warnings = checkStorageLimits();
+      if (warnings.length > 0) {
+        setShowStorageWarning(true);
+        return;
+      }
+    }
+    setStep(step + 1);
+  };
+
+  // Remove items without suppliers and proceed
+  const handleRemoveItemsWithoutSupplier = () => {
+    setSelectedItems(prev => prev.filter(id => !itemsWithoutSupplier.includes(id)));
+    setShowNoSupplierWarning(false);
+    // After removing, check if any items remain
+    const remainingItems = selectedItems.filter(id => !itemsWithoutSupplier.includes(id));
+    if (remainingItems.length > 0) {
+      setStep(2);
+    } else {
+      toast.warning('No items with suppliers remaining', {
+        description: 'Please select items that have suppliers assigned.'
+      });
+    }
+  };
+
+  // Navigate to Suppliers page to manage supplier assignments
+  const handleGoToSuppliers = () => {
+    setShowNoSupplierWarning(false);
+    resetWizard();
+    onClose();
+    navigate('/suppliers');
+  };
+
+  const proceedDespiteWarning = () => {
+    setShowStorageWarning(false);
+    setStep(step + 1);
+  };
+
+  const resetWizard = () => {
+    setStep(1);
+    setSelectedItems([]);
+    setSelectedSuppliers([]);
+    setSupplierItemMapping({});
+    setOrderQuantities({});
+    setExpectedDelivery('');
+    setStorageWarnings([]);
+    setShowStorageWarning(false);
+    setShowConfirmation(false);
+  };
+
+  const handleClose = () => {
+    // Check if wizard has any data entered
+    const hasData = selectedItems.length > 0 || selectedSuppliers.length > 0 || step > 1;
+
+    if (hasData) {
+      setShowConfirmation(true);
+    } else {
+      resetWizard();
+      onClose();
+    }
+  };
+
+  const handleSaveDraft = () => {
+    if (selectedSuppliers.length === 0 || selectedItems.length === 0) {
+      toast.error('Please select items and suppliers before saving draft');
+      return;
+    }
+
+    // Create draft PO for each supplier
+    selectedSuppliers.forEach(supplier => {
+      const supplierId = supplier.supplier_id || supplier.id;
+      const supplierItemIds = supplierItemMapping[supplierId] || [];
+
+      const poItems = supplierItemIds.map(itemId => {
+        const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
+        const item = items.find(i => i.id === itemId);
+        const qty = orderQuantities[itemId] || supplierItem?.moq || 1;
+        return {
+          item_id: itemId,
+          item_name: item?.name || '',
+          quantity_ordered: qty,
+          unit_price: supplierItem?.price_per_unit || 0,
+          total_price: qty * (supplierItem?.price_per_unit || 0),
+          quantity_received: 0,
+          quality_check: null
+        };
+      });
+
+      const subtotal = poItems.reduce((sum, item) => sum + item.total_price, 0);
+
+      // Calculate bulk discount
+      let discount = 0;
+      if (supplier.bulk_discounts) {
+        const totalQty = poItems.reduce((sum, item) => sum + item.quantity_ordered, 0);
+        const applicableDiscount = supplier.bulk_discounts
+          .filter(d => totalQty >= d.min_quantity)
+          .sort((a, b) => b.discount_percent - a.discount_percent)[0];
+        if (applicableDiscount) {
+          discount = subtotal * (applicableDiscount.discount_percent / 100);
+        }
+      }
+
+      onSubmit({
+        supplier_id: supplier.supplier_id || supplier.id,
+        supplier_name: supplier.name,
+        line_items: poItems,
+        order_date: new Date().toISOString().split('T')[0],
+        subtotal,
+        discount,
+        total_amount: subtotal - discount,
+        expected_delivery_date: expectedDelivery || new Date(Date.now() + supplier.avg_delivery_days * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        status: 'draft' // Explicitly set status to draft
+      });
+    });
+
+    toast.success('Purchase order draft saved successfully');
+    resetWizard();
+    onClose();
+  };
+
+  const handleDiscard = () => {
+    resetWizard();
+    onClose();
+  };
+
+  const handleContinueEditing = () => {
+    setShowConfirmation(false);
+  };
+
+  const handleSubmit = () => {
+    if (selectedSuppliers.length === 0) return;
+
+    // Create separate PO for each supplier
+    selectedSuppliers.forEach(supplier => {
+      const supplierId = supplier.supplier_id || supplier.id;
+      const supplierItemIds = supplierItemMapping[supplierId] || [];
+
+      const poItems = supplierItemIds.map(itemId => {
+        const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
+        const item = items.find(i => i.id === itemId);
+        const qty = orderQuantities[itemId] || supplierItem?.moq || 1;
+        return {
+          item_id: itemId,
+          item_name: item?.name || '',
+          quantity_ordered: qty,
+          unit_price: supplierItem?.price_per_unit || 0,
+          total_price: qty * (supplierItem?.price_per_unit || 0),
+          quantity_received: 0,
+          quality_check: null
+        };
+      });
+
+      const subtotal = poItems.reduce((sum, item) => sum + item.total_price, 0);
+
+      // Calculate bulk discount
+      let discount = 0;
+      if (supplier.bulk_discounts) {
+        const totalQty = poItems.reduce((sum, item) => sum + item.quantity_ordered, 0);
+        const applicableDiscount = supplier.bulk_discounts
+          .filter(d => totalQty >= d.min_quantity)
+          .sort((a, b) => b.discount_percent - a.discount_percent)[0];
+        if (applicableDiscount) {
+          discount = subtotal * (applicableDiscount.discount_percent / 100);
+        }
+      }
+
+      onSubmit({
+        supplier_id: supplier.supplier_id || supplier.id,
+        supplier_name: supplier.name,
+        line_items: poItems,
+        order_date: new Date().toISOString().split('T')[0],
+        subtotal,
+        discount,
+        total_amount: subtotal - discount,
+        expected_delivery_date: expectedDelivery || new Date(Date.now() + supplier.avg_delivery_days * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      });
+    });
+  };
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={handleClose}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto pb-8">
+          <DialogHeader>
+            <DialogTitle>Create Purchase Order</DialogTitle>
+          </DialogHeader>
+
+          {/* Step Indicator */}
+          <div className="flex items-center justify-center gap-4 py-4">
+            {[1, 2, 3].map((s) => (
+              <div key={s} className="flex items-center">
+                <div className={cn(
+                  "w-8 h-8 rounded-full flex items-center justify-center font-medium transition-colors",
+                  step >= s ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-400"
+                )}>
+                  {step > s ? <Check className="w-4 h-4" /> : s}
+                </div>
+                {s < 3 && (
+                  <div className={cn(
+                    "w-16 h-0.5 mx-2",
+                    step > s ? "bg-teal-600" : "bg-slate-200"
+                  )} />
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Step 1: Select Items */}
+          {step === 1 && (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <h3 className="font-medium text-slate-900">Select Items to Order</h3>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSelectAllLowStock}
+                      className="h-7 text-xs border-dashed text-slate-500 hover:text-teal-600 hover:border-teal-200"
+                    >
+                      Select Low Stock
+                    </Button>
+                  </div>
+                  <Badge variant="outline">{selectedItems.length} selected</Badge>
+                </div>
+
+                {/* Search Input */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Input
+                    placeholder="Search items by name or SKU..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+              <div className="grid gap-3 max-h-96 overflow-y-auto">
+                {filteredRestockItems.map(item => {
+                  const status = getStockStatus(item);
+                  const isSelected = selectedItems.includes(item.id);
+                  const needsRestock = status === 'critical' || status === 'warning';
+
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => toggleItem(item.id)}
+                      className={cn(
+                        "flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all",
+                        isSelected
+                          ? "border-teal-500 bg-teal-50"
+                          : "border-slate-200 hover:border-slate-300"
+                      )}
+                    >
+                      <Checkbox checked={isSelected} />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-slate-900">{item.name}</span>
+                          {needsRestock && (
+                            <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                              <AlertTriangle className="w-3 h-3 mr-1" />
+                              Low Stock
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-slate-500">
+                          Current: {formatQty(item.current_stock)} / Min: {formatQty(item.min_threshold)} {getDisplayUom(item.unit_of_measure)}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Avg Cost (On-hand): {formatPeso(getItemWeightedAvgCost(item))}/{getDisplayUom(item.unit_of_measure)}
+                        </p>
+                      </div>
+                      {isSelected && (
+                        <div className="flex flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center gap-2">
+                            <Label className="text-xs">Qty:</Label>
+                            <NumberStepper
+                              value={orderQuantities[item.id] ?? ''}
+                              onChange={(nextValue) => handleQuantityChange(item.id, nextValue === '' ? '' : parseInt(nextValue, 10) || 0)}
+                              min={0}
+                              step={1}
+                              allowEmpty
+                              size="sm"
+                              uomLabel={getDisplayUom(item.unit_of_measure)}
+                              controlsPosition="right-vertical"
+                              inputClassName={cn(
+                                (orderQuantities[item.id] || 0) < (item.purchase_allowance || 0) && "border-amber-400"
+                              )}
+                            />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleQuantityChange(item.id, calculateSuggestedQuantity(item))}
+                              title={`Suggested: ${item.purchase_allowance || 1}`}
+                            >
+                              <span className="text-amber-500 text-lg">💡</span>
+                            </Button>
+                          </div>
+                          {(orderQuantities[item.id] || 0) < (item.purchase_allowance || 0) && (
+                            <p className="text-xs text-amber-600">
+                              ⚠️ Below recommended ({item.purchase_allowance})
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Select Supplier(s) */}
+          {step === 2 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-medium text-slate-900">Select Suppliers</h3>
+                <Badge variant="outline">{selectedSuppliers.length} supplier{selectedSuppliers.length !== 1 ? 's' : ''} selected</Badge>
+              </div>
+              {supplierRecommendations.length === 0 ? (
+                <div className="text-center py-8 text-slate-500">
+                  No suppliers can provide the selected items
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                  {supplierRecommendations.map((supplier, idx) => {
+                    const isSelected = selectedSuppliers.some(s => (s.supplier_id || s.id) === (supplier.supplier_id || supplier.id));
+                    return (
+                      <div
+                        key={supplier.id}
+                        className={cn(
+                          "p-4 rounded-xl border transition-all",
+                          isSelected
+                            ? "border-teal-500 bg-teal-50"
+                            : "border-slate-200"
+                        )}
+                      >
+                        <div
+                          className="cursor-pointer"
+                          onClick={() => toggleSupplier(supplier)}
+                        >
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-center gap-3">
+                              <Checkbox checked={isSelected} />
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-slate-900">{supplier.name}</span>
+                                  {idx === 0 && (
+                                    <Badge className="bg-teal-100 text-teal-700">Best Match</Badge>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-4 mt-1 text-sm text-slate-500">
+                                  <span className="flex items-center gap-1">
+                                    <Star className={cn("w-4 h-4", getQualityColor(supplier.quality_rating))} fill="currentColor" />
+                                    {formatNumber(supplier.quality_rating, 1)}
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <Truck className="w-4 h-4" />
+                                    {supplier.avg_delivery_days} days
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-lg font-bold text-slate-900">{formatPeso(supplier.totalCost)}</p>
+                              <p className="text-sm text-slate-500">Est. Total</p>
+                              {supplier.variancePercent !== null && (
+                                <p className={cn(
+                                  "text-xs font-medium mt-1",
+                                  supplier.varianceValue > 0 ? "text-amber-700" : "text-emerald-700"
+                                )}>
+                                  {supplier.varianceValue > 0 ? '+' : ''}{formatNumber(supplier.variancePercent, 1)}% vs avg
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4 text-sm">
+                            <div className="flex items-center gap-1">
+                              <Package className="w-4 h-4 text-slate-400" />
+                              <span>{supplier.canSupplyCount}/{selectedItems.length} items</span>
+                            </div>
+                            <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-teal-500 rounded-full"
+                                style={{ width: `${supplier.coverage}%` }}
+                              />
+                            </div>
+                            <span className="text-slate-500">{Math.round(supplier.coverage)}% coverage</span>
+                          </div>
+                          {!supplier.moqCompatible && (
+                            <p className="text-xs text-amber-600 mt-2">
+                              ⚠️ Some quantities are below minimum order requirements
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Additional Low Stock Recommendations */}
+                        {isSelected && supplier.additionalLowStock.length > 0 && (
+                          <div className="mt-4 pt-4 border-t border-slate-200">
+                            <p className="text-sm font-medium text-slate-700 mb-2 flex items-center gap-1">
+                              <AlertTriangle className="w-4 h-4 text-amber-500" />
+                              Also available from this supplier:
+                            </p>
+                            <div className="space-y-2">
+                              {supplier.additionalLowStock.map(item => {
+                                const supplierItem = supplier.items_supplied.find(si => si.item_id === item.id);
+                                const isAdded = supplierItemMapping[supplier.id]?.includes(item.id);
+                                const varianceMeta = getUnitPriceVarianceMeta({
+                                  unitPrice: Number(supplierItem?.price_per_unit || 0),
+                                  baselineCost: getItemWeightedAvgCost(item)
+                                });
+                                return (
+                                  <div
+                                    key={item.id}
+                                    className="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200"
+                                  >
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-sm font-medium text-slate-900">{item.name}</span>
+                                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs">
+                                          Low Stock
+                                        </Badge>
+                                      </div>
+                                      <p className="text-xs text-slate-500">
+                                        Current: {formatQty(item.current_stock)} / Min: {formatQty(item.min_threshold)} {getDisplayUom(item.unit_of_measure)}
+                                        {supplierItem && ` | ${formatPeso(supplierItem.price_per_unit)}/${getDisplayUom(item.unit_of_measure)}`}
+                                      </p>
+                                      {varianceMeta && (
+                                        <Badge variant="outline" className={cn("mt-1 text-[10px]", varianceMeta.className)}>
+                                          {varianceMeta.label}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    {!isAdded ? (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          addRecommendedItem(supplier.id, item.id);
+                                          // Use smart quantity: max(purchase_allowance, MOQ)
+                                          const suggestedQty = calculateSuggestedQuantity(item, supplierItem?.moq || 0);
+                                          handleQuantityChange(item.id, suggestedQty);
+                                          toast.info('Quantity Auto-filled', {
+                                            description: `Set to ${suggestedQty} based on recommended restock amount`,
+                                            duration: 2000,
+                                          });
+                                        }}
+                                        className="text-teal-600 border-teal-200 hover:bg-teal-50"
+                                      >
+                                        <Plus className="w-3 h-3 mr-1" />
+                                        Add
+                                      </Button>
+                                    ) : (
+                                      <Badge className="bg-teal-100 text-teal-700">Added</Badge>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 3: Review & Confirm */}
+          {step === 3 && selectedSuppliers.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="font-medium text-slate-900">Review Orders</h3>
+
+              <div className="space-y-2">
+                <Label>Expected Delivery Date</Label>
+                <Input
+                  type="date"
+                  value={expectedDelivery}
+                  onChange={(e) => setExpectedDelivery(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-4 max-h-[450px] overflow-y-auto">
+                {selectedSuppliers.map(supplier => {
+                  const supplierId = supplier.supplier_id || supplier.id;
+                  const supplierItemIds = supplierItemMapping[supplierId] || [];
+                  const subtotal = supplierItemIds.reduce((sum, itemId) => {
+                    const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
+                    const qty = orderQuantities[itemId] || supplierItem?.moq || 1;
+                    return sum + (qty * (supplierItem?.price_per_unit || 0));
+                  }, 0);
+                  const weightedBaselineSubtotal = supplierItemIds.reduce((sum, itemId) => {
+                    const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
+                    const item = items.find(i => i.id === itemId);
+                    const qty = orderQuantities[itemId] || supplierItem?.moq || 1;
+                    return sum + (qty * getItemWeightedAvgCost(item));
+                  }, 0);
+                  const supplierVarianceValue = subtotal - weightedBaselineSubtotal;
+                  const supplierVariancePercent = weightedBaselineSubtotal > 0
+                    ? (supplierVarianceValue / weightedBaselineSubtotal) * 100
+                    : null;
+
+                  return (
+                    <div key={supplier.id} className="border rounded-xl overflow-hidden">
+                      <div className="bg-slate-50 p-4 border-b border-slate-200">
+                        <p className="text-sm text-slate-500">Supplier</p>
+                        <p className="font-semibold text-slate-900">{supplier.name}</p>
+                      </div>
+
+                      <table className="w-full">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="text-left p-3 text-sm font-medium text-slate-600">Item</th>
+                            <th className="text-right p-3 text-sm font-medium text-slate-600">Qty</th>
+                            <th className="text-right p-3 text-sm font-medium text-slate-600">Unit Price</th>
+                            <th className="text-right p-3 text-sm font-medium text-slate-600">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {supplierItemIds.map(itemId => {
+                            const item = items.find(i => i.id === itemId);
+                            const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
+                            const qty = orderQuantities[itemId] || supplierItem?.moq || 1;
+                            const total = qty * (supplierItem?.price_per_unit || 0);
+                            const varianceMeta = getUnitPriceVarianceMeta({
+                              unitPrice: Number(supplierItem?.price_per_unit || 0),
+                              baselineCost: getItemWeightedAvgCost(item)
+                            });
+                            return (
+                              <tr key={itemId}>
+                                <td className="p-3 font-medium text-slate-900">{item?.name}</td>
+                                <td className="p-3 text-right text-slate-600">{qty}</td>
+                                <td className="p-3 text-right text-slate-600">
+                                  <div className="flex flex-col items-end gap-1">
+                                    <span>{formatPeso(supplierItem?.price_per_unit)}</span>
+                                    {varianceMeta && (
+                                      <Badge variant="outline" className={cn("text-[10px]", varianceMeta.className)}>
+                                        {varianceMeta.label}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="p-3 text-right font-medium text-slate-900">{formatPeso(total)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+
+                      <div className="bg-slate-50 p-4 border-t border-slate-200">
+                        <div className="flex justify-between text-lg font-bold">
+                          <span>Supplier Total</span>
+                          <span className="text-teal-600">{formatPeso(subtotal)}</span>
+                        </div>
+                        {supplierVariancePercent !== null && (
+                          <p className={cn(
+                            "text-xs mt-1 text-right font-medium",
+                            supplierVarianceValue > 0 ? "text-amber-700" : "text-emerald-700"
+                          )}>
+                            {supplierVarianceValue > 0 ? '+' : ''}{formatNumber(supplierVariancePercent, 1)}% vs on-hand average cost
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="bg-teal-50 border border-teal-200 rounded-xl p-4">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-sm text-slate-600">Total Order Value</p>
+                    <p className="text-xs text-slate-500">{selectedSuppliers.length} supplier{selectedSuppliers.length !== 1 ? 's' : ''}</p>
+                  </div>
+                  <p className="text-2xl font-bold text-teal-600">
+                    {formatPeso(
+                      selectedSuppliers.reduce((sum, supplier) => {
+                        const supplierItemIds = supplierItemMapping[supplier.id] || [];
+                        return sum + supplierItemIds.reduce((itemSum, itemId) => {
+                          const supplierItem = supplier.items_supplied.find(si => si.item_id === itemId);
+                          const qty = orderQuantities[itemId] || supplierItem?.moq || 1;
+                          return itemSum + (qty * (parseFloat(supplierItem?.price_per_unit || 0)));
+                        }, 0);
+                      }, 0),
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex justify-between">
+            <div>
+              {step > 1 && (
+                <Button variant="outline" onClick={() => setStep(step - 1)}>
+                  <ArrowLeft className="w-4 h-4 mr-2" /> Back
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={handleClose}>Cancel</Button>
+              {step < 3 ? (
+                <Button
+                  onClick={handleNextStep}
+                  disabled={(step === 1 && selectedItems.length === 0) || (step === 2 && selectedSuppliers.length === 0)}
+                  className="bg-teal-600 hover:bg-teal-700"
+                >
+                  Next <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              ) : (
+                <Button onClick={handleSubmit} className="bg-teal-600 hover:bg-teal-700">
+                  Create {selectedSuppliers.length} Order{selectedSuppliers.length !== 1 ? 's' : ''}
+                </Button>
+              )}
+            </div>
+          </DialogFooter>
+        </DialogContent>
+
+        {/* Storage Limit Warning Dialog */}
+        <Dialog open={showStorageWarning} onOpenChange={setShowStorageWarning}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-amber-600">
+                <AlertTriangle className="w-5 h-5" />
+                Storage Capacity Warning
+              </DialogTitle>
+              <DialogDescription>
+                The following items will exceed their storage capacity:
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {storageWarnings.map((warning, idx) => (
+                <div key={idx} className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                  <div className="font-medium text-slate-900 mb-2">{warning.itemName}</div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-slate-500">Current Stock:</span>
+                      <span className="ml-2 font-medium">{formatNumber(warning.currentStock, 2)} {warning.unit}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Order Quantity:</span>
+                      <span className="ml-2 font-medium">{formatNumber(warning.orderQty, 2)} {warning.unit}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Projected Stock:</span>
+                      <span className="ml-2 font-medium text-amber-600">{formatNumber(warning.projectedStock, 2)} {warning.unit}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Max Capacity:</span>
+                      <span className="ml-2 font-medium">{formatNumber(warning.maxCapacity, 2)} {warning.unit}</span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-slate-500">Excess:</span>
+                      <span className="ml-2 font-medium text-red-600">+{formatNumber(warning.excess, 2)} {warning.unit} over limit</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <DialogFooter className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowStorageWarning(false)}
+              >
+                Go Back to Adjust
+              </Button>
+              <Button
+                onClick={proceedDespiteWarning}
+                className="bg-amber-600 hover:bg-amber-700"
+              >
+                Continue Anyway
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </Dialog>
+
+      {/* Confirmation Dialog for Save as Draft */}
+      <ConfirmationDialog
+        open={showConfirmation}
+        onOpenChange={setShowConfirmation}
+        title="Save Draft?"
+        message="You have unsaved changes. Would you like to save this purchase order as a draft?"
+        onSaveDraft={handleSaveDraft}
+        onDiscard={handleDiscard}
+        onContinueEditing={handleContinueEditing}
+      />
+
+      {/* Items Without Supplier Warning Dialog */}
+      <Dialog open={showNoSupplierWarning} onOpenChange={setShowNoSupplierWarning}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <XCircle className="w-5 h-5" />
+              Items Without Suppliers
+            </DialogTitle>
+            <DialogDescription>
+              {itemsWithoutSupplierDetails.length} of {selectedItems.length} selected items cannot be ordered because they have no supplier assigned.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 max-h-64 overflow-y-auto">
+            {itemsWithoutSupplierDetails.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg"
+              >
+                <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-slate-900 truncate">{item.name}</p>
+                  {item.sku_code && (
+                    <p className="text-xs text-slate-500">{item.sku_code}</p>
+                  )}
+                </div>
+                <Badge variant="outline" className="bg-red-100 text-red-700 border-red-300 text-xs">
+                  No Supplier
+                </Badge>
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-600">
+            <p className="font-medium text-slate-700 mb-1">What you can do:</p>
+            <ul className="list-disc list-inside space-y-1 text-xs">
+              <li>Remove these items from your selection and proceed with remaining items</li>
+              <li>Go to Suppliers page to assign suppliers to these items first</li>
+            </ul>
+          </div>
+
+          <DialogFooter className="flex gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowNoSupplierWarning(false)}
+              className="flex-1"
+            >
+              Go Back
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleRemoveItemsWithoutSupplier}
+              className="flex-1 text-amber-700 border-amber-300 hover:bg-amber-50"
+            >
+              Remove & Continue
+            </Button>
+            <Button
+              onClick={handleGoToSuppliers}
+              className="flex-1 bg-teal-600 hover:bg-teal-700"
+            >
+              <ExternalLink className="w-4 h-4 mr-2" />
+              Manage Suppliers
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+

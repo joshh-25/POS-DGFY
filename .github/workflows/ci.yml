@@ -1,0 +1,464 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main, develop ]
+
+jobs:
+  lint-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Lint governed documentation
+        run: npm run lint:docs
+
+  release-verdict-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate release verdict contract when present
+        run: node scripts/verify-release-verdict.js --file .tmp/release-gates/release_verdict.json --sha "${GITHUB_SHA}" --allow-missing true
+
+  test-backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpassword
+          MYSQL_DATABASE: sku_inventory_manager_test
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: --health-cmd="redis-cli ping" --health-interval=10s --health-timeout=5s --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v6
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Enforce modular architecture guardrails
+        run: npm run check:architecture-guardrails
+
+      - name: Enforce controller architecture boundaries
+        run: npm run check:controller-boundaries
+
+      - name: Enforce compliance impact declarations
+        run: npm run check:compliance
+
+      - name: Prepare test schema
+        run: npx sequelize-cli db:migrate --env development --config src/config/sequelize.config.cjs --migrations-path migrations
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+      
+      - name: Run tests
+        run: npm test
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+
+      - name: Run open handle diagnostics
+        run: npm test -- --detectOpenHandles
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+
+      - name: Run migrations for schema audit
+        run: npx sequelize-cli db:migrate --env development --config src/config/sequelize.config.cjs --migrations-path migrations
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+
+      - name: Audit required indexes
+        run: npm run audit:indexes
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - uses: actions/checkout@v6
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run tests
+        run: npm test
+      
+      - name: Build storefront, POS, and SKUpervisor apps
+        run: npm run build:all
+
+      - name: Enforce frontend bundle budgets
+        working-directory: ./
+        run: npm run check:frontend-budgets
+
+  journey-e2e-release-gate:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/'))
+    needs: [lint-docs, test-backend, test-frontend]
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpassword
+          MYSQL_DATABASE: sku_inventory_manager
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: --health-cmd="redis-cli ping" --health-interval=10s --health-timeout=5s --health-retries=5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: ./backend
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: ./frontend
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+        working-directory: ./backend
+
+      - name: Prepare runtime schema
+        run: npx sequelize-cli db:migrate --env development --config src/config/sequelize.config.cjs --migrations-path migrations
+        working-directory: ./backend
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager
+          DB_NAME_TEST: sku_inventory_manager
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+
+      - name: Run core IMS->POS->Sales browser journey gate
+        run: npm run test:frontend-ims-pos-sales-e2e
+        working-directory: ./backend
+        env:
+          RUN_BROWSER_E2E: 'true'
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager
+          DB_NAME_TEST: sku_inventory_manager
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+          BROWSER_E2E_HEADLESS: 'true'
+
+      - name: Upload journey artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ims-pos-sales-journey-release-gate-artifacts
+          path: |
+            backend/tests/artifacts/**
+            backend/test-results/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+  detect-namecheap-shared-changes:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    outputs:
+      backend: ${{ steps.detect.outputs.backend }}
+      ims: ${{ steps.detect.outputs.ims }}
+      pos: ${{ steps.detect.outputs.pos }}
+      storefront: ${{ steps.detect.outputs.storefront }}
+      migrations: ${{ steps.detect.outputs.migrations }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+      - id: detect
+        name: Detect deploy surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_SHA="${{ github.event.before }}"
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" == "0000000000000000000000000000000000000000" ]]; then
+            BASE_SHA="$(git rev-parse HEAD^)"
+          fi
+          git diff --name-only "$BASE_SHA" "${GITHUB_SHA}" > changed-files.txt
+          backend=false
+          ims=false
+          pos=false
+          storefront=false
+          migrations=false
+          if grep -Eq '^(backend/|package\.json|package-lock\.json|scripts/deploy/namecheap-shared/|\.github/workflows/)' changed-files.txt; then backend=true; fi
+          if grep -Eq '^backend/migrations/' changed-files.txt; then migrations=true; fi
+          if grep -Eq '^(frontend/|package\.json|package-lock\.json|\.github/workflows/)' changed-files.txt; then
+            ims=true
+            pos=true
+            storefront=true
+          fi
+          echo "backend=$backend" >> "$GITHUB_OUTPUT"
+          echo "ims=$ims" >> "$GITHUB_OUTPUT"
+          echo "pos=$pos" >> "$GITHUB_OUTPUT"
+          echo "storefront=$storefront" >> "$GITHUB_OUTPUT"
+          echo "migrations=$migrations" >> "$GITHUB_OUTPUT"
+
+  preflight-namecheap-shared:
+    runs-on: ubuntu-latest
+    needs: [lint-docs, test-backend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Install root deploy helper dependencies
+        run: npm ci
+      - name: Install backend dependencies
+        run: npm --prefix backend ci
+      - name: Validate CI-safe shared hosting profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp
+          cat > .tmp/namecheap-shared.env <<'ENV'
+          NODE_ENV=production
+          HOSTING_PROFILE=shared
+          HOSTING_INSTANCE_COUNT=1
+          DB_HOST=localhost
+          DB_USER=sku_ci
+          DB_PASSWORD=ci_shared_database_password_123456789
+          DB_NAME=sku_inventory_manager
+          JWT_SECRET=ci_shared_jwt_secret_value_12345678901234567890
+          REFRESH_TOKEN_SECRET=ci_shared_refresh_secret_value_12345678901234
+          CORS_ORIGIN=https://skupervisor.dgfy.ph,https://pos.dgfy.ph,https://dgfy.ph,https://store.dgfy.ph
+          AUTH_BLACKLIST_FAILURE_MODE=fail_open
+          TEMP_FILE_STORAGE=local
+          DB_AUTO_SYNC=false
+          STOREFRONT_CACHE_ENABLED=false
+          ENV
+          node scripts/check-hosting-profile.js --profile shared --env-file .tmp/namecheap-shared.env
+      - name: Run shared hosting backend smoke tests
+        run: npm --prefix backend run test:hosting:shared
+      - name: Run Namecheap deploy helper tests
+        run: npm run test:deploy:namecheap
+
+  package-namecheap-backend:
+    runs-on: ubuntu-latest
+    needs: [test-backend, preflight-namecheap-shared]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install backend production dependencies
+        working-directory: backend
+        run: npm ci --omit=dev --no-audit --no-fund
+      - name: Package backend shared artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f backend/app.js
+          test -f backend/src/server.js
+          (cd backend && zip -qr "../backend-shared-${GITHUB_SHA}.zip" app.js package.json package-lock.json src config migrations node_modules)
+          unzip -l "backend-shared-${GITHUB_SHA}.zip" | grep -q "src/server.js"
+          if unzip -l "backend-shared-${GITHUB_SHA}.zip" | grep -Eq '(^|/)\.env($|[[:space:]])'; then
+            echo "::error::.env must not be packaged"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-shared-${{ github.sha }}
+          path: backend-shared-${{ github.sha }}.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  package-namecheap-frontends:
+    runs-on: ubuntu-latest
+    needs: [test-frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Build frontend production bundles
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: ${{ vars.PROD_API_URL || 'https://api.dgfy.ph/api/v1' }}
+          VITE_ASSET_BASE_URL: ${{ vars.PROD_BACKEND_URL || 'https://api.dgfy.ph' }}
+          VITE_STORE_BASE_PATH: /
+          VITE_TENANT_STORE_BASE_PATH: /tenant-store
+          VITE_ROOT_TENANT_SLUGS: 'true'
+          VITE_BUILD_STAMP: ${{ github.sha }}
+        run: npm run build:all
+      - name: Package frontend artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for surface in skupervisor pos store; do
+            test -f "frontend/dist-apps/${surface}/index.html"
+            test -d "frontend/dist-apps/${surface}/assets"
+          done
+          (cd frontend/dist-apps/skupervisor && zip -qr "../../../skupervisor-dist-${GITHUB_SHA}.zip" .)
+          (cd frontend/dist-apps/pos && zip -qr "../../../pos-dist-${GITHUB_SHA}.zip" .)
+          (cd frontend/dist-apps/store && zip -qr "../../../storefront-dist-${GITHUB_SHA}.zip" .)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skupervisor-dist-${{ github.sha }}
+          path: skupervisor-dist-${{ github.sha }}.zip
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pos-dist-${{ github.sha }}
+          path: pos-dist-${{ github.sha }}.zip
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: storefront-dist-${{ github.sha }}
+          path: storefront-dist-${{ github.sha }}.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-namecheap-deploy-metadata:
+    runs-on: ubuntu-latest
+    needs: [detect-namecheap-shared-changes, package-namecheap-backend, package-namecheap-frontends]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Write deploy metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "deploy-metadata-${GITHUB_SHA}.json" <<JSON
+          {
+            "sha": "${GITHUB_SHA}",
+            "changed_backend": ${{ needs.detect-namecheap-shared-changes.outputs.backend }},
+            "changed_ims": ${{ needs.detect-namecheap-shared-changes.outputs.ims }},
+            "changed_pos": ${{ needs.detect-namecheap-shared-changes.outputs.pos }},
+            "changed_storefront": ${{ needs.detect-namecheap-shared-changes.outputs.storefront }},
+            "changed_migrations": ${{ needs.detect-namecheap-shared-changes.outputs.migrations }},
+            "artifact_names": {
+              "backend": "backend-shared-${GITHUB_SHA}",
+              "ims": "skupervisor-dist-${GITHUB_SHA}",
+              "pos": "pos-dist-${GITHUB_SHA}",
+              "storefront": "storefront-dist-${GITHUB_SHA}"
+            }
+          }
+          JSON
+          jq . "deploy-metadata-${GITHUB_SHA}.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deploy-metadata-${{ github.sha }}
+          path: deploy-metadata-${{ github.sha }}.json
+          if-no-files-found: error
+          retention-days: 14
+
+  build:
+    needs: [lint-docs, release-verdict-contract, test-backend, test-frontend, journey-e2e-release-gate]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - uses: actions/checkout@v6
+      
+      - name: Build Docker images
+        run: |
+          docker build -t sku-inventory-backend ./backend
+          docker build -t sku-inventory-frontend .

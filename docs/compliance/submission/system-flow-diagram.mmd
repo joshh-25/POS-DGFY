@@ -1,0 +1,33 @@
+flowchart LR
+  U["POS Cashier / Admin User"] --> FE["Frontend (Vite React)"]
+  FE --> API["Express API Layer"]
+
+  subgraph Backend["Backend Modules"]
+    API --> POS["POS Module Usecases"]
+    API --> CMP["Compliance Module Usecases"]
+    API --> RPT["Reports Module Usecases"]
+    API --> TEN["Admin Tenant Module"]
+  end
+
+  POS --> POL["Compliance Policy Engine"]
+  CMP --> POL
+  TEN --> CMP
+  RPT --> CMP
+
+  POS --> REPQ["POS Operation Replay Store"]
+  POS --> ZR["Z-Reading Snapshot Store"]
+  POS --> TX["POS Transaction + Lines"]
+  CMP --> AUD["Tenant Compliance Audit Log (Append-Only)"]
+  RPT --> PKG["Compliance Package + Submission Manifest"]
+
+  TX --> DB["Tenant MySQL Database"]
+  ZR --> DB
+  REPQ --> DB
+  AUD --> LDB["Landlord MySQL Database"]
+
+  FE --> OFFQ["Offline Intent Queue (Browser Local Storage)"]
+  OFFQ --> FE
+  FE --> API
+
+  CMP --> DOCS["Submission Artifacts in docs/compliance/submission"]
+

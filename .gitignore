@@ -1,0 +1,80 @@
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Testing
+/coverage
+
+# Production
+/build
+/dist
+frontend/dist/
+
+# Environment variables
+.env
+.env.local
+.cicd/*.local.json
+.cicd/production.deploy.config.json
+.env.qa.local
+.env.qa.secrets.local
+.env.prod.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+logs/
+backend/logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+backend/storage/temp-ai-exports/
+
+# Database
+*.sqlite
+*.db
+
+# XAMPP specific
+htdocs/.htaccess
+
+# Cursor/IDE (keep rules folder)
+.cursor/*
+!.cursor/rules/
+
+# Build outputs
+.vite/
+.deploy-state/
+/dist-apps/
+/frontend/apps/store/src/scratch/
+/frontend/apps/store/.tmp-store-build/
+
+nul
+
+# Cleanup Rules (Keep root clean)
+/provision-log*.txt
+/*.txt
+/*.log
+pixel-agents/

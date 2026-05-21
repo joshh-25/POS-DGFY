@@ -1,0 +1,839 @@
+/** @vitest-environment jsdom */
+import React from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import maplibregl from 'maplibre-gl';
+import { App } from '../main.jsx';
+
+vi.mock('maplibre-gl', () => {
+  function PopupApi() {
+    const handlers = {};
+    const api = {
+      node: null,
+      html: '',
+      on: vi.fn((eventName, handler) => {
+        handlers[eventName] = handlers[eventName] || [];
+        handlers[eventName].push(handler);
+        return api;
+      }),
+      off: vi.fn((eventName, handler) => {
+        handlers[eventName] = (handlers[eventName] || []).filter((entry) => entry !== handler);
+        return api;
+      }),
+      setDOMContent: vi.fn((node) => {
+        api.node = node;
+        return api;
+      }),
+      setHTML: vi.fn((html) => {
+        api.html = html;
+        return api;
+      }),
+      setLngLat: vi.fn(() => api),
+      addTo: vi.fn(() => {
+        if (api.node && !api.node.isConnected) document.body.appendChild(api.node);
+        return api;
+      }),
+      remove: vi.fn(() => {
+        if (api.node?.isConnected) api.node.remove();
+        (handlers.close || []).forEach((handler) => handler());
+        return api;
+      })
+    };
+    return api;
+  }
+  function MarkerApi(options = {}) {
+    const element = options.element || document.createElement('div');
+    element.dataset.markerOffset = JSON.stringify(options.offset || [0, 0]);
+    element.dataset.markerAnchor = options.anchor || '';
+    const api = {
+      setLngLat: vi.fn(() => api),
+      addTo: vi.fn((map) => {
+        if (map?.container && !element.isConnected) map.container.appendChild(element);
+        return api;
+      }),
+      remove: vi.fn(() => {
+        if (element.isConnected) element.remove();
+        return api;
+      }),
+      setPopup: vi.fn(() => api),
+      getElement: vi.fn(() => element)
+    };
+    return api;
+  }
+  function MapApi(options = {}) {
+    return {
+      container: options.container,
+      on: vi.fn().mockReturnThis(),
+      off: vi.fn().mockReturnThis(),
+      flyTo: vi.fn().mockReturnThis(),
+      fitBounds: vi.fn().mockReturnThis(),
+      getZoom: vi.fn(() => 13),
+      resize: vi.fn(),
+      remove: vi.fn(),
+      getCanvas: vi.fn(() => ({ style: {} }))
+    };
+  }
+  return {
+    default: {
+      Map: vi.fn(MapApi),
+      Marker: vi.fn(MarkerApi),
+      Popup: vi.fn(PopupApi)
+    }
+  };
+});
+
+const makeJsonResponse = (data, ok = true) => ({
+  ok,
+  json: async () => ({ data })
+});
+
+const getDiscoveryQueryUrls = (fetchMock) => fetchMock.mock.calls
+  .map(([url]) => String(url))
+  .filter((url) => url.includes('/api/v1/storefront/discovery?'));
+
+const getLastDiscoveryParams = (fetchMock) => {
+  const urls = getDiscoveryQueryUrls(fetchMock);
+  const last = urls[urls.length - 1];
+  if (!last) return new URLSearchParams();
+  const parsed = new URL(last, 'http://localhost');
+  return parsed.searchParams;
+};
+
+describe('storefront discovery integration flow', () => {
+  let fetchMock;
+
+  beforeEach(() => {
+    window.history.pushState({}, '', '/');
+    fetchMock = vi.fn(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [],
+          pagination: { page: 1, limit: 100, total: 0, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({ locations: [], primary_location_id: null });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      if (normalized.includes('/api/v1/storefront/discovery/')) {
+        return makeJsonResponse({
+          slug: 'alpha',
+          tenant_name: 'Alpha Foods',
+          location_id: 11,
+          address_line: 'Iloilo City',
+          storefront_open: true,
+          catalog_count: 2,
+          storefront_cover_image_url: '/uploads/storefront-assets/t1/cover.png',
+          storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png'
+        });
+      }
+      return makeJsonResponse({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    cleanup();
+    document.body.querySelectorAll('.store-marker-preview-card').forEach((node) => node.remove());
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('initializes the discovery map as a flat 2D map', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Alpha Foods',
+              slug: 'alpha',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              latitude: 10.72,
+              longitude: 122.56,
+              catalog_count: 2
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Main Branch', address_line: 'Alpha Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(maplibregl.Map).toHaveBeenCalled());
+    const mapOptions = maplibregl.Map.mock.calls.at(-1)?.[0] || {};
+
+    expect(mapOptions.bearing).toBe(0);
+    expect(mapOptions.pitch).toBe(0);
+  });
+
+  it('searches only after the current search action is submitted', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1);
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search products, services or stores nearby...');
+    await user.type(searchInput, 'milk');
+
+    expect(getDiscoveryQueryUrls(fetchMock)).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+
+    await waitFor(() => {
+      const searchValues = getDiscoveryQueryUrls(fetchMock)
+        .map((requestUrl) => new URL(requestUrl, 'http://localhost').searchParams.get('search'))
+        .filter(Boolean);
+      expect(searchValues).toEqual(expect.arrayContaining(['milk']));
+      expect(searchValues).not.toEqual(expect.arrayContaining(['m', 'mi', 'mil']));
+    });
+    const searchValues = getDiscoveryQueryUrls(fetchMock)
+      .map((requestUrl) => new URL(requestUrl, 'http://localhost').searchParams.get('search'))
+      .filter(Boolean);
+    expect(searchValues).not.toEqual(expect.arrayContaining(['m', 'mi', 'mil']));
+    expect(fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl).includes('/api/v1/storefront/geo-search'))).toBe(false);
+  });
+
+  it('ignores stale geolocation callbacks from earlier search actions', async () => {
+    const user = userEvent.setup();
+    const pendingGeolocationRequests = [];
+    Object.defineProperty(window.navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: vi.fn((success, error) => {
+          pendingGeolocationRequests.push({ success, error });
+        })
+      }
+    });
+
+    render(<App />);
+    await waitFor(() => {
+      expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1);
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search products, services or stores nearby...');
+    await user.type(searchInput, 'milk');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+    await user.clear(searchInput);
+    await user.type(searchInput, 'rice');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+
+    expect(pendingGeolocationRequests).toHaveLength(2);
+    pendingGeolocationRequests[0].success({ coords: { latitude: 1, longitude: 2 } });
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    let searchValues = getDiscoveryQueryUrls(fetchMock)
+      .map((requestUrl) => new URL(requestUrl, 'http://localhost').searchParams.get('search'))
+      .filter(Boolean);
+    expect(searchValues).not.toContain('milk');
+
+    pendingGeolocationRequests[1].success({ coords: { latitude: 10.7, longitude: 122.5 } });
+    await waitFor(() => {
+      const params = getLastDiscoveryParams(fetchMock);
+      expect(params.get('search')).toBe('rice');
+      expect(params.get('latitude')).toBe('10.7');
+      expect(params.get('longitude')).toBe('122.5');
+    });
+
+    searchValues = getDiscoveryQueryUrls(fetchMock)
+      .map((requestUrl) => new URL(requestUrl, 'http://localhost').searchParams.get('search'))
+      .filter(Boolean);
+    expect(searchValues).toContain('rice');
+    expect(searchValues).not.toContain('milk');
+  });
+
+  it('sends the current discovery query contract by default', async () => {
+    render(<App />);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
+
+    const params = getLastDiscoveryParams(fetchMock);
+    expect(params.get('result_mode')).toBe('union');
+    expect(params.get('stock_filter')).toBe('include_out_of_stock');
+    expect(params.get('pin_scope')).toBe('tenant_primary');
+    expect(params.get('include_match_meta')).toBe('true');
+  });
+
+  it('shows actionable no-result recovery message for search queries', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
+
+    await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'milk');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+    await waitFor(() => {
+      expect(screen.getAllByText(/No stores matched "milk"/i).length).toBeGreaterThan(0);
+    });
+  });
+
+  it('renders match badges and opens store with preferred matching location id', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Alpha Foods',
+              slug: 'alpha',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              latitude: 10.72,
+              longitude: 122.56,
+              catalog_count: 2,
+              estimated_wait_minutes: 15,
+              storefront_cover_image_url: '/uploads/storefront-assets/t1/cover.png',
+              storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png',
+              match_reasons: ['store', 'item'],
+              matching_item_count: 1,
+              matching_item_sample: ['Calamansi Juice'],
+              has_in_stock_match: true,
+              matching_location_ids: [22],
+              nearest_matching_location_id: 22
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'all_matching_branches',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Main', latitude: 10.72, longitude: 122.56, is_active: false, is_primary_storefront: true, is_open: true, supports_delivery: true, supports_pickup: true, supports_dine_in: true },
+            { location_id: 22, name: 'Branch', latitude: 10.721, longitude: 122.562, is_active: true, is_primary_storefront: false, is_open: true, supports_delivery: true, supports_pickup: true, supports_dine_in: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/storefront/discovery/alpha')) {
+        return makeJsonResponse({
+          slug: 'alpha',
+          tenant_name: 'Alpha Foods',
+          location_id: 11,
+          address_line: 'Iloilo City',
+          storefront_open: true,
+          catalog_count: 2,
+          storefront_cover_image_url: '/uploads/storefront-assets/t1/cover.png',
+          storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png'
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getAllByText('Alpha Foods').length).toBeGreaterThan(0));
+    await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'alpha');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+    await waitFor(() => expect(screen.getAllByText('Store + Item match').length).toBeGreaterThan(0));
+    expect(screen.getAllByText('In-stock match').length).toBeGreaterThan(0);
+
+    await user.click(screen.getAllByRole('button', { name: 'View Store' })[0]);
+    await waitFor(() => {
+      expect(screen.getByText('Tenant page: alpha')).toBeTruthy();
+    });
+    expect(screen.getAllByAltText(/Alpha Foods profile/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByAltText(/Alpha Foods cover/i).length).toBeGreaterThan(0);
+    await waitFor(() => {
+      const catalogCalls = fetchMock.mock.calls
+        .map(([requestUrl]) => String(requestUrl))
+        .filter((requestUrl) => requestUrl.includes('/api/v1/store/catalog?'));
+      expect(catalogCalls.some((requestUrl) => requestUrl.includes('location_id=22'))).toBe(true);
+    });
+  });
+
+  it('opens a marker preview first and routes the card action with the pinned location id', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Alpha Foods',
+              slug: 'alpha',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              latitude: 10.72,
+              longitude: 122.56,
+              catalog_count: 2,
+              estimated_wait_minutes: 15,
+              storefront_cover_image_url: '/uploads/storefront-assets/t1/cover.png',
+              storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png',
+              match_reasons: ['store', 'item'],
+              matching_item_count: 1,
+              matching_item_sample: ['Calamansi Juice'],
+              has_in_stock_match: true,
+              matching_location_ids: [22],
+              nearest_matching_location_id: 22
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'all_matching_branches',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Main', address_line: 'Main Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true, supports_delivery: true, supports_pickup: true, supports_dine_in: true },
+            { location_id: 22, name: 'Branch', address_line: 'Branch Road', latitude: 10.721, longitude: 122.562, is_active: true, is_primary_storefront: false, is_open: true, supports_delivery: true, supports_pickup: true, supports_dine_in: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/storefront/discovery/alpha')) {
+        return makeJsonResponse({
+          slug: 'alpha',
+          tenant_name: 'Alpha Foods',
+          location_id: 11,
+          address_line: 'Iloilo City',
+          storefront_open: true,
+          catalog_count: 2,
+          storefront_cover_image_url: '/uploads/storefront-assets/t1/cover.png',
+          storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png'
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i }).length).toBeGreaterThan(0));
+    const alphaMarkerCall = maplibregl.Marker.mock.calls.find(([options]) => (
+      options?.element?.getAttribute?.('aria-label') || ''
+    ).includes('Preview Alpha Foods at Branch'));
+    expect(alphaMarkerCall?.[0]?.anchor).toBe('bottom');
+    const alphaMarkerElement = alphaMarkerCall?.[0]?.element;
+    expect(alphaMarkerElement).toBeTruthy();
+
+    await user.click(alphaMarkerElement);
+    await waitFor(() => expect(screen.getAllByText('Branch').length).toBeGreaterThan(0));
+    expect(screen.getAllByText('Branch Road').length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole('button', { name: 'Open storefront' }));
+    await waitFor(() => {
+      expect(screen.getByText('Tenant page: alpha')).toBeTruthy();
+    });
+    await waitFor(() => {
+      const catalogCalls = fetchMock.mock.calls
+        .map(([requestUrl]) => String(requestUrl))
+        .filter((requestUrl) => requestUrl.includes('/api/v1/store/catalog?'));
+      expect(catalogCalls.some((requestUrl) => requestUrl.includes('location_id=22'))).toBe(true);
+    });
+  });
+
+  it('keeps the marker preview available when keyboard focus moves into the card action', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Alpha Foods',
+              slug: 'alpha',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              latitude: 10.72,
+              longitude: 122.56,
+              catalog_count: 2,
+              storefront_cover_image_url: '/uploads/storefront-assets/t1/cover.png',
+              storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png',
+              match_reasons: ['store', 'item'],
+              matching_item_count: 1,
+              has_in_stock_match: true,
+              matching_location_ids: [22],
+              nearest_matching_location_id: 22
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'all_matching_branches',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Main', address_line: 'Main Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true },
+            { location_id: 22, name: 'Branch', address_line: 'Branch Road', latitude: 10.721, longitude: 122.562, is_active: true, is_primary_storefront: false, is_open: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i }).length).toBeGreaterThan(0));
+
+    const marker = screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i })[0];
+    fireEvent.click(marker);
+    await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
+
+    const action = screen.getByRole('button', { name: 'Open storefront' });
+    fireEvent.blur(marker, { relatedTarget: action });
+    fireEvent.focusIn(action);
+    await new Promise((resolve) => window.setTimeout(resolve, 220));
+
+    expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('dialog', { name: /Alpha Foods location preview/i }), { key: 'Escape' });
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Alpha Foods location preview/i })).toBeNull());
+  });
+
+  it('keeps click-open marker previews available when the pointer leaves the marker', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Alpha Foods',
+              slug: 'alpha',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              latitude: 10.72,
+              longitude: 122.56,
+              catalog_count: 2,
+              storefront_cover_image_url: '/uploads/storefront-assets/t1/cover.png',
+              storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png',
+              match_reasons: ['store', 'item'],
+              matching_item_count: 1,
+              has_in_stock_match: true,
+              matching_location_ids: [22],
+              nearest_matching_location_id: 22
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'all_matching_branches',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Main', address_line: 'Main Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true },
+            { location_id: 22, name: 'Branch', address_line: 'Branch Road', latitude: 10.721, longitude: 122.562, is_active: true, is_primary_storefront: false, is_open: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i }).length).toBeGreaterThan(0));
+
+    const marker = screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i })[0];
+    await user.click(marker);
+    await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
+
+    fireEvent.pointerLeave(marker, { relatedTarget: document.body });
+    await new Promise((resolve) => window.setTimeout(resolve, 220));
+    expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy();
+  });
+
+  it('renders duplicate-coordinate map pins as one exact-coordinate cluster marker', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Alpha Foods',
+              slug: 'alpha',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              latitude: 10.72,
+              longitude: 122.56,
+              catalog_count: 2,
+              matching_location_ids: [11, 22],
+              nearest_matching_location_id: 11
+            },
+            {
+              tenant_id: 'tenant-2',
+              tenant_name: 'Beta Foods',
+              slug: 'beta',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              latitude: 10.72,
+              longitude: 122.56,
+              catalog_count: 1,
+              matching_location_ids: [33],
+              nearest_matching_location_id: 33
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        const parsed = new URL(normalized, 'http://localhost');
+        const slug = parsed.searchParams.get('slug');
+        return makeJsonResponse({
+          primary_location_id: slug === 'beta' ? 33 : 11,
+          locations: slug === 'beta'
+            ? [{ location_id: 33, name: 'Main Branch', address_line: 'Beta Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true }]
+            : [{ location_id: 11, name: 'Main Branch', address_line: 'Alpha Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true }]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /2 storefronts at this location/i }).length).toBeGreaterThan(0));
+
+    const clusterCallIndex = maplibregl.Marker.mock.calls.findIndex(([options]) => (
+      options?.element?.classList?.contains('discovery-result-cluster')
+    ));
+    expect(clusterCallIndex).toBeGreaterThanOrEqual(0);
+    expect(maplibregl.Marker.mock.calls[clusterCallIndex]?.[0]?.anchor).toBe('center');
+    expect(maplibregl.Marker.mock.results[clusterCallIndex]?.value?.setLngLat).toHaveBeenCalledWith([122.56, 10.72]);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /2 storefronts at this location/i })[0]);
+    await waitFor(() => expect(screen.getByRole('button', { name: /Select Alpha Foods at Main Branch/i })).toBeTruthy());
+    expect(screen.getByRole('button', { name: /Select Beta Foods at Main Branch/i })).toBeTruthy();
+  });
+
+  it('discloses cluster overflow when more than eight storefronts share coordinates', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: Array.from({ length: 10 }, (_, index) => ({
+            tenant_id: `tenant-${index + 1}`,
+            tenant_name: `Store ${index + 1}`,
+            slug: `store-${index + 1}`,
+            storefront_open: true,
+            address_line: 'Shared Address',
+            latitude: 10.72,
+            longitude: 122.56,
+            catalog_count: 1,
+            location_id: index + 1
+          })),
+          pagination: { page: 1, limit: 100, total: 10, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 1,
+          locations: [{ location_id: 1, name: 'Main Branch', address_line: 'Shared Address', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true }]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /10 storefronts at this location/i }).length).toBeGreaterThan(0));
+
+    fireEvent.click(screen.getAllByRole('button', { name: /10 storefronts at this location/i })[0]);
+    await waitFor(() => expect(screen.getByText('Showing all 10 storefronts at this exact pin')).toBeTruthy());
+    expect(screen.getByRole('button', { name: /Select Store 10 at Main Branch/i })).toBeTruthy();
+  });
+
+  it('falls back to the storefront initial when profile image fails to load', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Alpha Foods',
+              slug: 'alpha',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              latitude: 10.72,
+              longitude: 122.56,
+              catalog_count: 2,
+              estimated_wait_minutes: 15,
+              storefront_cover_image_url: '/uploads/storefront-assets/t1/cover.png',
+              storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png',
+              match_reasons: ['store']
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/storefront/discovery/alpha')) {
+        return makeJsonResponse({
+          slug: 'alpha',
+          tenant_name: 'Alpha Foods',
+          location_id: 11,
+          address_line: 'Iloilo City',
+          storefront_open: true,
+          catalog_count: 2,
+          storefront_cover_image_url: '/uploads/storefront-assets/t1/cover.png',
+          storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png'
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({ locations: [], primary_location_id: null });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getAllByAltText(/Alpha Foods profile/i).length).toBeGreaterThan(0);
+    });
+
+    const profileImage = screen.getAllByAltText(/Alpha Foods profile/i)[0];
+    fireEvent.error(profileImage);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('A').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('Near Me success sends coordinates and switches default pin scope to nearest matching branch', async () => {
+    const user = userEvent.setup();
+    const getCurrentPosition = vi.fn((success) => {
+      success({ coords: { latitude: 10.7, longitude: 122.5 } });
+    });
+    Object.defineProperty(window.navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition }
+    });
+
+    render(<App />);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
+    await user.click(screen.getByTitle('Use my current location'));
+
+    await waitFor(() => {
+      const params = getLastDiscoveryParams(fetchMock);
+      expect(params.get('latitude')).toBe('10.7');
+      expect(params.get('longitude')).toBe('122.5');
+      expect(params.get('pin_scope')).toBe('nearest_matching_branch');
+    });
+  });
+
+  it('Near Me failure falls back to discovery without coordinates', async () => {
+    const user = userEvent.setup();
+    const getCurrentPosition = vi.fn((success, error) => {
+      error(new Error('denied'));
+    });
+    Object.defineProperty(window.navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition }
+    });
+
+    render(<App />);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
+    await user.click(screen.getByTitle('Use my current location'));
+
+    await waitFor(() => {
+      expect(getDiscoveryQueryUrls(fetchMock).length).toBeGreaterThanOrEqual(2);
+    });
+    const params = getLastDiscoveryParams(fetchMock);
+    expect(params.get('latitude')).toBeNull();
+    expect(params.get('longitude')).toBeNull();
+  });
+
+  it('shows explicit tenant setup empty-state when catalog has no sellable items', async () => {
+    window.history.pushState({}, '', '/tenant-store/alpha');
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Storefront items are not set up yet')).toBeTruthy();
+    });
+    expect(screen.getByText(/Customer checkout will be available once at least one storefront item is enabled/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Check Again' })).toBeTruthy();
+
+    await user.type(screen.getByPlaceholderText('Search items in this store catalog...'), 'milk');
+    await waitFor(() => {
+      expect(screen.getByText('No items are available to search yet')).toBeTruthy();
+    });
+  });
+});
