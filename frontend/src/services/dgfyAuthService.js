@@ -55,6 +55,26 @@ export const fetchDgfyMe = async (token = getStoredDgfyToken()) => {
   return data;
 };
 
+export const updateDgfyProfile = async (payload, token = getStoredDgfyToken()) => {
+  const response = await api.patch('/dgfy/auth/me', payload, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  const data = response.data.data;
+  if (data?.account) storeDgfySession({ token, account: data.account });
+  return data;
+};
+
+export const changeDgfyPassword = async (payload, token = getStoredDgfyToken()) => {
+  const response = await api.post('/dgfy/auth/password/change', payload, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  return response.data.data;
+};
+
 export const requestDgfyEmailVerification = async (token = getStoredDgfyToken()) => {
   const response = await api.post('/dgfy/auth/email-verification/request', {}, {
     headers: {
@@ -73,6 +93,16 @@ export const verifyDgfyEmail = async (code, token = getStoredDgfyToken()) => {
   const data = response.data.data;
   if (data?.account) storeDgfySession({ token, account: data.account });
   return data;
+};
+
+export const requestDgfyPasswordReset = async (email) => {
+  const response = await api.post('/dgfy/auth/password-reset/request', { email });
+  return response.data.data;
+};
+
+export const completeDgfyPasswordReset = async (payload) => {
+  const response = await api.post('/dgfy/auth/password-reset/complete', payload);
+  return response.data.data;
 };
 
 export const logoutDgfyAccount = async (token = getStoredDgfyToken()) => {

@@ -11,7 +11,9 @@ const apiMock = vi.hoisted(() => ({
 
 const clearClientSessionMock = vi.hoisted(() => vi.fn());
 const dgfyAuthMock = vi.hoisted(() => ({
+  changeDgfyPassword: vi.fn(),
   clearDgfySession: vi.fn(),
+  completeDgfyPasswordReset: vi.fn(),
   dgfyAuthHeader: vi.fn(() => ({ Authorization: 'Bearer dgfy-token' })),
   fetchDgfyMe: vi.fn(),
   getStoredDgfyAccount: vi.fn(() => null),
@@ -19,8 +21,10 @@ const dgfyAuthMock = vi.hoisted(() => ({
   loginDgfyAccount: vi.fn(),
   logoutDgfyAccount: vi.fn(),
   requestDgfyEmailVerification: vi.fn(),
+  requestDgfyPasswordReset: vi.fn(),
   verifyDgfyEmail: vi.fn(),
-  registerDgfyAccount: vi.fn()
+  registerDgfyAccount: vi.fn(),
+  updateDgfyProfile: vi.fn()
 }));
 
 vi.mock('../../src/services/api.js', () => ({
@@ -79,7 +83,9 @@ describe('RegisterCompany DGFY handoff', () => {
   beforeEach(() => {
     apiMock.post.mockReset();
     apiMock.get.mockReset();
+    dgfyAuthMock.changeDgfyPassword.mockReset();
     dgfyAuthMock.clearDgfySession.mockReset();
+    dgfyAuthMock.completeDgfyPasswordReset.mockReset();
     dgfyAuthMock.fetchDgfyMe.mockReset();
     dgfyAuthMock.getStoredDgfyAccount.mockReset();
     dgfyAuthMock.getStoredDgfyAccount.mockReturnValue(null);
@@ -88,8 +94,10 @@ describe('RegisterCompany DGFY handoff', () => {
     dgfyAuthMock.loginDgfyAccount.mockReset();
     dgfyAuthMock.logoutDgfyAccount.mockReset();
     dgfyAuthMock.requestDgfyEmailVerification.mockReset();
+    dgfyAuthMock.requestDgfyPasswordReset.mockReset();
     dgfyAuthMock.verifyDgfyEmail.mockReset();
     dgfyAuthMock.registerDgfyAccount.mockReset();
+    dgfyAuthMock.updateDgfyProfile.mockReset();
     dgfyAuthMock.dgfyAuthHeader.mockReset();
     dgfyAuthMock.dgfyAuthHeader.mockReturnValue({ Authorization: 'Bearer dgfy-token' });
     clearClientSessionMock.mockReset();
@@ -169,6 +177,74 @@ describe('RegisterCompany DGFY handoff', () => {
     expect(options.some((option) => option.value === 'manufacturing')).toBe(false);
     expect(options.filter((option) => option.label === 'Food Manufacturing')).toHaveLength(1);
     expect(options.some((option) => option.value === 'food_manufacturing')).toBe(true);
+  });
+
+  it('updates DGFY profile settings without submitting company registration', async () => {
+    dgfyAuthMock.updateDgfyProfile.mockResolvedValue({
+      account: {
+        ...dgfyAccount,
+        first_name: 'Grace',
+        last_name: 'Hopper',
+        username: 'Grace',
+        phone: '+639987654321'
+      }
+    });
+
+    renderRegistrationFlow();
+    await signInDgfy();
+
+    fireEvent.change(screen.getByLabelText('First Name'), {
+      target: { value: 'Grace' }
+    });
+    fireEvent.change(screen.getByLabelText('Last Name'), {
+      target: { value: 'Hopper' }
+    });
+    fireEvent.change(screen.getByLabelText('Phone Number'), {
+      target: { value: '+639987654321' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save profile/i }));
+
+    await waitFor(() => expect(dgfyAuthMock.updateDgfyProfile).toHaveBeenCalledWith({
+      first_name: 'Grace',
+      last_name: 'Hopper',
+      phone: '+639987654321'
+    }, 'dgfy-token'));
+    expect(apiMock.post).not.toHaveBeenCalledWith('/admin/tenants/register', expect.anything(), expect.anything());
+    expect(await screen.findByText('DGFY profile updated.')).toBeTruthy();
+  });
+
+  it('requests and completes a DGFY password reset from the registration screen', async () => {
+    dgfyAuthMock.requestDgfyPasswordReset.mockResolvedValue({});
+    dgfyAuthMock.completeDgfyPasswordReset.mockResolvedValue({});
+
+    renderRegistrationFlow();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: dgfyAccount.email }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /send reset code/i }));
+
+    await waitFor(() => expect(dgfyAuthMock.requestDgfyPasswordReset).toHaveBeenCalledWith(dgfyAccount.email));
+
+    fireEvent.change(screen.getByLabelText('Reset Code'), {
+      target: { value: '123456' }
+    });
+    fireEvent.change(screen.getByLabelText('New Password'), {
+      target: { value: 'new-password123' }
+    });
+    fireEvent.change(screen.getByLabelText('Confirm New Password'), {
+      target: { value: 'new-password123' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /reset password/i }));
+
+    await waitFor(() => expect(dgfyAuthMock.completeDgfyPasswordReset).toHaveBeenCalledWith({
+      email: dgfyAccount.email,
+      code: '123456',
+      password: 'new-password123',
+      confirm_password: 'new-password123'
+    }));
+    expect(await screen.findByText('Password reset complete. Sign in with your new password.')).toBeTruthy();
   });
 
   it('blocks company registration until the DGFY account email is verified', async () => {

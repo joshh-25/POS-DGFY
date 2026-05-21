@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { DgfyAccount, DgfyAccountTenantMembership, Tenant, UserInvitation } from '../../../models/index.js';
+import { DgfyAccount, DgfyAccountHandoff, DgfyAccountTenantMembership, Tenant, UserInvitation } from '../../../models/index.js';
 import dbStore from '../../../utils/dbStore.js';
 import tenantConnector from '../../../utils/TenantConnector.js';
 import { getTenantModels } from '../../../utils/tenantModelFactory.js';
@@ -64,6 +64,35 @@ export const dgfyAccountRepository = {
     updateProfile(account, data = {}) {
         if (!account) return null;
         return account.update(data);
+    },
+
+    updatePassword(account, passwordHash) {
+        if (!account) return null;
+        return account.update({ password_hash: passwordHash });
+    },
+
+    createHandoff({ jti, dgfyAccountId, expiresAt }) {
+        return DgfyAccountHandoff.create({
+            jti,
+            dgfy_account_id: dgfyAccountId,
+            expires_at: expiresAt
+        });
+    },
+
+    async consumeHandoff({ jti, dgfyAccountId }) {
+        const [updatedCount] = await DgfyAccountHandoff.update(
+            { consumed_at: new Date() },
+            {
+                where: {
+                    jti,
+                    dgfy_account_id: dgfyAccountId,
+                    consumed_at: null,
+                    expires_at: { [Op.gt]: new Date() }
+                }
+            }
+        );
+        if (updatedCount !== 1) return null;
+        return DgfyAccountHandoff.findOne({ where: { jti, dgfy_account_id: dgfyAccountId } });
     },
 
     async mirrorPendingInvitationsForAccount(account) {

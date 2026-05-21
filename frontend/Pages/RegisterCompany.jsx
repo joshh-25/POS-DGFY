@@ -3,7 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import api from '../src/services/api.js';
 import {
     acceptDgfyInvitation,
+    changeDgfyPassword,
     clearDgfySession,
+    completeDgfyPasswordReset,
     dgfyAuthHeader,
     fetchDgfyMe,
     getStoredDgfyAccount,
@@ -11,7 +13,9 @@ import {
     loginDgfyAccount,
     logoutDgfyAccount,
     requestDgfyEmailVerification,
+    requestDgfyPasswordReset,
     registerDgfyAccount,
+    updateDgfyProfile,
     verifyDgfyEmail
 } from '../src/services/dgfyAuthService.js';
 import { Button } from "@/components/ui/button";
@@ -73,6 +77,10 @@ export default function RegisterCompany() {
         confirmPassword: ''
     });
     const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+    const [resetForm, setResetForm] = useState({ email: '', code: '', password: '', confirmPassword: '' });
+    const [resetStep, setResetStep] = useState('request');
+    const [profileForm, setProfileForm] = useState({ firstName: '', lastName: '', phone: '' });
+    const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
     const [companyForm, setCompanyForm] = useState({
         companyName: '',
         workflowMode: 'food_manufacturing',
@@ -83,6 +91,7 @@ export default function RegisterCompany() {
     const [dgfyVerificationSentTo, setDgfyVerificationSentTo] = useState('');
     const [success, setSuccess] = useState(null);
     const [error, setError] = useState('');
+    const [notice, setNotice] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isSendingOtp, setIsSendingOtp] = useState(false);
 
@@ -111,6 +120,15 @@ export default function RegisterCompany() {
         };
     }, []);
 
+    useEffect(() => {
+        if (!dgfyAccount) return;
+        setProfileForm({
+            firstName: dgfyAccount.first_name || '',
+            lastName: dgfyAccount.last_name || '',
+            phone: dgfyAccount.phone || ''
+        });
+    }, [dgfyAccount]);
+
     const businessIndustryOptions = useMemo(() => WORKFLOW_MODE_SELECT_VALUES.map((mode) => ({
         value: mode,
         label: WORKFLOW_MODE_LABELS[mode] || mode
@@ -121,6 +139,7 @@ export default function RegisterCompany() {
         setDgfyAccount(session?.account || null);
         setDgfyMemberships([]);
         setError('');
+        setNotice('');
         fetchDgfyMe(session?.token || getStoredDgfyToken()).then((data) => {
             setDgfyMemberships(Array.isArray(data?.memberships) ? data.memberships : []);
         }).catch(() => {});
@@ -187,6 +206,102 @@ export default function RegisterCompany() {
             setDgfyVerificationSentTo('');
         } catch (err) {
             setError(err.response?.data?.message || 'DGFY sign-in failed.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleRequestPasswordReset = async (event) => {
+        event.preventDefault();
+        setError('');
+        setNotice('');
+        setIsLoading(true);
+        try {
+            await requestDgfyPasswordReset(resetForm.email);
+            setResetStep('complete');
+            setNotice('If a matching DGFY account exists, a password reset code has been sent.');
+        } catch (err) {
+            setError(err.response?.data?.message || 'Could not request password reset.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleCompletePasswordReset = async (event) => {
+        event.preventDefault();
+        setError('');
+        setNotice('');
+        if (resetForm.password.length < 8) {
+            setError('Password must be at least 8 characters.');
+            return;
+        }
+        if (resetForm.password !== resetForm.confirmPassword) {
+            setError('Passwords do not match.');
+            return;
+        }
+        setIsLoading(true);
+        try {
+            await completeDgfyPasswordReset({
+                email: resetForm.email,
+                code: resetForm.code,
+                password: resetForm.password,
+                confirm_password: resetForm.confirmPassword
+            });
+            setAuthMode('login');
+            setLoginForm((current) => ({ ...current, email: resetForm.email, password: '' }));
+            setResetForm({ email: '', code: '', password: '', confirmPassword: '' });
+            setResetStep('request');
+            setNotice('Password reset complete. Sign in with your new password.');
+        } catch (err) {
+            setError(err.response?.data?.message || 'Password reset failed.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleUpdateDgfyProfile = async (event) => {
+        event.preventDefault();
+        setError('');
+        setNotice('');
+        setIsLoading(true);
+        try {
+            const result = await updateDgfyProfile({
+                first_name: profileForm.firstName,
+                last_name: profileForm.lastName,
+                phone: profileForm.phone
+            }, dgfyToken);
+            setDgfyAccount(result?.account || getStoredDgfyAccount());
+            setNotice('DGFY profile updated.');
+        } catch (err) {
+            setError(err.response?.data?.message || 'Could not update DGFY profile.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleChangeDgfyPassword = async (event) => {
+        event.preventDefault();
+        setError('');
+        setNotice('');
+        if (passwordForm.newPassword.length < 8) {
+            setError('New password must be at least 8 characters.');
+            return;
+        }
+        if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+            setError('Passwords do not match.');
+            return;
+        }
+        setIsLoading(true);
+        try {
+            await changeDgfyPassword({
+                current_password: passwordForm.currentPassword,
+                new_password: passwordForm.newPassword,
+                confirm_password: passwordForm.confirmPassword
+            }, dgfyToken);
+            setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+            setNotice('DGFY password changed.');
+        } catch (err) {
+            setError(err.response?.data?.message || 'Could not change DGFY password.');
         } finally {
             setIsLoading(false);
         }
@@ -373,6 +488,11 @@ export default function RegisterCompany() {
                             {error}
                         </div>
                     )}
+                    {notice && (
+                        <div className="mb-5 rounded-2xl border border-[#b7ded7] bg-[#eefaf7] p-3 text-sm text-[#0f766e]">
+                            {notice}
+                        </div>
+                    )}
 
                     {!dgfyAccount ? (
                         <section>
@@ -390,6 +510,13 @@ export default function RegisterCompany() {
                                     className={`flex-1 rounded-xl px-4 py-2 text-sm font-semibold ${authMode === 'login' ? 'bg-white text-[#132033] shadow-sm' : 'text-slate-600'}`}
                                 >
                                     Sign in
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setAuthMode('reset')}
+                                    className={`flex-1 rounded-xl px-4 py-2 text-sm font-semibold ${authMode === 'reset' ? 'bg-white text-[#132033] shadow-sm' : 'text-slate-600'}`}
+                                >
+                                    Reset
                                 </button>
                             </div>
 
@@ -429,7 +556,7 @@ export default function RegisterCompany() {
                                         {isLoading ? 'Creating account...' : 'Create DGFY Account'}
                                     </Button>
                                 </form>
-                            ) : (
+                            ) : authMode === 'login' ? (
                                 <form onSubmit={handleLoginDgfyAccount} className="space-y-4">
                                     <div>
                                         <Label htmlFor="dgfyLoginEmail">Email</Label>
@@ -443,10 +570,38 @@ export default function RegisterCompany() {
                                         {isLoading ? 'Signing in...' : 'Sign in with DGFY'}
                                     </Button>
                                 </form>
+                            ) : (
+                                <form onSubmit={resetStep === 'request' ? handleRequestPasswordReset : handleCompletePasswordReset} className="space-y-4">
+                                    <div>
+                                        <Label htmlFor="dgfyResetEmail">Email</Label>
+                                        <Input id="dgfyResetEmail" type="email" value={resetForm.email} onChange={(e) => setResetForm({ ...resetForm, email: e.target.value })} required disabled={isLoading || resetStep === 'complete'} className="mt-1" />
+                                    </div>
+                                    {resetStep === 'complete' && (
+                                        <>
+                                            <div>
+                                                <Label htmlFor="dgfyResetCode">Reset Code</Label>
+                                                <Input id="dgfyResetCode" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={resetForm.code} onChange={(e) => setResetForm({ ...resetForm, code: e.target.value.replace(/\D/g, '').slice(0, 6) })} required disabled={isLoading} className="mt-1" />
+                                            </div>
+                                            <div className="grid gap-4 md:grid-cols-2">
+                                                <div>
+                                                    <Label htmlFor="dgfyResetPassword">New Password</Label>
+                                                    <PasswordInput id="dgfyResetPassword" autoComplete="new-password" placeholder="At least 8 characters" value={resetForm.password} onChange={(e) => setResetForm({ ...resetForm, password: e.target.value })} disabled={isLoading} />
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="dgfyResetConfirmPassword">Confirm New Password</Label>
+                                                    <PasswordInput id="dgfyResetConfirmPassword" autoComplete="new-password" placeholder="Re-enter password" value={resetForm.confirmPassword} onChange={(e) => setResetForm({ ...resetForm, confirmPassword: e.target.value })} disabled={isLoading} />
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+                                    <Button type="submit" disabled={isLoading} className="w-full bg-[#1f5f9f] hover:bg-[#174f86]">
+                                        {isLoading ? 'Working...' : resetStep === 'request' ? 'Send Reset Code' : 'Reset Password'}
+                                    </Button>
+                                </form>
                             )}
                         </section>
                     ) : (
-                        <form onSubmit={handleSubmitCompany} className="space-y-5">
+                        <div className="space-y-5">
                             <div className="flex items-center justify-between gap-4 rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">
                                 <div className="flex items-center gap-3">
                                     <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#e8f4ff] text-[#1f5f9f]">
@@ -454,12 +609,59 @@ export default function RegisterCompany() {
                                     </div>
                                     <div>
                                         <p className="text-sm font-semibold text-[#132033]">{dgfyAccount.first_name} {dgfyAccount.last_name}</p>
-                                        <p className="text-xs text-slate-600">{dgfyAccount.email} · {dgfyAccount.phone}</p>
+                                        <p className="text-xs text-slate-600">{dgfyAccount.email} &middot; {dgfyAccount.phone}</p>
                                     </div>
                                 </div>
                                 <button type="button" onClick={handleSignOutDgfy} className="text-slate-500 hover:text-slate-800" aria-label="Sign out of DGFY">
                                     <LogOut className="h-4 w-4" />
                                 </button>
+                            </div>
+
+                            <div className="grid gap-4 lg:grid-cols-2">
+                                <form onSubmit={handleUpdateDgfyProfile} className="rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">
+                                    <p className="text-sm font-semibold text-[#132033]">DGFY Profile</p>
+                                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                        <div>
+                                            <Label htmlFor="profileFirstName">First Name</Label>
+                                            <Input id="profileFirstName" value={profileForm.firstName} onChange={(e) => setProfileForm({ ...profileForm, firstName: e.target.value })} disabled={isLoading} className="mt-1 bg-white" />
+                                        </div>
+                                        <div>
+                                            <Label htmlFor="profileLastName">Last Name</Label>
+                                            <Input id="profileLastName" value={profileForm.lastName} onChange={(e) => setProfileForm({ ...profileForm, lastName: e.target.value })} disabled={isLoading} className="mt-1 bg-white" />
+                                        </div>
+                                    </div>
+                                    <div className="mt-3">
+                                        <Label htmlFor="profilePhone">Phone Number</Label>
+                                        <Input id="profilePhone" value={profileForm.phone} onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })} disabled={isLoading} className="mt-1 bg-white" />
+                                        <p className="mt-2 text-xs text-slate-500">Phone verification is reserved for a future OTP rollout.</p>
+                                    </div>
+                                    <Button type="submit" variant="outline" disabled={isLoading} className="mt-3">
+                                        Save Profile
+                                    </Button>
+                                </form>
+
+                                <form onSubmit={handleChangeDgfyPassword} className="rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">
+                                    <p className="text-sm font-semibold text-[#132033]">Password</p>
+                                    <div className="mt-3 space-y-3">
+                                        <div>
+                                            <Label htmlFor="currentDgfyPassword">Current Password</Label>
+                                            <PasswordInput id="currentDgfyPassword" autoComplete="current-password" placeholder="Current password" value={passwordForm.currentPassword} onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })} disabled={isLoading} />
+                                        </div>
+                                        <div className="grid gap-3 sm:grid-cols-2">
+                                            <div>
+                                                <Label htmlFor="newDgfyPassword">New Password</Label>
+                                                <PasswordInput id="newDgfyPassword" autoComplete="new-password" placeholder="At least 8 characters" value={passwordForm.newPassword} onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })} disabled={isLoading} />
+                                            </div>
+                                            <div>
+                                                <Label htmlFor="confirmNewDgfyPassword">Confirm New Password</Label>
+                                                <PasswordInput id="confirmNewDgfyPassword" autoComplete="new-password" placeholder="Re-enter password" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })} disabled={isLoading} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <Button type="submit" variant="outline" disabled={isLoading} className="mt-3">
+                                        Change Password
+                                    </Button>
+                                </form>
                             </div>
 
                             {!isDgfyEmailVerified && (
@@ -513,56 +715,58 @@ export default function RegisterCompany() {
                                 </div>
                             )}
 
-                            <div>
-                                <Label htmlFor="companyName">Company Name</Label>
-                                <Input id="companyName" value={companyForm.companyName} onChange={(e) => setCompanyForm({ ...companyForm, companyName: e.target.value })} required minLength={3} maxLength={100} disabled={isLoading} className="mt-1" />
-                            </div>
-
-                            <div>
-                                <Label htmlFor="workflowMode">Business Industry</Label>
-                                <select
-                                    id="workflowMode"
-                                    value={companyForm.workflowMode}
-                                    onChange={(e) => setCompanyForm({ ...companyForm, workflowMode: e.target.value })}
-                                    disabled={isLoading}
-                                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                                >
-                                    {businessIndustryOptions.map((mode) => (
-                                        <option key={mode.value} value={mode.value}>{mode.label}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div className="rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">
-                                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                                    <div className="flex-1">
-                                        <Label htmlFor="emailOtpCode">Email Verification Code</Label>
-                                        <Input
-                                            id="emailOtpCode"
-                                            inputMode="numeric"
-                                            pattern="[0-9]{6}"
-                                            maxLength={6}
-                                            placeholder="123456"
-                                            value={companyForm.emailOtpCode}
-                                            onChange={(e) => setCompanyForm({ ...companyForm, emailOtpCode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
-                                            required
-                                            disabled={isLoading}
-                                            className="mt-1"
-                                        />
-                                    </div>
-                                    <Button type="button" variant="outline" onClick={handleRequestEmailOtp} disabled={isLoading || isSendingOtp || !isDgfyEmailVerified}>
-                                        {isSendingOtp ? 'Sending...' : otpSentTo ? 'Resend Code' : 'Send Code'}
-                                    </Button>
+                            <form onSubmit={handleSubmitCompany} className="space-y-5">
+                                <div>
+                                    <Label htmlFor="companyName">Company Name</Label>
+                                    <Input id="companyName" value={companyForm.companyName} onChange={(e) => setCompanyForm({ ...companyForm, companyName: e.target.value })} required minLength={3} maxLength={100} disabled={isLoading} className="mt-1" />
                                 </div>
-                                <p className="mt-2 text-xs text-slate-500">
-                                    {otpSentTo ? `Code sent to ${otpSentTo}.` : 'Send a fresh code to your DGFY email before creating the company.'}
-                                </p>
-                            </div>
 
-                            <Button type="submit" disabled={isLoading || !isDgfyEmailVerified} className="w-full bg-[#1f5f9f] hover:bg-[#174f86]">
-                                {isLoading ? 'Creating Company...' : 'Create Company'}
-                            </Button>
-                        </form>
+                                <div>
+                                    <Label htmlFor="workflowMode">Business Industry</Label>
+                                    <select
+                                        id="workflowMode"
+                                        value={companyForm.workflowMode}
+                                        onChange={(e) => setCompanyForm({ ...companyForm, workflowMode: e.target.value })}
+                                        disabled={isLoading}
+                                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                                    >
+                                        {businessIndustryOptions.map((mode) => (
+                                            <option key={mode.value} value={mode.value}>{mode.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                                        <div className="flex-1">
+                                            <Label htmlFor="emailOtpCode">Email Verification Code</Label>
+                                            <Input
+                                                id="emailOtpCode"
+                                                inputMode="numeric"
+                                                pattern="[0-9]{6}"
+                                                maxLength={6}
+                                                placeholder="123456"
+                                                value={companyForm.emailOtpCode}
+                                                onChange={(e) => setCompanyForm({ ...companyForm, emailOtpCode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                                                required
+                                                disabled={isLoading}
+                                                className="mt-1"
+                                            />
+                                        </div>
+                                        <Button type="button" variant="outline" onClick={handleRequestEmailOtp} disabled={isLoading || isSendingOtp || !isDgfyEmailVerified}>
+                                            {isSendingOtp ? 'Sending...' : otpSentTo ? 'Resend Code' : 'Send Code'}
+                                        </Button>
+                                    </div>
+                                    <p className="mt-2 text-xs text-slate-500">
+                                        {otpSentTo ? `Code sent to ${otpSentTo}.` : 'Send a fresh code to your DGFY email before creating the company.'}
+                                    </p>
+                                </div>
+
+                                <Button type="submit" disabled={isLoading || !isDgfyEmailVerified} className="w-full bg-[#1f5f9f] hover:bg-[#174f86]">
+                                    {isLoading ? 'Creating Company...' : 'Create Company'}
+                                </Button>
+                            </form>
+                        </div>
                     )}
 
                     <div className="mt-6 text-center text-sm text-slate-600">

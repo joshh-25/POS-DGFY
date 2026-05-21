@@ -1,11 +1,15 @@
 import {
     acceptDgfyInvitationUseCase,
+    changeDgfyPasswordUseCase,
+    completeDgfyPasswordResetUseCase,
     createDgfyHandoffUseCase,
     exchangeDgfyHandoffUseCase,
     registerDgfyAccountUseCase,
     loginDgfyAccountUseCase,
     getDgfyMeUseCase,
+    requestDgfyPasswordResetUseCase,
     requestDgfyEmailVerificationUseCase,
+    updateDgfyProfileUseCase,
     verifyDgfyEmailUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
@@ -30,6 +34,26 @@ export const getDgfyMe = async (req, res) => {
     return sendUseCaseResult(res, result);
 };
 
+export const updateDgfyProfile = async (req, res) => {
+    const result = await updateDgfyProfileUseCase({
+        account: req.dgfyAccount,
+        body: req.body
+    });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'DGFY profile update failed'
+    });
+};
+
+export const changeDgfyPassword = async (req, res) => {
+    const result = await changeDgfyPasswordUseCase({
+        account: req.dgfyAccount,
+        body: req.body
+    });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'DGFY password change failed'
+    });
+};
+
 export const requestDgfyEmailVerification = async (req, res) => {
     const result = await requestDgfyEmailVerificationUseCase({
         account: req.dgfyAccount,
@@ -50,6 +74,26 @@ export const verifyDgfyEmail = async (req, res) => {
     });
     return sendUseCaseResult(res, result, {
         fallbackErrorMessage: 'DGFY email verification failed'
+    });
+};
+
+export const requestDgfyPasswordReset = async (req, res) => {
+    const result = await requestDgfyPasswordResetUseCase({
+        body: req.body,
+        metadata: {
+            request_id: req.headers['x-request-id'] || null,
+            ip_address: req.ip || null
+        }
+    });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'DGFY password reset request failed'
+    });
+};
+
+export const completeDgfyPasswordReset = async (req, res) => {
+    const result = await completeDgfyPasswordResetUseCase({ body: req.body });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'DGFY password reset failed'
     });
 };
 

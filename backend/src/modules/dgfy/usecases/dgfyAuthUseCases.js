@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'crypto';
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { normalizePhoneNumber, isValidPhoneNumber } from '../../../utils/phoneNumber.js';
@@ -6,7 +7,8 @@ import { normalizePhoneNumber, isValidPhoneNumber } from '../../../utils/phoneNu
 const JWT_EXPIRY = process.env.DGFY_JWT_EXPIRY || process.env.JWT_EXPIRY || '24h';
 const HANDOFF_JWT_EXPIRY = process.env.DGFY_HANDOFF_JWT_EXPIRY || '2m';
 const DEFAULT_EMAIL_OTP_PURPOSES = Object.freeze({
-    DGFY_ACCOUNT_VERIFICATION: 'dgfy_account_verification'
+    DGFY_ACCOUNT_VERIFICATION: 'dgfy_account_verification',
+    DGFY_PASSWORD_RESET: 'dgfy_password_reset'
 });
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
@@ -43,8 +45,9 @@ export const generateDgfyToken = (account) => jwt.sign({
     username: account.username
 }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRY });
 
-export const generateDgfyHandoffToken = (account) => jwt.sign({
+export const generateDgfyHandoffToken = (account, jti) => jwt.sign({
     token_scope: 'dgfy_handoff',
+    jti,
     dgfy_account_id: account.id,
     email: account.email
 }, process.env.JWT_SECRET, { expiresIn: HANDOFF_JWT_EXPIRY });
@@ -188,6 +191,92 @@ export const buildGetDgfyMeUseCase = ({ repository }) => async ({ account }) => 
     });
 };
 
+export const buildUpdateDgfyProfileUseCase = ({ repository }) => async ({ account, body }) => {
+    const firstName = normalizeName(body?.first_name || body?.firstName || account.first_name);
+    const lastName = normalizeName(body?.last_name || body?.lastName || account.last_name);
+    const phone = normalizePhoneNumber(body?.phone ?? account.phone);
+    const email = normalizeEmail(body?.email || account.email);
+
+    if (email !== normalizeEmail(account.email)) {
+        return fail(new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'DGFY email changes require a verified email-change flow and are not available from this screen yet.',
+            { statusCode: 400 }
+        ));
+    }
+
+    if (!firstName || !lastName || !phone) {
+        return fail(new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'First name, last name, and phone are required.',
+            { statusCode: 400 }
+        ));
+    }
+
+    if (!isValidPhoneNumber(phone)) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Phone must be a valid phone number.', { statusCode: 400 }));
+    }
+
+    const existingByPhone = await repository.findByPhone(phone);
+    if (existingByPhone && existingByPhone.id !== account.id) {
+        return fail(new DomainError(DomainErrorCode.CONFLICT, 'A DGFY account already exists with this phone number.', { statusCode: 409 }));
+    }
+
+    const updated = await repository.updateProfile(account, {
+        first_name: firstName,
+        last_name: lastName,
+        username: firstName,
+        phone,
+        phone_verified_at: phone === account.phone ? account.phone_verified_at : null
+    });
+
+    return ok({
+        payload: {
+            success: true,
+            data: {
+                account: sanitizeDgfyAccount(updated || account)
+            },
+            message: 'DGFY profile updated.'
+        }
+    });
+};
+
+export const buildChangeDgfyPasswordUseCase = ({
+    repository,
+    comparePassword,
+    hashPassword
+}) => async ({ account, body }) => {
+    const currentPassword = String(body?.current_password || body?.currentPassword || '');
+    const newPassword = String(body?.new_password || body?.newPassword || '');
+    const confirmPassword = String(body?.confirm_password || body?.confirmPassword || '');
+
+    if (!currentPassword || !newPassword) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Current password and new password are required.', { statusCode: 400 }));
+    }
+
+    if (newPassword.length < 8) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'New password must be at least 8 characters.', { statusCode: 400 }));
+    }
+
+    if (confirmPassword && newPassword !== confirmPassword) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Passwords do not match.', { statusCode: 400 }));
+    }
+
+    const passwordValid = await comparePassword(currentPassword, account.password_hash);
+    if (!passwordValid) {
+        return fail(new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Current password is invalid.', { statusCode: 401 }));
+    }
+
+    await repository.updatePassword(account, await hashPassword(newPassword));
+    return ok({
+        payload: {
+            success: true,
+            data: null,
+            message: 'DGFY password changed.'
+        }
+    });
+};
+
 export const buildRequestDgfyEmailVerificationUseCase = ({
     requestEmailOtp,
     emailOtpPurposes = DEFAULT_EMAIL_OTP_PURPOSES
@@ -266,15 +355,120 @@ export const buildVerifyDgfyEmailUseCase = ({
     }
 };
 
-export const buildCreateDgfyHandoffUseCase = () => async ({ account }) => ok({
-    payload: {
-        success: true,
-        data: {
-            handoff_token: generateDgfyHandoffToken(account),
-            expiresIn: 120
-        }
+export const buildRequestDgfyPasswordResetUseCase = ({
+    repository,
+    requestEmailOtp,
+    emailOtpPurposes = DEFAULT_EMAIL_OTP_PURPOSES
+}) => async ({ body, metadata = {} }) => {
+    const email = normalizeEmail(body?.email);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Enter a valid email address.', { statusCode: 400 }));
     }
-});
+
+    const account = await repository.findByEmail(email);
+    if (!account || !account.is_active) {
+        return ok({
+            statusCode: 202,
+            payload: {
+                success: true,
+                data: null,
+                message: 'If a matching DGFY account exists, a password reset code has been sent.'
+            }
+        });
+    }
+
+    try {
+        const otp = await requestEmailOtp({
+            purpose: emailOtpPurposes.DGFY_PASSWORD_RESET,
+            email,
+            tenantId: null,
+            metadata
+        });
+        return ok({
+            statusCode: 202,
+            payload: {
+                success: true,
+                data: otp,
+                message: 'If a matching DGFY account exists, a password reset code has been sent.'
+            }
+        });
+    } catch (error) {
+        return fail(new DomainError(
+            DomainErrorCode.INTERNAL_ERROR,
+            error.message || 'DGFY password reset code could not be sent.',
+            { statusCode: error.statusCode || 500, cause: error }
+        ));
+    }
+};
+
+export const buildCompleteDgfyPasswordResetUseCase = ({
+    repository,
+    verifyEmailOtp,
+    hashPassword,
+    emailOtpPurposes = DEFAULT_EMAIL_OTP_PURPOSES
+}) => async ({ body }) => {
+    const email = normalizeEmail(body?.email);
+    const code = String(body?.code || body?.email_otp_code || '').trim();
+    const password = String(body?.password || body?.new_password || body?.newPassword || '');
+    const confirmPassword = String(body?.confirm_password || body?.confirmPassword || '');
+
+    if (!email || !code || !password) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Email, reset code, and new password are required.', { statusCode: 400 }));
+    }
+    if (password.length < 8) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Password must be at least 8 characters.', { statusCode: 400 }));
+    }
+    if (confirmPassword && password !== confirmPassword) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Passwords do not match.', { statusCode: 400 }));
+    }
+
+    try {
+        const account = await repository.findByEmail(email);
+        if (!account || !account.is_active) {
+            throw new Error('DGFY password reset code is invalid or expired.');
+        }
+        await verifyEmailOtp({
+            purpose: emailOtpPurposes.DGFY_PASSWORD_RESET,
+            email,
+            code,
+            tenantId: null
+        });
+        await repository.updatePassword(account, await hashPassword(password));
+        return ok({
+            payload: {
+                success: true,
+                data: null,
+                message: 'DGFY password reset complete.'
+            }
+        });
+    } catch (error) {
+        return fail(new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            error.message || 'DGFY password reset code is invalid or expired.',
+            { statusCode: error.statusCode || 422, cause: error }
+        ));
+    }
+};
+
+export const buildCreateDgfyHandoffUseCase = ({ repository }) => async ({ account }) => {
+    const jti = randomUUID();
+    const expiresAt = new Date(Date.now() + 120 * 1000);
+    await repository.createHandoff({
+        jti,
+        dgfyAccountId: account.id,
+        expiresAt
+    });
+
+    return ok({
+        payload: {
+            success: true,
+            data: {
+                handoff_token: generateDgfyHandoffToken(account, jti),
+                expiresIn: 120
+            }
+        }
+    });
+};
 
 export const buildExchangeDgfyHandoffUseCase = ({ repository }) => async ({ body }) => {
     const handoffToken = String(body?.handoff_token || body?.handoffToken || '').trim();
@@ -284,8 +478,16 @@ export const buildExchangeDgfyHandoffUseCase = ({ repository }) => async ({ body
 
     try {
         const decoded = jwt.verify(handoffToken, process.env.JWT_SECRET);
-        if (decoded?.token_scope !== 'dgfy_handoff' || !decoded?.dgfy_account_id) {
+        if (decoded?.token_scope !== 'dgfy_handoff' || !decoded?.dgfy_account_id || !decoded?.jti) {
             throw new Error('Invalid handoff token scope.');
+        }
+
+        const handoff = await repository.consumeHandoff({
+            jti: decoded.jti,
+            dgfyAccountId: decoded.dgfy_account_id
+        });
+        if (!handoff) {
+            throw new Error('DGFY handoff token was already used or expired.');
         }
 
         const account = await repository.findById(decoded.dgfy_account_id);
