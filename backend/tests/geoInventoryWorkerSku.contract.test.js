@@ -14,7 +14,7 @@ describe('geo inventory SKU persistence contract', () => {
 
         expect(modelSource).toContain('sku_code');
         expect(workerSource).toContain('(tenant_id, location_id, item_id, sku_code, price');
-        expect(workerSource).toContain('sku_code      = VALUES(sku_code)');
+        expect(workerSource).toMatch(/sku_code\s*=\s*VALUES\(sku_code\)/);
         expect(workerSource).toContain('skuCode: item.sku_code || null');
     });
 });
