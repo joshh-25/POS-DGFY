@@ -28,7 +28,8 @@ const dgfyAccount = {
     username: 'Owner',
     email: 'owner@autoaccept.test',
     phone: '+639123456789',
-    password_hash: 'dgfy-hashed-password'
+    password_hash: 'dgfy-hashed-password',
+    email_verified_at: new Date('2026-05-21T00:00:00.000Z')
 };
 
 const createUseCase = (overrides = {}) => {

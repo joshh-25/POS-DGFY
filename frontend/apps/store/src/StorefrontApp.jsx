@@ -1049,12 +1049,24 @@ const locationsMatchProfileSnapshot = (locations = [], profile = {}) => {
 
 const readStoreAuthToken = () => {
   if (typeof window === 'undefined') return '';
-  const keys = ['dgfyAccountToken', 'dgfy_store_customer_token', 'store_customer_token', 'store_token'];
+  const keys = ['dgfy_store_customer_token', 'store_customer_token', 'store_token', 'dgfyAccountToken'];
   for (const key of keys) {
     const token = String(window.localStorage.getItem(key) || '').trim();
     if (token) return token;
   }
   return '';
+};
+
+const storeDgfyAccountSession = ({ token, account }) => {
+  if (typeof window === 'undefined') return;
+  if (token) window.localStorage.setItem('dgfyAccountToken', token);
+  if (account) window.localStorage.setItem('dgfyAccount', JSON.stringify(account));
+};
+
+const clearDgfyAccountSession = () => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem('dgfyAccountToken');
+  window.localStorage.removeItem('dgfyAccount');
 };
 
 const getBusinessRegistrationUrl = () => {
@@ -3905,6 +3917,16 @@ export default function StorefrontApp() {
   const [trackingResult, setTrackingResult] = useState(null);
   const [trackingError, setTrackingError] = useState('');
   const [accountPanel, setAccountPanel] = useState({ loading: false, error: '', me: null, orders: [], bookings: [] });
+  const [accountAuthMode, setAccountAuthMode] = useState('login');
+  const [accountAuthForm, setAccountAuthForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    password: '',
+    confirmPassword: ''
+  });
+  const [accountAuthLoading, setAccountAuthLoading] = useState(false);
 
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [checkoutTab, setCheckoutTab] = useState('checkout');
@@ -3915,6 +3937,34 @@ export default function StorefrontApp() {
     error: ''
   });
   const storefrontVisitorId = useMemo(() => getOrCreateStorefrontVisitorId(), []);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(String(window.location.hash || '').replace(/^#/, ''));
+    const handoffToken = params.get('dgfy_handoff') || hashParams.get('dgfy_handoff');
+    if (!handoffToken) return;
+
+    let cancelled = false;
+    requestJson('/api/v1/dgfy/auth/handoff/exchange', {
+      method: 'POST',
+      body: { handoff_token: handoffToken }
+    }).then((data) => {
+      if (cancelled) return;
+      storeDgfyAccountSession(data || {});
+      params.delete('dgfy_handoff');
+      hashParams.delete('dgfy_handoff');
+      const nextSearch = params.toString();
+      const nextHash = hashParams.toString();
+      const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${nextHash ? `#${nextHash}` : ''}`;
+      window.history.replaceState(window.history.state || {}, '', nextUrl);
+    }).catch(() => {
+      if (!cancelled) clearDgfyAccountSession();
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [viewportWidth, setViewportWidth] = useState(() => (
     typeof window === 'undefined' ? 1280 : window.innerWidth
   ));
@@ -6444,6 +6494,44 @@ export default function StorefrontApp() {
     } catch (error) {
       setAccountPanel({ loading: false, error: normalizeStorefrontErrorMessage(error, 'Unable to load account.'), me: null, orders: [], bookings: [] });
     }
+  };
+
+  const handleDgfyAccountAuth = async (event) => {
+    event.preventDefault();
+    setAccountPanel((prev) => ({ ...prev, error: '' }));
+    setAccountAuthLoading(true);
+    try {
+      const endpoint = accountAuthMode === 'register' ? '/api/v1/dgfy/auth/register' : '/api/v1/dgfy/auth/login';
+      const payload = accountAuthMode === 'register'
+        ? {
+            first_name: accountAuthForm.firstName,
+            last_name: accountAuthForm.lastName,
+            email: accountAuthForm.email,
+            phone: accountAuthForm.phone,
+            password: accountAuthForm.password,
+            confirm_password: accountAuthForm.confirmPassword
+          }
+        : {
+            email: accountAuthForm.email,
+            password: accountAuthForm.password
+          };
+      const data = await requestJson(endpoint, { method: 'POST', body: payload });
+      storeDgfyAccountSession(data || {});
+      await handleLoadAccountPanel();
+    } catch (error) {
+      setAccountPanel({ loading: false, error: normalizeStorefrontErrorMessage(error, 'DGFY account sign-in failed.'), me: null, orders: [], bookings: [] });
+    } finally {
+      setAccountAuthLoading(false);
+    }
+  };
+
+  const handleDgfyAccountLogout = async () => {
+    const token = readStoreAuthToken();
+    if (token) {
+      await requestJson('/api/v1/dgfy/auth/logout', { method: 'POST', authToken: token }).catch(() => null);
+    }
+    clearDgfyAccountSession();
+    setAccountPanel({ loading: false, error: '', me: null, orders: [], bookings: [] });
   };
 
   const handleNearMe = () => {
