@@ -60,11 +60,14 @@ process.env.PAYPAL_MODE = 'sandbox';
 
 import request from 'supertest';
 const { default: app } = await import('../src/server.js');
-const { sequelize, Tenant, SystemSetting } = await import('../src/models/index.js');
+const { sequelize, Tenant, SystemSetting, DgfyAccount } = await import('../src/models/index.js');
+const { generateDgfyToken } = await import('../src/modules/dgfy/usecases/dgfyAuthUseCases.js');
 const { Op } = await import('sequelize');
 
 describe('Admin Tenant Lifecycle Integration - Parity', () => {
     let adminApiToken;
+    let dgfyAccount;
+    let dgfyToken;
     const testSuffix = Date.now();
     const ADMIN_TEST_TENANT_PREFIX = `Admin Gate Test ${testSuffix}`;
     const PRICING_KEYS = ['premium_plan_price', 'standard_plan_price', 'paypal_product_id'];
@@ -99,6 +102,16 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
             process.env.JWT_SECRET,
             { expiresIn: '1h' }
         );
+        dgfyAccount = await DgfyAccount.create({
+            first_name: 'Admin',
+            last_name: 'Lifecycle',
+            username: `admin_lifecycle_${testSuffix}`,
+            email: `admin-lifecycle-${testSuffix}@example.test`,
+            phone: `+63917${String(testSuffix).slice(-7).padStart(7, '0')}`,
+            password_hash: '$2y$10$abcdefghijklmnopqrstuv',
+            is_active: true
+        });
+        dgfyToken = generateDgfyToken(dgfyAccount);
 
         mockAxiosPost.mockResolvedValue({
             data: { access_token: 'fake_jwt', expires_in: 3600 }
@@ -130,6 +143,9 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
 
     afterAll(async () => {
         await Tenant.destroy({ where: { name: { [Op.like]: `${ADMIN_TEST_TENANT_PREFIX}%` } } });
+        if (dgfyAccount) {
+            await DgfyAccount.destroy({ where: { id: dgfyAccount.id } });
+        }
 
         for (const key of PRICING_KEYS) {
             const backupValue = pricingBackup.get(key);
@@ -196,11 +212,9 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
         try {
             const response = await request(app)
                 .post('/api/v1/admin/tenants/register')
+                .set('Authorization', `Bearer ${dgfyToken}`)
                 .send({
                     name: `${ADMIN_TEST_TENANT_PREFIX} Auto Register`,
-                    adminEmail: `auto-register-${testSuffix}@example.test`,
-                    adminPhone: '+63 912 345 6789',
-                    adminPassword: 'StrongPass1!',
                     plan: 'premium',
                     complianceMode: 'non_compliant',
                     workflowMode: 'food_manufacturing'
@@ -214,8 +228,8 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
             expect(response.body.data.company_token).toMatch(/^token-admingatetest/);
             expect(mockProvisionTenant).toHaveBeenCalledWith(expect.objectContaining({
                 name: `${ADMIN_TEST_TENANT_PREFIX} Auto Register`,
-                adminEmail: `auto-register-${testSuffix}@example.test`,
-                adminPhone: '+63 912 345 6789',
+                adminEmail: dgfyAccount.email,
+                adminPhone: dgfyAccount.phone,
                 workflowMode: 'food_manufacturing'
             }));
         } finally {

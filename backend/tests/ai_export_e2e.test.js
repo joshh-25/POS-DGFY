@@ -59,6 +59,15 @@ const { User } = await import('../src/models/index.js');
 const { generateToken } = await import('../src/services/authService.js');
 const tempFileService = await import('../src/services/tempFileService.js');
 
+const ensureColumn = async (tableName, columnName, ddl) => {
+    const [rows] = await sequelize.query(`SHOW COLUMNS FROM \`${tableName}\` LIKE :columnName`, {
+        replacements: { columnName }
+    });
+    if (!Array.isArray(rows) || rows.length === 0) {
+        await sequelize.query(`ALTER TABLE \`${tableName}\` ADD COLUMN ${ddl}`);
+    }
+};
+
 describe('AI Export E2E Test (System Audit 8.2)', () => {
     let authorizedUser;
     let secondAuthorizedUser;
@@ -69,7 +78,8 @@ describe('AI Export E2E Test (System Audit 8.2)', () => {
     let fileId;
 
     beforeAll(async () => {
-        await sequelize.sync();
+        await sequelize.authenticate();
+        await ensureColumn('users', 'role_preset_key', '`role_preset_key` VARCHAR(80) NULL');
         await User.destroy({
             where: {
                 email: ['ai-export-admin@example.com', 'ai-export-second@example.com', 'ai-export-staff@example.com']
@@ -79,6 +89,7 @@ describe('AI Export E2E Test (System Audit 8.2)', () => {
         authorizedUser = await User.create({
             username: 'ai_export_admin',
             email: 'ai-export-admin@example.com',
+            phone_number: '+639170001001',
             password_hash: 'hash',
             role: 'admin',
             is_active: true,
@@ -91,6 +102,7 @@ describe('AI Export E2E Test (System Audit 8.2)', () => {
         unauthorizedUser = await User.create({
             username: 'ai_export_staff',
             email: 'ai-export-staff@example.com',
+            phone_number: '+639170001002',
             password_hash: 'hash',
             role: 'cashier',
             is_active: true,
@@ -100,6 +112,7 @@ describe('AI Export E2E Test (System Audit 8.2)', () => {
         secondAuthorizedUser = await User.create({
             username: 'ai_export_second',
             email: 'ai-export-second@example.com',
+            phone_number: '+639170001003',
             password_hash: 'hash',
             role: 'admin',
             is_active: true,

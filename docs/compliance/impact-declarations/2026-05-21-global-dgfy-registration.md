@@ -46,4 +46,5 @@ This declaration covers the current DGFY account registration and company-regist
 - `npm run lint:docs`
 - `npm run check:architecture`
 - `npm --prefix backend test -- --runTestsByPath tests/dgfyAuthUseCases.test.js tests/registerCompanyRequestUseCase.autoApproval.test.js`
+- `npm --prefix backend test -- --runTestsByPath tests/reproduce_import_bypass.test.js tests/ai_cost_control_e2e.test.js`
 - `npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx`

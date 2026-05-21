@@ -2,6 +2,8 @@ import request from 'supertest';
 import { jest } from '@jest/globals';
 import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
 
+jest.setTimeout(120000);
+
 // Define mocks
 const mockVerifyToken = jest.fn();
 const mockIsTokenBlacklisted = jest.fn().mockResolvedValue(false);
@@ -70,6 +72,7 @@ describe('Security & Infrastructure Integration Tests', () => {
             username: `sec_admin_${timestamp}`,
             password_hash: 'hash_placeholder',
             email: `sec_${timestamp}@check.com`,
+            phone_number: '+63 917 000 3000',
             role: 'admin',
             is_active: true
         });

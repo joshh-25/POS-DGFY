@@ -62,7 +62,7 @@ runSuite('Token Refresh Race Condition — Integration (Real Redis)', () => {
     await request(app)
       .post('/api/v1/auth/register')
       .set('x-company-token', COMPANY_TOKEN)
-      .send({ username: USERNAME, email: EMAIL, password: PASSWORD })
+      .send({ username: USERNAME, email: EMAIL, phone_number: '+63 917 000 6000', password: PASSWORD })
       .expect(201);
   });
 

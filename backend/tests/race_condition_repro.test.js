@@ -1,6 +1,7 @@
 
 import { createStockMovement } from '../src/services/stockMovementService.js';
 import db, { sequelize, User, Item, FIFOBatch, StockMovement } from '../src/models/index.js';
+import dbStore from '../src/utils/dbStore.js';
 
 // Test helpers
 let testUser;
@@ -13,6 +14,7 @@ beforeAll(async () => {
         username: 'race_test_user_' + timestamp,
         password_hash: 'hash',
         email: `race_test_${timestamp}@example.com`,
+        phone_number: '+639170009999',
         role: 'admin'
     });
 });
@@ -51,19 +53,21 @@ describe('Stock Movement Race Condition', () => {
 
         console.log(`Starting ${concurrency} concurrent requests...`);
 
-        for (let i = 0; i < concurrency; i++) {
-            promises.push(
-                createStockMovement({
-                    item_id: testItem.item_id,
-                    quantity: deductionPerRequest,
-                    movement_type: 'production_consumption', // Deducts stock
-                    reference_type: 'MANUAL',
-                    notes: `Concurrent request ${i}`
-                }, testUser.user_id)
-            );
-        }
+        await dbStore.run({ ...db, sequelize }, async () => {
+            for (let i = 0; i < concurrency; i++) {
+                promises.push(
+                    createStockMovement({
+                        item_id: testItem.item_id,
+                        quantity: deductionPerRequest,
+                        movement_type: 'production_consumption', // Deducts stock
+                        reference_type: 'MANUAL',
+                        notes: `Concurrent request ${i}`
+                    }, testUser.user_id)
+                );
+            }
 
-        await Promise.all(promises);
+            await Promise.all(promises);
+        });
 
         // 3. Assertion: Verify final stock
         // Expected: 20 - (10 * 1) = 10

@@ -5,26 +5,42 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 const apiMock = vi.hoisted(() => ({
-  post: vi.fn()
+  post: vi.fn(),
+  get: vi.fn()
 }));
 
-const loginMock = vi.hoisted(() => vi.fn());
 const clearClientSessionMock = vi.hoisted(() => vi.fn());
+const dgfyAuthMock = vi.hoisted(() => ({
+  clearDgfySession: vi.fn(),
+  dgfyAuthHeader: vi.fn(() => ({ Authorization: 'Bearer dgfy-token' })),
+  fetchDgfyMe: vi.fn(),
+  getStoredDgfyAccount: vi.fn(() => null),
+  getStoredDgfyToken: vi.fn(() => ''),
+  loginDgfyAccount: vi.fn(),
+  registerDgfyAccount: vi.fn()
+}));
 
 vi.mock('../../src/services/api.js', () => ({
   default: apiMock
-}));
-
-vi.mock('../../src/services/authService.js', () => ({
-  login: loginMock
 }));
 
 vi.mock('../../src/services/sessionCleanup.js', () => ({
   clearClientSession: clearClientSessionMock
 }));
 
+vi.mock('../../src/services/dgfyAuthService.js', () => dgfyAuthMock);
+
 import RegisterCompany from '../RegisterCompany.jsx';
 import Login from '../Login.jsx';
+
+const dgfyAccount = {
+  id: 'dgfy-1',
+  first_name: 'Ada',
+  last_name: 'Lovelace',
+  username: 'Ada',
+  email: 'ada@example.test',
+  phone: '+639123456789'
+};
 
 const renderRegistrationFlow = (initialEntries = ['/register-company']) => render(
   <MemoryRouter initialEntries={initialEntries}>
@@ -36,37 +52,38 @@ const renderRegistrationFlow = (initialEntries = ['/register-company']) => rende
   </MemoryRouter>
 );
 
-const fillRegistrationForm = ({
-  companyName = 'Auto Foods',
-  email = 'owner@autofoods.test',
-  phone = '+63 912 345 6789',
-  password = 'abcdefgh',
-  otp = '123456'
-} = {}) => {
-  fireEvent.change(screen.getByLabelText('Company Name'), {
-    target: { value: companyName }
+const signInDgfy = async () => {
+  dgfyAuthMock.loginDgfyAccount.mockResolvedValue({
+    token: 'dgfy-token',
+    account: dgfyAccount
   });
-  fireEvent.change(screen.getByLabelText('Admin Email'), {
-    target: { value: email }
+
+  fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+  fireEvent.change(screen.getByLabelText('Email'), {
+    target: { value: dgfyAccount.email }
   });
-  fireEvent.change(screen.getByLabelText('Admin Phone Number'), {
-    target: { value: phone }
+  fireEvent.change(screen.getByLabelText('Password'), {
+    target: { value: 'password123' }
   });
-  fireEvent.change(screen.getByLabelText('Admin Password'), {
-    target: { value: password }
-  });
-  fireEvent.change(screen.getByLabelText('Confirm Password'), {
-    target: { value: password }
-  });
-  fireEvent.change(screen.getByLabelText('Email Verification Code'), {
-    target: { value: otp }
-  });
+  fireEvent.click(screen.getByRole('button', { name: /sign in with dgfy/i }));
+
+  await screen.findByText(/Ada Lovelace/);
 };
 
-describe('RegisterCompany login handoff', () => {
+describe('RegisterCompany DGFY handoff', () => {
   beforeEach(() => {
     apiMock.post.mockReset();
-    loginMock.mockReset();
+    apiMock.get.mockReset();
+    dgfyAuthMock.clearDgfySession.mockReset();
+    dgfyAuthMock.fetchDgfyMe.mockReset();
+    dgfyAuthMock.getStoredDgfyAccount.mockReset();
+    dgfyAuthMock.getStoredDgfyAccount.mockReturnValue(null);
+    dgfyAuthMock.getStoredDgfyToken.mockReset();
+    dgfyAuthMock.getStoredDgfyToken.mockReturnValue('');
+    dgfyAuthMock.loginDgfyAccount.mockReset();
+    dgfyAuthMock.registerDgfyAccount.mockReset();
+    dgfyAuthMock.dgfyAuthHeader.mockReset();
+    dgfyAuthMock.dgfyAuthHeader.mockReturnValue({ Authorization: 'Bearer dgfy-token' });
     clearClientSessionMock.mockReset();
     window.localStorage.clear();
   });
@@ -76,43 +93,66 @@ describe('RegisterCompany login handoff', () => {
     vi.restoreAllMocks();
   });
 
-  it('auto-logs in after active registration succeeds', async () => {
-    apiMock.post.mockResolvedValue({
-      data: {
-        success: true,
-        message: 'Company registered and activated successfully. You can sign in now.',
-        data: {
-          id: 'tenant-1',
-          name: 'Auto Foods',
-          status: 'active',
-          plan: 'standard',
-          company_token: 'token-autofoods-12345678'
-        }
-      }
-    });
-    loginMock.mockResolvedValue({
-      user: { email: 'owner@autofoods.test' },
-      token: 'auth-token',
-      refreshToken: 'refresh-token'
-    });
-
+  it('requires a DGFY account before showing company registration fields', () => {
     renderRegistrationFlow();
 
-    fillRegistrationForm();
-    fireEvent.click(screen.getByRole('button', { name: /create company/i }));
-
-    await waitFor(() => expect(loginMock).toHaveBeenCalledWith({
-      email: 'owner@autofoods.test',
-      password: 'abcdefgh',
-      companyToken: 'token-autofoods-12345678'
-    }));
-    expect(await screen.findByText('Dashboard screen')).toBeTruthy();
+    expect(screen.getByText('Create DGFY account')).toBeTruthy();
+    expect(screen.queryByLabelText('Company Name')).toBeNull();
   });
 
-  it('does not expose the legacy manufacturing alias as a selectable registration mode', () => {
-    renderRegistrationFlow();
+  it('registers a company from the signed-in DGFY account', async () => {
+    apiMock.post
+      .mockResolvedValueOnce({ data: { success: true } })
+      .mockResolvedValueOnce({
+        data: {
+          success: true,
+          message: 'Company registered and activated successfully. You can sign in now.',
+          data: {
+            id: 'tenant-1',
+            name: 'Auto Foods',
+            status: 'active',
+            plan: 'premium',
+            company_token: 'token-autofoods-12345678',
+            workflow_mode: 'food_manufacturing'
+          }
+        }
+      });
 
-    const options = Array.from(screen.getByLabelText('Business Mode').querySelectorAll('option'))
+    renderRegistrationFlow();
+    await signInDgfy();
+
+    fireEvent.change(screen.getByLabelText('Company Name'), {
+      target: { value: 'Auto Foods' }
+    });
+    fireEvent.change(screen.getByLabelText('Email Verification Code'), {
+      target: { value: '123456' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /send code/i }));
+    await waitFor(() => expect(apiMock.post).toHaveBeenCalledWith('/auth/email-otp/request', {
+      purpose: 'company_registration',
+      email: dgfyAccount.email
+    }));
+
+    fireEvent.change(screen.getByLabelText('Email Verification Code'), {
+      target: { value: '123456' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /create company/i }));
+
+    await waitFor(() => expect(apiMock.post).toHaveBeenLastCalledWith('/admin/tenants/register', {
+      name: 'Auto Foods',
+      workflowMode: 'food_manufacturing',
+      email_otp_code: '123456'
+    }, {
+      headers: { Authorization: 'Bearer dgfy-token' }
+    }));
+    expect(await screen.findByText('Company Created')).toBeTruthy();
+  });
+
+  it('renames Business Mode to Business Industry without exposing legacy manufacturing', async () => {
+    renderRegistrationFlow();
+    await signInDgfy();
+
+    const options = Array.from(screen.getByLabelText('Business Industry').querySelectorAll('option'))
       .map((option) => ({
         value: option.value,
         label: option.textContent
@@ -123,82 +163,7 @@ describe('RegisterCompany login handoff', () => {
     expect(options.some((option) => option.value === 'food_manufacturing')).toBe(true);
   });
 
-  it('generates a matching 16-character founder password', () => {
-    renderRegistrationFlow();
-
-    fireEvent.click(screen.getByRole('button', { name: /generate/i }));
-
-    const password = screen.getByLabelText('Admin Password').value;
-    expect(password).toHaveLength(16);
-    expect(screen.getByLabelText('Confirm Password').value).toBe(password);
-    expect(screen.getByText('At least 8 characters')).toBeTruthy();
-  });
-
-  it('falls back to manual login when auto-login fails after active registration', async () => {
-    apiMock.post.mockResolvedValue({
-      data: {
-        success: true,
-        message: 'Company registered and activated successfully. You can sign in now.',
-        data: {
-          id: 'tenant-1',
-          name: 'Auto Foods',
-          status: 'active',
-          plan: 'standard',
-          company_token: 'token-autofoods-12345678'
-        }
-      }
-    });
-    loginMock.mockRejectedValue(new Error('Login failed after registration'));
-
-    renderRegistrationFlow();
-
-    fillRegistrationForm();
-    fireEvent.click(screen.getByRole('button', { name: /create company/i }));
-
-    await screen.findByText('Company Created!');
-    expect(screen.getAllByText('Sign in manually').length).toBeGreaterThan(0);
-    expect(screen.getByText('Login failed after registration')).toBeTruthy();
-    expect(screen.getByText('token-autofoods-12345678')).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: /sign in manually/i }));
-
-    await waitFor(() => expect(screen.getByLabelText('Email').value).toBe('owner@autofoods.test'));
-    expect(screen.getByText('Company identified automatically')).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: /change/i }));
-    expect(screen.getByLabelText('Company Token').value).toBe('token-autofoods-12345678');
-    expect(screen.getByLabelText('Password').value).toBe('');
-  });
-
-  it('keeps pending registrations in review state without auto-login', async () => {
-    apiMock.post.mockResolvedValue({
-      data: {
-        success: true,
-        message: 'Your standard plan registration has been submitted for review. You will be notified once approved.',
-        data: {
-          id: 'tenant-1',
-          name: 'Pending Foods',
-          status: 'pending',
-          plan: 'standard',
-          company_token: 'token-pendingfoods-12345678'
-        }
-      }
-    });
-
-    renderRegistrationFlow();
-
-    fillRegistrationForm({
-      companyName: 'Pending Foods',
-      email: 'owner@pendingfoods.test'
-    });
-    fireEvent.click(screen.getByRole('button', { name: /create company/i }));
-
-    await screen.findByText('Request Submitted!');
-    expect(screen.getByText('What happens next?')).toBeTruthy();
-    expect(loginMock).not.toHaveBeenCalled();
-  });
-
-  it('prefills login from registration router state without an API lookup', async () => {
+  it('prefills SKUpervisor login from registration router state without an API lookup', async () => {
     renderRegistrationFlow([{
       pathname: '/login',
       state: {

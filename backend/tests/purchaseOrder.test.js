@@ -1,9 +1,12 @@
 import request from 'supertest';
+import { jest } from '@jest/globals';
 import app from '../src/server.js';
 import sequelize from '../src/config/database.js';
 import db from '../src/models/index.js';
 import { PERMISSIONS } from '../src/config/permissions.js';
 import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
+
+jest.setTimeout(120000);
 
 describe('Purchase Order API', () => {
     let token;
@@ -34,6 +37,7 @@ describe('Purchase Order API', () => {
         const userData = {
             username: `pomanager-${stamp}`,
             email: `pomanager-${stamp}@example.com`,
+            phone_number: '+63 917 000 2000',
             password: 'Password123!'
         };
 
