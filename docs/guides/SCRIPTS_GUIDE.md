@@ -106,6 +106,8 @@ Notes:
 - Enforces no-staging release hard gate by default after push and before production SSH deploy (`DEPLOY_ENFORCE_NO_STAGING_GATE=1`).
 - Runs no-staging preflight before push (`npm run gate:release:no-staging:preflight`) when gate enforcement is enabled.
 - Auto-fetches QA deploy summary evidence (`npm run evidence:qa:deploy-summary`) if local summary file is missing before hard gate execution.
+- Uses an absolute host path for fetched QA deploy evidence when invoked from Git Bash on Windows, then verifies the file exists before running the hard gate.
+- Verifies the generated release verdict with `--require-pass true`; production SSH deploy is not attempted unless the verdict is `pass` or explicitly `bypassed`.
 
 One-time setup for persistent passwordless deploy access (per machine):
 ```bash
@@ -633,8 +635,8 @@ Emergency bypass (incident-only):
 - `RELEASE_EMERGENCY_BYPASS=1`
 
 Pre-deploy summary SHA behavior:
-- Default: `qa.deploy.summary.sha_match` is recorded as evidence but non-blocking before deploy.
-- Strict mode: set `RELEASE_ENFORCE_PREDEPLOY_SUMMARY_SHA_MATCH=1` to fail gate when `deployed_head` does not match `RELEASE_TARGET_SHA`.
+- `qa.deploy.summary.sha_match` is hard-blocking for production deploy.
+- `qa_deploy_summary.txt` must show `deployed_head=<RELEASE_TARGET_SHA>` before the deploy wrapper proceeds to production SSH.
 - `RELEASE_EMERGENCY_REASON=...`
 - `RELEASE_EMERGENCY_ACTOR=...`
 

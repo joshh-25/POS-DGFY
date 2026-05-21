@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-05-13
+last_reviewed: 2026-05-21
 applies_to: customer_access_modes_and_storefront_inventory_display
 topic: customer_access_modes_inventory_display
 ---
@@ -188,8 +188,12 @@ Operational readiness rating after the marker preview remediation pass: **9.6/10
 Validated on 2026-05-21 for Storefront exact-coordinate marker behavior:
 - Frontend Storefront targeted suites: `npm --prefix frontend exec vitest run apps/store/src/__tests__/discoveryPresentation.test.js apps/store/src/__tests__/storefrontMarkerPreview.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx` passed locally. Coverage includes tenant-primary pin scoping before search, no-op duplicate-coordinate display offsets, exact shared-coordinate cluster placement, marker preview models, preview-first marker routing, keyboard focus moving into the popup CTA, Escape dismissal, discovery flow, follow behavior, checkout rules, customer access helpers, and mode-specific storefront helpers.
 - Storefront build gate: `npm --prefix frontend run build:store` passed.
+- Backend Storefront discovery index suite: `npm --prefix backend test -- --runInBand tests/storefrontDiscoveryIndexService.catalogVisibility.test.js` passed after the reconciliation fallback for stale `item_location_stocks` tenant schemas was added.
+- Production release gate and deploy: `bash scripts/deploy-remote.sh --yes` passed for commit `116247cd75600ca83e13061f8f8123f6e2e03326`. The no-staging gate validated QA deployed-head parity, docs lint, architecture checks, QA multi-location smoke, rollback drill, and restore drill before production SSH deploy.
+- Production deploy evidence: backend, IMS, POS, Storefront, and Tenant Store health checks passed; Tenant Store asset integrity and frontend asset parity passed; Storefront discovery reconciliation completed `status=healthy`, `upserted=8`, `removed=2`, `failed=0`; public `https://dgfy.ph/tenant-store` returned `200`.
+- Live discovery smoke for `aircon` returned `A/C Innovative Solutions` with its indexed primary Storefront coordinate `10.7001938, 122.5623094`.
 
-Operational readiness rating after the exact-coordinate marker pass: **9.8/10** locally validated. Remaining risk is production browser confirmation after deploying the marker-scope commits; source-level coordinate and targetability coverage is now in place.
+Operational readiness rating after the exact-coordinate marker production deploy: **9.0/10** production validated. Remaining risk is visual browser confirmation across zoom levels and touch devices; source-level coordinate, index reconciliation, deploy-gate, API, and public endpoint evidence is in place.
 
 Validated on 2026-05-13 for Business Mode selector cleanup, tenant-location permanent delete, and Storefront aggregate stock validation:
 - Frontend targeted suites: `npm exec vitest run src/pages/__tests__/Settings.deepLinking.integration.test.jsx Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx src/features/settings/__tests__/workflowMode.services.test.js` passed 3 files and 26 tests. Coverage includes hidden legacy `manufacturing` selector choices, Settings reset controlled-input stability, inactive-pin delete UI, permanent-delete blocker display, terminal active-location assignment, and registration/admin selector parity.
