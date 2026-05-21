@@ -76,3 +76,4 @@ The public API query knobs remain supported, but the current Storefront client n
 2. The customer-facing search field uses the current placeholder `Search products, services or stores nearby...` and submits searches through the explicit `Search` action.
 3. The location action is an icon button titled `Use my current location`; successful geolocation changes the client pin scope from `tenant_primary` to `nearest_matching_branch`.
 4. Storefront profile and cover media render from the tenant branding fields when present and fall back to initials or mode visuals when an image cannot load.
+5. Selected/highlighted discovery map pins may add CSS-only glow/ripple styling around the existing branded marker element. This is a presentation-only enhancement and does not change discovery API parameters, stored branch coordinates, checkout location routing, or marker preview semantics.

@@ -216,6 +216,16 @@ Validated on 2026-05-15 for the merged Storefront pilot UI and discovery test re
 
 Operational readiness rating after this merge/test refresh: **9.0/10** locally validated. Remaining risk is production deploy evidence and live browser smoke for the merged Storefront shell, IMS Settings branding upload path, and public tenant-store branding render.
 
+Validated on 2026-05-21 for the Storefront pilot pin-glow adoption:
+- The adopted runtime slice was selected by intent from `codex/storefront-merged-pilot` rather than merged wholesale, so PayMongo implementation files and older branch defaults were excluded.
+- Storefront discovery keeps normal loads on `pin_scope=tenant_primary`; the Near Me action updates the request-local scope to `nearest_matching_branch`, matching ADR 0010 and the current public API contract.
+- Selected/highlighted Storefront map pins now render a CSS-only glow/ripple around the existing branded marker element, with `prefers-reduced-motion` disabling animation for reduced-motion users.
+- Targeted Storefront suites: `npm --prefix frontend exec vitest run apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/storefrontMarkerPreview.test.js` passed 2 files and 18 tests.
+- Storefront build gate: `npm --prefix frontend run build:store` passed.
+- Governance gates: `npm run check:architecture` and `git diff --check` passed.
+
+Operational readiness rating after this adoption pass: **9.1/10** locally validated. Remaining risk is production browser confirmation after deploy; no known source-level implementation gap blocks promotion.
+
 ## Assumptions
 - Customer Access Mode enforcement is default-on. `CUSTOMER_ACCESS_MODES_ENABLED=false` is reserved for rollback, not normal operation.
 - Inquiry Mode v1 uses existing contact channels only. No stored lead inbox, notification workflow, or inquiry database table is included.
