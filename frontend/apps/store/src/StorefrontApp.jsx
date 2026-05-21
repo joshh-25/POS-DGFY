@@ -1358,9 +1358,9 @@ function StoresMap({
     };
   }, []);
 
-	  useEffect(() => {
-	    const map = mapRef.current;
-	    if (!map) return;
+    useEffect(() => {
+      const map = mapRef.current;
+      if (!map) return;
       const generation = popupGenerationRef.current + 1;
       popupGenerationRef.current = generation;
       if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
@@ -1368,30 +1368,32 @@ function StoresMap({
         autoOpenFrameRef.current = null;
       }
 
-	    popupsRef.current.forEach((popup) => {
-	      try { popup?.remove?.(); } catch {}
-	    });
-	    popupsRef.current = [];
-	    markersRef.current.forEach((m) => m.remove());
-	    markersRef.current = [];
+      popupsRef.current.forEach((popup) => {
+      try { popup?.remove?.(); } catch {
+        // Ignore stale MapLibre popup disposal failures during marker refresh.
+      }
+      });
+      popupsRef.current = [];
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
 
-	    const rows = Array.isArray(stores) ? stores : [];
-	    const uniqueRows = [];
-	    const seenMarkerKeys = new Set();
-	    rows.forEach((store) => {
-	      if (!store) return;
-	      const markerKey = String(store?.marker_key || store?.slug || store?.location_id || '');
-	      if (!markerKey) {
-	        uniqueRows.push(store);
-	        return;
-	      }
-	      if (seenMarkerKeys.has(markerKey)) return;
-	      seenMarkerKeys.add(markerKey);
-	      uniqueRows.push(store);
-	    });
-	    const bounds = [];
-	    const autoOpenCallbacks = [];
-	    const coordinateGroups = uniqueRows.reduce((acc, store) => {
+      const rows = Array.isArray(stores) ? stores : [];
+      const uniqueRows = [];
+      const seenMarkerKeys = new Set();
+      rows.forEach((store) => {
+        if (!store) return;
+        const markerKey = String(store?.marker_key || store?.slug || store?.location_id || '');
+        if (!markerKey) {
+          uniqueRows.push(store);
+          return;
+        }
+        if (seenMarkerKeys.has(markerKey)) return;
+        seenMarkerKeys.add(markerKey);
+        uniqueRows.push(store);
+      });
+      const bounds = [];
+      const autoOpenCallbacks = [];
+      const coordinateGroups = uniqueRows.reduce((acc, store) => {
       const lat = Number(store?.latitude);
       const lng = Number(store?.longitude);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return acc;
@@ -1404,7 +1406,7 @@ function StoresMap({
     }, {});
     const coordinateIndexes = {};
 
-	    uniqueRows.forEach((store) => {
+      uniqueRows.forEach((store) => {
       if (!store) return;
       const lat = Number(store?.latitude);
       const lng = Number(store?.longitude);
@@ -1424,13 +1426,13 @@ function StoresMap({
       const tenantName = String(store?.tenant_name || 'Storefront');
       const markerAriaLabel = `Preview ${tenantName} at ${branchName}`;
       const el = makePinElement(store.workflow_mode || store.business_mode, highlighted, markerAriaLabel);
-	      const popup = new maplibregl.Popup({
-	        anchor: 'bottom',
-	        offset: { bottom: [0, -14], top: [0, 12], left: [12, 0], right: [-12, 0] },
-	        closeOnClick: false,
-	        focusAfterOpen: false
-	      });
-	      popupsRef.current.push(popup);
+        const popup = new maplibregl.Popup({
+          anchor: 'bottom',
+          offset: { bottom: [0, -14], top: [0, 12], left: [12, 0], right: [-12, 0] },
+          closeOnClick: false,
+          focusAfterOpen: false
+        });
+        popupsRef.current.push(popup);
       let closeTimer = null;
       let markerHovered = false;
       let previewHovered = false;
@@ -1532,14 +1534,14 @@ function StoresMap({
           schedulePopupClose();
         });
       }
-	      const marker = new maplibregl.Marker({ element: el })
-	        .setLngLat([displayLng, displayLat])
-	        .addTo(map);
-	      if (autoOpenPopups) {
-	        autoOpenCallbacks.push({ key: markerKey, open: openPopup });
-	      }
-	      markersRef.current.push(marker);
-	      bounds.push([displayLng, displayLat]);
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat([displayLng, displayLat])
+          .addTo(map);
+        if (autoOpenPopups) {
+          autoOpenCallbacks.push({ key: markerKey, open: openPopup });
+        }
+        markersRef.current.push(marker);
+        bounds.push([displayLng, displayLat]);
     });
 
     if (userMarkerRef.current) {
@@ -1559,35 +1561,35 @@ function StoresMap({
       }
     }
 
-	    if (bounds.length === 1) map.flyTo({ center: bounds[0], zoom: autoOpenPopups ? 14 : 15 });
-	    if (bounds.length > 1) {
-	      const lngs = bounds.map((b) => b[0]);
-	      const lats = bounds.map((b) => b[1]);
-	      map.fitBounds(
-	        [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-	        { padding: autoOpenPopups ? 56 : 24, maxZoom: autoOpenPopups ? 13.5 : 14 }
-	      );
-	    }
-		    if (autoOpenCallbacks.length > 0 && typeof window !== 'undefined') {
-		      autoOpenFrameRef.current = window.requestAnimationFrame(() => {
+      if (bounds.length === 1) map.flyTo({ center: bounds[0], zoom: autoOpenPopups ? 14 : 15 });
+      if (bounds.length > 1) {
+        const lngs = bounds.map((b) => b[0]);
+        const lats = bounds.map((b) => b[1]);
+        map.fitBounds(
+          [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+          { padding: autoOpenPopups ? 56 : 24, maxZoom: autoOpenPopups ? 13.5 : 14 }
+        );
+      }
+        if (autoOpenCallbacks.length > 0 && typeof window !== 'undefined') {
+          autoOpenFrameRef.current = window.requestAnimationFrame(() => {
             autoOpenFrameRef.current = null;
             if (popupGenerationRef.current !== generation) return;
             const openedMarkerKeys = new Set();
-		        autoOpenCallbacks.forEach((entry) => {
+            autoOpenCallbacks.forEach((entry) => {
               const markerKey = String(entry?.key || '');
               if (!markerKey || openedMarkerKeys.has(markerKey)) return;
               openedMarkerKeys.add(markerKey);
               entry?.open?.();
             });
-		      });
-		    }
+          });
+        }
       return () => {
         if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
           window.cancelAnimationFrame(autoOpenFrameRef.current);
           autoOpenFrameRef.current = null;
         }
       };
-	  }, [stores, selectedKey, userLocation, autoOpenPopups, openPopupOnHover]);
+    }, [stores, selectedKey, userLocation, autoOpenPopups, openPopupOnHover]);
 
   return <div ref={ref} style={{ height, border: '1px solid #d6e2e8', borderRadius: 24, overflow: 'hidden' }} />;
 }
@@ -2097,10 +2099,7 @@ const FnbHero = ({
       }))
     : [selectedStore];
   const mapSelectedKey = selectedLocationId != null ? `loc-${selectedLocationId}` : `tenant-${selectedStore?.tenant_id || selectedStore?.slug || 'store'}`;
-  const storefrontShareUrl = useMemo(() => {
-    if (!selectedStore?.slug) return '';
-    return buildPublicStorefrontUrl(selectedStore.slug);
-  }, [selectedStore?.slug]);
+  const storefrontShareUrl = selectedStore?.slug ? buildPublicStorefrontUrl(selectedStore.slug) : '';
 
   return (
     <section style={{ marginBottom: 40 }}>
@@ -2794,10 +2793,7 @@ const ServicesHero = ({
   const servicesDisplayFont = modeAdapter?.heroTheme?.displayFont || servicesBodyFont;
   const servicesHighlight = '#f59e0b';
   const servicesPrimaryShadow = 'rgba(15,118,110,0.24)';
-  const storefrontShareUrl = useMemo(() => {
-    if (!selectedStore?.slug) return '';
-    return buildPublicStorefrontUrl(selectedStore.slug);
-  }, [selectedStore?.slug]);
+  const storefrontShareUrl = selectedStore?.slug ? buildPublicStorefrontUrl(selectedStore.slug) : '';
 
   return (
     <section style={{ marginBottom: 40 }}>
@@ -3320,10 +3316,7 @@ const SimpleHero = ({
   const hasWhyChooseUs = Array.isArray(simpleHeroModel.whyChooseUs) && simpleHeroModel.whyChooseUs.length > 0;
   const hasContactRows = simpleHeroModel.contactRows.length > 0 || Boolean(simpleHeroModel.hours) || hasAddress;
   const desktopColumns = hasWhyChooseUs ? '1fr 1.45fr 1fr' : '1fr 1.45fr';
-  const storefrontShareUrl = useMemo(() => {
-    if (!selectedStore?.slug) return '';
-    return buildPublicStorefrontUrl(selectedStore.slug);
-  }, [selectedStore?.slug]);
+  const storefrontShareUrl = selectedStore?.slug ? buildPublicStorefrontUrl(selectedStore.slug) : '';
 
   return (
     <section style={{ marginBottom: 40 }}>
@@ -4679,51 +4672,51 @@ export default function StorefrontApp() {
         return;
       }
 
-	      const scopedLocations = selectDiscoveryPinLocations({
-	        activeLocations: activeWithCoords,
-	        hasSearchQuery,
-	        pinScope: discoveryPinScope,
-	        matchingLocationIds,
-	        nearestMatchingLocationId: nearestMatchingLocation?.location_id ?? null
-	      });
-	      const scopedLocationMap = new globalThis.Map();
-	      scopedLocations.forEach((location) => {
-	        if (!location) return;
-	        const numericLocationId = Number(location.location_id);
-	        const locationIdentity = Number.isInteger(numericLocationId) && numericLocationId > 0
-	          ? `loc:${numericLocationId}`
-	          : `coord:${Number(location.latitude).toFixed(6)}:${Number(location.longitude).toFixed(6)}:${toSlug(location?.name || '')}`;
-	        const current = scopedLocationMap.get(locationIdentity);
-	        if (!current || location?.is_primary_storefront === true) {
-	          scopedLocationMap.set(locationIdentity, location);
-	        }
-	      });
-	      if (discoveryPinScope === 'all_matching_branches') {
-	        const primaryScoped = activeWithCoords.find((location) => location?.is_primary_storefront === true);
-	        if (primaryScoped) {
-	          const numericLocationId = Number(primaryScoped.location_id);
-	          const locationIdentity = Number.isInteger(numericLocationId) && numericLocationId > 0
-	            ? `loc:${numericLocationId}`
-	            : `coord:${Number(primaryScoped.latitude).toFixed(6)}:${Number(primaryScoped.longitude).toFixed(6)}:${toSlug(primaryScoped?.name || '')}`;
-	          if (!scopedLocationMap.has(locationIdentity)) {
-	            scopedLocationMap.set(locationIdentity, primaryScoped);
-	          }
-	        }
-	      }
-	      const scopedLocationsUnique = Array.from(scopedLocationMap.values());
+        const scopedLocations = selectDiscoveryPinLocations({
+          activeLocations: activeWithCoords,
+          hasSearchQuery,
+          pinScope: discoveryPinScope,
+          matchingLocationIds,
+          nearestMatchingLocationId: nearestMatchingLocation?.location_id ?? null
+        });
+        const scopedLocationMap = new globalThis.Map();
+        scopedLocations.forEach((location) => {
+          if (!location) return;
+          const numericLocationId = Number(location.location_id);
+          const locationIdentity = Number.isInteger(numericLocationId) && numericLocationId > 0
+            ? `loc:${numericLocationId}`
+            : `coord:${Number(location.latitude).toFixed(6)}:${Number(location.longitude).toFixed(6)}:${toSlug(location?.name || '')}`;
+          const current = scopedLocationMap.get(locationIdentity);
+          if (!current || location?.is_primary_storefront === true) {
+            scopedLocationMap.set(locationIdentity, location);
+          }
+        });
+        if (discoveryPinScope === 'all_matching_branches') {
+          const primaryScoped = activeWithCoords.find((location) => location?.is_primary_storefront === true);
+          if (primaryScoped) {
+            const numericLocationId = Number(primaryScoped.location_id);
+            const locationIdentity = Number.isInteger(numericLocationId) && numericLocationId > 0
+              ? `loc:${numericLocationId}`
+              : `coord:${Number(primaryScoped.latitude).toFixed(6)}:${Number(primaryScoped.longitude).toFixed(6)}:${toSlug(primaryScoped?.name || '')}`;
+            if (!scopedLocationMap.has(locationIdentity)) {
+              scopedLocationMap.set(locationIdentity, primaryScoped);
+            }
+          }
+        }
+        const scopedLocationsUnique = Array.from(scopedLocationMap.values());
 
-	      scopedLocationsUnique.forEach((location) => {
-	        const numericLocationId = Number(location.location_id);
-	        const stableLocationId = Number.isInteger(numericLocationId) && numericLocationId > 0
-	          ? String(numericLocationId)
-	          : `${Number(location.latitude).toFixed(6)}:${Number(location.longitude).toFixed(6)}`;
-	        pins.push({
-	          ...store,
-	          marker_key: `${slug}:${stableLocationId}`,
-	          location_id: location.location_id,
-	          location_name: location.name || store?.tenant_name,
-	          address_line: location.address_line || store?.address_line || '',
-	          latitude: location.latitude,
+        scopedLocationsUnique.forEach((location) => {
+          const numericLocationId = Number(location.location_id);
+          const stableLocationId = Number.isInteger(numericLocationId) && numericLocationId > 0
+            ? String(numericLocationId)
+            : `${Number(location.latitude).toFixed(6)}:${Number(location.longitude).toFixed(6)}`;
+          pins.push({
+            ...store,
+            marker_key: `${slug}:${stableLocationId}`,
+            location_id: location.location_id,
+            location_name: location.name || store?.tenant_name,
+            address_line: location.address_line || store?.address_line || '',
+            latitude: location.latitude,
           longitude: location.longitude,
           is_primary_storefront: location.is_primary_storefront === true,
           branch_label: location.is_primary_storefront ? 'Primary branch' : 'Branch',
@@ -4733,36 +4726,36 @@ export default function StorefrontApp() {
         });
       });
     });
-	    const uniquePins = [];
-	    const seenPinKeys = new globalThis.Map();
-	    const scorePin = (pin) => {
-	      let score = 0;
-	      if (pin?.is_primary_storefront === true) score += 5;
-	      if (Number.isFinite(Number(pin?.location_id)) && Number(pin.location_id) > 0) score += 4;
-	      if (pin?.address_line) score += 2;
-	      if (pin?.location_name) score += 1;
-	      return score;
-	    };
-	    pins.forEach((pin, index) => {
-	      if (!pin) return;
-	      const numericLocationId = Number(pin.location_id);
-	      const dedupeKey = Number.isInteger(numericLocationId) && numericLocationId > 0
-	        ? `${pin.slug || toSlug(pin?.tenant_name)}:loc:${numericLocationId}`
-	        : `${pin.slug || toSlug(pin?.tenant_name)}:coord:${Number(pin.latitude).toFixed(6)}:${Number(pin.longitude).toFixed(6)}`;
-	      const existingIndex = seenPinKeys.get(dedupeKey);
-	      if (existingIndex == null) {
-	        seenPinKeys.set(dedupeKey, uniquePins.length);
-	        uniquePins.push(pin);
-	        return;
-	      }
-	      if (scorePin(pin) > scorePin(uniquePins[existingIndex])) {
-	        uniquePins[existingIndex] = pin;
-	      }
-	    });
-	    return uniquePins.sort((a, b) => {
-	      const left = Number.isFinite(Number(a.distance_km)) ? Number(a.distance_km) : Number.POSITIVE_INFINITY;
-	      const right = Number.isFinite(Number(b.distance_km)) ? Number(b.distance_km) : Number.POSITIVE_INFINITY;
-	      if (left !== right) return left - right;
+      const uniquePins = [];
+      const seenPinKeys = new globalThis.Map();
+      const scorePin = (pin) => {
+        let score = 0;
+        if (pin?.is_primary_storefront === true) score += 5;
+        if (Number.isFinite(Number(pin?.location_id)) && Number(pin.location_id) > 0) score += 4;
+        if (pin?.address_line) score += 2;
+        if (pin?.location_name) score += 1;
+        return score;
+      };
+      pins.forEach((pin, index) => {
+        if (!pin) return;
+        const numericLocationId = Number(pin.location_id);
+        const dedupeKey = Number.isInteger(numericLocationId) && numericLocationId > 0
+          ? `${pin.slug || toSlug(pin?.tenant_name)}:loc:${numericLocationId}`
+          : `${pin.slug || toSlug(pin?.tenant_name)}:coord:${Number(pin.latitude).toFixed(6)}:${Number(pin.longitude).toFixed(6)}`;
+        const existingIndex = seenPinKeys.get(dedupeKey);
+        if (existingIndex == null) {
+          seenPinKeys.set(dedupeKey, uniquePins.length);
+          uniquePins.push(pin);
+          return;
+        }
+        if (scorePin(pin) > scorePin(uniquePins[existingIndex])) {
+          uniquePins[existingIndex] = pin;
+        }
+      });
+      return uniquePins.sort((a, b) => {
+        const left = Number.isFinite(Number(a.distance_km)) ? Number(a.distance_km) : Number.POSITIVE_INFINITY;
+        const right = Number.isFinite(Number(b.distance_km)) ? Number(b.distance_km) : Number.POSITIVE_INFINITY;
+        if (left !== right) return left - right;
       return String(a?.tenant_name || '').localeCompare(String(b?.tenant_name || ''));
     });
   }, [filteredDiscoveryStores, discoveryLocationMap, discoveryCoords, discoveryPinScope, search]);
@@ -6619,24 +6612,24 @@ export default function StorefrontApp() {
     const resultsSubtitle = hasDiscoverySearch && String(search || '').trim()
       ? `Showing businesses related to "${String(search || '').trim()}" near ${cityLabel}`
       : `Showing businesses within your selected area near ${cityLabel}`;
-	    const viewButtonStyle = (mode) => ({
-	      minHeight: isDiscoveryMobileViewport ? 36 : 34,
-	      minWidth: isDiscoveryMobileViewport ? 40 : 96,
-	      borderRadius: isDiscoveryMobileViewport ? 10 : 10,
-	      border: `1px solid ${viewMode === mode ? '#bfdbfe' : '#e2e8f0'}`,
-	      background: viewMode === mode ? '#eff6ff' : '#ffffff',
-	      color: viewMode === mode ? '#1a4e8d' : '#334155',
+      const viewButtonStyle = (mode) => ({
+        minHeight: isDiscoveryMobileViewport ? 36 : 34,
+        minWidth: isDiscoveryMobileViewport ? 40 : 96,
+        borderRadius: isDiscoveryMobileViewport ? 10 : 10,
+        border: `1px solid ${viewMode === mode ? '#bfdbfe' : '#e2e8f0'}`,
+        background: viewMode === mode ? '#eff6ff' : '#ffffff',
+        color: viewMode === mode ? '#1a4e8d' : '#334155',
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
-	      gap: isDiscoveryMobileViewport ? 0 : 6,
-	      padding: isDiscoveryMobileViewport ? '0' : '0 11px',
-	      fontSize: isDiscoveryMobileViewport ? 12 : 12,
-	      fontWeight: 700,
-	      cursor: 'pointer',
-	      boxShadow: viewMode === mode ? '0 8px 18px rgba(37,99,235,.12)' : 'none'
-	    });
-	    const renderDiscoveryStoreCard = (store) => {
+        gap: isDiscoveryMobileViewport ? 0 : 6,
+        padding: isDiscoveryMobileViewport ? '0' : '0 11px',
+        fontSize: isDiscoveryMobileViewport ? 12 : 12,
+        fontWeight: 700,
+        cursor: 'pointer',
+        boxShadow: viewMode === mode ? '0 8px 18px rgba(37,99,235,.12)' : 'none'
+      });
+      const renderDiscoveryStoreCard = (store) => {
       const storeSlug = toSlug(store?.slug);
       const imgUrl = withAssetOrigin(store?.storefront_cover_image_url);
       const imgKey = `discovery-cover:${storeSlug}:${imgUrl}`;
@@ -6646,170 +6639,170 @@ export default function StorefrontApp() {
       const primaryCategory = categories[0] || String(store?.workflow_mode || 'Store').replace(/_/g, ' ');
       const secondaryCategory = categories[1] || null;
       const categoryLabel = [primaryCategory, secondaryCategory].filter(Boolean).join(' • ');
-	      const reviewSummary = normalizeStorefrontReviewSummary(store?.storefront_review_summary);
-	      const ratingValue = Number.isFinite(Number(reviewSummary?.score)) ? Number(reviewSummary.score).toFixed(1) : '0.0';
-	      const ratingCount = Number(reviewSummary?.total_count || store?.matching_item_count || 0);
+        const reviewSummary = normalizeStorefrontReviewSummary(store?.storefront_review_summary);
+        const ratingValue = Number.isFinite(Number(reviewSummary?.score)) ? Number(reviewSummary.score).toFixed(1) : '0.0';
+        const ratingCount = Number(reviewSummary?.total_count || store?.matching_item_count || 0);
       const distanceLabel = Number.isFinite(Number(store?.nearest_distance_km)) ? `${Number(store.nearest_distance_km).toFixed(1)} km away` : 'Distance unavailable';
       const waitBase = Number(store?.estimated_wait_minutes || 10);
       const etaLabel = `${waitBase}-${waitBase + 5} min`;
-	      const branchCount = Number(store?.active_location_count || 0);
-	      const branchLabel = branchCount > 0 ? `${branchCount} ${branchCount === 1 ? 'Branch' : 'Branches'}` : null;
-	      const isStoreOpenNow = store?.storefront_open === true;
-		      const businessHoursLabel = String(store?.nearest_location_hours || store?.storefront_hours || '').trim();
-		      const closingTimeLabel = businessHoursLabel
-		        ? (/\bclose/i.test(businessHoursLabel) ? businessHoursLabel : `Closes at ${businessHoursLabel}`)
-		        : '';
-	      const closedStoreNote = !isStoreOpenNow
-	        ? `Store closed for now${businessHoursLabel ? ` • ${businessHoursLabel}` : ''}`
-	        : '';
-			      const isActive = highlightedStoreSlug === store.slug;
-				      const isGridView = viewMode === 'grid';
+        const branchCount = Number(store?.active_location_count || 0);
+        const branchLabel = branchCount > 0 ? `${branchCount} ${branchCount === 1 ? 'Branch' : 'Branches'}` : null;
+        const isStoreOpenNow = store?.storefront_open === true;
+          const businessHoursLabel = String(store?.nearest_location_hours || store?.storefront_hours || '').trim();
+          const closingTimeLabel = businessHoursLabel
+            ? (/\bclose/i.test(businessHoursLabel) ? businessHoursLabel : `Closes at ${businessHoursLabel}`)
+            : '';
+        const closedStoreNote = !isStoreOpenNow
+          ? `Store closed for now${businessHoursLabel ? ` • ${businessHoursLabel}` : ''}`
+          : '';
+            const isActive = highlightedStoreSlug === store.slug;
+              const isGridView = viewMode === 'grid';
           const isMobileListView = isDiscoveryMobileViewport && !isGridView;
           const isDesktopListView = !isGridView && !isDiscoveryMobileViewport && !isDiscoveryTabletViewport;
-	      const isMobileGridView = isGridView && isDiscoveryMobileViewport;
-	      const showFeaturedBadge = Number(store?.matching_item_count || 0) > 2;
-	      const statusChipLabel = isStoreOpenNow ? 'Open' : 'Closed';
-	      const compactListHeaderGap = !isGridView && !showFeaturedBadge ? 4 : 8;
-	      const showInlineNonFeaturedListRating = !isGridView && !showFeaturedBadge;
-				    const cardImageHeight = isGridView
-				        ? (isDiscoveryMobileViewport ? 132 : isDiscoveryTabletViewport ? 166 : 116)
-				        : (isMobileListView ? 72 : isDiscoveryMobileViewport ? 112 : isDiscoveryTabletViewport ? 96 : 104);
-					      const actionButtonStyle = (kind) => ({
-						        minHeight: isMobileListView ? 36 : isGridView ? (isDiscoveryMobileViewport ? 36 : isDiscoveryTabletViewport ? 38 : 36) : isDiscoveryTabletViewport ? 30 : (isDesktopListView ? 32 : 36),
-						        height: isMobileListView ? 36 : isGridView ? (isDiscoveryMobileViewport ? 36 : isDiscoveryTabletViewport ? 38 : 36) : isDiscoveryTabletViewport ? 30 : (isDesktopListView ? 32 : 36),
-						        borderRadius: isGridView ? 12 : 9,
-					        border: kind === 'primary' ? 'none' : '1px solid #bfdbfe',
-						        background: kind === 'primary' ? '#FF6B1A' : '#ffffff',
-						        color: kind === 'primary' ? '#ffffff' : '#2563EB',
-						        fontSize: isGridView ? (isDiscoveryMobileViewport ? 12 : 13) : 11,
-					        fontWeight: 700,
-					        lineHeight: 1.2,
-					        padding: isGridView
+        const isMobileGridView = isGridView && isDiscoveryMobileViewport;
+        const showFeaturedBadge = Number(store?.matching_item_count || 0) > 2;
+        const statusChipLabel = isStoreOpenNow ? 'Open' : 'Closed';
+        const compactListHeaderGap = !isGridView && !showFeaturedBadge ? 4 : 8;
+        const showInlineNonFeaturedListRating = !isGridView && !showFeaturedBadge;
+            const cardImageHeight = isGridView
+                ? (isDiscoveryMobileViewport ? 132 : isDiscoveryTabletViewport ? 166 : 116)
+                : (isMobileListView ? 72 : isDiscoveryMobileViewport ? 112 : isDiscoveryTabletViewport ? 96 : 104);
+                const actionButtonStyle = (kind) => ({
+                    minHeight: isMobileListView ? 36 : isGridView ? (isDiscoveryMobileViewport ? 36 : isDiscoveryTabletViewport ? 38 : 36) : isDiscoveryTabletViewport ? 30 : (isDesktopListView ? 32 : 36),
+                    height: isMobileListView ? 36 : isGridView ? (isDiscoveryMobileViewport ? 36 : isDiscoveryTabletViewport ? 38 : 36) : isDiscoveryTabletViewport ? 30 : (isDesktopListView ? 32 : 36),
+                    borderRadius: isGridView ? 12 : 9,
+                  border: kind === 'primary' ? 'none' : '1px solid #bfdbfe',
+                    background: kind === 'primary' ? '#FF6B1A' : '#ffffff',
+                    color: kind === 'primary' ? '#ffffff' : '#2563EB',
+                    fontSize: isGridView ? (isDiscoveryMobileViewport ? 12 : 13) : 11,
+                  fontWeight: 700,
+                  lineHeight: 1.2,
+                  padding: isGridView
                     ? (isDiscoveryMobileViewport ? '0 8px' : '0 10px')
                     : '0 12px',
-					        cursor: 'pointer',
-						        boxShadow: kind === 'primary' ? '0 10px 24px rgba(249,115,22,.18)' : 'none',
-				            width: '100%',
-			              minWidth: isMobileListView ? 102 : 0,
-			              whiteSpace: isGridView && isDiscoveryMobileViewport ? 'normal' : 'nowrap'
-					      });
-		      if (isGridView) {
-		        return (
-			        <article
-			          key={`${store.slug}:${preferredLocationId ?? 'store'}`}
-			          className="discovery-grid-card"
-			          onMouseEnter={() => setHighlightedStoreSlug(store.slug)}
-			          style={{
-			            borderRadius: 16,
-			            border: '1px solid #E5EAF3',
-			            background: '#ffffff',
-			            boxShadow: isActive ? '0 18px 34px rgba(15,23,42,.10)' : '0 10px 28px rgba(15,23,42,.06)',
-			            opacity: isStoreOpenNow ? 1 : 0.76,
-			            overflow: 'hidden',
-			            display: 'grid',
-			            gridTemplateRows: `${cardImageHeight}px auto`,
-			            transition: 'transform .18s ease, box-shadow .18s ease, border-color .18s ease',
-			            width: '100%',
-			            minWidth: 0,
-					            minHeight: isMobileGridView ? 0 : 268
-				          }}
-				        >
-		            <div style={{ position: 'relative', height: cardImageHeight, background: '#f8fafc', overflow: 'hidden' }}>
-		              {imgUrl && !isBrandingImageBlocked(imgKey)
-		                ? <img src={imgUrl} alt={store.tenant_name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={() => markBrandingImageError(imgKey)} />
-		                : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg,#dbeafe,#f8fafc)', display: 'grid', placeItems: 'center', color: '#94a3b8', fontSize: 12, fontWeight: 800 }}>DGFY</div>}
-		              <span
-		                style={{
-		                  position: 'absolute',
-		                  top: 12,
-		                  left: 12,
-		                  borderRadius: 999,
-		                  padding: isMobileGridView ? '5px 10px' : '6px 12px',
-		                  background: isStoreOpenNow ? 'rgba(220,252,231,.98)' : 'rgba(254,226,226,.98)',
-		                  color: isStoreOpenNow ? '#22C55E' : '#DC2626',
-		                  fontSize: isMobileGridView ? 11 : 12,
-		                  fontWeight: 800,
-		                  lineHeight: 1
-		                }}
-		              >
-		                {statusChipLabel}
-		              </span>
-		            </div>
-			            <div style={{ minWidth: 0, display: 'grid', gap: isMobileGridView ? 8 : 10, padding: isMobileGridView ? '14px' : '16px 18px', alignContent: 'start' }}>
-			              <div style={{ display: 'grid', gap: isMobileGridView ? 7 : 8 }}>
-			                <div style={{ display: 'flex', alignItems: 'center', gap: isMobileGridView ? 8 : 10, flexWrap: isMobileGridView ? 'wrap' : 'nowrap', minWidth: 0 }}>
-			                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, minWidth: 0, flex: '1 1 auto' }}>
-			                    <h3 style={{ margin: 0, fontSize: isMobileGridView ? 17 : 18, lineHeight: 1.18, fontWeight: 800, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
-			                      {store.tenant_name}
-			                    </h3>
-		                    <span title={isStoreOpenNow ? 'Open' : 'Closed'} aria-label={isStoreOpenNow ? 'Open' : 'Closed'} style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
-		                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: isStoreOpenNow ? '#22C55E' : '#EF4444', boxShadow: `0 0 0 3px ${isStoreOpenNow ? 'rgba(34,197,94,.14)' : 'rgba(239,68,68,.12)'}` }} />
-		                    </span>
-		                  </div>
-		                  {showFeaturedBadge ? (
-			                    <span style={{ borderRadius: 999, padding: isMobileGridView ? '3px 8px' : '4px 10px', fontSize: 10, fontWeight: 800, background: '#fff7ed', color: '#F97316', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0, maxWidth: '100%' }}>
-		                      <Star size={11} fill="currentColor" />
-		                      Featured
-		                    </span>
-		                  ) : (
-			                    <span style={{ borderRadius: 999, padding: isMobileGridView ? '3px 8px' : '4px 10px', fontSize: 10, fontWeight: 800, background: '#fffbeb', color: '#d97706', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-		                      <Star size={11} fill="currentColor" />
-		                      {ratingValue}
-		                    </span>
-		                  )}
-		                </div>
-			                <div style={{ fontSize: isMobileGridView ? 12 : 13, fontWeight: 600, color: '#64748B', textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.35 }}>
-			                  {categoryLabel || 'Local storefront'}
-			                </div>
-			              </div>
-				              <div style={{ display: 'grid', gap: isMobileGridView ? 7 : 8, fontSize: isMobileGridView ? 11 : 12, color: '#64748B', minWidth: 0 }}>
-				                <div style={{ display: 'flex', alignItems: 'center', gap: isMobileGridView ? 8 : 10, flexWrap: 'wrap', lineHeight: 1.45 }}>
-				                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-				                    <MapPin size={13} color="#94a3b8" />
-				                    {distanceLabel}
-				                  </span>
-				                  <span style={{ color: '#cbd5e1' }}>•</span>
-				                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-			                    <Clock3 size={13} color="#94a3b8" />
-			                    {etaLabel}
-			                  </span>
-				                </div>
-				                <div style={{ lineHeight: 1.4 }}>
-				                  {closingTimeLabel || 'Closing time unavailable'}
-				                </div>
-				              </div>
-				              <div style={{ display: 'grid', gap: isMobileGridView ? 8 : 10, gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', marginTop: isMobileGridView ? 0 : 2 }}>
-		                <button type="button" className="discovery-grid-action discovery-grid-action-secondary" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
-		                <button type="button" className="discovery-grid-action discovery-grid-action-primary" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={actionButtonStyle('primary')}>Order Now</button>
-		              </div>
-		            </div>
-		          </article>
-		        );
-		      }
-		      return (
+                  cursor: 'pointer',
+                    boxShadow: kind === 'primary' ? '0 10px 24px rgba(249,115,22,.18)' : 'none',
+                    width: '100%',
+                    minWidth: isMobileListView ? 102 : 0,
+                    whiteSpace: isGridView && isDiscoveryMobileViewport ? 'normal' : 'nowrap'
+                });
+          if (isGridView) {
+            return (
+              <article
+                key={`${store.slug}:${preferredLocationId ?? 'store'}`}
+                className="discovery-grid-card"
+                onMouseEnter={() => setHighlightedStoreSlug(store.slug)}
+                style={{
+                  borderRadius: 16,
+                  border: '1px solid #E5EAF3',
+                  background: '#ffffff',
+                  boxShadow: isActive ? '0 18px 34px rgba(15,23,42,.10)' : '0 10px 28px rgba(15,23,42,.06)',
+                  opacity: isStoreOpenNow ? 1 : 0.76,
+                  overflow: 'hidden',
+                  display: 'grid',
+                  gridTemplateRows: `${cardImageHeight}px auto`,
+                  transition: 'transform .18s ease, box-shadow .18s ease, border-color .18s ease',
+                  width: '100%',
+                  minWidth: 0,
+                      minHeight: isMobileGridView ? 0 : 268
+                  }}
+                >
+                <div style={{ position: 'relative', height: cardImageHeight, background: '#f8fafc', overflow: 'hidden' }}>
+                  {imgUrl && !isBrandingImageBlocked(imgKey)
+                    ? <img src={imgUrl} alt={store.tenant_name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={() => markBrandingImageError(imgKey)} />
+                    : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg,#dbeafe,#f8fafc)', display: 'grid', placeItems: 'center', color: '#94a3b8', fontSize: 12, fontWeight: 800 }}>DGFY</div>}
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: 12,
+                      left: 12,
+                      borderRadius: 999,
+                      padding: isMobileGridView ? '5px 10px' : '6px 12px',
+                      background: isStoreOpenNow ? 'rgba(220,252,231,.98)' : 'rgba(254,226,226,.98)',
+                      color: isStoreOpenNow ? '#22C55E' : '#DC2626',
+                      fontSize: isMobileGridView ? 11 : 12,
+                      fontWeight: 800,
+                      lineHeight: 1
+                    }}
+                  >
+                    {statusChipLabel}
+                  </span>
+                </div>
+                  <div style={{ minWidth: 0, display: 'grid', gap: isMobileGridView ? 8 : 10, padding: isMobileGridView ? '14px' : '16px 18px', alignContent: 'start' }}>
+                    <div style={{ display: 'grid', gap: isMobileGridView ? 7 : 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: isMobileGridView ? 8 : 10, flexWrap: isMobileGridView ? 'wrap' : 'nowrap', minWidth: 0 }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, minWidth: 0, flex: '1 1 auto' }}>
+                          <h3 style={{ margin: 0, fontSize: isMobileGridView ? 17 : 18, lineHeight: 1.18, fontWeight: 800, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                            {store.tenant_name}
+                          </h3>
+                        <span title={isStoreOpenNow ? 'Open' : 'Closed'} aria-label={isStoreOpenNow ? 'Open' : 'Closed'} style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: isStoreOpenNow ? '#22C55E' : '#EF4444', boxShadow: `0 0 0 3px ${isStoreOpenNow ? 'rgba(34,197,94,.14)' : 'rgba(239,68,68,.12)'}` }} />
+                        </span>
+                      </div>
+                      {showFeaturedBadge ? (
+                          <span style={{ borderRadius: 999, padding: isMobileGridView ? '3px 8px' : '4px 10px', fontSize: 10, fontWeight: 800, background: '#fff7ed', color: '#F97316', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0, maxWidth: '100%' }}>
+                          <Star size={11} fill="currentColor" />
+                          Featured
+                        </span>
+                      ) : (
+                          <span style={{ borderRadius: 999, padding: isMobileGridView ? '3px 8px' : '4px 10px', fontSize: 10, fontWeight: 800, background: '#fffbeb', color: '#d97706', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                          <Star size={11} fill="currentColor" />
+                          {ratingValue}
+                        </span>
+                      )}
+                    </div>
+                      <div style={{ fontSize: isMobileGridView ? 12 : 13, fontWeight: 600, color: '#64748B', textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.35 }}>
+                        {categoryLabel || 'Local storefront'}
+                      </div>
+                    </div>
+                      <div style={{ display: 'grid', gap: isMobileGridView ? 7 : 8, fontSize: isMobileGridView ? 11 : 12, color: '#64748B', minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: isMobileGridView ? 8 : 10, flexWrap: 'wrap', lineHeight: 1.45 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                            <MapPin size={13} color="#94a3b8" />
+                            {distanceLabel}
+                          </span>
+                          <span style={{ color: '#cbd5e1' }}>•</span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                          <Clock3 size={13} color="#94a3b8" />
+                          {etaLabel}
+                        </span>
+                        </div>
+                        <div style={{ lineHeight: 1.4 }}>
+                          {closingTimeLabel || 'Closing time unavailable'}
+                        </div>
+                      </div>
+                      <div style={{ display: 'grid', gap: isMobileGridView ? 8 : 10, gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', marginTop: isMobileGridView ? 0 : 2 }}>
+                    <button type="button" className="discovery-grid-action discovery-grid-action-secondary" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
+                    <button type="button" className="discovery-grid-action discovery-grid-action-primary" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={actionButtonStyle('primary')}>Order Now</button>
+                  </div>
+                </div>
+              </article>
+            );
+          }
+          return (
           isMobileListView ? (
-	            <article
+              <article
               key={`${store.slug}:${preferredLocationId ?? 'store'}`}
               onMouseEnter={() => setHighlightedStoreSlug(store.slug)}
-	              style={{
-	                borderRadius: 18,
-	                border: `1px solid ${isActive ? '#bfdbfe' : '#e5edf5'}`,
-	                background: '#ffffff',
-	                boxShadow: isActive ? '0 14px 30px rgba(37,99,235,.08)' : '0 8px 22px rgba(15,23,42,.05)',
-	                opacity: isStoreOpenNow ? 1 : 0.7,
-	                padding: 12,
-	                display: 'grid',
+                style={{
+                  borderRadius: 18,
+                  border: `1px solid ${isActive ? '#bfdbfe' : '#e5edf5'}`,
+                  background: '#ffffff',
+                  boxShadow: isActive ? '0 14px 30px rgba(37,99,235,.08)' : '0 8px 22px rgba(15,23,42,.05)',
+                  opacity: isStoreOpenNow ? 1 : 0.7,
+                  padding: 12,
+                  display: 'grid',
                 gap: 10,
                 transition: 'transform .18s ease, box-shadow .18s ease, border-color .18s ease'
               }}
             >
-	              <div style={{ display: 'grid', gridTemplateColumns: '84px minmax(0,1fr)', gap: 10, alignItems: 'start' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '84px minmax(0,1fr)', gap: 10, alignItems: 'start' }}>
                 <div
                   style={{
                     borderRadius: 14,
                     overflow: 'hidden',
                     background: '#f8fafc',
-	                    height: 90
+                      height: 90
                   }}
                 >
                   {imgUrl && !isBrandingImageBlocked(imgKey)
@@ -6817,27 +6810,27 @@ export default function StorefrontApp() {
                     : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg,#dbeafe,#f8fafc)', display: 'grid', placeItems: 'center', color: '#94a3b8', fontSize: 11, fontWeight: 800 }}>DGFY</div>}
                 </div>
                 <div style={{ minWidth: 0, display: 'grid', gap: 5 }}>
-		                  <div style={{ display: 'flex', alignItems: 'center', gap: compactListHeaderGap, flexWrap: 'nowrap', minWidth: 0 }}>
-		                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, flex: '1 1 auto' }}>
-		                      <h3 style={{ margin: 0, fontSize: 15, lineHeight: 1.12, fontWeight: 800, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{store.tenant_name}</h3>
-		                      <span
-		                        title={isStoreOpenNow ? 'Open' : 'Closed'}
-		                        aria-label={isStoreOpenNow ? 'Open' : 'Closed'}
-		                        style={{ display: 'inline-flex', alignItems: 'center', transform: 'translateY(1px)', flexShrink: 0 }}
-		                      >
-		                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: isStoreOpenNow ? '#22c55e' : '#ef4444', boxShadow: `0 0 0 3px ${isStoreOpenNow ? 'rgba(34,197,94,.14)' : 'rgba(239,68,68,.12)'}` }} />
-		                      </span>
-		                    </div>
-		                    {Number(store?.matching_item_count || 0) > 2 && (
-		                      <span style={{ borderRadius: 999, padding: '2px 7px', fontSize: 10, fontWeight: 800, background: '#fff7ed', color: '#f97316', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-		                        <Star size={10} fill="currentColor" />
-	                        Featured
-	                      </span>
-	                    )}
-		                    {showInlineNonFeaturedListRating && <span style={{ fontSize: 11, fontWeight: 800, color: '#d97706', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-		                      <Star size={11} fill="currentColor" />
-		                      {ratingValue}
-		                    </span>}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: compactListHeaderGap, flexWrap: 'nowrap', minWidth: 0 }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, flex: '1 1 auto' }}>
+                          <h3 style={{ margin: 0, fontSize: 15, lineHeight: 1.12, fontWeight: 800, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{store.tenant_name}</h3>
+                          <span
+                            title={isStoreOpenNow ? 'Open' : 'Closed'}
+                            aria-label={isStoreOpenNow ? 'Open' : 'Closed'}
+                            style={{ display: 'inline-flex', alignItems: 'center', transform: 'translateY(1px)', flexShrink: 0 }}
+                          >
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: isStoreOpenNow ? '#22c55e' : '#ef4444', boxShadow: `0 0 0 3px ${isStoreOpenNow ? 'rgba(34,197,94,.14)' : 'rgba(239,68,68,.12)'}` }} />
+                          </span>
+                        </div>
+                        {Number(store?.matching_item_count || 0) > 2 && (
+                          <span style={{ borderRadius: 999, padding: '2px 7px', fontSize: 10, fontWeight: 800, background: '#fff7ed', color: '#f97316', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <Star size={10} fill="currentColor" />
+                          Featured
+                        </span>
+                      )}
+                        {showInlineNonFeaturedListRating && <span style={{ fontSize: 11, fontWeight: 800, color: '#d97706', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                          <Star size={11} fill="currentColor" />
+                          {ratingValue}
+                        </span>}
                   </div>
                   <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {categoryLabel || 'Local storefront'}
@@ -6852,199 +6845,199 @@ export default function StorefrontApp() {
                       {etaLabel}
                     </span>
                   </div>
-	                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 11, color: '#64748b' }}>
-	                    {branchLabel && <span style={{ fontWeight: 600 }}>{branchLabel}</span>}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 11, color: '#64748b' }}>
+                      {branchLabel && <span style={{ fontWeight: 600 }}>{branchLabel}</span>}
                     {Number(store?.catalog_count || 0) > 0 && (
                       <>
                         <span style={{ color: '#cbd5e1' }}>•</span>
                         <span style={{ fontWeight: 600, color: '#94a3b8' }}>{Number(store.catalog_count)} item(s)</span>
                       </>
                     )}
-	                  </div>
-	                  {!isStoreOpenNow && (
-	                    <div style={{ fontSize: 11, fontWeight: 700, color: '#b45309', marginTop: 1 }}>
-	                      {closedStoreNote}
-	                    </div>
-	                  )}
-	                </div>
-	              </div>
+                    </div>
+                    {!isStoreOpenNow && (
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#b45309', marginTop: 1 }}>
+                        {closedStoreNote}
+                      </div>
+                    )}
+                  </div>
+                </div>
               <div style={{ display: 'grid', gap: 8, gridTemplateColumns: '1fr 1fr' }}>
                 <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={actionButtonStyle('primary')}>Order Now</button>
                 <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
               </div>
             </article>
           ) : (
-			        <article
-		          key={`${store.slug}:${preferredLocationId ?? 'store'}`}
-		          onMouseEnter={() => setHighlightedStoreSlug(store.slug)}
-			          style={{
-	            borderRadius: 20,
-	            border: `1px solid ${isActive ? '#bfdbfe' : '#e5edf5'}`,
-	            background: '#ffffff',
-		            boxShadow: isActive ? '0 16px 34px rgba(37,99,235,.08)' : '0 10px 28px rgba(15,23,42,.05)',
-		            opacity: isStoreOpenNow ? 1 : 0.72,
-				            padding: isGridView ? 12 : isDiscoveryMobileViewport ? 12 : 14,
-			            display: 'grid',
-			            gap: isGridView ? 12 : isDiscoveryMobileViewport ? 10 : 14,
-			            gridTemplateColumns: isGridView
-			              ? '1fr'
-			              : isMobileListView
-			                ? '72px minmax(0,1fr) auto'
-		                : '104px minmax(0,1fr) 126px',
+              <article
+              key={`${store.slug}:${preferredLocationId ?? 'store'}`}
+              onMouseEnter={() => setHighlightedStoreSlug(store.slug)}
+                style={{
+              borderRadius: 20,
+              border: `1px solid ${isActive ? '#bfdbfe' : '#e5edf5'}`,
+              background: '#ffffff',
+                boxShadow: isActive ? '0 16px 34px rgba(37,99,235,.08)' : '0 10px 28px rgba(15,23,42,.05)',
+                opacity: isStoreOpenNow ? 1 : 0.72,
+                    padding: isGridView ? 12 : isDiscoveryMobileViewport ? 12 : 14,
+                  display: 'grid',
+                  gap: isGridView ? 12 : isDiscoveryMobileViewport ? 10 : 14,
+                  gridTemplateColumns: isGridView
+                    ? '1fr'
+                    : isMobileListView
+                      ? '72px minmax(0,1fr) auto'
+                    : '104px minmax(0,1fr) 126px',
             alignItems: isGridView ? 'stretch' : isDesktopListView ? 'stretch' : 'center',
             transition: 'transform .18s ease, box-shadow .18s ease, border-color .18s ease'
           }}
         >
-		          <div
-	            style={{
-		              borderRadius: 16,
-		              overflow: 'hidden',
-		              background: '#f8fafc',
-	              height: cardImageHeight,
-	              minWidth: 0,
-	              position: 'relative'
-	            }}
-	          >
-	            {imgUrl && !isBrandingImageBlocked(imgKey)
-	              ? <img src={imgUrl} alt={store.tenant_name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={() => markBrandingImageError(imgKey)} />
-	              : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg,#dbeafe,#f8fafc)', display: 'grid', placeItems: 'center', color: '#94a3b8', fontSize: 12, fontWeight: 800 }}>DGFY</div>}
-	            {isGridView && (
-	              <>
-	                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,.18) 0%, rgba(15,23,42,0) 42%, rgba(15,23,42,.08) 100%)', pointerEvents: 'none' }} />
-	                <span
-	                  style={{
-	                    position: 'absolute',
-	                    top: 10,
-	                    left: 10,
-	                    borderRadius: 999,
-	                    padding: isMobileGridView ? '4px 8px' : '4px 10px',
-	                    background: isStoreOpenNow ? 'rgba(220,252,231,.96)' : 'rgba(254,226,226,.96)',
-	                    color: isStoreOpenNow ? '#15803d' : '#b91c1c',
-	                    fontSize: isMobileGridView ? 10 : 11,
-	                    fontWeight: 800,
-	                    lineHeight: 1
-	                  }}
-	                >
-	                  {statusChipLabel}
-	                </span>
-	                <button
-	                  type="button"
-	                  aria-label={`Save ${store.tenant_name}`}
-	                  style={{
-	                    position: 'absolute',
-	                    top: 10,
-	                    right: 10,
-	                    width: isMobileGridView ? 28 : 30,
-	                    height: isMobileGridView ? 28 : 30,
-	                    borderRadius: '50%',
-	                    border: '1px solid rgba(255,255,255,.55)',
-	                    background: 'rgba(15,23,42,.44)',
-	                    color: '#ffffff',
-	                    display: 'grid',
-	                    placeItems: 'center',
-	                    cursor: 'default',
-	                    pointerEvents: 'none',
-	                    backdropFilter: 'blur(10px)'
-	                  }}
-	                >
-	                  <Heart size={isMobileGridView ? 14 : 15} />
-	                </button>
-	              </>
-	            )}
-	          </div>
-	
-					          <div style={{ minWidth: 0, display: 'grid', gap: isGridView ? 8 : isMobileListView ? 4 : 8 }}>
-					            <div style={{ display: 'flex', alignItems: 'center', gap: compactListHeaderGap, flexWrap: isDesktopListView ? 'nowrap' : 'wrap' }}>
-					              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, maxWidth: '100%', flex: isDesktopListView ? '1 1 auto' : '0 1 auto' }}>
-						              <h3 style={{ margin: 0, fontSize: isGridView ? (isMobileGridView ? 15 : 16) : isMobileListView ? 15 : 19, lineHeight: 1.15, fontWeight: 800, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{store.tenant_name}</h3>
-						              <span
-						                title={isStoreOpenNow ? 'Open' : 'Closed'}
-						                aria-label={isStoreOpenNow ? 'Open' : 'Closed'}
-					                style={{ display: 'inline-flex', alignItems: 'center', transform: 'translateY(1px)', flexShrink: 0 }}
-						              >
-					                <span style={{ width: 8, height: 8, borderRadius: '50%', background: isStoreOpenNow ? '#22c55e' : '#ef4444', boxShadow: `0 0 0 3px ${isStoreOpenNow ? 'rgba(34,197,94,.14)' : 'rgba(239,68,68,.12)'}` }} />
-					              </span>
-							              {showInlineNonFeaturedListRating && !isDesktopListView && (
-							                <span style={{ borderRadius: 999, padding: '4px 9px', fontSize: 10, fontWeight: 800, background: '#fffbeb', color: '#d97706', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-							                  <Star size={11} fill="currentColor" />
-							                  {ratingValue}
-							                  <span style={{ color: '#a16207', fontWeight: 700 }}>({ratingCount})</span>
-							                </span>
-						              )}
-						              </div>
-				              {showFeaturedBadge && (
-				                <span style={{ borderRadius: 999, padding: isGridView ? '3px 8px' : '4px 9px', fontSize: 10, fontWeight: 800, background: '#fff7ed', color: '#f97316', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-			                  <Star size={11} fill="currentColor" />
-			                  Featured
-			                </span>
-			              )}
-			              {!isGridView && isDesktopListView && (
-			                <span style={{ borderRadius: 999, padding: '4px 9px', fontSize: 10, fontWeight: 800, background: '#fffbeb', color: '#d97706', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-			                  <Star size={11} fill="currentColor" />
-			                  {ratingValue}
-			                  <span style={{ color: '#a16207', fontWeight: 700 }}>({ratingCount})</span>
-			                </span>
-			              )}
-			            </div>
-				            <div style={{ fontSize: isGridView ? 12 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#64748b', textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{categoryLabel || 'Local storefront'}</div>
-		                    <div style={{ display: 'flex', alignItems: 'center', gap: isGridView ? 8 : isMobileListView ? 8 : 10, flexWrap: 'wrap', fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, color: '#64748b' }}>
-		              {isGridView && (
-		                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#d97706', fontWeight: 800 }}>
-		                  <Star size={11} fill="currentColor" />
-		                  {ratingValue}
-		                  <span style={{ color: '#94a3b8', fontWeight: 700 }}>({ratingCount})</span>
-		                </span>
-		              )}
-		              {isGridView && <span style={{ color: '#cbd5e1' }}>•</span>}
-	              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-	                <MapPin size={13} color="#94a3b8" />
-	                {distanceLabel}
+              <div
+              style={{
+                  borderRadius: 16,
+                  overflow: 'hidden',
+                  background: '#f8fafc',
+                height: cardImageHeight,
+                minWidth: 0,
+                position: 'relative'
+              }}
+            >
+              {imgUrl && !isBrandingImageBlocked(imgKey)
+                ? <img src={imgUrl} alt={store.tenant_name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} onError={() => markBrandingImageError(imgKey)} />
+                : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg,#dbeafe,#f8fafc)', display: 'grid', placeItems: 'center', color: '#94a3b8', fontSize: 12, fontWeight: 800 }}>DGFY</div>}
+              {isGridView && (
+                <>
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,.18) 0%, rgba(15,23,42,0) 42%, rgba(15,23,42,.08) 100%)', pointerEvents: 'none' }} />
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: 10,
+                      left: 10,
+                      borderRadius: 999,
+                      padding: isMobileGridView ? '4px 8px' : '4px 10px',
+                      background: isStoreOpenNow ? 'rgba(220,252,231,.96)' : 'rgba(254,226,226,.96)',
+                      color: isStoreOpenNow ? '#15803d' : '#b91c1c',
+                      fontSize: isMobileGridView ? 10 : 11,
+                      fontWeight: 800,
+                      lineHeight: 1
+                    }}
+                  >
+                    {statusChipLabel}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Save ${store.tenant_name}`}
+                    style={{
+                      position: 'absolute',
+                      top: 10,
+                      right: 10,
+                      width: isMobileGridView ? 28 : 30,
+                      height: isMobileGridView ? 28 : 30,
+                      borderRadius: '50%',
+                      border: '1px solid rgba(255,255,255,.55)',
+                      background: 'rgba(15,23,42,.44)',
+                      color: '#ffffff',
+                      display: 'grid',
+                      placeItems: 'center',
+                      cursor: 'default',
+                      pointerEvents: 'none',
+                      backdropFilter: 'blur(10px)'
+                    }}
+                  >
+                    <Heart size={isMobileGridView ? 14 : 15} />
+                  </button>
+                </>
+              )}
+            </div>
+
+                    <div style={{ minWidth: 0, display: 'grid', gap: isGridView ? 8 : isMobileListView ? 4 : 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: compactListHeaderGap, flexWrap: isDesktopListView ? 'nowrap' : 'wrap' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, maxWidth: '100%', flex: isDesktopListView ? '1 1 auto' : '0 1 auto' }}>
+                          <h3 style={{ margin: 0, fontSize: isGridView ? (isMobileGridView ? 15 : 16) : isMobileListView ? 15 : 19, lineHeight: 1.15, fontWeight: 800, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{store.tenant_name}</h3>
+                          <span
+                            title={isStoreOpenNow ? 'Open' : 'Closed'}
+                            aria-label={isStoreOpenNow ? 'Open' : 'Closed'}
+                          style={{ display: 'inline-flex', alignItems: 'center', transform: 'translateY(1px)', flexShrink: 0 }}
+                          >
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: isStoreOpenNow ? '#22c55e' : '#ef4444', boxShadow: `0 0 0 3px ${isStoreOpenNow ? 'rgba(34,197,94,.14)' : 'rgba(239,68,68,.12)'}` }} />
+                        </span>
+                            {showInlineNonFeaturedListRating && !isDesktopListView && (
+                              <span style={{ borderRadius: 999, padding: '4px 9px', fontSize: 10, fontWeight: 800, background: '#fffbeb', color: '#d97706', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                                <Star size={11} fill="currentColor" />
+                                {ratingValue}
+                                <span style={{ color: '#a16207', fontWeight: 700 }}>({ratingCount})</span>
+                              </span>
+                          )}
+                          </div>
+                      {showFeaturedBadge && (
+                        <span style={{ borderRadius: 999, padding: isGridView ? '3px 8px' : '4px 9px', fontSize: 10, fontWeight: 800, background: '#fff7ed', color: '#f97316', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <Star size={11} fill="currentColor" />
+                        Featured
+                      </span>
+                    )}
+                    {!isGridView && isDesktopListView && (
+                      <span style={{ borderRadius: 999, padding: '4px 9px', fontSize: 10, fontWeight: 800, background: '#fffbeb', color: '#d97706', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                        <Star size={11} fill="currentColor" />
+                        {ratingValue}
+                        <span style={{ color: '#a16207', fontWeight: 700 }}>({ratingCount})</span>
+                      </span>
+                    )}
+                  </div>
+                    <div style={{ fontSize: isGridView ? 12 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#64748b', textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{categoryLabel || 'Local storefront'}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: isGridView ? 8 : isMobileListView ? 8 : 10, flexWrap: 'wrap', fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, color: '#64748b' }}>
+                  {isGridView && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#d97706', fontWeight: 800 }}>
+                      <Star size={11} fill="currentColor" />
+                      {ratingValue}
+                      <span style={{ color: '#94a3b8', fontWeight: 700 }}>({ratingCount})</span>
+                    </span>
+                  )}
+                  {isGridView && <span style={{ color: '#cbd5e1' }}>•</span>}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  <MapPin size={13} color="#94a3b8" />
+                  {distanceLabel}
               </span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
                 <Clock3 size={13} color="#94a3b8" />
                 {etaLabel}
               </span>
             </div>
-					            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-						              {branchLabel && <span style={{ fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#64748b' }}>{branchLabel}</span>}
-						              {Number(store?.catalog_count || 0) > 0 && <span style={{ fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#94a3b8' }}>{Number(store.catalog_count)} item(s)</span>}
-					            </div>
-					            {!isStoreOpenNow && (
-					              <div style={{ fontSize: isGridView ? 10 : 11, fontWeight: 700, color: '#b45309' }}>
-					                {closedStoreNote}
-					              </div>
-					            )}
-				          </div>
-		
-	          <div style={{ display: 'grid', gap: 8, alignSelf: isMobileListView ? 'start' : 'stretch', alignContent: isDesktopListView ? 'end' : 'start', justifyContent: isDesktopListView ? 'end' : 'stretch', gridTemplateColumns: isGridView ? '1fr 1fr' : '1fr', gridColumn: 'auto', marginTop: isGridView ? 2 : 0, minWidth: isMobileListView ? 104 : (isDesktopListView ? 126 : 0) }}>
-	            {isGridView ? (
-	              <>
-	                <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
-	                <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={actionButtonStyle('primary')}>Order Now</button>
-	              </>
-	            ) : (
-	              <>
-	                <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={actionButtonStyle('primary')}>Order Now</button>
-	                <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
-	              </>
-	            )}
-	          </div>
-	        </article>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          {branchLabel && <span style={{ fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#64748b' }}>{branchLabel}</span>}
+                          {Number(store?.catalog_count || 0) > 0 && <span style={{ fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#94a3b8' }}>{Number(store.catalog_count)} item(s)</span>}
+                      </div>
+                      {!isStoreOpenNow && (
+                        <div style={{ fontSize: isGridView ? 10 : 11, fontWeight: 700, color: '#b45309' }}>
+                          {closedStoreNote}
+                        </div>
+                      )}
+                  </div>
+
+            <div style={{ display: 'grid', gap: 8, alignSelf: isMobileListView ? 'start' : 'stretch', alignContent: isDesktopListView ? 'end' : 'start', justifyContent: isDesktopListView ? 'end' : 'stretch', gridTemplateColumns: isGridView ? '1fr 1fr' : '1fr', gridColumn: 'auto', marginTop: isGridView ? 2 : 0, minWidth: isMobileListView ? 104 : (isDesktopListView ? 126 : 0) }}>
+              {isGridView ? (
+                <>
+                  <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
+                  <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={actionButtonStyle('primary')}>Order Now</button>
+                </>
+              ) : (
+                <>
+                  <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={actionButtonStyle('primary')}>Order Now</button>
+                  <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
+                </>
+              )}
+            </div>
+          </article>
           )
-	      );
-	    };
-		    const isResultsPanelVisible = isDiscoveryMobileViewport ? !isMobileResultsCollapsed : isStoreListVisible;
-			    const desktopResultsPanelWidth = isDiscoveryMobileViewport
-			      ? '100%'
-			      : isDiscoveryTabletViewport
-			        ? '100%'
-			        : `${discoveryLayout.resultsPanelWidth}px`;
+        );
+      };
+        const isResultsPanelVisible = isDiscoveryMobileViewport ? !isMobileResultsCollapsed : isStoreListVisible;
+          const desktopResultsPanelWidth = isDiscoveryMobileViewport
+            ? '100%'
+            : isDiscoveryTabletViewport
+              ? '100%'
+              : `${discoveryLayout.resultsPanelWidth}px`;
         const discoveryStageMapHeight = isDiscoveryMobileViewport
           ? '312px'
           : (!isDiscoveryTabletViewport && viewMode === 'grid'
             ? 'calc(100vh - 164px)'
             : discoveryLayout.discoveryMapHeight);
-	    return (
+      return (
       <DiscoveryMapCard viewportMode={discoveryViewportMode}>
         <div
           className={`discovery-results-card ${isDiscoveryMobileViewport ? 'discovery-results-card--mobile-fullbleed-map' : ''}`}
@@ -7065,10 +7058,10 @@ export default function StorefrontApp() {
                   selectedKey={highlightedDiscoveryMarkerKey || null}
                   userLocation={discoveryCoords}
                   height="100%"
-	                  onSelectStore={(pin) => {
-	                    setHasDiscoveryExplorationStarted(true);
+                    onSelectStore={(pin) => {
+                      setHasDiscoveryExplorationStarted(true);
                       setIsMobileResultsCollapsed(false);
-	                    setHighlightedStoreSlug(pin.slug);
+                      setHighlightedStoreSlug(pin.slug);
                     setHighlightedDiscoveryMarkerKey(pin.marker_key || '');
                     const matched = filteredDiscoveryStores.find((s) => s.slug === pin.slug)
                       || discoveryResultStores.find((s) => s.slug === pin.slug)
@@ -7083,7 +7076,7 @@ export default function StorefrontApp() {
               ) : (
                 <div style={{ height: '100%', background: '#f8fafc', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>
                   {loadingStores ? 'Loading map...' : storesError || 'No storefront pins available right now.'}
-		            </div>
+                </div>
               )}
               {isDiscoveryMobileViewport && (
                 <button
@@ -7149,244 +7142,244 @@ export default function StorefrontApp() {
                 background: '#fff',
                 borderLeft: isResultsPanelVisible ? '1px solid #e2e8f0' : 'none',
                 display: 'grid',
-	                gridTemplateRows: isDiscoveryMobileViewport ? 'auto auto auto' : 'auto 1fr auto',
-		                overflow: isDiscoveryMobileViewport ? 'visible' : 'hidden',
+                  gridTemplateRows: isDiscoveryMobileViewport ? 'auto auto auto' : 'auto 1fr auto',
+                    overflow: isDiscoveryMobileViewport ? 'visible' : 'hidden',
                 position: 'static',
                 zIndex: 10,
-	                width: isResultsPanelVisible ? desktopResultsPanelWidth : '0px',
+                  width: isResultsPanelVisible ? desktopResultsPanelWidth : '0px',
                 minWidth: 0,
-	                maxHeight: isDiscoveryMobileViewport ? (isResultsPanelVisible ? 'calc(100vh - 220px)' : '0px') : discoveryLayout.resultsPanelMaxHeight,
-	                opacity: isResultsPanelVisible ? 1 : 0,
-	                transition: 'width 350ms cubic-bezier(0.4,0,0.2,1), opacity 300ms ease, border-color 350ms, max-height 280ms ease, transform 280ms ease',
-	                marginTop: isDiscoveryMobileViewport ? -20 : 0,
+                  maxHeight: isDiscoveryMobileViewport ? (isResultsPanelVisible ? 'calc(100vh - 220px)' : '0px') : discoveryLayout.resultsPanelMaxHeight,
+                  opacity: isResultsPanelVisible ? 1 : 0,
+                  transition: 'width 350ms cubic-bezier(0.4,0,0.2,1), opacity 300ms ease, border-color 350ms, max-height 280ms ease, transform 280ms ease',
+                  marginTop: isDiscoveryMobileViewport ? -20 : 0,
                 borderTopLeftRadius: isDiscoveryMobileViewport ? 26 : 0,
                 borderTopRightRadius: isDiscoveryMobileViewport ? 26 : 0,
-	                boxShadow: isDiscoveryMobileViewport ? '0 -8px 24px rgba(15,23,42,.12)' : 'none',
+                  boxShadow: isDiscoveryMobileViewport ? '0 -8px 24px rgba(15,23,42,.12)' : 'none',
                   transform: isDiscoveryMobileViewport ? (isResultsPanelVisible ? 'translateY(0)' : 'translateY(14px)') : 'none',
                   pointerEvents: isResultsPanelVisible ? 'auto' : 'none'
-	              }}
-	            >
-	              <div style={{ padding: isDiscoveryMobileViewport ? '34px 18px 14px' : '24px 22px 16px', borderBottom: '1px solid #edf2f7', display: 'grid', gap: 14 }}>
-	                <div style={{ display: 'flex', alignItems: isDiscoveryMobileViewport ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
-	                  <div style={{ minWidth: 0 }}>
-	                    <div style={{ fontSize: 11, fontWeight: 800, color: '#1a4e8d', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Discover Nearby</div>
-	                    <h2 style={{ margin: '6px 0 0', fontSize: isDiscoveryMobileViewport ? 24 : 29, lineHeight: 1.08, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.03em' }}>Best Shops Today</h2>
-	                    <p
-	                      style={{
-	                        margin: '8px 0 0',
-	                        fontSize: isDiscoveryMobileViewport ? 12 : 14,
-	                        lineHeight: isDiscoveryMobileViewport ? 1.4 : 1.6,
-	                        color: '#64748b',
-	                        maxWidth: isDiscoveryMobileViewport ? 360 : 430
-	                      }}
-	                    >
-	                      {resultsSubtitle}
-	                    </p>
-	                  </div>
-	                </div>
+                }}
+              >
+                <div style={{ padding: isDiscoveryMobileViewport ? '34px 18px 14px' : '24px 22px 16px', borderBottom: '1px solid #edf2f7', display: 'grid', gap: 14 }}>
+                  <div style={{ display: 'flex', alignItems: isDiscoveryMobileViewport ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: '#1a4e8d', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Discover Nearby</div>
+                      <h2 style={{ margin: '6px 0 0', fontSize: isDiscoveryMobileViewport ? 24 : 29, lineHeight: 1.08, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.03em' }}>Best Shops Today</h2>
+                      <p
+                        style={{
+                          margin: '8px 0 0',
+                          fontSize: isDiscoveryMobileViewport ? 12 : 14,
+                          lineHeight: isDiscoveryMobileViewport ? 1.4 : 1.6,
+                          color: '#64748b',
+                          maxWidth: isDiscoveryMobileViewport ? 360 : 430
+                        }}
+                      >
+                        {resultsSubtitle}
+                      </p>
+                    </div>
+                  </div>
 
-		                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'nowrap' }}>
-		                  <div style={{ display: 'flex', gap: 8, flexWrap: 'nowrap', justifyContent: 'flex-end', marginLeft: 'auto', order: 2 }}>
-		                    <button
-		                      type="button"
-		                      onClick={() => setViewMode('list')}
-		                      style={viewButtonStyle('list')}
-		                      aria-label="List view"
-		                      title="List view"
-		                    >
-		                      <List size={15} />
-		                      {!isDiscoveryMobileViewport && 'List View'}
-		                    </button>
-		                    <button
-		                      type="button"
-		                      onClick={() => setViewMode('grid')}
-		                      style={viewButtonStyle('grid')}
-		                      aria-label="Grid view"
-		                      title="Grid view"
-		                    >
-		                      <LayoutGrid size={15} />
-		                      {!isDiscoveryMobileViewport && 'Grid View'}
-		                    </button>
-		                  </div>
-		                  <div style={{ fontSize: isDiscoveryMobileViewport ? 16 : 18, fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', order: 1 }}>
-		                    {resultCountLabel}
-		                  </div>
-		                </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'nowrap' }}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'nowrap', justifyContent: 'flex-end', marginLeft: 'auto', order: 2 }}>
+                        <button
+                          type="button"
+                          onClick={() => setViewMode('list')}
+                          style={viewButtonStyle('list')}
+                          aria-label="List view"
+                          title="List view"
+                        >
+                          <List size={15} />
+                          {!isDiscoveryMobileViewport && 'List View'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setViewMode('grid')}
+                          style={viewButtonStyle('grid')}
+                          aria-label="Grid view"
+                          title="Grid view"
+                        >
+                          <LayoutGrid size={15} />
+                          {!isDiscoveryMobileViewport && 'Grid View'}
+                        </button>
+                      </div>
+                      <div style={{ fontSize: isDiscoveryMobileViewport ? 16 : 18, fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', order: 1 }}>
+                        {resultCountLabel}
+                      </div>
+                    </div>
 
-	                <div
-	                  ref={discoveryFilterToolbarRef}
-	                  style={{
-	                    display: 'grid',
-			                    gridTemplateColumns: isDiscoveryMobileViewport
-			                      ? (renderDiscoveryResetButton
-			                                ? 'max-content 44px 44px max-content'
-			                                : 'max-content 44px 44px')
-		                      : isDiscoveryTabletViewport
-		                        ? (renderDiscoveryResetButton
-		                          ? 'minmax(0, 1.15fr) minmax(0, 1.15fr) minmax(0, 0.7fr) minmax(0, 0.9fr)'
-			                          : 'minmax(0, 1.3fr) minmax(0, 1.3fr) minmax(0, 0.84fr)')
-		                        : (renderDiscoveryResetButton
-		                          ? 'minmax(0, 0.74fr) minmax(0, 1fr) minmax(0, 1.24fr) minmax(0, 0.86fr)'
-		                          : 'minmax(0, 0.74fr) minmax(0, 1fr) minmax(0, 1.24fr)'),
-		                    gap: 8,
-		                    alignItems: 'stretch',
-	                    justifyContent: isDiscoveryMobileViewport ? 'start' : 'stretch',
-	                    position: 'relative',
-	                    zIndex: 30
-		                  }}
-	                >
-	                  <button
-	                    type="button"
-	                    onClick={() => setDiscoveryOpenFilter((value) => (value === 'open' ? 'all' : 'open'))}
-		                    style={{
-		                      minHeight: 34,
-		                      borderRadius: 10,
-		                      border: `1px solid ${isOpenNowFilterActive ? '#86efac' : '#dcfce7'}`,
-		                      background: isOpenNowFilterActive ? '#16a34a' : '#f0fdf4',
-		                      color: isOpenNowFilterActive ? '#ffffff' : '#16a34a',
-		                      padding: '0 14px',
-		                      fontSize: 12,
-		                      fontWeight: 700,
-	                      cursor: 'pointer',
-	                      display: 'inline-flex',
-	                      alignItems: 'center',
-	                      justifyContent: 'center',
-		                      width: isDiscoveryMobileViewport ? 'auto' : '100%',
-		                      minWidth: isDiscoveryMobileViewport ? 88 : 0,
-		                      maxWidth: isDiscoveryMobileViewport ? 'none' : 148,
-		                      boxShadow: isOpenNowFilterActive ? '0 10px 22px rgba(22,163,74,.24)' : 'none',
-		                      transition: 'all 180ms ease'
-		                    }}
-		                  >
-		                    Open Now
-		                  </button>
-		                  <div style={{ position: 'relative', minWidth: 0 }}>
-	                    <button
-	                      type="button"
-	                      onClick={() => setActiveDiscoveryFilterDropdown((current) => (current === 'sort' ? null : 'sort'))}
-			                      style={{ minHeight: 34, borderRadius: 10, border: `1px solid ${isSortFilterActive ? '#93c5fd' : '#e2e8f0'}`, padding: isDiscoveryMobileViewport ? '0' : '0 10px', fontSize: 12, fontWeight: 700, color: isSortFilterActive ? '#1a4e8d' : '#334155', background: isSortFilterActive ? '#eff6ff' : '#fff', cursor: 'pointer', minWidth: 0, width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: isDiscoveryMobileViewport ? 'center' : 'space-between', gap: 8, boxShadow: isSortFilterActive ? '0 8px 18px rgba(37,99,235,.16)' : 'none', transition: 'all 180ms ease' }}
-			                    >
-				                      {isDiscoveryMobileViewport ? (
-				                        <ArrowUpDown size={14} color={isSortFilterActive ? '#1a4e8d' : '#64748b'} />
-			                      ) : (
-			                        <>
-			                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>Sort: {discoverySortLabelByValue[discoverySortBy] || 'Nearest'}</span>
-		                          <ChevronDown size={14} color="#64748b" />
-			                        </>
-			                      )}
-			                    </button>
-	                    {activeDiscoveryFilterDropdown === 'sort' && (
-		                      <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: isDiscoveryMobileViewport ? 0 : 0, right: isDiscoveryMobileViewport ? 'auto' : 0, minWidth: isDiscoveryMobileViewport ? 180 : 0, borderRadius: 10, border: '1px solid #dbe5f2', background: '#fff', boxShadow: '0 14px 30px rgba(15,23,42,.10)', overflow: 'hidden', zIndex: 1200 }}>
-	                        {[
-	                          ['nearest', 'Nearest'],
-	                          ['catalog', 'Most Popular'],
-	                          ['rating', 'Highest Rated']
-		                        ].map(([value, label]) => (
-	                          <button
-	                            key={value}
-	                            type="button"
-	                            onClick={() => {
-	                              setDiscoverySortBy(value);
-	                              setActiveDiscoveryFilterDropdown(null);
-	                            }}
-	                            style={{
-	                              width: '100%',
-	                              border: 'none',
-	                              borderTop: value === 'nearest' ? 'none' : '1px solid #eef2f7',
-	                              background: discoverySortBy === value ? '#eff6ff' : '#fff',
-	                              color: discoverySortBy === value ? '#1a4e8d' : '#334155',
-	                              textAlign: 'left',
-	                              padding: '8px 10px',
-	                              fontSize: 12,
-	                              fontWeight: discoverySortBy === value ? 800 : 700,
-	                              cursor: 'pointer'
-	                            }}
-	                          >
-	                            {label}
-	                          </button>
-	                        ))}
-	                      </div>
-	                    )}
-	                  </div>
-	                  <div style={{ position: 'relative', minWidth: 0 }}>
-	                    <button
-	                      type="button"
-	                      onClick={() => setActiveDiscoveryFilterDropdown((current) => (current === 'category' ? null : 'category'))}
-			                      style={{ minHeight: 34, borderRadius: 10, border: `1px solid ${isCategoryFilterActive ? '#93c5fd' : '#e2e8f0'}`, padding: isDiscoveryMobileViewport ? '0' : '0 10px', fontSize: 12, fontWeight: 700, color: isCategoryFilterActive ? '#1a4e8d' : '#334155', background: isCategoryFilterActive ? '#eff6ff' : '#fff', cursor: 'pointer', minWidth: 0, width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: isDiscoveryMobileViewport ? 'center' : 'space-between', gap: 8, boxShadow: isCategoryFilterActive ? '0 8px 18px rgba(37,99,235,.16)' : 'none', transition: 'all 180ms ease' }}
-			                    >
-					                      {isDiscoveryMobileViewport ? (
-					                        <ArrowUpNarrowWide size={14} color={isCategoryFilterActive ? '#1a4e8d' : '#64748b'} />
-					                      ) : (
-		                        <>
-		                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>{discoveryBusinessModeOptions.find(([value]) => value === discoveryCategoryFilter)?.[1] || 'Category: All'}</span>
-		                          <ChevronDown size={14} color="#64748b" />
-			                        </>
-			                      )}
-			                    </button>
-				                    {activeDiscoveryFilterDropdown === 'category' && (
-				                      <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: isDiscoveryMobileViewport ? 0 : 0, right: isDiscoveryMobileViewport ? 'auto' : 0, minWidth: isDiscoveryMobileViewport ? 184 : 250, maxWidth: isDiscoveryMobileViewport ? 196 : 320, borderRadius: 10, border: '1px solid #dbe5f2', background: '#fff', boxShadow: '0 14px 30px rgba(15,23,42,.10)', zIndex: 1200, overflow: 'hidden' }}>
-		                              <div style={{ maxHeight: 214, overflowY: 'auto', overflowX: 'hidden' }}>
-		                        {discoveryBusinessModeOptions.map(([value, label], index) => (
-		                          <button
-		                            key={value}
-		                            type="button"
-		                            onClick={() => {
-		                              setDiscoveryCategoryFilter(value);
-		                              setActiveDiscoveryFilterDropdown(null);
-		                            }}
-		                            style={{
-		                              width: '100%',
-		                              border: 'none',
-		                              borderTop: index === 0 ? 'none' : '1px solid #eef2f7',
-		                              background: discoveryCategoryFilter === value ? '#eff6ff' : '#fff',
-		                              color: discoveryCategoryFilter === value ? '#1a4e8d' : '#334155',
-		                              textAlign: 'left',
-		                              padding: '8px 10px',
-		                              fontSize: 12,
-		                              fontWeight: discoveryCategoryFilter === value ? 800 : 700,
-		                              cursor: 'pointer',
+                  <div
+                    ref={discoveryFilterToolbarRef}
+                    style={{
+                      display: 'grid',
+                          gridTemplateColumns: isDiscoveryMobileViewport
+                            ? (renderDiscoveryResetButton
+                                      ? 'max-content 44px 44px max-content'
+                                      : 'max-content 44px 44px')
+                          : isDiscoveryTabletViewport
+                            ? (renderDiscoveryResetButton
+                              ? 'minmax(0, 1.15fr) minmax(0, 1.15fr) minmax(0, 0.7fr) minmax(0, 0.9fr)'
+                                : 'minmax(0, 1.3fr) minmax(0, 1.3fr) minmax(0, 0.84fr)')
+                            : (renderDiscoveryResetButton
+                              ? 'minmax(0, 0.74fr) minmax(0, 1fr) minmax(0, 1.24fr) minmax(0, 0.86fr)'
+                              : 'minmax(0, 0.74fr) minmax(0, 1fr) minmax(0, 1.24fr)'),
+                        gap: 8,
+                        alignItems: 'stretch',
+                      justifyContent: isDiscoveryMobileViewport ? 'start' : 'stretch',
+                      position: 'relative',
+                      zIndex: 30
+                      }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setDiscoveryOpenFilter((value) => (value === 'open' ? 'all' : 'open'))}
+                        style={{
+                          minHeight: 34,
+                          borderRadius: 10,
+                          border: `1px solid ${isOpenNowFilterActive ? '#86efac' : '#dcfce7'}`,
+                          background: isOpenNowFilterActive ? '#16a34a' : '#f0fdf4',
+                          color: isOpenNowFilterActive ? '#ffffff' : '#16a34a',
+                          padding: '0 14px',
+                          fontSize: 12,
+                          fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                          width: isDiscoveryMobileViewport ? 'auto' : '100%',
+                          minWidth: isDiscoveryMobileViewport ? 88 : 0,
+                          maxWidth: isDiscoveryMobileViewport ? 'none' : 148,
+                          boxShadow: isOpenNowFilterActive ? '0 10px 22px rgba(22,163,74,.24)' : 'none',
+                          transition: 'all 180ms ease'
+                        }}
+                      >
+                        Open Now
+                      </button>
+                      <div style={{ position: 'relative', minWidth: 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => setActiveDiscoveryFilterDropdown((current) => (current === 'sort' ? null : 'sort'))}
+                            style={{ minHeight: 34, borderRadius: 10, border: `1px solid ${isSortFilterActive ? '#93c5fd' : '#e2e8f0'}`, padding: isDiscoveryMobileViewport ? '0' : '0 10px', fontSize: 12, fontWeight: 700, color: isSortFilterActive ? '#1a4e8d' : '#334155', background: isSortFilterActive ? '#eff6ff' : '#fff', cursor: 'pointer', minWidth: 0, width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: isDiscoveryMobileViewport ? 'center' : 'space-between', gap: 8, boxShadow: isSortFilterActive ? '0 8px 18px rgba(37,99,235,.16)' : 'none', transition: 'all 180ms ease' }}
+                          >
+                              {isDiscoveryMobileViewport ? (
+                                <ArrowUpDown size={14} color={isSortFilterActive ? '#1a4e8d' : '#64748b'} />
+                            ) : (
+                              <>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>Sort: {discoverySortLabelByValue[discoverySortBy] || 'Nearest'}</span>
+                              <ChevronDown size={14} color="#64748b" />
+                              </>
+                            )}
+                          </button>
+                      {activeDiscoveryFilterDropdown === 'sort' && (
+                          <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: isDiscoveryMobileViewport ? 0 : 0, right: isDiscoveryMobileViewport ? 'auto' : 0, minWidth: isDiscoveryMobileViewport ? 180 : 0, borderRadius: 10, border: '1px solid #dbe5f2', background: '#fff', boxShadow: '0 14px 30px rgba(15,23,42,.10)', overflow: 'hidden', zIndex: 1200 }}>
+                          {[
+                            ['nearest', 'Nearest'],
+                            ['catalog', 'Most Popular'],
+                            ['rating', 'Highest Rated']
+                            ].map(([value, label]) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => {
+                                setDiscoverySortBy(value);
+                                setActiveDiscoveryFilterDropdown(null);
+                              }}
+                              style={{
+                                width: '100%',
+                                border: 'none',
+                                borderTop: value === 'nearest' ? 'none' : '1px solid #eef2f7',
+                                background: discoverySortBy === value ? '#eff6ff' : '#fff',
+                                color: discoverySortBy === value ? '#1a4e8d' : '#334155',
+                                textAlign: 'left',
+                                padding: '8px 10px',
+                                fontSize: 12,
+                                fontWeight: discoverySortBy === value ? 800 : 700,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ position: 'relative', minWidth: 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => setActiveDiscoveryFilterDropdown((current) => (current === 'category' ? null : 'category'))}
+                            style={{ minHeight: 34, borderRadius: 10, border: `1px solid ${isCategoryFilterActive ? '#93c5fd' : '#e2e8f0'}`, padding: isDiscoveryMobileViewport ? '0' : '0 10px', fontSize: 12, fontWeight: 700, color: isCategoryFilterActive ? '#1a4e8d' : '#334155', background: isCategoryFilterActive ? '#eff6ff' : '#fff', cursor: 'pointer', minWidth: 0, width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: isDiscoveryMobileViewport ? 'center' : 'space-between', gap: 8, boxShadow: isCategoryFilterActive ? '0 8px 18px rgba(37,99,235,.16)' : 'none', transition: 'all 180ms ease' }}
+                          >
+                                {isDiscoveryMobileViewport ? (
+                                  <ArrowUpNarrowWide size={14} color={isCategoryFilterActive ? '#1a4e8d' : '#64748b'} />
+                                ) : (
+                            <>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>{discoveryBusinessModeOptions.find(([value]) => value === discoveryCategoryFilter)?.[1] || 'Category: All'}</span>
+                              <ChevronDown size={14} color="#64748b" />
+                              </>
+                            )}
+                          </button>
+                            {activeDiscoveryFilterDropdown === 'category' && (
+                              <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: isDiscoveryMobileViewport ? 0 : 0, right: isDiscoveryMobileViewport ? 'auto' : 0, minWidth: isDiscoveryMobileViewport ? 184 : 250, maxWidth: isDiscoveryMobileViewport ? 196 : 320, borderRadius: 10, border: '1px solid #dbe5f2', background: '#fff', boxShadow: '0 14px 30px rgba(15,23,42,.10)', zIndex: 1200, overflow: 'hidden' }}>
+                                  <div style={{ maxHeight: 214, overflowY: 'auto', overflowX: 'hidden' }}>
+                            {discoveryBusinessModeOptions.map(([value, label], index) => (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() => {
+                                  setDiscoveryCategoryFilter(value);
+                                  setActiveDiscoveryFilterDropdown(null);
+                                }}
+                                style={{
+                                  width: '100%',
+                                  border: 'none',
+                                  borderTop: index === 0 ? 'none' : '1px solid #eef2f7',
+                                  background: discoveryCategoryFilter === value ? '#eff6ff' : '#fff',
+                                  color: discoveryCategoryFilter === value ? '#1a4e8d' : '#334155',
+                                  textAlign: 'left',
+                                  padding: '8px 10px',
+                                  fontSize: 12,
+                                  fontWeight: discoveryCategoryFilter === value ? 800 : 700,
+                                  cursor: 'pointer',
                                   whiteSpace: 'nowrap'
-		                            }}
-		                          >
-		                            {label}
-		                          </button>
-		                        ))}
+                                }}
+                              >
+                                {label}
+                              </button>
+                            ))}
                               </div>
                               <div style={{ borderTop: '1px solid #eef2f7', background: '#f8fafc', color: '#94a3b8', fontSize: 10, fontWeight: 700, letterSpacing: '0.02em', padding: '4px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <span>↕ Scroll</span>
                                 <span>↔ Drag</span>
                               </div>
-		                      </div>
-		                    )}
-	                  </div>
-		                  {renderDiscoveryResetButton && (
-	                    <button
-	                      type="button"
-		                      onClick={resetDiscoveryResultsView}
+                          </div>
+                        )}
+                    </div>
+                      {renderDiscoveryResetButton && (
+                      <button
+                        type="button"
+                          onClick={resetDiscoveryResultsView}
                           aria-label="Reset discovery filters"
                           title="Reset filters"
-		                      style={{
-		                        minHeight: 34,
-		                        borderRadius: 10,
-		                        border: '1px solid rgba(220, 38, 38, 0.18)',
-		                        background: 'rgba(220, 38, 38, 0.06)',
-		                        color: '#dc2626',
-		                        padding: isDiscoveryMobileViewport ? '0 9px' : '0 12px',
-		                        fontSize: 12,
-		                        fontWeight: 700,
-		                        cursor: 'pointer',
-		                        display: 'inline-flex',
-		                        alignItems: 'center',
-		                        gap: 6,
-		                        justifyContent: 'center',
-		                        width: isDiscoveryMobileViewport ? 'auto' : '100%',
-		                        opacity: showDiscoveryResetButton ? 1 : 0,
-		                        transform: showDiscoveryResetButton ? 'translateY(0)' : 'translateY(-4px)',
-		                        transition: 'opacity 180ms ease, transform 180ms ease',
-		                        pointerEvents: showDiscoveryResetButton ? 'auto' : 'none'
-		                      }}
-		                    >
-			                      <X size={12} />
+                          style={{
+                            minHeight: 34,
+                            borderRadius: 10,
+                            border: '1px solid rgba(220, 38, 38, 0.18)',
+                            background: 'rgba(220, 38, 38, 0.06)',
+                            color: '#dc2626',
+                            padding: isDiscoveryMobileViewport ? '0 9px' : '0 12px',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            justifyContent: 'center',
+                            width: isDiscoveryMobileViewport ? 'auto' : '100%',
+                            opacity: showDiscoveryResetButton ? 1 : 0,
+                            transform: showDiscoveryResetButton ? 'translateY(0)' : 'translateY(-4px)',
+                            transition: 'opacity 180ms ease, transform 180ms ease',
+                            pointerEvents: showDiscoveryResetButton ? 'auto' : 'none'
+                          }}
+                        >
+                            <X size={12} />
                           <span style={{ whiteSpace: 'nowrap' }}>{isDiscoveryMobileViewport ? 'Filters' : 'Reset Filters'}</span>
                           {activeDiscoveryFilterCount > 0 ? (
                             <span
@@ -7407,8 +7400,8 @@ export default function StorefrontApp() {
                               {activeDiscoveryFilterCount}
                             </span>
                           ) : null}
-		                    </button>
-		                  )}
+                        </button>
+                      )}
                       {activeDiscoveryFilterCount > 0 && !isDiscoveryMobileViewport && !renderDiscoveryResetButton ? (
                         <div
                           style={{
@@ -7433,10 +7426,10 @@ export default function StorefrontApp() {
                           {activeDiscoveryFilterCount}
                         </div>
                       ) : null}
-		                </div>
+                    </div>
               </div>
 
-	              <div style={{ overflowY: 'auto', padding: isDiscoveryMobileViewport ? '14px 14px 18px' : viewMode === 'grid' ? '18px 22px 24px' : '16px 18px 22px' }}>
+                <div style={{ overflowY: 'auto', padding: isDiscoveryMobileViewport ? '14px 14px 18px' : viewMode === 'grid' ? '18px 22px 24px' : '16px 18px 22px' }}>
                 {loadingStores && <div style={{ padding: 24, color: '#94a3b8', fontSize: 14, textAlign: 'center' }}>Loading stores...</div>}
                 {!loadingStores && filteredDiscoveryStores.length === 0 && (
                   <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#f8fbff', padding: 18, display: 'grid', gap: 8 }}>
@@ -7450,9 +7443,9 @@ export default function StorefrontApp() {
                     )}
                   </div>
                 )}
-		                <div style={{ display: 'grid', gap: viewMode === 'grid' ? (isDiscoveryMobileViewport ? 14 : isDiscoveryTabletViewport ? 18 : 20) : (isDiscoveryMobileViewport ? 14 : 18), gridTemplateColumns: viewMode === 'grid' ? (isDiscoveryMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))') : '1fr' }}>
-	                  {paginatedDiscoveryStores.map(renderDiscoveryStoreCard)}
-	                </div>
+                    <div style={{ display: 'grid', gap: viewMode === 'grid' ? (isDiscoveryMobileViewport ? 14 : isDiscoveryTabletViewport ? 18 : 20) : (isDiscoveryMobileViewport ? 14 : 18), gridTemplateColumns: viewMode === 'grid' ? (isDiscoveryMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))') : '1fr' }}>
+                    {paginatedDiscoveryStores.map(renderDiscoveryStoreCard)}
+                  </div>
               </div>
 
               {filteredDiscoveryStores.length > 0 && discoveryTotalPages > 1 && (
@@ -7531,12 +7524,12 @@ export default function StorefrontApp() {
                 activeItem="Explore"
                 menuOpen={isDiscoveryNavMenuOpen}
                 onMenuToggle={() => setIsDiscoveryNavMenuOpen((open) => !open)}
-	                onRegisterClick={() => {
-	                  if (typeof window !== 'undefined') {
-	                    window.location.href = 'https://skupervisor.dgfy.ph/register-company';
-	                  }
-	                }}
-	              />
+                  onRegisterClick={() => {
+                    if (typeof window !== 'undefined') {
+                      window.location.href = 'https://skupervisor.dgfy.ph/register-company';
+                    }
+                  }}
+                />
 
               {/* ── HERO ── */}
               <div
@@ -7577,7 +7570,7 @@ export default function StorefrontApp() {
                   </span>
                   {' '}For You
                 </h1>
-	                <p style={{ margin: isMobileViewport ? '16px auto 0' : '14px auto 0', maxWidth: isMobileViewport ? 332 : 800, color: '#94a3b8', fontSize: isMobileViewport ? 14 : 16.5, lineHeight: isMobileViewport ? 1.45 : 1.6, boxSizing: 'border-box' }}>
+                  <p style={{ margin: isMobileViewport ? '16px auto 0' : '14px auto 0', maxWidth: isMobileViewport ? 332 : 800, color: '#94a3b8', fontSize: isMobileViewport ? 14 : 16.5, lineHeight: isMobileViewport ? 1.45 : 1.6, boxSizing: 'border-box' }}>
                   Find nearby products, services, and businesses—faster, smarter, and all in one place.
                 </p>
               </div>
@@ -7601,7 +7594,7 @@ export default function StorefrontApp() {
                     {' '}For You
                   </>
                 )}
-	                subtitle="Find nearby products, services, and businesses—faster, smarter, and all in one place."
+                  subtitle="Find nearby products, services, and businesses—faster, smarter, and all in one place."
               />
 
               <div ref={discoveryInteractiveAreaRef} style={{ display: 'grid', gap: isDiscoveryMobileViewport ? 10 : isDiscoveryTabletViewport ? 12 : 12, width: '100%', minWidth: 0 }}>
@@ -7611,11 +7604,11 @@ export default function StorefrontApp() {
                   <DiscoverySearchRegion viewportMode={discoveryViewportMode}>
                   <div style={{ width: '100%', minWidth: 0, padding: discoveryLayout.searchPadding, boxSizing: 'border-box' }}>
 
-	                    {/* Input row */}
-	                    <div style={{ maxWidth: discoveryLayout.searchMaxWidth, margin: '0 auto', width: '100%', minWidth: 0 }}>
-	                    <div
-	                      style={{
-	                        display: 'flex',
+                      {/* Input row */}
+                      <div style={{ maxWidth: discoveryLayout.searchMaxWidth, margin: '0 auto', width: '100%', minWidth: 0 }}>
+                      <div
+                        style={{
+                          display: 'flex',
                         alignItems: 'center',
                         gap: 0,
                         background: '#fff',
@@ -7710,11 +7703,11 @@ export default function StorefrontApp() {
                         }}
                       >
                         <Search size={16} />
-	                        Search
-	                      </button>
-	                    </div>
-	                    </div>
-	                    {
+                          Search
+                        </button>
+                      </div>
+                      </div>
+                      {
                       (() => {
                         const primaryCats = [
                           { label: 'Food', icon: <UtensilsCrossed size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#f97316', bg: '#fff7ed', border: '#fed7aa' },
@@ -7723,136 +7716,136 @@ export default function StorefrontApp() {
                           { label: 'Salon', icon: <Scissors size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#9333ea', bg: '#faf5ff', border: '#e9d5ff' },
                           { label: 'Pharmacy', icon: <HeartHandshake size={isDiscoveryMobileViewport ? 20 : 16} />, color: '#e11d48', bg: '#fff1f2', border: '#fecdd3' }
                         ];
-	                        const extendedCats = [
+                          const extendedCats = [
                           { label: 'Bakery', icon: <Coffee size={14} />, color: '#92400e', bg: '#fffbeb', border: '#fde68a' },
                           { label: 'Clothing', icon: <Shirt size={14} />, color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
                           { label: 'Drinks', icon: <CupSoda size={14} />, color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc' },
                           { label: 'Food Stall', icon: <Sandwich size={14} />, color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
                           { label: 'Frozen', icon: <Snowflake size={14} />, color: '#1a4e8d', bg: '#eff6ff', border: '#bfdbfe' },
                           { label: 'Beauty', icon: <SprayCan size={14} />, color: '#db2777', bg: '#fdf2f8', border: '#fbcfe8' },
-	                          { label: 'Hardware', icon: <Wrench size={14} />, color: '#64748b', bg: '#f8fafc', border: '#e2e8f0' }
-	                        ];
-		                        const mobileCategoryStep = 3;
-		                        const mobilePrimaryCount = 5;
-		                        const allMobileCategories = [...primaryCats, ...extendedCats];
-		                        const mobileOverflowCount = Math.max(0, allMobileCategories.length - mobilePrimaryCount);
-		                        const mobileOverflowGroups = Math.ceil(mobileOverflowCount / mobileCategoryStep);
-		                        const cardStyle = (cat) => ({
-		                          borderRadius: 999,
-		                          background: cat.bg,
-		                          color: cat.color,
-		                          padding: isDiscoveryMobileViewport ? '6px 12px' : '6px 14px',
-		                          minHeight: isDiscoveryMobileViewport ? 34 : 34,
-	                            height: 'auto',
-		                          fontSize: isDiscoveryMobileViewport ? 13 : 13,
-		                          lineHeight: 1.15,
-		                          fontWeight: isDiscoveryMobileViewport ? 600 : 600,
-		                          cursor: 'pointer',
-	                          display: 'flex',
-	                          flexDirection: 'row',
-	                          alignItems: 'center',
-	                          justifyContent: 'center',
-		                          gap: isDiscoveryMobileViewport ? 6 : 6,
-		                          flexShrink: 0,
-		                          width: 'auto',
-		                          border: `1.5px solid ${cat.border}`,
-		                          boxShadow: '0 2px 8px rgba(15,23,42,.04)',
-		                          transition: 'all 200ms ease'
-	                        });
-		                        const visibleCategories = isDiscoveryMobileViewport
-		                          ? allMobileCategories
-		                          : (isCategoryRowExpanded ? [...primaryCats, ...extendedCats] : primaryCats);
+                            { label: 'Hardware', icon: <Wrench size={14} />, color: '#64748b', bg: '#f8fafc', border: '#e2e8f0' }
+                          ];
+                            const mobileCategoryStep = 3;
+                            const mobilePrimaryCount = 5;
+                            const allMobileCategories = [...primaryCats, ...extendedCats];
+                            const mobileOverflowCount = Math.max(0, allMobileCategories.length - mobilePrimaryCount);
+                            const mobileOverflowGroups = Math.ceil(mobileOverflowCount / mobileCategoryStep);
+                            const cardStyle = (cat) => ({
+                              borderRadius: 999,
+                              background: cat.bg,
+                              color: cat.color,
+                              padding: isDiscoveryMobileViewport ? '6px 12px' : '6px 14px',
+                              minHeight: isDiscoveryMobileViewport ? 34 : 34,
+                              height: 'auto',
+                              fontSize: isDiscoveryMobileViewport ? 13 : 13,
+                              lineHeight: 1.15,
+                              fontWeight: isDiscoveryMobileViewport ? 600 : 600,
+                              cursor: 'pointer',
+                            display: 'flex',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                              gap: isDiscoveryMobileViewport ? 6 : 6,
+                              flexShrink: 0,
+                              width: 'auto',
+                              border: `1.5px solid ${cat.border}`,
+                              boxShadow: '0 2px 8px rgba(15,23,42,.04)',
+                              transition: 'all 200ms ease'
+                          });
+                            const visibleCategories = isDiscoveryMobileViewport
+                              ? allMobileCategories
+                              : (isCategoryRowExpanded ? [...primaryCats, ...extendedCats] : primaryCats);
                         return (
                           <DiscoveryCategoryRail viewportMode={discoveryViewportMode}>
                             <div style={{ marginTop: isDiscoveryMobileViewport ? 18 : 24 }}>
                               <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 14, display: isDiscoveryMobileViewport ? 'block' : 'none' }}>Categories</div>
                               <div style={{ display: 'flex', justifyContent: isDiscoveryMobileViewport ? 'flex-start' : 'center', width: '100%', minWidth: 0 }}>
-	                                <div
-	                                  style={{
-	                                    position: 'relative',
-	                                    display: 'flex',
-	                                    alignItems: 'center',
-	                                    justifyContent: isDiscoveryMobileViewport ? 'flex-start' : 'center',
-	                                    gap: isDiscoveryMobileViewport ? 10 : 8,
-	                                    overflowX: 'auto',
+                                  <div
+                                    style={{
+                                      position: 'relative',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: isDiscoveryMobileViewport ? 'flex-start' : 'center',
+                                      gap: isDiscoveryMobileViewport ? 10 : 8,
+                                      overflowX: 'auto',
                                     paddingBottom: isDiscoveryMobileViewport ? 8 : 2,
                                     width: isDiscoveryMobileViewport ? '100%' : 'max-content',
                                     maxWidth: '100%',
                                     minWidth: 0,
                                     margin: isDiscoveryMobileViewport ? '0' : '0 auto',
                                     scrollbarWidth: 'none',
-	                                    msOverflowStyle: 'none'
-	                                  }}
-	                                >
+                                      msOverflowStyle: 'none'
+                                    }}
+                                  >
                                   {!isDiscoveryMobileViewport && <span style={{ fontSize: 12, lineHeight: 1, color: '#94a3b8', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginRight: 2, flexShrink: 0 }}>Categories</span>}
-		                                  {visibleCategories.map((cat, index) => (
-	                                    <button
-	                                      key={cat.label}
-	                                      type="button"
-	                                      data-mobile-category-index={isDiscoveryMobileViewport ? index : undefined}
-	                                      onClick={() => handlePopularDiscoveryCategory(cat.label)}
-	                                      style={cardStyle(cat)}
-	                                    >
-		                                      <div style={{
-		                                        display: 'flex',
-		                                        alignItems: 'center',
-		                                        justifyContent: 'center',
-		                                        width: isDiscoveryMobileViewport ? 16 : 18,
-		                                        height: isDiscoveryMobileViewport ? 16 : 18
-		                                      }}>
-		                                        {cat.icon}
-		                                      </div>
-	                                      <span style={{ display: 'block', textAlign: 'center', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cat.label}</span>
-		                                    </button>
-		                                  ))}
-		                                  {isDiscoveryMobileViewport && mobileOverflowGroups > 0 && (
-		                                    <button
-		                                      type="button"
-		                                      onClick={() => {
-		                                        const nextGroup = (mobileCategoryGroupIndex + 1) % (mobileOverflowGroups + 1);
-		                                        setMobileCategoryGroupIndex(nextGroup);
-		                                        const targetIndex = nextGroup === 0
-		                                          ? 0
-		                                          : Math.min(
-		                                            allMobileCategories.length - 1,
-		                                            mobilePrimaryCount + ((nextGroup - 1) * mobileCategoryStep)
-		                                          );
-		                                        const railElement = mobileCategoryRailRef.current;
-		                                        if (!railElement) return;
-		                                        const targetButton = railElement.querySelector(`[data-mobile-category-index="${targetIndex}"]`);
-		                                        if (targetButton && typeof targetButton.scrollIntoView === 'function') {
-		                                          targetButton.scrollIntoView({
-		                                            behavior: 'smooth',
-		                                            block: 'nearest',
-		                                            inline: 'start'
-		                                          });
-		                                        }
-		                                      }}
-	                                      style={{
-	                                        position: 'sticky',
-	                                        right: 0,
-	                                        top: 0,
-	                                        height: 34,
-	                                        minWidth: 46,
-	                                        borderRadius: 999,
-	                                        display: 'inline-flex',
-	                                        alignItems: 'center',
-	                                        justifyContent: 'center',
-	                                        background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.78) 40%, rgba(255,255,255,.98) 100%)',
-	                                        backdropFilter: 'blur(6px)',
-	                                        WebkitBackdropFilter: 'blur(6px)',
-	                                        pointerEvents: 'auto',
-	                                        color: '#94a3b8',
-	                                        border: '1px solid rgba(226,232,240,.85)',
-	                                        boxShadow: '0 6px 16px rgba(15,23,42,.08)',
-	                                        cursor: 'pointer'
-	                                      }}
-	                                      aria-label="Show more categories"
-	                                    >
-	                                      <ChevronRight size={16} />
-	                                    </button>
-	                                  )}
-	                                  {!isDiscoveryMobileViewport && (
+                                      {visibleCategories.map((cat, index) => (
+                                      <button
+                                        key={cat.label}
+                                        type="button"
+                                        data-mobile-category-index={isDiscoveryMobileViewport ? index : undefined}
+                                        onClick={() => handlePopularDiscoveryCategory(cat.label)}
+                                        style={cardStyle(cat)}
+                                      >
+                                          <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            width: isDiscoveryMobileViewport ? 16 : 18,
+                                            height: isDiscoveryMobileViewport ? 16 : 18
+                                          }}>
+                                            {cat.icon}
+                                          </div>
+                                        <span style={{ display: 'block', textAlign: 'center', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cat.label}</span>
+                                        </button>
+                                      ))}
+                                      {isDiscoveryMobileViewport && mobileOverflowGroups > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const nextGroup = (mobileCategoryGroupIndex + 1) % (mobileOverflowGroups + 1);
+                                            setMobileCategoryGroupIndex(nextGroup);
+                                            const targetIndex = nextGroup === 0
+                                              ? 0
+                                              : Math.min(
+                                                allMobileCategories.length - 1,
+                                                mobilePrimaryCount + ((nextGroup - 1) * mobileCategoryStep)
+                                              );
+                                            const railElement = mobileCategoryRailRef.current;
+                                            if (!railElement) return;
+                                            const targetButton = railElement.querySelector(`[data-mobile-category-index="${targetIndex}"]`);
+                                            if (targetButton && typeof targetButton.scrollIntoView === 'function') {
+                                              targetButton.scrollIntoView({
+                                                behavior: 'smooth',
+                                                block: 'nearest',
+                                                inline: 'start'
+                                              });
+                                            }
+                                          }}
+                                        style={{
+                                          position: 'sticky',
+                                          right: 0,
+                                          top: 0,
+                                          height: 34,
+                                          minWidth: 46,
+                                          borderRadius: 999,
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.78) 40%, rgba(255,255,255,.98) 100%)',
+                                          backdropFilter: 'blur(6px)',
+                                          WebkitBackdropFilter: 'blur(6px)',
+                                          pointerEvents: 'auto',
+                                          color: '#94a3b8',
+                                          border: '1px solid rgba(226,232,240,.85)',
+                                          boxShadow: '0 6px 16px rgba(15,23,42,.08)',
+                                          cursor: 'pointer'
+                                        }}
+                                        aria-label="Show more categories"
+                                      >
+                                        <ChevronRight size={16} />
+                                      </button>
+                                    )}
+                                    {!isDiscoveryMobileViewport && (
                                     <button
                                       type="button"
                                       onClick={() => setIsCategoryRowExpanded(!isCategoryRowExpanded)}
@@ -7910,57 +7903,57 @@ export default function StorefrontApp() {
                     {/* Subtle top gradient to blend search bar edge */}
                     <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 48, background: 'linear-gradient(180deg, rgba(255,255,255,.20) 0%, transparent 100%)', pointerEvents: 'none' }} />
                     {/* Bottom stat bar */}
-	                    <div
-	                      style={{
-	                        position: 'absolute',
-	                        bottom: isDiscoveryMobileViewport ? 12 : 0,
-	                        left: isDiscoveryMobileViewport ? 12 : 0,
-	                        right: isDiscoveryMobileViewport ? 12 : 0,
+                      <div
+                        style={{
+                          position: 'absolute',
+                          bottom: isDiscoveryMobileViewport ? 12 : 0,
+                          left: isDiscoveryMobileViewport ? 12 : 0,
+                          right: isDiscoveryMobileViewport ? 12 : 0,
                         background: isDiscoveryMobileViewport ? 'rgba(15, 23, 42, 0.75)' : 'linear-gradient(0deg, rgba(15,23,42,.72) 0%, transparent 100%)',
                         backdropFilter: isDiscoveryMobileViewport ? 'blur(12px)' : 'none',
                         borderRadius: isDiscoveryMobileViewport ? 20 : 0,
-	                        padding: isDiscoveryMobileViewport ? '16px 18px' : discoveryViewportMode === 'tablet' ? '26px 22px 14px' : '32px 24px 16px',
-	                        display: isDiscoveryMobileViewport ? 'none' : 'flex',
-	                        alignItems: isDiscoveryMobileViewport ? 'center' : 'flex-end',
-	                        justifyContent: 'space-between',
-	                        border: isDiscoveryMobileViewport ? '1px solid rgba(255,255,255,0.1)' : 'none',
-	                        boxShadow: isDiscoveryMobileViewport ? '0 8px 32px rgba(0,0,0,0.25)' : 'none'
-	                      }}
+                          padding: isDiscoveryMobileViewport ? '16px 18px' : discoveryViewportMode === 'tablet' ? '26px 22px 14px' : '32px 24px 16px',
+                          display: isDiscoveryMobileViewport ? 'none' : 'flex',
+                          alignItems: isDiscoveryMobileViewport ? 'center' : 'flex-end',
+                          justifyContent: 'space-between',
+                          border: isDiscoveryMobileViewport ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                          boxShadow: isDiscoveryMobileViewport ? '0 8px 32px rgba(0,0,0,0.25)' : 'none'
+                        }}
                     >
-	                      <div style={{ display: 'flex', alignItems: 'center', gap: isDiscoveryMobileViewport ? 10 : discoveryViewportMode === 'tablet' ? 18 : 20, width: '100%', justifyContent: isDiscoveryMobileViewport ? 'space-between' : 'flex-start' }}>
-	                        {isDiscoveryMobileViewport ? (
-	                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', justifyContent: 'space-between' }}>
-	                            <div style={{ minWidth: 0, borderRadius: 12, background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.16)', padding: '7px 10px', display: 'grid', gap: 3 }}>
-	                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#f8fafc' }}>
-	                                <MapPin size={13} />
-	                                <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', opacity: 0.9 }}>Location</span>
-	                              </div>
-	                              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(248,250,252,.86)', lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 140 }}>
-	                                Store Label
-	                              </div>
-	                            </div>
-	                            <button
-	                              type="button"
-	                              onClick={handleNearMe}
-	                              style={{
-	                                minWidth: 72,
-	                                borderRadius: 12,
-	                                background: 'rgba(255,255,255,.95)',
-	                                color: '#0f172a',
-	                                border: '1px solid rgba(148,163,184,.28)',
-	                                display: 'grid',
-	                                placeItems: 'center',
-	                                gap: 2,
-	                                padding: '6px 8px',
-	                                cursor: 'pointer',
-	                                boxShadow: '0 4px 10px rgba(15,23,42,.16)'
-	                              }}
-	                            >
-	                              <Navigation size={15} fill="#0f172a" />
-	                              <span style={{ fontSize: 9, fontWeight: 700, color: '#334155', lineHeight: 1.1 }}>Current Location</span>
-	                            </button>
-	                          </div>
-	                        ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: isDiscoveryMobileViewport ? 10 : discoveryViewportMode === 'tablet' ? 18 : 20, width: '100%', justifyContent: isDiscoveryMobileViewport ? 'space-between' : 'flex-start' }}>
+                          {isDiscoveryMobileViewport ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', justifyContent: 'space-between' }}>
+                              <div style={{ minWidth: 0, borderRadius: 12, background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.16)', padding: '7px 10px', display: 'grid', gap: 3 }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#f8fafc' }}>
+                                  <MapPin size={13} />
+                                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', opacity: 0.9 }}>Location</span>
+                                </div>
+                                <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(248,250,252,.86)', lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 140 }}>
+                                  Store Label
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={handleNearMe}
+                                style={{
+                                  minWidth: 72,
+                                  borderRadius: 12,
+                                  background: 'rgba(255,255,255,.95)',
+                                  color: '#0f172a',
+                                  border: '1px solid rgba(148,163,184,.28)',
+                                  display: 'grid',
+                                  placeItems: 'center',
+                                  gap: 2,
+                                  padding: '6px 8px',
+                                  cursor: 'pointer',
+                                  boxShadow: '0 4px 10px rgba(15,23,42,.16)'
+                                }}
+                              >
+                                <Navigation size={15} fill="#0f172a" />
+                                <span style={{ fontSize: 9, fontWeight: 700, color: '#334155', lineHeight: 1.1 }}>Current Location</span>
+                              </button>
+                            </div>
+                          ) : (
                           [
                             { label: 'Stores', value: String(stableHeroDiscoveryMapPins.length || 0) },
                             { label: 'Open Now', value: String(storesWithNearestBranch.filter((s) => s.storefront_open).length) }
@@ -7972,15 +7965,15 @@ export default function StorefrontApp() {
                           ))
                         )}
                       </div>
-                      
-	                      {!isDiscoveryMobileViewport && (
-	                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.20)', borderRadius: 999, padding: '6px 12px', color: 'rgba(255,255,255,.88)', fontSize: 12, fontWeight: 600, backdropFilter: 'blur(8px)' }}>
-	                          <MapPin size={12} />
-	                          Live Map
-	                        </div>
-	                      )}
-	                    </div>
-	                    </div>
+
+                        {!isDiscoveryMobileViewport && (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.20)', borderRadius: 999, padding: '6px 12px', color: 'rgba(255,255,255,.88)', fontSize: 12, fontWeight: 600, backdropFilter: 'blur(8px)' }}>
+                            <MapPin size={12} />
+                            Live Map
+                          </div>
+                        )}
+                      </div>
+                      </div>
                       {isDiscoveryMobileViewport && (
                         <div
                           style={{
@@ -8059,9 +8052,9 @@ export default function StorefrontApp() {
                           </button>
                         </div>
                       )}
-	                      </DiscoveryMapCard>
-	                  </>
-	                )}
+                        </DiscoveryMapCard>
+                    </>
+                  )}
                 {hasDiscoverySearch && renderDiscoveryResultsStage()}
               </div>
               </div>
@@ -8157,7 +8150,7 @@ export default function StorefrontApp() {
                       </div>
 
                       <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(4, 1fr)', gap: isMobileViewport ? 60 : 32, position: 'relative', alignItems: 'start' }}>
-                        
+
                         {/* Connector Line (Desktop Only) */}
                         {!isMobileViewport && (
                           <div style={{ position: 'absolute', top: 92, left: '12%', right: '12%', height: 2, background: 'repeating-linear-gradient(to right, #cbd5e1 0, #cbd5e1 6px, transparent 6px, transparent 12px)', zIndex: 0 }} />
@@ -8166,7 +8159,7 @@ export default function StorefrontApp() {
                         {/* Step 1: Search */}
                         <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: isMobileViewport ? 10 : 0 }}>
                           <div style={{ position: 'absolute', top: -4, left: '50%', transform: 'translateX(-50%)', fontSize: isMobileViewport ? 64 : 72, fontWeight: 900, color: 'rgba(15,23,42,0.12)', lineHeight: 1, letterSpacing: '-0.02em', zIndex: 0, pointerEvents: 'none' }}>01</div>
-                          
+
                           {/* Mock UI Card */}
                           <div style={{ width: '100%', height: 260, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 20px 40px rgba(15,23,42,0.06)', padding: 18, marginTop: 18, marginBottom: 0, display: 'flex', flexDirection: 'column', gap: 12, position: 'relative', overflow: 'hidden', boxSizing: 'border-box', zIndex: 1, order: 2 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '10px 14px' }}>
@@ -8197,7 +8190,7 @@ export default function StorefrontApp() {
                         {/* Step 2: Compare */}
                         <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: isMobileViewport ? 10 : 0 }}>
                           <div style={{ position: 'absolute', top: -4, left: '50%', transform: 'translateX(-50%)', fontSize: isMobileViewport ? 64 : 72, fontWeight: 900, color: 'rgba(15,23,42,0.12)', lineHeight: 1, letterSpacing: '-0.02em', zIndex: 0, pointerEvents: 'none' }}>02</div>
-                          
+
                           {/* Mock UI Card */}
                           <div style={{ width: '100%', height: 260, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 20px 40px rgba(15,23,42,0.06)', padding: 14, marginTop: 18, marginBottom: 0, display: 'flex', gap: 10, position: 'relative', overflow: 'hidden', boxSizing: 'border-box', zIndex: 1, order: 2 }}>
                             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -8233,7 +8226,7 @@ export default function StorefrontApp() {
                         {/* Step 3: Choose */}
                         <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: isMobileViewport ? 10 : 0 }}>
                           <div style={{ position: 'absolute', top: -4, left: '50%', transform: 'translateX(-50%)', fontSize: isMobileViewport ? 64 : 72, fontWeight: 900, color: 'rgba(15,23,42,0.12)', lineHeight: 1, letterSpacing: '-0.02em', zIndex: 0, pointerEvents: 'none' }}>03</div>
-                          
+
                           {/* Mock UI Card */}
                           <div style={{ width: '100%', height: 260, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 20px 40px rgba(15,23,42,0.06)', overflow: 'hidden', marginTop: 18, marginBottom: 0, display: 'flex', flexDirection: 'column', textAlign: 'left', boxSizing: 'border-box', zIndex: 1, order: 2 }}>
                             <div style={{ height: 110, background: 'linear-gradient(135deg, #fcd34d, #f59e0b)' }} />
@@ -8267,13 +8260,13 @@ export default function StorefrontApp() {
                         {/* Step 4: Order */}
                         <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: isMobileViewport ? 10 : 0 }}>
                           <div style={{ position: 'absolute', top: -4, left: '50%', transform: 'translateX(-50%)', fontSize: isMobileViewport ? 64 : 72, fontWeight: 900, color: 'rgba(15,23,42,0.12)', lineHeight: 1, letterSpacing: '-0.02em', zIndex: 0, pointerEvents: 'none' }}>04</div>
-                          
+
                           {/* Mock UI Card */}
                           <div style={{ width: '100%', height: 260, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 20px 40px rgba(15,23,42,0.06)', padding: 24, marginTop: 18, marginBottom: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', boxSizing: 'border-box', zIndex: 1, order: 2 }}>
                             <div style={{ width: 68, height: 68, borderRadius: '50%', background: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
                               <CheckCircle2 size={36} strokeWidth={3} />
                             </div>
-                            <div style={{ fontSize: 16, fontWeight: 900, color: '#0f172a' }}>You're All Set!</div>
+                            <div style={{ fontSize: 16, fontWeight: 900, color: '#0f172a' }}>You&apos;re All Set!</div>
                             <div style={{ fontSize: 11, color: '#64748b', margin: '8px 0 24px', lineHeight: 1.5 }}>Your order has been placed successfully.</div>
                             <div style={{ background: '#1a4e8d', color: '#fff', fontSize: 11, fontWeight: 700, padding: '12px 0', width: '100%', borderRadius: 10, marginBottom: 12 }}>View Order</div>
                             <div style={{ color: '#1a4e8d', fontSize: 11, fontWeight: 700 }}>Track Your Order</div>
@@ -8394,11 +8387,11 @@ export default function StorefrontApp() {
                             store?.has_in_stock_match === true ? 'Available Now' : null,
                             store.matching_item_count > 2 ? 'Featured' : 'Local'
                           ].filter(Boolean);
-	                          const isOpen = store.storefront_open ?? true;
-	                          const featuredHoursLabel = String(store?.nearest_location_hours || store?.storefront_hours || '').trim();
-	                          const featuredClosedNote = !isOpen
-	                            ? `Store closed for now${featuredHoursLabel ? ` • ${featuredHoursLabel}` : ''}`
-	                            : '';
+                            const isOpen = store.storefront_open ?? true;
+                            const featuredHoursLabel = String(store?.nearest_location_hours || store?.storefront_hours || '').trim();
+                            const featuredClosedNote = !isOpen
+                              ? `Store closed for now${featuredHoursLabel ? ` • ${featuredHoursLabel}` : ''}`
+                              : '';
                           const coverImageUrl = withAssetOrigin(store?.storefront_cover_image_url) || withAssetOrigin(store?.storefront_profile_image_url) || '';
                           const profileImageUrl = withAssetOrigin(store?.storefront_profile_image_url) || coverImageUrl || '';
                           const coverImageKey = `featured-cover:${storeSlug}:${coverImageUrl}`;
@@ -8408,7 +8401,7 @@ export default function StorefrontApp() {
                           let icon = <Store size={40} color="#fff" />;
                           let color = '#1a4e8d';
                           let bg = 'linear-gradient(135deg, #1a4e8d 0%, #1a4e8d 100%)';
-                          
+
                           if (catStr.includes('coffee') || catStr.includes('cafe') || catStr.includes('f&b') || catStr.includes('food')) {
                             icon = <Coffee size={40} color="#fff" />;
                             color = '#78350f';
@@ -8432,8 +8425,8 @@ export default function StorefrontApp() {
                           }
 
                           return (
-	                            <div key={store.id || store.slug || i} style={{ minWidth: 280, width: 280, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 12px 32px rgba(15,23,42,0.05)', display: 'flex', flexDirection: 'column', textAlign: 'left', overflow: 'hidden', scrollSnapAlign: 'start', flexShrink: 0, position: 'relative', opacity: isOpen ? 1 : 0.72 }}>
-                              
+                              <div key={store.id || store.slug || i} style={{ minWidth: 280, width: 280, background: '#fff', borderRadius: 24, border: '1px solid #f1f5f9', boxShadow: '0 12px 32px rgba(15,23,42,0.05)', display: 'flex', flexDirection: 'column', textAlign: 'left', overflow: 'hidden', scrollSnapAlign: 'start', flexShrink: 0, position: 'relative', opacity: isOpen ? 1 : 0.72 }}>
+
                               {/* Cover Area */}
                               <div style={{ height: 160, background: bg, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 {coverImageUrl && !isBrandingImageBlocked(coverImageKey) ? (
@@ -8447,10 +8440,10 @@ export default function StorefrontApp() {
                                 <div style={{ position: 'absolute', inset: 0, background: coverImageUrl && !isBrandingImageBlocked(coverImageKey) ? 'linear-gradient(180deg, rgba(15,23,42,.12) 0%, rgba(15,23,42,.48) 100%)' : 'transparent' }} />
                                 {/* Subtle pattern overlay */}
                                 <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle at center, rgba(255,255,255,0.2) 1px, transparent 1px)', backgroundSize: '16px 16px', opacity: 0.5 }} />
-                                
-	                                {isOpen && <div style={{ position: 'absolute', top: 16, left: 16, background: '#16a34a', color: '#fff', fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 8, letterSpacing: '0.02em', boxShadow: '0 2px 8px rgba(22,163,74,0.3)' }}>Open Now</div>}
-	                                {!isOpen && <div style={{ position: 'absolute', top: 16, left: 16, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 8, letterSpacing: '0.02em', boxShadow: '0 2px 8px rgba(239,68,68,0.3)' }}>Closed</div>}
-                                
+
+                                  {isOpen && <div style={{ position: 'absolute', top: 16, left: 16, background: '#16a34a', color: '#fff', fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 8, letterSpacing: '0.02em', boxShadow: '0 2px 8px rgba(22,163,74,0.3)' }}>Open Now</div>}
+                                  {!isOpen && <div style={{ position: 'absolute', top: 16, left: 16, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, padding: '5px 10px', borderRadius: 8, letterSpacing: '0.02em', boxShadow: '0 2px 8px rgba(239,68,68,0.3)' }}>Closed</div>}
+
                                 {/* Big thematic icon */}
                                 {!coverImageUrl || isBrandingImageBlocked(coverImageKey) ? <div style={{ opacity: 0.8, position: 'relative', zIndex: 1 }}>{icon}</div> : null}
                               </div>
@@ -8473,34 +8466,34 @@ export default function StorefrontApp() {
 
                               {/* Info */}
                               <div style={{ padding: '16px 20px 24px', display: 'flex', flexDirection: 'column', flex: 1 }}>
-	                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-	                                  <h3 style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{n}</h3>
-	                                  <span
-	                                    title={isOpen ? 'Open' : 'Closed'}
-	                                    aria-label={isOpen ? 'Open' : 'Closed'}
-	                                    style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0, transform: 'translateY(1px)' }}
-	                                  >
-	                                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: isOpen ? '#22c55e' : '#ef4444', boxShadow: `0 0 0 3px ${isOpen ? 'rgba(34,197,94,.14)' : 'rgba(239,68,68,.12)'}` }} />
-	                                  </span>
-	                                </div>
-	                                <div style={{ fontSize: 12, color: '#64748b', margin: '4px 0 12px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c}</div>
-                                
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                                    <h3 style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{n}</h3>
+                                    <span
+                                      title={isOpen ? 'Open' : 'Closed'}
+                                      aria-label={isOpen ? 'Open' : 'Closed'}
+                                      style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0, transform: 'translateY(1px)' }}
+                                    >
+                                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: isOpen ? '#22c55e' : '#ef4444', boxShadow: `0 0 0 3px ${isOpen ? 'rgba(34,197,94,.14)' : 'rgba(239,68,68,.12)'}` }} />
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: 12, color: '#64748b', margin: '4px 0 12px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c}</div>
+
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 20 }}>
                                   <span style={{ color: '#f59e0b', fontSize: 14 }}>★</span> {ratingValue} ({ratingCount}) <span style={{ color: '#cbd5e1', margin: '0 2px' }}>•</span> {d}
                                 </div>
 
-	                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 24, height: 26, overflow: 'hidden' }}>
-	                                  {t.slice(0, 3).map((tag) => (
-	                                    <div key={tag} style={{ fontSize: 10, fontWeight: 700, color: '#1a4e8d', background: '#eff6ff', padding: '5px 12px', borderRadius: 8, whiteSpace: 'nowrap' }}>
-	                                      {tag}
-	                                    </div>
-	                                  ))}
-	                                </div>
-	                                {!isOpen && (
-	                                  <div style={{ fontSize: 11, fontWeight: 700, color: '#b45309', marginTop: -8, marginBottom: 12 }}>
-	                                    {featuredClosedNote}
-	                                  </div>
-	                                )}
+                                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 24, height: 26, overflow: 'hidden' }}>
+                                    {t.slice(0, 3).map((tag) => (
+                                      <div key={tag} style={{ fontSize: 10, fontWeight: 700, color: '#1a4e8d', background: '#eff6ff', padding: '5px 12px', borderRadius: 8, whiteSpace: 'nowrap' }}>
+                                        {tag}
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {!isOpen && (
+                                    <div style={{ fontSize: 11, fontWeight: 700, color: '#b45309', marginTop: -8, marginBottom: 12 }}>
+                                      {featuredClosedNote}
+                                    </div>
+                                  )}
 
                                 <button onClick={() => goStore(store.slug, preferredLocationId)} style={{ marginTop: 'auto', width: '100%', padding: '12px 0', borderRadius: 12, border: '1.5px solid #1a4e8d', background: 'transparent', color: '#1a4e8d', fontSize: 13, fontWeight: 800, cursor: 'pointer', transition: 'all 0.2s ease', letterSpacing: '0.01em' }} onMouseOver={(e) => {e.target.style.background = '#1a4e8d'; e.target.style.color = '#fff';}} onMouseOut={(e) => {e.target.style.background = 'transparent'; e.target.style.color = '#1a4e8d';}}>
                                   View Store
@@ -9498,7 +9491,7 @@ export default function StorefrontApp() {
                     <GhostButton onClick={goDiscovery} style={{ padding: '8px 16px', minHeight: 44, fontSize: 13 }}>
                       Back to Discovery
                     </GhostButton>
-                    <div style={{ color: STYLES.colors.muted, fontSize: 13, fontWeight: 700 }}>{routeSlug} // {selectedStore?.tenant_name}</div>
+                    <div style={{ color: STYLES.colors.muted, fontSize: 13, fontWeight: 700 }}>{routeSlug} / {selectedStore?.tenant_name}</div>
                     <div style={{ position: 'absolute', left: -99999, top: 'auto', width: 1, height: 1, overflow: 'hidden' }}>
                       Tenant page: {routeSlug}
                     </div>
