@@ -116,7 +116,7 @@ export const updateProfile = async (req, res, next) => {
   }
 };
 
-export const requestEmailChangeOtp = async (req, res, next) => {
+export const requestEmailChangeOtp = async (req, res) => {
   try {
     const { email } = req.validatedData;
     const otp = await requestEmailOtp({

@@ -14,11 +14,6 @@ export const DEFAULT_CUSTOMER_ACCESS_MODE = 'catalog';
 export const DEFAULT_INVENTORY_DISPLAY_MODE = 'availability';
 export const DEFAULT_LOW_STOCK_DISPLAY_THRESHOLD = 5;
 
-const isTruthyEnv = (value) => {
-    const raw = String(value || '').trim().toLowerCase();
-    return ['1', 'true', 'yes', 'on'].includes(raw);
-};
-
 const isExplicitlyDisabledEnv = (value) => {
     const raw = String(value || '').trim().toLowerCase();
     return ['0', 'false', 'no', 'off'].includes(raw);
