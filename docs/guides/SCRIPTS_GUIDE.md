@@ -646,6 +646,8 @@ Usage:
 npm run verify:release-verdict -- --file .tmp/release-gates/<sha>/release_verdict.json --sha <sha>
 ```
 
+Use `--require-pass true` for deploy scripts and release automation that must stop unless the verdict is `pass` or an explicitly recorded emergency `bypassed`.
+
 ## 22. `scripts/fetch-qa-deploy-summary.ps1`
 Fetches latest QA deploy summary over SSH into local release evidence.
 

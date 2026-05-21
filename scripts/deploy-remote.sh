@@ -230,6 +230,7 @@ echo -e "${GREEN}Push successful.${NC}"
 # ------------------------------------------
 if [[ "$DEPLOY_ENFORCE_NO_STAGING_GATE" == "1" ]]; then
     QA_DEPLOY_SUMMARY_FILE_EFFECTIVE="${QA_DEPLOY_SUMMARY_FILE:-.tmp/release-gates/${LOCAL_COMMIT}/qa_deploy_summary.txt}"
+    RELEASE_VERDICT_FILE_EFFECTIVE="${RELEASE_VERDICT_FILE:-.tmp/release-gates/${LOCAL_COMMIT}/release_verdict.json}"
     if [[ ! -f "$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" ]]; then
         echo -e "\n${YELLOW}QA deploy summary not found locally. Attempting fetch over SSH evidence path...${NC}"
         RELEASE_TARGET_SHA="$LOCAL_COMMIT" QA_DEPLOY_SUMMARY_FILE="$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" npm run evidence:qa:deploy-summary
@@ -237,7 +238,8 @@ if [[ "$DEPLOY_ENFORCE_NO_STAGING_GATE" == "1" ]]; then
     fi
 
     echo -e "\n${YELLOW}Running no-staging release gate for commit ${LOCAL_COMMIT}...${NC}"
-    RELEASE_TARGET_SHA="$LOCAL_COMMIT" npm run gate:release:no-staging
+    RELEASE_TARGET_SHA="$LOCAL_COMMIT" QA_DEPLOY_SUMMARY_FILE="$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" RELEASE_VERDICT_FILE="$RELEASE_VERDICT_FILE_EFFECTIVE" npm run gate:release:no-staging
+    RELEASE_TARGET_SHA="$LOCAL_COMMIT" node scripts/verify-release-verdict.js --file "$RELEASE_VERDICT_FILE_EFFECTIVE" --sha "$LOCAL_COMMIT" --require-pass true
     echo -e "${GREEN}No-staging release gate passed.${NC}"
 else
     echo -e "${YELLOW}No-staging release gate skipped (DEPLOY_ENFORCE_NO_STAGING_GATE=$DEPLOY_ENFORCE_NO_STAGING_GATE).${NC}"
