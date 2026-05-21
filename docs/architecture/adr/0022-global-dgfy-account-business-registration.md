@@ -27,6 +27,8 @@ Introduce a landlord-scoped DGFY account identity.
 8. Existing tenant-local storefront customer auth and tenant staff auth remain valid compatibility surfaces while the shared DGFY identity is rolled across storefront Account, Orders, Track, and invitation notifications.
 9. Storefront account endpoints may accept a DGFY JWT, but they must lazily link/create a tenant-local `store_customers` row before using existing order/profile behavior.
 10. Company invitations to existing DGFY emails create pending DGFY memberships and can be accepted through `POST /api/v1/dgfy/invitations/:membership_id/accept`; the accept step activates the tenant-local staff row instead of reusing `store_customers`.
+11. DGFY accounts support email verification with a dedicated `dgfy_account_verification` OTP purpose and nullable `email_verified_at`/`phone_verified_at` audit fields.
+12. DGFY browser handoff uses a short-lived `dgfy_handoff` JWT exchanged back into a normal DGFY account JWT; tenant-local SKUpervisor sessions remain separate.
 
 ## Consequences
 

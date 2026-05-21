@@ -4,6 +4,7 @@ import { normalizeTenantIdentifier, verifyStoreToken } from '../modules/store/ut
 import { dgfyAccountRepository } from '../modules/dgfy/index.js';
 
 const timestamp = () => new Date().toISOString();
+const DGFY_LINKED_STORE_PASSWORD_HASH = '$2a$10$7EqJtq98hPqEX7fNZaFWoO.WIVbt6rp2ZYkRIzxqVqvla0ZCqXa.G';
 
 const parsePositiveInt = (value) => {
     const parsed = Number.parseInt(value, 10);
@@ -32,7 +33,7 @@ const resolveOrCreateCustomerForDgfyAccount = async (account) => {
     let customer = await StoreCustomer.findOne({ where: { email } });
     const payload = {
         email,
-        password_hash: account.password_hash,
+        password_hash: DGFY_LINKED_STORE_PASSWORD_HASH,
         name: `${account.first_name || ''} ${account.last_name || ''}`.trim() || account.username || email,
         phone: account.phone || null,
         is_active: true,

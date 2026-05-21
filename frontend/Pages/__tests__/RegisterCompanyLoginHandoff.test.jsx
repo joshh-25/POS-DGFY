@@ -39,7 +39,9 @@ const dgfyAccount = {
   last_name: 'Lovelace',
   username: 'Ada',
   email: 'ada@example.test',
-  phone: '+639123456789'
+  phone: '+639123456789',
+  email_verified_at: '2026-05-21T00:00:00.000Z',
+  is_email_verified: true
 };
 
 const renderRegistrationFlow = (initialEntries = ['/register-company']) => render(
@@ -127,7 +129,7 @@ describe('RegisterCompany DGFY handoff', () => {
     fireEvent.change(screen.getByLabelText('Email Verification Code'), {
       target: { value: '123456' }
     });
-    fireEvent.click(screen.getByRole('button', { name: /send code/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /send code/i }).at(-1));
     await waitFor(() => expect(apiMock.post).toHaveBeenCalledWith('/auth/email-otp/request', {
       purpose: 'company_registration',
       email: dgfyAccount.email

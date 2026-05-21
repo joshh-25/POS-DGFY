@@ -43,6 +43,14 @@ export default (sequelize) => {
             allowNull: false,
             defaultValue: true
         },
+        email_verified_at: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+        phone_verified_at: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
         last_login_at: {
             type: DataTypes.DATE,
             allowNull: true

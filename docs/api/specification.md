@@ -4167,6 +4167,67 @@ Sign in to a global DGFY account.
 }
 ```
 
+### POST /dgfy/auth/logout
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Blacklist the current DGFY account JWT. Tenant-local SKUpervisor and Store JWT sessions are separate and are not revoked by this route.
+
+### POST /dgfy/auth/email-verification/request
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Send a purpose-scoped `dgfy_account_verification` email OTP to the authenticated DGFY account email. If the account email is already verified, the response returns `verified: true` without sending another code.
+
+### POST /dgfy/auth/email-verification/verify
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Verify the DGFY account email with the code sent by `/dgfy/auth/email-verification/request`.
+
+**Request**
+
+```json
+{
+  "code": "123456"
+}
+```
+
+**Response (200)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "account": {
+      "id": "dgfy-account-uuid",
+      "email": "ada@example.com",
+      "email_verified_at": "2026-05-21T10:03:00.000Z",
+      "is_email_verified": true
+    }
+  },
+  "message": "DGFY email verified."
+}
+```
+
+### POST /dgfy/auth/handoff
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Create a short-lived DGFY handoff token for browser-to-browser or redirected account flows. The token scope is `dgfy_handoff` and default expiry is two minutes.
+
+### POST /dgfy/auth/handoff/exchange
+
+Exchange a valid DGFY handoff token for a normal DGFY account JWT.
+
+**Request**
+
+```json
+{
+  "handoff_token": "short-lived-dgfy-handoff-token"
+}
+```
+
 ### GET /dgfy/auth/me
 
 Return the authenticated DGFY account and linked company memberships. Memberships include pending company invitations when the invited email matches an existing DGFY account.

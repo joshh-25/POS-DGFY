@@ -55,6 +55,58 @@ export const fetchDgfyMe = async (token = getStoredDgfyToken()) => {
   return data;
 };
 
+export const requestDgfyEmailVerification = async (token = getStoredDgfyToken()) => {
+  const response = await api.post('/dgfy/auth/email-verification/request', {}, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  return response.data.data;
+};
+
+export const verifyDgfyEmail = async (code, token = getStoredDgfyToken()) => {
+  const response = await api.post('/dgfy/auth/email-verification/verify', { code }, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  const data = response.data.data;
+  if (data?.account) storeDgfySession({ token, account: data.account });
+  return data;
+};
+
+export const logoutDgfyAccount = async (token = getStoredDgfyToken()) => {
+  try {
+    if (token) {
+      await api.post('/dgfy/auth/logout', {}, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+    }
+  } finally {
+    clearDgfySession();
+  }
+};
+
+export const createDgfyHandoff = async (token = getStoredDgfyToken()) => {
+  const response = await api.post('/dgfy/auth/handoff', {}, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  return response.data.data;
+};
+
+export const exchangeDgfyHandoff = async (handoffToken) => {
+  const response = await api.post('/dgfy/auth/handoff/exchange', {
+    handoff_token: handoffToken
+  });
+  const data = response.data.data;
+  storeDgfySession(data);
+  return data;
+};
+
 export const acceptDgfyInvitation = async (membershipId, token = getStoredDgfyToken()) => {
   const response = await api.post(`/dgfy/invitations/${membershipId}/accept`, {}, {
     headers: {

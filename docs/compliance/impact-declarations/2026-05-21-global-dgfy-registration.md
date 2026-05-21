@@ -27,6 +27,7 @@ This declaration covers the current DGFY account registration and company-regist
 ## Affected Surfaces
 
 - Public DGFY account registration, login, and bootstrap.
+- DGFY account email verification and short-lived handoff token exchange.
 - Public company registration through `/api/v1/admin/tenants/register`.
 - Tenant provisioning, which seeds the tenant master-admin user from the DGFY account.
 - Landlord DGFY account membership links for founder and invitation flows.

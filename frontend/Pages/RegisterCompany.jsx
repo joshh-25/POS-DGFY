@@ -9,7 +9,10 @@ import {
     getStoredDgfyAccount,
     getStoredDgfyToken,
     loginDgfyAccount,
-    registerDgfyAccount
+    logoutDgfyAccount,
+    requestDgfyEmailVerification,
+    registerDgfyAccount,
+    verifyDgfyEmail
 } from '../src/services/dgfyAuthService.js';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,6 +79,8 @@ export default function RegisterCompany() {
         emailOtpCode: ''
     });
     const [otpSentTo, setOtpSentTo] = useState('');
+    const [dgfyVerificationCode, setDgfyVerificationCode] = useState('');
+    const [dgfyVerificationSentTo, setDgfyVerificationSentTo] = useState('');
     const [success, setSuccess] = useState(null);
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -124,6 +129,7 @@ export default function RegisterCompany() {
     const pendingInvitations = dgfyMemberships.filter((membership) => (
         membership?.source === 'invite' && membership?.status === 'pending'
     ));
+    const isDgfyEmailVerified = Boolean(dgfyAccount?.is_email_verified || dgfyAccount?.email_verified_at);
 
     const handleRegisterDgfyAccount = async (event) => {
         event.preventDefault();
@@ -159,6 +165,8 @@ export default function RegisterCompany() {
             setDgfySessionState(session);
             setCompanyForm((current) => ({ ...current, emailOtpCode: '' }));
             setOtpSentTo('');
+            setDgfyVerificationCode('');
+            setDgfyVerificationSentTo('');
         } catch (err) {
             setError(err.response?.data?.message || 'Could not create your DGFY account.');
         } finally {
@@ -175,6 +183,8 @@ export default function RegisterCompany() {
             setDgfySessionState(session);
             setCompanyForm((current) => ({ ...current, emailOtpCode: '' }));
             setOtpSentTo('');
+            setDgfyVerificationCode('');
+            setDgfyVerificationSentTo('');
         } catch (err) {
             setError(err.response?.data?.message || 'DGFY sign-in failed.');
         } finally {
@@ -205,6 +215,40 @@ export default function RegisterCompany() {
         }
     };
 
+    const handleRequestDgfyVerification = async () => {
+        setError('');
+        setIsSendingOtp(true);
+        try {
+            await requestDgfyEmailVerification(dgfyToken);
+            setDgfyVerificationSentTo(dgfyAccount?.email || '');
+            setDgfyVerificationCode('');
+        } catch (err) {
+            setError(err.response?.data?.message || 'Could not send DGFY account verification code.');
+        } finally {
+            setIsSendingOtp(false);
+        }
+    };
+
+    const handleVerifyDgfyEmail = async () => {
+        setError('');
+        if (!/^\d{6}$/.test(String(dgfyVerificationCode || '').trim())) {
+            setError('Enter the 6-digit DGFY account verification code.');
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            const result = await verifyDgfyEmail(dgfyVerificationCode, dgfyToken);
+            setDgfyAccount(result?.account || getStoredDgfyAccount());
+            setDgfyVerificationCode('');
+            setDgfyVerificationSentTo('');
+        } catch (err) {
+            setError(err.response?.data?.message || 'DGFY account verification failed.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const handleSubmitCompany = async (event) => {
         event.preventDefault();
         setError('');
@@ -212,6 +256,10 @@ export default function RegisterCompany() {
 
         if (!dgfyToken || !dgfyAccount) {
             setError('Sign in with your DGFY account before registering a business.');
+            return;
+        }
+        if (!isDgfyEmailVerified) {
+            setError('Verify your DGFY email before registering a business.');
             return;
         }
         if (!/^\d{6}$/.test(String(companyForm.emailOtpCode || '').trim())) {
@@ -245,13 +293,15 @@ export default function RegisterCompany() {
         }
     };
 
-    const handleSignOutDgfy = () => {
-        clearDgfySession();
+    const handleSignOutDgfy = async () => {
+        await logoutDgfyAccount(dgfyToken).catch(() => clearDgfySession());
         setDgfyToken('');
         setDgfyAccount(null);
         setDgfyMemberships([]);
         setSuccess(null);
         setOtpSentTo('');
+        setDgfyVerificationCode('');
+        setDgfyVerificationSentTo('');
     };
 
     const handleAcceptDgfyInvitation = async (membershipId) => {
@@ -412,6 +462,38 @@ export default function RegisterCompany() {
                                 </button>
                             </div>
 
+                            {!isDgfyEmailVerified && (
+                                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                                    <p className="text-sm font-semibold text-[#132033]">Verify your DGFY email</p>
+                                    <p className="mt-1 text-xs text-amber-800">This verifies the account that owns the company and becomes the master admin.</p>
+                                    <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+                                        <div className="flex-1">
+                                            <Label htmlFor="dgfyVerificationCode">DGFY Account Code</Label>
+                                            <Input
+                                                id="dgfyVerificationCode"
+                                                inputMode="numeric"
+                                                pattern="[0-9]{6}"
+                                                maxLength={6}
+                                                placeholder="123456"
+                                                value={dgfyVerificationCode}
+                                                onChange={(e) => setDgfyVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                                disabled={isLoading}
+                                                className="mt-1 bg-white"
+                                            />
+                                        </div>
+                                        <Button type="button" variant="outline" onClick={handleRequestDgfyVerification} disabled={isLoading || isSendingOtp}>
+                                            {isSendingOtp ? 'Sending...' : dgfyVerificationSentTo ? 'Resend Code' : 'Send Code'}
+                                        </Button>
+                                        <Button type="button" onClick={handleVerifyDgfyEmail} disabled={isLoading || dgfyVerificationCode.length !== 6} className="bg-[#1f5f9f] hover:bg-[#174f86]">
+                                            Verify
+                                        </Button>
+                                    </div>
+                                    {dgfyVerificationSentTo && (
+                                        <p className="mt-2 text-xs text-amber-800">Code sent to {dgfyVerificationSentTo}.</p>
+                                    )}
+                                </div>
+                            )}
+
                             {pendingInvitations.length > 0 && (
                                 <div className="rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">
                                     <p className="text-sm font-semibold text-[#132033]">Company Invitations</p>
@@ -468,7 +550,7 @@ export default function RegisterCompany() {
                                             className="mt-1"
                                         />
                                     </div>
-                                    <Button type="button" variant="outline" onClick={handleRequestEmailOtp} disabled={isLoading || isSendingOtp}>
+                                    <Button type="button" variant="outline" onClick={handleRequestEmailOtp} disabled={isLoading || isSendingOtp || !isDgfyEmailVerified}>
                                         {isSendingOtp ? 'Sending...' : otpSentTo ? 'Resend Code' : 'Send Code'}
                                     </Button>
                                 </div>
@@ -477,7 +559,7 @@ export default function RegisterCompany() {
                                 </p>
                             </div>
 
-                            <Button type="submit" disabled={isLoading} className="w-full bg-[#1f5f9f] hover:bg-[#174f86]">
+                            <Button type="submit" disabled={isLoading || !isDgfyEmailVerified} className="w-full bg-[#1f5f9f] hover:bg-[#174f86]">
                                 {isLoading ? 'Creating Company...' : 'Create Company'}
                             </Button>
                         </form>

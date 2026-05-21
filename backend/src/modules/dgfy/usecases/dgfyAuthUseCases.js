@@ -4,6 +4,10 @@ import { DomainError, DomainErrorCode } from '../../shared/contracts/domainError
 import { normalizePhoneNumber, isValidPhoneNumber } from '../../../utils/phoneNumber.js';
 
 const JWT_EXPIRY = process.env.DGFY_JWT_EXPIRY || process.env.JWT_EXPIRY || '24h';
+const HANDOFF_JWT_EXPIRY = process.env.DGFY_HANDOFF_JWT_EXPIRY || '2m';
+const DEFAULT_EMAIL_OTP_PURPOSES = Object.freeze({
+    DGFY_ACCOUNT_VERIFICATION: 'dgfy_account_verification'
+});
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const normalizeName = (value) => String(value || '').trim().replace(/\s+/g, ' ');
@@ -25,6 +29,9 @@ export const sanitizeDgfyAccount = (account) => {
         email: account.email,
         phone: account.phone,
         is_active: account.is_active,
+        email_verified_at: account.email_verified_at || null,
+        phone_verified_at: account.phone_verified_at || null,
+        is_email_verified: Boolean(account.email_verified_at),
         last_login_at: account.last_login_at || null
     };
 };
@@ -35,6 +42,12 @@ export const generateDgfyToken = (account) => jwt.sign({
     email: account.email,
     username: account.username
 }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRY });
+
+export const generateDgfyHandoffToken = (account) => jwt.sign({
+    token_scope: 'dgfy_handoff',
+    dgfy_account_id: account.id,
+    email: account.email
+}, process.env.JWT_SECRET, { expiresIn: HANDOFF_JWT_EXPIRY });
 
 export const buildRegisterDgfyAccountUseCase = ({
     repository,
@@ -90,6 +103,8 @@ export const buildRegisterDgfyAccountUseCase = ({
         password_hash: await hashPassword(password)
     });
 
+    await repository.mirrorPendingInvitationsForAccount?.(account);
+
     const token = generateDgfyToken(account);
     return ok({
         statusCode: 201,
@@ -130,6 +145,7 @@ export const buildLoginDgfyAccountUseCase = ({
 
     await repository.updateLastLogin(account);
     const reloaded = await repository.findById(account.id);
+    await repository.mirrorPendingInvitationsForAccount?.(reloaded || account);
     const token = generateDgfyToken(reloaded || account);
     return ok({
         payload: {
@@ -144,6 +160,7 @@ export const buildLoginDgfyAccountUseCase = ({
 };
 
 export const buildGetDgfyMeUseCase = ({ repository }) => async ({ account }) => {
+    await repository.mirrorPendingInvitationsForAccount?.(account);
     const memberships = await repository.listMemberships(account.id);
     return ok({
         payload: {
@@ -169,6 +186,132 @@ export const buildGetDgfyMeUseCase = ({ repository }) => async ({ account }) => 
             }
         }
     });
+};
+
+export const buildRequestDgfyEmailVerificationUseCase = ({
+    requestEmailOtp,
+    emailOtpPurposes = DEFAULT_EMAIL_OTP_PURPOSES
+}) => async ({ account, metadata = {} }) => {
+    if (!account?.email) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'DGFY account email is required.', { statusCode: 400 }));
+    }
+
+    if (account.email_verified_at) {
+        return ok({
+            payload: {
+                success: true,
+                data: {
+                    verified: true,
+                    email: account.email,
+                    email_verified_at: account.email_verified_at
+                },
+                message: 'DGFY email is already verified.'
+            }
+        });
+    }
+
+    try {
+        const otp = await requestEmailOtp({
+            purpose: emailOtpPurposes.DGFY_ACCOUNT_VERIFICATION,
+            email: account.email,
+            tenantId: null,
+            metadata
+        });
+        return ok({
+            statusCode: 202,
+            payload: {
+                success: true,
+                data: otp,
+                message: 'DGFY email verification code sent.'
+            }
+        });
+    } catch (error) {
+        return fail(new DomainError(
+            DomainErrorCode.INTERNAL_ERROR,
+            error.message || 'DGFY email verification code could not be sent.',
+            { statusCode: error.statusCode || 500, cause: error }
+        ));
+    }
+};
+
+export const buildVerifyDgfyEmailUseCase = ({
+    repository,
+    verifyEmailOtp,
+    emailOtpPurposes = DEFAULT_EMAIL_OTP_PURPOSES
+}) => async ({ account, body }) => {
+    const code = String(body?.code || body?.email_otp_code || '').trim();
+    try {
+        await verifyEmailOtp({
+            purpose: emailOtpPurposes.DGFY_ACCOUNT_VERIFICATION,
+            email: account.email,
+            code,
+            tenantId: null
+        });
+        const verified = await repository.markEmailVerified(account);
+        return ok({
+            payload: {
+                success: true,
+                data: {
+                    account: sanitizeDgfyAccount(verified || account)
+                },
+                message: 'DGFY email verified.'
+            }
+        });
+    } catch (error) {
+        return fail(new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            error.message || 'DGFY email verification failed.',
+            { statusCode: error.statusCode || 422, cause: error }
+        ));
+    }
+};
+
+export const buildCreateDgfyHandoffUseCase = () => async ({ account }) => ok({
+    payload: {
+        success: true,
+        data: {
+            handoff_token: generateDgfyHandoffToken(account),
+            expiresIn: 120
+        }
+    }
+});
+
+export const buildExchangeDgfyHandoffUseCase = ({ repository }) => async ({ body }) => {
+    const handoffToken = String(body?.handoff_token || body?.handoffToken || '').trim();
+    if (!handoffToken) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'DGFY handoff token is required.', { statusCode: 400 }));
+    }
+
+    try {
+        const decoded = jwt.verify(handoffToken, process.env.JWT_SECRET);
+        if (decoded?.token_scope !== 'dgfy_handoff' || !decoded?.dgfy_account_id) {
+            throw new Error('Invalid handoff token scope.');
+        }
+
+        const account = await repository.findById(decoded.dgfy_account_id);
+        if (!account || !account.is_active) {
+            throw new Error('DGFY account is unavailable.');
+        }
+
+        await repository.mirrorPendingInvitationsForAccount?.(account);
+        const token = generateDgfyToken(account);
+        return ok({
+            payload: {
+                success: true,
+                data: {
+                    account: sanitizeDgfyAccount(account),
+                    token,
+                    expiresIn: 24 * 60 * 60
+                }
+            }
+        });
+    } catch (error) {
+        return fail(new DomainError(
+            DomainErrorCode.AUTHENTICATION_FAILED,
+            'DGFY handoff token is invalid or expired.',
+            { statusCode: 401, cause: error }
+        ));
+    }
 };
 
 export const buildAcceptDgfyInvitationUseCase = ({ repository }) => async ({ account, membershipId }) => {

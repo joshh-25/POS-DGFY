@@ -1,4 +1,5 @@
-import { DgfyAccount, DgfyAccountTenantMembership, Tenant } from '../../../models/index.js';
+import { Op } from 'sequelize';
+import { DgfyAccount, DgfyAccountTenantMembership, Tenant, UserInvitation } from '../../../models/index.js';
 import dbStore from '../../../utils/dbStore.js';
 import tenantConnector from '../../../utils/TenantConnector.js';
 import { getTenantModels } from '../../../utils/tenantModelFactory.js';
@@ -15,12 +16,12 @@ const parsePositiveInt = (value) => {
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const normalizeName = (value) => String(value || '').trim().replace(/\s+/g, ' ');
 
-const buildUniqueUsername = async (User, baseName, currentUserId = null) => {
+const buildUniqueUsername = async (User, baseName, currentUserId = null, options = {}) => {
     const base = normalizeName(baseName).replace(/[^\w.-]+/g, '').slice(0, 45) || 'dgfy';
     let candidate = base;
     let suffix = 1;
     while (true) {
-        const existing = await User.findOne({ where: { username: candidate } });
+        const existing = await User.findOne({ where: { username: candidate }, ...options });
         if (!existing || (currentUserId && existing.user_id === currentUserId)) {
             return candidate;
         }
@@ -53,6 +54,46 @@ export const dgfyAccountRepository = {
     updateLastLogin(account) {
         if (!account) return null;
         return account.update({ last_login_at: new Date() });
+    },
+
+    markEmailVerified(account) {
+        if (!account) return null;
+        return account.update({ email_verified_at: account.email_verified_at || new Date() });
+    },
+
+    updateProfile(account, data = {}) {
+        if (!account) return null;
+        return account.update(data);
+    },
+
+    async mirrorPendingInvitationsForAccount(account) {
+        if (!account?.id || !account?.email) return [];
+
+        const invitations = await UserInvitation.findAll({
+            where: {
+                email: normalizeEmail(account.email),
+                status: 'pending',
+                expires_at: { [Op.gt]: new Date() }
+            },
+            include: [{
+                model: Tenant,
+                as: 'tenant',
+                attributes: ['id', 'name', 'company_token', 'status', 'plan']
+            }]
+        });
+
+        const mirrored = [];
+        for (const invitation of invitations) {
+            if (!invitation.tenant || invitation.tenant.status !== 'active') continue;
+            const membership = await this.upsertInvitationMembership({
+                dgfyAccountId: account.id,
+                tenantId: invitation.tenant_id,
+                tenantUserId: invitation.tenant_user_id,
+                role: invitation.role
+            });
+            mirrored.push(membership);
+        }
+        return mirrored;
     },
 
     upsertFounderMembership({
@@ -154,40 +195,57 @@ export const dgfyAccountRepository = {
             const role = String(membership.role || 'staff').trim().toLowerCase() || 'staff';
             const email = normalizeEmail(account.email);
             const phone = normalizePhoneNumber(account.phone);
-            const username = await buildUniqueUsername(User, account.first_name, tenantUserId);
+            const tenantTransaction = await sequelizeInstance.transaction();
             const now = new Date();
 
-            let user = tenantUserId ? await User.findByPk(tenantUserId) : null;
-            if (!user) {
-                user = await User.findOne({ where: { email } });
-            }
+            let user;
+            try {
+                const username = await buildUniqueUsername(User, account.first_name, tenantUserId, { transaction: tenantTransaction });
 
-            if (user) {
-                const resolvedRole = user.role || role;
-                await user.update({
-                    username,
-                    email,
-                    phone_number: phone,
-                    password_hash: account.password_hash,
-                    role: resolvedRole,
-                    permissions: user.permissions || DEFAULT_ROLE_PERMISSIONS[resolvedRole] || [],
-                    is_active: true,
-                    invitation_token: null,
-                    invitation_status: 'accepted',
-                    invitation_accepted_at: now
-                });
-            } else {
-                user = await User.create({
-                    username,
-                    email,
-                    phone_number: phone,
-                    password_hash: account.password_hash,
-                    role,
-                    permissions: DEFAULT_ROLE_PERMISSIONS[role] || [],
-                    is_active: true,
-                    invitation_status: 'accepted',
-                    invitation_accepted_at: now
-                });
+                user = tenantUserId ? await User.findByPk(tenantUserId, { transaction: tenantTransaction }) : null;
+                if (!user) {
+                    user = await User.findOne({ where: { email }, transaction: tenantTransaction });
+                }
+
+                if (user && normalizeEmail(user.email) !== email) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'Invitation tenant user does not match the DGFY account email.',
+                        { statusCode: 409 }
+                    );
+                }
+
+                if (user) {
+                    const resolvedRole = user.role || role;
+                    await user.update({
+                        username,
+                        email,
+                        phone_number: phone,
+                        role: resolvedRole,
+                        permissions: user.permissions || DEFAULT_ROLE_PERMISSIONS[resolvedRole] || [],
+                        is_active: true,
+                        invitation_token: null,
+                        invitation_status: 'accepted',
+                        invitation_accepted_at: now
+                    }, { transaction: tenantTransaction });
+                } else {
+                    user = await User.create({
+                        username,
+                        email,
+                        phone_number: phone,
+                        password_hash: account.password_hash,
+                        role,
+                        permissions: DEFAULT_ROLE_PERMISSIONS[role] || [],
+                        is_active: true,
+                        invitation_status: 'accepted',
+                        invitation_accepted_at: now
+                    }, { transaction: tenantTransaction });
+                }
+
+                await tenantTransaction.commit();
+            } catch (error) {
+                await tenantTransaction.rollback();
+                throw error;
             }
 
             await landlordService.addEmailTenantMapping(email, tenant.id).catch(() => {});

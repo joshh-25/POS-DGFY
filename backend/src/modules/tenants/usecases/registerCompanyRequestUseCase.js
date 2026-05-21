@@ -110,6 +110,20 @@ export const buildRegisterCompanyRequestUseCase = ({
                 ));
             }
 
+            if (!dgfyAccount.email_verified_at) {
+                await tracker.failed({
+                    failureCode: 'authorization_failed',
+                    failureReason: 'dgfy_email_unverified',
+                    httpStatus: 403
+                });
+
+                return fail(new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'Verify your DGFY email before registering a company.',
+                    { statusCode: 403 }
+                ));
+            }
+
             await verifyEmailOtp({
                 purpose: EMAIL_OTP_PURPOSES.COMPANY_REGISTRATION,
                 email: adminEmail,

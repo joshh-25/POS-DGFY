@@ -7,6 +7,7 @@ Owns global DGFY account identity that exists before tenant selection.
 This module supports:
 
 - global DGFY account registration and login;
+- DGFY account email verification and short-lived handoff tokens;
 - authenticated DGFY account bootstrap;
 - landlord membership links between DGFY accounts and tenant users;
 - authenticated acceptance of pending company invitations from the DGFY account surface.

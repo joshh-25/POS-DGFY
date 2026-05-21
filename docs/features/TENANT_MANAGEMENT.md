@@ -195,11 +195,14 @@ Company-user registration and tenant invitation acceptance now require a phone n
 
 Email ownership checks are required before login identity is created or changed:
 - `company_registration`: requested publicly for the authenticated DGFY account email before `/admin/tenants/register`.
+- `dgfy_account_verification`: requested after DGFY account login/registration when the account surface needs to mark the global account email as verified.
 - `tenant_user_registration`: requested with tenant context before `/auth/register`.
 - `invitation_acceptance`: requested from an invitation token before `/auth/accept-invite`.
 - `email_change`: requested by the authenticated user before `PUT /users/me` changes the email.
 
 OTP rows live in the landlord `email_otps` table. Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 10), lock after `EMAIL_OTP_MAX_ATTEMPTS` (default 5), and are consumed through a conditional update so concurrent accepts cannot reuse the same code. Production enables enforcement by default; `EMAIL_OTP_ENFORCEMENT_ENABLED=false` is the rollback switch. OTP request routes are throttled with `RATE_LIMIT_EMAIL_OTP_WINDOW_MS` and `RATE_LIMIT_EMAIL_OTP_MAX_REQUESTS`. OTP requests fail closed when configured email delivery cannot actually send the code; manual invitation links do not bypass email ownership verification.
+
+DGFY account sessions are landlord-scoped and separate from tenant-local SKUpervisor JWTs. `/api/v1/dgfy/auth/handoff` issues a short-lived handoff token for redirected account flows; `/api/v1/dgfy/auth/handoff/exchange` converts it back into a normal DGFY JWT. `/api/v1/dgfy/auth/logout` blacklists only the DGFY account token.
 
 Phone completion rollout is staged rather than globally forced while historical accounts are still unresolved:
 - `PHONE_COMPLETION_ENFORCEMENT_MODE=observe` is the non-test default. Users see the remediation banner and admins see missing-phone rows, but normal authenticated work is not blocked yet.
