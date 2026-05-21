@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: engineering
-last_reviewed: 2026-05-19
+last_reviewed: 2026-05-21
 applies_to: geo_search
 topic: geospatial_item_search
 ---
@@ -52,7 +52,7 @@ geoInventoryWorker
     `-- upsertStoreItem(): INSERT ... ON DUPLICATE KEY UPDATE geo_store_items
 ```
 
-The Storefront app now calls `frontend/src/services/geoSearchService.js` for location-aware discovery search when the customer has coordinates and a search term. If the geo-search request fails or returns no usable store rows, the storefront falls back to the standard `/api/v1/storefront/discovery` flow so generic discovery remains available.
+The public Storefront discovery page currently uses `/api/v1/storefront/discovery` as the visible-result authority, including coordinate-aware ranking parameters when customer coordinates are available. The dedicated `/api/v1/storefront/geo-search` API remains available as a geospatial service endpoint, but the Storefront web client does not use it as a visible no-match authority. This avoids transient empty search states when geo-search indexing lags behind the Storefront discovery index.
 
 ---
 
@@ -366,7 +366,7 @@ frontend/
 
 **Alias moderation**: auto-created aliases start as `pending`, so tenant-submitted item names do not immediately affect global search matching until moderated.
 
-**Storefront fallback**: location-aware search enriches the discovery experience, but the customer-facing storefront still falls back to the standard discovery endpoint when geo-search is unavailable.
+**Storefront visible search authority**: location-aware search still enriches discovery through coordinates and ranking, but the customer-facing Storefront web client keeps visible result state on `/api/v1/storefront/discovery`. The dedicated geo-search endpoint can continue to serve API consumers or future accelerators, but it must not produce a transient no-match state ahead of discovery results.
 
 ---
 

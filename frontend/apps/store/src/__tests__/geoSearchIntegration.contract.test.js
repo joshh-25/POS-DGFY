@@ -8,13 +8,13 @@ const __dirname = path.dirname(__filename);
 const appPath = path.resolve(__dirname, '../StorefrontApp.jsx');
 
 describe('storefront geo-search integration contract', () => {
-  it('connects the dedicated geo-search service into discovery loading with fallback', () => {
+  it('keeps visible discovery search on the authoritative discovery endpoint', () => {
     const source = fs.readFileSync(appPath, 'utf8');
 
-    expect(source).toContain("searchNearbyStores as searchNearbyGeoStores");
-    expect(source).toContain('searchNearbyGeoStores({');
-    expect(source).toContain("source: 'geo_search'");
-    expect(source).toContain('falling back to discovery search');
     expect(source).toContain('/api/v1/storefront/discovery?');
+    expect(source).toContain('discoveryAbortControllerRef.current?.abort?.()');
+    expect(source).toContain('requestSequence === discoveryRequestSequenceRef.current');
+    expect(source).not.toContain('searchNearbyGeoStores({');
+    expect(source).not.toContain('/api/v1/storefront/geo-search');
   });
 });
