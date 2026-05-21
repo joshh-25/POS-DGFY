@@ -3185,7 +3185,7 @@ List active tenant fulfillment locations for a specific storefront tenant page.
 ### POST /store/cart/quote
 Compute quote totals for guest or store-customer checkout.
 
-**Auth**: Optional store customer (`Store JWT`)
+**Auth**: Optional store customer (`Store JWT` or global DGFY account JWT). When a DGFY account JWT is supplied, the backend lazily links or creates the tenant-local `store_customers` row before applying existing customer/account behavior.
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
 **Caching Contract**: `Cache-Control: no-store, no-cache, max-age=0, must-revalidate`
 
@@ -4089,7 +4089,171 @@ Reactivate an inactive tenant. Sets `status='active'`, `subscription_status='act
 >
 > **Scope clarification**: `company_token` in this section is internal/admin context only. Public storefront flows use `x-store-slug` and do not expose tenant tokens in discovery payloads.
 
+### POST /dgfy/auth/register
+
+Create a global DGFY account used for customer account surfaces and business registration.
+
+**Access:** Public, rate-limited.
+
+**Request**
+
+```json
+{
+  "first_name": "Ada",
+  "last_name": "Lovelace",
+  "email": "ada@example.com",
+  "phone": "+639123456789",
+  "password": "minimum8",
+  "confirm_password": "minimum8"
+}
+```
+
+**Response (201)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "account": {
+      "id": "dgfy-account-uuid",
+      "first_name": "Ada",
+      "last_name": "Lovelace",
+      "username": "Ada",
+      "email": "ada@example.com",
+      "phone": "+639123456789",
+      "is_active": true,
+      "last_login_at": null
+    },
+    "token": "dgfy-jwt",
+    "expiresIn": 86400
+  }
+}
+```
+
+### POST /dgfy/auth/login
+
+Sign in to a global DGFY account.
+
+**Access:** Public, rate-limited.
+
+**Request**
+
+```json
+{
+  "email": "ada@example.com",
+  "password": "minimum8"
+}
+```
+
+**Response (200)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "account": {
+      "id": "dgfy-account-uuid",
+      "first_name": "Ada",
+      "last_name": "Lovelace",
+      "username": "Ada",
+      "email": "ada@example.com",
+      "phone": "+639123456789",
+      "is_active": true,
+      "last_login_at": "2026-05-21T10:00:00.000Z"
+    },
+    "token": "dgfy-jwt",
+    "expiresIn": 86400
+  }
+}
+```
+
+### GET /dgfy/auth/me
+
+Return the authenticated DGFY account and linked company memberships. Memberships include pending company invitations when the invited email matches an existing DGFY account.
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+**Response (200)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "account": {
+      "id": "dgfy-account-uuid",
+      "first_name": "Ada",
+      "last_name": "Lovelace",
+      "username": "Ada",
+      "email": "ada@example.com",
+      "phone": "+639123456789",
+      "is_active": true,
+      "last_login_at": "2026-05-21T10:00:00.000Z"
+    },
+    "memberships": [
+      {
+        "id": 12,
+        "tenant_id": "tenant-uuid",
+        "tenant_user_id": 7,
+        "role": "admin",
+        "status": "accepted",
+        "source": "founder",
+        "accepted_at": "2026-05-21T10:05:00.000Z",
+        "company": {
+          "id": "tenant-uuid",
+          "name": "Example Foods",
+          "company_token": "token-example-123",
+          "status": "active",
+          "plan": "premium"
+        }
+      }
+    ]
+  }
+}
+```
+
+### POST /dgfy/invitations/:membership_id/accept
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Accept a pending company invitation from the DGFY account notification surface. This path does not require an invitation link, company token in the URL, or a tenant-local password setup form. The backend activates the matching tenant-local invitation row from the authenticated DGFY account, copies the DGFY email/phone/password hash into that tenant user, writes the landlord email-to-tenant mapping, and marks the DGFY membership accepted.
+
+**Response (200)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "membership": {
+      "id": 12,
+      "tenant_id": "tenant-uuid",
+      "tenant_user_id": 7,
+      "role": "staff",
+      "status": "accepted",
+      "source": "invite",
+      "company": {
+        "name": "Example Foods",
+        "company_token": "tenant-token"
+      }
+    }
+  }
+}
+```
+
 ### POST /admin/tenants/register
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Public company registration derives founder email, phone, username seed, and password hash from the authenticated DGFY account. Clients must not send founder contact, password, plan, or compliance mode. New companies start `non_compliant_active`; compliance activation is handled later from Settings > Compliance.
+
+**Request**
+
+```json
+{
+  "name": "Example Foods",
+  "workflowMode": "food_manufacturing",
+  "email_otp_code": "123456"
+}
+```
 Submit a public company registration request.
 
 **Access:** Public, rate-limited.
@@ -4101,28 +4265,12 @@ Submit a public company registration request.
 - Provider subscription registration remains disabled while `PAYMENTS_ENABLED=false`; payloads with `subscriptionId` return `503` with `PAYMENTS_DISABLED`.
 - Auto-standard and manual premium-capable registrations keep `subscription_status: "inactive"` while payments are paused. In that mode, premium route access is plan-driven and does not require an active subscription row.
 - Approval email delivery is non-blocking after provisioning; active responses include `email_sent`.
-- Active registration responses do not include auth tokens. Auto-login is a frontend follow-up call to `POST /auth/login` using the submitted email/password and returned `company_token`.
+- Active registration responses do not include tenant auth tokens. The frontend routes to SKUpervisor login with the DGFY email and returned `company_token`; the founder can sign in through the tenant login path because provisioning seeded the master admin from the DGFY account.
 - Manual pending registrations create founder email lookup mappings during registration. Default auto-standard registrations rely on the provisioning path to create the mapping after successful activation.
 - Abuse control: public company registration is IP rate-limited by `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS` (production default: 5 requests per hour). Keep this strict because each accepted registration provisions an isolated tenant database by default.
 - Auto-login fallback: if the follow-up login call fails after an active response, the frontend keeps the company created state and routes the founder to manual sign-in with email/company token prefilled.
-- Founder contact: public company registration requires `adminPhone`; provisioned founder/admin users receive the same value in `users.phone_number`.
-- `adminPhone` is trimmed and must follow the same 7-40 character phone format used by user registration and Settings profile updates.
-- Founder password: `adminPassword` only requires a minimum length of 8 characters. The registration UI can generate a readable 16-character password and fills both password fields when it does.
-- Email ownership: public company registration requires `email_otp_code` for `adminEmail`. The registration UI requests the code through `POST /auth/email-otp/request` with `purpose=company_registration`, then submits the six-digit code with the final registration payload.
-
-**Request**
-```json
-{
-  "name": "ACME Corp",
-  "adminEmail": "admin@acme.com",
-  "adminPhone": "+63 912 345 6789",
-  "adminPassword": "abcdefgh",
-  "email_otp_code": "123456",
-  "plan": "premium",
-  "complianceMode": "non_compliant",
-  "workflowMode": "food_manufacturing"
-}
-```
+- Founder contact and credentials: public company registration no longer accepts `adminEmail`, `adminPhone`, or `adminPassword`; the server derives them from the authenticated DGFY account.
+- Email ownership: public company registration requires `email_otp_code` for the DGFY account email. The registration UI requests the code through `POST /auth/email-otp/request` with `purpose=company_registration`, then submits the six-digit code with the final registration payload.
 
 **Response (201, explicit manual mode)**
 ```json
