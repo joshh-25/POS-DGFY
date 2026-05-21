@@ -1295,10 +1295,14 @@ const getOrCreateStorefrontVisitorId = () => {
 const makePinElement = (mode, selected = false, ariaLabel = 'Store marker') => {
   const el = document.createElement('div');
   el.style.cssText = `width:${selected ? 38 : 34}px;height:${selected ? 48 : 44}px;display:flex;align-items:center;justify-content:center;cursor:pointer;`;
+  el.className = 'discovery-result-pin';
   el.setAttribute('role', 'button');
   el.setAttribute('tabindex', '0');
   el.setAttribute('aria-label', ariaLabel);
-  el.innerHTML = renderBusinessModePinSvg(mode, selected);
+  const visual = document.createElement('span');
+  visual.className = `discovery-result-pin-visual${selected ? ' is-glowing' : ''}`;
+  visual.innerHTML = renderBusinessModePinSvg(mode, selected);
+  el.appendChild(visual);
   return el;
 };
 
@@ -1439,7 +1443,8 @@ function StoresMap({
       };
       const openPopup = () => {
         clearCloseTimer();
-        if (popupGenerationRef.current !== generation || popupOpening || popup.isOpen()) return;
+        const popupAlreadyOpen = typeof popup.isOpen === 'function' ? popup.isOpen() : false;
+        if (popupGenerationRef.current !== generation || popupOpening || popupAlreadyOpen) return;
         popupOpening = true;
         try {
           if (popupGenerationRef.current !== generation) return;
@@ -3687,7 +3692,7 @@ export default function StorefrontApp() {
   const discoveryFilterToolbarRef = useRef(null);
   const [discoveryResultMode, setDiscoveryResultMode] = useState('union');
   const [discoveryStockFilter, setDiscoveryStockFilter] = useState('include_out_of_stock');
-  const [discoveryPinScope, setDiscoveryPinScope] = useState('all_matching_branches');
+  const [discoveryPinScope, setDiscoveryPinScope] = useState('tenant_primary');
   const [discoveryIncludeMatchMeta, setDiscoveryIncludeMatchMeta] = useState(true);
   const [discoveryAppliedFilters, setDiscoveryAppliedFilters] = useState(null);
   const [isDiscoverySearchFocused, setIsDiscoverySearchFocused] = useState(false);
@@ -3947,6 +3952,7 @@ export default function StorefrontApp() {
 
   const loadStores = useCallback(async (coords = undefined, options = {}) => {
     const useImmediateSearch = options?.useImmediateSearch === true;
+    const requestPinScope = options?.pinScope || discoveryPinScope;
     const requestSearch = useImmediateSearch ? String(searchRef.current || '').trim() : debouncedDiscoverySearch.trim();
     if (useImmediateSearch) {
       lastImmediateDiscoveryRequestRef.current = { search: requestSearch, at: Date.now() };
@@ -4009,7 +4015,7 @@ export default function StorefrontApp() {
       if (requestSearch) q.set('search', requestSearch);
       q.set('result_mode', discoveryResultMode);
       q.set('stock_filter', discoveryStockFilter);
-      q.set('pin_scope', discoveryPinScope);
+      q.set('pin_scope', requestPinScope);
       q.set('include_match_meta', discoveryIncludeMatchMeta ? 'true' : 'false');
       if (resolvedCoords?.latitude && resolvedCoords?.longitude) {
         q.set('latitude', String(resolvedCoords.latitude));
@@ -6416,11 +6422,12 @@ export default function StorefrontApp() {
     }
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        setDiscoveryPinScope('nearest_matching_branch');
         setDebouncedDiscoverySearch(currentSearch);
         loadStores({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude
-        }, { useImmediateSearch: true });
+        }, { useImmediateSearch: true, pinScope: 'nearest_matching_branch' });
       },
       () => {
         setDebouncedDiscoverySearch(currentSearch);
@@ -7131,7 +7138,7 @@ export default function StorefrontApp() {
                   }}
                 >
                   {isStoreListVisible ? <X size={14} /> : <List size={14} />}
-                  {isStoreListVisible ? 'Hide Results' : `View Results${filteredDiscoveryStores.length ? ` (${filteredDiscoveryStores.length})` : ''}`}
+                  {isStoreListVisible ? 'Hide Results' : `View All Stores${filteredDiscoveryStores.length ? ` (${filteredDiscoveryStores.length})` : ''}`}
                 </button>
               </div>}
             </div>
@@ -7433,8 +7440,8 @@ export default function StorefrontApp() {
                 {loadingStores && <div style={{ padding: 24, color: '#94a3b8', fontSize: 14, textAlign: 'center' }}>Loading stores...</div>}
                 {!loadingStores && filteredDiscoveryStores.length === 0 && (
                   <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#f8fbff', padding: 18, display: 'grid', gap: 8 }}>
+                    <div style={{ fontSize: 24, color: '#0f172a', fontWeight: 800 }}>{getDiscoveryEmptyStateMessage(search)}</div>
                     <div style={{ fontSize: 24 }}>🏪</div>
-                    <div style={{ fontSize: 24, color: '#0f172a', fontWeight: 800 }}>Can’t find what you’re looking for?</div>
                     <div style={{ color: '#64748b', fontSize: 14, lineHeight: 1.5 }}>Try changing your search keyword or category.</div>
                     {hasActiveDiscoveryFilters && (
                       <button type="button" onClick={resetDiscoveryResultsView} style={{ marginTop: 4, border: 'none', borderRadius: 12, background: '#1a4e8d', color: '#fff', padding: '10px 14px', fontSize: 13, fontWeight: 700, width: 'fit-content' }}>
