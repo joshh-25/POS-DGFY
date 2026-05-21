@@ -27,13 +27,13 @@ describe('selectDiscoveryPinLocations', () => {
     })).toEqual([activeLocations[2]]);
   });
 
-  it('returns all matching branches when pin scope is all_matching_branches', () => {
+  it('returns only matching branches when pin scope is all_matching_branches', () => {
     expect(selectDiscoveryPinLocations({
       activeLocations,
       hasSearchQuery: true,
       pinScope: 'all_matching_branches',
       matchingLocationIds: [2, 3]
-    })).toEqual(activeLocations);
+    })).toEqual([activeLocations[1], activeLocations[2]]);
   });
 
   it('keeps all active branches in all_matching_branches scope when no item-match ids are present', () => {

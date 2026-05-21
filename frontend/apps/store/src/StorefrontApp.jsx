@@ -80,6 +80,11 @@ import {
 } from './customerAccess.js';
 import { getFoodBeverageStorefrontViewModel } from './fnbStorefrontViewModel.js';
 import { renderBusinessModePinSvg } from './businessModePins.js';
+import {
+  createSharedCoordinatePreviewNode,
+  getDiscoveryMarkerKey,
+  makeClusterElement
+} from './discoveryMapDom.js';
 import { normalizeStorefrontPageModel } from './normalizeStorefrontPageModel.js';
 import { createStoreMarkerPreviewNode } from './storefrontMarkerPreview.js';
 import {
@@ -95,7 +100,6 @@ import {
   WORKFLOW_MODE_LABELS,
   WORKFLOW_MODE_SELECT_VALUES
 } from '../../../src/features/settings/workflowMode.js';
-import { searchNearbyStores as searchNearbyGeoStores } from '../../../src/services/geoSearchService.js';
 import HospitalityBookingPanel from './HospitalityBookingPanel.jsx';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -721,21 +725,6 @@ const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return earthRadiusKm * c;
 };
-const getSpreadMarkerCoordinate = (lat, lng, index, total) => {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isInteger(index) || total <= 1) {
-    return { latitude: lat, longitude: lng };
-  }
-  const ringPosition = index + 1;
-  const angle = ((Math.PI * 2) / total) * ringPosition;
-  const radiusDegrees = 0.00016 + Math.floor(index / 6) * 0.00005;
-  const lngAdjustment = radiusDegrees * Math.cos(angle) / Math.max(Math.cos((lat * Math.PI) / 180), 0.35);
-  const latAdjustment = radiusDegrees * Math.sin(angle);
-  return {
-    latitude: lat + latAdjustment,
-    longitude: lng + lngAdjustment
-  };
-};
-
 const readRouteSlug = () => {
   if (typeof window === 'undefined') return null;
   const path = window.location.pathname || '';
@@ -1068,13 +1057,14 @@ const readStoreAuthToken = () => {
   return '';
 };
 
-const requestJson = async (url, { method = 'GET', body, storeSlug, authToken = '', cache = 'default' } = {}) => {
+const requestJson = async (url, { method = 'GET', body, storeSlug, authToken = '', cache = 'default', signal } = {}) => {
   let response;
   try {
     const token = String(authToken || '').trim();
     response = await fetch(withApiOrigin(url), {
       method,
       cache,
+      signal,
       headers: {
         'Content-Type': 'application/json',
         ...(storeSlug ? { 'x-store-slug': storeSlug } : {}),
@@ -1083,6 +1073,9 @@ const requestJson = async (url, { method = 'GET', body, storeSlug, authToken = '
       body: body ? JSON.stringify(body) : undefined
     });
   } catch (networkError) {
+    if (networkError?.name === 'AbortError') {
+      throw networkError;
+    }
     throw buildRequestError('Request failed before reaching API. Check server/proxy/CORS connectivity.', {
       isNetworkError: true,
       cause: networkError
@@ -1099,41 +1092,6 @@ const requestJson = async (url, { method = 'GET', body, storeSlug, authToken = '
     });
   }
   return payload?.data ?? payload;
-};
-
-const geoSearchRadiusForFilter = (distanceFilter) => {
-  const parsed = Number(distanceFilter);
-  if (Number.isFinite(parsed) && parsed > 0) return Math.min(Math.max(parsed, 0.1), 50);
-  return 5;
-};
-
-const normalizeGeoSearchStoreForDiscovery = (store) => {
-  const locationId = toNumberOrNull(store?.location_id);
-  const distanceKm = toNumberOrNull(store?.distance_km);
-  const matchedItemNames = Array.isArray(store?.matched_item_names)
-    ? store.matched_item_names.filter(Boolean)
-    : [];
-
-  return {
-    ...store,
-    latitude: toNumberOrNull(store?.latitude),
-    longitude: toNumberOrNull(store?.longitude),
-    location_id: locationId,
-    nearest_matching_location_id: locationId,
-    matching_location_ids: locationId == null ? [] : [locationId],
-    nearest_distance_km: distanceKm,
-    matching_item_count: Number(store?.matched_item_count || 0),
-    matching_item_sample: matchedItemNames,
-    has_in_stock_match: Number(store?.in_stock_match_count || 0) > 0,
-    nearest_location_name: store?.location_name || null,
-    nearest_location_address: store?.address_line || null,
-    business_mode: store?.workflow_mode || store?.business_mode || null,
-    active_location_count: Number(store?.active_location_count || (locationId == null ? 0 : 1)),
-    storefront_categories: store?.storefront_categories ?? null,
-    match_reasons: matchedItemNames.length > 0
-      ? matchedItemNames.map((name) => `Item match: ${name}`)
-      : ['Item match']
-  };
 };
 
 const extractStockViolation = (error) => {
@@ -1316,6 +1274,7 @@ function StoresMap({
   stores,
   selectedKey,
   onSelectStore,
+  onOpenStore = null,
   userLocation = null,
   height = 360,
   autoOpenPopups = false,
@@ -1326,13 +1285,42 @@ function StoresMap({
   const markersRef = useRef([]);
   const popupsRef = useRef([]);
   const userMarkerRef = useRef(null);
+  const markerElementsRef = useRef([]);
+  const selectedKeyRef = useRef(selectedKey);
   const onSelectStoreRef = useRef(onSelectStore);
+  const onOpenStoreRef = useRef(onOpenStore);
   const autoOpenFrameRef = useRef(null);
   const popupGenerationRef = useRef(0);
 
   useEffect(() => {
     onSelectStoreRef.current = onSelectStore;
   }, [onSelectStore]);
+
+  useEffect(() => {
+    onOpenStoreRef.current = onOpenStore;
+  }, [onOpenStore]);
+
+  const setActiveMarkerElement = useCallback((activeElement = null, activeKey = '') => {
+    const normalizedActiveKey = String(activeKey || '');
+    markerElementsRef.current.forEach((entry) => {
+      if (!entry?.element) return;
+      const entryKeys = Array.isArray(entry.keys) ? entry.keys : [entry.key].filter(Boolean);
+      const isActive = activeElement
+        ? entry.element === activeElement
+        : normalizedActiveKey.length > 0 && entryKeys.some((key) => String(key) === normalizedActiveKey);
+      if (entry.type === 'cluster') {
+        entry.element.classList.toggle('is-selected', isActive);
+        return;
+      }
+      const visual = entry.element.querySelector('.discovery-result-pin-visual');
+      visual?.classList?.toggle('is-glowing', isActive);
+    });
+  }, []);
+
+  useEffect(() => {
+    selectedKeyRef.current = selectedKey;
+    setActiveMarkerElement(null, selectedKey);
+  }, [selectedKey, setActiveMarkerElement]);
 
   useEffect(() => {
     if (!ref.current || mapRef.current) return;
@@ -1358,99 +1346,83 @@ function StoresMap({
     };
   }, []);
 
-    useEffect(() => {
-      const map = mapRef.current;
-      if (!map) return;
-      const generation = popupGenerationRef.current + 1;
-      popupGenerationRef.current = generation;
-      if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
-        window.cancelAnimationFrame(autoOpenFrameRef.current);
-        autoOpenFrameRef.current = null;
-      }
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return undefined;
+    const generation = popupGenerationRef.current + 1;
+    popupGenerationRef.current = generation;
+    if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
+      window.cancelAnimationFrame(autoOpenFrameRef.current);
+      autoOpenFrameRef.current = null;
+    }
 
-      popupsRef.current.forEach((popup) => {
+    popupsRef.current.forEach((popup) => {
       try { popup?.remove?.(); } catch {
         // Ignore stale MapLibre popup disposal failures during marker refresh.
       }
-      });
-      popupsRef.current = [];
-      markersRef.current.forEach((m) => m.remove());
-      markersRef.current = [];
+    });
+    popupsRef.current = [];
+    markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
+    markerElementsRef.current = [];
 
-      const rows = Array.isArray(stores) ? stores : [];
-      const uniqueRows = [];
-      const seenMarkerKeys = new Set();
-      rows.forEach((store) => {
-        if (!store) return;
-        const markerKey = String(store?.marker_key || store?.slug || store?.location_id || '');
-        if (!markerKey) {
-          uniqueRows.push(store);
-          return;
-        }
-        if (seenMarkerKeys.has(markerKey)) return;
-        seenMarkerKeys.add(markerKey);
-        uniqueRows.push(store);
-      });
-      const bounds = [];
-      const autoOpenCallbacks = [];
-      const coordinateGroups = uniqueRows.reduce((acc, store) => {
-      const lat = Number(store?.latitude);
-      const lng = Number(store?.longitude);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return acc;
-      const key = `${lat.toFixed(6)}:${lng.toFixed(6)}`;
-      if (!Array.isArray(acc[key])) {
-        acc[key] = [];
-      }
-      acc[key].push(store);
-      return acc;
-    }, {});
-    const coordinateIndexes = {};
-
-      uniqueRows.forEach((store) => {
+    const rows = Array.isArray(stores) ? stores : [];
+    const uniqueRows = [];
+    const seenMarkerKeys = new Set();
+    rows.forEach((store) => {
       if (!store) return;
+      const markerKey = getDiscoveryMarkerKey(store);
+      if (!markerKey) {
+        uniqueRows.push(store);
+        return;
+      }
+      if (seenMarkerKeys.has(markerKey)) return;
+      seenMarkerKeys.add(markerKey);
+      uniqueRows.push(store);
+    });
+
+    const groupsByCoordinate = new globalThis.Map();
+    uniqueRows.forEach((store) => {
       const lat = Number(store?.latitude);
       const lng = Number(store?.longitude);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      const coordinateKey = `${lat.toFixed(6)}:${lng.toFixed(6)}`;
-      const group = Array.isArray(coordinateGroups[coordinateKey]) ? coordinateGroups[coordinateKey] : [];
-      const groupIndex = coordinateIndexes[coordinateKey] || 0;
-      coordinateIndexes[coordinateKey] = groupIndex + 1;
-      const displayCoordinate = getSpreadMarkerCoordinate(lat, lng, groupIndex, group.length);
-      const displayLat = Number(displayCoordinate.latitude);
-      const displayLng = Number(displayCoordinate.longitude);
-      const markerKey = String(store.marker_key || store.slug || store.location_id || `${lat}:${lng}`);
-      const highlighted = selectedKey
-        ? markerKey === String(selectedKey)
-        : store.is_primary_storefront === true;
-      const branchName = String(store?.location_name || store?.nearest_location_name || 'Branch');
-      const tenantName = String(store?.tenant_name || 'Storefront');
-      const markerAriaLabel = `Preview ${tenantName} at ${branchName}`;
-      const el = makePinElement(store.workflow_mode || store.business_mode, highlighted, markerAriaLabel);
-        const popup = new maplibregl.Popup({
-          anchor: 'bottom',
-          offset: { bottom: [0, -14], top: [0, 12], left: [12, 0], right: [-12, 0] },
-          closeOnClick: false,
-          focusAfterOpen: false
-        });
-        popupsRef.current.push(popup);
+      const key = `${lat.toFixed(6)}:${lng.toFixed(6)}`;
+      if (!groupsByCoordinate.has(key)) {
+        groupsByCoordinate.set(key, { lat, lng, stores: [] });
+      }
+      groupsByCoordinate.get(key).stores.push(store);
+    });
+
+    const markerGroups = Array.from(groupsByCoordinate.values());
+    const bounds = [];
+    const autoOpenCallbacks = [];
+    const popupOffset = { bottom: [0, -50], top: [0, 12], left: [14, 0], right: [-14, 0] };
+    const shouldAutoOpenSingleMapObject = autoOpenPopups && markerGroups.length === 1;
+
+    const registerInteractivePreview = ({ el, popup, previewNode, coordinate, onActivate }) => {
       let closeTimer = null;
       let markerHovered = false;
       let previewHovered = false;
       let popupOpening = false;
+      let popupPinned = false;
       const clearCloseTimer = () => {
         if (closeTimer) {
           window.clearTimeout(closeTimer);
           closeTimer = null;
         }
       };
-      const openPopup = () => {
+      const openPopup = ({ pinned = false } = {}) => {
         clearCloseTimer();
+        if (pinned) popupPinned = true;
         const popupAlreadyOpen = typeof popup.isOpen === 'function' ? popup.isOpen() : false;
         if (popupGenerationRef.current !== generation || popupOpening || popupAlreadyOpen) return;
         popupOpening = true;
         try {
           if (popupGenerationRef.current !== generation) return;
-          popup.setLngLat([displayLng, displayLat]).addTo(map);
+          popup.setLngLat(coordinate).addTo(map);
+          if (typeof document !== 'undefined' && previewNode && !previewNode.isConnected) {
+            document.body.appendChild(previewNode);
+          }
         } finally {
           popupOpening = false;
         }
@@ -1458,21 +1430,11 @@ function StoresMap({
       const schedulePopupClose = () => {
         clearCloseTimer();
         closeTimer = window.setTimeout(() => {
-          if (popupGenerationRef.current === generation && !markerHovered && !previewHovered) {
+          if (popupGenerationRef.current === generation && !popupPinned && !markerHovered && !previewHovered) {
             popup.remove();
           }
         }, 120);
       };
-      const previewNode = createStoreMarkerPreviewNode(store, {
-        resolveAssetUrl: withAssetOrigin,
-        onAction: () => onSelectStoreRef.current?.(store),
-        onClose: () => {
-          markerHovered = false;
-          previewHovered = false;
-          clearCloseTimer();
-          popup.remove();
-        }
-      });
       previewNode.addEventListener('mouseenter', () => {
         previewHovered = true;
         clearCloseTimer();
@@ -1494,6 +1456,7 @@ function StoresMap({
       previewNode.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') {
           event.preventDefault();
+          popupPinned = false;
           popup.remove();
           el.focus();
         }
@@ -1505,7 +1468,9 @@ function StoresMap({
       const openPopupFromPointer = (event) => {
         event?.preventDefault?.();
         event?.stopPropagation?.();
-        openPopup();
+        setActiveMarkerElement(el);
+        openPopup({ pinned: true });
+        onActivate?.();
       };
       el.addEventListener('click', openPopupFromPointer);
       el.addEventListener('pointerup', openPopupFromPointer);
@@ -1513,7 +1478,9 @@ function StoresMap({
       el.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          openPopup();
+          setActiveMarkerElement(el);
+          openPopup({ pinned: true });
+          onActivate?.();
         }
       });
       if (hoverPreviewEnabled) {
@@ -1534,14 +1501,99 @@ function StoresMap({
           schedulePopupClose();
         });
       }
-        const marker = new maplibregl.Marker({ element: el })
-          .setLngLat([displayLng, displayLat])
-          .addTo(map);
-        if (autoOpenPopups) {
-          autoOpenCallbacks.push({ key: markerKey, open: openPopup });
+      return {
+        open: () => openPopup({ pinned: true }),
+        close: () => {
+          popupPinned = false;
+          clearCloseTimer();
+          popup.remove();
         }
+      };
+    };
+
+    const currentSelectedKey = String(selectedKeyRef.current || '');
+    markerGroups.forEach((group) => {
+      const coordinate = [group.lng, group.lat];
+      const groupStores = group.stores;
+      bounds.push(coordinate);
+      if (groupStores.length > 1) {
+        const groupMarkerKeys = groupStores
+          .map((store) => getDiscoveryMarkerKey(store))
+          .filter(Boolean);
+        const selectedInGroup = currentSelectedKey
+          ? groupMarkerKeys.some((key) => key === currentSelectedKey)
+          : false;
+        const label = `${groupStores.length} storefronts at this location`;
+        const el = makeClusterElement(groupStores.length, selectedInGroup, label);
+        markerElementsRef.current.push({ element: el, type: 'cluster', keys: groupMarkerKeys });
+        const popup = new maplibregl.Popup({
+          anchor: 'bottom',
+          offset: popupOffset,
+          closeOnClick: false,
+          focusAfterOpen: false
+        });
+        popupsRef.current.push(popup);
+        let controls = null;
+        const previewNode = createSharedCoordinatePreviewNode(groupStores, {
+          onSelect: (store) => {
+            onSelectStoreRef.current?.(store);
+            controls?.close?.();
+          },
+          onClose: () => controls?.close?.()
+        });
+        controls = registerInteractivePreview({
+          el,
+          popup,
+          previewNode,
+          coordinate
+        });
+        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+          .setLngLat(coordinate)
+          .addTo(map);
         markersRef.current.push(marker);
-        bounds.push([displayLng, displayLat]);
+        if (shouldAutoOpenSingleMapObject) {
+          autoOpenCallbacks.push({ key: `${group.lat}:${group.lng}:cluster`, open: controls.open });
+        }
+        return;
+      }
+
+      const store = groupStores[0];
+      const markerKey = getDiscoveryMarkerKey({ ...store, latitude: group.lat, longitude: group.lng });
+      const highlighted = currentSelectedKey
+        ? markerKey === currentSelectedKey
+        : store.is_primary_storefront === true;
+      const branchName = String(store?.location_name || store?.nearest_location_name || 'Branch');
+      const tenantName = String(store?.tenant_name || 'Storefront');
+      const markerAriaLabel = `Preview ${tenantName} at ${branchName}`;
+      const el = makePinElement(store.workflow_mode || store.business_mode, highlighted, markerAriaLabel);
+      markerElementsRef.current.push({ element: el, type: 'pin', key: markerKey });
+      const popup = new maplibregl.Popup({
+        anchor: 'bottom',
+        offset: popupOffset,
+        closeOnClick: false,
+        focusAfterOpen: false
+      });
+      popupsRef.current.push(popup);
+      let controls = null;
+      const previewNode = createStoreMarkerPreviewNode(store, {
+        resolveAssetUrl: withAssetOrigin,
+        onAction: () => onOpenStoreRef.current?.(store),
+        onClose: () => controls?.close?.()
+      });
+      controls = registerInteractivePreview({
+        el,
+        popup,
+        previewNode,
+        coordinate,
+        onActivate: () => onSelectStoreRef.current?.(store)
+      });
+      const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+        .setLngLat(coordinate)
+        .addTo(map);
+      markersRef.current.push(marker);
+      if (shouldAutoOpenSingleMapObject || (currentSelectedKey && markerKey === currentSelectedKey)) {
+        autoOpenCallbacks.push({ key: markerKey, open: controls.open });
+      }
     });
 
     if (userMarkerRef.current) {
@@ -1553,43 +1605,47 @@ function StoresMap({
       const uLng = Number(userLocation.longitude);
       if (Number.isFinite(uLat) && Number.isFinite(uLng)) {
         const el = makeUserLocationElement();
-        userMarkerRef.current = new maplibregl.Marker({ element: el })
+        userMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat([uLng, uLat])
           .setPopup(new maplibregl.Popup({ offset: 25 }).setHTML('<strong>Your location</strong>'))
           .addTo(map);
-        bounds.push([uLng, uLat]);
       }
     }
 
-      if (bounds.length === 1) map.flyTo({ center: bounds[0], zoom: autoOpenPopups ? 14 : 15 });
-      if (bounds.length > 1) {
-        const lngs = bounds.map((b) => b[0]);
-        const lats = bounds.map((b) => b[1]);
-        map.fitBounds(
-          [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-          { padding: autoOpenPopups ? 56 : 24, maxZoom: autoOpenPopups ? 13.5 : 14 }
-        );
+    if (bounds.length === 1) {
+      map.flyTo({
+        center: bounds[0],
+        zoom: autoOpenPopups ? 15 : 14,
+        offset: autoOpenPopups ? [0, 80] : [0, 0]
+      });
+    }
+    if (bounds.length > 1) {
+      const lngs = bounds.map((b) => b[0]);
+      const lats = bounds.map((b) => b[1]);
+      map.fitBounds(
+        [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+        {
+          padding: autoOpenPopups
+            ? { top: 96, right: 64, bottom: 64, left: 64 }
+            : 32,
+          maxZoom: autoOpenPopups ? 14 : 13.5
+        }
+      );
+    }
+    if (autoOpenCallbacks.length > 0 && typeof window !== 'undefined') {
+      autoOpenFrameRef.current = window.requestAnimationFrame(() => {
+        autoOpenFrameRef.current = null;
+        if (popupGenerationRef.current !== generation) return;
+        autoOpenCallbacks.slice(0, 1).forEach((entry) => entry?.open?.());
+      });
+    }
+    return () => {
+      if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
+        window.cancelAnimationFrame(autoOpenFrameRef.current);
+        autoOpenFrameRef.current = null;
       }
-        if (autoOpenCallbacks.length > 0 && typeof window !== 'undefined') {
-          autoOpenFrameRef.current = window.requestAnimationFrame(() => {
-            autoOpenFrameRef.current = null;
-            if (popupGenerationRef.current !== generation) return;
-            const openedMarkerKeys = new Set();
-            autoOpenCallbacks.forEach((entry) => {
-              const markerKey = String(entry?.key || '');
-              if (!markerKey || openedMarkerKeys.has(markerKey)) return;
-              openedMarkerKeys.add(markerKey);
-              entry?.open?.();
-            });
-          });
-        }
-      return () => {
-        if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
-          window.cancelAnimationFrame(autoOpenFrameRef.current);
-          autoOpenFrameRef.current = null;
-        }
-      };
-    }, [stores, selectedKey, userLocation, autoOpenPopups, openPopupOnHover]);
+    };
+  }, [stores, userLocation, autoOpenPopups, openPopupOnHover, setActiveMarkerElement]);
 
   return <div ref={ref} style={{ height, border: '1px solid #d6e2e8', borderRadius: 24, overflow: 'hidden' }} />;
 }
@@ -3862,6 +3918,8 @@ export default function StorefrontApp() {
   } = discoveryViewport;
   const discoveryLayout = useMemo(() => getDiscoveryLayoutTokens(discoveryViewportMode), [discoveryViewportMode]);
   const discoveryRequestSequenceRef = useRef(0);
+  const discoveryIntentSequenceRef = useRef(0);
+  const discoveryAbortControllerRef = useRef(null);
   const storeLoadRequestSequenceRef = useRef(0);
   const locationCatalogRequestSequenceRef = useRef(0);
   const lastImmediateDiscoveryRequestRef = useRef({ search: '', at: 0 });
@@ -3945,77 +4003,38 @@ export default function StorefrontApp() {
 
   const loadStores = useCallback(async (coords = undefined, options = {}) => {
     const useImmediateSearch = options?.useImmediateSearch === true;
+    const requestIntentSequence = Number(options?.intentSequence || 0);
+    if (requestIntentSequence > 0 && requestIntentSequence !== discoveryIntentSequenceRef.current) {
+      return;
+    }
     const requestPinScope = options?.pinScope || discoveryPinScope;
     const requestSearch = useImmediateSearch ? String(searchRef.current || '').trim() : debouncedDiscoverySearch.trim();
     if (useImmediateSearch) {
       lastImmediateDiscoveryRequestRef.current = { search: requestSearch, at: Date.now() };
     }
+    discoveryAbortControllerRef.current?.abort?.();
+    const abortController = typeof AbortController === 'function' ? new AbortController() : null;
+    discoveryAbortControllerRef.current = abortController;
     const requestSequence = discoveryRequestSequenceRef.current + 1;
     discoveryRequestSequenceRef.current = requestSequence;
     setLoadingStores(true);
     setStoresError('');
     try {
       const resolvedCoords = coords === undefined ? discoveryCoordsRef.current : coords;
-      const hasGeoSearchCoords = Number.isFinite(Number(resolvedCoords?.latitude))
-        && Number.isFinite(Number(resolvedCoords?.longitude));
-      if (requestSearch && hasGeoSearchCoords) {
-        try {
-          const geoResult = await searchNearbyGeoStores({
-            query: requestSearch,
-            latitude: Number(resolvedCoords.latitude),
-            longitude: Number(resolvedCoords.longitude),
-            radius: geoSearchRadiusForFilter(discoveryDistanceFilter),
-            stockFilter: discoveryStockFilter,
-            page: 1,
-            limit: 100
-          });
-          const geoStores = Array.isArray(geoResult?.stores)
-            ? geoResult.stores.map(normalizeGeoSearchStoreForDiscovery)
-            : [];
-          if (geoStores.length > 0) {
-            const nextCoords = {
-              latitude: Number(resolvedCoords.latitude),
-              longitude: Number(resolvedCoords.longitude)
-            };
-            discoveryCoordsRef.current = nextCoords;
-            setDiscoveryCoords((previous) => {
-              if (
-                previous
-                && Number(previous.latitude) === Number(nextCoords.latitude)
-                && Number(previous.longitude) === Number(nextCoords.longitude)
-              ) {
-                return previous;
-              }
-              return nextCoords;
-            });
-            if (requestSequence === discoveryRequestSequenceRef.current) {
-              setStores(geoStores);
-              setDiscoveryAppliedFilters({
-                source: 'geo_search',
-                query: requestSearch,
-                radius_km: geoSearchRadiusForFilter(discoveryDistanceFilter),
-                stock_filter: discoveryStockFilter,
-                pagination: geoResult?.pagination || null
-              });
-            }
-            return;
-          }
-        } catch (geoSearchError) {
-          console.warn('[StorefrontDiscovery] Geo item search failed; falling back to discovery search.', geoSearchError);
-        }
-      }
       const q = new URLSearchParams();
       if (requestSearch) q.set('search', requestSearch);
       q.set('result_mode', discoveryResultMode);
       q.set('stock_filter', discoveryStockFilter);
       q.set('pin_scope', requestPinScope);
       q.set('include_match_meta', discoveryIncludeMatchMeta ? 'true' : 'false');
-      if (resolvedCoords?.latitude && resolvedCoords?.longitude) {
-        q.set('latitude', String(resolvedCoords.latitude));
-        q.set('longitude', String(resolvedCoords.longitude));
+      const resolvedLatitude = Number(resolvedCoords?.latitude);
+      const resolvedLongitude = Number(resolvedCoords?.longitude);
+      if (Number.isFinite(resolvedLatitude) && Number.isFinite(resolvedLongitude)) {
+        q.set('latitude', String(resolvedLatitude));
+        q.set('longitude', String(resolvedLongitude));
         const nextCoords = {
-          latitude: Number(resolvedCoords.latitude),
-          longitude: Number(resolvedCoords.longitude)
+          latitude: resolvedLatitude,
+          longitude: resolvedLongitude
         };
         discoveryCoordsRef.current = nextCoords;
         setDiscoveryCoords((previous) => {
@@ -4033,22 +4052,30 @@ export default function StorefrontApp() {
         setDiscoveryCoords(null);
       }
       q.set('limit', '100');
-      const data = await requestJson(`/api/v1/storefront/discovery?${q.toString()}`);
+      const data = await requestJson(`/api/v1/storefront/discovery?${q.toString()}`, {
+        signal: abortController?.signal
+      });
       if (requestSequence === discoveryRequestSequenceRef.current) {
         setStores(Array.isArray(data?.stores) ? data.stores : []);
         setDiscoveryAppliedFilters(data?.applied_filters || null);
       }
     } catch (error) {
+      if (error?.name === 'AbortError') {
+        return;
+      }
       if (requestSequence === discoveryRequestSequenceRef.current) {
         setDiscoveryAppliedFilters(null);
         setStoresError(error.message || 'Failed to load discovery stores.');
       }
     } finally {
+      if (discoveryAbortControllerRef.current === abortController) {
+        discoveryAbortControllerRef.current = null;
+      }
       if (requestSequence === discoveryRequestSequenceRef.current) {
         setLoadingStores(false);
       }
     }
-  }, [debouncedDiscoverySearch, discoveryResultMode, discoveryStockFilter, discoveryPinScope, discoveryIncludeMatchMeta, discoveryDistanceFilter]);
+  }, [debouncedDiscoverySearch, discoveryResultMode, discoveryStockFilter, discoveryPinScope, discoveryIncludeMatchMeta]);
 
   const openStoreBySlug = useCallback(async (slug) => {
     const normalized = toSlug(slug);
@@ -4182,12 +4209,17 @@ export default function StorefrontApp() {
     if (
       debouncedSearch
       && lastImmediate?.search === debouncedSearch
-      && Date.now() - Number(lastImmediate.at || 0) < 400
+      && Date.now() - Number(lastImmediate.at || 0) < 5000
     ) {
       return;
     }
     loadStores();
   }, [loadStores, debouncedDiscoverySearch]);
+
+  useEffect(() => () => {
+    discoveryAbortControllerRef.current?.abort?.();
+    discoveryAbortControllerRef.current = null;
+  }, []);
 
   useEffect(() => {
     discoveryCoordsRef.current = discoveryCoords;
@@ -4906,10 +4938,7 @@ export default function StorefrontApp() {
   const discoveryResultsMapKey = useMemo(() => {
     const searchKey = String(search || '').trim().toLowerCase();
     const pinKey = (Array.isArray(searchedDiscoveryMapPins) ? searchedDiscoveryMapPins : [])
-      .map((pin) => String(
-        pin?.marker_key
-        || `${toSlug(pin?.slug || pin?.tenant_name)}:${pin?.location_id ?? `${pin?.latitude}:${pin?.longitude}`}`
-      ))
+      .map((pin) => getDiscoveryMarkerKey(pin) || `${toSlug(pin?.slug || pin?.tenant_name)}:${pin?.location_id ?? `${pin?.latitude}:${pin?.longitude}`}`)
       .join('|');
     return `discovery-results-map:${searchKey}:${filteredDiscoveryStores.length}:${pinKey}`;
   }, [searchedDiscoveryMapPins, filteredDiscoveryStores.length, search]);
@@ -5556,8 +5585,8 @@ export default function StorefrontApp() {
     if (!highlightedStoreSlug || !filteredDiscoveryStores.some((store) => store.slug === highlightedStoreSlug)) {
       setHighlightedStoreSlug(filteredDiscoveryStores[0].slug);
     }
-    if (!highlightedDiscoveryMarkerKey || !activeDiscoveryMapPins.some((pin) => pin.marker_key === highlightedDiscoveryMarkerKey)) {
-      setHighlightedDiscoveryMarkerKey(activeDiscoveryMapPins[0]?.marker_key || '');
+    if (!highlightedDiscoveryMarkerKey || !activeDiscoveryMapPins.some((pin) => getDiscoveryMarkerKey(pin) === highlightedDiscoveryMarkerKey)) {
+      setHighlightedDiscoveryMarkerKey(getDiscoveryMarkerKey(activeDiscoveryMapPins[0]));
     }
   }, [filteredDiscoveryStores, highlightedStoreSlug, activeDiscoveryMapPins, highlightedDiscoveryMarkerKey]);
   useEffect(() => {
@@ -6406,25 +6435,31 @@ export default function StorefrontApp() {
 
   const handleNearMe = () => {
     const currentSearch = String(searchRef.current || search || '').trim();
+    const intentSequence = discoveryIntentSequenceRef.current + 1;
+    discoveryIntentSequenceRef.current = intentSequence;
     setHasDiscoveryExplorationStarted(true);
+    setIsStoreListVisible(true);
     setIsMobileResultsCollapsed(false);
+    lastImmediateDiscoveryRequestRef.current = { search: currentSearch, at: Date.now() };
     if (!navigator?.geolocation) {
       setDebouncedDiscoverySearch(currentSearch);
-      loadStores(undefined, { useImmediateSearch: true });
+      loadStores(undefined, { useImmediateSearch: true, intentSequence });
       return;
     }
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        if (intentSequence !== discoveryIntentSequenceRef.current) return;
         setDiscoveryPinScope('nearest_matching_branch');
         setDebouncedDiscoverySearch(currentSearch);
         loadStores({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude
-        }, { useImmediateSearch: true, pinScope: 'nearest_matching_branch' });
+        }, { useImmediateSearch: true, pinScope: 'nearest_matching_branch', intentSequence });
       },
       () => {
+        if (intentSequence !== discoveryIntentSequenceRef.current) return;
         setDebouncedDiscoverySearch(currentSearch);
-        loadStores(undefined, { useImmediateSearch: true });
+        loadStores(undefined, { useImmediateSearch: true, intentSequence });
       },
       {
         enableHighAccuracy: true,
@@ -6434,24 +6469,30 @@ export default function StorefrontApp() {
   };
   const handleDiscoverySearch = () => {
     const currentSearch = String(searchRef.current || search || '').trim();
+    const intentSequence = discoveryIntentSequenceRef.current + 1;
+    discoveryIntentSequenceRef.current = intentSequence;
     setHasDiscoveryExplorationStarted(true);
-    setIsStoreListVisible(false);
+    setIsStoreListVisible(true);
     setIsMobileResultsCollapsed(false);
     setSelectedMapPin(null);
+    setDiscoveryPinScope('tenant_primary');
+    lastImmediateDiscoveryRequestRef.current = { search: currentSearch, at: Date.now() };
     setDebouncedDiscoverySearch(currentSearch);
     if (!navigator?.geolocation) {
-      loadStores(undefined, { useImmediateSearch: true });
+      loadStores(undefined, { useImmediateSearch: true, intentSequence });
       return;
     }
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        if (intentSequence !== discoveryIntentSequenceRef.current) return;
         loadStores({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude
-        }, { useImmediateSearch: true });
+        }, { useImmediateSearch: true, intentSequence });
       },
       () => {
-        loadStores(undefined, { useImmediateSearch: true });
+        if (intentSequence !== discoveryIntentSequenceRef.current) return;
+        loadStores(undefined, { useImmediateSearch: true, intentSequence });
       },
       {
         enableHighAccuracy: true,
@@ -7060,16 +7101,17 @@ export default function StorefrontApp() {
                   height="100%"
                     onSelectStore={(pin) => {
                       setHasDiscoveryExplorationStarted(true);
+                      setIsStoreListVisible(true);
                       setIsMobileResultsCollapsed(false);
                       setHighlightedStoreSlug(pin.slug);
-                    setHighlightedDiscoveryMarkerKey(pin.marker_key || '');
+                    setHighlightedDiscoveryMarkerKey(getDiscoveryMarkerKey(pin));
                     const matched = filteredDiscoveryStores.find((s) => s.slug === pin.slug)
                       || discoveryResultStores.find((s) => s.slug === pin.slug)
                       || storesWithNearestBranch.find((s) => s.slug === pin.slug)
                       || null;
                     setSelectedMapPin(matched || pin || null);
-                    goStore(pin.slug, pin.location_id ?? null);
                   }}
+                  onOpenStore={(pin) => goStore(pin.slug, pin.location_id ?? null)}
                   autoOpenPopups={filteredDiscoveryStores.length > 0}
                   openPopupOnHover={true}
                 />
@@ -7598,7 +7640,7 @@ export default function StorefrontApp() {
               />
 
               <div ref={discoveryInteractiveAreaRef} style={{ display: 'grid', gap: isDiscoveryMobileViewport ? 10 : isDiscoveryTabletViewport ? 12 : 12, width: '100%', minWidth: 0 }}>
-              <div style={{ position: 'sticky', top: isDiscoveryMobileViewport ? 'calc(env(safe-area-inset-top, 0px) + 8px)' : discoveryLayout.navOffset, zIndex: 49, backgroundColor: '#ffffff', display: 'grid', gap: isDiscoveryMobileViewport ? 10 : isDiscoveryTabletViewport ? 12 : 12, width: '100%', minWidth: 0 }}>
+              <div className="discovery-search-sticky-shell" style={{ position: 'sticky', top: isDiscoveryMobileViewport ? 'calc(env(safe-area-inset-top, 0px) + 8px)' : discoveryLayout.navOffset, zIndex: 49, backgroundColor: '#ffffff', display: 'grid', gap: isDiscoveryMobileViewport ? 10 : isDiscoveryTabletViewport ? 12 : 12, width: '100%', minWidth: 0 }}>
 
                 {/* ── PERMANENT SEARCH ── */}
                   <DiscoverySearchRegion viewportMode={discoveryViewportMode}>
@@ -7895,10 +7937,12 @@ export default function StorefrontApp() {
                         openPopupOnHover={true}
                         onSelectStore={(pin) => {
                           setHasDiscoveryExplorationStarted(true);
+                          setIsStoreListVisible(true);
+                          setIsMobileResultsCollapsed(false);
                           setHighlightedStoreSlug(pin.slug);
-                          setHighlightedDiscoveryMarkerKey(pin.marker_key || '');
-                          goStore(pin.slug, pin.location_id ?? null);
+                          setHighlightedDiscoveryMarkerKey(getDiscoveryMarkerKey(pin));
                       }}
+                        onOpenStore={(pin) => goStore(pin.slug, pin.location_id ?? null)}
                     />
                     {/* Subtle top gradient to blend search bar edge */}
                     <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 48, background: 'linear-gradient(180deg, rgba(255,255,255,.20) 0%, transparent 100%)', pointerEvents: 'none' }} />
@@ -8816,7 +8860,7 @@ export default function StorefrontApp() {
                           height="100%"
                           onSelectStore={(pin) => {
                             setHighlightedStoreSlug(pin.slug);
-                            setHighlightedDiscoveryMarkerKey(pin.marker_key || '');
+                            setHighlightedDiscoveryMarkerKey(getDiscoveryMarkerKey(pin));
                             const matched = filteredDiscoveryStores.find((s) => s.slug === pin.slug);
                             setSelectedMapPin(matched || null);
                           }}
