@@ -110,7 +110,7 @@ load_env_file_if_present "$QA_SECRETS_FILE"
 host_path() {
     local path_value="$1"
     if command -v cygpath >/dev/null 2>&1; then
-        cygpath -m "$path_value"
+        cygpath -m -a "$path_value"
         return 0
     fi
     if pwd -W >/dev/null 2>&1; then
