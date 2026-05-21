@@ -444,17 +444,17 @@ describe('storefront discovery integration flow', () => {
 
     const user = userEvent.setup();
     render(<App />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i }).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Main/i }).length).toBeGreaterThan(0));
     const alphaMarkerCall = maplibregl.Marker.mock.calls.find(([options]) => (
       options?.element?.getAttribute?.('aria-label') || ''
-    ).includes('Preview Alpha Foods at Branch'));
+    ).includes('Preview Alpha Foods at Main'));
     expect(alphaMarkerCall?.[0]?.anchor).toBe('bottom');
     const alphaMarkerElement = alphaMarkerCall?.[0]?.element;
     expect(alphaMarkerElement).toBeTruthy();
 
     await user.click(alphaMarkerElement);
-    await waitFor(() => expect(screen.getAllByText('Branch').length).toBeGreaterThan(0));
-    expect(screen.getAllByText('Branch Road').length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getAllByText('Main').length).toBeGreaterThan(0));
+    expect(screen.getAllByText('Main Road').length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole('button', { name: 'Open storefront' }));
     await waitFor(() => {
@@ -464,7 +464,7 @@ describe('storefront discovery integration flow', () => {
       const catalogCalls = fetchMock.mock.calls
         .map(([requestUrl]) => String(requestUrl))
         .filter((requestUrl) => requestUrl.includes('/api/v1/store/catalog?'));
-      expect(catalogCalls.some((requestUrl) => requestUrl.includes('location_id=22'))).toBe(true);
+      expect(catalogCalls.some((requestUrl) => requestUrl.includes('location_id=11'))).toBe(true);
     });
   });
 
@@ -517,9 +517,9 @@ describe('storefront discovery integration flow', () => {
     });
 
     render(<App />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i }).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Main/i }).length).toBeGreaterThan(0));
 
-    const marker = screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i })[0];
+    const marker = screen.getAllByRole('button', { name: /Preview Alpha Foods at Main/i })[0];
     fireEvent.click(marker);
     await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
 
@@ -584,9 +584,9 @@ describe('storefront discovery integration flow', () => {
 
     const user = userEvent.setup();
     render(<App />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i }).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Main/i }).length).toBeGreaterThan(0));
 
-    const marker = screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i })[0];
+    const marker = screen.getAllByRole('button', { name: /Preview Alpha Foods at Main/i })[0];
     await user.click(marker);
     await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
 

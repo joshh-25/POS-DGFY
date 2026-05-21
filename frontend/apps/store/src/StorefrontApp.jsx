@@ -1279,7 +1279,7 @@ const getOrCreateStorefrontVisitorId = () => {
 
 const makePinElement = (mode, selected = false, ariaLabel = 'Store marker') => {
   const el = document.createElement('div');
-  el.style.cssText = `width:${selected ? 38 : 34}px;height:${selected ? 48 : 44}px;display:flex;align-items:center;justify-content:center;cursor:pointer;`;
+  el.style.cssText = 'width:38px;height:48px;display:flex;align-items:flex-start;justify-content:center;cursor:pointer;';
   el.className = 'discovery-result-pin';
   el.setAttribute('role', 'button');
   el.setAttribute('tabindex', '0');
@@ -4928,8 +4928,22 @@ export default function StorefrontApp() {
         return;
       }
 
+      const matchingLocationIds = Array.isArray(store?.matching_location_ids)
+        ? store.matching_location_ids
+          .map((locationId) => Number(locationId))
+          .filter((locationId) => Number.isInteger(locationId) && locationId > 0)
+        : [];
+      const nearestMatchingLocationId = Number(store?.nearest_matching_location_id);
+      const scopedLocations = selectDiscoveryPinLocations({
+        activeLocations,
+        hasSearchQuery: hasDiscoverySearch,
+        pinScope: discoveryPinScope,
+        matchingLocationIds,
+        nearestMatchingLocationId: Number.isInteger(nearestMatchingLocationId) ? nearestMatchingLocationId : null
+      });
+
       const uniqueLocationMap = new globalThis.Map();
-      activeLocations.forEach((location) => {
+      scopedLocations.forEach((location) => {
         const numericLocationId = Number(location.location_id);
         const identity = Number.isInteger(numericLocationId) && numericLocationId > 0
           ? `loc:${numericLocationId}`
@@ -4981,7 +4995,7 @@ export default function StorefrontApp() {
       if (left !== right) return left - right;
       return String(a?.tenant_name || '').localeCompare(String(b?.tenant_name || ''));
     });
-  }, [storesWithNearestBranch, discoveryLocationMap, discoveryCoords]);
+  }, [storesWithNearestBranch, discoveryLocationMap, discoveryCoords, discoveryPinScope, hasDiscoverySearch]);
   const rememberedHeroDiscoveryMapPins = Array.isArray(heroDiscoveryMapPinsPersistenceRef.current)
     ? heroDiscoveryMapPinsPersistenceRef.current
     : [];

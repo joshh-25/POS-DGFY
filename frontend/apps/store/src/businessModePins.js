@@ -54,9 +54,11 @@ const iconPath = (icon) => {
 export const renderBusinessModePinSvg = (mode, selected = false) => {
   const meta = getBusinessModePinMeta(mode);
   const color = meta.color;
+  const outerSize = 38;
+  const outerHeight = 48;
   const size = selected ? 38 : 34;
   return `
-    <div style="position:relative;width:${size}px;height:${size + 10}px;display:flex;align-items:flex-start;justify-content:center;">
+    <div style="position:relative;width:${outerSize}px;height:${outerHeight}px;display:flex;align-items:flex-start;justify-content:center;">
       <div style="width:${size}px;height:${size}px;border-radius:999px;border:3px solid #fff;box-shadow:${selected ? '0 10px 22px rgba(15,23,42,.40)' : '0 8px 18px rgba(15,23,42,.28)'};background:${color};display:flex;align-items:center;justify-content:center;">
         <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="${meta.label}">
           ${iconPath(meta.icon)}
