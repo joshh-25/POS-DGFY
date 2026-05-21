@@ -60,9 +60,15 @@ process.env.PAYPAL_MODE = 'sandbox';
 
 import request from 'supertest';
 const { default: app } = await import('../src/server.js');
-const { sequelize, Tenant, SystemSetting, DgfyAccount } = await import('../src/models/index.js');
+const {
+    sequelize,
+    Tenant,
+    SystemSetting,
+    DgfyAccount,
+    DgfyAccountTenantMembership
+} = await import('../src/models/index.js');
 const { generateDgfyToken } = await import('../src/modules/dgfy/usecases/dgfyAuthUseCases.js');
-const { Op } = await import('sequelize');
+const { DataTypes, Op } = await import('sequelize');
 
 describe('Admin Tenant Lifecycle Integration - Parity', () => {
     let adminApiToken;
@@ -102,6 +108,16 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
             process.env.JWT_SECRET,
             { expiresIn: '1h' }
         );
+        await DgfyAccount.sync();
+        await DgfyAccountTenantMembership.sync();
+        const queryInterface = sequelize.getQueryInterface();
+        const dgfyAccountColumns = await queryInterface.describeTable('dgfy_accounts');
+        if (!dgfyAccountColumns.email_verified_at) {
+            await queryInterface.addColumn('dgfy_accounts', 'email_verified_at', {
+                type: DataTypes.DATE,
+                allowNull: true
+            });
+        }
         dgfyAccount = await DgfyAccount.create({
             first_name: 'Admin',
             last_name: 'Lifecycle',
@@ -109,7 +125,8 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
             email: `admin-lifecycle-${testSuffix}@example.test`,
             phone: `+63917${String(testSuffix).slice(-7).padStart(7, '0')}`,
             password_hash: '$2y$10$abcdefghijklmnopqrstuv',
-            is_active: true
+            is_active: true,
+            email_verified_at: new Date()
         });
         dgfyToken = generateDgfyToken(dgfyAccount);
 
