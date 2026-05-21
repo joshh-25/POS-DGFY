@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: frontend
-last_reviewed: 2026-05-14
+last_reviewed: 2026-05-21
 applies_to: storefront_all_modes
 topic: storefront_current_standing
 ---
@@ -29,10 +29,13 @@ This is a frontend capability/status reference, not a new architecture decision.
 
 ## Shared Storefront Standing (Cross-Mode)
 - Discovery and tenant entry flow are active (search/list/map + store slug page handoff).
+- Discovery visible-result search is backed by `/api/v1/storefront/discovery`; `/geo-search` is not used as a visible no-match authority in the Storefront web client.
+- Public discovery search now applies bounded customer-facing aliases for common service terms such as `aircon`, `A/C`, `AC`, `air conditioning`, and `air conditioner`.
 - Mode selection is template-driven through the storefront mode presentation registry and template registry.
 - Catalog and checkout visibility are controlled by customer access and inventory display policy.
 - Tenant profile/cover branding, branch selection, and map marker previews are active.
-- Duplicate-coordinate location pins are display-offset at render time so every branch remains targetable without changing stored coordinates or preferred-location routing.
+- Duplicate-coordinate location pins render as a single exact-coordinate cluster marker. The cluster opens a compact selectable list that shows all entries with internal scrolling for dense same-coordinate locations; stored IMS coordinates remain the only marker, popup, and map-bounds source.
+- Pin clicks/taps synchronously select the pin, open or keep the Discover Nearby panel visible, and show the marker preview. Store navigation remains an explicit card/list action.
 - Empty-state guidance for tenants without storefront-ready sellable items is active.
 - Storefront follow/share controls are available where tenant flags enable them.
 - The merged storefront pilot keeps mode-specific view-model logic in the storefront app while preserving existing backend/source-of-truth contracts.
@@ -67,28 +70,32 @@ This is a frontend capability/status reference, not a new architecture decision.
 - Simple storefront contract coverage is active.
 
 ## Storefront Regression Standing (Latest Run)
-Run date: `2026-05-14`
-Suite command (frontend):
-`npm --prefix frontend exec vitest run apps/store/src/__tests__`
+Run date: `2026-05-21`
 
-Matrix result:
-- Storefront discovery: `PASS`
-- Item availability: `PASS`
-- Service booking: `PASS`
-- F&B rendering: `PASS`
-- Services/F&B/simple storefront view models: `PASS`
-- Mode presentation and template registry coverage: `PASS`
-- Mobile layout coverage in storefront suites: `PASS`
+Targeted Storefront discovery commands:
+- `npm --prefix frontend test -- --run apps/store/src/__tests__/discoveryPresentation.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx`
+- `npm --prefix backend test -- --runInBand --runTestsByPath tests/storefrontDiscoveryRepository.test.js tests/storefrontDiscoveryIndexService.catalogVisibility.test.js`
+- `npm run build:store`
 
-Aggregate result:
-- Test files: `15/15 passed`
-- Tests: `74/74 passed`
+Targeted matrix result:
+- Storefront discovery map/search flow: `PASS` (`24/24` targeted frontend tests)
+- Storefront discovery repository and catalog visibility indexing: `PASS` (`19/19` targeted backend tests)
+- Storefront production build: `PASS`
+- Discovery-index dry-run reconciliation: `PASS`, `status=healthy`, `upserted=4`, `failed=0`
+- Discovery-index write reconciliation: `PASS`, `status=healthy`, `upserted=4`, `failed=0`
 
-Build result:
-- Command: `VITE_STORE_BASE_PATH=/tenant-store/ npm --prefix frontend run build:store`
-- Result: `PASS`
-- Fresh storefront build emitted `assets/vendor-DIHQYMXL.js`; the previously reported failing `vendor-BGNbcnYt.js` chunk is not part of the current local production-candidate build.
+Known validation gap:
+- Browser screenshot-level QA was not completed in this checkout because local Playwright is not installed. The current evidence is unit/integration/build/reconciliation evidence, not rendered-browser proof.
 
 ## Notes
 - This file intentionally tracks the frontend standing and test evidence snapshot only.
 - Backend/contract evolution remains governed by ADRs and API docs.
+
+## Discovery Map/Search Fix Standing (2026-05-21)
+- Public Storefront discovery search uses the authoritative `/api/v1/storefront/discovery` flow for visible results; the client no longer swaps in transient `/geo-search` no-match states.
+- Search and Near Me actions use intent sequencing and request cancellation so stale geolocation callbacks or older discovery fetches cannot overwrite newer results.
+- Public search alias expansion is intentionally bounded and lives in the shared backend policy so index text and query matching agree. It currently covers common `aircon`/`A/C`/`air conditioning` variants without introducing broad fuzzy matching.
+- Single-result searches auto-focus the exact pin and preview; multi-result searches fit the exact unique marker coordinates.
+- Pin click opens/keeps the Discover Nearby results panel and marker preview synchronously. Store navigation is an explicit card/list action.
+- Duplicate-coordinate cluster previews now show all same-coordinate storefronts in a bounded scrollable card rather than hiding overflow entries.
+- Storefront discovery index reconciliation is part of the guarded production deploy path by default, with a dry-run CLI for preflight impact review.

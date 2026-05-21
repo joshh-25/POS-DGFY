@@ -2845,7 +2845,7 @@ List publicly discoverable stores for list/grid/map storefront views.
 **Query Parameters**
 | Name | Type | Description |
 |------|------|-------------|
-| `search` | string | Optional keyword against store name/slug/address/location or tenant catalog item name |
+| `search` | string | Optional keyword against store name/slug/address/location or tenant catalog item name; bounded public aliases are applied for approved customer-facing terms such as `aircon`, `A/C`, `AC`, `air conditioning`, and `air conditioner` |
 | `latitude` | number | Optional user latitude for distance sorting |
 | `longitude` | number | Optional user longitude for distance sorting |
 | `page` | number | Page number (default 1) |
@@ -2857,11 +2857,12 @@ List publicly discoverable stores for list/grid/map storefront views.
 
 **Search Notes**
 - Item-name search includes tenants that have matching catalog items from indexed storefront snapshots.
+- Search matching is index-backed and deterministic. It is not a general fuzzy-search engine; bounded alias expansion is shared between `item_search_snapshot` generation and discovery query matching so common public terms can match equivalent catalog/service wording without making unrelated short strings match.
 - Default item-search behavior is stock-aware (`in_stock_only`) unless caller explicitly requests `include_out_of_stock`.
 - The current Storefront web client explicitly requests `stock_filter=include_out_of_stock` so broad customer discovery can still show out-of-stock item matches with match metadata. API consumers that omit the parameter keep the backend stock-aware default.
 - `union` mode returns the union of store-field matches and eligible item matches.
 - `pin_scope` changes discovery anchor/pin behavior for map/list/grid without changing checkout source contracts.
-- Storefront map marker preview cards may combine discovery-row branding and match metadata with `/store/locations` branch data. The card action must route with the pinned branch `location_id` when available so catalog, quote, checkout, and booking reads stay scoped to the selected fulfillment location. Clients may apply display-only offsets when multiple pins share effectively identical coordinates; this must not mutate stored branch coordinates or the `location_id` used for catalog/quote/checkout/booking scope.
+- Storefront map marker preview cards may combine discovery-row branding and match metadata with `/store/locations` branch data. The card action must route with the pinned branch `location_id` when available so catalog, quote, checkout, and booking reads stay scoped to the selected fulfillment location. Clients must not mutate stored branch coordinates for visual spreading; same-coordinate pins should render as an exact-coordinate shared marker or equivalent grouping that preserves the stored coordinate and selected `location_id`.
 - Storefront-visible item-search eligibility follows shared catalog policy precedence: explicit `storefront_catalog_overrides.storefront_visible` first; temporary rollout fallback uses `pos_visible` only when Storefront override data is unavailable; otherwise products default to `category=product` + `product_type=finished_goods`, and services default to visible when service metadata exists with `visible_in_storefront !== false` and `bookable !== false`.
 - When Customer Access Mode enforcement is active, tenants whose effective mode is `ghost` remain discoverable by store/profile fields but are not eligible for item-search matches. Enforcement is active by default; `CUSTOMER_ACCESS_MODES_ENABLED=false` is an explicit rollback switch, and `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` can re-enable selected tenants during rollback recovery.
 

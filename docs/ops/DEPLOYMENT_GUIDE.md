@@ -54,6 +54,9 @@ No-staging release policy reference:
     - `auto`: billing checks run only when `PAYMENTS_ENABLED=true`
     - `0`: billing checks always skipped
     - `1`: force billing checks even if payments are disabled
+  - `DEPLOY_RECONCILE_STOREFRONT_DISCOVERY_INDEX=0|1` (default `1`)
+    - `1`: run the Storefront discovery index reconciliation after migrations, tenant schema sync, tenant index audit, and role backfill, before PM2 reload.
+    - `0`: skip reconciliation only for a controlled incident/rollback window; run `npm run reconcile:storefront-discovery -- --dry-run --json` and then the write reconciliation as soon as the blocker is cleared.
 
 ## Standard Deployment (Simplified)
 For Namecheap shared hosting, use the artifact-based GitHub Actions lane in `docs/ops/NAMECHEAP_SHARED_CICD.md`. That lane deploys with FTP plus cPanel Node.js App, uses `backend/app.js` as the startup shim, restarts through Passenger `tmp/restart.txt`, and blocks backend deploys when migrations changed.
@@ -195,11 +198,12 @@ What `deploy.sh` does:
 10. Runs billing verification/audit only when billing checks are enabled (`DEPLOY_RUN_BILLING_VERIFY` + `PAYMENTS_ENABLED`)
 11. Runs tenant schema sync and emits machine-readable report
 12. Applies tenant schema sync regression gate (`fail on new/mutated failures` vs baseline)
-13. Reloads PM2 and verifies backend + IMS + POS + Store runtime health
+13. Reconciles the Storefront discovery index so `item_search_snapshot`, branch pins, customer-access metadata, and storefront catalog override visibility are fresh before the app is reloaded
+14. Reloads PM2 and verifies backend + IMS + POS + Store runtime health
     - Hosting capability status is available at `/health`, `/api/v1/health`, and Admin > Hosting.
     - In `shared` mode, Redis absence is expected and should be visible as an optional/degraded capability, not a failed deploy by itself.
     - In `vps` mode, configured but disconnected Redis is a degraded runtime and should block production-ready sign-off.
-14. Verifies public endpoints (unless `DEPLOY_VERIFY_PUBLIC_ENDPOINTS=0`):
+15. Verifies public endpoints (unless `DEPLOY_VERIFY_PUBLIC_ENDPOINTS=0`):
   - `https://skupervisor.surebizcorp.com`
   - `https://pos.surebizcorp.com`
   - `https://surebizcorp.com`
@@ -208,7 +212,7 @@ What `deploy.sh` does:
   - `https://pos.dgfy.ph`
   - `https://dgfy.ph`
   - `https://store.dgfy.ph`
-15. Verifies served frontend entry asset parity against freshly built artifacts for IMS, POS, and Tenant Store
+16. Verifies served frontend entry asset parity against freshly built artifacts for IMS, POS, and Tenant Store
 
 Deployment evidence files:
 - `logs/deploy/deploy_<timestamp>.log`
@@ -219,6 +223,41 @@ Deployment evidence files:
 
 Tenant sync baseline file (repo-tracked):
 - `backend/config/deploy/tenant-schema-sync-failure-baseline.json`
+
+Storefront discovery reconciliation:
+```bash
+# Preview impact without writes
+npm run reconcile:storefront-discovery -- --dry-run --json
+
+# Reconcile all active tenants and prune stale inactive index rows
+npm run reconcile:storefront-discovery -- --json
+
+# Reconcile a scoped tenant during incident recovery
+npm run reconcile:storefront-discovery -- --tenant-id <tenant_id> --no-prune --json
+```
+
+Production deploys run the write reconciliation by default. A non-zero `failed` count is a deploy blocker because stale `item_search_snapshot` rows can make public Storefront search disagree with IMS Storefront visibility.
+
+Storefront map/search release proof:
+1. Run the targeted backend and frontend Storefront discovery suites before deploy:
+   ```bash
+   cd backend && npm test -- --runInBand --runTestsByPath tests/storefrontDiscoveryRepository.test.js tests/storefrontDiscoveryIndexService.catalogVisibility.test.js
+   cd ../frontend && npm test -- --run apps/store/src/__tests__/discoveryPresentation.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx
+   ```
+2. Run `npm run build:store` from the repo root and confirm the generated Storefront bundle succeeds.
+3. Run discovery-index dry-run reconciliation, then the write reconciliation if dry-run is healthy:
+   ```bash
+   cd backend
+   npm run reconcile:storefront-discovery -- --dry-run --json
+   npm run reconcile:storefront-discovery -- --json
+   ```
+4. Perform browser QA before production deploy when a browser automation runtime is available. Minimum scenarios:
+   - Search `aircon` and confirm Storefront discovery does not flash a false no-match state.
+   - Search a one-store item and confirm the map auto-focuses the exact pin and visible preview.
+   - Search a multi-store item and confirm all result pins fit without coordinate spreading.
+   - Click a pin and confirm the Discover Nearby panel remains visible; click the explicit store action to navigate.
+   - Scroll the discovery page and confirm the search shell remains sticky.
+5. After production deploy, smoke the public Storefront endpoint with the same search terms and confirm discovery-index reconciliation completed in the deploy log before PM2 reload.
 
 Tenant schema/index risk controls:
 - `DEPLOY_TENANT_SCHEMA_SYNC_MODE=report|alter` (default: `report`)
