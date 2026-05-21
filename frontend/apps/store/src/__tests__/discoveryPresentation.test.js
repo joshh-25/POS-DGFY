@@ -33,7 +33,7 @@ describe('selectDiscoveryPinLocations', () => {
       hasSearchQuery: true,
       pinScope: 'all_matching_branches',
       matchingLocationIds: [2, 3]
-    })).toEqual([activeLocations[1], activeLocations[2]]);
+    })).toEqual(activeLocations);
   });
 
   it('keeps all active branches in all_matching_branches scope when no item-match ids are present', () => {

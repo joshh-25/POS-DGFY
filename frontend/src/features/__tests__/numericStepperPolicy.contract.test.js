@@ -12,8 +12,8 @@ const scanFile = (relativePath) => fs.readFileSync(path.resolve(frontendRoot, re
 describe('Numeric step policy contracts', () => {
   it('keeps POS checkout quantity increment/decrement at step-by-1', () => {
     const posCheckout = scanFile('src/features/pos/components/POSCheckoutTerminal.jsx');
-    expect(posCheckout).toContain("onClick={() => updateCartQuantity(line.item_id, Number(line.quantity || 0) - 1)}");
-    expect(posCheckout).toContain("onClick={() => updateCartQuantity(line.item_id, Number(line.quantity || 0) + 1)}");
+    expect(posCheckout).toContain("onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) - 1)}");
+    expect(posCheckout).toContain("onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) + 1)}");
     expect(posCheckout).not.toContain('? 0.25 : -0.25');
   });
 
