@@ -8,6 +8,7 @@ import { createHash } from 'crypto';
 import { Op } from 'sequelize';
 import { assertStorefrontDiscoveryRepositoryContract } from '../contracts/storefrontDiscoveryRepository.contract.js';
 import { normalizeStorefrontAssetPath, normalizeStorefrontAssetUrl } from '../../shared/utils/storefrontAssetPolicy.js';
+import { publicSearchTextMatches } from '../../shared/utils/publicSearchAliasPolicy.js';
 import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
 import {
     buildAccessCapabilities,
@@ -765,8 +766,7 @@ const collectItemMatchByTenant = (entries = [], search = '') => {
         const inStockLocationIds = new Set();
 
         snapshotRows.forEach((item) => {
-            const searchable = normalizeSearchText(item?.text);
-            if (!searchable.includes(normalizedSearch)) return;
+            if (!publicSearchTextMatches(item?.text, normalizedSearch)) return;
 
             matchingItemCount += 1;
             if (sampleNames.length < 3 && item?.item_name) {
@@ -870,12 +870,12 @@ const applyDiscoveryQuery = async (entries = [], query = {}) => {
 
     if (search) {
         rows.forEach((entry) => {
-            const matched = (
-                normalizeSearchText(entry?.tenant_name).includes(search)
-                || normalizeSearchText(entry?.slug).includes(search)
-                || normalizeSearchText(entry?.address_line).includes(search)
-                || normalizeSearchText(entry?.location_name).includes(search)
-            );
+            const matched = publicSearchTextMatches([
+                entry?.tenant_name,
+                entry?.slug,
+                entry?.address_line,
+                entry?.location_name
+            ].filter(Boolean).join(' '), search);
             if (matched) tenantFieldMatches.add(String(entry.tenant_id || ''));
         });
 

@@ -6,7 +6,12 @@ import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 import logger from '../config/logger.js';
 import { bumpStorefrontDiscoveryCacheVersion } from './storefrontDiscoveryCacheState.js';
 import { invalidateStorefrontDiscoverySharedSignatureCache } from './storefrontDiscoveryFreshnessService.js';
-import { isCatalogItemVisible } from '../modules/shared/utils/catalogVisibilityPolicy.js';
+import {
+    getCatalogOverride,
+    getStorefrontCatalogOverride,
+    resolveStorefrontCatalogVisibility
+} from '../modules/shared/utils/catalogVisibilityPolicy.js';
+import { expandPublicSearchText } from '../modules/shared/utils/publicSearchAliasPolicy.js';
 import { normalizeStorefrontAssetPath, normalizeStorefrontAssetUrl } from '../modules/shared/utils/storefrontAssetPolicy.js';
 import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '../modules/shared/constants/workflowModes.js';
 import {
@@ -103,11 +108,11 @@ const sanitizeStorefrontAssetUrl = ({ tenant, key, rawValue }) => {
     return normalized || null;
 };
 
-const isMissingPosCatalogOverrideTableError = (error) => {
+const isMissingTableError = (error, tableName) => {
     if (!error) return false;
     const code = error.original?.code || error.parent?.code || error.code;
     const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
-    return code === 'ER_NO_SUCH_TABLE' || message.includes('pos_catalog_overrides');
+    return code === 'ER_NO_SUCH_TABLE' && (!tableName || message.includes(tableName));
 };
 
 const mapWithConcurrency = async (items = [], limit = 4, worker) => {
@@ -255,14 +260,20 @@ const normalizeExternalHttpUrl = (value, maxLength = 255) => {
 };
 
 const buildItemSearchText = (item = {}) => (
-    [
+    expandPublicSearchText([
         item?.name,
         item?.sku_code,
-        item?.description
+        item?.description,
+        item?.category,
+        item?.product_type,
+        item?.serviceDetail?.service_category,
+        item?.service_detail?.service_category,
+        item?.serviceDetail?.service_area_type,
+        item?.service_detail?.service_area_type
     ]
         .filter((value) => value != null && value !== '')
         .map((value) => normalizeSearchToken(value))
-        .join(' ')
+        .join(' '))
 );
 
 const buildTenantSnapshot = async (tenant) => {
@@ -272,6 +283,7 @@ const buildTenantSnapshot = async (tenant) => {
         TenantLocation,
         Item,
         PosCatalogOverride,
+        StorefrontCatalogOverride,
         ServiceItemDetail,
         ItemLocationStock
     } = getTenantModels(tenantConnection);
@@ -362,7 +374,15 @@ const buildTenantSnapshot = async (tenant) => {
         where: buildVisibleWhere({}, { statusField: 'status', excludeInactiveStatus: true }),
         attributes: ['item_id', 'name', 'sku_code', 'description', 'category', 'product_type', 'current_stock']
     };
-    const overrideInclude = PosCatalogOverride
+    const storefrontOverrideInclude = StorefrontCatalogOverride
+        ? [{
+            model: StorefrontCatalogOverride,
+            as: 'storefrontCatalogOverride',
+            attributes: ['storefront_visible'],
+            required: false
+        }]
+        : [];
+    const legacyPosOverrideInclude = PosCatalogOverride
         ? [{
             model: PosCatalogOverride,
             as: 'posCatalogOverride',
@@ -374,28 +394,69 @@ const buildTenantSnapshot = async (tenant) => {
         ? [{
             model: ServiceItemDetail,
             as: 'serviceDetail',
-            attributes: ['bookable', 'visible_in_storefront'],
+            attributes: ['bookable', 'visible_in_storefront', 'service_category', 'service_area_type'],
             required: false
         }]
         : [];
     let catalogRows;
-    try {
-        catalogRows = await Item.findAll({
-            ...baseCatalogQuery,
-            include: [
-                ...overrideInclude,
-                ...serviceDetailInclude
-            ]
-        });
-    } catch (error) {
-        if (!isMissingPosCatalogOverrideTableError(error)) {
-            throw error;
+    let useLegacyPosFallback = false;
+    const loadCatalogRowsWithServiceFallback = async (overrideIncludes = []) => {
+        try {
+            return await Item.findAll({
+                ...baseCatalogQuery,
+                include: [
+                    ...overrideIncludes,
+                    ...serviceDetailInclude
+                ]
+            });
+        } catch (error) {
+            if (!serviceDetailInclude.length || !isMissingTableError(error, 'service_item_details')) {
+                throw error;
+            }
+            logger.warn('[StorefrontDiscoveryIndex] service_item_details table unavailable; indexing catalog without service metadata', {
+                event_type: 'storefront_discovery_service_detail_fallback',
+                tenantId: tenant?.id || null,
+                tenantName: tenant?.name || null
+            });
+            return Item.findAll({
+                ...baseCatalogQuery,
+                include: [
+                    ...overrideIncludes
+                ]
+            });
         }
-        catalogRows = await Item.findAll(baseCatalogQuery);
+    };
+    const loadCatalogRowsWithLegacyPosFallback = async () => {
+        useLegacyPosFallback = true;
+        try {
+            return await loadCatalogRowsWithServiceFallback(legacyPosOverrideInclude);
+        } catch (fallbackError) {
+            if (!isMissingTableError(fallbackError, 'pos_catalog_overrides')) {
+                throw fallbackError;
+            }
+            useLegacyPosFallback = false;
+            return loadCatalogRowsWithServiceFallback([]);
+        }
+    };
+    if (!StorefrontCatalogOverride) {
+        catalogRows = await loadCatalogRowsWithLegacyPosFallback();
+    } else {
+        try {
+            catalogRows = await loadCatalogRowsWithServiceFallback(storefrontOverrideInclude);
+        } catch (error) {
+            if (!isMissingTableError(error, 'storefront_catalog_overrides')) {
+                throw error;
+            }
+            catalogRows = await loadCatalogRowsWithLegacyPosFallback();
+        }
     }
     const visibleCatalogRows = (catalogRows || [])
         .map((row) => toLocationPlain(row))
-        .filter((row) => isCatalogItemVisible(row));
+        .filter((row) => resolveStorefrontCatalogVisibility({
+            item: row,
+            override: getStorefrontCatalogOverride(row),
+            legacyPosOverride: useLegacyPosFallback ? getCatalogOverride(row) : null
+        }));
     const catalogCount = visibleCatalogRows.length;
 
     const visibleItemIds = visibleCatalogRows.map((row) => Number(row.item_id)).filter((itemId) => Number.isInteger(itemId) && itemId > 0);
@@ -670,6 +731,7 @@ export const removeStorefrontDiscoveryIndexForTenant = async ({ tenantId } = {})
 export const reconcileStorefrontDiscoveryIndex = async ({
     tenantIds = null,
     pruneStale = true,
+    dryRun = false,
     concurrency = Number.parseInt(process.env.STOREFRONT_DISCOVERY_INDEX_SYNC_CONCURRENCY || '4', 10) || 4
 } = {}) => {
     const startedAt = Date.now();
@@ -691,12 +753,15 @@ export const reconcileStorefrontDiscoveryIndex = async ({
     let removed = 0;
     let failed = 0;
     let fallbackPrimaryCount = 0;
+    const failures = [];
 
     await mapWithConcurrency(tenants || [], concurrency, async (tenant) => {
         try {
             const snapshot = await buildTenantSnapshot(tenant);
             if (!snapshot) {
-                await StorefrontDiscoveryIndex.destroy({ where: { tenant_id: tenant.id } });
+                if (!dryRun) {
+                    await StorefrontDiscoveryIndex.destroy({ where: { tenant_id: tenant.id } });
+                }
                 removed += 1;
                 return;
             }
@@ -706,11 +771,18 @@ export const reconcileStorefrontDiscoveryIndex = async ({
             }
             delete snapshot.__used_fallback_primary;
 
-            await StorefrontDiscoveryIndex.destroy({ where: { tenant_id: tenant.id } });
-            await StorefrontDiscoveryIndex.create(snapshot);
+            if (!dryRun) {
+                await StorefrontDiscoveryIndex.destroy({ where: { tenant_id: tenant.id } });
+                await StorefrontDiscoveryIndex.create(snapshot);
+            }
             upserted += 1;
         } catch (error) {
             failed += 1;
+            failures.push({
+                tenantId: tenant?.id || null,
+                tenantName: tenant?.name || null,
+                error: error?.message || 'unknown_error'
+            });
             logger.warn('[StorefrontDiscoveryIndex] Tenant sync failed', {
                 tenantId: tenant?.id || null,
                 tenantName: tenant?.name || null,
@@ -724,21 +796,25 @@ export const reconcileStorefrontDiscoveryIndex = async ({
         const staleWhere = activeTenantIds.length > 0
             ? { tenant_id: { [Op.notIn]: activeTenantIds } }
             : {};
-        const pruned = await StorefrontDiscoveryIndex.destroy({ where: staleWhere });
+        const pruned = dryRun
+            ? await StorefrontDiscoveryIndex.count({ where: staleWhere })
+            : await StorefrontDiscoveryIndex.destroy({ where: staleWhere });
         removed += pruned;
     }
 
-    if (upserted > 0 || removed > 0) {
+    if (!dryRun && (upserted > 0 || removed > 0)) {
         bumpStorefrontDiscoveryCacheVersion();
         invalidateStorefrontDiscoverySharedSignatureCache();
     }
 
     const result = {
         status: failed > 0 ? 'degraded' : 'healthy',
+        dryRun,
         upserted,
         removed,
         failed,
         fallbackPrimaryCount,
+        failures,
         tenantCount: tenants.length,
         durationMs: Date.now() - startedAt,
         checkedAt: new Date().toISOString()

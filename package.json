@@ -43,6 +43,7 @@
     "audit:location-stock-parity:allow-missing": "cd backend && npm run audit:location-stock-parity:allow-missing",
     "audit:location-stock-parity:repair": "cd backend && npm run audit:location-stock-parity:repair",
     "audit:tenant-index-headroom": "cd backend && npm run audit:tenant-index-headroom --",
+    "reconcile:storefront-discovery": "cd backend && npm run reconcile:storefront-discovery --",
     "remediate:tenant-redundant-indexes": "cd backend && npm run remediate:tenant-redundant-indexes --",
     "smoke:pos-local": "cd backend && npm run smoke:pos-local",
     "qa:fnb-readiness": "node scripts/run-fnb-readiness-gate.js",
