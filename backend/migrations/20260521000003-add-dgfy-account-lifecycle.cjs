@@ -13,8 +13,7 @@ module.exports = {
         },
         jti: {
           type: Sequelize.STRING(80),
-          allowNull: false,
-          unique: true
+          allowNull: false
         },
         dgfy_account_id: {
           type: Sequelize.UUID,

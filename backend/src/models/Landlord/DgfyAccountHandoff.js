@@ -11,8 +11,7 @@ export default (sequelize) => {
         },
         jti: {
             type: DataTypes.STRING(80),
-            allowNull: false,
-            unique: true
+            allowNull: false
         },
         dgfy_account_id: {
             type: DataTypes.UUID,
