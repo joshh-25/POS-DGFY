@@ -8,12 +8,28 @@ export const makeClusterElement = (count, selected = false, ariaLabel = 'Shared 
   return el;
 };
 
-export const getDiscoveryMarkerKey = (pin = {}) => String(
-  pin?.marker_key
-  || pin?.slug
-  || pin?.location_id
-  || `${pin?.latitude}:${pin?.longitude}`
-).trim();
+export const getDiscoveryMarkerKey = (pin = {}) => {
+  const explicitKey = String(pin?.marker_key || '').trim();
+  if (explicitKey) return explicitKey;
+
+  const slug = String(pin?.slug || pin?.tenant_slug || pin?.tenant_id || '').trim();
+  const locationId = pin?.location_id ?? pin?.nearest_location_id ?? null;
+  const numericLocationId = Number(locationId);
+  if (slug && Number.isInteger(numericLocationId) && numericLocationId > 0) {
+    return `${slug}:loc:${numericLocationId}`;
+  }
+
+  const lat = Number(pin?.latitude);
+  const lng = Number(pin?.longitude);
+  if (slug && Number.isFinite(lat) && Number.isFinite(lng)) {
+    return `${slug}:coord:${lat.toFixed(6)}:${lng.toFixed(6)}`;
+  }
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    return `coord:${lat.toFixed(6)}:${lng.toFixed(6)}`;
+  }
+
+  return slug;
+};
 
 export const createSharedCoordinatePreviewNode = (stores = [], {
   onSelect = null,

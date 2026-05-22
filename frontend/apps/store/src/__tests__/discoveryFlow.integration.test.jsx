@@ -664,6 +664,146 @@ describe('storefront discovery integration flow', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /2 storefronts at this location/i })[0]);
     await waitFor(() => expect(screen.getByRole('button', { name: /Select Alpha Foods at Main Branch/i })).toBeTruthy());
     expect(screen.getByRole('button', { name: /Select Beta Foods at Main Branch/i })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /Select Alpha Foods at Main Branch/i }));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
+    expect(screen.getByRole('button', { name: 'Open storefront' })).toBeTruthy();
+  });
+
+  it('does not cluster storefronts at the default center when coordinate data is missing', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Coordinate Missing A',
+              slug: 'missing-a',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              catalog_count: 2
+            },
+            {
+              tenant_id: 'tenant-2',
+              tenant_name: 'Coordinate Missing B',
+              slug: 'missing-b',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              catalog_count: 1
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({ primary_location_id: null, locations: [] });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/Coordinate Missing A/i)).toBeTruthy());
+
+    const markerAtDefaultCenter = maplibregl.Marker.mock.results.some((result) => (
+      result?.value?.setLngLat?.mock?.calls?.some(([coordinate]) => (
+        Array.isArray(coordinate)
+        && Number(coordinate[0]).toFixed(6) === '122.562100'
+        && Number(coordinate[1]).toFixed(6) === '10.720200'
+      ))
+    ));
+    expect(markerAtDefaultCenter).toBe(false);
+  });
+
+  it('does not render provisioned placeholder storefront coordinates as authoritative map pins', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Placeholder A',
+              slug: 'placeholder-a',
+              storefront_open: true,
+              location_id: 1,
+              location_name: 'Main Branch',
+              address_line: 'Iloilo City',
+              latitude: 10.699817,
+              longitude: 122.559893,
+              catalog_count: 2
+            },
+            {
+              tenant_id: 'tenant-2',
+              tenant_name: 'Placeholder B',
+              slug: 'placeholder-b',
+              storefront_open: true,
+              location_id: 1,
+              location_name: 'Main Branch',
+              address_line: 'Iloilo City',
+              latitude: 10.699817,
+              longitude: 122.559893,
+              catalog_count: 1
+            },
+            {
+              tenant_id: 'tenant-3',
+              tenant_name: 'Configured Store',
+              slug: 'configured-store',
+              storefront_open: true,
+              location_id: 7,
+              location_name: 'Downtown',
+              address_line: 'Downtown Road',
+              latitude: 10.7001938,
+              longitude: 122.5623094,
+              catalog_count: 1
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 3, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({ primary_location_id: null, locations: [] });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/Placeholder A/i)).toBeTruthy());
+
+    const markerAtProvisionedDefault = maplibregl.Marker.mock.results.some((result) => (
+      result?.value?.setLngLat?.mock?.calls?.some(([coordinate]) => (
+        Array.isArray(coordinate)
+        && Number(coordinate[0]).toFixed(6) === '122.559893'
+        && Number(coordinate[1]).toFixed(6) === '10.699817'
+      ))
+    ));
+    expect(markerAtProvisionedDefault).toBe(false);
+    const markerAtConfiguredCoordinate = maplibregl.Marker.mock.results.some((result) => (
+      result?.value?.setLngLat?.mock?.calls?.some(([coordinate]) => (
+        Array.isArray(coordinate)
+        && Number(coordinate[0]).toFixed(6) === '122.562309'
+        && Number(coordinate[1]).toFixed(6) === '10.700194'
+      ))
+    ));
+    expect(markerAtConfiguredCoordinate).toBe(true);
   });
 
   it('discloses cluster overflow when more than eight storefronts share coordinates', async () => {

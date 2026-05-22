@@ -147,6 +147,12 @@ Booking confirmed
 */
 
 const DEFAULT_CENTER = { latitude: 10.7202, longitude: 122.5621 };
+const PROVISIONED_DEFAULT_LOCATION = {
+  latitude: 10.699817,
+  longitude: 122.559893,
+  name: 'main branch',
+  address: 'iloilo city'
+};
 const TILE_BASE = import.meta.env.VITE_TILE_BASE || 'https://tiles.openfreemap.org';
 
 const TILING_SERVER = import.meta.env.DEV
@@ -715,6 +721,19 @@ const storePath = (slug, subpage = null, query = '') => `${TENANT_STORE_BASE_PAT
 const toNumberOrNull = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+};
+const isProvisionedDefaultStorefrontCoordinate = (pin = {}) => {
+  const lat = Number(pin?.latitude);
+  const lng = Number(pin?.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  const coordinateMatches = Math.abs(lat - PROVISIONED_DEFAULT_LOCATION.latitude) < 0.000001
+    && Math.abs(lng - PROVISIONED_DEFAULT_LOCATION.longitude) < 0.000001;
+  if (!coordinateMatches) return false;
+
+  const locationName = String(pin?.location_name || pin?.nearest_location_name || '').trim().toLowerCase();
+  const addressLine = String(pin?.address_line || '').trim().toLowerCase();
+  return locationName === PROVISIONED_DEFAULT_LOCATION.name
+    && addressLine === PROVISIONED_DEFAULT_LOCATION.address;
 };
 const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
   const toRad = (value) => value * (Math.PI / 180);
@@ -1410,6 +1429,7 @@ function StoresMap({
 
     const groupsByCoordinate = new globalThis.Map();
     uniqueRows.forEach((store) => {
+      if (isProvisionedDefaultStorefrontCoordinate(store)) return;
       const lat = Number(store?.latitude);
       const lng = Number(store?.longitude);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
@@ -1561,10 +1581,31 @@ function StoresMap({
         });
         popupsRef.current.push(popup);
         let controls = null;
+        const openStorePreviewFromCluster = (store) => {
+          if (!store) return;
+          onSelectStoreRef.current?.(store);
+          controls?.open?.();
+          const storePreviewNode = createStoreMarkerPreviewNode(store, {
+            resolveAssetUrl: withAssetOrigin,
+            onAction: () => onOpenStoreRef.current?.(store),
+            onClose: () => controls?.close?.()
+          });
+          storePreviewNode.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              controls?.close?.();
+              el.focus();
+            }
+          });
+          popup.setDOMContent(storePreviewNode);
+          popup.setLngLat(coordinate).addTo(map);
+          if (typeof document !== 'undefined' && storePreviewNode && !storePreviewNode.isConnected) {
+            document.body.appendChild(storePreviewNode);
+          }
+        };
         const previewNode = createSharedCoordinatePreviewNode(groupStores, {
           onSelect: (store) => {
-            onSelectStoreRef.current?.(store);
-            controls?.close?.();
+            openStorePreviewFromCluster(store);
           },
           onClose: () => controls?.close?.()
         });
@@ -4601,8 +4642,8 @@ export default function StorefrontApp() {
         const fallbackLocation = nearestMatchingLocation || primaryLocation || pins[0] || null;
         const fallbackLat = toNumberOrNull(store?.latitude);
         const fallbackLng = toNumberOrNull(store?.longitude);
-        const anchorLatitude = fallbackLocation?.latitude ?? fallbackLat ?? DEFAULT_CENTER.latitude;
-        const anchorLongitude = fallbackLocation?.longitude ?? fallbackLng ?? DEFAULT_CENTER.longitude;
+        const anchorLatitude = fallbackLocation?.latitude ?? fallbackLat ?? null;
+        const anchorLongitude = fallbackLocation?.longitude ?? fallbackLng ?? null;
         const nearestPinWithDistance = hasDiscoveryLocation
           ? pins
             .map((location) => ({
@@ -4763,7 +4804,7 @@ export default function StorefrontApp() {
           latitude: lat,
           longitude: lng,
           location_id: store?.location_id ?? null,
-          location_name: store?.nearest_location_name || store?.tenant_name,
+          location_name: store?.location_name || store?.nearest_location_name || store?.tenant_name,
           branch_label: 'Storefront pin',
           distance_km: Number.isFinite(Number(store?.nearest_distance_km)) ? Number(store.nearest_distance_km) : null
         });
@@ -4882,7 +4923,7 @@ export default function StorefrontApp() {
           latitude: lat,
           longitude: lng,
           location_id: store?.nearest_location_id ?? store?.location_id ?? null,
-          location_name: store?.nearest_location_name || store?.tenant_name || 'Storefront',
+          location_name: store?.location_name || store?.nearest_location_name || store?.tenant_name || 'Storefront',
           address_line: store?.address_line || '',
           is_primary_storefront: true,
           branch_label: 'Storefront pin',
@@ -4919,7 +4960,7 @@ export default function StorefrontApp() {
           latitude: lat,
           longitude: lng,
           location_id: store?.nearest_location_id ?? store?.location_id ?? null,
-          location_name: store?.nearest_location_name || store?.tenant_name || 'Storefront',
+          location_name: store?.location_name || store?.nearest_location_name || store?.tenant_name || 'Storefront',
           address_line: store?.address_line || '',
           is_primary_storefront: true,
           branch_label: store?.nearest_is_primary ? 'Primary branch' : 'Storefront pin',
