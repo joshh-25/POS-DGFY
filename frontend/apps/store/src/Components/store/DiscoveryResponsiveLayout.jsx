@@ -88,6 +88,7 @@ export function DiscoveryHeader({
   onLogoClick,
   navItems = [],
   activeItem = 'Explore',
+  onAccountClick,
   onRegisterClick,
   menuOpen = false,
   onMenuToggle = () => {}
@@ -121,10 +122,16 @@ export function DiscoveryHeader({
               {menuOpen ? <X size={22} /> : <Menu size={24} />}
             </button>
           ) : (
-            <button type="button" onClick={onRegisterClick} className={cx('discovery-header__cta', isTabletViewport && 'discovery-header__cta--tablet')}>
-              <Store size={isTabletViewport ? 14 : 15} />
-              Register Your Business
-            </button>
+            <>
+              <button type="button" onClick={onAccountClick} className={cx('discovery-header__accountCta', isTabletViewport && 'discovery-header__accountCta--tablet')}>
+                <UserCircle2 size={isTabletViewport ? 14 : 15} />
+                Log in / Sign up
+              </button>
+              <button type="button" onClick={onRegisterClick} className={cx('discovery-header__cta', isTabletViewport && 'discovery-header__cta--tablet')}>
+                <Store size={isTabletViewport ? 14 : 15} />
+                Register Your Business
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -170,6 +177,10 @@ export function DiscoveryHeader({
                 })}
               </div>
               <div className="discovery-header__drawerFooter">
+                <button type="button" onClick={onAccountClick} className="discovery-header__menuSecondaryCta">
+                  <UserCircle2 size={15} />
+                  Log in / Sign up
+                </button>
                 <button type="button" onClick={onRegisterClick} className="discovery-header__menuCta">
                   <Store size={15} />
                   Register Your Business

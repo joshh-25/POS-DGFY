@@ -51,35 +51,6 @@
   scrollbar-width: none;
 }
 
-.discovery-search-sticky-shell {
-  position: fixed !important;
-  left: 50%;
-  right: auto;
-  width: min(calc(100vw - 40px), 1320px) !important;
-  transform: translateX(-50%);
-  isolation: isolate;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.82);
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
-  padding-bottom: 8px;
-}
-
-@supports ((backdrop-filter: blur(10px)) or (-webkit-backdrop-filter: blur(10px))) {
-  .discovery-search-sticky-shell {
-    background-color: rgba(255, 255, 255, 0.96) !important;
-    -webkit-backdrop-filter: blur(10px);
-    backdrop-filter: blur(10px);
-  }
-}
-
-@media (max-width: 767px) {
-  .discovery-search-sticky-shell {
-    width: calc(100vw - 24px) !important;
-    border-radius: 0 0 18px 18px;
-    box-shadow: 0 10px 18px rgba(15, 23, 42, 0.08);
-    padding-bottom: 10px;
-  }
-}
-
 /* Menu card hover effect */
 .menu-card {
   @apply transition-all duration-200 hover:shadow-lg;
@@ -794,18 +765,33 @@
 }
 
 .discovery-header__cta,
-.discovery-header__menuCta {
+.discovery-header__accountCta,
+.discovery-header__menuCta,
+.discovery-header__menuSecondaryCta {
   border-radius: 10px;
-  border: none;
-  background: linear-gradient(135deg, #ea580c, #f97316);
-  color: #fff;
+  border: 1px solid transparent;
   font-weight: 700;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  box-shadow: 0 4px 14px rgba(249, 115, 22, 0.3);
   letter-spacing: 0.01em;
+}
+
+.discovery-header__cta,
+.discovery-header__menuCta {
+  border: none;
+  background: linear-gradient(135deg, #ea580c, #f97316);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(249, 115, 22, 0.3);
+}
+
+.discovery-header__accountCta,
+.discovery-header__menuSecondaryCta {
+  border-color: #dbeafe;
+  background: #ffffff;
+  color: #1a4e8d;
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.05);
 }
 
 .discovery-header__menuButton {
@@ -993,7 +979,8 @@
   color: #1a4e8d;
 }
 
-.discovery-header__menuCta {
+.discovery-header__menuCta,
+.discovery-header__menuSecondaryCta {
   width: 100%;
   min-height: 48px;
   justify-content: center;
@@ -1209,6 +1196,11 @@
   font-size: 13px;
 }
 
+.discovery-header__accountCta--tablet {
+  padding: 9px 14px;
+  font-size: 13px;
+}
+
 .discovery-hero--tablet {
   max-height: 240px;
   padding-top: 40px;
@@ -1257,6 +1249,11 @@
 
 .discovery-header--desktop .discovery-header__cta {
   padding: 10px 22px;
+  font-size: 14px;
+}
+
+.discovery-header--desktop .discovery-header__accountCta {
+  padding: 10px 18px;
   font-size: 14px;
 }
 
