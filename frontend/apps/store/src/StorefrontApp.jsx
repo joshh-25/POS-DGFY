@@ -6313,7 +6313,7 @@ export default function StorefrontApp() {
     }
     toast.info('Reviews are submitted from your DGFY account order history after an eligible paid or completed purchase.');
     setIsReviewModalOpen(false);
-    setIsAccountPanelOpen(true);
+    openAccountPanel();
     resetReviewDraft();
   };
 
