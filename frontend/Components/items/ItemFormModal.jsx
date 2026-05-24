@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -288,9 +288,24 @@ export default function ItemFormModal({
   const [initialFormData, setInitialFormData] = useState(null);
   const [isDirty, setIsDirty] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [savingAction, setSavingAction] = useState(null);
+  const savingActionRef = useRef(null);
   const [skuManuallyEdited, setSkuManuallyEdited] = useState(false);
   const [lastSuggestedSku, setLastSuggestedSku] = useState('');
   const isEditingDraft = item?.status === 'draft';
+  const isSaving = Boolean(savingAction);
+
+  const runSaveAction = async (action, operation) => {
+    if (savingActionRef.current) return;
+    savingActionRef.current = action;
+    setSavingAction(action);
+    try {
+      await operation();
+    } finally {
+      savingActionRef.current = null;
+      setSavingAction(null);
+    }
+  };
 
   const fetchSuppliers = async () => {
     if (!msmeMode) return;
@@ -715,6 +730,7 @@ export default function ItemFormModal({
   };
 
   const handleClose = () => {
+    if (savingActionRef.current) return;
     if (isDirty && !item) {
       setShowConfirmation(true);
     } else {
@@ -722,24 +738,28 @@ export default function ItemFormModal({
     }
   };
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     const draftData = {
       ...formData,
       status: 'draft'
     };
     if (onSaveDraft) {
-      onSaveDraft(draftData);
+      try {
+        await onSaveDraft(draftData);
+      } catch {
+        return;
+      }
     }
     setIsDirty(false);
     onClose();
   };
 
-  const handleFinalize = () => {
+  const handleFinalize = async () => {
     // For editing drafts, finalize means saving with full validation
-    handleSubmit(false);
+    await handleSubmit(false);
   };
 
-  const handleSubmit = (isDraft = false) => {
+  const handleSubmit = async (isDraft = false) => {
     // Convert empty strings to null for financial fields so hidden service cost stays unset.
     const cleanedData = {
       ...formData,
@@ -896,13 +916,29 @@ export default function ItemFormModal({
       }
       : submitPayload;
 
-    if (isDraft && onSaveDraft) {
-      onSaveDraft(finalPayload);
+    if (isDraft && onSaveDraft && !item) {
+      try {
+        await onSaveDraft(finalPayload);
+      } catch {
+        return;
+      }
     } else {
-      onSave(finalPayload);
+      try {
+        await onSave(finalPayload);
+      } catch {
+        return;
+      }
     }
     setIsDirty(false);
     onClose();
+  };
+
+  const handleSaveAndExit = async () => {
+    if (item?.status === 'draft' || !item) {
+      await handleSubmit(true);
+      return;
+    }
+    await handleSubmit(false);
   };
 
   const parsedMarginPercent = Number.parseFloat(marginPercent);
@@ -1322,7 +1358,7 @@ export default function ItemFormModal({
                 <div>
                   <Label>Storefront Catalog (Optional)</Label>
                   <p className="text-xs text-slate-500">
-                    Configure customer-facing catalog visibility and image independently from POS.
+                    Configure customer-facing catalog visibility and item image independently from POS.
                   </p>
                 </div>
                 {item && (
@@ -1347,11 +1383,11 @@ export default function ItemFormModal({
                       className="h-28 w-40 rounded-md border border-slate-200 object-cover"
                     />
                   ) : (
-                    <p className="text-sm text-slate-500">No storefront image uploaded yet.</p>
+                    <p className="text-sm text-slate-500">No item image uploaded yet.</p>
                   )}
                   <div className="flex flex-wrap gap-2">
                     <label className="cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100">
-                      Upload Storefront Image
+                      Upload Item Image
                       <input
                         type="file"
                         accept="image/*"
@@ -1371,13 +1407,13 @@ export default function ItemFormModal({
                       onClick={() => onDeleteStorefrontImage && onDeleteStorefrontImage(item)}
                       disabled={!storefrontConfig?.storefront_image_url || !onDeleteStorefrontImage}
                     >
-                      Remove Storefront Image
+                      Remove Item Image
                     </Button>
                   </div>
                 </div>
               ) : (
                 <p className="text-sm text-slate-500">
-                  Save the item first, then reopen it to complete storefront catalog setup.
+                  Save the item first, then reopen it to complete item image setup.
                 </p>
               )}
             </div>
@@ -1605,20 +1641,32 @@ export default function ItemFormModal({
             )}
           </div>
 
-          <DialogFooter className="wizard-footer pt-8 flex flex-col sm:flex-row gap-2">
-            <Button variant="outline" onClick={handleClose}>Cancel</Button>
-            {!item && onSaveDraft && (
-              <Button variant="outline" onClick={() => handleSubmit(true)}>
-                Save as Draft
+          <DialogFooter className="wizard-footer pt-8 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+            <Button variant="outline" onClick={handleClose} disabled={isSaving}>Cancel</Button>
+            {((item && item.status !== 'draft') || onSaveDraft) && (
+              <Button
+                variant="outline"
+                onClick={() => runSaveAction('save-exit', handleSaveAndExit)}
+                disabled={isSaving}
+              >
+                {savingAction === 'save-exit' ? 'Saving...' : 'Save and exit'}
               </Button>
             )}
             {isEditingDraft ? (
-              <Button onClick={handleFinalize} className="bg-teal-600 hover:bg-teal-700">
-                Finalize Item
+              <Button
+                onClick={() => runSaveAction('finalize', handleFinalize)}
+                className="bg-teal-600 hover:bg-teal-700"
+                disabled={isSaving}
+              >
+                {savingAction === 'finalize' ? 'Saving...' : 'Finalize Item'}
               </Button>
             ) : (
-              <Button onClick={() => handleSubmit(false)} className="bg-teal-600 hover:bg-teal-700">
-                {item ? 'Update Item' : 'Create Item'}
+              <Button
+                onClick={() => runSaveAction('submit', () => handleSubmit(false))}
+                className="bg-teal-600 hover:bg-teal-700"
+                disabled={isSaving}
+              >
+                {savingAction === 'submit' ? 'Saving...' : (item ? 'Update Item' : 'Create Item')}
               </Button>
             )}
           </DialogFooter>
@@ -1675,7 +1723,7 @@ export default function ItemFormModal({
         onOpenChange={setShowConfirmation}
         title="Save Draft?"
         message="You have unsaved changes. Would you like to save them as a draft?"
-        onSaveDraft={handleSaveDraft}
+        onSaveDraft={() => runSaveAction('save-draft', handleSaveDraft)}
         onDiscard={() => {
           setIsDirty(false);
           onClose();

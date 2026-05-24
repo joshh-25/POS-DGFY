@@ -121,7 +121,7 @@ export default function POSSetupStep({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <Label>Storefront Catalog</Label>
-            <p className="text-xs text-slate-500">Customer-facing visibility and image are independent from POS.</p>
+            <p className="text-xs text-slate-500">Customer-facing visibility and item image are independent from POS.</p>
           </div>
           {productItem && (
             <Button
@@ -145,11 +145,11 @@ export default function POSSetupStep({
                 className="h-28 w-40 rounded-md border border-slate-200 object-cover"
               />
             ) : (
-              <p className="text-sm text-slate-500">No storefront image uploaded yet.</p>
+              <p className="text-sm text-slate-500">No item image uploaded yet.</p>
             )}
             <div className="flex flex-wrap gap-2">
               <label className="cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100">
-                Upload Storefront Image
+                Upload Item Image
                 <input
                   type="file"
                   accept="image/*"
@@ -169,13 +169,13 @@ export default function POSSetupStep({
                 onClick={() => onDeleteStorefrontImage && onDeleteStorefrontImage(productItem)}
                 disabled={!storefrontConfig?.storefront_image_url || !onDeleteStorefrontImage}
               >
-                Remove Storefront Image
+                Remove Item Image
               </Button>
             </div>
           </div>
         ) : (
           <p className="text-sm text-slate-500">
-            Save the product first, then reopen it to configure storefront visibility and image.
+            Save the product first, then reopen it to configure storefront visibility and item image.
           </p>
         )}
         </div>

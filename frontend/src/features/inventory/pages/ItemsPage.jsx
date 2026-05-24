@@ -443,9 +443,9 @@ export default function Items() {
         ...prev,
         [itemId]: { ...(prev[itemId] || {}), ...updated }
       }));
-      toast.success(`Storefront image updated for ${item.name}`);
+      toast.success(`Item image updated for ${item.name}`);
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to upload storefront image');
+      toast.error(error?.response?.data?.message || 'Failed to upload item image');
     }
   };
 
@@ -459,9 +459,9 @@ export default function Items() {
         ...prev,
         [itemId]: { ...(prev[itemId] || {}), ...(updated || {}), storefront_image_url: null }
       }));
-      toast.success(`Storefront image removed for ${item.name}`);
+      toast.success(`Item image removed for ${item.name}`);
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to remove storefront image');
+      toast.error(error?.response?.data?.message || 'Failed to remove item image');
     }
   };
 
@@ -1142,6 +1142,7 @@ export default function Items() {
       if (!normalizeApiError(error).isGlobalCandidate) {
         toast.error(errorMessage);
       }
+      throw error;
     }
   };
 
@@ -1164,6 +1165,7 @@ export default function Items() {
       if (!normalizeApiError(error).isGlobalCandidate) {
         toast.error(errorMessage);
       }
+      throw error;
     }
   };
 
@@ -1251,7 +1253,7 @@ export default function Items() {
       if (!normalizeApiError(error).isGlobalCandidate) {
         toast.error(errorMessage);
       }
-      setEditingItem(null);
+      throw error;
     }
   };
 
@@ -1271,6 +1273,7 @@ export default function Items() {
       if (!normalizeApiError(error).isGlobalCandidate) {
         toast.error(errorMessage);
       }
+      throw error;
     }
   };
 
@@ -2162,7 +2165,7 @@ export default function Items() {
                   <div className="rounded-lg border border-slate-200 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <p className="text-sm font-semibold text-slate-900">Storefront Images by SKU Filename</p>
+                        <p className="text-sm font-semibold text-slate-900">Item Images by SKU Filename</p>
                         <p className="text-xs text-slate-500">Visible items without customer prices are previewed as blocked; hidden items can store images.</p>
                       </div>
                       <label className="cursor-pointer rounded border border-slate-200 px-3 py-1 text-xs hover:bg-slate-50">
@@ -2188,7 +2191,7 @@ export default function Items() {
                           onClick={() => uploadBulkCatalogImages('storefront')}
                           disabled={bulkImageUploadLoading}
                         >
-                        Upload Storefront Images
+                        Upload Item Images
                       </Button>
                     </div>
                   )}
@@ -2213,7 +2216,7 @@ export default function Items() {
                       {canConfigureStorefrontCatalog && (
                         <>
                           <th className="p-3 text-left">Storefront Visible</th>
-                          <th className="p-3 text-left">Storefront Image</th>
+                          <th className="p-3 text-left">Item Image</th>
                         </>
                       )}
                       <th className="p-3 text-left">Actions</th>

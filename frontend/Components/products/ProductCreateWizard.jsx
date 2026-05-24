@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -115,6 +115,8 @@ export default function ProductCreateWizard({
   const [initialProductData, setInitialProductData] = useState(null);
   const [isDirty, setIsDirty] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [savingAction, setSavingAction] = useState(null);
+  const savingActionRef = useRef(null);
   const [skuManuallyEdited, setSkuManuallyEdited] = useState(false);
   const [lastSuggestedSku, setLastSuggestedSku] = useState('');
   const [stockBaseline, setStockBaseline] = useState(0);
@@ -140,6 +142,19 @@ export default function ProductCreateWizard({
   };
 
   const isEditingDraft = product?.status === 'draft';
+  const isSaving = Boolean(savingAction);
+
+  const runSaveAction = async (action, operation) => {
+    if (savingActionRef.current) return;
+    savingActionRef.current = action;
+    setSavingAction(action);
+    try {
+      await operation();
+    } finally {
+      savingActionRef.current = null;
+      setSavingAction(null);
+    }
+  };
 
   // Helper to parse numeric fields
   const parseNumberField = (value, fallback = 0) => {
@@ -361,6 +376,7 @@ export default function ProductCreateWizard({
     // onOpenChange passes false when trying to close
     // If isOpen is true, the dialog is opening - just return
     if (isOpen === true) return;
+    if (savingActionRef.current) return;
 
     console.log('DEBUG: handleClose', {
       isOpen,
@@ -388,7 +404,7 @@ export default function ProductCreateWizard({
     }
   };
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     const draftData = {
       ...productData,
       status: 'draft',
@@ -400,14 +416,26 @@ export default function ProductCreateWizard({
     };
 
     if (onSaveDraft) {
-      onSaveDraft(draftData);
+      try {
+        await onSaveDraft(draftData);
+      } catch {
+        return;
+      }
     }
     setIsDirty(false);
     resetWizard();
     onClose();
   };
 
-  const handleFinalize = () => {
+  const handleSaveAndExit = async () => {
+    if (product?.status === 'draft' || !product) {
+      await handleSaveDraft();
+      return;
+    }
+    await handleSubmit();
+  };
+
+  const handleFinalize = async () => {
     if (productData.product_type === 'finished_goods' && !productData.vat_type) {
       toast.error('VAT type is required to finalize finished goods.');
       return;
@@ -427,7 +455,11 @@ export default function ProductCreateWizard({
       wizard_metadata: null
     };
 
-    onSubmit(finalData);
+    try {
+      await onSubmit(finalData);
+    } catch {
+      return;
+    }
     resetWizard();
     onClose();
   };
@@ -519,7 +551,11 @@ export default function ProductCreateWizard({
         status: 'active',
         wizard_metadata: null
       };
-      onSubmit(finalData);
+      try {
+        await onSubmit(finalData);
+      } catch {
+        return;
+      }
     } else {
       // Creating new product - always set status to active
       const finalData = {
@@ -527,7 +563,11 @@ export default function ProductCreateWizard({
         status: 'active',
         wizard_metadata: null
       };
-      onSubmit(finalData);
+      try {
+        await onSubmit(finalData);
+      } catch {
+        return;
+      }
     }
     resetWizard();
     onClose();
@@ -597,37 +637,50 @@ export default function ProductCreateWizard({
           </div>
 
           {/* Navigation */}
-          <DialogFooter className="wizard-footer flex justify-between border-t border-slate-200 pt-4">
-            <div>
+          <DialogFooter className="wizard-footer flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-h-10">
               {step > 1 && (
-                <Button variant="outline" onClick={handleBack}>
+                <Button variant="outline" onClick={handleBack} disabled={isSaving}>
                   <ArrowLeft className="w-4 h-4 mr-2" /> Back
                 </Button>
               )}
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => handleClose(false)}>Cancel</Button>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+              <Button variant="outline" onClick={() => handleClose(false)} disabled={isSaving}>Cancel</Button>
 
-              {(!product || (product && product.status === 'draft')) && onSaveDraft && (
-                <Button variant="outline" onClick={handleSaveDraft}>
-                  Save as Draft
+              {((product && product.status !== 'draft') || onSaveDraft) && (
+                <Button
+                  variant="outline"
+                  onClick={() => runSaveAction('save-exit', handleSaveAndExit)}
+                  disabled={isSaving}
+                >
+                  {savingAction === 'save-exit' ? 'Saving...' : 'Save and exit'}
                 </Button>
               )}
 
               {step < STEPS.length ? (
-                <Button onClick={handleNext} className="bg-teal-600 hover:bg-teal-700">
+                <Button onClick={handleNext} className="bg-teal-600 hover:bg-teal-700" disabled={isSaving}>
                   Next <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
               ) : (
                 <>
                   {isEditingDraft ? (
-                    <Button onClick={handleFinalize} className="bg-teal-600 hover:bg-teal-700">
-                      <Check className="w-4 h-4 mr-2" /> Finalize Product
+                    <Button
+                      onClick={() => runSaveAction('finalize', handleFinalize)}
+                      className="bg-teal-600 hover:bg-teal-700"
+                      disabled={isSaving}
+                    >
+                      <Check className="w-4 h-4 mr-2" />
+                      {savingAction === 'finalize' ? 'Saving...' : 'Finalize Product'}
                     </Button>
                   ) : (
-                    <Button onClick={handleSubmit} className="bg-teal-600 hover:bg-teal-700">
+                    <Button
+                      onClick={() => runSaveAction('submit', handleSubmit)}
+                      className="bg-teal-600 hover:bg-teal-700"
+                      disabled={isSaving}
+                    >
                       <Check className="w-4 h-4 mr-2" />
-                      {product ? 'Update Product' : 'Create Product'}
+                      {savingAction === 'submit' ? 'Saving...' : (product ? 'Update Product' : 'Create Product')}
                     </Button>
                   )}
                 </>
@@ -649,7 +702,10 @@ export default function ProductCreateWizard({
         saveDraftLabel={product && product.status !== 'draft' ? "Save Changes" : "Save as Draft"}
         discardLabel="Discard Changes"
         continueEditingLabel="Continue Editing"
-        onSaveDraft={product && product.status !== 'draft' ? handleSubmit : handleSaveDraft}
+        onSaveDraft={() => runSaveAction(
+          product && product.status !== 'draft' ? 'submit' : 'save-draft',
+          product && product.status !== 'draft' ? handleSubmit : handleSaveDraft
+        )}
         onDiscard={() => {
           // If discarding changes on an existing product, we just close and reset
           // effectively reverting to the original state (since we reload from props on open)

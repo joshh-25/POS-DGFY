@@ -543,7 +543,7 @@ export default function OnboardingSetupModal({
           ? { ...entry, status: 'created', errors: [] }
           : entry
       )));
-      toast.success('Storefront image uploaded.');
+      toast.success('Item image uploaded.');
     } catch (error) {
       setItemRows((rows) => rows.map((entry) => (
         entry.client_row_id === clientRowId
@@ -691,7 +691,7 @@ export default function OnboardingSetupModal({
                         <input type="number" min={0} step="0.01" className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm" value={row.current_stock} onChange={(event) => updateItemRow(row.client_row_id, { current_stock: event.target.value })} disabled={isCreatedRow(row) || saving} />
                       </label>
                       <label className="text-xs text-slate-700 md:col-span-3">
-                        Storefront image
+                        Item image
                         <input type="file" accept="image/*" className="mt-1 block w-full text-xs" onChange={(event) => updateItemRow(row.client_row_id, { image_file: event.target.files?.[0] || null })} disabled={isCreatedRow(row) || saving} />
                       </label>
                       <div className="flex items-end text-xs text-slate-500">Row {index + 1}</div>
