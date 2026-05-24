@@ -4901,7 +4901,7 @@ Finalize onboarding if required readiness checks are satisfied.
 **Behavior**
 - Returns `422` with `missing_requirements[]` if readiness is incomplete.
 - Missing requirement keys are `store_name_ready`, `has_primary_storefront_location`, and `has_priced_starter_item`.
-- Storefront item image upload and stock quantity never block completion by themselves.
+- Item image upload and stock quantity never block completion by themselves. The merchant-facing onboarding label is `Item image`; the existing Storefront catalog image upload/storage contract remains unchanged.
 - On success, sets onboarding state to `completed` and triggers storefront discovery sync.
 
 ### POST /onboarding/events

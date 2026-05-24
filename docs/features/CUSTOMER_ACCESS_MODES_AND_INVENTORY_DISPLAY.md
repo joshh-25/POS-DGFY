@@ -94,7 +94,8 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - `modePresentationRegistry.js` supplies mode-specific labels, catalog headings, search placeholders, and primary action copy for generic and services storefronts.
 - `normalizeStorefrontPageModel.js` and `servicesStorefrontViewModel.js` normalize public storefront payloads before rendering service-first sections, service-family tabs, booking page content, review sections, and footer content.
 - F&B storefronts can expose a reservation tab and carry menu line modifiers into checkout payloads without changing the backend customer-access enforcement rules.
-- Item cards and item setup modals in inventory expose separate `Show in POS` and `Show in Storefront` controls. Uploading or removing either POS or Storefront image must not mutate either visibility flag.
+- Item cards and item setup modals in inventory expose separate `Show in POS` and `Show in Storefront` controls. Merchant-facing image upload copy says `Item image`; backend/API fields and services still use the Storefront catalog image contract (`storefront_catalog_overrides.storefront_image_url`). Uploading or removing either POS images or item images must not mutate either visibility flag.
+- Item and product create/edit flows expose `Save and exit` in the footer. For new rows and existing draft rows it saves draft data and closes without finalizing; for existing active rows it saves the update and closes. `Finalize Item`, `Finalize Product`, `Create`, and `Update` remain separate actions. The footer buttons are guarded while saves are in flight to prevent duplicate submits or step navigation during a pending save.
 - Storefront setup controls are shown only to users who can configure item Storefront state (`items:edit`). The read endpoint is intentionally edit-gated, so users without edit permission must not see disabled Storefront switches backed only by inferred defaults.
 - The inventory Catalog Setup workflow covers both POS and Storefront setup. It shows mode-aware recommendations, POS readiness, missing blockers, visibility state, image state, SKU-filename bulk image previews, and bulk POS/Storefront visibility actions.
 - Bulk POS visibility uses `PATCH /api/v1/pos/catalog-overrides/bulk`; enabling requires POS readiness, while disabling is allowed for incomplete rows.
@@ -141,7 +142,7 @@ Runtime behavior:
 - Backend API/use-case tests: Storefront catalog hides public quantity by default, emits availability labels, strips catalog for `ghost`, blocks quote/checkout/booking for `ghost`, `catalog`, and `inquiry`.
 - Backend catalog split tests: POS catalog uses `pos_visible`, Storefront catalog uses `storefront_visible`, image upload/removal preserves visibility state, row-missing Storefront overrides do not inherit POS state, sale-price readiness rejects missing public prices, image upload DB failures clean up newly stored files, and missing `storefront_catalog_overrides` falls back without `500`.
 - Backend bulk setup tests: POS readiness emits `STOCK_UNAVAILABLE` for stock-bearing out-of-stock rows, stock-exempt service rows remain ready without stock, onboarding sellable-item readiness uses POS readiness, bulk POS/Storefront visibility returns per-item `updated`, `blocked`, `not_found`, or `failed` results, and bulk image uploads cover matched, unmatched, duplicate filename, unsupported MIME, oversize, blocked readiness, and failed-write cleanup paths.
-- Frontend tests: onboarding labels and defaults, Settings section/deep link, Settings runtime enforcement status for enforced/rollback states, Storefront CTA behavior for all four modes, cart reset when mode blocks checkout, inventory display labels, and independent POS/Storefront item-card toggles.
+- Frontend tests: onboarding labels and defaults, Settings section/deep link, Settings runtime enforcement status for enforced/rollback states, Storefront CTA behavior for all four modes, cart reset when mode blocks checkout, inventory display labels, guarded item/product `Save and exit` behavior, and independent POS/Storefront item-card toggles.
 - Frontend inventory tests: FIFO item-detail behavior, location grouping contract, stale-filter reset on item switch, accessible selected filter state, and long location-name wrapping.
 - Frontend Catalog Setup tests: recommendations, readiness blockers, visibility state, image state, Storefront controls hidden without `items:edit`, bulk action preview, and POS/Storefront image upload independence.
 - Governance checks: `npm run check:architecture`, `npm run lint:docs`, and targeted backend/frontend test suites.
@@ -229,6 +230,17 @@ Validated on 2026-05-21 for the Storefront pilot pin-glow adoption:
 - Governance gates: `npm run check:architecture` and `git diff --check` passed.
 
 Operational readiness rating after this adoption pass: **9.1/10** locally validated. Remaining risk is production browser confirmation after deploy; no known source-level implementation gap blocks promotion.
+
+Validated on 2026-05-24 for inventory item/product `Save and exit` hardening and item image copy:
+- Product and item create/edit footers now wrap on narrow viewports, disable footer actions during pending saves, and use a ref-backed save guard to prevent same-tick duplicate submissions.
+- New and draft item/product `Save and exit` paths save draft state and close without finalizing; existing active rows update and close; explicit finalize/create/update buttons remain the only finalization paths.
+- Merchant-facing image copy in onboarding and item setup uses `Item image`; tracked frontend source no longer contains the old `Storefront image` visible phrase, while backend/API Storefront catalog image names remain stable.
+- Frontend targeted suites: `npm --prefix frontend test -- src/features/inventory/__tests__/itemProductWizard.contract.test.js src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx` passed 2 files and 17 tests.
+- SKUpervisor build gate: `npm --prefix frontend run build:skupervisor` passed with the existing Vite large chunk warning.
+- Governance and hygiene gates: `npm run check:architecture`, `git diff --check`, and `git grep -n -i "storefront image" -- frontend` passed.
+- Rendered UI proof remained environment-limited: local Vite served the login page, but authenticated inventory proof could not proceed because the Browser runtime could not type credentials in this session (`Browser Use virtual clipboard is not installed`), and local auth had previously shown `426` login/auth failures.
+
+Operational readiness rating after this inventory UX hardening pass: **8.8/10** locally validated. Remaining risk is authenticated browser proof for the inventory modal across desktop/mobile; no known source-level implementation gap blocks review.
 
 ## Assumptions
 - Customer Access Mode enforcement is default-on. `CUSTOMER_ACCESS_MODES_ENABLED=false` is reserved for rollback, not normal operation.
