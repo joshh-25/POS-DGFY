@@ -4300,6 +4300,32 @@ Accept a pending company invitation from the DGFY account notification surface. 
 }
 ```
 
+### DGFY Customer Account Endpoints
+
+Front-facing customer account endpoints live under `/api/v1/dgfy/customer`. Except for tracking recovery request/verify, they require `Authorization: Bearer <dgfy-account-token>`.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/dgfy/customer/dashboard` | Return DGFY profile summary, recent account activity, orders, bookings, addresses, and read-only loyalty summary |
+| `GET` | `/dgfy/customer/orders` | List account-linked order activities |
+| `GET` | `/dgfy/customer/bookings` | List account-linked service/hospitality booking activities |
+| `POST` | `/dgfy/customer/track` | Track an account-linked reference by `reference` or `tracking_pin` |
+| `POST` | `/dgfy/customer/orders/:reference/cancel` | Cancel an eligible account-linked order |
+| `POST` | `/dgfy/customer/orders/:reference/reorder` | Return reusable cart lines for a prior order; checkout revalidates current state |
+| `GET` | `/dgfy/customer/addresses` | List global DGFY saved addresses |
+| `POST` | `/dgfy/customer/addresses` | Create a saved address |
+| `PUT/PATCH` | `/dgfy/customer/addresses/:address_id` | Update a saved address |
+| `PATCH` | `/dgfy/customer/addresses/:address_id/default` | Set a saved address as the account default |
+| `DELETE` | `/dgfy/customer/addresses/:address_id` | Delete a saved address |
+| `GET` | `/dgfy/customer/loyalty` | Return read-only loyalty balance and transactions |
+| `POST` | `/dgfy/customer/reviews` | Submit a paid-or-completed purchase-gated product review as pending approval |
+| `POST` | `/dgfy/customer/tracking-recovery/request` | Request a generic tracking recovery response for email/phone lookup |
+| `POST` | `/dgfy/customer/tracking-recovery/verify` | Verify a six-digit recovery code and return matching activity references |
+
+Tracking recovery intentionally uses generic production responses and does not reveal whether a lookup matched an order or whether delivery was attempted. Email delivery is used when matching activity has an email address. Phone OTP remains deferred and phone values must not be treated as verified; phone lookup supports common Philippine variants for matching only.
+
+Historical DGFY customer activity backfill is an operator command, not a public API. Use `npm run backfill:dgfy-customer-activity:apply` for apply mode so landlord migrations run before activity writes. Dry-run uses `npm run backfill:dgfy-customer-activity -- ...`. The backfill indexes POS customer orders, Services bookings, and Hospitality reservations into `dgfy_customer_activities`. Production dry-runs can require mode discovery with `--require-activity-types=order,service_booking,hospitality_booking` before apply.
+
 ### POST /admin/tenants/register
 
 Requires `Authorization: Bearer <dgfy-account-token>`.

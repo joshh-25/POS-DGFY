@@ -11,6 +11,26 @@ GitHub Actions deploys for Namecheap shared hosting are documented in `docs/ops/
 - `scripts/cicd/bootstrap-and-deploy.ps1`: configures GitHub secrets/variables from `.cicd/production.deploy.config.json` and dispatches `.github/workflows/deploy-namecheap-shared.yml`.
 - `npm run test:deploy:namecheap`: validates local path selection and missing-secret behavior for the FTP upload helper.
 
+## DGFY Customer Activity Backfill
+
+Historical DGFY customer activity backfill is an operator command, not a public API. It populates landlord-scoped DGFY customer activity from tenant POS orders, Services bookings, and Hospitality reservations.
+
+Dry-run:
+```bash
+npm run backfill:dgfy-customer-activity -- --tenant-page-size 25 --transaction-limit-per-tenant 100
+```
+
+Apply mode:
+```bash
+npm run backfill:dgfy-customer-activity:apply
+```
+
+Apply mode runs landlord migrations first, then writes activity rows. Before production apply, use the required activity type gate when all customer-facing modes must be proven present:
+
+```bash
+npm run backfill:dgfy-customer-activity -- --all-transactions --require-activity-types=order,service_booking,hospitality_booking
+```
+
 ## 1. `scripts/deploy.sh`
 Production deployment pipeline run on the server.
 
