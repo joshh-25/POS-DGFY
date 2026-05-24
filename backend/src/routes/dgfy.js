@@ -1,5 +1,6 @@
 import express from 'express';
 import { authLimiter } from '../middleware/rateLimiter.js';
+import { authenticateAdmin } from '../middleware/auth.js';
 import { authenticateDgfyAccount } from '../middleware/dgfyAuth.js';
 import {
     acceptDgfyInvitation,
@@ -16,6 +17,25 @@ import {
     verifyDgfyEmail,
     registerDgfyAccount
 } from '../modules/dgfy/controllers/dgfyAuthHandlers.js';
+import {
+    cancelDgfyCustomerOrder,
+    createDgfyCustomerAddress,
+    deleteDgfyCustomerAddress,
+    getDgfyCustomerDashboard,
+    getDgfyCustomerLoyalty,
+    listDgfyCustomerReviewsForModeration,
+    listDgfyCustomerAddresses,
+    listDgfyCustomerBookings,
+    listDgfyCustomerOrders,
+    listPublicDgfyCustomerReviews,
+    moderateDgfyCustomerReview,
+    reorderDgfyCustomerOrder,
+    requestDgfyTrackingRecovery,
+    submitDgfyCustomerReview,
+    trackDgfyCustomerReference,
+    updateDgfyCustomerAddress,
+    verifyDgfyTrackingRecovery
+} from '../modules/dgfy/controllers/dgfyCustomerHandlers.js';
 
 const router = express.Router();
 
@@ -32,5 +52,24 @@ router.post('/auth/email-verification/request', authLimiter, authenticateDgfyAcc
 router.post('/auth/email-verification/verify', authLimiter, authenticateDgfyAccount, verifyDgfyEmail);
 router.post('/auth/handoff', authenticateDgfyAccount, createDgfyHandoff);
 router.post('/invitations/:membership_id/accept', authenticateDgfyAccount, acceptDgfyInvitation);
+
+router.get('/customer/dashboard', authenticateDgfyAccount, getDgfyCustomerDashboard);
+router.get('/customer/orders', authenticateDgfyAccount, listDgfyCustomerOrders);
+router.get('/customer/bookings', authenticateDgfyAccount, listDgfyCustomerBookings);
+router.post('/customer/track', authenticateDgfyAccount, trackDgfyCustomerReference);
+router.post('/customer/orders/:reference/cancel', authenticateDgfyAccount, cancelDgfyCustomerOrder);
+router.post('/customer/orders/:reference/reorder', authenticateDgfyAccount, reorderDgfyCustomerOrder);
+router.get('/customer/addresses', authenticateDgfyAccount, listDgfyCustomerAddresses);
+router.post('/customer/addresses', authenticateDgfyAccount, createDgfyCustomerAddress);
+router.put('/customer/addresses/:address_id', authenticateDgfyAccount, updateDgfyCustomerAddress);
+router.patch('/customer/addresses/:address_id', authenticateDgfyAccount, updateDgfyCustomerAddress);
+router.delete('/customer/addresses/:address_id', authenticateDgfyAccount, deleteDgfyCustomerAddress);
+router.get('/customer/loyalty', authenticateDgfyAccount, getDgfyCustomerLoyalty);
+router.post('/customer/reviews', authenticateDgfyAccount, submitDgfyCustomerReview);
+router.get('/customer/reviews/public', listPublicDgfyCustomerReviews);
+router.get('/customer/reviews/moderation', authenticateAdmin, listDgfyCustomerReviewsForModeration);
+router.post('/customer/reviews/:review_id/moderate', authenticateAdmin, moderateDgfyCustomerReview);
+router.post('/customer/tracking-recovery/request', authLimiter, requestDgfyTrackingRecovery);
+router.post('/customer/tracking-recovery/verify', authLimiter, verifyDgfyTrackingRecovery);
 
 export default router;

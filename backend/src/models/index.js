@@ -100,6 +100,12 @@ import EmailOtpFactory from './Landlord/EmailOtp.js';
 import DgfyAccountFactory from './Landlord/DgfyAccount.js';
 import DgfyAccountTenantMembershipFactory from './Landlord/DgfyAccountTenantMembership.js';
 import DgfyAccountHandoffFactory from './Landlord/DgfyAccountHandoff.js';
+import DgfyCustomerActivityFactory from './Landlord/DgfyCustomerActivity.js';
+import DgfyCustomerAddressFactory from './Landlord/DgfyCustomerAddress.js';
+import DgfyCustomerBackfillRunFactory from './Landlord/DgfyCustomerBackfillRun.js';
+import DgfyCustomerReviewFactory from './Landlord/DgfyCustomerReview.js';
+import DgfyLoyaltyTransactionFactory from './Landlord/DgfyLoyaltyTransaction.js';
+import DgfyTrackingRecoveryCodeFactory from './Landlord/DgfyTrackingRecoveryCode.js';
 import PaymentFactory from './Landlord/Payment.js';
 import WebhookLogFactory from './Landlord/WebhookLog.js';
 import EngagementEventFactory from './Landlord/EngagementEvent.js';
@@ -117,6 +123,12 @@ const EmailOtp = EmailOtpFactory(sequelize);
 const DgfyAccount = DgfyAccountFactory(sequelize);
 const DgfyAccountTenantMembership = DgfyAccountTenantMembershipFactory(sequelize);
 const DgfyAccountHandoff = DgfyAccountHandoffFactory(sequelize);
+const DgfyCustomerActivity = DgfyCustomerActivityFactory(sequelize);
+const DgfyCustomerAddress = DgfyCustomerAddressFactory(sequelize);
+const DgfyCustomerBackfillRun = DgfyCustomerBackfillRunFactory(sequelize);
+const DgfyCustomerReview = DgfyCustomerReviewFactory(sequelize);
+const DgfyLoyaltyTransaction = DgfyLoyaltyTransactionFactory(sequelize);
+const DgfyTrackingRecoveryCode = DgfyTrackingRecoveryCodeFactory(sequelize);
 const Payment = PaymentFactory(sequelize);
 const WebhookLog = WebhookLogFactory(sequelize);
 const EngagementEvent = EngagementEventFactory(sequelize);
@@ -634,6 +646,12 @@ const db = {
   DgfyAccount,
   DgfyAccountTenantMembership,
   DgfyAccountHandoff,
+  DgfyCustomerActivity,
+  DgfyCustomerAddress,
+  DgfyCustomerBackfillRun,
+  DgfyCustomerReview,
+  DgfyLoyaltyTransaction,
+  DgfyTrackingRecoveryCode,
   Payment,
   WebhookLog,
   EngagementEvent,
@@ -749,6 +767,12 @@ export {
   DgfyAccount,
   DgfyAccountTenantMembership,
   DgfyAccountHandoff,
+  DgfyCustomerActivity,
+  DgfyCustomerAddress,
+  DgfyCustomerBackfillRun,
+  DgfyCustomerReview,
+  DgfyLoyaltyTransaction,
+  DgfyTrackingRecoveryCode,
   Payment,
   WebhookLog,
   EngagementEvent,

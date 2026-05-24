@@ -38,6 +38,7 @@ import {
     requireExplicitSalePrice
 } from '../../shared/utils/itemFinancialPolicy.js';
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
+import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 
 const INVOICE_COUNTER_KEY = 'POS_OR';
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
@@ -1813,6 +1814,7 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
         const normalizedStoreCustomer = normalizedStoreCustomerId
             ? {
                 customer_id: normalizedStoreCustomerId,
+                dgfy_account_id: String(storeCustomer?.dgfy_account_id || '').trim() || null,
                 name: String(storeCustomer?.name || '').trim(),
                 email: String(storeCustomer?.email || '').trim().toLowerCase(),
                 phone: String(storeCustomer?.phone || '').trim()
@@ -1882,6 +1884,14 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
                 });
 
                 await transaction.commit();
+                await recordDgfyOrderActivity({
+                    tenantId: normalizedTenantId,
+                    order: existing,
+                    storeCustomer: normalizedStoreCustomer
+                }).catch((error) => logger.warn('[DGFYCustomer] Failed to sync idempotent order activity', {
+                    error: error?.message,
+                    tracking_pin: existing?.tracking_pin
+                }));
                 return ok({
                     idempotent_replay: true,
                     order: serializeOrderForCustomer(existing),
@@ -1992,6 +2002,14 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
                 options: { transaction }
             });
             await transaction.commit();
+            await recordDgfyOrderActivity({
+                tenantId: normalizedTenantId,
+                order: created,
+                storeCustomer: normalizedStoreCustomer
+            }).catch((error) => logger.warn('[DGFYCustomer] Failed to sync order activity', {
+                error: error?.message,
+                tracking_pin: created?.tracking_pin
+            }));
 
             return ok({
                 idempotent_replay: false,
@@ -2131,6 +2149,14 @@ export const buildClaimStoreOrderUseCase = ({ storeRepository }) => {
             }, { transaction, lock: true });
             const updated = await storeRepository.getOrderById(order.pos_transaction_id, { transaction });
             await transaction.commit();
+            await recordDgfyOrderActivity({
+                tenantId: normalizedTenantId,
+                order: updated,
+                storeCustomer
+            }).catch((error) => logger.warn('[DGFYCustomer] Failed to sync claimed order activity', {
+                error: error?.message,
+                tracking_pin: updated?.tracking_pin
+            }));
             return ok({ order: serializeOrderForCustomer(updated) });
         } catch (error) {
             if (!transaction.finished) {
@@ -2213,10 +2239,10 @@ export const buildCancelStoreOrderUseCase = ({ storeRepository }) => {
                 }
             }
 
-            if (existing.fulfillment_status !== 'placed') {
+            if (!['placed', 'confirmed'].includes(existing.fulfillment_status)) {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
-                    'This order has already been accepted and cannot be cancelled.',
+                    'Order can only be cancelled before preparing.',
                     { statusCode: 409 }
                 );
             }
@@ -2227,6 +2253,14 @@ export const buildCancelStoreOrderUseCase = ({ storeRepository }) => {
 
             const updated = await storeRepository.getOrderByTrackingPin(normalizedTrackingPin, { transaction });
             await transaction.commit();
+            await recordDgfyOrderActivity({
+                tenantId: normalizedTenantId,
+                order: updated,
+                storeCustomer
+            }).catch((error) => logger.warn('[DGFYCustomer] Failed to sync cancelled order activity', {
+                error: error?.message,
+                tracking_pin: normalizedTrackingPin
+            }));
 
             return ok({
                 tracking_pin: normalizedTrackingPin,

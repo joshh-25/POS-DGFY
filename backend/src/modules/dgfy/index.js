@@ -14,6 +14,22 @@ import {
     buildVerifyDgfyEmailUseCase,
     buildRegisterDgfyAccountUseCase
 } from './usecases/dgfyAuthUseCases.js';
+import {
+    buildCancelDgfyCustomerOrderUseCase,
+    buildGetDgfyCustomerDashboardUseCase,
+    buildGetDgfyCustomerLoyaltyUseCase,
+    buildDgfyHistoricalBackfillUseCase,
+    buildListDgfyCustomerReviewsForModerationUseCase,
+    buildListDgfyCustomerActivitiesUseCase,
+    buildListPublicDgfyCustomerReviewsUseCase,
+    buildModerateDgfyCustomerReviewUseCase,
+    buildManageDgfyCustomerAddressesUseCases,
+    buildReorderDgfyCustomerOrderUseCase,
+    buildRequestDgfyTrackingRecoveryUseCase,
+    buildSubmitDgfyCustomerReviewUseCase,
+    buildTrackDgfyCustomerReferenceUseCase,
+    buildVerifyDgfyTrackingRecoveryUseCase
+} from './usecases/dgfyCustomerUseCases.js';
 import { requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
 
 export const registerDgfyAccountUseCase = buildRegisterDgfyAccountUseCase({
@@ -83,5 +99,26 @@ export const exchangeDgfyHandoffUseCase = buildExchangeDgfyHandoffUseCase({
 export const acceptDgfyInvitationUseCase = buildAcceptDgfyInvitationUseCase({
     repository: dgfyAccountRepository
 });
+
+export const getDgfyCustomerDashboardUseCase = buildGetDgfyCustomerDashboardUseCase();
+const listDgfyCustomerActivitiesUseCase = buildListDgfyCustomerActivitiesUseCase();
+export const listDgfyCustomerOrdersUseCase = (args = {}) => listDgfyCustomerActivitiesUseCase({ ...args, type: 'order' });
+export const listDgfyCustomerBookingsUseCase = (args = {}) => listDgfyCustomerActivitiesUseCase({ ...args, type: 'service_booking' });
+export const trackDgfyCustomerReferenceUseCase = buildTrackDgfyCustomerReferenceUseCase();
+export const cancelDgfyCustomerOrderUseCase = buildCancelDgfyCustomerOrderUseCase();
+export const reorderDgfyCustomerOrderUseCase = buildReorderDgfyCustomerOrderUseCase();
+const addressUseCases = buildManageDgfyCustomerAddressesUseCases();
+export const listDgfyCustomerAddressesUseCase = addressUseCases.list;
+export const createDgfyCustomerAddressUseCase = addressUseCases.create;
+export const updateDgfyCustomerAddressUseCase = addressUseCases.update;
+export const deleteDgfyCustomerAddressUseCase = addressUseCases.remove;
+export const getDgfyCustomerLoyaltyUseCase = buildGetDgfyCustomerLoyaltyUseCase();
+export const submitDgfyCustomerReviewUseCase = buildSubmitDgfyCustomerReviewUseCase();
+export const listPublicDgfyCustomerReviewsUseCase = buildListPublicDgfyCustomerReviewsUseCase();
+export const listDgfyCustomerReviewsForModerationUseCase = buildListDgfyCustomerReviewsForModerationUseCase();
+export const moderateDgfyCustomerReviewUseCase = buildModerateDgfyCustomerReviewUseCase();
+export const dgfyHistoricalBackfillUseCase = buildDgfyHistoricalBackfillUseCase();
+export const requestDgfyTrackingRecoveryUseCase = buildRequestDgfyTrackingRecoveryUseCase();
+export const verifyDgfyTrackingRecoveryUseCase = buildVerifyDgfyTrackingRecoveryUseCase();
 
 export { dgfyAccountRepository };
