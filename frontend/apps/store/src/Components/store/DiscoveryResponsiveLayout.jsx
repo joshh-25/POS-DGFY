@@ -1,5 +1,5 @@
 import React from 'react';
-import { CalendarCheck2, ChevronRight, FileText, Home, Menu, Store, UserCircle2, X } from 'lucide-react';
+import { CalendarCheck2, ChevronRight, FileText, Home, Menu, User, UserCircle2, X } from 'lucide-react';
 
 export const getDiscoveryViewportState = (viewportWidth = 1280) => {
   const width = Number(viewportWidth || 0);
@@ -88,6 +88,8 @@ export function DiscoveryHeader({
   onLogoClick,
   navItems = [],
   activeItem = 'Explore',
+  onProfileClick,
+  profileLabel = 'Profile',
   onRegisterClick,
   menuOpen = false,
   onMenuToggle = () => {}
@@ -108,6 +110,7 @@ export function DiscoveryHeader({
                 key={item}
                 type="button"
                 className={cx('discovery-header__navItem', item === activeItem && 'is-active')}
+                style={{ fontFamily: '"Inter", sans-serif' }}
               >
                 {item}
               </button>
@@ -117,14 +120,29 @@ export function DiscoveryHeader({
 
         <div className="discovery-header__actions">
           {isMobileViewport ? (
-            <button type="button" onClick={onMenuToggle} className="discovery-header__menuButton" aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}>
-              {menuOpen ? <X size={22} /> : <Menu size={24} />}
-            </button>
+            <>
+              {typeof onProfileClick === 'function' && (
+                <button type="button" onClick={onProfileClick} className="discovery-header__profileButton" aria-label={profileLabel}>
+                  <UserCircle2 size={20} />
+                </button>
+              )}
+              <button type="button" onClick={onMenuToggle} className="discovery-header__menuButton" aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}>
+                {menuOpen ? <X size={22} /> : <Menu size={24} />}
+              </button>
+            </>
           ) : (
-            <button type="button" onClick={onRegisterClick} className={cx('discovery-header__cta', isTabletViewport && 'discovery-header__cta--tablet')}>
-              <Store size={isTabletViewport ? 14 : 15} />
-              Register Your Business
-            </button>
+            <>
+              {typeof onProfileClick === 'function' && (
+                <button type="button" onClick={onProfileClick} className="discovery-header__secondaryAction">
+                  <UserCircle2 size={isTabletViewport ? 14 : 15} />
+                  {profileLabel}
+                </button>
+              )}
+              <button type="button" onClick={onRegisterClick} className={cx('discovery-header__cta', isTabletViewport && 'discovery-header__cta--tablet')}>
+                <User size={isTabletViewport ? 14 : 15} />
+                Create Your Account
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -156,7 +174,7 @@ export function DiscoveryHeader({
                   const Icon = meta.icon;
                   const isActive = item === activeItem;
                   return (
-                    <button key={item} type="button" className={cx('discovery-header__menuItem', isActive && 'is-active')}>
+                    <button key={item} type="button" className={cx('discovery-header__menuItem', isActive && 'is-active')} style={{ fontFamily: '"Inter", sans-serif' }}>
                       <span className="discovery-header__menuItemLead">
                         <span className="discovery-header__menuItemIcon"><Icon size={17} /></span>
                         <span>{item}</span>
@@ -170,9 +188,15 @@ export function DiscoveryHeader({
                 })}
               </div>
               <div className="discovery-header__drawerFooter">
+                {typeof onProfileClick === 'function' && (
+                  <button type="button" onClick={onProfileClick} className="discovery-header__menuSecondaryAction">
+                    <UserCircle2 size={15} />
+                    {profileLabel}
+                  </button>
+                )}
                 <button type="button" onClick={onRegisterClick} className="discovery-header__menuCta">
-                  <Store size={15} />
-                  Register Your Business
+                  <User size={15} />
+                  Create Your Account
                 </button>
               </div>
             </div>

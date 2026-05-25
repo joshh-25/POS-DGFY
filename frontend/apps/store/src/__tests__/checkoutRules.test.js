@@ -37,6 +37,18 @@ describe('store checkout rules', () => {
     expect(canCheckout(serviceOnly)).toBe(true);
   });
 
+  it('lets storefront modes bypass quote blocking when requireQuote is false', () => {
+    const fnbLikeCheckout = {
+      ...base,
+      quoteResult: null,
+      quoteNeedsRefresh: true,
+      requireQuote: false
+    };
+
+    expect(getCheckoutBlockReason(fnbLikeCheckout)).toBeNull();
+    expect(canCheckout(fnbLikeCheckout)).toBe(true);
+  });
+
   it('blocks service bookings when access capabilities do not allow booking', () => {
     expect(getCheckoutBlockReason({
       ...base,

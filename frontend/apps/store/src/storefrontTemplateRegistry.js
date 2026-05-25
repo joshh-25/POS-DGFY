@@ -9,8 +9,8 @@ const SHARED_STOREFRONT_SECTIONS = Object.freeze({
 const SHARED_SECTION_ORDER = Object.freeze([
   'navigation',
   'hero',
+  'mainContent',
   'promo',
-  'catalog',
   'reviews',
   'footer'
 ]);
@@ -19,6 +19,12 @@ const BASE_STOREFRONT_TEMPLATE = Object.freeze({
   templateVersion: '2026.05',
   sectionOrder: SHARED_SECTION_ORDER,
   sharedSections: SHARED_STOREFRONT_SECTIONS,
+  breakpoints: Object.freeze({
+    mobileMax: 767,
+    tabletMin: 768,
+    tabletMax: 1023,
+    desktopMin: 1024
+  }),
   tokens: Object.freeze({
     navigationAccent: '#0f172a',
     heroAccent: '#ea580c',
@@ -26,7 +32,7 @@ const BASE_STOREFRONT_TEMPLATE = Object.freeze({
     reviewAccent: '#0f766e',
     footerAccent: '#0f172a'
   }),
-  sharedShellVariant: 'services_fnb_live_shell',
+  sharedShellVariant: 'services_shell',
   catalogCardVariant: 'product_standard',
   journeyVariant: 'order'
 });
@@ -47,6 +53,7 @@ const MODE_TEMPLATE_OVERRIDES = Object.freeze({
   services: Object.freeze({
     catalogCardVariant: 'service_booking',
     journeyVariant: 'booking',
+    sharedShellVariant: 'services_fnb_live_shell',
     tokens: Object.freeze({
       navigationAccent: '#172033',
       heroAccent: '#f97316',
@@ -58,6 +65,14 @@ const MODE_TEMPLATE_OVERRIDES = Object.freeze({
   fnb: Object.freeze({
     catalogCardVariant: 'product_menu',
     journeyVariant: 'order',
+    sectionOrder: Object.freeze([
+      'navigation',
+      'hero',
+      'promo',
+      'catalog',
+      'reviews',
+      'footer'
+    ]),
     tokens: Object.freeze({
       navigationAccent: '#1c0f07',
       heroAccent: '#c96a2b',
@@ -73,8 +88,8 @@ export const getStorefrontTemplateConfig = (mode = 'default') => {
   return Object.freeze({
     ...BASE_STOREFRONT_TEMPLATE,
     ...modeOverride,
-    sectionOrder: SHARED_SECTION_ORDER,
-    sharedSections: SHARED_STOREFRONT_SECTIONS,
+    sectionOrder: modeOverride.sectionOrder || SHARED_SECTION_ORDER,
+    sharedSections: modeOverride.sharedSections || SHARED_STOREFRONT_SECTIONS,
     tokens: Object.freeze({
       ...BASE_STOREFRONT_TEMPLATE.tokens,
       ...(modeOverride.tokens || {})

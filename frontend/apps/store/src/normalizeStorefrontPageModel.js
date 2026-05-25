@@ -4,6 +4,12 @@ import { getServicesStorefrontViewModel } from './servicesStorefrontViewModel.js
 
 const trimText = (value) => String(value || '').trim();
 
+const STOREFRONT_TEMP_CONTACT_OVERRIDES = Object.freeze({
+  abeezee: Object.freeze({
+    phone: '09102323238'
+  })
+});
+
 const parseOptionalArray = (value) => {
   if (Array.isArray(value)) return value;
   if (typeof value !== 'string' || !value.trim()) return [];
@@ -56,6 +62,28 @@ const normalizeReviewSummary = (value) => {
   };
 };
 
+const getStorefrontTempContactOverride = (selectedStore = null) => {
+  const slug = trimText(selectedStore?.slug).toLowerCase();
+  const tenantName = trimText(selectedStore?.tenant_name).toLowerCase();
+  if (slug && STOREFRONT_TEMP_CONTACT_OVERRIDES[slug]) {
+    return STOREFRONT_TEMP_CONTACT_OVERRIDES[slug];
+  }
+  if (slug.startsWith('abeezee') || tenantName === 'abeezee' || tenantName.startsWith('abeezee')) {
+    return STOREFRONT_TEMP_CONTACT_OVERRIDES.abeezee;
+  }
+  return null;
+};
+
+const buildStorefrontMessageHref = ({ messengerLink = '', phone = '', email = '' } = {}) => {
+  const messenger = trimText(messengerLink);
+  const contactPhone = trimText(phone);
+  const contactEmail = trimText(email);
+  if (messenger) return messenger;
+  if (contactPhone) return `sms:${contactPhone}`;
+  if (contactEmail) return `mailto:${contactEmail}`;
+  return '';
+};
+
 const formatRatingLabel = (reviewSummary) => {
   if (!reviewSummary || reviewSummary.score == null) return '';
   const countLabel = reviewSummary.totalCount > 0 ? ` (${reviewSummary.totalCount})` : '';
@@ -84,12 +112,14 @@ export const normalizeStorefrontPageModel = ({
   const tagline = trimText(selectedStore?.storefront_tagline);
   const coverImage = trimText(selectedStore?.storefront_cover_image_url || selectedStore?.storefront_cover_image_path);
   const profileImage = trimText(selectedStore?.storefront_profile_image_url || selectedStore?.storefront_profile_image_path);
-  const phone = trimText(selectedStore?.storefront_phone);
+  const tempContactOverride = getStorefrontTempContactOverride(selectedStore);
+  const phone = trimText(selectedStore?.storefront_phone || tempContactOverride?.phone);
   const email = trimText(selectedStore?.storefront_email);
   const messengerLink = trimText(socialLinks.messenger);
   const facebookLink = trimText(socialLinks.facebook);
   const preferredSupportLink = messengerLink || facebookLink;
   const preferredSupportLabel = messengerLink ? 'Messenger' : (facebookLink ? 'Facebook' : '');
+  const messageHref = buildStorefrontMessageHref({ messengerLink, phone, email });
   const locationSummary = trimText(selectedStore?.location_name || selectedStore?.address_line);
   const addressLine = trimText(selectedStore?.address_line);
   const hours = trimText(selectedStore?.storefront_hours);
@@ -159,10 +189,10 @@ export const normalizeStorefrontPageModel = ({
       galleryPreview: galleryImages.slice(0, 4).map(img => img.url),
       actions: {
         canCall: Boolean(phone),
-        canMessage: Boolean(messengerLink || email),
+        canMessage: Boolean(messageHref),
         canOrder: true,
         callHref: phone ? `tel:${phone}` : '',
-        messageHref: messengerLink ? messengerLink : (email ? `mailto:${email}` : ''),
+        messageHref,
         orderLabel: isServicesMode ? 'Order Now' : modeAdapter.primaryActionLabel
       }
     },

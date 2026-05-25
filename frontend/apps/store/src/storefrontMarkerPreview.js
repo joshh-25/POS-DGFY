@@ -48,32 +48,31 @@ const markerIdentityKey = (store, fallbackIndex) => String(
 );
 
 export const buildMarkerDisplayOffsets = (stores = [], {
-  radius = 18,
   coordinateKey = coordinateBucketKey
 } = {}) => {
-  const groups = new Map();
   const offsets = new Map();
+  const grouped = new Map();
 
   (Array.isArray(stores) ? stores : []).forEach((store, index) => {
     const key = coordinateKey(store);
     if (!key) return;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push({ store, index, identityKey: markerIdentityKey(store, index) });
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push({ store, index });
   });
 
-  groups.forEach((entries) => {
-    if (entries.length <= 1) {
-      offsets.set(entries[0].identityKey, [0, 0]);
+  grouped.forEach((entries) => {
+    if (!Array.isArray(entries) || entries.length === 0) return;
+    if (entries.length === 1) {
+      const { store, index } = entries[0];
+      offsets.set(markerIdentityKey(store, index), [0, 0]);
       return;
     }
-
-    entries.forEach((entry, groupIndex) => {
-      const angle = (Math.PI * 2 * groupIndex) / entries.length - Math.PI / 2;
-      const ringRadius = radius + Math.max(0, entries.length - 4) * 2;
-      offsets.set(entry.identityKey, [
-        Math.round(Math.cos(angle) * ringRadius),
-        Math.round(Math.sin(angle) * ringRadius)
-      ]);
+    const radius = 0.00014;
+    entries.forEach(({ store, index }, groupIndex) => {
+      const theta = (Math.PI * 2 * groupIndex) / entries.length;
+      const latOffset = Number((Math.sin(theta) * radius).toFixed(7));
+      const lngOffset = Number((Math.cos(theta) * radius).toFixed(7));
+      offsets.set(markerIdentityKey(store, index), [latOffset, lngOffset]);
     });
   });
 

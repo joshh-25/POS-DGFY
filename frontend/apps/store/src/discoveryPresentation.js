@@ -11,28 +11,35 @@ export const selectDiscoveryPinLocations = ({
   nearestMatchingLocationId = null
 } = {}) => {
   if (!Array.isArray(activeLocations) || activeLocations.length === 0) return [];
-  if (!hasSearchQuery) return activeLocations;
 
   const normalizedPinScope = String(pinScope || '').trim().toLowerCase();
   const resolvedNearestMatchingId = toPositiveInt(nearestMatchingLocationId);
 
+  if (normalizedPinScope === 'tenant_primary') {
+    const primary = activeLocations.find((location) => location?.is_primary_storefront === true) || activeLocations[0];
+    return primary ? [primary] : activeLocations.slice(0, 1);
+  }
+
   if (normalizedPinScope === 'nearest_matching_branch') {
-    if (resolvedNearestMatchingId != null) {
+    if (hasSearchQuery && resolvedNearestMatchingId != null) {
       const nearest = activeLocations.find((location) => Number(location?.location_id) === resolvedNearestMatchingId);
       if (nearest) return [nearest];
     }
+    const primary = activeLocations.find((location) => location?.is_primary_storefront === true) || activeLocations[0];
+    if (!hasSearchQuery) return primary ? [primary] : activeLocations.slice(0, 1);
     return activeLocations.slice(0, 1);
   }
 
   if (normalizedPinScope === 'all_matching_branches') {
-    // For discovery-map exploration, show all active branches for matched tenants.
-    // This keeps branch pins visible after search instead of collapsing to one branch.
+    const matchingIds = new Set(
+      (Array.isArray(matchingLocationIds) ? matchingLocationIds : [])
+        .map(toPositiveInt)
+        .filter((locationId) => locationId != null)
+    );
+    if (matchingIds.size > 0) {
+      return activeLocations.filter((location) => matchingIds.has(Number(location?.location_id)));
+    }
     return activeLocations;
-  }
-
-  if (normalizedPinScope === 'tenant_primary') {
-    const primary = activeLocations.find((location) => location?.is_primary_storefront === true) || activeLocations[0];
-    return primary ? [primary] : activeLocations.slice(0, 1);
   }
 
   return activeLocations;

@@ -82,9 +82,24 @@ vi.mock('maplibre-gl', () => {
   };
 });
 
+const injectWorkflowMode = (obj) => {
+  if (!obj || typeof obj !== 'object') return obj;
+  const newObj = { ...obj };
+  if (Array.isArray(newObj.stores)) {
+    newObj.stores = newObj.stores.map(store => ({
+      workflow_mode: 'services',
+      ...store
+    }));
+  }
+  if (typeof newObj.slug === 'string') {
+    newObj.workflow_mode = 'services';
+  }
+  return newObj;
+};
+
 const makeJsonResponse = (data, ok = true) => ({
   ok,
-  json: async () => ({ data })
+  json: async () => ({ data: injectWorkflowMode(data) })
 });
 
 const getDiscoveryQueryUrls = (fetchMock) => fetchMock.mock.calls

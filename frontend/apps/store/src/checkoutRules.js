@@ -6,7 +6,8 @@ export const getCheckoutBlockReason = ({
   hasServiceCart = false,
   accessCapabilities = null,
   quoteResult = null,
-  quoteNeedsRefresh = true
+  quoteNeedsRefresh = true,
+  requireQuote = true
 } = {}) => {
   if (!selectedStore) return 'missing_store';
   if (Number(cartCount) <= 0) return 'empty_cart';
@@ -15,6 +16,7 @@ export const getCheckoutBlockReason = ({
   if (hasServiceCart && accessCapabilities?.booking === false) return 'access_mode';
   if (!hasServiceCart && (accessCapabilities?.checkout === false || accessCapabilities?.quote === false)) return 'access_mode';
   if (hasServiceCart) return null;
+  if (!requireQuote) return null;
   if (!quoteResult) return 'missing_quote';
   if (quoteNeedsRefresh) return 'stale_quote';
   return null;

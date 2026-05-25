@@ -1,160 +1,70 @@
-export const DESIGN_TOKENS = {
-  colors: {
-    brandPrimary: '#E8540A',
-    brandPrimaryLight: '#F26522',
-    brandTextOrange: '#E8540A',
-    backgroundPage: '#F5F5F5',
-    backgroundWhite: '#FFFFFF',
-    backgroundDarkOverlay: 'rgba(0,0,0,0.55)',
-    textPrimary: '#1A1A1A',
-    textSecondary: '#555555',
-    textMuted: '#888888',
-    textLinkOrange: '#E8540A',
-    badgeOpenBg: '#22C55E',
-    badgeOpenText: '#FFFFFF',
-    borderLight: '#E5E7EB',
-    starYellow: '#F59E0B',
-    buttonMessageBorder: '#1A1A1A',
-    buttonMessageText: '#1A1A1A',
-    promoDiscountText: '#E8540A',
-    reviewBarFilled: '#F59E0B',
-    reviewBarEmpty: '#E5E7EB',
-  },
-  typography: {
-    fontBrand: "'Poppins', sans-serif",
-    fontBody: "'Inter', sans-serif",
-  },
-  spacing: {
-    pagePaddingDesktop: 'px-6 max-w-screen-xl mx-auto',
-    cardPadding: 'p-5',
-    sectionGap: 'gap-6',
-  },
-  borderRadius: {
-    card: 'rounded-xl',
-    button: 'rounded-lg',
-    badge: 'rounded-full',
-    menuItemImage: 'rounded-lg',
-    tabActive: 'rounded-full',
-  },
-};
-
 export const STORE_DATA = {
-  store: {
-    id: 'kuya-dings-bbq',
-    name: "Kuya Ding's BBQ",
-    tagline: 'Grilled to perfection. Made with love.',
-    established: 'EST. 2020',
-    status: 'open',
-    closesAt: '10:00 PM',
-    rating: 4.8,
-    reviewCount: 127,
-    categories: ['BBQ', 'Street Food'],
-    address: 'Brgy. San Roque, Antipolo City, Rizal',
-    phone: '0917 123 4567',
-    email: 'kuyadingsbbq@gmail.com',
-    hours: '10:00 AM – 10:00 PM',
-    hoursSchedule: 'Daily',
-    deliveryPlatforms: ['Grab', 'Foodpanda', 'Lalamove'],
-    about: "We started as a small BBQ stand with a big dream – to serve delicious, affordable and high-quality BBQ that brings people together. Thank you for supporting our local business! ❤️",
-    aboutMobile: "We serve delicious and freshly grilled BBQ favorites made with quality ingredients and our special homemade marinade. Perfect for quick bites, family meals, and barkada inuman. Smoke-licious since 2020! 🔥",
-    overview: "Kuya Ding's BBQ serves delicious and freshly grilled BBQ favorites made with quality ingredients and our special homemade marinade.",
-    photoCount: 12,
-    priceRange: 'PP',
-    priceLabel: 'Affordable Price',
-    verified: true,
-    coordinates: { lat: 14.5873, lng: 121.1785 },
+  mode: 'services',
+  navigation: {
+    searchPlaceholder: 'Search Products or Services',
+    branchLabel: 'Mandurriao Branch',
+    shopLabel: 'Shop'
   },
-  whyChooseUs: [
-    { icon: 'chili', text: 'Freshly grilled daily' },
-    { icon: 'mortar', text: 'Homemade special marinade' },
-    { icon: 'heart', text: 'Affordable & sulit servings' },
-    { icon: 'sparkle', text: 'Clean & friendly service' },
-  ],
-  menu: [
-    {
-      id: 'pork-bbq',
-      name: 'Pork BBQ',
-      category: ['Best Sellers', 'Pork BBQ'],
-      description: 'Classic pork bbq, grilled to perfection.',
-      price: 25.00,
-      isBestSeller: true,
-    },
-    {
-      id: 'chicken-bbq',
-      name: 'Chicken BBQ',
-      category: ['Best Sellers', 'Chicken BBQ'],
-      description: 'Juicy chicken bbq with our special marinade.',
-      price: 25.00,
-      isBestSeller: false,
-    },
-    {
-      id: 'liempo',
-      name: 'Liempo',
-      category: ['Best Sellers', 'Pork BBQ'],
-      description: 'Tender and flavorful grilled liempo.',
-      price: 35.00,
-      isBestSeller: false,
-    },
-    {
-      id: 'java-rice',
-      name: 'Java Rice',
-      category: ['Sides'],
-      description: 'Fragrant java rice, the perfect pairing.',
-      price: 20.00,
-      isBestSeller: false,
-    },
-    {
-      id: 'iced-tea',
-      name: 'Iced Tea',
-      category: ['Drinks'],
-      description: 'Refreshing iced tea to complete your meal.',
-      price: 15.00,
-      isBestSeller: false,
-    },
-  ],
-  menuCategories: ['All', 'Best Sellers', 'Pork BBQ', 'Chicken BBQ', 'Liempo', 'Sides', 'Drinks'],
-  reviews: {
-    average: 4.8,
-    total: 127,
-    breakdown: [
-      { stars: 5, percent: 91 },
-      { stars: 4, percent: 6 },
-      { stars: 3, percent: 2 },
-      { stars: 2, percent: 1 },
-      { stars: 1, percent: 0 },
+  hero: {
+    name: 'ABeeZee',
+    statusLabel: 'OPEN',
+    tagline: 'Reliable laundry and aircon care for busy homes and small businesses.',
+    ratingLabel: 'New storefront',
+    modeLabel: 'Laundry Service',
+    locationLabel: 'Mandurriao, Iloilo City',
+    coverImageUrl: 'https://images.unsplash.com/photo-1626806787461-102c1bfaaea1?auto=format&fit=crop&w=1600&q=80',
+    profileImageUrl: 'https://images.unsplash.com/photo-1612550761236-e813928f7271?auto=format&fit=crop&w=600&q=80',
+    qrValue: 'https://dgfy.ph/store-template',
+    orderLabel: 'Order Now'
+  },
+  overview: {
+    aboutText: 'ABeeZee provides practical everyday services that help customers save time and keep essentials in top condition. Our storefront highlights laundry care for regular garments and aircon support for homes and small business spaces.',
+    galleryImages: [
+      'https://images.unsplash.com/photo-1517677208171-0bc6725a3e60?auto=format&fit=crop&w=320&q=80',
+      'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=320&q=80'
     ],
-    items: [
-      {
-        name: 'Maria C.',
-        avatarGender: 'female',
-        stars: 5,
-        timeAgo: '2 days ago',
-        text: 'Sobrang sarap! Malinis, friendly staff and mabilis ang service. Sulit talaga!',
-      },
-      {
-        name: 'John D.',
-        avatarGender: 'male',
-        stars: 5,
-        timeAgo: '1 week ago',
-        text: 'The best BBQ in Antipolo! Lami ang marinade and juicy talaga. Will order again!',
-      },
-      {
-        name: 'Liza P.',
-        avatarGender: 'female',
-        stars: 5,
-        timeAgo: '2 weeks ago',
-        text: 'Favorite namin to tuwing weekends. Keep it up Kuya Ding!',
-      },
+    contactRows: [
+      { label: 'Email', value: 'abz@gmail.com' },
+      { label: 'Location', value: 'Mandurriao, Iloilo City' }
     ],
+    directionsLabel: 'Get directions',
+    mapImageUrl: 'https://staticmap.openstreetmap.de/staticmap.php?center=10.7011,122.5451&zoom=14&size=420x220&maptype=mapnik&markers=10.7011,122.5451,lightgreen1',
+    whyChooseUs: [
+      'Laundry and aircon services in one place',
+      'Suitable for regular household and small-business needs',
+      'Options for everyday garments, bulky laundry, and multiple aircon unit types',
+      'Simple, booking-friendly service catalog for faster inquiries and checkout'
+    ]
   },
   promo: {
-    label: "TODAY'S PROMO",
-    discountPercent: 10,
-    title: 'All BBQ Items',
-    conditions: ['Min. order ₱100', 'Valid today only'],
+    cards: [
+      {
+        badge: 'PROMO',
+        title: 'Laundry & Aircon Bundle',
+        headline: 'Save more on scheduled care',
+        subtitle: 'Book a laundry pickup and get discounted aircon cleaning on the same week.',
+        supportingText: 'Ideal for homes and compact offices managing repeat service needs.',
+        validityText: 'Valid for active storefront promos only.'
+      }
+    ]
   },
-  cart: {
-    itemCount: 2,
-    total: 60.00,
+  reviews: {
+    title: 'Customer Reviews',
+    subtitle: 'See what customers say about this storefront',
+    ctaLabel: 'Write a Review',
+    emptyState: 'Customer reviews will appear here once this storefront adds review data in SKUpervisor.',
+    items: []
   },
+  footer: {
+    brandTitle: 'ABeeZee',
+    description: 'Reliable laundry and aircon care for busy homes and small businesses.',
+    serviceLinks: ['Aircon Cleaning', 'Laundry'],
+    socialLinks: [],
+    contactLines: ['abz@gmail.com', 'Mandurriao, Iloilo City'],
+    legalLine: 'ABeeZee',
+    poweredBy: 'Powered by SKUpervisor'
+  },
+  floatingCart: {
+    count: 0
+  }
 };
