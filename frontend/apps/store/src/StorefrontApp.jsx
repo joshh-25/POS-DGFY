@@ -89,6 +89,9 @@ import {
 } from './discoveryMapDom.js';
 import { normalizeStorefrontPageModel } from './normalizeStorefrontPageModel.js';
 import { createStoreMarkerPreviewNode } from './storefrontMarkerPreview.js';
+import { createTrackingAdapterRegistry, fetchNormalizedTrackingEntity } from './tracking/core.js';
+import { fnbTrackingAdapter } from './tracking/fnbAdapter.js';
+import TrackingRouteMap, { extractTrackingMapCoordinates } from './tracking/TrackingRouteMap.jsx';
 import {
   DiscoveryCategoryRail,
   DiscoveryHeader,
@@ -4067,6 +4070,11 @@ export default function StorefrontApp() {
     supporting: supportingSectionModel
   } = pageModel;
   const isFnbOrderSubpage = isFnbMode && isOrderSubpage;
+  const trackingMode = isFnbMode ? 'fnb' : (isServicesMode ? 'services' : 'simple');
+  const trackingAdapterRegistry = useMemo(
+    () => createTrackingAdapterRegistry([fnbTrackingAdapter]),
+    []
+  );
   const promoSectionModel = useMemo(() => {
     const rawPromo = supportingSectionModel?.promo && typeof supportingSectionModel.promo === 'object'
       ? supportingSectionModel.promo
@@ -6539,8 +6547,21 @@ export default function StorefrontApp() {
       const pin = trackingPinInput.trim().toUpperCase();
       if (!pin) throw new Error('Enter a valid tracking pin.');
       if (selectedStore?.slug) {
-        const data = await requestJson(`/api/v1/store/track/${encodeURIComponent(pin)}`, { storeSlug: selectedStore.slug });
-        setTrackingResult(data);
+        const normalizedTracking = await fetchNormalizedTrackingEntity({
+          registry: trackingAdapterRegistry,
+          input: {
+            mode: trackingMode,
+            rawReference: pin,
+            storeSlug: selectedStore.slug
+          },
+          requestJson
+        });
+        if (normalizedTracking?.normalized) {
+          setTrackingResult(normalizedTracking.normalized);
+        } else {
+          const data = await requestJson(`/api/v1/store/track/${encodeURIComponent(pin)}`, { storeSlug: selectedStore.slug });
+          setTrackingResult(data);
+        }
       } else {
         const authToken = readStoreAuthToken();
         if (!authToken) throw new Error('Sign in to DGFY to track from the global account drawer.');
@@ -16078,7 +16099,59 @@ return (
                   <button type="button" onClick={handleTrack} disabled={!selectedStore} style={{ borderRadius: 12, border: '1px solid #334155', background: '#334155', color: '#fff', padding: '11px 16px', fontWeight: 700 }}>Track</button>
                 </div>
                 {trackingError && <p style={{ color: '#b91c1c', marginTop: 10 }}>{trackingError}</p>}
-                {trackingResult && <div style={{ marginTop: 10, fontSize: 14, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 14px' }}>Status: <strong>{trackingResult.status_label || trackingResult.status}</strong></div>}
+                {trackingResult && (() => {
+                  const statusLabel = trackingResult.statusLabel || trackingResult.status_label || trackingResult.status || 'Tracked';
+                  const reference = trackingResult.reference || trackingResult.tracking_pin || trackingPinInput;
+                  const orderMethod = String(trackingResult.orderMethod || trackingResult.order_method || 'delivery').toLowerCase();
+                  const isPickupTracking = orderMethod === 'pickup';
+                  const trackingMapCoordinates = extractTrackingMapCoordinates(trackingResult, selectedStore, selectedLocation);
+                  const trackingItems = Array.isArray(trackingResult.items) ? trackingResult.items : [];
+
+                  return (
+                    <div style={{ marginTop: 12, display: 'grid', gap: 12 }}>
+                      <div style={{ fontSize: 14, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', display: 'grid', gap: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                          <span>Status: <strong>{statusLabel}</strong></span>
+                          <span style={{ fontSize: 12, fontWeight: 800, color: '#1a4e8d' }}>{String(reference || '').toUpperCase()}</span>
+                        </div>
+                        {trackingResult.branchName && <div>Branch: <strong>{trackingResult.branchName}</strong></div>}
+                        {trackingResult.etaMinutes != null && <div>Estimated arrival: <strong>{trackingResult.etaMinutes} min</strong></div>}
+                      </div>
+                      {(trackingMapCoordinates.storePin || trackingMapCoordinates.customerPin) && (
+                        <TrackingRouteMap
+                          storePin={trackingMapCoordinates.storePin}
+                          customerPin={isPickupTracking ? null : trackingMapCoordinates.customerPin}
+                          styleUrl={TILING_SERVER}
+                          transformRequest={tileTransformRequest}
+                          mapHeight={240}
+                        />
+                      )}
+                      {trackingItems.length > 0 && (
+                        <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', display: 'grid', gap: 8 }}>
+                          <div style={{ fontSize: 12, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Details</div>
+                          {trackingItems.map((item, index) => (
+                            <div key={`${item.id || item.name || 'item'}-${index}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13 }}>
+                              <span>{item.name} {item.qty != null ? `x ${item.qty}` : ''}</span>
+                              {item.amount != null && <strong>{money(item.amount)}</strong>}
+                            </div>
+                          ))}
+                          {trackingResult.totalAmount != null && (
+                            <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: 8, display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 14 }}>
+                              <span>Total</span>
+                              <strong>{money(trackingResult.totalAmount)}</strong>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {trackingResult.deliveryAddress && !isPickupTracking && (
+                        <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', fontSize: 13, color: '#334155' }}>
+                          <strong>Delivery To</strong>
+                          <div style={{ marginTop: 4 }}>{trackingResult.deliveryAddress}</div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             )}
 

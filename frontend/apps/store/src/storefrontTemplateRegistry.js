@@ -47,6 +47,7 @@ const MODE_TEMPLATE_OVERRIDES = Object.freeze({
   services: Object.freeze({
     catalogCardVariant: 'service_booking',
     journeyVariant: 'booking',
+    sharedShellVariant: 'services_fnb_live_shell',
     tokens: Object.freeze({
       navigationAccent: '#172033',
       heroAccent: '#f97316',
@@ -58,6 +59,14 @@ const MODE_TEMPLATE_OVERRIDES = Object.freeze({
   fnb: Object.freeze({
     catalogCardVariant: 'product_menu',
     journeyVariant: 'order',
+    sectionOrder: Object.freeze([
+      'navigation',
+      'hero',
+      'promo',
+      'catalog',
+      'reviews',
+      'footer'
+    ]),
     tokens: Object.freeze({
       navigationAccent: '#1c0f07',
       heroAccent: '#c96a2b',
@@ -84,8 +93,8 @@ export const getStorefrontTemplateConfig = (mode = 'default') => {
   return Object.freeze({
     ...BASE_STOREFRONT_TEMPLATE,
     ...modeOverride,
-    sectionOrder: SHARED_SECTION_ORDER,
-    sharedSections: SHARED_STOREFRONT_SECTIONS,
+    sectionOrder: modeOverride.sectionOrder || SHARED_SECTION_ORDER,
+    sharedSections: modeOverride.sharedSections || SHARED_STOREFRONT_SECTIONS,
     tokens: Object.freeze({
       ...BASE_STOREFRONT_TEMPLATE.tokens,
       ...(modeOverride.tokens || {})
