@@ -17,6 +17,7 @@
 - [Food & Beverage Mode Addendum (2026-05-06)](#food--beverage-mode-addendum-2026-05-06)
 - [Item Financial Readiness Addendum (2026-05-07)](#item-financial-readiness-addendum-2026-05-07)
 - [Account Phone Contact Addendum (2026-05-15)](#account-phone-contact-addendum-2026-05-15)
+- [DGFY Legal Acknowledgement Addendum (2026-05-26)](#dgfy-legal-acknowledgement-addendum-2026-05-26)
 - [DGFY Customer Account Addendum (2026-05-24)](#dgfy-customer-account-addendum-2026-05-24)
 
 ### Table Definitions
@@ -42,6 +43,7 @@
 - [20. POS Cash Drawer Events Table](#20-pos-cash-drawer-events-table)
 - [Food & Beverage Mode Addendum (2026-05-06)](#food--beverage-mode-addendum-2026-05-06)
 - [Item Financial Readiness Addendum (2026-05-07)](#item-financial-readiness-addendum-2026-05-07)
+- [DGFY Legal Acknowledgement Addendum (2026-05-26)](#dgfy-legal-acknowledgement-addendum-2026-05-26)
 - [DGFY Customer Account Addendum (2026-05-24)](#dgfy-customer-account-addendum-2026-05-24)
 
 ### Database Administration
@@ -170,6 +172,27 @@ Validation contract:
   - `20260407000002-compliance-hardening-phase1-2.cjs` and `20260407000005-add-compliance-audit-fallback-table.cjs` complete compliance table/column hardening for runtime checks.
   - `20260422000001-add-compliance-downgrade-override-controls.cjs` adds governed downgrade columns, audit event types, and controlled downgrade trigger support.
   - `20260422000002-harden-compliance-downgrade-controls.cjs` tightens trigger invariants (same-update marker mutation, no mixed override+revert mutation, and tenant one-per-cycle enforcement parity).
+
+## DGFY Legal Acknowledgement Addendum (2026-05-26)
+
+DGFY account registration and public company registration require versioned ToS/T&C acknowledgement before the mutation proceeds.
+
+Primary migration:
+
+1. `20260526000001-create-dgfy-legal-acknowledgements.cjs`
+
+Landlord table:
+
+1. `dgfy_legal_acknowledgements` stores immutable acknowledgement evidence for `dgfy_account_registration` and `dgfy_company_registration`. Rows include `dgfy_account_id`, optional `tenant_id`, flow, account/company/privacy/marketplace terms versions, acknowledgement text, acknowledgement hash, IP address, user agent, request ID, and `accepted_at`.
+
+Operational contract:
+
+- Missing, false, or stale terms acknowledgement is rejected with `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
+- Legal acknowledgement persistence fails closed when the repository/transaction path is unavailable.
+- DGFY account registration writes the account row, invitation membership mirrors, and acknowledgement row in one landlord transaction.
+- Company registration checks legal-persistence availability before consuming the company-registration OTP. After OTP verification, the tenant row and acknowledgement row are written in one landlord transaction before tenant provisioning.
+- Company registration acknowledgement is captured before tenant provisioning and is tied to the authenticated DGFY account plus the landlord tenant row.
+- Acknowledgement copy preserves the marketplace-provider framing: DGFY facilitates the transaction through a licensed payment partner while the merchant remains seller of record and receives net settlement after disclosed fees.
 
 ## DGFY Customer Account Addendum (2026-05-24)
 

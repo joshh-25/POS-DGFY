@@ -4089,6 +4089,41 @@ Reactivate an inactive tenant. Sets `status='active'`, `subscription_status='act
 >
 > **Scope clarification**: `company_token` in this section is internal/admin context only. Public storefront flows use `x-store-slug` and do not expose tenant tokens in discovery payloads.
 
+### GET /dgfy/legal-terms/current
+
+Return the backend-owned current legal-term versions, document summaries, acknowledgement snapshot text, and marketplace-provider clause used by DGFY account and company registration. Registration clients must load this endpoint before enabling legal acknowledgement checkboxes and must submit the returned version fields with the registration mutation.
+
+**Access:** Public.
+
+**Response (200)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "provider_clause": "DGFY is an e-marketplace/platform service provider...",
+    "versions": {
+      "accountTerms": "dgfy-account-terms-2026-05-26",
+      "privacy": "dgfy-privacy-2026-05-26",
+      "marketplaceTerms": "dgfy-marketplace-provider-2026-05-26",
+      "companyTerms": "dgfy-company-terms-2026-05-26"
+    },
+    "flows": {
+      "account_registration": {
+        "acknowledgement_field": "accepted_terms",
+        "version_fields": ["terms_version", "privacy_version", "marketplace_terms_version"]
+      },
+      "company_registration": {
+        "acknowledgement_field": "accepted_company_terms",
+        "version_fields": ["company_terms_version", "marketplace_terms_version"]
+      }
+    }
+  }
+}
+```
+
+If this endpoint is unavailable, registration UI must fail closed and keep the registration submit action disabled.
+
 ### POST /dgfy/auth/register
 
 Create a global DGFY account used for customer account surfaces and business registration.
@@ -4104,9 +4139,15 @@ Create a global DGFY account used for customer account surfaces and business reg
   "email": "ada@example.com",
   "phone": "+639123456789",
   "password": "minimum8",
-  "confirm_password": "minimum8"
+  "confirm_password": "minimum8",
+  "accepted_terms": true,
+  "terms_version": "dgfy-account-terms-2026-05-26",
+  "privacy_version": "dgfy-privacy-2026-05-26",
+  "marketplace_terms_version": "dgfy-marketplace-provider-2026-05-26"
 }
 ```
+
+Registration requires the current DGFY account terms, privacy terms, and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current`. The account row, mirrored DGFY invitation memberships, and acknowledgement evidence are written in one landlord transaction; persistence misconfiguration fails closed with `500 LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_UNAVAILABLE`. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
 
 **Response (201)**
 
@@ -4338,7 +4379,10 @@ Public company registration derives founder email, phone, username seed, and pas
 {
   "name": "Example Foods",
   "workflowMode": "food_manufacturing",
-  "email_otp_code": "123456"
+  "email_otp_code": "123456",
+  "accepted_company_terms": true,
+  "company_terms_version": "dgfy-company-terms-2026-05-26",
+  "marketplace_terms_version": "dgfy-marketplace-provider-2026-05-26"
 }
 ```
 Submit a public company registration request.
@@ -4358,6 +4402,7 @@ Submit a public company registration request.
 - Auto-login fallback: if the follow-up login call fails after an active response, the frontend keeps the company created state and routes the founder to manual sign-in with email/company token prefilled.
 - Founder contact and credentials: public company registration no longer accepts `adminEmail`, `adminPhone`, or `adminPassword`; the server derives them from the authenticated DGFY account.
 - Email ownership: public company registration requires `email_otp_code` for the DGFY account email. The registration UI requests the code through `POST /auth/email-otp/request` with `purpose=company_registration`, then submits the six-digit code with the final registration payload.
+- Legal acknowledgement: public company registration requires the current company terms and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current` before OTP consumption or tenant creation. The backend fails closed before OTP consumption if legal acknowledgement persistence is unavailable. After OTP verification, the landlord tenant row, pending-founder membership when applicable, and acknowledgement evidence are written in one landlord transaction. The acknowledgement states that DGFY is an e-marketplace/platform service provider, the seller owns the product, sets the price, fulfills the order, remains seller of record, payment is processed by a licensed payment partner, and DGFY deducts disclosed fees before remitting the seller's net settlement. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
 
 **Response (201, explicit manual mode)**
 ```json

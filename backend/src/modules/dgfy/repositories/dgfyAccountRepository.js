@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { DgfyAccount, DgfyAccountHandoff, DgfyAccountTenantMembership, Tenant, UserInvitation } from '../../../models/index.js';
+import { DgfyAccount, DgfyAccountHandoff, DgfyAccountTenantMembership, DgfyLegalAcknowledgement, Tenant, UserInvitation } from '../../../models/index.js';
 import dbStore from '../../../utils/dbStore.js';
 import tenantConnector from '../../../utils/TenantConnector.js';
 import { getTenantModels } from '../../../utils/tenantModelFactory.js';
@@ -31,6 +31,10 @@ const buildUniqueUsername = async (User, baseName, currentUserId = null, options
 };
 
 export const dgfyAccountRepository = {
+    transaction(callback) {
+        return DgfyAccount.sequelize.transaction(callback);
+    },
+
     findByEmail(email) {
         return DgfyAccount.findOne({
             where: { email: String(email || '').trim().toLowerCase() }
@@ -49,6 +53,10 @@ export const dgfyAccountRepository = {
 
     create(data, options = {}) {
         return DgfyAccount.create(data, options);
+    },
+
+    recordLegalAcknowledgement(payload, options = {}) {
+        return DgfyLegalAcknowledgement.create(payload, options);
     },
 
     updateLastLogin(account) {
@@ -95,7 +103,7 @@ export const dgfyAccountRepository = {
         return DgfyAccountHandoff.findOne({ where: { jti, dgfy_account_id: dgfyAccountId } });
     },
 
-    async mirrorPendingInvitationsForAccount(account) {
+    async mirrorPendingInvitationsForAccount(account, options = {}) {
         if (!account?.id || !account?.email) return [];
 
         const invitations = await UserInvitation.findAll({
@@ -108,7 +116,8 @@ export const dgfyAccountRepository = {
                 model: Tenant,
                 as: 'tenant',
                 attributes: ['id', 'name', 'company_token', 'status', 'plan']
-            }]
+            }],
+            ...options
         });
 
         const mirrored = [];
@@ -119,7 +128,7 @@ export const dgfyAccountRepository = {
                 tenantId: invitation.tenant_id,
                 tenantUserId: invitation.tenant_user_id,
                 role: invitation.role
-            });
+            }, options);
             mirrored.push(membership);
         }
         return mirrored;
@@ -130,7 +139,7 @@ export const dgfyAccountRepository = {
         tenantId,
         tenantUserId,
         role = 'admin'
-    }) {
+    }, options = {}) {
         return DgfyAccountTenantMembership.findOrCreate({
             where: {
                 dgfy_account_id: dgfyAccountId,
@@ -144,7 +153,8 @@ export const dgfyAccountRepository = {
                 status: 'accepted',
                 source: 'founder',
                 accepted_at: new Date()
-            }
+            },
+            ...options
         }).then(async ([membership, created]) => {
             if (!created) {
                 await membership.update({
@@ -153,9 +163,9 @@ export const dgfyAccountRepository = {
                     status: 'accepted',
                     source: 'founder',
                     accepted_at: membership.accepted_at || new Date()
-                });
+                }, options);
             }
-            return membership.reload();
+            return membership.reload(options);
         });
     },
 
@@ -164,7 +174,7 @@ export const dgfyAccountRepository = {
         tenantId,
         tenantUserId,
         role = 'staff'
-    }) {
+    }, options = {}) {
         const [membership, created] = await DgfyAccountTenantMembership.findOrCreate({
             where: {
                 dgfy_account_id: dgfyAccountId,
@@ -177,7 +187,8 @@ export const dgfyAccountRepository = {
                 role,
                 status: 'pending',
                 source: 'invite'
-            }
+            },
+            ...options
         });
 
         if (!created && membership.status !== 'accepted') {
@@ -187,10 +198,10 @@ export const dgfyAccountRepository = {
                 status: 'pending',
                 source: 'invite',
                 accepted_at: null
-            });
+            }, options);
         }
 
-        return membership.reload();
+        return membership.reload(options);
     },
 
     findMembershipById(id, options = {}) {

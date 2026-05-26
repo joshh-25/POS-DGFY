@@ -2,6 +2,10 @@ import jwt from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
+import {
+    assertDgfyLegalAcknowledgement,
+    DGFY_LEGAL_TERM_FLOWS
+} from '../../shared/utils/dgfyLegalTerms.js';
 import { normalizePhoneNumber, isValidPhoneNumber } from '../../../utils/phoneNumber.js';
 
 const JWT_EXPIRY = process.env.DGFY_JWT_EXPIRY || process.env.JWT_EXPIRY || '24h';
@@ -13,6 +17,31 @@ const DEFAULT_EMAIL_OTP_PURPOSES = Object.freeze({
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const normalizeName = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+const buildLegalPersistenceError = () => new DomainError(
+    DomainErrorCode.INTERNAL_ERROR,
+    'DGFY legal acknowledgement persistence is unavailable.',
+    {
+        statusCode: 500,
+        details: {
+            error_code: 'LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_UNAVAILABLE'
+        }
+    }
+);
+
+const toLegalPersistenceFailure = (error) => (
+    error instanceof DomainError
+        ? error
+        : new DomainError(
+            DomainErrorCode.INTERNAL_ERROR,
+            'DGFY account registration failed while saving legal acknowledgement evidence.',
+            {
+                statusCode: 500,
+                details: {
+                    error_code: 'LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_FAILED'
+                }
+            }
+        )
+);
 
 const parsePositiveInt = (value) => {
     const parsed = Number.parseInt(value, 10);
@@ -55,7 +84,7 @@ export const generateDgfyHandoffToken = (account, jti) => jwt.sign({
 export const buildRegisterDgfyAccountUseCase = ({
     repository,
     hashPassword
-}) => async ({ body }) => {
+}) => async ({ body, metadata = {} }) => {
     const firstName = normalizeName(body?.first_name || body?.firstName);
     const lastName = normalizeName(body?.last_name || body?.lastName);
     const email = normalizeEmail(body?.email);
@@ -87,6 +116,20 @@ export const buildRegisterDgfyAccountUseCase = ({
         return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Passwords do not match.', { statusCode: 400 }));
     }
 
+    let legalAcknowledgement;
+    try {
+        legalAcknowledgement = assertDgfyLegalAcknowledgement({
+            flow: DGFY_LEGAL_TERM_FLOWS.ACCOUNT_REGISTRATION,
+            body
+        });
+    } catch (error) {
+        return fail(error);
+    }
+
+    if (typeof repository.recordLegalAcknowledgement !== 'function' || typeof repository.transaction !== 'function') {
+        return fail(buildLegalPersistenceError());
+    }
+
     const existingByEmail = await repository.findByEmail(email);
     if (existingByEmail) {
         return fail(new DomainError(DomainErrorCode.CONFLICT, 'A DGFY account already exists with this email.', { statusCode: 409 }));
@@ -97,16 +140,34 @@ export const buildRegisterDgfyAccountUseCase = ({
         return fail(new DomainError(DomainErrorCode.CONFLICT, 'A DGFY account already exists with this phone number.', { statusCode: 409 }));
     }
 
-    const account = await repository.create({
-        first_name: firstName,
-        last_name: lastName,
-        username: firstName,
-        email,
-        phone,
-        password_hash: await hashPassword(password)
-    });
+    let account;
+    try {
+        account = await repository.transaction(async (transaction) => {
+            const createdAccount = await repository.create({
+                first_name: firstName,
+                last_name: lastName,
+                username: firstName,
+                email,
+                phone,
+                password_hash: await hashPassword(password)
+            }, { transaction });
 
-    await repository.mirrorPendingInvitationsForAccount?.(account);
+            await repository.mirrorPendingInvitationsForAccount?.(createdAccount, { transaction });
+            await repository.recordLegalAcknowledgement({
+                ...legalAcknowledgement,
+                dgfy_account_id: createdAccount.id,
+                tenant_id: null,
+                ip_address: metadata.ip_address || null,
+                user_agent: metadata.user_agent || null,
+                request_id: metadata.request_id || null,
+                accepted_at: new Date()
+            }, { transaction });
+
+            return createdAccount;
+        });
+    } catch (error) {
+        return fail(toLegalPersistenceFailure(error));
+    }
 
     const token = generateDgfyToken(account);
     return ok({

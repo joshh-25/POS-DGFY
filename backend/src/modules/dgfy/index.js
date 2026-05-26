@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { dgfyAccountRepository } from './repositories/dgfyAccountRepository.js';
+import { buildGetDgfyLegalTermsUseCase } from './usecases/dgfyLegalUseCases.js';
 import {
     buildAcceptDgfyInvitationUseCase,
     buildChangeDgfyPasswordUseCase,
@@ -36,6 +37,8 @@ export const registerDgfyAccountUseCase = buildRegisterDgfyAccountUseCase({
     repository: dgfyAccountRepository,
     hashPassword: (password) => bcrypt.hash(password, 10)
 });
+
+export const getDgfyLegalTermsUseCase = buildGetDgfyLegalTermsUseCase();
 
 export const loginDgfyAccountUseCase = buildLoginDgfyAccountUseCase({
     repository: dgfyAccountRepository,

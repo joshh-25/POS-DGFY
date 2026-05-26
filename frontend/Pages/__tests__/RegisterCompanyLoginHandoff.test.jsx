@@ -15,6 +15,7 @@ const dgfyAuthMock = vi.hoisted(() => ({
   clearDgfySession: vi.fn(),
   completeDgfyPasswordReset: vi.fn(),
   dgfyAuthHeader: vi.fn(() => ({ Authorization: 'Bearer dgfy-token' })),
+  fetchDgfyLegalTerms: vi.fn(),
   fetchDgfyMe: vi.fn(),
   getStoredDgfyAccount: vi.fn(() => null),
   getStoredDgfyToken: vi.fn(() => ''),
@@ -49,6 +50,36 @@ const dgfyAccount = {
   phone: '+639123456789',
   email_verified_at: '2026-05-21T00:00:00.000Z',
   is_email_verified: true
+};
+
+const dgfyLegalTerms = {
+  provider_clause: 'DGFY is an e-marketplace/platform service provider. The seller owns the product, sets the price, fulfills the order, and remains the seller of record. DGFY facilitates the sale, collects payment through a licensed payment partner, deducts disclosed fees, and remits the seller’s net settlement.',
+  flows: {
+    account_registration: {
+      snapshot: {
+        terms_version: 'dgfy-account-terms-2026-05-26',
+        privacy_version: 'dgfy-privacy-2026-05-26',
+        marketplace_terms_version: 'dgfy-marketplace-provider-2026-05-26',
+        acknowledgement_text: 'I agree to the DGFY Terms, Privacy Policy, and marketplace account terms. DGFY is an e-marketplace/platform service provider. The seller owns the product, sets the price, fulfills the order, and remains the seller of record. DGFY facilitates the sale, collects payment through a licensed payment partner, deducts disclosed fees, and remits the seller’s net settlement.'
+      },
+      documents: [
+        { key: 'accountTerms', title: 'DGFY Account Terms', version: 'dgfy-account-terms-2026-05-26', summary: 'Account terms', href: '/legal/dgfy-account-terms' },
+        { key: 'privacy', title: 'DGFY Privacy Policy', version: 'dgfy-privacy-2026-05-26', summary: 'Privacy terms', href: '/privacy' },
+        { key: 'marketplaceTerms', title: 'DGFY Marketplace Provider Terms', version: 'dgfy-marketplace-provider-2026-05-26', summary: 'Marketplace terms', href: '/legal/dgfy-marketplace-provider-terms' }
+      ]
+    },
+    company_registration: {
+      snapshot: {
+        company_terms_version: 'dgfy-company-terms-2026-05-26',
+        marketplace_terms_version: 'dgfy-marketplace-provider-2026-05-26',
+        acknowledgement_text: 'I confirm that the registered company is the seller of record for products, services, prices, fulfillment, customer support, tax obligations, and payout account ownership. DGFY is an e-marketplace/platform service provider. The seller owns the product, sets the price, fulfills the order, and remains the seller of record. DGFY facilitates the sale, collects payment through a licensed payment partner, deducts disclosed fees, and remits the seller’s net settlement.'
+      },
+      documents: [
+        { key: 'companyTerms', title: 'DGFY Company Registration Terms', version: 'dgfy-company-terms-2026-05-26', summary: 'Company terms', href: '/legal/dgfy-company-terms' },
+        { key: 'marketplaceTerms', title: 'DGFY Marketplace Provider Terms', version: 'dgfy-marketplace-provider-2026-05-26', summary: 'Marketplace terms', href: '/legal/dgfy-marketplace-provider-terms' }
+      ]
+    }
+  }
 };
 
 const renderRegistrationFlow = (initialEntries = ['/register-company']) => render(
@@ -87,6 +118,8 @@ describe('RegisterCompany DGFY handoff', () => {
     dgfyAuthMock.clearDgfySession.mockReset();
     dgfyAuthMock.completeDgfyPasswordReset.mockReset();
     dgfyAuthMock.fetchDgfyMe.mockReset();
+    dgfyAuthMock.fetchDgfyLegalTerms.mockReset();
+    dgfyAuthMock.fetchDgfyLegalTerms.mockResolvedValue(dgfyLegalTerms);
     dgfyAuthMock.getStoredDgfyAccount.mockReset();
     dgfyAuthMock.getStoredDgfyAccount.mockReturnValue(null);
     dgfyAuthMock.getStoredDgfyToken.mockReset();
@@ -116,6 +149,17 @@ describe('RegisterCompany DGFY handoff', () => {
     expect(screen.queryByLabelText('Company Name')).toBeNull();
   });
 
+  it('disables registration when current DGFY legal terms cannot load', async () => {
+    dgfyAuthMock.fetchDgfyLegalTerms.mockRejectedValue(new Error('terms unavailable'));
+
+    renderRegistrationFlow();
+
+    expect(await screen.findByText(/DGFY terms are temporarily unavailable/i)).toBeTruthy();
+    const submitButton = screen.getAllByRole('button', { name: /create dgfy account/i })
+      .find((button) => button.type === 'submit');
+    expect(submitButton.disabled).toBe(true);
+  });
+
   it('registers a company from the signed-in DGFY account', async () => {
     apiMock.post
       .mockResolvedValueOnce({ data: { success: true } })
@@ -135,6 +179,7 @@ describe('RegisterCompany DGFY handoff', () => {
       });
 
     renderRegistrationFlow();
+    await screen.findByText('DGFY Account Terms');
     await signInDgfy();
 
     fireEvent.change(screen.getByLabelText('Company Name'), {
@@ -152,20 +197,38 @@ describe('RegisterCompany DGFY handoff', () => {
     fireEvent.change(screen.getByLabelText('Email Verification Code'), {
       target: { value: '123456' }
     });
+    fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
     fireEvent.click(screen.getByRole('button', { name: /create company/i }));
 
     await waitFor(() => expect(apiMock.post).toHaveBeenLastCalledWith('/admin/tenants/register', {
       name: 'Auto Foods',
       workflowMode: 'food_manufacturing',
-      email_otp_code: '123456'
+      email_otp_code: '123456',
+      accepted_company_terms: true,
+      company_terms_version: 'dgfy-company-terms-2026-05-26',
+      marketplace_terms_version: 'dgfy-marketplace-provider-2026-05-26'
     }, {
       headers: { Authorization: 'Bearer dgfy-token' }
     }));
     expect(await screen.findByText('Company Created')).toBeTruthy();
   });
 
+  it('requires marketplace acknowledgement before company registration can be submitted', async () => {
+    renderRegistrationFlow();
+    await screen.findByText('DGFY Account Terms');
+    await signInDgfy();
+
+    expect(screen.getByText(/DGFY is an e-marketplace\/platform service provider/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /create company/i }).disabled).toBe(true);
+
+    fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
+
+    expect(screen.getByRole('button', { name: /create company/i }).disabled).toBe(false);
+  });
+
   it('renames Business Mode to Business Industry without exposing legacy manufacturing', async () => {
     renderRegistrationFlow();
+    await screen.findByText('DGFY Account Terms');
     await signInDgfy();
 
     const options = Array.from(screen.getByLabelText('Business Industry').querySelectorAll('option'))
@@ -191,6 +254,7 @@ describe('RegisterCompany DGFY handoff', () => {
     });
 
     renderRegistrationFlow();
+    await screen.findByText('DGFY Account Terms');
     await signInDgfy();
 
     fireEvent.change(screen.getByLabelText('First Name'), {

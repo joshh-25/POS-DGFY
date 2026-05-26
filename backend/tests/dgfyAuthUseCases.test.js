@@ -13,6 +13,7 @@ import {
     buildVerifyDgfyEmailUseCase,
     buildRegisterDgfyAccountUseCase
 } from '../src/modules/dgfy/usecases/dgfyAuthUseCases.js';
+import { DGFY_LEGAL_TERM_VERSIONS } from '../src/modules/shared/utils/dgfyLegalTerms.js';
 
 const createAccount = (overrides = {}) => ({
     id: 'dgfy-1',
@@ -37,9 +38,11 @@ describe('dgfyAuthUseCases', () => {
 
     it('creates a global DGFY account with username seeded from first name', async () => {
         const repository = {
+            transaction: jest.fn(async (callback) => callback('tx-account')),
             findByEmail: jest.fn().mockResolvedValue(null),
             findByPhone: jest.fn().mockResolvedValue(null),
             create: jest.fn().mockImplementation(async (payload) => createAccount(payload)),
+            recordLegalAcknowledgement: jest.fn().mockResolvedValue({ acknowledgement_id: 'ack-1' }),
             mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([])
         };
         const useCase = buildRegisterDgfyAccountUseCase({
@@ -54,21 +57,112 @@ describe('dgfyAuthUseCases', () => {
                 email: 'ADA@EXAMPLE.TEST',
                 phone: '+63 912 345 6789',
                 password: 'password123',
-                confirm_password: 'password123'
+                confirm_password: 'password123',
+                accepted_terms: true,
+                terms_version: DGFY_LEGAL_TERM_VERSIONS.accountTerms,
+                privacy_version: DGFY_LEGAL_TERM_VERSIONS.privacy,
+                marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
+            },
+            metadata: {
+                ip_address: '127.0.0.1',
+                user_agent: 'vitest',
+                request_id: 'req-dgfy-register'
             }
         });
 
         expect(result.success).toBe(true);
         expect(result.data.statusCode).toBe(201);
+        expect(repository.transaction).toHaveBeenCalled();
         expect(repository.create).toHaveBeenCalledWith(expect.objectContaining({
             first_name: 'Ada',
             last_name: 'Lovelace',
             username: 'Ada',
             email: 'ada@example.test',
             phone: '+63 912 345 6789'
-        }));
+        }), { transaction: 'tx-account' });
         expect(result.data.payload.data.token).toBeTruthy();
-        expect(repository.mirrorPendingInvitationsForAccount).toHaveBeenCalled();
+        expect(repository.mirrorPendingInvitationsForAccount).toHaveBeenCalledWith(expect.anything(), { transaction: 'tx-account' });
+        expect(repository.recordLegalAcknowledgement).toHaveBeenCalledWith(expect.objectContaining({
+            flow: 'dgfy_account_registration',
+            dgfy_account_id: 'dgfy-1',
+            tenant_id: null,
+            terms_version: DGFY_LEGAL_TERM_VERSIONS.accountTerms,
+            privacy_version: DGFY_LEGAL_TERM_VERSIONS.privacy,
+            marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms,
+            ip_address: '127.0.0.1',
+            user_agent: 'vitest',
+            request_id: 'req-dgfy-register'
+        }), { transaction: 'tx-account' });
+    });
+
+    it('fails closed when legal acknowledgement persistence is unavailable', async () => {
+        const repository = {
+            findByEmail: jest.fn(),
+            findByPhone: jest.fn(),
+            create: jest.fn(),
+            recordLegalAcknowledgement: jest.fn()
+        };
+        const useCase = buildRegisterDgfyAccountUseCase({
+            repository,
+            hashPassword: jest.fn()
+        });
+
+        const result = await useCase({
+            body: {
+                first_name: 'Ada',
+                last_name: 'Lovelace',
+                email: 'ada@example.test',
+                phone: '+63 912 345 6789',
+                password: 'password123',
+                confirm_password: 'password123',
+                accepted_terms: true,
+                terms_version: DGFY_LEGAL_TERM_VERSIONS.accountTerms,
+                privacy_version: DGFY_LEGAL_TERM_VERSIONS.privacy,
+                marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
+            }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(500);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            error_code: 'LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_UNAVAILABLE'
+        }));
+        expect(repository.findByEmail).not.toHaveBeenCalled();
+        expect(repository.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects DGFY account registration without terms acknowledgement', async () => {
+        const repository = {
+            findByEmail: jest.fn(),
+            findByPhone: jest.fn(),
+            create: jest.fn(),
+            recordLegalAcknowledgement: jest.fn()
+        };
+        const useCase = buildRegisterDgfyAccountUseCase({
+            repository,
+            hashPassword: jest.fn()
+        });
+
+        const result = await useCase({
+            body: {
+                first_name: 'Ada',
+                last_name: 'Lovelace',
+                email: 'ada@example.test',
+                phone: '+63 912 345 6789',
+                password: 'password123',
+                confirm_password: 'password123'
+            }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            error_code: 'TERMS_ACKNOWLEDGEMENT_REQUIRED',
+            field: 'accepted_terms'
+        }));
+        expect(repository.findByEmail).not.toHaveBeenCalled();
+        expect(repository.create).not.toHaveBeenCalled();
+        expect(repository.recordLegalAcknowledgement).not.toHaveBeenCalled();
     });
 
     it('logs in an active DGFY account', async () => {

@@ -36,6 +36,11 @@ export const registerDgfyAccount = async (payload) => {
   return data;
 };
 
+export const fetchDgfyLegalTerms = async () => {
+  const response = await api.get('/dgfy/legal-terms/current');
+  return response.data.data;
+};
+
 export const loginDgfyAccount = async (payload) => {
   const response = await api.post('/dgfy/auth/login', payload);
   const data = response.data.data;

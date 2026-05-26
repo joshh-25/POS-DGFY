@@ -7,6 +7,7 @@ import {
     clearDgfySession,
     completeDgfyPasswordReset,
     dgfyAuthHeader,
+    fetchDgfyLegalTerms,
     fetchDgfyMe,
     getStoredDgfyAccount,
     getStoredDgfyToken,
@@ -25,6 +26,9 @@ import { Building2, CheckCircle2, Eye, EyeOff, LogOut, UserRound } from 'lucide-
 import { WORKFLOW_MODE_LABELS, WORKFLOW_MODE_SELECT_VALUES } from '../src/features/settings/workflowMode.js';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const getFlowSnapshot = (legalTerms, flowKey) => legalTerms?.flows?.[flowKey]?.snapshot || {};
+const getFlowDocuments = (legalTerms, flowKey) => legalTerms?.flows?.[flowKey]?.documents || [];
 
 const PasswordInput = ({
     id,
@@ -62,11 +66,64 @@ const PasswordInput = ({
     );
 };
 
+const LegalAcknowledgementBox = ({
+    id,
+    checked,
+    onChange,
+    disabled,
+    disabledReason,
+    label,
+    documents,
+    snapshotText,
+    versionLabel
+}) => (
+    <div className="rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4 text-sm text-slate-700">
+        <label htmlFor={id} className="flex gap-3 leading-6">
+            <input
+                id={id}
+                type="checkbox"
+                checked={checked}
+                onChange={onChange}
+                disabled={disabled}
+                className="mt-1 h-4 w-4 shrink-0"
+                required
+            />
+            <span>{label}</span>
+        </label>
+        {disabledReason ? (
+            <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">{disabledReason}</p>
+        ) : null}
+        {versionLabel ? (
+            <p className="mt-3 text-xs font-medium uppercase tracking-wide text-slate-500">{versionLabel}</p>
+        ) : null}
+        <div className="mt-3 space-y-2">
+            {documents.map((document) => (
+                <details key={document.key || document.version} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                    <summary className="cursor-pointer text-sm font-medium text-slate-800">
+                        {document.title} <span className="text-xs text-slate-500">({document.version})</span>
+                    </summary>
+                    <p className="mt-2 text-xs leading-5 text-slate-600">{document.summary}</p>
+                    {document.href ? (
+                        <a className="mt-2 inline-block text-xs font-medium text-[#1f5f9f] hover:underline" href={document.href} target="_blank" rel="noreferrer">
+                            Open full terms
+                        </a>
+                    ) : null}
+                </details>
+            ))}
+        </div>
+        {snapshotText ? (
+            <p className="mt-3 rounded-xl bg-white px-3 py-2 text-xs leading-5 text-slate-600">{snapshotText}</p>
+        ) : null}
+    </div>
+);
+
 export default function RegisterCompany() {
     const navigate = useNavigate();
     const [dgfyToken, setDgfyToken] = useState(() => getStoredDgfyToken());
     const [dgfyAccount, setDgfyAccount] = useState(() => getStoredDgfyAccount());
     const [dgfyMemberships, setDgfyMemberships] = useState([]);
+    const [legalTerms, setLegalTerms] = useState(null);
+    const [legalTermsError, setLegalTermsError] = useState('');
     const [authMode, setAuthMode] = useState('register');
     const [authForm, setAuthForm] = useState({
         firstName: '',
@@ -74,7 +131,8 @@ export default function RegisterCompany() {
         email: '',
         phone: '',
         password: '',
-        confirmPassword: ''
+        confirmPassword: '',
+        acceptedTerms: false
     });
     const [loginForm, setLoginForm] = useState({ email: '', password: '' });
     const [resetForm, setResetForm] = useState({ email: '', code: '', password: '', confirmPassword: '' });
@@ -84,7 +142,8 @@ export default function RegisterCompany() {
     const [companyForm, setCompanyForm] = useState({
         companyName: '',
         workflowMode: 'food_manufacturing',
-        emailOtpCode: ''
+        emailOtpCode: '',
+        acceptedCompanyTerms: false
     });
     const [otpSentTo, setOtpSentTo] = useState('');
     const [dgfyVerificationCode, setDgfyVerificationCode] = useState('');
@@ -94,6 +153,25 @@ export default function RegisterCompany() {
     const [notice, setNotice] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isSendingOtp, setIsSendingOtp] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        fetchDgfyLegalTerms()
+            .then((data) => {
+                if (cancelled) return;
+                setLegalTerms(data || null);
+                setLegalTermsError('');
+            })
+            .catch(() => {
+                if (cancelled) return;
+                setLegalTerms(null);
+                setLegalTermsError('DGFY terms are temporarily unavailable. Registration is disabled until the current terms load.');
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
@@ -133,6 +211,11 @@ export default function RegisterCompany() {
         value: mode,
         label: WORKFLOW_MODE_LABELS[mode] || mode
     })), []);
+    const accountLegalSnapshot = getFlowSnapshot(legalTerms, 'account_registration');
+    const companyLegalSnapshot = getFlowSnapshot(legalTerms, 'company_registration');
+    const accountLegalDocuments = getFlowDocuments(legalTerms, 'account_registration');
+    const companyLegalDocuments = getFlowDocuments(legalTerms, 'company_registration');
+    const legalTermsUnavailable = !legalTerms || Boolean(legalTermsError);
 
     const setDgfySessionState = (session) => {
         setDgfyToken(session?.token || getStoredDgfyToken());
@@ -170,6 +253,14 @@ export default function RegisterCompany() {
             setError('Passwords do not match.');
             return;
         }
+        if (!authForm.acceptedTerms) {
+            setError('Accept the DGFY account terms before creating an account.');
+            return;
+        }
+        if (legalTermsUnavailable) {
+            setError(legalTermsError || 'Current DGFY terms must load before creating an account.');
+            return;
+        }
 
         setIsLoading(true);
         try {
@@ -179,7 +270,11 @@ export default function RegisterCompany() {
                 email: authForm.email,
                 phone: authForm.phone,
                 password: authForm.password,
-                confirm_password: authForm.confirmPassword
+                confirm_password: authForm.confirmPassword,
+                accepted_terms: true,
+                terms_version: accountLegalSnapshot.terms_version,
+                privacy_version: accountLegalSnapshot.privacy_version,
+                marketplace_terms_version: accountLegalSnapshot.marketplace_terms_version
             });
             setDgfySessionState(session);
             setCompanyForm((current) => ({ ...current, emailOtpCode: '' }));
@@ -381,13 +476,24 @@ export default function RegisterCompany() {
             setError('Enter the 6-digit verification code sent to your DGFY email.');
             return;
         }
+        if (!companyForm.acceptedCompanyTerms) {
+            setError('Accept the DGFY company terms before registering a company.');
+            return;
+        }
+        if (legalTermsUnavailable) {
+            setError(legalTermsError || 'Current DGFY company terms must load before registering a company.');
+            return;
+        }
 
         setIsLoading(true);
         try {
             const response = await api.post('/admin/tenants/register', {
                 name: companyForm.companyName,
                 workflowMode: companyForm.workflowMode,
-                email_otp_code: String(companyForm.emailOtpCode || '').trim()
+                email_otp_code: String(companyForm.emailOtpCode || '').trim(),
+                accepted_company_terms: true,
+                company_terms_version: companyLegalSnapshot.company_terms_version,
+                marketplace_terms_version: companyLegalSnapshot.marketplace_terms_version
             }, {
                 headers: dgfyAuthHeader()
             });
@@ -400,7 +506,7 @@ export default function RegisterCompany() {
                 message: response.data.message,
                 data: response.data.data
             });
-            setCompanyForm((current) => ({ ...current, emailOtpCode: '' }));
+            setCompanyForm((current) => ({ ...current, emailOtpCode: '', acceptedCompanyTerms: false }));
         } catch (err) {
             setError(err.response?.data?.message || err.message || 'Registration failed. Please try again.');
         } finally {
@@ -552,7 +658,18 @@ export default function RegisterCompany() {
                                             <PasswordInput id="dgfyConfirmPassword" autoComplete="new-password" placeholder="Re-enter password" value={authForm.confirmPassword} onChange={(e) => setAuthForm({ ...authForm, confirmPassword: e.target.value })} disabled={isLoading} />
                                         </div>
                                     </div>
-                                    <Button type="submit" disabled={isLoading} className="w-full bg-[#1f5f9f] hover:bg-[#174f86]">
+                                    <LegalAcknowledgementBox
+                                        id="acceptedTerms"
+                                        checked={authForm.acceptedTerms}
+                                        onChange={(e) => setAuthForm({ ...authForm, acceptedTerms: e.target.checked })}
+                                        disabled={isLoading || legalTermsUnavailable}
+                                        disabledReason={legalTermsError}
+                                        label="I have reviewed and agree to the current DGFY Account Terms, Privacy Policy, and Marketplace Provider Terms."
+                                        documents={accountLegalDocuments}
+                                        snapshotText={accountLegalSnapshot.acknowledgement_text}
+                                        versionLabel={accountLegalSnapshot.marketplace_terms_version ? `Marketplace terms version ${accountLegalSnapshot.marketplace_terms_version}` : ''}
+                                    />
+                                    <Button type="submit" disabled={isLoading || !authForm.acceptedTerms || legalTermsUnavailable} className="w-full bg-[#1f5f9f] hover:bg-[#174f86]">
                                         {isLoading ? 'Creating account...' : 'Create DGFY Account'}
                                     </Button>
                                 </form>
@@ -761,8 +878,19 @@ export default function RegisterCompany() {
                                         {otpSentTo ? `Code sent to ${otpSentTo}.` : 'Send a fresh code to your DGFY email before creating the company.'}
                                     </p>
                                 </div>
+                                <LegalAcknowledgementBox
+                                    id="acceptedCompanyTerms"
+                                    checked={companyForm.acceptedCompanyTerms}
+                                    onChange={(e) => setCompanyForm({ ...companyForm, acceptedCompanyTerms: e.target.checked })}
+                                    disabled={isLoading || legalTermsUnavailable}
+                                    disabledReason={legalTermsError}
+                                    label="I have reviewed and agree to the current DGFY Company Registration Terms and Marketplace Provider Terms."
+                                    documents={companyLegalDocuments}
+                                    snapshotText={companyLegalSnapshot.acknowledgement_text}
+                                    versionLabel={companyLegalSnapshot.marketplace_terms_version ? `Marketplace terms version ${companyLegalSnapshot.marketplace_terms_version}` : ''}
+                                />
 
-                                <Button type="submit" disabled={isLoading || !isDgfyEmailVerified} className="w-full bg-[#1f5f9f] hover:bg-[#174f86]">
+                                <Button type="submit" disabled={isLoading || !isDgfyEmailVerified || !companyForm.acceptedCompanyTerms || legalTermsUnavailable} className="w-full bg-[#1f5f9f] hover:bg-[#174f86]">
                                     {isLoading ? 'Creating Company...' : 'Create Company'}
                                 </Button>
                             </form>

@@ -4,6 +4,7 @@ import {
     completeDgfyPasswordResetUseCase,
     createDgfyHandoffUseCase,
     exchangeDgfyHandoffUseCase,
+    getDgfyLegalTermsUseCase,
     registerDgfyAccountUseCase,
     loginDgfyAccountUseCase,
     getDgfyMeUseCase,
@@ -15,8 +16,22 @@ import {
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { blacklistToken } from '../../../services/authService.js';
 
+export const getDgfyLegalTerms = async (req, res) => {
+    const result = await getDgfyLegalTermsUseCase();
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'DGFY legal terms lookup failed'
+    });
+};
+
 export const registerDgfyAccount = async (req, res) => {
-    const result = await registerDgfyAccountUseCase({ body: req.body });
+    const result = await registerDgfyAccountUseCase({
+        body: req.body,
+        metadata: {
+            request_id: req.headers['x-request-id'] || req.requestId || null,
+            ip_address: req.ip || null,
+            user_agent: req.get?.('user-agent') || req.headers['user-agent'] || null
+        }
+    });
     return sendUseCaseResult(res, result, {
         fallbackErrorMessage: 'DGFY account registration failed'
     });

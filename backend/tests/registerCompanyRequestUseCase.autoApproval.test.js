@@ -14,11 +14,15 @@ const {
     normalizeTenantRegistrationApprovalMode,
     TENANT_REGISTRATION_APPROVAL_MODES
 } = await import('../src/config/tenantRegistrationApproval.js');
+const { DGFY_LEGAL_TERM_VERSIONS } = await import('../src/modules/shared/utils/dgfyLegalTerms.js');
 
 const validBody = {
     name: 'Auto Accept Foods',
     email_otp_code: '123456',
-    workflowMode: 'food_manufacturing'
+    workflowMode: 'food_manufacturing',
+    accepted_company_terms: true,
+    company_terms_version: DGFY_LEGAL_TERM_VERSIONS.companyTerms,
+    marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
 };
 
 const dgfyAccount = {
@@ -34,6 +38,7 @@ const dgfyAccount = {
 
 const createUseCase = (overrides = {}) => {
     const tenantAdminRepository = {
+        transaction: jest.fn(async (callback) => callback('tx-company')),
         findTenantByName: jest.fn().mockResolvedValue(null),
         createTenant: jest.fn().mockImplementation(async (payload) => ({ ...payload }))
     };
@@ -43,7 +48,8 @@ const createUseCase = (overrides = {}) => {
     const trackEngagementEvent = jest.fn().mockResolvedValue({ created: true });
     const addEmailTenantMapping = jest.fn().mockResolvedValue({ created: true });
     const dgfyAccountRepository = {
-        upsertFounderMembership: jest.fn().mockResolvedValue({ id: 1 })
+        upsertFounderMembership: jest.fn().mockResolvedValue({ id: 1 }),
+        recordLegalAcknowledgement: jest.fn().mockResolvedValue({ acknowledgement_id: 'ack-1' })
     };
     const provisionTenant = jest.fn().mockResolvedValue({ id: 'tenant-id', status: 'active', admin_user_id: 1 });
     const emailService = {
@@ -78,6 +84,10 @@ const createUseCase = (overrides = {}) => {
 };
 
 describe('registerCompanyRequestUseCase approval mode', () => {
+    beforeEach(() => {
+        mockVerifyEmailOtp.mockClear();
+    });
+
     it('defaults to auto-standard mode when approval mode is omitted', () => {
         expect(normalizeTenantRegistrationApprovalMode()).toBe(
             TENANT_REGISTRATION_APPROVAL_MODES.AUTO_STANDARD
@@ -108,6 +118,7 @@ describe('registerCompanyRequestUseCase approval mode', () => {
             company_token: 'token-autoacceptfoods-12345678',
             email_sent: false
         }));
+        expect(deps.tenantAdminRepository.transaction).toHaveBeenCalled();
         expect(deps.tenantAdminRepository.createTenant).toHaveBeenCalledWith(expect.objectContaining({
             status: 'pending',
             payment_method: 'manual',
@@ -116,7 +127,7 @@ describe('registerCompanyRequestUseCase approval mode', () => {
             admin_phone: dgfyAccount.phone,
             admin_password_hash: dgfyAccount.password_hash,
             compliance_mode_state: 'non_compliant_active'
-        }));
+        }), { transaction: 'tx-company' });
         expect(deps.addEmailTenantMapping).not.toHaveBeenCalled();
         expect(deps.provisionTenant).toHaveBeenCalledWith(expect.objectContaining({
             tenantId: '12345678-aaaa-bbbb-cccc-123456789abc',
@@ -134,6 +145,13 @@ describe('registerCompanyRequestUseCase approval mode', () => {
             tenantId: '12345678-aaaa-bbbb-cccc-123456789abc',
             role: 'admin'
         }));
+        expect(deps.dgfyAccountRepository.recordLegalAcknowledgement).toHaveBeenCalledWith(expect.objectContaining({
+            flow: 'dgfy_company_registration',
+            dgfy_account_id: dgfyAccount.id,
+            tenant_id: '12345678-aaaa-bbbb-cccc-123456789abc',
+            company_terms_version: DGFY_LEGAL_TERM_VERSIONS.companyTerms,
+            marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
+        }), { transaction: 'tx-company' });
     });
 
     it('keeps standard registration pending when manual approval mode is explicitly configured', async () => {
@@ -151,9 +169,54 @@ describe('registerCompanyRequestUseCase approval mode', () => {
             admin_phone: dgfyAccount.phone,
             db_name: 'sku_tenant_autoacceptfoods_12345678',
             plan: 'premium'
-        }));
+        }), { transaction: 'tx-company' });
         expect(deps.addEmailTenantMapping).toHaveBeenCalledWith(dgfyAccount.email, '12345678-aaaa-bbbb-cccc-123456789abc');
         expect(deps.provisionTenant).not.toHaveBeenCalled();
+    });
+
+    it('rejects missing company terms acknowledgement before consuming OTP', async () => {
+        const { deps, useCase } = createUseCase();
+
+        const result = await useCase({
+            body: {
+                ...validBody,
+                accepted_company_terms: false
+            },
+            dgfyAccount,
+            correlationId: 'req-missing-company-terms'
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            error_code: 'TERMS_ACKNOWLEDGEMENT_REQUIRED',
+            field: 'accepted_company_terms'
+        }));
+        expect(mockVerifyEmailOtp).not.toHaveBeenCalled();
+        expect(deps.tenantAdminRepository.createTenant).not.toHaveBeenCalled();
+        expect(deps.dgfyAccountRepository.recordLegalAcknowledgement).not.toHaveBeenCalled();
+    });
+
+    it('fails closed before consuming OTP when legal persistence is unavailable', async () => {
+        const { deps, useCase } = createUseCase({
+            dgfyAccountRepository: {
+                upsertFounderMembership: jest.fn().mockResolvedValue({ id: 1 })
+            }
+        });
+
+        const result = await useCase({
+            body: validBody,
+            dgfyAccount,
+            correlationId: 'req-legal-persistence-unavailable'
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(500);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            error_code: 'LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_UNAVAILABLE'
+        }));
+        expect(mockVerifyEmailOtp).not.toHaveBeenCalled();
+        expect(deps.tenantAdminRepository.createTenant).not.toHaveBeenCalled();
     });
 
     it('rejects missing DGFY account before creating a tenant', async () => {
@@ -207,7 +270,7 @@ describe('registerCompanyRequestUseCase approval mode', () => {
             payment_method: 'manual',
             plan: 'premium',
             subscription_status: 'inactive'
-        }));
+        }), { transaction: 'tx-company' });
         expect(deps.addEmailTenantMapping).not.toHaveBeenCalled();
         expect(deps.provisionTenant).toHaveBeenCalledWith(expect.objectContaining({
             tenantId: '12345678-aaaa-bbbb-cccc-123456789abc',

@@ -1,5 +1,9 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
+import {
+    assertDgfyLegalAcknowledgement,
+    DGFY_LEGAL_TERM_FLOWS
+} from '../../shared/utils/dgfyLegalTerms.js';
 import { toValidDate, extendOneCalendarMonth } from './tenantBillingDateUtils.js';
 import { createBillingFunnelTracker } from '../../../services/billingFunnelTelemetryService.js';
 import {
@@ -16,6 +20,32 @@ import {
 import { isValidPhoneNumber, normalizePhoneNumber } from '../../../utils/phoneNumber.js';
 import { verifyEmailOtp, EMAIL_OTP_PURPOSES } from '../../../services/emailOtpService.js';
 
+const buildLegalPersistenceError = () => new DomainError(
+    DomainErrorCode.INTERNAL_ERROR,
+    'DGFY legal acknowledgement persistence is unavailable.',
+    {
+        statusCode: 500,
+        details: {
+            error_code: 'LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_UNAVAILABLE'
+        }
+    }
+);
+
+const toLegalPersistenceFailure = (error) => (
+    error instanceof DomainError
+        ? error
+        : new DomainError(
+            DomainErrorCode.INTERNAL_ERROR,
+            'Company registration failed while saving legal acknowledgement evidence.',
+            {
+                statusCode: 500,
+                details: {
+                    error_code: 'LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_FAILED'
+                }
+            }
+        )
+);
+
 export const buildRegisterCompanyRequestUseCase = ({
     tenantAdminRepository,
     paypalService,
@@ -28,7 +58,7 @@ export const buildRegisterCompanyRequestUseCase = ({
     getTenantRegistrationApprovalMode = () => TENANT_REGISTRATION_APPROVAL_MODES.AUTO_STANDARD,
     logger
 }) => {
-    return async ({ body, dgfyAccount, correlationId }) => {
+    return async ({ body, dgfyAccount, correlationId, metadata = {} }) => {
         const {
             name,
             email_otp_code: emailOtpCode,
@@ -122,6 +152,36 @@ export const buildRegisterCompanyRequestUseCase = ({
                     'Verify your DGFY email before registering a company.',
                     { statusCode: 403 }
                 ));
+            }
+
+            let legalAcknowledgement;
+            try {
+                legalAcknowledgement = assertDgfyLegalAcknowledgement({
+                    flow: DGFY_LEGAL_TERM_FLOWS.COMPANY_REGISTRATION,
+                    body
+                });
+            } catch (legalError) {
+                await tracker.failed({
+                    failureCode: 'terms_acknowledgement_required',
+                    failureReason: legalError.message,
+                    httpStatus: legalError.statusCode || 422,
+                    metadata: legalError.details || null
+                });
+
+                return fail(legalError);
+            }
+
+            if (typeof dgfyAccountRepository?.recordLegalAcknowledgement !== 'function'
+                || typeof tenantAdminRepository?.transaction !== 'function') {
+                const persistenceError = buildLegalPersistenceError();
+                await tracker.failed({
+                    failureCode: 'legal_acknowledgement_persistence_unavailable',
+                    failureReason: persistenceError.message,
+                    httpStatus: persistenceError.statusCode,
+                    metadata: persistenceError.details || null
+                });
+
+                return fail(persistenceError);
             }
 
             await verifyEmailOtp({
@@ -251,40 +311,66 @@ export const buildRegisterCompanyRequestUseCase = ({
             const dbName = `sku_tenant_${safeName}_${uuid.split('-')[0]}`;
             const subdomain = `${safeName}-${uuid.split('-')[0]}`;
             const companyToken = `token-${safeName}-${uuid.split('-')[0]}`;
-            tenant = await tenantAdminRepository.createTenant({
-                id: uuid,
-                name,
-                domain: subdomain,
-                db_name: dbName,
-                company_token: companyToken,
-                status: shouldProvisionImmediately ? 'pending' : initialStatus,
-                admin_email: adminEmail,
-                admin_phone: normalizedAdminPhone,
-                admin_password_hash: adminPasswordHash,
-                plan: normalizedPlan,
-                subscription_status: subscriptionStatus,
-                paypal_subscription_id: validatedSubscriptionId,
-                current_period_end: currentPeriodEnd,
-                billing_cycle_anchor: billingCycleAnchor,
-                payment_method: paymentMethod,
-                compliance_mode_state: complianceModeState,
-                compliance_mode_choice_required: false,
-                compliance_mode_selected_at: new Date(),
-                compliance_mode_selected_by: 'registration',
-                compliance_policy_version: '2026.04.07',
-                compliance_profile: {},
-                settings: {
-                    workflow_mode: normalizedWorkflowMode
-                }
-            });
+            try {
+                tenant = await tenantAdminRepository.transaction(async (transaction) => {
+                    const createdTenant = await tenantAdminRepository.createTenant({
+                        id: uuid,
+                        name,
+                        domain: subdomain,
+                        db_name: dbName,
+                        company_token: companyToken,
+                        status: shouldProvisionImmediately ? 'pending' : initialStatus,
+                        admin_email: adminEmail,
+                        admin_phone: normalizedAdminPhone,
+                        admin_password_hash: adminPasswordHash,
+                        plan: normalizedPlan,
+                        subscription_status: subscriptionStatus,
+                        paypal_subscription_id: validatedSubscriptionId,
+                        current_period_end: currentPeriodEnd,
+                        billing_cycle_anchor: billingCycleAnchor,
+                        payment_method: paymentMethod,
+                        compliance_mode_state: complianceModeState,
+                        compliance_mode_choice_required: false,
+                        compliance_mode_selected_at: new Date(),
+                        compliance_mode_selected_by: 'registration',
+                        compliance_policy_version: '2026.04.07',
+                        compliance_profile: {},
+                        settings: {
+                            workflow_mode: normalizedWorkflowMode
+                        }
+                    }, { transaction });
 
-            if (!shouldProvisionImmediately && dgfyAccountRepository?.upsertFounderMembership) {
-                await dgfyAccountRepository.upsertFounderMembership({
-                    dgfyAccountId: dgfyAccount.id,
-                    tenantId: tenant.id,
-                    tenantUserId: null,
-                    role: 'admin'
+                    await dgfyAccountRepository.recordLegalAcknowledgement({
+                        ...legalAcknowledgement,
+                        dgfy_account_id: dgfyAccount.id,
+                        tenant_id: createdTenant.id,
+                        ip_address: metadata.ip_address || null,
+                        user_agent: metadata.user_agent || null,
+                        request_id: metadata.request_id || correlationId || null,
+                        accepted_at: new Date()
+                    }, { transaction });
+
+                    if (!shouldProvisionImmediately && dgfyAccountRepository?.upsertFounderMembership) {
+                        await dgfyAccountRepository.upsertFounderMembership({
+                            dgfyAccountId: dgfyAccount.id,
+                            tenantId: createdTenant.id,
+                            tenantUserId: null,
+                            role: 'admin'
+                        }, { transaction });
+                    }
+
+                    return createdTenant;
                 });
+            } catch (legalPersistenceError) {
+                const persistenceError = toLegalPersistenceFailure(legalPersistenceError);
+                await tracker.failed({
+                    failureCode: 'legal_acknowledgement_persistence_failed',
+                    failureReason: persistenceError.message,
+                    httpStatus: persistenceError.statusCode,
+                    metadata: persistenceError.details || null
+                });
+
+                return fail(persistenceError);
             }
 
             if (!shouldProvisionImmediately) {
