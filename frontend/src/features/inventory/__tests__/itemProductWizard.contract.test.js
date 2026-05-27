@@ -3,7 +3,10 @@ import path from 'path';
 import { describe, expect, it } from 'vitest';
 
 const readFrontendFile = (relativePath) => {
-  const absolutePath = path.resolve(process.cwd(), relativePath);
+  const directPath = path.resolve(process.cwd(), relativePath);
+  const absolutePath = fs.existsSync(directPath)
+    ? directPath
+    : path.resolve(process.cwd(), 'frontend', relativePath);
   return fs.readFileSync(absolutePath, 'utf8');
 };
 
@@ -81,6 +84,78 @@ describe('Item/Product wizard contracts', () => {
     expect(itemsPageSource).toContain('const skuSuggestionItems = useMemo(() =>');
     expect(itemsPageSource).toContain('existingItems={skuSuggestionItems}');
     expect(itemsPageSource).toContain('items={skuSuggestionItems}');
+  });
+
+  it('keeps save-and-exit separate from final submit/finalize actions', () => {
+    const itemFormSource = readFrontendFile('Components/items/ItemFormModal.jsx');
+    const productWizardSource = readFrontendFile('Components/products/ProductCreateWizard.jsx');
+    const itemsPageSource = readFrontendFile('src/features/inventory/pages/ItemsPage.jsx');
+
+    expect(itemFormSource).toContain('const handleSaveAndExit = async () =>');
+    expect(itemFormSource).toContain("item?.status === 'draft' || !item");
+    expect(itemFormSource).toContain('await handleSubmit(true);');
+    expect(itemFormSource).toContain('Save and exit');
+    expect(itemFormSource).toContain('Finalize Item');
+    expect(itemFormSource).not.toContain('{!item && onSaveDraft && (');
+
+    expect(productWizardSource).toContain('const handleSaveAndExit = async () =>');
+    expect(productWizardSource).toContain("product?.status === 'draft' || !product");
+    expect(productWizardSource).toContain('await handleSaveDraft();');
+    expect(productWizardSource).toContain('Save and exit');
+    expect(productWizardSource).toContain('Finalize Product');
+    expect(productWizardSource).not.toContain("{(!product || (product && product.status === 'draft')) && onSaveDraft && (");
+
+    expect(productWizardSource).toContain('await onSaveDraft(draftData);');
+    expect(productWizardSource).toContain('await onSubmit(finalData);');
+    expect(itemFormSource).toContain('await onSaveDraft(finalPayload);');
+    expect(itemFormSource).toContain('await onSave(finalPayload);');
+    expect(itemsPageSource).toContain('throw error;');
+  });
+
+  it('guards save actions and keeps wizard footers responsive', () => {
+    const itemFormSource = readFrontendFile('Components/items/ItemFormModal.jsx');
+    const productWizardSource = readFrontendFile('Components/products/ProductCreateWizard.jsx');
+
+    expect(itemFormSource).toContain('const [savingAction, setSavingAction] = useState(null)');
+    expect(productWizardSource).toContain('const [savingAction, setSavingAction] = useState(null)');
+    expect(itemFormSource).toContain('const savingActionRef = useRef(null)');
+    expect(productWizardSource).toContain('const savingActionRef = useRef(null)');
+    expect(itemFormSource).toContain('const runSaveAction = async (action, operation) =>');
+    expect(productWizardSource).toContain('const runSaveAction = async (action, operation) =>');
+    expect(itemFormSource).toContain('if (savingActionRef.current) return;');
+    expect(productWizardSource).toContain('if (savingActionRef.current) return;');
+
+    expect(productWizardSource).toContain('wizard-footer flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between');
+    expect(productWizardSource).toContain('flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end');
+    expect(itemFormSource).toContain('wizard-footer pt-8 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end');
+
+    expect(itemFormSource).toContain('disabled={isSaving}');
+    expect(productWizardSource).toContain('disabled={isSaving}');
+    expect(itemFormSource).toContain("savingAction === 'save-exit' ? 'Saving...' : 'Save and exit'");
+    expect(productWizardSource).toContain("savingAction === 'save-exit' ? 'Saving...' : 'Save and exit'");
+    expect(itemFormSource).toContain("savingAction === 'submit' ? 'Saving...' : (item ? 'Update Item' : 'Create Item')");
+    expect(productWizardSource).toContain("savingAction === 'submit' ? 'Saving...' : (product ? 'Update Product' : 'Create Product')");
+  });
+
+  it('uses Item image copy for item pictures while preserving Storefront visibility wording', () => {
+    const itemFormSource = readFrontendFile('Components/items/ItemFormModal.jsx');
+    const productPosSetupSource = readFrontendFile('Components/products/wizard/POSSetupStep.jsx');
+    const itemsPageSource = readFrontendFile('src/features/inventory/pages/ItemsPage.jsx');
+
+    expect(itemFormSource).toContain('Upload Item Image');
+    expect(itemFormSource).toContain('Remove Item Image');
+    expect(itemFormSource).toContain('No item image uploaded yet.');
+    expect(itemFormSource).toContain('Enable in Storefront');
+    expect(itemFormSource).toContain('Disable in Storefront');
+
+    expect(productPosSetupSource).toContain('Upload Item Image');
+    expect(productPosSetupSource).toContain('Remove Item Image');
+    expect(productPosSetupSource).toContain('No item image uploaded yet.');
+    expect(productPosSetupSource).toContain('Enable in Storefront');
+    expect(productPosSetupSource).toContain('Disable in Storefront');
+
+    expect(itemsPageSource).toContain('Item image updated for');
+    expect(itemsPageSource).toContain('Failed to upload item image');
   });
 
   it('uses mode-aware item taxonomy and filtered UOM options in the item form', () => {

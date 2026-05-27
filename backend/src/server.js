@@ -42,6 +42,10 @@ import {
   startStorefrontDiscoveryIndexReconciliationScheduler,
   stopStorefrontDiscoveryIndexReconciliationScheduler
 } from './services/storefrontDiscoveryIndexService.js';
+import {
+  startGeoInventoryWorker,
+  stopGeoInventoryWorker
+} from './workers/geoInventoryWorker.js';
 import * as aiController from './controllers/aiController.js';
 import { paymentsEnabled } from './config/paymentsFeature.js';
 
@@ -613,6 +617,9 @@ app.use('/uploads', express.static(join(__dirname, '..', 'uploads'), {
 }));
 
 // Tenant Resolution & Context Middleware (Must be before API routes)
+import dgfyRoutes from './routes/dgfy.js';
+app.use('/api/v1/dgfy', dgfyRoutes);
+
 app.use(tenantHandler);
 
 // API routes
@@ -636,6 +643,7 @@ import aiRoutes from './routes/ai.js';
 import posRoutes from './routes/pos.js';
 import servicesRoutes from './routes/services.js';
 import fnbRoutes from './routes/fnb.js';
+import hospitalityRoutes, { hospitalityStorefrontRoutes } from './routes/hospitality.js';
 import salesRoutes from './routes/sales.js';
 import tenantLocationRoutes from './routes/tenantLocations.js';
 import storeRoutes from './routes/store.js';
@@ -665,8 +673,10 @@ app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/pos', posRoutes);
 app.use('/api/v1/services', servicesRoutes);
 app.use('/api/v1/fnb', fnbRoutes);
+app.use('/api/v1/hospitality', hospitalityRoutes);
 app.use('/api/v1/sales', salesRoutes);
 app.use('/api/v1/tenant-locations', tenantLocationRoutes);
+app.use('/api/v1/store/hospitality', hospitalityStorefrontRoutes);
 app.use('/api/v1/store', storeRoutes);
 app.use('/api/v1/storefront', storefrontDiscoveryRoutes);
 app.use('/api/v1/storefront', geoSearchRoutes);
@@ -754,6 +764,7 @@ const startServer = async () => {
     scheduleSchemaIndexAudit();
     scheduleBillingFunnelAudit();
     startStorefrontDiscoveryIndexReconciliationScheduler();
+    startGeoInventoryWorker();
 
     // Initialize Redis (non-blocking - server will start even if Redis fails)
     if (process.env.REDIS_URL) {
@@ -801,6 +812,7 @@ const startServer = async () => {
         billingFunnelAuditInterval = null;
       }
       stopStorefrontDiscoveryIndexReconciliationScheduler();
+      stopGeoInventoryWorker();
       aiController.stopAiCleanupScheduler?.();
 
       // Close Redis connection

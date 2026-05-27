@@ -11,7 +11,9 @@ const mockGetCurrentXReadingUseCase = jest.fn();
 const mockIncrementGovernedResetCounterUseCase = jest.fn();
 const mockListPosCatalogOverridesUseCase = jest.fn();
 const mockUpdatePosCatalogOverrideUseCase = jest.fn();
+const mockUpdateBulkPosCatalogOverridesUseCase = jest.fn();
 const mockUploadPosCatalogImageUseCase = jest.fn();
+const mockUploadBulkPosCatalogImagesUseCase = jest.fn();
 const mockDeletePosCatalogImageUseCase = jest.fn();
 const mockOpenTerminalShiftUseCase = jest.fn();
 const mockSwitchTerminalShiftLocationUseCase = jest.fn();
@@ -35,7 +37,9 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     incrementGovernedResetCounterUseCase: mockIncrementGovernedResetCounterUseCase,
     listPosCatalogOverridesUseCase: mockListPosCatalogOverridesUseCase,
     updatePosCatalogOverrideUseCase: mockUpdatePosCatalogOverrideUseCase,
+    updateBulkPosCatalogOverridesUseCase: mockUpdateBulkPosCatalogOverridesUseCase,
     uploadPosCatalogImageUseCase: mockUploadPosCatalogImageUseCase,
+    uploadBulkPosCatalogImagesUseCase: mockUploadBulkPosCatalogImagesUseCase,
     deletePosCatalogImageUseCase: mockDeletePosCatalogImageUseCase,
     openTerminalShiftUseCase: mockOpenTerminalShiftUseCase,
     switchTerminalShiftLocationUseCase: mockSwitchTerminalShiftLocationUseCase,

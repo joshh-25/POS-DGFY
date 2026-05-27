@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
 import express from 'express';
 import request from 'supertest';
-import { Sequelize } from 'sequelize';
+import { DataTypes, Sequelize } from 'sequelize';
 import dbStore from '../src/utils/dbStore.js';
 import tenantConnector from '../src/utils/TenantConnector.js';
 import { getTenantModels } from '../src/utils/tenantModelFactory.js';
@@ -89,49 +89,45 @@ describe('storefront primary location integration', () => {
         return app;
     };
 
+    const ensureDiscoveryIndexColumn = async (columnName, definition) => {
+        const queryInterface = landlordSequelize.getQueryInterface();
+        const table = await queryInterface.describeTable('storefront_discovery_index');
+        if (!table[columnName]) {
+            await queryInterface.addColumn('storefront_discovery_index', columnName, definition);
+        }
+    };
+
     beforeAll(async () => {
-        await landlordSequelize.query(`
-            ALTER TABLE storefront_discovery_index
-            ADD COLUMN IF NOT EXISTS workflow_mode VARCHAR(80) NOT NULL DEFAULT 'food_manufacturing'
-        `);
-        await landlordSequelize.query(`
-            ALTER TABLE storefront_discovery_index
-            ADD COLUMN IF NOT EXISTS storefront_cover_image_url VARCHAR(500) NULL
-        `);
-        await landlordSequelize.query(`
-            ALTER TABLE storefront_discovery_index
-            ADD COLUMN IF NOT EXISTS storefront_profile_image_url VARCHAR(500) NULL
-        `);
-        await landlordSequelize.query(`
-            ALTER TABLE storefront_discovery_index
-            ADD COLUMN IF NOT EXISTS storefront_tagline VARCHAR(120) NULL,
-            ADD COLUMN IF NOT EXISTS storefront_about VARCHAR(1000) NULL,
-            ADD COLUMN IF NOT EXISTS storefront_phone VARCHAR(50) NULL,
-            ADD COLUMN IF NOT EXISTS storefront_email VARCHAR(120) NULL,
-            ADD COLUMN IF NOT EXISTS storefront_hours VARCHAR(120) NULL,
-            ADD COLUMN IF NOT EXISTS storefront_why_choose_us JSON NULL,
-            ADD COLUMN IF NOT EXISTS storefront_social_links JSON NULL,
-            ADD COLUMN IF NOT EXISTS storefront_review_highlights JSON NULL,
-            ADD COLUMN IF NOT EXISTS storefront_promo JSON NULL,
-            ADD COLUMN IF NOT EXISTS storefront_ui_v2_enabled BOOLEAN NOT NULL DEFAULT false,
-            ADD COLUMN IF NOT EXISTS storefront_categories JSON NULL,
-            ADD COLUMN IF NOT EXISTS storefront_gallery_images JSON NULL,
-            ADD COLUMN IF NOT EXISTS storefront_delivery_partners JSON NULL,
-            ADD COLUMN IF NOT EXISTS storefront_follow_enabled BOOLEAN NOT NULL DEFAULT false,
-            ADD COLUMN IF NOT EXISTS storefront_share_enabled BOOLEAN NOT NULL DEFAULT false,
-            ADD COLUMN IF NOT EXISTS storefront_review_summary JSON NULL,
-            ADD COLUMN IF NOT EXISTS customer_access_mode VARCHAR(32) NOT NULL DEFAULT 'catalog',
-            ADD COLUMN IF NOT EXISTS effective_customer_access_mode VARCHAR(32) NOT NULL DEFAULT 'transaction',
-            ADD COLUMN IF NOT EXISTS max_customer_access_mode VARCHAR(32) NOT NULL DEFAULT 'catalog',
-            ADD COLUMN IF NOT EXISTS inventory_display_mode VARCHAR(32) NOT NULL DEFAULT 'availability',
-            ADD COLUMN IF NOT EXISTS inventory_low_stock_display_threshold INTEGER UNSIGNED NOT NULL DEFAULT 5,
-            ADD COLUMN IF NOT EXISTS access_capabilities JSON NULL,
-            ADD COLUMN IF NOT EXISTS access_limitation_reason VARCHAR(255) NULL,
-            ADD COLUMN IF NOT EXISTS customer_access_modes_enabled BOOLEAN NOT NULL DEFAULT false,
-            ADD COLUMN IF NOT EXISTS active_location_snapshot JSON NULL,
-            ADD COLUMN IF NOT EXISTS item_search_snapshot JSON NULL,
-            ADD COLUMN IF NOT EXISTS search_snapshot_version INTEGER UNSIGNED NOT NULL DEFAULT 1
-        `);
+        await ensureDiscoveryIndexColumn('workflow_mode', { type: DataTypes.STRING(80), allowNull: false, defaultValue: 'food_manufacturing' });
+        await ensureDiscoveryIndexColumn('storefront_cover_image_url', { type: DataTypes.STRING(500), allowNull: true });
+        await ensureDiscoveryIndexColumn('storefront_profile_image_url', { type: DataTypes.STRING(500), allowNull: true });
+        await ensureDiscoveryIndexColumn('storefront_tagline', { type: DataTypes.STRING(120), allowNull: true });
+        await ensureDiscoveryIndexColumn('storefront_about', { type: DataTypes.STRING(1000), allowNull: true });
+        await ensureDiscoveryIndexColumn('storefront_phone', { type: DataTypes.STRING(50), allowNull: true });
+        await ensureDiscoveryIndexColumn('storefront_email', { type: DataTypes.STRING(120), allowNull: true });
+        await ensureDiscoveryIndexColumn('storefront_hours', { type: DataTypes.STRING(120), allowNull: true });
+        await ensureDiscoveryIndexColumn('storefront_why_choose_us', { type: DataTypes.JSON, allowNull: true });
+        await ensureDiscoveryIndexColumn('storefront_social_links', { type: DataTypes.JSON, allowNull: true });
+        await ensureDiscoveryIndexColumn('storefront_review_highlights', { type: DataTypes.JSON, allowNull: true });
+        await ensureDiscoveryIndexColumn('storefront_promo', { type: DataTypes.JSON, allowNull: true });
+        await ensureDiscoveryIndexColumn('storefront_ui_v2_enabled', { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false });
+        await ensureDiscoveryIndexColumn('storefront_categories', { type: DataTypes.JSON, allowNull: true });
+        await ensureDiscoveryIndexColumn('storefront_gallery_images', { type: DataTypes.JSON, allowNull: true });
+        await ensureDiscoveryIndexColumn('storefront_delivery_partners', { type: DataTypes.JSON, allowNull: true });
+        await ensureDiscoveryIndexColumn('storefront_follow_enabled', { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false });
+        await ensureDiscoveryIndexColumn('storefront_share_enabled', { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false });
+        await ensureDiscoveryIndexColumn('storefront_review_summary', { type: DataTypes.JSON, allowNull: true });
+        await ensureDiscoveryIndexColumn('customer_access_mode', { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'catalog' });
+        await ensureDiscoveryIndexColumn('effective_customer_access_mode', { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'transaction' });
+        await ensureDiscoveryIndexColumn('max_customer_access_mode', { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'catalog' });
+        await ensureDiscoveryIndexColumn('inventory_display_mode', { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'availability' });
+        await ensureDiscoveryIndexColumn('inventory_low_stock_display_threshold', { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 5 });
+        await ensureDiscoveryIndexColumn('access_capabilities', { type: DataTypes.JSON, allowNull: true });
+        await ensureDiscoveryIndexColumn('access_limitation_reason', { type: DataTypes.STRING(255), allowNull: true });
+        await ensureDiscoveryIndexColumn('customer_access_modes_enabled', { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false });
+        await ensureDiscoveryIndexColumn('active_location_snapshot', { type: DataTypes.JSON, allowNull: true });
+        await ensureDiscoveryIndexColumn('item_search_snapshot', { type: DataTypes.JSON, allowNull: true });
+        await ensureDiscoveryIndexColumn('search_snapshot_version', { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 1 });
         await landlordSequelize.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
         runMigrationsForDb(dbName);
 

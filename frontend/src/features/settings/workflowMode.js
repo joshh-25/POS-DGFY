@@ -107,7 +107,19 @@ export const WORKFLOW_MODE_CAPABILITIES = Object.freeze({
     'pos',
     'storefront'
   ],
-  hospitality: ['catalog', 'inventory', 'pos', 'storefront'],
+  hospitality: [
+    'hospitalityReservations',
+    'hospitalityRooms',
+    'hospitalityHousekeeping',
+    'hospitalityMaintenance',
+    'hospitalityFolios',
+    'hospitalityRates',
+    'hospitalityAmenities',
+    'catalog',
+    'inventory',
+    'pos',
+    'storefront'
+  ],
   healthcare: ['catalog', 'inventory', 'pos', 'storefront'],
   ticketing_transport: ['catalog', 'inventory', 'pos', 'storefront'],
   logistics_distribution: ['catalog', 'inventory', 'pos', 'storefront'],
@@ -151,6 +163,20 @@ export const FNB_HIDDEN_ROUTE_PREFIXES = Object.freeze([
   '/dispatch-orders'
 ]);
 
+export const HOSPITALITY_HIDDEN_NAV_PAGES = Object.freeze([
+  'JobOrders',
+  'DispatchOrders',
+  'Fnb',
+  'Services'
+]);
+
+export const HOSPITALITY_HIDDEN_ROUTE_PREFIXES = Object.freeze([
+  '/job-orders',
+  '/dispatch-orders',
+  '/fnb',
+  '/services'
+]);
+
 export const SERVICES_ONLY_NAV_PAGES = Object.freeze([
   'Services'
 ]);
@@ -165,6 +191,14 @@ export const FNB_ONLY_NAV_PAGES = Object.freeze([
 
 export const FNB_ONLY_ROUTE_PREFIXES = Object.freeze([
   '/fnb'
+]);
+
+export const HOSPITALITY_ONLY_NAV_PAGES = Object.freeze([
+  'Hospitality'
+]);
+
+export const HOSPITALITY_ONLY_ROUTE_PREFIXES = Object.freeze([
+  '/hospitality'
 ]);
 
 export const normalizeWorkflowMode = (value) => {
@@ -190,6 +224,7 @@ export const getWorkflowModeLabel = (value) => (
 export const isMsmeWorkflowMode = (value) => resolveWorkflowModeFamily(value) === 'msme';
 export const isServicesWorkflowMode = (value) => resolveWorkflowModeFamily(value) === 'services';
 export const isFnbWorkflowMode = (value) => resolveWorkflowModeFamily(value) === 'fnb';
+export const isHospitalityWorkflowMode = (value) => resolveWorkflowModeFamily(value) === 'hospitality';
 
 export const getWorkflowModePinMeta = (value) => {
   const raw = String(value || '').trim().toLowerCase();
@@ -211,6 +246,9 @@ export const isWorkflowPageVisible = (pageName, workflowMode) => {
   if (FNB_ONLY_NAV_PAGES.includes(normalizedPage)) {
     return isFnbWorkflowMode(workflowMode);
   }
+  if (HOSPITALITY_ONLY_NAV_PAGES.includes(normalizedPage)) {
+    return isHospitalityWorkflowMode(workflowMode);
+  }
   if (isMsmeWorkflowMode(workflowMode)) {
     return !MSME_HIDDEN_NAV_PAGES.includes(normalizedPage);
   }
@@ -219,6 +257,9 @@ export const isWorkflowPageVisible = (pageName, workflowMode) => {
   }
   if (isFnbWorkflowMode(workflowMode)) {
     return !FNB_HIDDEN_NAV_PAGES.includes(normalizedPage);
+  }
+  if (isHospitalityWorkflowMode(workflowMode)) {
+    return !HOSPITALITY_HIDDEN_NAV_PAGES.includes(normalizedPage);
   }
   return true;
 };
@@ -234,8 +275,12 @@ export const isWorkflowPathBlocked = (pathname, workflowMode) => {
   if (matchesPrefix(FNB_ONLY_ROUTE_PREFIXES)) {
     return !isFnbWorkflowMode(workflowMode);
   }
+  if (matchesPrefix(HOSPITALITY_ONLY_ROUTE_PREFIXES)) {
+    return !isHospitalityWorkflowMode(workflowMode);
+  }
   if (isMsmeWorkflowMode(workflowMode)) return matchesPrefix(MSME_HIDDEN_ROUTE_PREFIXES);
   if (isServicesWorkflowMode(workflowMode)) return matchesPrefix(SERVICES_HIDDEN_ROUTE_PREFIXES);
   if (isFnbWorkflowMode(workflowMode)) return matchesPrefix(FNB_HIDDEN_ROUTE_PREFIXES);
+  if (isHospitalityWorkflowMode(workflowMode)) return matchesPrefix(HOSPITALITY_HIDDEN_ROUTE_PREFIXES);
   return false;
 };

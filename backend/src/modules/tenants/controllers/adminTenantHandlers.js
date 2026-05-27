@@ -59,7 +59,13 @@ export const registerCompanyRequest = async (req, res) => {
     const correlationId = req.requestId || req.headers['x-request-id'] || uuidv4();
     const result = await registerCompanyRequestUseCase({
         body: req.body,
-        correlationId
+        dgfyAccount: req.dgfyAccount || null,
+        correlationId,
+        metadata: {
+            request_id: correlationId,
+            ip_address: req.ip || null,
+            user_agent: req.get?.('user-agent') || req.headers['user-agent'] || null
+        }
     });
     return sendUseCaseResult(res, result, {
         fallbackErrorMessage: 'Registration failed'

@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-05-18
+last_reviewed: 2026-05-26
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -16,12 +16,17 @@ The SKU Inventory Manager uses a **Multi-Tenant Architecture** with **Database I
 ## Tenant Lifecycle
 
 ### 1. Registration (Current Policy)
-- **Premium-Capable Account**: Every newly registered tenant persists `plan=premium` by default so mode-specific premium-gated surfaces are available after activation.
-- **Default Auto-Accept Mode**: `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` is the default. Public company registration immediately creates the landlord tenant row, provisions the isolated tenant database, activates the tenant, and lets the registration UI sign the founder in through the normal login API.
+- **DGFY Account Requirement**: Public company registration requires a signed-in global DGFY account. The founder's email, phone, username seed, and password hash are derived server-side from that account.
+- **Premium-Capable Account**: Every newly registered tenant persists `plan=premium` by default so mode-specific premium-gated surfaces are available after activation. The registration UI no longer displays a premium-capable widget.
+- **Default Auto-Accept Mode**: `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` is the default. Public company registration immediately creates the landlord tenant row, provisions the isolated tenant database, activates the tenant, and lets the registration UI route the founder through the normal tenant login API with DGFY email and returned company token.
 - **Manual Approval Rollback Mode**: `TENANT_REGISTRATION_APPROVAL_MODE=manual` keeps the traditional pending flow available when operators intentionally need platform-admin review before provisioning.
 - **Provider Subscription Onboarding**: Disabled for this phase. Requests that include provider subscription verification are rejected with `503` and `PAYMENTS_DISABLED`.
-- **Founder Contact Requirement**: Public company registration requires an admin phone number. The landlord tenant record stores it as `admin_phone`, and provisioning copies it into the founder/admin user's `phone_number`.
-- **Founder Email Verification**: Public company registration requires a single-use email OTP for `adminEmail` before any tenant request is created. The registration page includes Send Code/Resend Code controls, requests the code through `POST /api/v1/auth/email-otp/request` with `purpose=company_registration`, and submits it as `email_otp_code`.
+- **Founder Contact Requirement**: Public company registration uses the signed-in DGFY account phone number. The landlord tenant record stores it as `admin_phone`, and provisioning copies it into the founder/admin user's `phone_number`.
+- **Founder Email Verification**: Public company registration requires a single-use email OTP for the DGFY account email before any tenant request is created. The registration page includes Send Code/Resend Code controls, requests the code through `POST /api/v1/auth/email-otp/request` with `purpose=company_registration`, and submits it as `email_otp_code`.
+- **Required Terms Acknowledgement**: DGFY account registration and public company registration both require current ToS/T&C acknowledgement loaded from `GET /api/v1/dgfy/legal-terms/current`. The backend rejects missing, false, or stale acknowledgement with `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`, fails closed when legal persistence is unavailable, and persists successful acknowledgement evidence in landlord `dgfy_legal_acknowledgements`.
+- **Legal Evidence Atomicity**: DGFY account creation, invitation membership mirroring, and account acknowledgement evidence are written in one landlord transaction. Company registration checks legal-persistence availability before OTP consumption; after OTP verification, the landlord tenant row and company acknowledgement evidence are written in one landlord transaction before tenant provisioning.
+- **Marketplace Provider Framing**: Registration copy must identify DGFY as an e-marketplace/platform service provider. The company remains seller of record, owns the product/service listing, sets prices, fulfills orders, handles customer obligations, and uses a registered business payout account. DGFY facilitates the transaction, uses a licensed payment partner, deducts disclosed fees, and remits the seller's net settlement; the product must not describe this as DGFY wallet points, cash-out credit, or DGFY reselling the merchant's goods.
+- **Compliance Default**: Public company registration no longer asks for compliance mode. New companies start `non_compliant_active`; master admins can start compliance activation later in Settings > Compliance.
 - **Password Requirement**: Account registration, invitation acceptance, and password changes require only a minimum password length of 8 characters. The UI offers a readable 16-character generator, but generated passwords are optional.
 - **Phone Format**: Company admin phone numbers and user phone numbers are trimmed and must be 7-40 characters using digits, spaces, `+`, `-`, parentheses, and periods.
 - **Provisioning Trigger**: Database provisioning runs during public registration in default `auto_standard` mode, or after explicit admin approval when `manual` mode is configured.
@@ -39,8 +44,8 @@ The SKU Inventory Manager uses a **Multi-Tenant Architecture** with **Database I
     6.  Sends specific email with login credentials.
     7.  Keeps approval retryable if provisioning fails before activation.
 - Approval email delivery is non-blocking after successful provisioning. If SMTP fails, the active registration response still succeeds with `email_sent=false`, and the founder can continue through in-app auto-login or manual login fallback.
-- Auto-login is implemented as a frontend follow-up call to the normal `/auth/login` API using the just-submitted registration password in component state. The registration response does not return auth tokens and the password is not stored for handoff.
-- If the follow-up auto-login call fails after activation, the tenant remains active and the UI routes the founder to manual sign-in with email and company token prefilled.
+- Login handoff uses the DGFY account email and returned `company_token`; the tenant master-admin row is seeded from the DGFY account during provisioning. The registration response does not return tenant auth tokens.
+- If the follow-up login handoff fails after activation, the tenant remains active and the UI routes the founder to manual sign-in with DGFY email and company token prefilled.
 - Tenant schema provisioning is mode-wide. The backend clones tenant-local models from the canonical model registry into each new tenant database while excluding landlord-only models, so Services, F&B, and future modes must add tenant-local tables through the same model graph.
 - Provisioning failure cleanup is retry-safe for approval paths. If schema sync, seed data, storefront bootstrap, or email-adjacent setup fails before activation, the isolated database is dropped and the landlord tenant row is restored to a valid `pending` status instead of an out-of-enum temporary state. Future mode work must preserve this behavior.
 - After first login, the tenant master admin sees the soft-reminder onboarding flow from ADR 0013: optional storefront profile/cover photos, a primary storefront location pin, and mode-aware bulk starter item creation. Onboarding completion is independent from platform approval and does not hard-block IMS/POS access.
@@ -186,18 +191,21 @@ Body: { "email": "user@example.com" }
 
 ### Mapping management
 Mappings are created automatically when:
-1. A company is registered (founder email is mapped)
-2. A user is invited and accepts their invitation
+1. A company is registered and provisioning succeeds in `auto_standard`, or immediately for pending manual registrations
+2. A user is invited and accepts their invitation through the tenant invitation flow or the DGFY invitation membership flow
 
-Company-user registration and invitation acceptance now require a phone number and an email OTP. Existing accepted users created before this requirement can add or change their phone number from Settings > Profile. Settings rejects profile saves that would leave the resulting account phone blank or invalid, and the authenticated shell shows a remediation banner with a direct Profile link until the stored account phone is completed.
+Company-user registration and tenant invitation acceptance now require a phone number and an email OTP. Public company registration derives phone and credentials from the authenticated DGFY account and still requires a `company_registration` OTP for that DGFY email. Existing accepted users created before this requirement can add or change their phone number from Settings > Profile. Settings rejects profile saves that would leave the resulting account phone blank or invalid, and the authenticated shell shows a remediation banner with a direct Profile link until the stored account phone is completed.
 
 Email ownership checks are required before login identity is created or changed:
-- `company_registration`: requested publicly for the founder/admin email before `/admin/tenants/register`.
+- `company_registration`: requested publicly for the authenticated DGFY account email before `/admin/tenants/register`.
+- `dgfy_account_verification`: requested after DGFY account login/registration when the account surface needs to mark the global account email as verified.
 - `tenant_user_registration`: requested with tenant context before `/auth/register`.
 - `invitation_acceptance`: requested from an invitation token before `/auth/accept-invite`.
 - `email_change`: requested by the authenticated user before `PUT /users/me` changes the email.
 
 OTP rows live in the landlord `email_otps` table. Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 10), lock after `EMAIL_OTP_MAX_ATTEMPTS` (default 5), and are consumed through a conditional update so concurrent accepts cannot reuse the same code. Production enables enforcement by default; `EMAIL_OTP_ENFORCEMENT_ENABLED=false` is the rollback switch. OTP request routes are throttled with `RATE_LIMIT_EMAIL_OTP_WINDOW_MS` and `RATE_LIMIT_EMAIL_OTP_MAX_REQUESTS`. OTP requests fail closed when configured email delivery cannot actually send the code; manual invitation links do not bypass email ownership verification.
+
+DGFY account sessions are landlord-scoped and separate from tenant-local SKUpervisor JWTs. `/api/v1/dgfy/auth/handoff` issues a short-lived handoff token for redirected account flows; `/api/v1/dgfy/auth/handoff/exchange` converts it back into a normal DGFY JWT. `/api/v1/dgfy/auth/logout` blacklists only the DGFY account token.
 
 Phone completion rollout is staged rather than globally forced while historical accounts are still unresolved:
 - `PHONE_COMPLETION_ENFORCEMENT_MODE=observe` is the non-test default. Users see the remediation banner and admins see missing-phone rows, but normal authenticated work is not blocked yet.
@@ -247,6 +255,8 @@ Invite creation supports:
 
 ### Acceptance UX
 `/accept-invite?token=<token>` validates the token without needing tenant context in the URL. The page shows company, inviter, invite email, role, and expiry before password setup. The invited user must request an invitation-acceptance OTP from the same page and submit `email_otp_code` with the token, username, phone number, and password. The API resolves tenant context from `invitation_token` for token-only OTP requests, matching validation and acceptance behavior. Successful acceptance returns the same usable auth shape as login (`user`, `token`, `refreshToken`, `expiresIn`, `company`) and immediately signs the invited user into the app.
+
+If the invited email already belongs to a global DGFY account, invite creation also mirrors a pending DGFY membership. The invited user can sign in with their DGFY account, see the company invitation in the registration/account surface, and accept it without a registration link. Acceptance activates the tenant-local user row from the authenticated DGFY identity and keeps the tenant staff row separate from storefront customer records.
 
 ### Delivery And Recovery Status
 The product handles SMTP/API unavailable or failed delivery as a first-class state and gives the admin a manual link for non-OTP invitation recovery.

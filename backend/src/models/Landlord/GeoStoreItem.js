@@ -21,6 +21,10 @@ export default (sequelize) => {
             type: DataTypes.BIGINT.UNSIGNED,
             allowNull: false
         },
+        sku_code: {
+            type: DataTypes.STRING(100),
+            allowNull: true
+        },
         price: {
             type: DataTypes.DECIMAL(12, 2),
             allowNull: true
@@ -31,6 +35,11 @@ export default (sequelize) => {
             defaultValue: 0
         },
         in_stock: {
+            type: DataTypes.TINYINT(1),
+            allowNull: false,
+            defaultValue: 1
+        },
+        storefront_visible: {
             type: DataTypes.TINYINT(1),
             allowNull: false,
             defaultValue: 1

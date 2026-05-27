@@ -165,7 +165,7 @@ bash scripts/deploy-remote.sh
   ```bash
   ls -1t logs/deploy/deploy_*.summary.txt | head -1 | xargs -I{} tail -n 30 {}
   ```
-- [ ] If `gate:release:no-staging` reports `qa.deploy.summary.sha_match` as `non_blocking_predeploy_check`, do not declare full production confidence until either the QA summary deployed head matches the target SHA or `RELEASE_ENFORCE_PREDEPLOY_SUMMARY_SHA_MATCH=1` has been intentionally evaluated.
+- [ ] `qa.deploy.summary.sha_match` passes for the exact production target SHA. A stale QA deploy summary blocks normal release.
 
 ## 6. If `npm ci` Fails with `EPERM`/File Lock
 - [ ] Treat as transient lock unless repeated after retries.

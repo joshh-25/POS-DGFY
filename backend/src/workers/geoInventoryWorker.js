@@ -84,26 +84,30 @@ const resolveItemId = async (rawName, tenantId) => {
 };
 
 // ── Upsert into geo_store_items ───────────────────────────────────────────────
-const upsertStoreItem = async ({ tenantId, locationId, itemId, price, quantity, inStock }) => {
+const upsertStoreItem = async ({ tenantId, locationId, itemId, skuCode, price, quantity, inStock, storefrontVisible }) => {
     await sequelize.query(
         `INSERT INTO geo_store_items
-           (tenant_id, location_id, item_id, price, quantity, in_stock, last_updated_at, created_at, updated_at)
+           (tenant_id, location_id, item_id, sku_code, price, quantity, in_stock, storefront_visible, last_updated_at, created_at, updated_at)
          VALUES
-           (:tenantId, :locationId, :itemId, :price, :quantity, :inStock, NOW(), NOW(), NOW())
+           (:tenantId, :locationId, :itemId, :skuCode, :price, :quantity, :inStock, :storefrontVisible, NOW(), NOW(), NOW())
          ON DUPLICATE KEY UPDATE
-           price          = VALUES(price),
-           quantity       = VALUES(quantity),
-           in_stock       = VALUES(in_stock),
-           last_updated_at = NOW(),
-           updated_at     = NOW()`,
+           sku_code           = VALUES(sku_code),
+           price              = VALUES(price),
+           quantity           = VALUES(quantity),
+           in_stock           = VALUES(in_stock),
+           storefront_visible = VALUES(storefront_visible),
+           last_updated_at    = NOW(),
+           updated_at         = NOW()`,
         {
             replacements: {
                 tenantId,
                 locationId: locationId ?? null,
                 itemId,
+                skuCode: skuCode || null,
                 price: price ?? null,
                 quantity: quantity ?? 0,
-                inStock: inStock ? 1 : 0
+                inStock: inStock ? 1 : 0,
+                storefrontVisible: storefrontVisible !== false ? 1 : 0
             },
             type: QueryTypes.INSERT
         }
@@ -131,9 +135,11 @@ const processPayload = async (raw) => {
                 tenantId,
                 locationId: locationId ?? null,
                 itemId,
+                skuCode: item.sku_code || null,
                 price: item.price ?? null,
                 quantity: item.quantity ?? 0,
-                inStock: item.in_stock !== false
+                inStock: item.in_stock !== false,
+                storefrontVisible: item.storefront_visible !== false
             });
         } catch (err) {
             logger.error('[GeoInventoryWorker] Failed to process item', {

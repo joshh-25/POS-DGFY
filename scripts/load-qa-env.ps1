@@ -21,7 +21,9 @@ Get-Content -LiteralPath $EnvFile | ForEach-Object {
   $value = $parts[1]
   if ([string]::IsNullOrWhiteSpace($key)) { return }
 
-  [Environment]::SetEnvironmentVariable($key, $value, 'Process')
+  if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($key, 'Process'))) {
+    [Environment]::SetEnvironmentVariable($key, $value, 'Process')
+  }
 }
 
 if (Test-Path -LiteralPath $SecretsFile) {
@@ -37,7 +39,9 @@ if (Test-Path -LiteralPath $SecretsFile) {
     $value = $parts[1]
     if ([string]::IsNullOrWhiteSpace($key)) { return }
 
-    [Environment]::SetEnvironmentVariable($key, $value, 'Process')
+    if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($key, 'Process'))) {
+      [Environment]::SetEnvironmentVariable($key, $value, 'Process')
+    }
   }
 }
 

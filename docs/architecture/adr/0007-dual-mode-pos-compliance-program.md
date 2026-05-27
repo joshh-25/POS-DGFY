@@ -17,6 +17,8 @@ Prior behavior mixed optional strict-toggle checks with incomplete lifecycle con
 ## Decision
 Adopt a permanent dual-mode compliance architecture with these rules:
 
+Update note (2026-05-21): ADR 0022 amends public company registration. New public registrations no longer choose compliance mode during registration; they always start `non_compliant_active`. Compliance activation remains available after login through Settings > Compliance.
+
 1. Tenant mode is explicit at registration (`non_compliant` or `compliant`).
 2. Tenant state machine is:
    - `non_compliant_active`

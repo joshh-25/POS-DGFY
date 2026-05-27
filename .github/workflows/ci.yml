@@ -84,6 +84,7 @@ jobs:
       - name: Run tests
         run: npm test
         env:
+          NODE_OPTIONS: --max-old-space-size=4096
           NODE_ENV: test
           DB_HOST: localhost
           DB_PORT: 3306
@@ -98,6 +99,7 @@ jobs:
       - name: Run open handle diagnostics
         run: npm test -- --detectOpenHandles
         env:
+          NODE_OPTIONS: --max-old-space-size=4096
           NODE_ENV: test
           DB_HOST: localhost
           DB_PORT: 3306

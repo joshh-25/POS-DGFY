@@ -5,12 +5,12 @@ export const CORRECTED_ITEM_TAXONOMY_MODES = Object.freeze([
     'food_manufacturing',
     'msme',
     'services',
-    'fnb'
+    'fnb',
+    'hospitality'
 ]);
 
 export const PLACEHOLDER_ITEM_TAXONOMY_MODES = Object.freeze([
     'retail',
-    'hospitality',
     'healthcare',
     'ticketing_transport',
     'logistics_distribution',
@@ -127,6 +127,20 @@ export const MODE_ITEM_TAXONOMY = Object.freeze({
             preset({ key: 'ingredient', label: 'Ingredient', category: 'raw_material', default_unit: 'kg', allowed_uom_groups: ['weight', 'volume', 'count'], allowed_uoms: ['kg', 'g', 'mL', 'L', 'pcs'], max_capacity: 300 }),
             preset({ key: 'packaged_beverage', label: 'Packaged Beverage / Retail Item', category: 'product', product_type: 'finished_goods', default_unit: 'bottle', allowed_uom_groups: ['packaging', 'count', 'volume'], allowed_uoms: ['bottle', 'can', 'pcs', 'mL', 'L', 'case'], max_capacity: 180, financial_profile: { sale_price_visibility: ITEM_FINANCIAL_VISIBILITY.VISIBLE } }),
             preset({ key: 'packaging_supply', label: 'Packaging / To-go Supply', category: 'packaging', default_unit: 'pcs', allowed_uom_groups: ['count', 'packaging'], allowed_uoms: ['pcs', 'pack', 'case', 'carton', 'box', 'bag'], max_capacity: 300 })
+        ]
+    }),
+    hospitality: taxonomy({
+        mode: 'hospitality',
+        label: 'Hospitality',
+        default_preset: 'room_night',
+        presets: [
+            preset({ key: 'room_night', label: 'Room Night / Accommodation', category: 'service', default_unit: 'room_night', allowed_uom_groups: ['time', 'presentation'], allowed_uoms: ['room_night', 'booking'], stock_behavior: ITEM_STOCK_BEHAVIOR.STOCK_EXEMPT, fifo_enabled: false, max_capacity: 1, financial_profile: { sale_price_visibility: ITEM_FINANCIAL_VISIBILITY.VISIBLE } }),
+            preset({ key: 'paid_amenity', label: 'Paid Amenity / Add-on', category: 'service', default_unit: 'service', allowed_uom_groups: ['presentation', 'time'], allowed_uoms: ['service', 'booking', 'hour'], stock_behavior: ITEM_STOCK_BEHAVIOR.STOCK_EXEMPT, fifo_enabled: false, max_capacity: 1, financial_profile: { sale_price_visibility: ITEM_FINANCIAL_VISIBILITY.VISIBLE } }),
+            preset({ key: 'facility_booking', label: 'Facility Booking', category: 'service', default_unit: 'booking', allowed_uom_groups: ['presentation', 'time'], allowed_uoms: ['booking', 'hour'], stock_behavior: ITEM_STOCK_BEHAVIOR.STOCK_EXEMPT, fifo_enabled: false, max_capacity: 1, financial_profile: { sale_price_visibility: ITEM_FINANCIAL_VISIBILITY.VISIBLE } }),
+            preset({ key: 'minibar_retail_product', label: 'Minibar / Retail Product', category: 'product', product_type: 'finished_goods', default_unit: 'pcs', allowed_uom_groups: ['count', 'packaging', 'volume'], allowed_uoms: ['pcs', 'bottle', 'can', 'pack', 'case', 'mL', 'L'], max_capacity: 180, financial_profile: { cost_required: ITEM_FINANCIAL_REQUIREMENT.ACTIVE, sale_price_visibility: ITEM_FINANCIAL_VISIBILITY.VISIBLE } }),
+            preset({ key: 'physical_add_on', label: 'Physical Add-on', category: 'product', product_type: 'finished_goods', default_unit: 'pcs', allowed_uom_groups: ['count', 'packaging'], allowed_uoms: ['pcs', 'pack', 'box', 'case'], max_capacity: 100, financial_profile: { cost_required: ITEM_FINANCIAL_REQUIREMENT.ACTIVE, sale_price_visibility: ITEM_FINANCIAL_VISIBILITY.VISIBLE } }),
+            preset({ key: 'housekeeping_supply', label: 'Housekeeping Supply', category: 'supplies', default_unit: 'pcs', allowed_uom_groups: ['count', 'packaging'], allowed_uoms: ['pcs', 'pack', 'box', 'case'], max_capacity: 300, financial_profile: { cost_required: ITEM_FINANCIAL_REQUIREMENT.ACTIVE } }),
+            preset({ key: 'linen_reusable_asset', label: 'Linen / Reusable Asset', category: 'supplies', default_unit: 'pcs', allowed_uom_groups: ['count'], allowed_uoms: ['pcs'], max_capacity: 300, financial_profile: { cost_required: ITEM_FINANCIAL_REQUIREMENT.ACTIVE } })
         ]
     })
 });

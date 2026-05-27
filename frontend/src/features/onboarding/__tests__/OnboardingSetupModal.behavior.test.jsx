@@ -240,7 +240,7 @@ describe('OnboardingSetupModal behavior', () => {
     });
   });
 
-  it('retries optional storefront image upload without resubmitting the created item', async () => {
+  it('retries optional item image upload without resubmitting the created item', async () => {
     const user = userEvent.setup();
     mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImage
       .mockRejectedValueOnce({ response: { data: { message: 'Upload failed.' } } })
@@ -260,7 +260,7 @@ describe('OnboardingSetupModal behavior', () => {
     await user.type(screen.getByLabelText(/Item name/i), 'Starter Bread');
     await user.type(screen.getByLabelText(/Selling price/i), '25');
     await user.upload(
-      screen.getByLabelText(/Storefront image/i),
+      screen.getByLabelText(/Item image/i),
       new File(['image'], 'starter.png', { type: 'image/png' })
     );
     await user.click(screen.getByRole('button', { name: /Save Items/i }));
@@ -271,7 +271,7 @@ describe('OnboardingSetupModal behavior', () => {
     await waitFor(() => {
       expect(mocks.onboardingServiceMock.bulkCreateOnboardingItems).toHaveBeenCalledTimes(1);
       expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImage).toHaveBeenCalledTimes(2);
-      expect(mocks.toastMock.success).toHaveBeenCalledWith('Storefront image uploaded.');
+      expect(mocks.toastMock.success).toHaveBeenCalledWith('Item image uploaded.');
     });
   });
 });

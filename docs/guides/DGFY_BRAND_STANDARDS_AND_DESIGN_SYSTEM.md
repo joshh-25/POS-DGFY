@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product-design
-last_reviewed: 2026-05-22
+last_reviewed: 2026-05-26
 applies_to: dgfy_ui_branding_and_frontend
 topic: dgfy_branding
 ---

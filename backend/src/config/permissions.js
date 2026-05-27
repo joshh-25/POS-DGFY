@@ -109,6 +109,33 @@ export const PERMISSIONS = {
         }
     },
 
+    // --- HOSPITALITY MODE ---
+    HOSPITALITY: {
+        label: "Hospitality",
+        actions: {
+            VIEW_DASHBOARD: "hospitality:dashboard:view",
+            VIEW_RESERVATIONS: "hospitality:reservations:view",
+            MANAGE_RESERVATIONS: "hospitality:reservations:manage",
+            VIEW_ROOMS: "hospitality:rooms:view",
+            MANAGE_ROOMS: "hospitality:rooms:manage",
+            VIEW_GUESTS: "hospitality:guests:view",
+            MANAGE_GUESTS: "hospitality:guests:manage",
+            VIEW_HOUSEKEEPING: "hospitality:housekeeping:view",
+            MANAGE_HOUSEKEEPING: "hospitality:housekeeping:manage",
+            VIEW_MAINTENANCE: "hospitality:maintenance:view",
+            MANAGE_MAINTENANCE: "hospitality:maintenance:manage",
+            VIEW_FOLIOS: "hospitality:folios:view",
+            MANAGE_FOLIOS: "hospitality:folios:manage",
+            VIEW_RATES: "hospitality:rates:view",
+            MANAGE_RATES: "hospitality:rates:manage",
+            VIEW_AMENITIES: "hospitality:amenities:view",
+            MANAGE_AMENITIES: "hospitality:amenities:manage",
+            VIEW_FACILITIES: "hospitality:facilities:view",
+            MANAGE_FACILITIES: "hospitality:facilities:manage",
+            VIEW_REPORTS: "hospitality:reports:view"
+        }
+    },
+
     // --- STOCK CONTROL ---
     STOCK: {
         label: "Stock Control",

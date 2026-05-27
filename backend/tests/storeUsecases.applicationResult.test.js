@@ -980,7 +980,7 @@ describe('store use-cases application result contract', () => {
         }));
     });
 
-    it('storeCheckout rejects duplicate stock-bearing lines before creating the order', async () => {
+    it('storeCheckout rejects duplicate stock-bearing lines after idempotency lock and before creating the order', async () => {
         const transaction = {
             finished: false,
             commit: jest.fn(async () => {
@@ -1056,7 +1056,10 @@ describe('store use-cases application result contract', () => {
             requested_qty: 2,
             unit_of_measure: 'bottle'
         }));
-        expect(findTransactionByIdempotencyKey).not.toHaveBeenCalled();
+        expect(findTransactionByIdempotencyKey).toHaveBeenCalledWith('duplicate-lines-checkout', {
+            transaction,
+            lock: true
+        });
         expect(createOnlineTransactionWithLines).not.toHaveBeenCalled();
         expect(transaction.rollback).toHaveBeenCalledTimes(1);
         expect(transaction.commit).not.toHaveBeenCalled();

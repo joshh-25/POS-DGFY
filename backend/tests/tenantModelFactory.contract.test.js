@@ -40,6 +40,9 @@ describe('tenantModelFactory contract', () => {
                 FnbRestaurantServiceChargeSnapshot: expect.any(Function)
             }));
 
+            expect(models.DgfyAccount).toBeUndefined();
+            expect(models.DgfyAccountHandoff).toBeUndefined();
+            expect(models.DgfyAccountTenantMembership).toBeUndefined();
             expect(models.PosTransaction.rawAttributes.fnb_check_id.references.model).toBe('fnb_checks');
             expect(models.PosTransaction.rawAttributes.fnb_table_id.references.model).toBe('fnb_dining_tables');
         } finally {
@@ -106,6 +109,11 @@ describe('tenantModelFactory contract', () => {
             expect(models.PosTransaction).toEqual(expect.any(Function));
             expect(models.ServiceBooking).toEqual(expect.any(Function));
             expect(models.FnbCheck).toEqual(expect.any(Function));
+            expect(models.HospitalityRoomType).toEqual(expect.any(Function));
+            expect(models.HospitalityRoom).toEqual(expect.any(Function));
+            expect(models.HospitalityReservation).toEqual(expect.any(Function));
+            expect(models.HospitalityFolio).toEqual(expect.any(Function));
+            expect(models.HospitalityAmenity).toEqual(expect.any(Function));
             expect(models.UserLocationGrant).toEqual(expect.any(Function));
         } finally {
             await tenantSequelize.close();

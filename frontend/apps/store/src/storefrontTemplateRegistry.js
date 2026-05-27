@@ -80,6 +80,17 @@ const MODE_TEMPLATE_OVERRIDES = Object.freeze({
       reviewAccent: '#166534',
       footerAccent: '#1c0f07'
     })
+  }),
+  hospitality: Object.freeze({
+    catalogCardVariant: 'hospitality_booking',
+    journeyVariant: 'stay',
+    tokens: Object.freeze({
+      navigationAccent: '#102033',
+      heroAccent: '#0f766e',
+      promoAccent: '#0f766e',
+      reviewAccent: '#0369a1',
+      footerAccent: '#102033'
+    })
   })
 });
 

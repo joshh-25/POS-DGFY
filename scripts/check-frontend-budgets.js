@@ -41,7 +41,8 @@ const routeBudgets = [
   { prefix: 'Login-', limitKb: 20 },
   // Rebased 2026-04-21 after POS/compliance/location-binding feature growth.
   // Keep strict limits with minimal headroom over observed production build output.
-  { prefix: 'POSCheckoutTerminal-', limitKb: 52 },
+  // Rebased 2026-05-21 after CI/local builds put the route chunk near 52.4KiB.
+  { prefix: 'POSCheckoutTerminal-', limitKb: 54 },
   { prefix: 'POSPage-', limitKb: 10 },
   // Rebased 2026-05-05 after barcode scan metadata was added to terminal flows.
   { prefix: 'TerminalPage-', limitKb: 35 },

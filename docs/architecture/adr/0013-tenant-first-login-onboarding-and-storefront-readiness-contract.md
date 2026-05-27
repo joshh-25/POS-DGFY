@@ -104,5 +104,11 @@ Adopt a tenant-scoped onboarding lifecycle with soft-reminder UX:
 ## Addendum (2026-05-18): Mode-Aware Three-Step Onboarding
 1. The previous business-profile, business-classification, and readiness-only wizard contract is replaced by three merchant setup steps: optional brand assets, primary storefront location, and mode-aware bulk starter items.
 2. Completion readiness now checks `store_name_ready`, `has_primary_storefront_location`, and `has_priced_starter_item`.
-3. Stock quantity and storefront item images are optional onboarding data. A zero-stock active item can complete onboarding when it has a positive customer selling price and, for corrected modes, a valid onboarding preset.
+3. Stock quantity and item image uploads are optional onboarding data. A zero-stock active item can complete onboarding when it has a positive customer selling price and, for corrected modes, a valid onboarding preset. Merchant-facing onboarding copy uses `Item image`; the existing Storefront catalog image storage/API contract remains unchanged.
 4. Future workflow modes must define onboarding item choices, default hidden fields, financial rules, stock behavior, and backend/frontend tests before being considered production-ready.
+
+## Addendum (2026-05-21): DGFY Account Founder Source
+
+1. Public company registration now requires an authenticated global DGFY account as defined by ADR 0022.
+2. Founder email, phone, username seed, and password hash are derived from that DGFY account instead of being collected directly on the company-registration form.
+3. First login can still use the normal SKUpervisor login handoff with company token, while the DGFY membership registry becomes the durable link between the founder's global account and tenant master-admin user.

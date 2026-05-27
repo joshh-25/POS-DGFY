@@ -82,8 +82,8 @@ describe('TOCTOU Integration Test', () => {
         // Clear mocks
         jest.clearAllMocks();
 
-        // Reset Database completely for each test
-        await sequelize.sync();
+        // Use the migrated test schema as-is; sync() can try to recreate model indexes
+        // and hide the TOCTOU permission behavior behind schema churn.
         await PendingAIAction.destroy({ where: {} }).catch(() => null);
         await AIConversation.destroy({ where: {} }).catch(() => null);
         await Item.destroy({ where: { sku_code: { [Op.like]: 'TOCTOU-%' } } }).catch(() => null);
@@ -94,6 +94,7 @@ describe('TOCTOU Integration Test', () => {
         adminUser = await User.create({
             username: 'admin_user',
             email: 'admin@test.com',
+            phone_number: '+639170000001',
             password_hash: 'hash',
             role: 'admin',
             is_active: true,
@@ -174,7 +175,7 @@ describe('TOCTOU Integration Test', () => {
         expect(result.type).toBe('error');
 
         // Item must remain active because execution was blocked by permission check.
-        const itemAfter = await Item.findByPk(item.item_id);
+        const itemAfter = await Item.findByPk(item.item_id, { attributes: ['item_id', 'status'] });
         expect(itemAfter).toBeDefined();
         expect(itemAfter.status).toBe('active');
     });
@@ -209,7 +210,7 @@ describe('TOCTOU Integration Test', () => {
         expect(refreshedAction.status).toBe('confirmed');
 
         // Action must be applied (soft delete -> inactive)
-        const itemAfter = await Item.findByPk(item.item_id);
+        const itemAfter = await Item.findByPk(item.item_id, { attributes: ['item_id', 'status'] });
         expect(itemAfter).toBeDefined();
         expect(itemAfter.status).toBe('inactive');
     });

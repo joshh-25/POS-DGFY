@@ -11,6 +11,26 @@ GitHub Actions deploys for Namecheap shared hosting are documented in `docs/ops/
 - `scripts/cicd/bootstrap-and-deploy.ps1`: configures GitHub secrets/variables from `.cicd/production.deploy.config.json` and dispatches `.github/workflows/deploy-namecheap-shared.yml`.
 - `npm run test:deploy:namecheap`: validates local path selection and missing-secret behavior for the FTP upload helper.
 
+## DGFY Customer Activity Backfill
+
+Historical DGFY customer activity backfill is an operator command, not a public API. It populates landlord-scoped DGFY customer activity from tenant POS orders, Services bookings, and Hospitality reservations.
+
+Dry-run:
+```bash
+npm run backfill:dgfy-customer-activity -- --tenant-page-size 25 --transaction-limit-per-tenant 100
+```
+
+Apply mode:
+```bash
+npm run backfill:dgfy-customer-activity:apply
+```
+
+Apply mode runs landlord migrations first, then writes activity rows. Before production apply, use the required activity type gate when all customer-facing modes must be proven present:
+
+```bash
+npm run backfill:dgfy-customer-activity -- --all-transactions --require-activity-types=order,service_booking,hospitality_booking
+```
+
 ## 1. `scripts/deploy.sh`
 Production deployment pipeline run on the server.
 
@@ -106,6 +126,8 @@ Notes:
 - Enforces no-staging release hard gate by default after push and before production SSH deploy (`DEPLOY_ENFORCE_NO_STAGING_GATE=1`).
 - Runs no-staging preflight before push (`npm run gate:release:no-staging:preflight`) when gate enforcement is enabled.
 - Auto-fetches QA deploy summary evidence (`npm run evidence:qa:deploy-summary`) if local summary file is missing before hard gate execution.
+- Uses an absolute host path for fetched QA deploy evidence when invoked from Git Bash on Windows, then verifies the file exists before running the hard gate.
+- Verifies the generated release verdict with `--require-pass true`; production SSH deploy is not attempted unless the verdict is `pass` or explicitly `bypassed`.
 
 One-time setup for persistent passwordless deploy access (per machine):
 ```bash
@@ -633,8 +655,8 @@ Emergency bypass (incident-only):
 - `RELEASE_EMERGENCY_BYPASS=1`
 
 Pre-deploy summary SHA behavior:
-- Default: `qa.deploy.summary.sha_match` is recorded as evidence but non-blocking before deploy.
-- Strict mode: set `RELEASE_ENFORCE_PREDEPLOY_SUMMARY_SHA_MATCH=1` to fail gate when `deployed_head` does not match `RELEASE_TARGET_SHA`.
+- `qa.deploy.summary.sha_match` is hard-blocking for production deploy.
+- `qa_deploy_summary.txt` must show `deployed_head=<RELEASE_TARGET_SHA>` before the deploy wrapper proceeds to production SSH.
 - `RELEASE_EMERGENCY_REASON=...`
 - `RELEASE_EMERGENCY_ACTOR=...`
 
@@ -645,6 +667,8 @@ Usage:
 ```bash
 npm run verify:release-verdict -- --file .tmp/release-gates/<sha>/release_verdict.json --sha <sha>
 ```
+
+Use `--require-pass true` for deploy scripts and release automation that must stop unless the verdict is `pass` or an explicitly recorded emergency `bypassed`.
 
 ## 22. `scripts/fetch-qa-deploy-summary.ps1`
 Fetches latest QA deploy summary over SSH into local release evidence.

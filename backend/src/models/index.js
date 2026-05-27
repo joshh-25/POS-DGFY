@@ -69,10 +69,44 @@ import FnbKitchenTicket from './FnbKitchenTicket.js';
 import FnbReservationRequest from './FnbReservationRequest.js';
 import FnbReservationTable from './FnbReservationTable.js';
 import FnbRestaurantServiceChargeSnapshot from './FnbRestaurantServiceChargeSnapshot.js';
+import {
+  HospitalityAmenity,
+  HospitalityAuditEvent,
+  HospitalityBookingHold,
+  HospitalityFacility,
+  HospitalityFacilityBooking,
+  HospitalityFolio,
+  HospitalityFolioLine,
+  HospitalityGuestMessage,
+  HospitalityGuestProfile,
+  HospitalityHousekeepingTask,
+  HospitalityMaintenanceRequest,
+  HospitalityPackage,
+  HospitalityPackageItem,
+  HospitalityPropertyAmenity,
+  HospitalityRateCalendar,
+  HospitalityRatePlan,
+  HospitalityReservation,
+  HospitalityReservationRoom,
+  HospitalityRoom,
+  HospitalityRoomAmenity,
+  HospitalityRoomType,
+  HospitalityStay
+} from './HospitalityModels.js';
 import TenantFactory from './Landlord/Tenant.js';
 import UserTenantMappingFactory from './Landlord/UserTenantMapping.js';
 import UserInvitationFactory from './Landlord/UserInvitation.js';
 import EmailOtpFactory from './Landlord/EmailOtp.js';
+import DgfyAccountFactory from './Landlord/DgfyAccount.js';
+import DgfyAccountTenantMembershipFactory from './Landlord/DgfyAccountTenantMembership.js';
+import DgfyAccountHandoffFactory from './Landlord/DgfyAccountHandoff.js';
+import DgfyLegalAcknowledgementFactory from './Landlord/DgfyLegalAcknowledgement.js';
+import DgfyCustomerActivityFactory from './Landlord/DgfyCustomerActivity.js';
+import DgfyCustomerAddressFactory from './Landlord/DgfyCustomerAddress.js';
+import DgfyCustomerBackfillRunFactory from './Landlord/DgfyCustomerBackfillRun.js';
+import DgfyCustomerReviewFactory from './Landlord/DgfyCustomerReview.js';
+import DgfyLoyaltyTransactionFactory from './Landlord/DgfyLoyaltyTransaction.js';
+import DgfyTrackingRecoveryCodeFactory from './Landlord/DgfyTrackingRecoveryCode.js';
 import PaymentFactory from './Landlord/Payment.js';
 import WebhookLogFactory from './Landlord/WebhookLog.js';
 import EngagementEventFactory from './Landlord/EngagementEvent.js';
@@ -87,6 +121,16 @@ const Tenant = TenantFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const UserInvitation = UserInvitationFactory(sequelize);
 const EmailOtp = EmailOtpFactory(sequelize);
+const DgfyAccount = DgfyAccountFactory(sequelize);
+const DgfyAccountTenantMembership = DgfyAccountTenantMembershipFactory(sequelize);
+const DgfyAccountHandoff = DgfyAccountHandoffFactory(sequelize);
+const DgfyLegalAcknowledgement = DgfyLegalAcknowledgementFactory(sequelize);
+const DgfyCustomerActivity = DgfyCustomerActivityFactory(sequelize);
+const DgfyCustomerAddress = DgfyCustomerAddressFactory(sequelize);
+const DgfyCustomerBackfillRun = DgfyCustomerBackfillRunFactory(sequelize);
+const DgfyCustomerReview = DgfyCustomerReviewFactory(sequelize);
+const DgfyLoyaltyTransaction = DgfyLoyaltyTransactionFactory(sequelize);
+const DgfyTrackingRecoveryCode = DgfyTrackingRecoveryCodeFactory(sequelize);
 const Payment = PaymentFactory(sequelize);
 const WebhookLog = WebhookLogFactory(sequelize);
 const EngagementEvent = EngagementEventFactory(sequelize);
@@ -117,6 +161,16 @@ Tenant.hasMany(EngagementEvent, { foreignKey: 'tenant_id', as: 'engagementEvents
 EngagementEvent.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasOne(StorefrontDiscoveryIndex, { foreignKey: 'tenant_id', as: 'storefrontDiscoveryIndex' });
 StorefrontDiscoveryIndex.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+DgfyAccount.hasMany(DgfyAccountTenantMembership, { foreignKey: 'dgfy_account_id', as: 'tenantMemberships' });
+DgfyAccountTenantMembership.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
+DgfyAccount.hasMany(DgfyAccountHandoff, { foreignKey: 'dgfy_account_id', as: 'handoffs' });
+DgfyAccountHandoff.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
+Tenant.hasMany(DgfyLegalAcknowledgement, { foreignKey: 'tenant_id', as: 'legalAcknowledgements' });
+DgfyLegalAcknowledgement.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+DgfyAccount.hasMany(DgfyLegalAcknowledgement, { foreignKey: 'dgfy_account_id', as: 'legalAcknowledgements' });
+DgfyLegalAcknowledgement.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
+Tenant.hasMany(DgfyAccountTenantMembership, { foreignKey: 'tenant_id', as: 'dgfyAccountMemberships' });
+DgfyAccountTenantMembership.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(TenantComplianceArtifact, { foreignKey: 'tenant_id', as: 'complianceArtifacts' });
 TenantComplianceArtifact.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(TenantCompliancePeripheral, { foreignKey: 'tenant_id', as: 'compliancePeripherals' });
@@ -414,6 +468,74 @@ FnbRestaurantServiceChargeSnapshot.belongsTo(PosTransaction, { foreignKey: 'pos_
 FnbRestaurantServiceChargeSnapshot.belongsTo(FnbCheck, { foreignKey: 'check_id', as: 'check' });
 PosTransaction.hasOne(FnbRestaurantServiceChargeSnapshot, { foreignKey: 'pos_transaction_id', as: 'restaurantServiceChargeSnapshot' });
 
+// Hospitality associations
+HospitalityRoomType.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+HospitalityRoomType.hasMany(HospitalityRoom, { foreignKey: 'room_type_id', as: 'rooms' });
+HospitalityRoomType.hasMany(HospitalityRateCalendar, { foreignKey: 'room_type_id', as: 'rateCalendar' });
+HospitalityRoomType.hasMany(HospitalityReservationRoom, { foreignKey: 'room_type_id', as: 'reservationRooms' });
+HospitalityRoom.belongsTo(HospitalityRoomType, { foreignKey: 'room_type_id', as: 'roomType' });
+HospitalityRoom.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+HospitalityRoom.hasMany(HospitalityHousekeepingTask, { foreignKey: 'room_id', as: 'housekeepingTasks' });
+HospitalityRoom.hasMany(HospitalityMaintenanceRequest, { foreignKey: 'room_id', as: 'maintenanceRequests' });
+HospitalityRatePlan.hasMany(HospitalityRateCalendar, { foreignKey: 'rate_plan_id', as: 'rateCalendar' });
+HospitalityRatePlan.hasMany(HospitalityReservation, { foreignKey: 'rate_plan_id', as: 'reservations' });
+HospitalityRateCalendar.belongsTo(HospitalityRoomType, { foreignKey: 'room_type_id', as: 'roomType' });
+HospitalityRateCalendar.belongsTo(HospitalityRatePlan, { foreignKey: 'rate_plan_id', as: 'ratePlan' });
+HospitalityGuestProfile.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
+HospitalityGuestProfile.hasMany(HospitalityReservation, { foreignKey: 'guest_profile_id', as: 'reservations' });
+HospitalityReservation.belongsTo(HospitalityGuestProfile, { foreignKey: 'guest_profile_id', as: 'guestProfile' });
+HospitalityReservation.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
+HospitalityReservation.belongsTo(HospitalityRatePlan, { foreignKey: 'rate_plan_id', as: 'ratePlan' });
+HospitalityReservation.hasMany(HospitalityReservationRoom, { foreignKey: 'reservation_id', as: 'rooms' });
+HospitalityReservation.hasMany(HospitalityStay, { foreignKey: 'reservation_id', as: 'stays' });
+HospitalityReservation.hasMany(HospitalityFolio, { foreignKey: 'reservation_id', as: 'folios' });
+HospitalityBookingHold.belongsTo(HospitalityRoomType, { foreignKey: 'room_type_id', as: 'roomType' });
+HospitalityReservationRoom.belongsTo(HospitalityReservation, { foreignKey: 'reservation_id', as: 'reservation' });
+HospitalityReservationRoom.belongsTo(HospitalityRoomType, { foreignKey: 'room_type_id', as: 'roomType' });
+HospitalityReservationRoom.belongsTo(HospitalityRoom, { foreignKey: 'room_id', as: 'room' });
+HospitalityReservationRoom.belongsTo(HospitalityRatePlan, { foreignKey: 'rate_plan_id', as: 'ratePlan' });
+HospitalityStay.belongsTo(HospitalityReservation, { foreignKey: 'reservation_id', as: 'reservation' });
+HospitalityStay.belongsTo(HospitalityReservationRoom, { foreignKey: 'reservation_room_id', as: 'reservationRoom' });
+HospitalityStay.belongsTo(HospitalityRoom, { foreignKey: 'room_id', as: 'room' });
+HospitalityStay.belongsTo(HospitalityGuestProfile, { foreignKey: 'guest_profile_id', as: 'guestProfile' });
+HospitalityStay.belongsTo(User, { foreignKey: 'checked_in_by', as: 'checkedInBy' });
+HospitalityStay.belongsTo(User, { foreignKey: 'checked_out_by', as: 'checkedOutBy' });
+HospitalityFolio.belongsTo(HospitalityReservation, { foreignKey: 'reservation_id', as: 'reservation' });
+HospitalityFolio.belongsTo(HospitalityStay, { foreignKey: 'stay_id', as: 'stay' });
+HospitalityFolio.belongsTo(HospitalityGuestProfile, { foreignKey: 'guest_profile_id', as: 'guestProfile' });
+HospitalityFolio.hasMany(HospitalityFolioLine, { foreignKey: 'folio_id', as: 'lines' });
+HospitalityFolioLine.belongsTo(HospitalityFolio, { foreignKey: 'folio_id', as: 'folio' });
+HospitalityFolioLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+HospitalityFolioLine.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'posTransaction' });
+HospitalityFolioLine.belongsTo(User, { foreignKey: 'posted_by', as: 'postedBy' });
+HospitalityHousekeepingTask.belongsTo(HospitalityRoom, { foreignKey: 'room_id', as: 'room' });
+HospitalityHousekeepingTask.belongsTo(HospitalityReservation, { foreignKey: 'reservation_id', as: 'reservation' });
+HospitalityHousekeepingTask.belongsTo(User, { foreignKey: 'assigned_user_id', as: 'assignedUser' });
+HospitalityMaintenanceRequest.belongsTo(HospitalityRoom, { foreignKey: 'room_id', as: 'room' });
+HospitalityMaintenanceRequest.belongsTo(HospitalityFacility, { foreignKey: 'facility_id', as: 'facility' });
+HospitalityMaintenanceRequest.belongsTo(User, { foreignKey: 'reported_by', as: 'reportedBy' });
+HospitalityMaintenanceRequest.belongsTo(User, { foreignKey: 'assigned_user_id', as: 'assignedUser' });
+HospitalityAmenity.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+HospitalityAmenity.hasMany(HospitalityRoomAmenity, { foreignKey: 'amenity_id', as: 'roomLinks' });
+HospitalityAmenity.hasMany(HospitalityPropertyAmenity, { foreignKey: 'amenity_id', as: 'propertyLinks' });
+HospitalityRoomAmenity.belongsTo(HospitalityRoomType, { foreignKey: 'room_type_id', as: 'roomType' });
+HospitalityRoomAmenity.belongsTo(HospitalityRoom, { foreignKey: 'room_id', as: 'room' });
+HospitalityRoomAmenity.belongsTo(HospitalityAmenity, { foreignKey: 'amenity_id', as: 'amenity' });
+HospitalityPropertyAmenity.belongsTo(HospitalityAmenity, { foreignKey: 'amenity_id', as: 'amenity' });
+HospitalityPropertyAmenity.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+HospitalityFacility.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+HospitalityFacility.hasMany(HospitalityFacilityBooking, { foreignKey: 'facility_id', as: 'bookings' });
+HospitalityFacilityBooking.belongsTo(HospitalityFacility, { foreignKey: 'facility_id', as: 'facility' });
+HospitalityFacilityBooking.belongsTo(HospitalityGuestProfile, { foreignKey: 'guest_profile_id', as: 'guestProfile' });
+HospitalityFacilityBooking.belongsTo(HospitalityReservation, { foreignKey: 'reservation_id', as: 'reservation' });
+HospitalityPackage.hasMany(HospitalityPackageItem, { foreignKey: 'package_id', as: 'items' });
+HospitalityPackageItem.belongsTo(HospitalityPackage, { foreignKey: 'package_id', as: 'package' });
+HospitalityPackageItem.belongsTo(HospitalityAmenity, { foreignKey: 'amenity_id', as: 'amenity' });
+HospitalityPackageItem.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+HospitalityPackageItem.belongsTo(HospitalityFacility, { foreignKey: 'facility_id', as: 'facility' });
+HospitalityGuestMessage.belongsTo(HospitalityReservation, { foreignKey: 'reservation_id', as: 'reservation' });
+HospitalityGuestMessage.belongsTo(HospitalityGuestProfile, { foreignKey: 'guest_profile_id', as: 'guestProfile' });
+
 // AI associations
 PendingAIAction.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 AIConversation.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
@@ -501,10 +623,42 @@ const db = {
   FnbReservationRequest,
   FnbReservationTable,
   FnbRestaurantServiceChargeSnapshot,
+  HospitalityAmenity,
+  HospitalityAuditEvent,
+  HospitalityBookingHold,
+  HospitalityFacility,
+  HospitalityFacilityBooking,
+  HospitalityFolio,
+  HospitalityFolioLine,
+  HospitalityGuestMessage,
+  HospitalityGuestProfile,
+  HospitalityHousekeepingTask,
+  HospitalityMaintenanceRequest,
+  HospitalityPackage,
+  HospitalityPackageItem,
+  HospitalityPropertyAmenity,
+  HospitalityRateCalendar,
+  HospitalityRatePlan,
+  HospitalityReservation,
+  HospitalityReservationRoom,
+  HospitalityRoom,
+  HospitalityRoomAmenity,
+  HospitalityRoomType,
+  HospitalityStay,
   Tenant,
   UserTenantMapping,
   UserInvitation,
   EmailOtp,
+  DgfyAccount,
+  DgfyAccountTenantMembership,
+  DgfyAccountHandoff,
+  DgfyLegalAcknowledgement,
+  DgfyCustomerActivity,
+  DgfyCustomerAddress,
+  DgfyCustomerBackfillRun,
+  DgfyCustomerReview,
+  DgfyLoyaltyTransaction,
+  DgfyTrackingRecoveryCode,
   Payment,
   WebhookLog,
   EngagementEvent,
@@ -591,10 +745,42 @@ export {
   FnbReservationRequest,
   FnbReservationTable,
   FnbRestaurantServiceChargeSnapshot,
+  HospitalityAmenity,
+  HospitalityAuditEvent,
+  HospitalityBookingHold,
+  HospitalityFacility,
+  HospitalityFacilityBooking,
+  HospitalityFolio,
+  HospitalityFolioLine,
+  HospitalityGuestMessage,
+  HospitalityGuestProfile,
+  HospitalityHousekeepingTask,
+  HospitalityMaintenanceRequest,
+  HospitalityPackage,
+  HospitalityPackageItem,
+  HospitalityPropertyAmenity,
+  HospitalityRateCalendar,
+  HospitalityRatePlan,
+  HospitalityReservation,
+  HospitalityReservationRoom,
+  HospitalityRoom,
+  HospitalityRoomAmenity,
+  HospitalityRoomType,
+  HospitalityStay,
   Tenant,
   UserTenantMapping,
   UserInvitation,
   EmailOtp,
+  DgfyAccount,
+  DgfyAccountTenantMembership,
+  DgfyAccountHandoff,
+  DgfyLegalAcknowledgement,
+  DgfyCustomerActivity,
+  DgfyCustomerAddress,
+  DgfyCustomerBackfillRun,
+  DgfyCustomerReview,
+  DgfyLoyaltyTransaction,
+  DgfyTrackingRecoveryCode,
   Payment,
   WebhookLog,
   EngagementEvent,

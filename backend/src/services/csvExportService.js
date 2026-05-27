@@ -171,7 +171,8 @@ const getModeCompatibilityNote = (workflowMode) => {
         food_manufacturing: 'Food Manufacturing',
         msme: 'Simple (MSME)',
         services: 'Services',
-        fnb: 'Food & Beverage'
+        fnb: 'Food & Beverage',
+        hospitality: 'Hospitality'
     };
     return `This CSV template is for ${labels[workflowMode] || workflowMode} mode only. It will be rejected for incompatible tenant modes.`;
 };

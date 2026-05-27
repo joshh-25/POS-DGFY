@@ -22,8 +22,33 @@ jest.unstable_mockModule('../src/controllers/aiController.js', () => ({
 }));
 
 const { default: app } = await import('../src/server.js');
+const { DgfyAccount } = await import('../src/models/index.js');
+const { generateDgfyToken } = await import('../src/modules/dgfy/usecases/dgfyAuthUseCases.js');
 
 describe('Subscription integration hard-disable policy', () => {
+    let dgfyAccount;
+    let dgfyToken;
+
+    beforeAll(async () => {
+        const suffix = Date.now();
+        dgfyAccount = await DgfyAccount.create({
+            first_name: 'Subscription',
+            last_name: 'Disabled',
+            username: `subscription_disabled_${suffix}`,
+            email: `subscription-disabled-${suffix}@test.local`,
+            phone: `+63919${String(suffix).slice(-7).padStart(7, '0')}`,
+            password_hash: '$2y$10$abcdefghijklmnopqrstuv',
+            is_active: true
+        });
+        dgfyToken = generateDgfyToken(dgfyAccount);
+    });
+
+    afterAll(async () => {
+        if (dgfyAccount) {
+            await DgfyAccount.destroy({ where: { id: dgfyAccount.id } });
+        }
+    });
+
     it('returns 503 for upgrade route with PAYMENTS_DISABLED contract', async () => {
         const response = await request(app)
             .post('/api/v1/payments/upgrade')
@@ -37,12 +62,11 @@ describe('Subscription integration hard-disable policy', () => {
     it('blocks subscription-driven registration while payments are disabled', async () => {
         const response = await request(app)
             .post('/api/v1/admin/tenants/register')
+            .set('Authorization', `Bearer ${dgfyToken}`)
             .send({
                 name: 'Disabled Premium Registration Co',
-                adminEmail: 'disabled-premium@test.local',
-                adminPhone: '+63 912 345 6789',
-                adminPassword: 'Password123!',
                 plan: 'premium',
+                workflowMode: 'msme',
                 subscriptionId: 'SUB-REGISTER-DISABLED'
             });
 

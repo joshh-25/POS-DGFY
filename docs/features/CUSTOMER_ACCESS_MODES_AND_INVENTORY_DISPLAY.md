@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-05-13
+last_reviewed: 2026-05-21
 applies_to: customer_access_modes_and_storefront_inventory_display
 topic: customer_access_modes_inventory_display
 ---
@@ -88,17 +88,19 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - Inquiry Mode: shows catalog plus existing contact channels and hides cart, booking, quote, and checkout.
 - Online Ordering Mode: shows cart, quote, checkout, booking, tracking, and account flows as currently applicable.
 - Cart and quote state are cleared if the loaded profile no longer permits checkout/booking.
-- Discovery map pins use preview-first marker cards. Hover or tap opens a compact branded card with tenant cover/profile assets, tenant name, exact pinned branch, address, status, match/distance context, and an action that opens the tenant page with that pin's `location_id` selected. Click-open previews remain available when the pointer leaves the marker and dismiss with Escape. Duplicate-coordinate pins remain separate, targetable markers while the stored branch coordinates and routing `location_id` stay unchanged.
+- Discovery map pins use preview-first marker cards. Hover or tap opens a compact branded card with tenant cover/profile assets, tenant name, exact pinned branch, address, status, match/distance context, and an action that opens the tenant page with that pin's `location_id` selected. Click-open previews remain available when the pointer leaves the marker and dismiss with Escape. The default discovery scope is `tenant_primary`, so each tenant renders its configured primary Storefront pin unless the user explicitly triggers a nearest/matching-branch search path. Same-coordinate results render as one exact-coordinate shared marker with a selectable storefront list; client-side marker fanout and pixel display offsets are not part of the current contract because they make exact IMS coordinates appear displaced.
 - The discovery search UI no longer exposes the older `Result Mode`, `Stock Filter`, or `Pin Scope` controls. The current client submits the API discovery contract directly with `result_mode=union`, `stock_filter=include_out_of_stock`, `pin_scope=tenant_primary`, and `include_match_meta=true`; the location icon action is titled `Use my current location` and switches to nearest-matching-branch behavior after successful geolocation.
 - Storefront rendering now lives in `frontend/apps/store/src/StorefrontApp.jsx`, with `frontend/apps/store/src/main.jsx` limited to app bootstrap and test-compatible export.
 - `modePresentationRegistry.js` supplies mode-specific labels, catalog headings, search placeholders, and primary action copy for generic and services storefronts.
 - `normalizeStorefrontPageModel.js` and `servicesStorefrontViewModel.js` normalize public storefront payloads before rendering service-first sections, service-family tabs, booking page content, review sections, and footer content.
 - F&B storefronts can expose a reservation tab and carry menu line modifiers into checkout payloads without changing the backend customer-access enforcement rules.
-- Item cards and item setup modals in inventory expose separate `Show in POS` and `Show in Storefront` controls. Uploading or removing either POS or Storefront image must not mutate either visibility flag.
+- Item cards and item setup modals in inventory expose separate `Show in POS` and `Show in Storefront` controls. Merchant-facing image upload copy says `Item image`; backend/API fields and services still use the Storefront catalog image contract (`storefront_catalog_overrides.storefront_image_url`). Uploading or removing either POS images or item images must not mutate either visibility flag.
+- Item and product create/edit flows expose `Save and exit` in the footer. For new rows and existing draft rows it saves draft data and closes without finalizing; for existing active rows it saves the update and closes. `Finalize Item`, `Finalize Product`, `Create`, and `Update` remain separate actions. The footer buttons are guarded while saves are in flight to prevent duplicate submits or step navigation during a pending save.
 - Storefront setup controls are shown only to users who can configure item Storefront state (`items:edit`). The read endpoint is intentionally edit-gated, so users without edit permission must not see disabled Storefront switches backed only by inferred defaults.
 - The inventory Catalog Setup workflow covers both POS and Storefront setup. It shows mode-aware recommendations, POS readiness, missing blockers, visibility state, image state, SKU-filename bulk image previews, and bulk POS/Storefront visibility actions.
 - Bulk POS visibility uses `PATCH /api/v1/pos/catalog-overrides/bulk`; enabling requires POS readiness, while disabling is allowed for incomplete rows.
 - Bulk Storefront visibility uses `PATCH /api/v1/items/storefront-overrides/bulk`; enabling requires Storefront readiness and positive customer price, while disabling is allowed for incomplete rows and never mutates POS visibility.
+- Storefront discovery reconciliation uses the same location-stock rollout fallback as the public Storefront/POS catalog reads. If an older tenant database is missing `item_location_stocks` or one of its required columns, reconciliation logs `storefront_discovery_location_stock_fallback`, keeps that tenant indexable, and derives in-stock search metadata from aggregate `items.current_stock` instead of failing the full release deploy.
 - Bulk POS images use `POST /api/v1/pos/catalog-overrides/images/bulk` with multipart field `images`. Bulk Storefront images use `POST /api/v1/items/storefront-images/bulk` with multipart field `images`. Both match files by SKU filename stem, preserve current visibility, return per-file partial-success results, and keep POS and Storefront image assets independent.
 - Visible/default-visible Storefront rows without a positive `default_sale_price` are blocked from Storefront bulk image upload. Hidden rows may store Storefront images for later setup.
 - Bulk image upload parsing is intentionally lenient enough for the use cases to return per-file validation results for unsupported MIME/signature and 5 MB readiness failures instead of rejecting the whole batch at the upload middleware. The transport cap remains 50 files per request and 6 MB per uploaded temp file; catalog use cases enforce the 5 MB image policy per result row. Production ingress is expected to stay above this backend temp cap; the current Nginx `client_max_body_size=8m` leaves transport headroom without accepting images above the product policy.
@@ -140,7 +142,7 @@ Runtime behavior:
 - Backend API/use-case tests: Storefront catalog hides public quantity by default, emits availability labels, strips catalog for `ghost`, blocks quote/checkout/booking for `ghost`, `catalog`, and `inquiry`.
 - Backend catalog split tests: POS catalog uses `pos_visible`, Storefront catalog uses `storefront_visible`, image upload/removal preserves visibility state, row-missing Storefront overrides do not inherit POS state, sale-price readiness rejects missing public prices, image upload DB failures clean up newly stored files, and missing `storefront_catalog_overrides` falls back without `500`.
 - Backend bulk setup tests: POS readiness emits `STOCK_UNAVAILABLE` for stock-bearing out-of-stock rows, stock-exempt service rows remain ready without stock, onboarding sellable-item readiness uses POS readiness, bulk POS/Storefront visibility returns per-item `updated`, `blocked`, `not_found`, or `failed` results, and bulk image uploads cover matched, unmatched, duplicate filename, unsupported MIME, oversize, blocked readiness, and failed-write cleanup paths.
-- Frontend tests: onboarding labels and defaults, Settings section/deep link, Settings runtime enforcement status for enforced/rollback states, Storefront CTA behavior for all four modes, cart reset when mode blocks checkout, inventory display labels, and independent POS/Storefront item-card toggles.
+- Frontend tests: onboarding labels and defaults, Settings section/deep link, Settings runtime enforcement status for enforced/rollback states, Storefront CTA behavior for all four modes, cart reset when mode blocks checkout, inventory display labels, guarded item/product `Save and exit` behavior, and independent POS/Storefront item-card toggles.
 - Frontend inventory tests: FIFO item-detail behavior, location grouping contract, stale-filter reset on item switch, accessible selected filter state, and long location-name wrapping.
 - Frontend Catalog Setup tests: recommendations, readiness blockers, visibility state, image state, Storefront controls hidden without `items:edit`, bulk action preview, and POS/Storefront image upload independence.
 - Governance checks: `npm run check:architecture`, `npm run lint:docs`, and targeted backend/frontend test suites.
@@ -184,12 +186,15 @@ Validated on 2026-05-12 for Storefront marker preview cards:
 
 Operational readiness rating after the marker preview remediation pass: **9.6/10**. Remaining risk is browser-device smoke evidence for real touch hardware and production tile/network behavior; no known implementation gap blocks release.
 
-Validated on 2026-05-13 for Storefront duplicate marker fanout:
-- Frontend Storefront suite: `npm --prefix frontend exec vitest run apps/store/src/__tests__ --pool=threads` passed 14 files and 68 tests. Coverage includes duplicate-coordinate display offsets, marker preview models, preview-first marker routing, keyboard focus moving into the popup CTA, Escape dismissal, discovery flow, follow behavior, checkout rules, customer access helpers, and mode-specific storefront helpers.
-- Targeted marker suites: `npm --prefix frontend exec vitest run apps/store/src/__tests__/storefrontMarkerPreview.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx` passed 16 tests.
+Validated on 2026-05-21 for Storefront exact-coordinate marker behavior:
+- Frontend Storefront targeted suites: `npm --prefix frontend exec vitest run apps/store/src/__tests__/discoveryPresentation.test.js apps/store/src/__tests__/storefrontMarkerPreview.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx` passed locally. Coverage includes tenant-primary pin scoping before search, no-op duplicate-coordinate display offsets, exact shared-coordinate cluster placement, marker preview models, preview-first marker routing, keyboard focus moving into the popup CTA, Escape dismissal, discovery flow, follow behavior, checkout rules, customer access helpers, and mode-specific storefront helpers.
 - Storefront build gate: `npm --prefix frontend run build:store` passed.
+- Backend Storefront discovery index suite: `npm --prefix backend test -- --runInBand tests/storefrontDiscoveryIndexService.catalogVisibility.test.js` passed after the reconciliation fallback for stale `item_location_stocks` tenant schemas was added.
+- Production release gate and deploy: `bash scripts/deploy-remote.sh --yes` passed for commit `116247cd75600ca83e13061f8f8123f6e2e03326`. The no-staging gate validated QA deployed-head parity, docs lint, architecture checks, QA multi-location smoke, rollback drill, and restore drill before production SSH deploy.
+- Production deploy evidence: backend, IMS, POS, Storefront, and Tenant Store health checks passed; Tenant Store asset integrity and frontend asset parity passed; Storefront discovery reconciliation completed `status=healthy`, `upserted=8`, `removed=2`, `failed=0`; public `https://dgfy.ph/tenant-store` returned `200`.
+- Live discovery smoke for `aircon` returned `A/C Innovative Solutions` with its indexed primary Storefront coordinate `10.7001938, 122.5623094`.
 
-Operational readiness rating after the duplicate marker fanout pass: **9.7/10** locally validated. Remaining risk is production browser confirmation after deploying the fanout commits; source-level overlap/targetability coverage is now in place.
+Operational readiness rating after the exact-coordinate marker production deploy: **9.0/10** production validated. Remaining risk is visual browser confirmation across zoom levels and touch devices; source-level coordinate, index reconciliation, deploy-gate, API, and public endpoint evidence is in place.
 
 Validated on 2026-05-13 for Business Mode selector cleanup, tenant-location permanent delete, and Storefront aggregate stock validation:
 - Frontend targeted suites: `npm exec vitest run src/pages/__tests__/Settings.deepLinking.integration.test.jsx Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx src/features/settings/__tests__/workflowMode.services.test.js` passed 3 files and 26 tests. Coverage includes hidden legacy `manufacturing` selector choices, Settings reset controlled-input stability, inactive-pin delete UI, permanent-delete blocker display, terminal active-location assignment, and registration/admin selector parity.
@@ -215,6 +220,27 @@ Validated on 2026-05-15 for the merged Storefront pilot UI and discovery test re
 - Cleanup check: `git diff --check` passed.
 
 Operational readiness rating after this merge/test refresh: **9.0/10** locally validated. Remaining risk is production deploy evidence and live browser smoke for the merged Storefront shell, IMS Settings branding upload path, and public tenant-store branding render.
+
+Validated on 2026-05-21 for the Storefront pilot pin-glow adoption:
+- The adopted runtime slice was selected by intent from `codex/storefront-merged-pilot` rather than merged wholesale, so PayMongo implementation files and older branch defaults were excluded.
+- Storefront discovery keeps normal loads on `pin_scope=tenant_primary`; the Near Me action updates the request-local scope to `nearest_matching_branch`, matching ADR 0010 and the current public API contract.
+- Selected/highlighted Storefront map pins now render a CSS-only glow/ripple around the existing branded marker element, with `prefers-reduced-motion` disabling animation for reduced-motion users.
+- Targeted Storefront suites: `npm --prefix frontend exec vitest run apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/storefrontMarkerPreview.test.js` passed 2 files and 18 tests.
+- Storefront build gate: `npm --prefix frontend run build:store` passed.
+- Governance gates: `npm run check:architecture` and `git diff --check` passed.
+
+Operational readiness rating after this adoption pass: **9.1/10** locally validated. Remaining risk is production browser confirmation after deploy; no known source-level implementation gap blocks promotion.
+
+Validated on 2026-05-24 for inventory item/product `Save and exit` hardening and item image copy:
+- Product and item create/edit footers now wrap on narrow viewports, disable footer actions during pending saves, and use a ref-backed save guard to prevent same-tick duplicate submissions.
+- New and draft item/product `Save and exit` paths save draft state and close without finalizing; existing active rows update and close; explicit finalize/create/update buttons remain the only finalization paths.
+- Merchant-facing image copy in onboarding and item setup uses `Item image`; tracked frontend source no longer contains the old `Storefront image` visible phrase, while backend/API Storefront catalog image names remain stable.
+- Frontend targeted suites: `npm --prefix frontend test -- src/features/inventory/__tests__/itemProductWizard.contract.test.js src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx` passed 2 files and 17 tests.
+- SKUpervisor build gate: `npm --prefix frontend run build:skupervisor` passed with the existing Vite large chunk warning.
+- Governance and hygiene gates: `npm run check:architecture`, `git diff --check`, and `git grep -n -i "storefront image" -- frontend` passed.
+- Rendered UI proof remained environment-limited: local Vite served the login page, but authenticated inventory proof could not proceed because the Browser runtime could not type credentials in this session (`Browser Use virtual clipboard is not installed`), and local auth had previously shown `426` login/auth failures.
+
+Operational readiness rating after this inventory UX hardening pass: **8.8/10** locally validated. Remaining risk is authenticated browser proof for the inventory modal across desktop/mobile; no known source-level implementation gap blocks review.
 
 ## Assumptions
 - Customer Access Mode enforcement is default-on. `CUSTOMER_ACCESS_MODES_ENABLED=false` is reserved for rollback, not normal operation.

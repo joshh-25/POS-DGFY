@@ -24,6 +24,10 @@ const StoreCustomer = sequelize.define('StoreCustomer', {
         type: DataTypes.STRING(50),
         allowNull: true
     },
+    dgfy_account_id: {
+        type: DataTypes.UUID,
+        allowNull: true
+    },
     is_active: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
@@ -40,6 +44,7 @@ const StoreCustomer = sequelize.define('StoreCustomer', {
     updatedAt: 'updated_at',
     indexes: [
         { fields: ['email'], unique: true },
+        { fields: ['dgfy_account_id'] },
         { fields: ['is_active'] }
     ]
 });

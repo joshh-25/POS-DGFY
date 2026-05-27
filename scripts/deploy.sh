@@ -1084,6 +1084,16 @@ fi
 run_step "Backfilling legacy role permissions across tenant databases..." bash -lc "cd \"$BACKEND_DIR\" && node scripts/backfill-role-permissions.js"
 
 # ===========================================================================
+# Storefront discovery index reconciliation
+# ===========================================================================
+DEPLOY_RECONCILE_STOREFRONT_DISCOVERY_INDEX="${DEPLOY_RECONCILE_STOREFRONT_DISCOVERY_INDEX:-1}"
+if [[ "$DEPLOY_RECONCILE_STOREFRONT_DISCOVERY_INDEX" == "1" ]]; then
+    run_step "Reconciling storefront discovery index..." bash -lc "cd \"$BACKEND_DIR\" && npm run reconcile:storefront-discovery -- --json"
+else
+    warn "Storefront discovery index reconciliation skipped by DEPLOY_RECONCILE_STOREFRONT_DISCOVERY_INDEX=$DEPLOY_RECONCILE_STOREFRONT_DISCOVERY_INDEX."
+fi
+
+# ===========================================================================
 # PM2 reload
 # ===========================================================================
 if command -v pm2 >/dev/null 2>&1; then

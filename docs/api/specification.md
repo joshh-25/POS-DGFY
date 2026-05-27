@@ -16,6 +16,8 @@
 - [Dispatch Orders Endpoints](#dispatch-orders-endpoints)
 - [POS Endpoints](#pos-endpoints)
 - [Food & Beverage Endpoints](#food--beverage-endpoints)
+- [Storefront Hospitality Endpoints](#storefront-hospitality-endpoints)
+- [Hospitality Admin Endpoints](#hospitality-admin-endpoints)
 - [Unified Sales Endpoints](#unified-sales-endpoints)
 - [Reports Endpoints](#reports-endpoints)
 - [AI Assistant Endpoints](#ai-assistant-endpoints)
@@ -860,10 +862,11 @@ Create new item
   - MSME: products and supplies, with legacy raw/packaging rows preserved when not recategorized.
   - Services: service rows (`category=service`, stock-exempt), physical add-on products, and supplies.
   - Food & Beverage: menu items (`serving`), ingredients (`kg`/weight-volume-count), packaged beverage/retail items (`bottle`/packaging), and to-go packaging/supplies.
-- Valid UOMs include convertible inventory units (`kg`, `g`, `mL`, `L`, `pcs`, etc.) plus non-convertible business units such as `serving`, `portion`, `service`, `session`, `ticket`, `booking`, `pack`, `case`, `carton`, `bottle`, and `can`. Automatic conversion is limited to weight, volume, and count groups.
-- Corrected-mode clients may send `mode_item_preset` to persist the selected mode-native item type. F&B uses this to distinguish `menu_item` from `packaged_beverage` even though both are stored as `category=product` and `product_type=finished_goods`.
+  - Hospitality: room nights (`room_night`), paid amenities, facility bookings, minibar/retail products, housekeeping supplies, reusable linen assets, and physical add-ons.
+- Valid UOMs include convertible inventory units (`kg`, `g`, `mL`, `L`, `pcs`, etc.) plus non-convertible business units such as `serving`, `portion`, `service`, `session`, `ticket`, `booking`, `room_night`, `pack`, `case`, `carton`, `bottle`, and `can`. Automatic conversion is limited to weight, volume, and count groups.
+- Corrected-mode clients may send `mode_item_preset` to persist the selected mode-native item type. F&B uses this to distinguish `menu_item` from `packaged_beverage`; Hospitality uses this to separate stock-exempt room nights/amenities/facility bookings from stock-bearing minibar, supply, linen, and physical add-on rows.
 - `default_sale_price > 0` is required before an item can be sold through POS, Storefront checkout, or Dispatch Orders. Cost-only internal inventory rows may keep `default_sale_price=null`.
-- Placeholder modes (`retail`, `hospitality`, `healthcare`, `ticketing_transport`, `logistics_distribution`, `education_institutions`) keep conservative defaults until their governed mode-specific item taxonomy is added.
+- Placeholder modes (`retail`, `healthcare`, `ticketing_transport`, `logistics_distribution`, `education_institutions`) keep conservative defaults until their governed mode-specific item taxonomy is added.
 
 ### PUT /items/:item_id
 Update item
@@ -983,11 +986,12 @@ The item CSV endpoints share the same workflow-mode template contract for correc
 | `category`, `search`, `fifo`, `folder` | string | Optional filters for filtered export and preview. |
 
 **Current CSV contract**
-- Corrected-mode exports for `food_manufacturing`, `msme`, `services`, and `fnb` reuse the same template definitions as item import.
+- Corrected-mode exports for `food_manufacturing`, `msme`, `services`, `fnb`, and `hospitality` reuse the same template definitions as item import.
 - Export headers include the mode template marker columns (`template_workflow_mode`, `mode_compatibility_note`, `template_schema_version`, `template_issued_at`, `template_signature`) and are emitted in the same order as import templates.
 - Rows include `mode_item_preset` and `default_sale_price` whenever the mode template includes those columns.
 - Services exports include `category=service` rows. Pure service rows export `current_stock=0` and `fifo_enabled=FALSE` to preserve the stock-exempt import contract.
 - F&B exports preserve restaurant preset keys such as `menu_item`, `ingredient`, `packaged_beverage`, and `packaging_supply`.
+- Hospitality exports preserve PMS preset keys such as `room_night`, `paid_amenity`, `facility_booking`, `minibar_retail_product`, `housekeeping_supply`, `linen_reusable_asset`, and `physical_add_on`.
 - Export preview returns `workflowMode` and `templateType` metadata so the frontend can label the active export template before download.
 
 ### GET /items/supplier-coverage
@@ -2841,7 +2845,7 @@ List publicly discoverable stores for list/grid/map storefront views.
 **Query Parameters**
 | Name | Type | Description |
 |------|------|-------------|
-| `search` | string | Optional keyword against store name/slug/address/location or tenant catalog item name |
+| `search` | string | Optional keyword against store name/slug/address/location or tenant catalog item name; bounded public aliases are applied for approved customer-facing terms such as `aircon`, `A/C`, `AC`, `air conditioning`, and `air conditioner` |
 | `latitude` | number | Optional user latitude for distance sorting |
 | `longitude` | number | Optional user longitude for distance sorting |
 | `page` | number | Page number (default 1) |
@@ -2853,11 +2857,12 @@ List publicly discoverable stores for list/grid/map storefront views.
 
 **Search Notes**
 - Item-name search includes tenants that have matching catalog items from indexed storefront snapshots.
+- Search matching is index-backed and deterministic. It is not a general fuzzy-search engine; bounded alias expansion is shared between `item_search_snapshot` generation and discovery query matching so common public terms can match equivalent catalog/service wording without making unrelated short strings match.
 - Default item-search behavior is stock-aware (`in_stock_only`) unless caller explicitly requests `include_out_of_stock`.
 - The current Storefront web client explicitly requests `stock_filter=include_out_of_stock` so broad customer discovery can still show out-of-stock item matches with match metadata. API consumers that omit the parameter keep the backend stock-aware default.
 - `union` mode returns the union of store-field matches and eligible item matches.
 - `pin_scope` changes discovery anchor/pin behavior for map/list/grid without changing checkout source contracts.
-- Storefront map marker preview cards may combine discovery-row branding and match metadata with `/store/locations` branch data. The card action must route with the pinned branch `location_id` when available so catalog, quote, checkout, and booking reads stay scoped to the selected fulfillment location. Clients may apply display-only offsets when multiple pins share effectively identical coordinates; this must not mutate stored branch coordinates or the `location_id` used for catalog/quote/checkout/booking scope.
+- Storefront map marker preview cards may combine discovery-row branding and match metadata with `/store/locations` branch data. The card action must route with the pinned branch `location_id` when available so catalog, quote, checkout, and booking reads stay scoped to the selected fulfillment location. Clients must not mutate stored branch coordinates for visual spreading; same-coordinate pins should render as an exact-coordinate shared marker or equivalent grouping that preserves the stored coordinate and selected `location_id`.
 - Storefront-visible item-search eligibility follows shared catalog policy precedence: explicit `storefront_catalog_overrides.storefront_visible` first; temporary rollout fallback uses `pos_visible` only when Storefront override data is unavailable; otherwise products default to `category=product` + `product_type=finished_goods`, and services default to visible when service metadata exists with `visible_in_storefront !== false` and `bookable !== false`.
 - When Customer Access Mode enforcement is active, tenants whose effective mode is `ghost` remain discoverable by store/profile fields but are not eligible for item-search matches. Enforcement is active by default; `CUSTOMER_ACCESS_MODES_ENABLED=false` is an explicit rollback switch, and `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` can re-enable selected tenants during rollback recovery.
 
@@ -3065,6 +3070,80 @@ Services Mode storefront routes are public or Store JWT-authenticated tenant rou
 - Batch booking responses include `bookings[]`, `payments[]`, and a summary `payment` object. Frontends must render every `payments[].checkout_url` for multi-booking prepaid/deposit batches.
 - `payment_timing=postpaid` creates an unpaid booking/ticket for POS collection later; `payment_timing=prepaid` depends on the configured commerce adapter and remains separate from fiscal/non-fiscal receipt issuance.
 
+### Storefront Hospitality Endpoints
+
+Hospitality Storefront routes live under `/api/v1/store/hospitality`. Most reads are public; stay history and claim routes require Store JWT. They implement the direct booking-engine contract for customer-facing room availability, room-type pricing, amenities, packages, quote/hold, confirmation, lookup, authenticated stay history, and customer claim. Public responses must expose selling prices and customer-safe availability only; they must never expose item costs, supplier data, internal housekeeping status, internal maintenance notes, or staff-only room movement details.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/store/hospitality/availability` | Public | Search available room types by `check_in_date`, `check_out_date`, optional guest counts, and optional property/location context |
+| `POST` | `/store/hospitality/quote` | Public | Build a customer-safe quote for selected room type, room count, packages, and paid add-ons; response is `no-store` |
+| `POST` | `/store/hospitality/booking-holds` | Public | Create a persisted short-lived booking hold token for the selected room type and quote; response is `no-store` |
+| `GET` | `/store/hospitality/amenities` | Public | List active public amenities, including property, room, paid add-on, facility, accessibility, policy, local area, transport, meal, and package amenities |
+| `GET` | `/store/hospitality/packages` | Public | List active customer-facing packages and add-on bundles |
+| `POST` | `/store/hospitality/bookings` | Optional Store JWT | Confirm a direct booking from Storefront with a valid active `hold_token`; authenticated customers are linked to `store_customer_id`; response is `no-store` |
+| `GET` | `/store/hospitality/bookings` | Store JWT | List authenticated customer's redacted Hospitality stay history |
+| `POST` | `/store/hospitality/bookings/:public_reference/claim` | Store JWT | Claim an existing direct booking into the authenticated customer account when the booking email matches the signed-in customer email |
+| `GET` | `/store/hospitality/bookings/:public_reference` | Public limited lookup | Customer-safe booking lookup by public reference; response is `no-store` |
+
+**Availability and Booking Contract**
+- `room_types[]` includes `room_type_id`, `code`, `name`, `description`, `max_occupancy`, `available_rooms`, `starting_rate`, `currency`, and `amenities`.
+- `available_rooms` is capacity-safe, subtracts active reservations and unexpired booking holds, excludes out-of-order/out-of-service rooms, and may be rounded or suppressed later by revenue policy; it must not reveal room-level internal status.
+- Room nights and facility bookings are capacity-backed service rows, not stock items. Minibar, retail, housekeeping supplies, linen assets, and physical add-ons remain normal inventory/SKU records when stock is consumed.
+- Booking, quote, hold, payment, refund, and folio mutation routes must be `no-store`.
+- Direct Storefront booking confirmation requires a valid unexpired hold token matching room type and stay dates.
+- Idempotency keys and request hashes are persisted for booking confirmation. Matching replay returns the existing reservation; mismatched replay fails with an idempotency conflict.
+- Optional Store JWT booking confirmation saves `store_customer_id`; authenticated stay history and claim responses are redacted to the same customer-safe booking summary used by public lookup.
+- Claim by public reference is email-bound. A signed-in customer cannot claim a booking whose stored booking email belongs to a different address, and an already-linked booking cannot be moved to another customer account.
+- Quote responses include `pricing.deposit_due`, `pricing.payment_collection`, and `pricing.payment_due_at`. Current v1 direct booking uses `payment_collection=property_collects`; no online card authorization or deposit capture is performed by Hospitality Storefront until a separate payment-adapter ADR is accepted.
+- Booking payloads may persist future channel reconciliation fields: `external_source`, `external_reference`, and `channel_metadata`. These fields are metadata only; v1 does not poll, push, or reconcile live OTA/channel inventory.
+- Staff reservation creation may request `auto_assign_rooms=true` to assign available physical rooms by PMS room-status priority. Check-in/in-house transitions must ensure each reservation-room row is assigned to a physical room before stays are created.
+- Booking confirmation, reservation lifecycle changes, folio posting, and maintenance blocking write Hospitality domain audit events and mirror those events into the existing tenant `audit_logs` table using valid `CREATE`/`UPDATE`/`DELETE`/`VIEW` enum actions.
+- Public lookup redacts guest contact/private notes and returns only `public_reference`, status, source, dates, selected rooms, total amount, deposit amount/due, payment collection status, and payment status.
+
+## Hospitality Admin Endpoints
+
+Hospitality admin routes live under `/api/v1/hospitality`, require authentication, and require the active tenant workflow mode to expose the `hospitalityReservations` capability. Controllers are transport-only; business behavior belongs in Hospitality use cases and repositories.
+
+| Method | Path | Permission | Purpose |
+|---|---|---|---|
+| `GET` | `/hospitality/dashboard` | `hospitality:dashboard:view` or reports view | Today dashboard: arrivals, departures, in-house stays, room status counts, housekeeping, and maintenance |
+| `GET` | `/hospitality/availability` | reservations/rooms view | Staff availability lookup |
+| `GET`/`POST` | `/hospitality/room-types` | rooms view/manage | Manage sellable room types, occupancy, rate baseline, amenities snapshot, and policies |
+| `GET`/`POST` | `/hospitality/rooms` | rooms view/manage | Manage physical rooms and room status |
+| `PATCH` | `/hospitality/rooms/:room_id/status` | rooms manage or housekeeping manage | Update PMS room/housekeeping/maintenance status with audit-ready intent |
+| `GET`/`POST` | `/hospitality/guests` | guests or reservations view/manage | Manage guest profiles |
+| `GET`/`POST` | `/hospitality/reservations` | reservations view/manage | Manage direct/admin reservations; mutations are `no-store` |
+| `PATCH` | `/hospitality/reservations/:reservation_id/status` | reservations manage | Confirm, check in, mark in-house, check out, cancel, or no-show |
+| `PATCH` | `/hospitality/reservations/:reservation_id/rooms/:reservation_room_id` | reservations or rooms manage | Move or assign a reservation room after validating ownership, matching room type, and room conflict |
+| `GET` | `/hospitality/stays` | reservations view | List in-house and historical stays |
+| `GET`/`POST` | `/hospitality/rate-plans` | rates view/manage | Manage rate plans and policy metadata |
+| `GET`/`POST` | `/hospitality/folios` | folios view/manage | Manage folios attached to reservations, stays, or guests |
+| `POST` | `/hospitality/folios/:folio_id/lines` | folios manage or POS transact | Post room charges, taxes, fees, deposits, payments, refunds, amenities, minibar, retail, room service, and adjustments |
+| `GET`/`POST` | `/hospitality/housekeeping/tasks` | housekeeping view/manage | Manage room-turnover and inspection work |
+| `PATCH` | `/hospitality/housekeeping/tasks/:task_id` | housekeeping manage | Advance housekeeping status |
+| `GET`/`POST` | `/hospitality/maintenance/requests` | maintenance view/manage | Manage room/facility maintenance and blocking workflow |
+| `PATCH` | `/hospitality/maintenance/requests/:request_id` | maintenance manage | Advance maintenance status |
+| `GET`/`POST` | `/hospitality/amenities` | amenities view/manage | Manage property, room, paid add-on, facility, accessibility, policy, local-area, transport, meal, and package amenities |
+| `POST` | `/hospitality/room-amenities` | amenities/rooms manage | Link amenities to room types or specific rooms |
+| `POST` | `/hospitality/property-amenities` | amenities manage | Link amenities to the property/location level |
+| `GET`/`POST` | `/hospitality/facilities` | facilities view/manage | Manage pool/gym/spa/laundry/business center/parking/shuttle/meeting-room facilities |
+| `POST` | `/hospitality/facilities/bookings` | facilities or reservations manage | Book capacity-backed facilities for a guest/reservation time window |
+| `GET`/`POST` | `/hospitality/packages` | amenities or rates view/manage | Manage stay packages and add-on bundles |
+| `POST` | `/hospitality/packages/items` | amenities or rates manage | Link amenities, facilities, or physical items into a package |
+| `GET`/`POST` | `/hospitality/guest-messages` | guests or reservations view/manage | Store internal/storefront guest communication drafts and history |
+| `GET` | `/hospitality/reports` | hospitality reports or reports view | Hospitality report summary surface for occupancy and operational metrics |
+
+**Mode Boundary**
+- Hospitality hides manufacturing, dispatch, production, F&B dining, and Services booking routes unless a future ADR explicitly shares a boundary.
+- Inventory, suppliers, POS, reports, settings, users, and storefront remain available with Hospitality labels and guards.
+- POS usage in Hospitality is front-desk/on-property charging: charge to room, minibar/retail stock deduction, paid amenities/add-ons, deposits, refunds, and folio settlement. Folio `payment` and `deposit` lines reduce balance; `refund` lines reverse payments and increase balance.
+- Staff can send `auto_assign_rooms=true` when creating a reservation. The backend assigns available rooms by PMS room-status priority and returns a conflict if insufficient assignable rooms exist.
+- `PATCH /hospitality/reservations/:reservation_id/status` may include `check_in_date` and/or `check_out_date` with the desired `status`; date changes update the reservation and reservation-room dates only after assigned-room conflicts and unassigned room-type capacity are revalidated.
+- Checkout returns `HOSPITALITY_FOLIO_BALANCE_DUE` while open folios have a positive balance. Staff may send `override_open_balance=true`; this flag permits the action but is removed before reservation persistence.
+- Room moves emit Hospitality audit events with before/after `room_id` and reservation context. Status changes emit before/after status, dates, and reservation-room summaries.
+- Manager reports expose occupancy percentage, ADR, RevPAR, unassigned arrivals, and out-of-order room counts in addition to arrivals, departures, in-house, housekeeping, and maintenance counts.
+
 ## Services Admin Endpoints
 
 Services Mode IMS/POS operator routes live under `/api/v1/services`. They require tenant authentication plus the Services workflow capability guard. The Permission column lists the primary mode-native permission. Generic compatibility fallback remains enabled by default for legacy users and can be disabled with `MODE_RBAC_GENERIC_FALLBACK_ENABLED=false` after remapping.
@@ -3106,7 +3185,7 @@ List active tenant fulfillment locations for a specific storefront tenant page.
 ### POST /store/cart/quote
 Compute quote totals for guest or store-customer checkout.
 
-**Auth**: Optional store customer (`Store JWT`)
+**Auth**: Optional store customer (`Store JWT` or global DGFY account JWT). When a DGFY account JWT is supplied, the backend lazily links or creates the tenant-local `store_customers` row before applying existing customer/account behavior.
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
 **Caching Contract**: `Cache-Control: no-store, no-cache, max-age=0, must-revalidate`
 
@@ -4010,7 +4089,302 @@ Reactivate an inactive tenant. Sets `status='active'`, `subscription_status='act
 >
 > **Scope clarification**: `company_token` in this section is internal/admin context only. Public storefront flows use `x-store-slug` and do not expose tenant tokens in discovery payloads.
 
+### GET /dgfy/legal-terms/current
+
+Return the backend-owned current legal-term versions, document summaries, acknowledgement snapshot text, and marketplace-provider clause used by DGFY account and company registration. Registration clients must load this endpoint before enabling legal acknowledgement checkboxes and must submit the returned version fields with the registration mutation.
+
+**Access:** Public.
+
+**Response (200)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "provider_clause": "DGFY is an e-marketplace/platform service provider...",
+    "versions": {
+      "accountTerms": "dgfy-account-terms-2026-05-26",
+      "privacy": "dgfy-privacy-2026-05-26",
+      "marketplaceTerms": "dgfy-marketplace-provider-2026-05-26",
+      "companyTerms": "dgfy-company-terms-2026-05-26"
+    },
+    "flows": {
+      "account_registration": {
+        "acknowledgement_field": "accepted_terms",
+        "version_fields": ["terms_version", "privacy_version", "marketplace_terms_version"]
+      },
+      "company_registration": {
+        "acknowledgement_field": "accepted_company_terms",
+        "version_fields": ["company_terms_version", "marketplace_terms_version"]
+      }
+    }
+  }
+}
+```
+
+If this endpoint is unavailable, registration UI must fail closed and keep the registration submit action disabled.
+
+### POST /dgfy/auth/register
+
+Create a global DGFY account used for customer account surfaces and business registration.
+
+**Access:** Public, rate-limited.
+
+**Request**
+
+```json
+{
+  "first_name": "Ada",
+  "last_name": "Lovelace",
+  "email": "ada@example.com",
+  "phone": "+639123456789",
+  "password": "minimum8",
+  "confirm_password": "minimum8",
+  "accepted_terms": true,
+  "terms_version": "dgfy-account-terms-2026-05-26",
+  "privacy_version": "dgfy-privacy-2026-05-26",
+  "marketplace_terms_version": "dgfy-marketplace-provider-2026-05-26"
+}
+```
+
+Registration requires the current DGFY account terms, privacy terms, and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current`. The account row, mirrored DGFY invitation memberships, and acknowledgement evidence are written in one landlord transaction; persistence misconfiguration fails closed with `500 LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_UNAVAILABLE`. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
+
+**Response (201)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "account": {
+      "id": "dgfy-account-uuid",
+      "first_name": "Ada",
+      "last_name": "Lovelace",
+      "username": "Ada",
+      "email": "ada@example.com",
+      "phone": "+639123456789",
+      "is_active": true,
+      "last_login_at": null
+    },
+    "token": "dgfy-jwt",
+    "expiresIn": 86400
+  }
+}
+```
+
+### POST /dgfy/auth/login
+
+Sign in to a global DGFY account.
+
+**Access:** Public, rate-limited.
+
+**Request**
+
+```json
+{
+  "email": "ada@example.com",
+  "password": "minimum8"
+}
+```
+
+**Response (200)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "account": {
+      "id": "dgfy-account-uuid",
+      "first_name": "Ada",
+      "last_name": "Lovelace",
+      "username": "Ada",
+      "email": "ada@example.com",
+      "phone": "+639123456789",
+      "is_active": true,
+      "last_login_at": "2026-05-21T10:00:00.000Z"
+    },
+    "token": "dgfy-jwt",
+    "expiresIn": 86400
+  }
+}
+```
+
+### POST /dgfy/auth/logout
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Blacklist the current DGFY account JWT. Tenant-local SKUpervisor and Store JWT sessions are separate and are not revoked by this route.
+
+### POST /dgfy/auth/email-verification/request
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Send a purpose-scoped `dgfy_account_verification` email OTP to the authenticated DGFY account email. If the account email is already verified, the response returns `verified: true` without sending another code.
+
+### POST /dgfy/auth/email-verification/verify
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Verify the DGFY account email with the code sent by `/dgfy/auth/email-verification/request`.
+
+**Request**
+
+```json
+{
+  "code": "123456"
+}
+```
+
+**Response (200)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "account": {
+      "id": "dgfy-account-uuid",
+      "email": "ada@example.com",
+      "email_verified_at": "2026-05-21T10:03:00.000Z",
+      "is_email_verified": true
+    }
+  },
+  "message": "DGFY email verified."
+}
+```
+
+### POST /dgfy/auth/handoff
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Create a short-lived DGFY handoff token for browser-to-browser or redirected account flows. The token scope is `dgfy_handoff` and default expiry is two minutes.
+
+### POST /dgfy/auth/handoff/exchange
+
+Exchange a valid DGFY handoff token for a normal DGFY account JWT.
+
+**Request**
+
+```json
+{
+  "handoff_token": "short-lived-dgfy-handoff-token"
+}
+```
+
+### GET /dgfy/auth/me
+
+Return the authenticated DGFY account and linked company memberships. Memberships include pending company invitations when the invited email matches an existing DGFY account.
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+**Response (200)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "account": {
+      "id": "dgfy-account-uuid",
+      "first_name": "Ada",
+      "last_name": "Lovelace",
+      "username": "Ada",
+      "email": "ada@example.com",
+      "phone": "+639123456789",
+      "is_active": true,
+      "last_login_at": "2026-05-21T10:00:00.000Z"
+    },
+    "memberships": [
+      {
+        "id": 12,
+        "tenant_id": "tenant-uuid",
+        "tenant_user_id": 7,
+        "role": "admin",
+        "status": "accepted",
+        "source": "founder",
+        "accepted_at": "2026-05-21T10:05:00.000Z",
+        "company": {
+          "id": "tenant-uuid",
+          "name": "Example Foods",
+          "company_token": "token-example-123",
+          "status": "active",
+          "plan": "premium"
+        }
+      }
+    ]
+  }
+}
+```
+
+### POST /dgfy/invitations/:membership_id/accept
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Accept a pending company invitation from the DGFY account notification surface. This path does not require an invitation link, company token in the URL, or a tenant-local password setup form. The backend activates the matching tenant-local invitation row from the authenticated DGFY account, copies the DGFY email/phone/password hash into that tenant user, writes the landlord email-to-tenant mapping, and marks the DGFY membership accepted.
+
+**Response (200)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "membership": {
+      "id": 12,
+      "tenant_id": "tenant-uuid",
+      "tenant_user_id": 7,
+      "role": "staff",
+      "status": "accepted",
+      "source": "invite",
+      "company": {
+        "name": "Example Foods",
+        "company_token": "tenant-token"
+      }
+    }
+  }
+}
+```
+
+### DGFY Customer Account Endpoints
+
+Front-facing customer account endpoints live under `/api/v1/dgfy/customer`. Except for tracking recovery request/verify, they require `Authorization: Bearer <dgfy-account-token>`.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/dgfy/customer/dashboard` | Return DGFY profile summary, recent account activity, orders, bookings, addresses, and read-only loyalty summary |
+| `GET` | `/dgfy/customer/orders` | List account-linked order activities |
+| `GET` | `/dgfy/customer/bookings` | List account-linked service/hospitality booking activities |
+| `POST` | `/dgfy/customer/track` | Track an account-linked reference by `reference` or `tracking_pin` |
+| `POST` | `/dgfy/customer/orders/:reference/cancel` | Cancel an eligible account-linked order |
+| `POST` | `/dgfy/customer/orders/:reference/reorder` | Return reusable cart lines for a prior order; checkout revalidates current state |
+| `GET` | `/dgfy/customer/addresses` | List global DGFY saved addresses |
+| `POST` | `/dgfy/customer/addresses` | Create a saved address |
+| `PUT/PATCH` | `/dgfy/customer/addresses/:address_id` | Update a saved address |
+| `PATCH` | `/dgfy/customer/addresses/:address_id/default` | Set a saved address as the account default |
+| `DELETE` | `/dgfy/customer/addresses/:address_id` | Delete a saved address |
+| `GET` | `/dgfy/customer/loyalty` | Return read-only loyalty balance and transactions |
+| `POST` | `/dgfy/customer/reviews` | Submit a paid-or-completed purchase-gated product review as pending approval |
+| `POST` | `/dgfy/customer/tracking-recovery/request` | Request a generic tracking recovery response for email/phone lookup |
+| `POST` | `/dgfy/customer/tracking-recovery/verify` | Verify a six-digit recovery code and return matching activity references |
+
+Tracking recovery intentionally uses generic production responses and does not reveal whether a lookup matched an order or whether delivery was attempted. Email delivery is used when matching activity has an email address. Phone OTP remains deferred and phone values must not be treated as verified; phone lookup supports common Philippine variants for matching only.
+
+Historical DGFY customer activity backfill is an operator command, not a public API. Use `npm run backfill:dgfy-customer-activity:apply` for apply mode so landlord migrations run before activity writes. Dry-run uses `npm run backfill:dgfy-customer-activity -- ...`. The backfill indexes POS customer orders, Services bookings, and Hospitality reservations into `dgfy_customer_activities`. Production dry-runs can require mode discovery with `--require-activity-types=order,service_booking,hospitality_booking` before apply.
+
 ### POST /admin/tenants/register
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Public company registration derives founder email, phone, username seed, and password hash from the authenticated DGFY account. Clients must not send founder contact, password, plan, or compliance mode. New companies start `non_compliant_active`; compliance activation is handled later from Settings > Compliance.
+
+**Request**
+
+```json
+{
+  "name": "Example Foods",
+  "workflowMode": "food_manufacturing",
+  "email_otp_code": "123456",
+  "accepted_company_terms": true,
+  "company_terms_version": "dgfy-company-terms-2026-05-26",
+  "marketplace_terms_version": "dgfy-marketplace-provider-2026-05-26"
+}
+```
 Submit a public company registration request.
 
 **Access:** Public, rate-limited.
@@ -4022,28 +4396,13 @@ Submit a public company registration request.
 - Provider subscription registration remains disabled while `PAYMENTS_ENABLED=false`; payloads with `subscriptionId` return `503` with `PAYMENTS_DISABLED`.
 - Auto-standard and manual premium-capable registrations keep `subscription_status: "inactive"` while payments are paused. In that mode, premium route access is plan-driven and does not require an active subscription row.
 - Approval email delivery is non-blocking after provisioning; active responses include `email_sent`.
-- Active registration responses do not include auth tokens. Auto-login is a frontend follow-up call to `POST /auth/login` using the submitted email/password and returned `company_token`.
+- Active registration responses do not include tenant auth tokens. The frontend routes to SKUpervisor login with the DGFY email and returned `company_token`; the founder can sign in through the tenant login path because provisioning seeded the master admin from the DGFY account.
 - Manual pending registrations create founder email lookup mappings during registration. Default auto-standard registrations rely on the provisioning path to create the mapping after successful activation.
 - Abuse control: public company registration is IP rate-limited by `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS` (production default: 5 requests per hour). Keep this strict because each accepted registration provisions an isolated tenant database by default.
 - Auto-login fallback: if the follow-up login call fails after an active response, the frontend keeps the company created state and routes the founder to manual sign-in with email/company token prefilled.
-- Founder contact: public company registration requires `adminPhone`; provisioned founder/admin users receive the same value in `users.phone_number`.
-- `adminPhone` is trimmed and must follow the same 7-40 character phone format used by user registration and Settings profile updates.
-- Founder password: `adminPassword` only requires a minimum length of 8 characters. The registration UI can generate a readable 16-character password and fills both password fields when it does.
-- Email ownership: public company registration requires `email_otp_code` for `adminEmail`. The registration UI requests the code through `POST /auth/email-otp/request` with `purpose=company_registration`, then submits the six-digit code with the final registration payload.
-
-**Request**
-```json
-{
-  "name": "ACME Corp",
-  "adminEmail": "admin@acme.com",
-  "adminPhone": "+63 912 345 6789",
-  "adminPassword": "abcdefgh",
-  "email_otp_code": "123456",
-  "plan": "premium",
-  "complianceMode": "non_compliant",
-  "workflowMode": "food_manufacturing"
-}
-```
+- Founder contact and credentials: public company registration no longer accepts `adminEmail`, `adminPhone`, or `adminPassword`; the server derives them from the authenticated DGFY account.
+- Email ownership: public company registration requires `email_otp_code` for the DGFY account email. The registration UI requests the code through `POST /auth/email-otp/request` with `purpose=company_registration`, then submits the six-digit code with the final registration payload.
+- Legal acknowledgement: public company registration requires the current company terms and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current` before OTP consumption or tenant creation. The backend fails closed before OTP consumption if legal acknowledgement persistence is unavailable. After OTP verification, the landlord tenant row, pending-founder membership when applicable, and acknowledgement evidence are written in one landlord transaction. The acknowledgement states that DGFY is an e-marketplace/platform service provider, the seller owns the product, sets the price, fulfills the order, remains seller of record, payment is processed by a licensed payment partner, and DGFY deducts disclosed fees before remitting the seller's net settlement. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
 
 **Response (201, explicit manual mode)**
 ```json
@@ -4569,7 +4928,7 @@ Exact retries are idempotent at the generated-SKU boundary: when a repeated row 
 - Corrected modes validate `mode_item_preset` against the active workflow mode. Placeholder modes use conservative default item behavior until promoted by a governed mode pass.
 - Partial save is supported: valid rows are created, invalid rows are returned with row-level `errors`.
 - The frontend must not resubmit rows already returned as `created`. Duplicate `client_row_id` values in one request and generated SKU conflicts return row-level failures instead of creating retry duplicates.
-- Completion readiness for corrected modes requires a customer-facing onboarding preset: Food Manufacturing `finished_product`, MSME `product`, Services `service` or `physical_add_on`, and Food & Beverage `menu_item` or `packaged_beverage`.
+- Completion readiness for corrected modes requires a customer-facing onboarding preset: Food Manufacturing `finished_product`, MSME `product`, Services `service` or `physical_add_on`, and Food & Beverage `menu_item` or `packaged_beverage`. Hospitality readiness is PMS-native and requires an active bookable room type with a positive default rate plus at least one active room.
 
 **Response (207-style application payload over 200)**
 ```json
@@ -4613,7 +4972,7 @@ Finalize onboarding if required readiness checks are satisfied.
 **Behavior**
 - Returns `422` with `missing_requirements[]` if readiness is incomplete.
 - Missing requirement keys are `store_name_ready`, `has_primary_storefront_location`, and `has_priced_starter_item`.
-- Storefront item image upload and stock quantity never block completion by themselves.
+- Item image upload and stock quantity never block completion by themselves. The merchant-facing onboarding label is `Item image`; the existing Storefront catalog image upload/storage contract remains unchanged.
 - On success, sets onboarding state to `completed` and triggers storefront discovery sync.
 
 ### POST /onboarding/events

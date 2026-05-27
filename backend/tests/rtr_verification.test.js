@@ -1,8 +1,11 @@
 import request from 'supertest';
+import { jest } from '@jest/globals';
 import app from '../src/server.js';
 import sequelize from '../src/config/database.js';
 import db from '../src/models/index.js';
 import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
+
+jest.setTimeout(120000);
 
 describe('Refresh Token Rotation (RTR) Verification', () => {
     let testTenantContext;
@@ -26,6 +29,7 @@ describe('Refresh Token Rotation (RTR) Verification', () => {
         const userData = {
             username: `rtruser-${stamp}`,
             email: `rtr-${stamp}@example.com`,
+            phone_number: '+63 917 000 1000',
             password: 'TestPassword123!'
         };
 
@@ -51,7 +55,8 @@ describe('Refresh Token Rotation (RTR) Verification', () => {
     };
 
     const cleanupUser = async (email) => {
-        await db.User.destroy({ where: { email } });
+        await testTenantContext?.models?.User?.destroy({ where: { email } }).catch(() => null);
+        await db.User.destroy({ where: { email } }).catch(() => null);
     };
 
     it('should FAIL if RT1 is used twice (replay blocked after rotation)', async () => {

@@ -165,8 +165,10 @@ export default function MapPinPicker({
       map.dragRotate.disable();
       map.touchZoomRotate.disableRotation();
     } catch {
-      setLoadError('Map failed to load. Please refresh and try again.');
-      return undefined;
+      const loadErrorTimer = setTimeout(() => {
+        setLoadError('Map failed to load. Please refresh and try again.');
+      }, 0);
+      return () => clearTimeout(loadErrorTimer);
     }
 
     map.once('load', () => {

@@ -59,6 +59,23 @@ describe('Services and Food Manufacturing workflow modes', () => {
     expect(isWorkflowPathBlocked('/job-orders', 'fnb')).toBe(true);
   });
 
+  it('keeps Hospitality PMS-native and hides unrelated mode consoles', () => {
+    expect(getWorkflowModeLabel('hospitality')).toBe('Hospitality');
+    expect(getWorkflowModePinMeta('hospitality').icon).toBe('Hotel');
+    expect(modeHasCapability('hospitality', 'hospitalityReservations')).toBe(true);
+    expect(modeHasCapability('hospitality', 'hospitalityRooms')).toBe(true);
+    expect(modeHasCapability('hospitality', 'hospitalityFolios')).toBe(true);
+    expect(modeHasCapability('hospitality', 'productionWorkflows')).toBe(false);
+    expect(isWorkflowPageVisible('Hospitality', 'hospitality')).toBe(true);
+    expect(isWorkflowPageVisible('Hospitality', 'services')).toBe(false);
+    expect(isWorkflowPageVisible('Services', 'hospitality')).toBe(false);
+    expect(isWorkflowPageVisible('Fnb', 'hospitality')).toBe(false);
+    expect(isWorkflowPageVisible('JobOrders', 'hospitality')).toBe(false);
+    expect(isWorkflowPathBlocked('/hospitality', 'retail')).toBe(true);
+    expect(isWorkflowPathBlocked('/services', 'hospitality')).toBe(true);
+    expect(isWorkflowPathBlocked('/fnb', 'hospitality')).toBe(true);
+  });
+
   it('defines corrected item taxonomy only for governed modes', () => {
     expect(resolveItemDefaultsForMode('fnb')).toMatchObject({
       category: 'product',
@@ -69,6 +86,11 @@ describe('Services and Food Manufacturing workflow modes', () => {
     expect(resolveItemDefaultsForMode('services')).toMatchObject({
       category: 'service',
       unit_of_measure: 'service',
+      fifo_enabled: false
+    });
+    expect(resolveItemDefaultsForMode('hospitality')).toMatchObject({
+      category: 'service',
+      unit_of_measure: 'room_night',
       fifo_enabled: false
     });
     expect(resolveModeItemTaxonomy('food_manufacturing').presets.map((preset) => preset.category)).toContain('raw_material');
@@ -82,6 +104,7 @@ describe('Services and Food Manufacturing workflow modes', () => {
     expect(isValidUom('serving')).toBe(true);
     expect(getUomGroup('serving')).toBe('presentation');
     expect(isValidUom('bottle')).toBe(true);
+    expect(isValidUom('room_night')).toBe(true);
     expect(getUomGroup('bottle')).toBe('packaging');
     expect(areCompatible('kg', 'g')).toBe(true);
     expect(areCompatible('serving', 'portion')).toBe(false);
@@ -91,6 +114,7 @@ describe('Services and Food Manufacturing workflow modes', () => {
   it('filters UOM choices to explicit mode-preset units when provided', () => {
     const menuItemPreset = resolveModeItemTaxonomy('fnb').presets.find((preset) => preset.key === 'menu_item');
     const servicePreset = resolveModeItemTaxonomy('services').presets.find((preset) => preset.key === 'service');
+    const roomNightPreset = resolveModeItemTaxonomy('hospitality').presets.find((preset) => preset.key === 'room_night');
 
     expect(filterUomOptions({
       allowedGroups: menuItemPreset.allowed_uom_groups,
@@ -101,5 +125,10 @@ describe('Services and Food Manufacturing workflow modes', () => {
       allowedGroups: servicePreset.allowed_uom_groups,
       allowedUnits: servicePreset.allowed_uoms
     }).map((option) => option.value)).toEqual(['service', 'session', 'booking', 'hour']);
+
+    expect(filterUomOptions({
+      allowedGroups: roomNightPreset.allowed_uom_groups,
+      allowedUnits: roomNightPreset.allowed_uoms
+    }).map((option) => option.value)).toEqual(['booking', 'room_night']);
   });
 });

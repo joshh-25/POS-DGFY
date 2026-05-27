@@ -45,6 +45,7 @@ vi.mock('maplibre-gl', () => {
   function MarkerApi(options = {}) {
     const element = options.element || document.createElement('div');
     element.dataset.markerOffset = JSON.stringify(options.offset || [0, 0]);
+    element.dataset.markerAnchor = options.anchor || '';
     const api = {
       setLngLat: vi.fn(() => api),
       addTo: vi.fn((map) => {
@@ -237,6 +238,54 @@ describe('storefront discovery integration flow', () => {
       .map((requestUrl) => new URL(requestUrl, 'http://localhost').searchParams.get('search'))
       .filter(Boolean);
     expect(searchValues).not.toEqual(expect.arrayContaining(['m', 'mi', 'mil']));
+    expect(fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl).includes('/api/v1/storefront/geo-search'))).toBe(false);
+  });
+
+  it('ignores stale geolocation callbacks from earlier search actions', async () => {
+    const user = userEvent.setup();
+    const pendingGeolocationRequests = [];
+    Object.defineProperty(window.navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: vi.fn((success, error) => {
+          pendingGeolocationRequests.push({ success, error });
+        })
+      }
+    });
+
+    render(<App />);
+    await waitFor(() => {
+      expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1);
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search products, services or stores nearby...');
+    await user.type(searchInput, 'milk');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+    await user.clear(searchInput);
+    await user.type(searchInput, 'rice');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+
+    expect(pendingGeolocationRequests).toHaveLength(2);
+    pendingGeolocationRequests[0].success({ coords: { latitude: 1, longitude: 2 } });
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    let searchValues = getDiscoveryQueryUrls(fetchMock)
+      .map((requestUrl) => new URL(requestUrl, 'http://localhost').searchParams.get('search'))
+      .filter(Boolean);
+    expect(searchValues).not.toContain('milk');
+
+    pendingGeolocationRequests[1].success({ coords: { latitude: 10.7, longitude: 122.5 } });
+    await waitFor(() => {
+      const params = getLastDiscoveryParams(fetchMock);
+      expect(params.get('search')).toBe('rice');
+      expect(params.get('latitude')).toBe('10.7');
+      expect(params.get('longitude')).toBe('122.5');
+    });
+
+    searchValues = getDiscoveryQueryUrls(fetchMock)
+      .map((requestUrl) => new URL(requestUrl, 'http://localhost').searchParams.get('search'))
+      .filter(Boolean);
+    expect(searchValues).toContain('rice');
+    expect(searchValues).not.toContain('milk');
   });
 
   it('sends the current discovery query contract by default', async () => {
@@ -257,8 +306,6 @@ describe('storefront discovery integration flow', () => {
 
     await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'milk');
     await user.click(screen.getByRole('button', { name: /^Search$/i }));
-    await waitFor(() => expect(screen.getByRole('button', { name: /View All Stores/i })).toBeTruthy());
-    await user.click(screen.getByRole('button', { name: /View All Stores/i }));
     await waitFor(() => {
       expect(screen.getAllByText(/No stores matched "milk"/i).length).toBeGreaterThan(0);
     });
@@ -331,8 +378,6 @@ describe('storefront discovery integration flow', () => {
     await waitFor(() => expect(screen.getAllByText('Alpha Foods').length).toBeGreaterThan(0));
     await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'alpha');
     await user.click(screen.getByRole('button', { name: /^Search$/i }));
-    await waitFor(() => expect(screen.getByRole('button', { name: /View All Stores/i })).toBeTruthy());
-    await user.click(screen.getByRole('button', { name: /View All Stores/i }));
     await waitFor(() => expect(screen.getAllByText('Store + Item match').length).toBeGreaterThan(0));
     expect(screen.getAllByText('In-stock match').length).toBeGreaterThan(0);
 
@@ -414,11 +459,17 @@ describe('storefront discovery integration flow', () => {
 
     const user = userEvent.setup();
     render(<App />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i }).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Main/i }).length).toBeGreaterThan(0));
+    const alphaMarkerCall = maplibregl.Marker.mock.calls.find(([options]) => (
+      options?.element?.getAttribute?.('aria-label') || ''
+    ).includes('Preview Alpha Foods at Main'));
+    expect(alphaMarkerCall?.[0]?.anchor).toBe('bottom');
+    const alphaMarkerElement = alphaMarkerCall?.[0]?.element;
+    expect(alphaMarkerElement).toBeTruthy();
 
-    await user.click(screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i })[0]);
-    await waitFor(() => expect(screen.getAllByText('Branch').length).toBeGreaterThan(0));
-    expect(screen.getAllByText('Branch Road').length).toBeGreaterThan(0);
+    await user.click(alphaMarkerElement);
+    await waitFor(() => expect(screen.getAllByText('Main').length).toBeGreaterThan(0));
+    expect(screen.getAllByText('Main Road').length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole('button', { name: 'Open storefront' }));
     await waitFor(() => {
@@ -428,7 +479,7 @@ describe('storefront discovery integration flow', () => {
       const catalogCalls = fetchMock.mock.calls
         .map(([requestUrl]) => String(requestUrl))
         .filter((requestUrl) => requestUrl.includes('/api/v1/store/catalog?'));
-      expect(catalogCalls.some((requestUrl) => requestUrl.includes('location_id=22'))).toBe(true);
+      expect(catalogCalls.some((requestUrl) => requestUrl.includes('location_id=11'))).toBe(true);
     });
   });
 
@@ -481,9 +532,9 @@ describe('storefront discovery integration flow', () => {
     });
 
     render(<App />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i }).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Main/i }).length).toBeGreaterThan(0));
 
-    const marker = screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i })[0];
+    const marker = screen.getAllByRole('button', { name: /Preview Alpha Foods at Main/i })[0];
     fireEvent.click(marker);
     await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
 
@@ -548,9 +599,9 @@ describe('storefront discovery integration flow', () => {
 
     const user = userEvent.setup();
     render(<App />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i }).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Main/i }).length).toBeGreaterThan(0));
 
-    const marker = screen.getAllByRole('button', { name: /Preview Alpha Foods at Branch/i })[0];
+    const marker = screen.getAllByRole('button', { name: /Preview Alpha Foods at Main/i })[0];
     await user.click(marker);
     await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
 
@@ -559,7 +610,7 @@ describe('storefront discovery integration flow', () => {
     expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy();
   });
 
-  it('renders duplicate-coordinate map pins as separate current map markers', async () => {
+  it('renders duplicate-coordinate map pins as one exact-coordinate cluster marker', async () => {
     fetchMock.mockImplementation(async (url) => {
       const normalized = String(url);
       if (normalized.includes('/api/v1/storefront/discovery?')) {
@@ -616,11 +667,203 @@ describe('storefront discovery integration flow', () => {
     });
 
     render(<App />);
-    await waitFor(() => expect(screen.getByRole('button', { name: /Preview Alpha Foods at Main Branch/i })).toBeTruthy());
-    await waitFor(() => expect(screen.getByRole('button', { name: /Preview Beta Foods at Main Branch/i })).toBeTruthy());
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /2 storefronts at this location/i }).length).toBeGreaterThan(0));
 
-    expect(screen.getByRole('button', { name: /Preview Alpha Foods at Main Branch/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Preview Beta Foods at Main Branch/i })).toBeTruthy();
+    const clusterCallIndex = maplibregl.Marker.mock.calls.findIndex(([options]) => (
+      options?.element?.classList?.contains('discovery-result-cluster')
+    ));
+    expect(clusterCallIndex).toBeGreaterThanOrEqual(0);
+    expect(maplibregl.Marker.mock.calls[clusterCallIndex]?.[0]?.anchor).toBe('center');
+    expect(maplibregl.Marker.mock.results[clusterCallIndex]?.value?.setLngLat).toHaveBeenCalledWith([122.56, 10.72]);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /2 storefronts at this location/i })[0]);
+    await waitFor(() => expect(screen.getByRole('button', { name: /Select Alpha Foods at Main Branch/i })).toBeTruthy());
+    expect(screen.getByRole('button', { name: /Select Beta Foods at Main Branch/i })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /Select Alpha Foods at Main Branch/i }));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
+    expect(screen.getByRole('button', { name: 'Open storefront' })).toBeTruthy();
+  });
+
+  it('does not cluster storefronts at the default center when coordinate data is missing', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Coordinate Missing A',
+              slug: 'missing-a',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              catalog_count: 2
+            },
+            {
+              tenant_id: 'tenant-2',
+              tenant_name: 'Coordinate Missing B',
+              slug: 'missing-b',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              catalog_count: 1
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({ primary_location_id: null, locations: [] });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/Coordinate Missing A/i)).toBeTruthy());
+
+    const markerAtDefaultCenter = maplibregl.Marker.mock.results.some((result) => (
+      result?.value?.setLngLat?.mock?.calls?.some(([coordinate]) => (
+        Array.isArray(coordinate)
+        && Number(coordinate[0]).toFixed(6) === '122.562100'
+        && Number(coordinate[1]).toFixed(6) === '10.720200'
+      ))
+    ));
+    expect(markerAtDefaultCenter).toBe(false);
+  });
+
+  it('does not render provisioned placeholder storefront coordinates as authoritative map pins', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Placeholder A',
+              slug: 'placeholder-a',
+              storefront_open: true,
+              location_id: 1,
+              location_name: 'Main Branch',
+              address_line: 'Iloilo City',
+              latitude: 10.699817,
+              longitude: 122.559893,
+              catalog_count: 2
+            },
+            {
+              tenant_id: 'tenant-2',
+              tenant_name: 'Placeholder B',
+              slug: 'placeholder-b',
+              storefront_open: true,
+              location_id: 1,
+              location_name: 'Main Branch',
+              address_line: 'Iloilo City',
+              latitude: 10.699817,
+              longitude: 122.559893,
+              catalog_count: 1
+            },
+            {
+              tenant_id: 'tenant-3',
+              tenant_name: 'Configured Store',
+              slug: 'configured-store',
+              storefront_open: true,
+              location_id: 7,
+              location_name: 'Downtown',
+              address_line: 'Downtown Road',
+              latitude: 10.7001938,
+              longitude: 122.5623094,
+              catalog_count: 1
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 3, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({ primary_location_id: null, locations: [] });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/Placeholder A/i)).toBeTruthy());
+
+    const markerAtProvisionedDefault = maplibregl.Marker.mock.results.some((result) => (
+      result?.value?.setLngLat?.mock?.calls?.some(([coordinate]) => (
+        Array.isArray(coordinate)
+        && Number(coordinate[0]).toFixed(6) === '122.559893'
+        && Number(coordinate[1]).toFixed(6) === '10.699817'
+      ))
+    ));
+    expect(markerAtProvisionedDefault).toBe(false);
+    const markerAtConfiguredCoordinate = maplibregl.Marker.mock.results.some((result) => (
+      result?.value?.setLngLat?.mock?.calls?.some(([coordinate]) => (
+        Array.isArray(coordinate)
+        && Number(coordinate[0]).toFixed(6) === '122.562309'
+        && Number(coordinate[1]).toFixed(6) === '10.700194'
+      ))
+    ));
+    expect(markerAtConfiguredCoordinate).toBe(true);
+  });
+
+  it('discloses cluster overflow when more than eight storefronts share coordinates', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: Array.from({ length: 10 }, (_, index) => ({
+            tenant_id: `tenant-${index + 1}`,
+            tenant_name: `Store ${index + 1}`,
+            slug: `store-${index + 1}`,
+            storefront_open: true,
+            address_line: 'Shared Address',
+            latitude: 10.72,
+            longitude: 122.56,
+            catalog_count: 1,
+            location_id: index + 1
+          })),
+          pagination: { page: 1, limit: 100, total: 10, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 1,
+          locations: [{ location_id: 1, name: 'Main Branch', address_line: 'Shared Address', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true }]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /10 storefronts at this location/i }).length).toBeGreaterThan(0));
+
+    fireEvent.click(screen.getAllByRole('button', { name: /10 storefronts at this location/i })[0]);
+    await waitFor(() => expect(screen.getByText('Showing all 10 storefronts at this exact pin')).toBeTruthy());
+    expect(screen.getByRole('button', { name: /Select Store 10 at Main Branch/i })).toBeTruthy();
   });
 
   it('falls back to the storefront initial when profile image fails to load', async () => {

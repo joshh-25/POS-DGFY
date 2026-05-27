@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: storefront
-last_reviewed: 2026-05-22
+last_reviewed: 2026-05-26
 applies_to: frontend_storefront_modes
 topic: storefront_mode_implementation_standard
 ---

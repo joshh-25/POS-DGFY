@@ -1,4 +1,3 @@
-import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import logger from '../../config/logger.js';
 import * as emailService from '../../services/emailService.js';
@@ -12,6 +11,7 @@ import * as landlordService from '../../services/landlordService.js';
 import { trackEngagementEvent } from '../../services/engagementService.js';
 import { getTenantRegistrationApprovalMode } from '../../config/tenantRegistrationApproval.js';
 import { tenantAdminRepository } from './repositories/tenantAdminRepository.js';
+import { dgfyAccountRepository } from '../dgfy/index.js';
 import { buildRegisterCompanyRequestUseCase } from './usecases/registerCompanyRequestUseCase.js';
 import { buildListTenantsUseCase } from './usecases/listTenantsUseCase.js';
 import { buildApproveTenantUseCase } from './usecases/approveTenantUseCase.js';
@@ -28,9 +28,9 @@ export const registerCompanyRequestUseCase = buildRegisterCompanyRequestUseCase(
     paypalService,
     trackEngagementEvent,
     addEmailTenantMapping: landlordService.addEmailTenantMapping,
+    dgfyAccountRepository,
     provisionTenant,
     emailService,
-    hashPassword: bcrypt.hash,
     idGenerator: uuidv4,
     getTenantRegistrationApprovalMode: () => getTenantRegistrationApprovalMode(process.env, logger),
     logger

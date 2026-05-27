@@ -1,7 +1,7 @@
 ---
 status: reference
 owner: frontend
-last_reviewed: 2026-05-20
+last_reviewed: 2026-05-26
 applies_to: storefront_customer_account_and_tracking
 ---
 

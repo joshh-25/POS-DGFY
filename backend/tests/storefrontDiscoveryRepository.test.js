@@ -433,6 +433,33 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
     expect(result.rows[0].has_in_stock_match).toBe(false);
   });
 
+  it('matches public search aliases such as aircon against A/C and air conditioning text', async () => {
+    const repository = await loadRepository();
+    findAllMock.mockResolvedValue([
+      makeEntry({
+        tenant_id: 'tenant-ac',
+        tenant_name: 'A/C Innovative Solutions',
+        slug: 'ac-innovative',
+        item_search_snapshot: [
+          {
+            item_id: 10,
+            item_name: 'Air Conditioning Cleaning',
+            text: 'A/C cleaning cooling and air conditioning',
+            matching_location_ids: [11],
+            in_stock_location_ids: [11]
+          }
+        ]
+      })
+    ]);
+
+    const result = await repository.listDiscovery({ search: 'aircon', stock_filter: 'include_out_of_stock' });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].tenant_id).toBe('tenant-ac');
+    expect(result.rows[0].match_reasons).toEqual(expect.arrayContaining(['store', 'item']));
+    expect(result.rows[0].matching_item_sample).toEqual(['Air Conditioning Cleaning']);
+  });
+
   it('supports result_mode=item_only and result_mode=store_only', async () => {
     const repository = await loadRepository();
     findAllMock.mockResolvedValue([

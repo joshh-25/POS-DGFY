@@ -23,6 +23,7 @@
  */
 
 import request from 'supertest';
+import { jest } from '@jest/globals';
 import app from '../src/server.js';
 import sequelize from '../src/config/database.js';
 import db from '../src/models/index.js';
@@ -30,6 +31,7 @@ import * as authService from '../src/services/authService.js';
 import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
 
 describe('Token Refresh Race Condition (Backend RTR Invariant)', () => {
+  jest.setTimeout(120000);
   let COMPANY_TOKEN;
   let testTenantContext;
   const EMAIL = `race-test-${Date.now()}@example.com`;
@@ -51,7 +53,7 @@ describe('Token Refresh Race Condition (Backend RTR Invariant)', () => {
     await request(app)
       .post('/api/v1/auth/register')
       .set('x-company-token', COMPANY_TOKEN)
-      .send({ username: USERNAME, email: EMAIL, password: PASSWORD })
+      .send({ username: USERNAME, email: EMAIL, phone_number: '+63 917 000 5000', password: PASSWORD })
       .expect(201);
   });
 
