@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-05-24
+last_reviewed: 2026-05-28
 applies_to: dgfy_customer_account, storefront_account, customer_tracking
 topic: dgfy_customer_account
 ---
@@ -16,6 +16,8 @@ The public DGFY surface has two account-related entry points:
 1. **Log in / Sign up** opens the front-facing DGFY customer account experience.
 2. **Register Your Business** routes to company registration and must not be used as the general customer login path.
 
+Tenant storefront headers expose **Log in / Sign up** directly so customers can authenticate or create an account without waiting until checkout.
+
 DGFY accounts are landlord-scoped. Tenant-local `store_customers` remain tenant-isolated compatibility rows and can be lazily linked to a DGFY account with `dgfy_account_id`.
 
 ## Guest Users
@@ -25,9 +27,10 @@ Guest users can:
 - Browse discovery, tenant storefronts, catalogs, services, and mode-specific storefront views.
 - Quote and checkout when Customer Access Mode allows transactions.
 - Receive a tracking PIN or public booking reference.
+- Complete checkout or booking as a guest when the storefront policy allows it.
 - Track a known reference.
 - Request tracking recovery with an email or phone lookup. Production responses are always generic and do not expose whether a match or delivery channel exists.
-- Create or sign in to a DGFY account from the customer account surface.
+- Create or sign in to a DGFY account from the customer account surface. Registration collects Last Name, First Name, Optional Middle Name, email, contact number, password, and confirm password, with password visibility toggles.
 
 ## Signed-In DGFY Users
 
@@ -44,6 +47,18 @@ Signed-in DGFY users can:
 - Manage global saved addresses, including create, update, delete, and set default.
 - View read-only loyalty balance and recent transactions. The balance is calculated from all DGFY loyalty transactions, not only the visible recent row limit.
 - See company memberships and invitations through the existing DGFY account contract.
+- Launch **Register Your Business** from the DGFY surface. Storefront-originated business registration routes to `/register-company?source=dgfy&auth=login#dgfy-profile`, shows DGFY login first, then focuses the authenticated personal profile/company-creation area.
+
+## Checkout And Booking Account Actions
+
+Storefront order checkout and Services booking responses return `account_action` so the UI can separate customers with accounts from guests:
+
+- `linked_authenticated`: the transaction is linked to the signed-in DGFY account.
+- `offer_signup`: the guest email does not currently match a DGFY account, so the customer can create one to save future activity.
+- `existing_account_download_only`: the guest email already belongs to a DGFY account, so the customer should sign in instead of creating a duplicate account.
+- `download_only_guest_no_email`: no usable email/account signal exists; the customer receives only the downloadable/tracking confirmation.
+
+Copy must be order- or booking-specific. Guest service bookings should not be described as generic checkout orders.
 
 ## API Surface
 
@@ -73,6 +88,7 @@ Global customer endpoints:
 - Public display and moderation management for product reviews remain separate merchant/admin UX work.
 - Tracking recovery currently sends email when an order email is available; phone OTP delivery remains future work. Phone lookup accepts common Philippine formats for matching only.
 - The dashboard's request-time recent backfill remains intentionally bounded for latency safety. Full historical completeness for POS orders, Services bookings, and Hospitality reservations is handled by the explicit operator backfill command, not by broad request-time scans.
+- Full phone OTP verification, loyalty redemption, and DGFY email-change flows remain separate governed work.
 
 ## Validation
 

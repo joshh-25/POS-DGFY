@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: frontend
-last_reviewed: 2026-05-21
+last_reviewed: 2026-05-28
 applies_to: storefront_all_modes
 topic: storefront_current_standing
 ---
@@ -21,6 +21,8 @@ This is a frontend capability/status reference, not a new architecture decision.
 - `docs/architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md`
 - `docs/architecture/adr/0016-services-mode-independent-booking-and-ticketing.md`
 - `docs/architecture/adr/0019-food-and-beverage-mode-full-service-restaurant.md`
+- `docs/architecture/adr/0022-global-dgfy-account-business-registration.md`
+- `docs/architecture/adr/0023-front-facing-dgfy-customer-account.md`
 
 ## Classification
 - Change class for this documentation update: `within-existing-boundary`
@@ -38,6 +40,10 @@ This is a frontend capability/status reference, not a new architecture decision.
 - Pin clicks/taps synchronously select the pin, open or keep the Discover Nearby panel visible, and show the marker preview. Store navigation remains an explicit card/list action.
 - Empty-state guidance for tenants without storefront-ready sellable items is active.
 - Storefront follow/share controls are available where tenant flags enable them.
+- Storefront headers expose `Log in / Sign up` as an immediately visible DGFY account action, separate from checkout-only account prompts.
+- Storefront DGFY account registration uses the same backend-owned legal-terms endpoint and fail-closed acknowledgement contract as `/register-company`.
+- `Register Your Business` routes to SKUpervisor company registration with the DGFY login/profile handoff (`source=dgfy`, `auth=login`, `#dgfy-profile`).
+- Checkout and Services booking confirmations render backend `account_action` signals so signed-in DGFY customers, signup-eligible guests, guests whose email already has an account, and download-only guests receive distinct guidance.
 - The merged storefront pilot keeps mode-specific view-model logic in the storefront app while preserving existing backend/source-of-truth contracts.
 
 ## Mode Standing

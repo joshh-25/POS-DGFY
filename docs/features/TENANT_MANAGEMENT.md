@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-05-26
+last_reviewed: 2026-05-28
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -17,19 +17,21 @@ The SKU Inventory Manager uses a **Multi-Tenant Architecture** with **Database I
 
 ### 1. Registration (Current Policy)
 - **DGFY Account Requirement**: Public company registration requires a signed-in global DGFY account. The founder's email, phone, username seed, and password hash are derived server-side from that account.
+- **DGFY Account Registration Order**: Account creation collects Last Name, First Name, Optional Middle Name, email, contact number, password, and confirm password in that order. Password and confirmation fields expose visibility toggles. The optional middle name is persisted as `dgfy_accounts.middle_name` and appears in DGFY profile/customer account surfaces when present.
 - **Premium-Capable Account**: Every newly registered tenant persists `plan=premium` by default so mode-specific premium-gated surfaces are available after activation. The registration UI no longer displays a premium-capable widget.
 - **Default Auto-Accept Mode**: `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` is the default. Public company registration immediately creates the landlord tenant row, provisions the isolated tenant database, activates the tenant, and lets the registration UI route the founder through the normal tenant login API with DGFY email and returned company token.
 - **Manual Approval Rollback Mode**: `TENANT_REGISTRATION_APPROVAL_MODE=manual` keeps the traditional pending flow available when operators intentionally need platform-admin review before provisioning.
 - **Provider Subscription Onboarding**: Disabled for this phase. Requests that include provider subscription verification are rejected with `503` and `PAYMENTS_DISABLED`.
 - **Founder Contact Requirement**: Public company registration uses the signed-in DGFY account phone number. The landlord tenant record stores it as `admin_phone`, and provisioning copies it into the founder/admin user's `phone_number`.
 - **Founder Email Verification**: Public company registration requires a single-use email OTP for the DGFY account email before any tenant request is created. The registration page includes Send Code/Resend Code controls, requests the code through `POST /api/v1/auth/email-otp/request` with `purpose=company_registration`, and submits it as `email_otp_code`.
-- **Required Terms Acknowledgement**: DGFY account registration and public company registration both require current ToS/T&C acknowledgement loaded from `GET /api/v1/dgfy/legal-terms/current`. The backend rejects missing, false, or stale acknowledgement with `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`, fails closed when legal persistence is unavailable, and persists successful acknowledgement evidence in landlord `dgfy_legal_acknowledgements`.
+- **Required Terms Acknowledgement**: DGFY account registration and public company registration both require current ToS/T&C acknowledgement loaded from `GET /api/v1/dgfy/legal-terms/current`. The account checkbox remains disabled until `terms_version`, `privacy_version`, and `marketplace_terms_version` are present; the company checkbox remains disabled until `company_terms_version` and `marketplace_terms_version` are present. The backend rejects missing, false, or stale acknowledgement with `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`, fails closed when legal persistence is unavailable, and persists successful acknowledgement evidence in landlord `dgfy_legal_acknowledgements`.
 - **Legal Evidence Atomicity**: DGFY account creation, invitation membership mirroring, and account acknowledgement evidence are written in one landlord transaction. Company registration checks legal-persistence availability before OTP consumption; after OTP verification, the landlord tenant row and company acknowledgement evidence are written in one landlord transaction before tenant provisioning.
 - **Marketplace Provider Framing**: Registration copy must identify DGFY as an e-marketplace/platform service provider. The company remains seller of record, owns the product/service listing, sets prices, fulfills orders, handles customer obligations, and uses a registered business payout account. DGFY facilitates the transaction, uses a licensed payment partner, deducts disclosed fees, and remits the seller's net settlement; the product must not describe this as DGFY wallet points, cash-out credit, or DGFY reselling the merchant's goods.
 - **Compliance Default**: Public company registration no longer asks for compliance mode. New companies start `non_compliant_active`; master admins can start compliance activation later in Settings > Compliance.
 - **Password Requirement**: Account registration, invitation acceptance, and password changes require only a minimum password length of 8 characters. The UI offers a readable 16-character generator, but generated passwords are optional.
 - **Phone Format**: Company admin phone numbers and user phone numbers are trimmed and must be 7-40 characters using digits, spaces, `+`, `-`, parentheses, and periods.
 - **Provisioning Trigger**: Database provisioning runs during public registration in default `auto_standard` mode, or after explicit admin approval when `manual` mode is configured.
+- **Storefront Handoff**: `Register Your Business` launched from DGFY/storefront discovery must send the user to `/register-company?source=dgfy&auth=login#dgfy-profile`. The login panel is shown first, and the authenticated DGFY profile/company-creation area is focused before tenant registration can proceed.
 - **Email Mapping**: Manual pending registrations create the founder email-to-tenant mapping at registration time so lookup can show pending status. Auto-provisioned registrations leave mapping creation to the provisioning path so the mapping is written only after tenant activation succeeds.
 - **Abuse Control**: Public company registration is IP rate-limited (`RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS=5` per `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS=3600000` by default in production). Keep this strict because default accepted registrations create tenant databases.
 
@@ -264,7 +266,7 @@ The product handles SMTP/API unavailable or failed delivery as a first-class sta
 Current verified status as of `2026-05-17`:
 - Local Gmail SMTP is configured, but the saved credential fails with `EAUTH 535 BadCredentials`. Use a valid Gmail App Password for local/testing SMTP.
 - Production is deployed at commit `064766a3c465ca398f2abd821eb8465b72e13e7c`; the landlord `email_otps` migration is applied.
-- Production Brevo SMTP is verified with the Brevo SMTP login (`a1b722001@smtp-brevo.com`), active SMTP key, and `EMAIL_FROM=skupervisor@gmail.com`. `npm run verify:email` passes, and `npm run verify:email -- --send-to skupervisor@gmail.com` sent a real message through provider `smtp`.
+- Production Brevo SMTP is verified with the Brevo SMTP login (`a1b722001@smtp-brevo.com`), active SMTP key, and `EMAIL_FROM=skupervisor@gmail.com`. Generic lifecycle emails keep the configured sender display name (`EMAIL_FROM_NAME`, default `SKUpervisor`), while OTP emails sent through `sendEmailOtpCode()` explicitly use the sender display name `DGFY` so email verification appears as DGFY without changing the authenticated SMTP mailbox. `npm run verify:email` passes, and `npm run verify:email -- --send-to skupervisor@gmail.com` sent a real message through provider `smtp`.
 - Brevo HTTPS API delivery is supported through `BREVO_API_KEY`, `BREVO_API_URL`, `EMAIL_DELIVERY_PROVIDER`, and `EMAIL_DELIVERY_FALLBACK_TO_BREVO_API`; production has the non-secret fallback keys present, but `BREVO_API_KEY` remains empty because SMTP is the verified active provider.
 - Before enabling enforced OTP flows in any new environment, run `npm run verify:email` and then `npm run verify:email -- --send-to operator@example.com` from that environment.
 

@@ -201,6 +201,11 @@ DGFY front-facing customer accounts are landlord-scoped and separate from tenant
 Primary migration:
 
 1. `20260522000002-add-dgfy-front-facing-customer-account.cjs`
+2. `20260528000001-add-middle-name-to-dgfy-accounts.cjs`
+
+Landlord account field update:
+
+- `dgfy_accounts.middle_name` is nullable `STRING(80)` and stores the optional DGFY account middle name collected between first and last name in account/profile flows.
 
 Landlord tables:
 
