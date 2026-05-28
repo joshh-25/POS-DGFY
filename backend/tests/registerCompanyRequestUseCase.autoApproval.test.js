@@ -1,14 +1,5 @@
 import { jest } from '@jest/globals';
 
-const mockVerifyEmailOtp = jest.fn().mockResolvedValue({ valid: true });
-
-jest.unstable_mockModule('../src/services/emailOtpService.js', () => ({
-    EMAIL_OTP_PURPOSES: {
-        COMPANY_REGISTRATION: 'company_registration'
-    },
-    verifyEmailOtp: mockVerifyEmailOtp
-}));
-
 const { buildRegisterCompanyRequestUseCase } = await import('../src/modules/tenants/usecases/registerCompanyRequestUseCase.js');
 const {
     normalizeTenantRegistrationApprovalMode,
@@ -18,7 +9,6 @@ const { DGFY_LEGAL_TERM_VERSIONS } = await import('../src/modules/shared/utils/d
 
 const validBody = {
     name: 'Auto Accept Foods',
-    email_otp_code: '123456',
     workflowMode: 'food_manufacturing',
     accepted_company_terms: true,
     company_terms_version: DGFY_LEGAL_TERM_VERSIONS.companyTerms,
@@ -84,10 +74,6 @@ const createUseCase = (overrides = {}) => {
 };
 
 describe('registerCompanyRequestUseCase approval mode', () => {
-    beforeEach(() => {
-        mockVerifyEmailOtp.mockClear();
-    });
-
     it('defaults to auto-standard mode when approval mode is omitted', () => {
         expect(normalizeTenantRegistrationApprovalMode()).toBe(
             TENANT_REGISTRATION_APPROVAL_MODES.AUTO_STANDARD
@@ -174,7 +160,7 @@ describe('registerCompanyRequestUseCase approval mode', () => {
         expect(deps.provisionTenant).not.toHaveBeenCalled();
     });
 
-    it('rejects missing company terms acknowledgement before consuming OTP', async () => {
+    it('rejects missing company terms acknowledgement before creating a tenant', async () => {
         const { deps, useCase } = createUseCase();
 
         const result = await useCase({
@@ -192,12 +178,11 @@ describe('registerCompanyRequestUseCase approval mode', () => {
             error_code: 'TERMS_ACKNOWLEDGEMENT_REQUIRED',
             field: 'accepted_company_terms'
         }));
-        expect(mockVerifyEmailOtp).not.toHaveBeenCalled();
         expect(deps.tenantAdminRepository.createTenant).not.toHaveBeenCalled();
         expect(deps.dgfyAccountRepository.recordLegalAcknowledgement).not.toHaveBeenCalled();
     });
 
-    it('fails closed before consuming OTP when legal persistence is unavailable', async () => {
+    it('fails closed before tenant creation when legal persistence is unavailable', async () => {
         const { deps, useCase } = createUseCase({
             dgfyAccountRepository: {
                 upsertFounderMembership: jest.fn().mockResolvedValue({ id: 1 })
@@ -215,7 +200,6 @@ describe('registerCompanyRequestUseCase approval mode', () => {
         expect(result.error.details).toEqual(expect.objectContaining({
             error_code: 'LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_UNAVAILABLE'
         }));
-        expect(mockVerifyEmailOtp).not.toHaveBeenCalled();
         expect(deps.tenantAdminRepository.createTenant).not.toHaveBeenCalled();
     });
 

@@ -210,10 +210,8 @@ export default function RegisterCompany() {
     const [companyForm, setCompanyForm] = useState({
         companyName: '',
         workflowMode: 'food_manufacturing',
-        emailOtpCode: '',
         acceptedCompanyTerms: false
     });
-    const [otpSentTo, setOtpSentTo] = useState('');
     const [dgfyVerificationCode, setDgfyVerificationCode] = useState('');
     const [dgfyVerificationSentTo, setDgfyVerificationSentTo] = useState('');
     const [success, setSuccess] = useState(null);
@@ -376,8 +374,6 @@ export default function RegisterCompany() {
                 marketplace_terms_version: accountLegalSnapshot.marketplace_terms_version
             });
             setDgfySessionState(session);
-            setCompanyForm((current) => ({ ...current, emailOtpCode: '' }));
-            setOtpSentTo('');
             setDgfyVerificationCode('');
             setDgfyVerificationSentTo('');
         } catch (err) {
@@ -394,8 +390,6 @@ export default function RegisterCompany() {
         try {
             const session = await loginDgfyAccount(loginForm);
             setDgfySessionState(session);
-            setCompanyForm((current) => ({ ...current, emailOtpCode: '' }));
-            setOtpSentTo('');
             setDgfyVerificationCode('');
             setDgfyVerificationSentTo('');
         } catch (err) {
@@ -502,29 +496,6 @@ export default function RegisterCompany() {
         }
     };
 
-    const handleRequestEmailOtp = async () => {
-        setError('');
-        const email = String(dgfyAccount?.email || '').trim();
-        if (!emailPattern.test(email)) {
-            setError('Your DGFY account must have a valid email before requesting a code.');
-            return;
-        }
-
-        setIsSendingOtp(true);
-        try {
-            await api.post('/auth/email-otp/request', {
-                purpose: 'company_registration',
-                email
-            });
-            setOtpSentTo(email);
-            setCompanyForm((current) => ({ ...current, emailOtpCode: '' }));
-        } catch (err) {
-            setError(err.response?.data?.message || 'Could not send verification code. Please try again.');
-        } finally {
-            setIsSendingOtp(false);
-        }
-    };
-
     const handleRequestDgfyVerification = async () => {
         setError('');
         setIsSendingOtp(true);
@@ -572,10 +543,6 @@ export default function RegisterCompany() {
             setError('Verify your DGFY email before registering a business.');
             return;
         }
-        if (!/^\d{6}$/.test(String(companyForm.emailOtpCode || '').trim())) {
-            setError('Enter the 6-digit verification code sent to your DGFY email.');
-            return;
-        }
         if (!companyForm.acceptedCompanyTerms) {
             setError('Accept the DGFY company terms before registering a company.');
             return;
@@ -590,7 +557,6 @@ export default function RegisterCompany() {
             const response = await api.post('/admin/tenants/register', {
                 name: companyForm.companyName,
                 workflowMode: companyForm.workflowMode,
-                email_otp_code: String(companyForm.emailOtpCode || '').trim(),
                 accepted_company_terms: true,
                 company_terms_version: companyLegalSnapshot.company_terms_version,
                 marketplace_terms_version: companyLegalSnapshot.marketplace_terms_version
@@ -606,7 +572,7 @@ export default function RegisterCompany() {
                 message: response.data.message,
                 data: response.data.data
             });
-            setCompanyForm((current) => ({ ...current, emailOtpCode: '', acceptedCompanyTerms: false }));
+            setCompanyForm((current) => ({ ...current, acceptedCompanyTerms: false }));
         } catch (err) {
             setError(err.response?.data?.message || err.message || 'Registration failed. Please try again.');
         } finally {
@@ -620,7 +586,6 @@ export default function RegisterCompany() {
         setDgfyAccount(null);
         setDgfyMemberships([]);
         setSuccess(null);
-        setOtpSentTo('');
         setDgfyVerificationCode('');
         setDgfyVerificationSentTo('');
     };
@@ -962,28 +927,9 @@ export default function RegisterCompany() {
                                 </div>
 
                                 <div className="rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">
-                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                                        <div className="flex-1">
-                                            <Label htmlFor="emailOtpCode">Email Verification Code</Label>
-                                            <Input
-                                                id="emailOtpCode"
-                                                inputMode="numeric"
-                                                pattern="[0-9]{6}"
-                                                maxLength={6}
-                                                placeholder="123456"
-                                                value={companyForm.emailOtpCode}
-                                                onChange={(e) => setCompanyForm({ ...companyForm, emailOtpCode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
-                                                required
-                                                disabled={isLoading}
-                                                className="mt-1"
-                                            />
-                                        </div>
-                                        <Button type="button" variant="outline" onClick={handleRequestEmailOtp} disabled={isLoading || isSendingOtp || !isDgfyEmailVerified}>
-                                            {isSendingOtp ? 'Sending...' : otpSentTo ? 'Resend Code' : 'Send Code'}
-                                        </Button>
-                                    </div>
-                                    <p className="mt-2 text-xs text-slate-500">
-                                        {otpSentTo ? `Code sent to ${otpSentTo}.` : 'Send a fresh code to your DGFY email before creating the company.'}
+                                    <p className="text-sm font-semibold text-[#132033]">Email ownership verified</p>
+                                    <p className="mt-2 text-xs text-slate-600">
+                                        Company registration will use your verified DGFY email, {dgfyAccount.email}. No additional email code is required unless your DGFY email changes.
                                     </p>
                                 </div>
                                 <LegalAcknowledgementBox
