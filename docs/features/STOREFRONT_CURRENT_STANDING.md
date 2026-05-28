@@ -16,7 +16,7 @@ This is a frontend capability/status reference, not a new architecture decision.
 ## Authoritative Inputs Used
 - `docs/START_HERE.md` (authoritative, last_reviewed: 2026-03-06)
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md` (authoritative, last_reviewed: 2026-03-06)
-- `docs/architecture/ARCHITECTURE_GOVERNANCE.md` (authoritative, last_reviewed: 2026-03-06)
+- `docs/architecture/ARCHITECTURE_GOVERNANCE.md` (authoritative, last_reviewed: 2026-05-21)
 - `docs/architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md`
 - `docs/architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md`
 - `docs/architecture/adr/0016-services-mode-independent-booking-and-ticketing.md`
@@ -44,6 +44,7 @@ This is a frontend capability/status reference, not a new architecture decision.
 - Storefront DGFY account registration uses the same backend-owned legal-terms endpoint and fail-closed acknowledgement contract as `/register-company`.
 - `Register Your Business` routes to SKUpervisor company registration with the DGFY login/profile handoff (`source=dgfy`, `auth=login`, `#dgfy-profile`).
 - Checkout and Services booking confirmations render backend `account_action` signals so signed-in DGFY customers, signup-eligible guests, guests whose email already has an account, and download-only guests receive distinct guidance.
+- Discovery map initialization is defensive. If MapLibre/WebGL cannot initialize in the browser, the Storefront discovery page remains usable, renders the `Log in / Sign up` account action, and shows a list fallback instead of blanking the page.
 - The merged storefront pilot keeps mode-specific view-model logic in the storefront app while preserving existing backend/source-of-truth contracts.
 
 ## Mode Standing
@@ -76,20 +77,22 @@ This is a frontend capability/status reference, not a new architecture decision.
 - Simple storefront contract coverage is active.
 
 ## Storefront Regression Standing (Latest Run)
-Run date: `2026-05-21`
+Run date: `2026-05-28`
 
 Targeted Storefront discovery commands:
-- `npm --prefix frontend test -- --run apps/store/src/__tests__/discoveryPresentation.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx`
-- `npm --prefix backend test -- --runInBand --runTestsByPath tests/storefrontDiscoveryRepository.test.js tests/storefrontDiscoveryIndexService.catalogVisibility.test.js`
+- `npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx apps/store/src/__tests__/discoveryFlow.integration.test.jsx --testTimeout 15000`
+- `npm run test:backend -- backend/tests/emailService.deliveryProvider.test.js backend/tests/servicesMode.usecases.test.js backend/tests/dgfyAuthUseCases.test.js backend/tests/storeFnbModifiers.usecases.test.js`
+- `npm --prefix frontend run build`
 - `npm run build:store`
+- `npm --prefix frontend run build:skupervisor`
 
 Targeted matrix result:
-- Storefront discovery map/search flow: `PASS` (`24/24` targeted frontend tests)
-- Storefront discovery repository and catalog visibility indexing: `PASS` (`19/19` targeted backend tests)
+- DGFY registration/storefront account frontend tests: `PASS` (`33/33` targeted tests)
+- DGFY/account/backend regression tests: `PASS` (`59/59` targeted tests)
+- Root frontend build: `PASS`
 - Storefront production build: `PASS`
-- Discovery-index dry-run reconciliation: `PASS`, `status=healthy`, `upserted=4`, `failed=0`
-- Discovery-index write reconciliation: `PASS`, `status=healthy`, `upserted=4`, `failed=0`
-- Local browser QA: `PASS` after installing the Playwright Chromium runtime into the user cache. Local production-like backend headers were proxied in Playwright because the active local backend env enforces HTTPS/CORS. Search `aircon` returned 2 stores, no false no-match state appeared, 2 map markers rendered, marker preview was visible, and the fixed search shell remained visible after scrolling (`top=64`).
+- SKUpervisor production build: `PASS` with the existing large-chunk warning only.
+- Local rendered QA: `PASS` on desktop and mobile for `/register-company?source=dgfy&auth=login#dgfy-profile`, and on Storefront production preview for visible `Log in / Sign up`, `Register Your Business`, account drawer registration terms, and MapLibre/WebGL fallback. The Browser plugin was unavailable because the Node REPL kernel exited unexpectedly, so the evidence was collected through a standalone Chrome DevTools Protocol script against local Vite/preview servers.
 
 ## Notes
 - This file intentionally tracks the frontend standing and test evidence snapshot only.
@@ -103,3 +106,8 @@ Targeted matrix result:
 - Pin click opens/keeps the Discover Nearby results panel and marker preview synchronously. Store navigation is an explicit card/list action.
 - Duplicate-coordinate cluster previews now show all same-coordinate storefronts in a bounded scrollable card rather than hiding overflow entries.
 - Storefront discovery index reconciliation is part of the guarded production deploy path by default, with a dry-run CLI for preflight impact review.
+
+## Discovery Map Availability Standing (2026-05-28)
+- `StoresMap` catches MapLibre initialization failures, logs a warning, and renders a store-list fallback instead of allowing a WebGL failure to crash the discovery route.
+- `DeliveryPinMap` catches MapLibre initialization failures and renders a delivery-address fallback message so checkout/delivery flows do not blank when the map canvas is unavailable.
+- The account header remains visible when map initialization fails, so DGFY login/signup and business-registration actions stay reachable before checkout.
