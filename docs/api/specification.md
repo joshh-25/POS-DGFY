@@ -152,7 +152,7 @@ Passwords only require a minimum length of 8 characters. The registration UI can
 Request a one-time email verification code for public account-entry flows. Email delivery must succeed; this endpoint fails closed when SMTP/Brevo API delivery is unavailable or provider authentication fails. Requests are OTP-rate-limited with `RATE_LIMIT_EMAIL_OTP_WINDOW_MS` and `RATE_LIMIT_EMAIL_OTP_MAX_REQUESTS`.
 
 Supported purposes:
-- `company_registration`: body requires `email`.
+- `company_registration`: body requires `email`; retained for compatibility, but current DGFY company registration uses the authenticated account's `dgfy_account_verification` state and does not ask for this second OTP when the same email is already verified.
 - `tenant_user_registration`: body requires `email` and a tenant context (`x-company-token`).
 - `invitation_acceptance`: body requires `invitation_token`; the backend resolves tenant context and invited email from the invitation when `x-company-token` is absent.
 - `dgfy_account_verification`: requested through the authenticated DGFY account endpoint to verify the global DGFY email.
@@ -163,8 +163,8 @@ Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 
 **Request**
 ```json
 {
-  "purpose": "company_registration",
-  "email": "admin@acme.com"
+  "purpose": "tenant_user_registration",
+  "email": "staff@acme.com"
 }
 ```
 
@@ -182,8 +182,8 @@ Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 
   "success": true,
   "data": {
     "otp_id": "uuid",
-    "purpose": "company_registration",
-    "email": "admin@acme.com",
+    "purpose": "tenant_user_registration",
+    "email": "staff@acme.com",
     "expires_at": "2026-05-17T04:20:00.000Z",
     "delivery_status": "sent"
   },
@@ -3056,6 +3056,7 @@ Services Mode storefront routes are public or Store JWT-authenticated tenant rou
 
 **Booking/Ticket Contract**
 - Public service booking and waitlist mutations fail closed unless `access_capabilities.booking=true` while enforcement is active.
+- Public service booking, booking-hold, and batch-booking mutations also fail closed when the requested `start_at`/`scheduled_for` is outside a valid weekly `storefront_hours` schedule, returning `422` with `reason_code=OUTSIDE_STOREFRONT_BUSINESS_HOURS` before service capacity is reserved.
 - Ticket means booking/order confirmation; receipt means payment proof.
 - Public booking lookup redacts customer contact details.
 - Authenticated customers are auto-linked to new bookings and receive image-download choice only.
@@ -3222,6 +3223,7 @@ Route mapping note:
 - Validation or stock-constraint breaches return `422` with machine-readable error details.
 - Checkout uses the same aggregate stock-bearing `item_id` quantity validation as quote before persisting lines. Separate submitted lines remain separate receipt/order lines, but their combined stock demand must fit available stock unless the selected location explicitly allows out-of-stock sales.
 - When effective Customer Access Mode is not `transaction`, response is `403` with `error_code=CUSTOMER_ACCESS_MODE_BLOCKED` while enforcement is active.
+- When `storefront_hours` contains a valid weekly business-hours schedule, immediate checkout uses the current tenant/server time and scheduled checkout uses `scheduled_for`; product quotes and orders outside configured hours return `422` with `reason_code=OUTSIDE_STOREFRONT_BUSINESS_HOURS`.
 - Server errors (`500`) are not the expected contract for normal checkout validation failures.
 
 **Persistence Contract**
@@ -4461,7 +4463,6 @@ Public company registration derives founder email, phone, username seed, and pas
 {
   "name": "Example Foods",
   "workflowMode": "food_manufacturing",
-  "email_otp_code": "123456",
   "accepted_company_terms": true,
   "company_terms_version": "dgfy-company-terms-2026-05-26",
   "marketplace_terms_version": "dgfy-marketplace-provider-2026-05-26"
@@ -4484,8 +4485,8 @@ Submit a public company registration request.
 - Abuse control: public company registration is IP rate-limited by `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS` (production default: 5 requests per hour). Keep this strict because each accepted registration provisions an isolated tenant database by default.
 - Auto-login fallback: if the follow-up login call fails after an active response, the frontend keeps the company created state and routes the founder to manual sign-in with email/company token prefilled.
 - Founder contact and credentials: public company registration no longer accepts `adminEmail`, `adminPhone`, or `adminPassword`; the server derives them from the authenticated DGFY account.
-- Email ownership: public company registration requires `email_otp_code` for the DGFY account email. The registration UI requests the code through `POST /auth/email-otp/request` with `purpose=company_registration`, then submits the six-digit code with the final registration payload.
-- Legal acknowledgement: public company registration requires the current company terms and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current` before OTP consumption or tenant creation. The backend fails closed before OTP consumption if legal acknowledgement persistence is unavailable. After OTP verification, the landlord tenant row, pending-founder membership when applicable, and acknowledgement evidence are written in one landlord transaction. The acknowledgement states that DGFY is an e-marketplace/platform service provider, the seller owns the product, sets the price, fulfills the order, remains seller of record, payment is processed by a licensed payment partner, and DGFY deducts disclosed fees before remitting the seller's net settlement. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
+- Email ownership: public company registration requires the authenticated DGFY account email to already be verified. If the user registers a company with that same verified DGFY email, clients do not send `email_otp_code` and the backend does not consume a second same-address company OTP. If the DGFY account email changes, it must be verified again before registration can proceed.
+- Legal acknowledgement: public company registration requires the current company terms and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current` before tenant creation. The backend fails closed before tenant creation if legal acknowledgement persistence is unavailable. After confirming the authenticated DGFY email is verified, the landlord tenant row, pending-founder membership when applicable, and acknowledgement evidence are written in one landlord transaction. The acknowledgement states that DGFY is an e-marketplace/platform service provider, the seller owns the product, sets the price, fulfills the order, remains seller of record, payment is processed by a licensed payment partner, and DGFY deducts disclosed fees before remitting the seller's net settlement. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
 
 **Response (201, explicit manual mode)**
 ```json
@@ -4926,7 +4927,7 @@ OTP email sends use `sendEmailOtpCode()` and explicitly set the sender display n
 | User Invitation | Creating user invitation via AI or admin panel | `getInvitationTemplate()` |
 | Company Approved | Admin approves pending company registration | `getCompanyApprovedTemplate()` |
 | Company Rejected | Admin rejects pending company registration | `getCompanyRejectedTemplate()` |
-| Email OTP | Company registration, tenant-user registration, invite acceptance, and email change verification | `sendEmailOtpCode()` |
+| Email OTP | DGFY account verification, tenant-user registration, invite acceptance, email change verification, and DGFY password reset | `sendEmailOtpCode()` |
 
 ### Gmail SMTP Setup
 1. Enable 2-Factor Authentication on your Google account
@@ -4941,6 +4942,7 @@ OTP email sends use `sendEmailOtpCode()` and explicitly set the sender display n
 - Non-master users do not own onboarding lifecycle and may receive `onboarding: null`.
 - The active wizard has three steps: `brand_assets`, `primary_location`, and `bulk_items`.
 - The `primary_location` wizard step uses the shared IMS MapLibre pin picker. Click, drag, or browser geolocation updates the same latitude/longitude fields submitted to the tenant-location API.
+- The `primary_location` step also accepts `payload.business_hours` and persists it to the shared `storefront_hours` setting. The schedule uses `mode="weekly"`, `timezone` such as `Asia/Manila`, and `weekly.{sun..sat}` entries with `enabled`, `open`, and `close` in `HH:mm` format.
 - Stored legacy `classification_snapshot` data may remain in older `tenant_onboarding_progress` records, but the current wizard does not create or require business classification output.
 
 ### GET /onboarding/status

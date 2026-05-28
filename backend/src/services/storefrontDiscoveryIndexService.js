@@ -13,6 +13,7 @@ import {
 } from '../modules/shared/utils/catalogVisibilityPolicy.js';
 import { expandPublicSearchText } from '../modules/shared/utils/publicSearchAliasPolicy.js';
 import { normalizeStorefrontAssetPath, normalizeStorefrontAssetUrl } from '../modules/shared/utils/storefrontAssetPolicy.js';
+import { formatStorefrontBusinessHoursDisplay } from '../modules/shared/utils/storefrontBusinessHours.js';
 import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '../modules/shared/constants/workflowModes.js';
 import {
     CUSTOMER_ACCESS_SETTING_KEYS,
@@ -654,7 +655,7 @@ const buildTenantSnapshot = async (tenant) => {
         storefront_about: toTrimmedString(settings.storefront_about, 1000),
         storefront_phone: toTrimmedString(settings.storefront_phone, 50),
         storefront_email: toTrimmedString(settings.storefront_email, 120),
-        storefront_hours: toTrimmedString(settings.storefront_hours, 120),
+        storefront_hours: formatStorefrontBusinessHoursDisplay(settings.storefront_hours),
         storefront_why_choose_us: storefrontWhyChooseUs,
         storefront_social_links: storefrontSocialLinks,
         storefront_review_highlights: storefrontReviewHighlights,

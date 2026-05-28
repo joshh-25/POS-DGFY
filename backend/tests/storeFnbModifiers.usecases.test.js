@@ -86,6 +86,10 @@ const burgerItem = {
 };
 
 describe('storefront F&B modifier checkout contract', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('computes quote totals from database-backed F&B modifier deltas and snapshots selected options', async () => {
     const repository = buildRepository([burgerItem]);
     const useCase = buildStoreCartQuoteUseCase({ storeRepository: repository });
@@ -121,6 +125,46 @@ describe('storefront F&B modifier checkout contract', () => {
         price_delta: 15
       })]
     }));
+  });
+
+  it('blocks product quote outside configured storefront business hours', async () => {
+    const repository = buildRepository([burgerItem], {
+      getSettingsByKeys: jest.fn().mockResolvedValue([
+        ...customerAccessSettings,
+        {
+          setting_key: 'storefront_hours',
+          setting_value: JSON.stringify({
+            mode: 'weekly',
+            timezone: 'Asia/Manila',
+            weekly: {
+              sun: { enabled: false, open: '09:00', close: '18:00' },
+              mon: { enabled: false, open: '09:00', close: '18:00' },
+              tue: { enabled: true, open: '09:00', close: '18:00' },
+              wed: { enabled: true, open: '09:00', close: '18:00' },
+              thu: { enabled: true, open: '09:00', close: '18:00' },
+              fri: { enabled: true, open: '09:00', close: '18:00' },
+              sat: { enabled: true, open: '09:00', close: '18:00' }
+            }
+          })
+        }
+      ])
+    });
+    const useCase = buildStoreCartQuoteUseCase({ storeRepository: repository });
+
+    const result = await useCase({
+      payload: {
+        location_id: 4,
+        order_method: 'pickup',
+        scheduled_for: '2026-06-01T10:00:00+08:00',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.details.reason_code).toBe('OUTSIDE_STOREFRONT_BUSINESS_HOURS');
+    expect(repository.findSellableItemsByIds).not.toHaveBeenCalled();
   });
 
   it('marks guest checkout with a new email as eligible for DGFY account signup', async () => {
@@ -560,6 +604,52 @@ describe('storefront F&B modifier checkout contract', () => {
     expect(result.success).toBe(false);
     expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
     expect(result.error.message).toBe('scheduled_for is outside store business hours');
+    expect(result.error.details).toEqual(expect.objectContaining({
+      reason_code: 'OUTSIDE_STOREFRONT_BUSINESS_HOURS'
+    }));
+  });
+
+  it('rejects immediate checkout outside structured storefront business hours', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-25T20:00:00+08:00'));
+    const structuredHours = {
+      mode: 'weekly',
+      timezone: 'Asia/Manila',
+      weekly: {
+        sun: { enabled: false, open: '09:00', close: '18:00' },
+        mon: { enabled: true, open: '09:00', close: '18:00' },
+        tue: { enabled: true, open: '09:00', close: '18:00' },
+        wed: { enabled: true, open: '09:00', close: '18:00' },
+        thu: { enabled: true, open: '09:00', close: '18:00' },
+        fri: { enabled: true, open: '09:00', close: '18:00' },
+        sat: { enabled: true, open: '09:00', close: '18:00' }
+      },
+      display: 'Mon-Sat 9:00 AM - 6:00 PM'
+    };
+    const repository = buildRepository([burgerItem], {
+      getSettingsByKeys: jest.fn().mockResolvedValue([
+        ...customerAccessSettings,
+        { setting_key: 'storefront_hours', setting_value: JSON.stringify(structuredHours) }
+      ])
+    });
+    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+
+    const result = await useCase({
+      tenantId,
+      payload: {
+        idempotency_key: 'store-hours-immediate-outside',
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.message).toBe('Storefront is outside business hours and not accepting orders');
+    jest.useRealTimers();
   });
 
   it('does not block scheduled checkout when storefront hours are malformed', async () => {

@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import OnboardingSetupModal, { OnboardingReminderBanner } from '../components/OnboardingSetupModal.jsx';
 
@@ -138,6 +138,7 @@ describe('OnboardingSetupModal behavior', () => {
     await user.type(screen.getByLabelText(/Address/i), '123 Main Street');
     await user.type(screen.getByLabelText(/Latitude/i), '14.5995');
     await user.type(screen.getByLabelText(/Longitude/i), '120.9842');
+    fireEvent.change(screen.getAllByDisplayValue('18:00')[1], { target: { value: '20:00' } });
     await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
 
     await waitFor(() => {
@@ -150,7 +151,15 @@ describe('OnboardingSetupModal behavior', () => {
       }));
       expect(mocks.onboardingServiceMock.saveOnboardingStep).toHaveBeenCalledWith({
         stepKey: 'primary_location',
-        payload: expect.objectContaining({ location_id: 5 })
+        payload: expect.objectContaining({
+          location_id: 5,
+          business_hours: expect.objectContaining({
+            mode: 'weekly',
+            weekly: expect.objectContaining({
+              mon: expect.objectContaining({ close: '20:00' })
+            })
+          })
+        })
       });
       expect(screen.getByText(/3\) Starter Items/i)).toBeTruthy();
     });

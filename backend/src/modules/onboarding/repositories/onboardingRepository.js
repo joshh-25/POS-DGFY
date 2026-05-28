@@ -9,6 +9,7 @@ import {
   DEFAULT_WORKFLOW_MODE,
   normalizeWorkflowMode
 } from '../../shared/constants/workflowModes.js';
+import { normalizeStorefrontBusinessHours } from '../../shared/utils/storefrontBusinessHours.js';
 
 const ONBOARDING_STATE_KEY = 'tenant_onboarding_state';
 const ONBOARDING_STARTED_AT_KEY = 'tenant_onboarding_started_at';
@@ -16,6 +17,7 @@ const ONBOARDING_COMPLETED_AT_KEY = 'tenant_onboarding_completed_at';
 const ONBOARDING_PROGRESS_KEY = 'tenant_onboarding_progress';
 const POS_BUSINESS_NAME_KEY = 'pos_business_name';
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
+const STOREFRONT_HOURS_KEY = 'storefront_hours';
 const ONBOARDING_COMPLETION_PRESETS_BY_MODE = Object.freeze({
   food_manufacturing: new Set(['finished_product']),
   msme: new Set(['product']),
@@ -424,6 +426,16 @@ export const onboardingRepository = {
         description: 'Tenant onboarding progress and latest checklist snapshot',
         transaction
       });
+      if (safeStepKey === 'primary_location' && normalizedPayload.business_hours) {
+        const storefrontHoursMap = await getSettingRows(SystemSetting, [STOREFRONT_HOURS_KEY], { transaction });
+        await upsertSetting(SystemSetting, storefrontHoursMap, {
+          key: STOREFRONT_HOURS_KEY,
+          value: normalizeStorefrontBusinessHours(normalizedPayload.business_hours),
+          dataType: 'json',
+          description: 'Public storefront business hours and checkout availability schedule',
+          transaction
+        });
+      }
       responsePayload = toResponsePayload({
         state: nextState,
         startedAt: nextStartedAt,

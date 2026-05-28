@@ -8,6 +8,10 @@ import { createHash } from 'crypto';
 import { Op } from 'sequelize';
 import { assertStorefrontDiscoveryRepositoryContract } from '../contracts/storefrontDiscoveryRepository.contract.js';
 import { normalizeStorefrontAssetPath, normalizeStorefrontAssetUrl } from '../../shared/utils/storefrontAssetPolicy.js';
+import {
+    formatStorefrontBusinessHoursDisplay,
+    getStorefrontBusinessHoursStatus
+} from '../../shared/utils/storefrontBusinessHours.js';
 import { publicSearchTextMatches } from '../../shared/utils/publicSearchAliasPolicy.js';
 import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
 import {
@@ -353,12 +357,14 @@ const readStorefrontProfileSettings = async ({ tenantId, cacheVersion, cacheSign
         })
     });
 
+    const storefrontHoursStatus = getStorefrontBusinessHoursStatus(settingsMap.storefront_hours);
     const settingsPayload = {
         storefront_tagline: toTrimmedString(settingsMap.storefront_tagline, 120),
         storefront_about: toTrimmedString(settingsMap.storefront_about, 1000),
         storefront_phone: toTrimmedString(settingsMap.storefront_phone, 50),
         storefront_email: toTrimmedString(settingsMap.storefront_email, 120),
-        storefront_hours: toTrimmedString(settingsMap.storefront_hours, 120),
+        storefront_hours: formatStorefrontBusinessHoursDisplay(settingsMap.storefront_hours),
+        storefront_hours_status: storefrontHoursStatus,
         storefront_why_choose_us: whyChooseUs,
         storefront_social_links: social,
         storefront_review_highlights: reviewHighlights,

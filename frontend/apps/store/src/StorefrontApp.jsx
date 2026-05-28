@@ -6005,6 +6005,9 @@ export default function StorefrontApp() {
   const requireQuoteForCheckout = !hasServiceCart && !isFnbMode && !isSimpleMode;
   const isStorefrontV2 = parseBooleanFlag(selectedStore?.storefront_ui_v2_enabled, false);
   const followEnabledForStore = parseBooleanFlag(selectedStore?.storefront_follow_enabled, false);
+  const storefrontHoursStatus = selectedStore?.storefront_hours_status || null;
+  const storefrontClosedByHours = storefrontHoursStatus?.is_open_now === false;
+  const storefrontHoursLabel = String(storefrontHoursStatus?.display || selectedStore?.storefront_hours || '').trim();
   const checkoutBlockReason = getCheckoutBlockReason({
     selectedStore,
     cartCount,
@@ -6029,12 +6032,13 @@ export default function StorefrontApp() {
   }) && !hasMixedServiceCart && (!hasServiceCart || (Boolean(serviceAppointmentAt) && missingRequiredIntake.length === 0));
   const fnbCartStatusLabel = useMemo(() => {
     if (cartCount === 0) return 'Browse menu';
+    if (storefrontClosedByHours) return 'Closed';
     if (hasStockViolation) return 'Update quantities';
     if (!quoteResult) return 'Quote required';
     if (quoteNeedsRefresh) return 'Refresh quote';
     if (checkoutAllowed) return 'Ready to checkout';
     return 'Review order';
-  }, [cartCount, hasStockViolation, quoteResult, quoteNeedsRefresh, checkoutAllowed]);
+  }, [cartCount, storefrontClosedByHours, hasStockViolation, quoteResult, quoteNeedsRefresh, checkoutAllowed]);
   const fnbCartActionLabel = useMemo(() => {
     if (cartCount === 0) return 'Browse menu';
     if (isCheckoutOpen) return 'Close cart';
@@ -6044,11 +6048,12 @@ export default function StorefrontApp() {
   }, [cartCount, hasStockViolation, isCheckoutOpen, isMobileViewport, quoteResult, quoteNeedsRefresh]);
   const fnbDrawerSupportLabel = useMemo(() => {
     if (cartCount === 0) return 'Add menu items to start an order.';
+    if (storefrontClosedByHours) return storefrontHoursLabel ? `Orders are paused outside business hours: ${storefrontHoursLabel}.` : 'Orders are paused outside business hours.';
     if (hasStockViolation) return 'Adjust quantities that exceed available stock before checkout.';
     if (!quoteResult) return 'Review the cart, then request a fresh quote before checkout.';
     if (quoteNeedsRefresh) return 'Cart changed. Refresh the quote to sync totals and enable checkout.';
     return 'Everything is synced. You can continue through checkout.';
-  }, [cartCount, hasStockViolation, quoteResult, quoteNeedsRefresh]);
+  }, [cartCount, storefrontClosedByHours, storefrontHoursLabel, hasStockViolation, quoteResult, quoteNeedsRefresh]);
   const activeBookingService = firstServiceLine || selectedServiceDetail || null;
   const bookingPageIntakeFields = hasServiceCart ? serviceIntakeFields : selectedServiceIntakeFields;
   const bookingPageMissingRequiredIntake = hasServiceCart ? missingRequiredIntake : missingRequiredSelectedServiceIntake;
@@ -6760,6 +6765,12 @@ export default function StorefrontApp() {
   const handleQuote = async () => {
     if (!selectedStore) return;
     setQuoteError('');
+    if (storefrontClosedByHours) {
+      const message = storefrontHoursLabel ? `Ordering is paused outside business hours: ${storefrontHoursLabel}.` : 'Ordering is paused outside business hours.';
+      setQuoteError(message);
+      toast.error(message);
+      return;
+    }
     if (!checkoutPermitted || accessCapabilities.quote === false) {
       const message = 'This storefront is not accepting online checkout right now.';
       setQuoteError(message);
@@ -6822,6 +6833,12 @@ export default function StorefrontApp() {
     }
     if (checkoutBlockReason === 'access_mode') {
       const message = 'This storefront is not accepting online checkout right now.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (checkoutBlockReason === 'business_hours') {
+      const message = storefrontHoursLabel ? `Ordering is paused outside business hours: ${storefrontHoursLabel}.` : 'Ordering is paused outside business hours.';
       setCheckoutError(message);
       toast.error(message);
       return;
@@ -13983,7 +14000,7 @@ return (
                   ))}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ minHeight: 44, borderRadius: 12, border: '1px solid #ea580c', background: '#fff', color: '#9a3412', fontWeight: 800, cursor: 'pointer' }}>
+                  <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0 || storefrontClosedByHours} style={{ minHeight: 44, borderRadius: 12, border: '1px solid #ea580c', background: '#fff', color: '#9a3412', fontWeight: 800, cursor: storefrontClosedByHours ? 'not-allowed' : 'pointer' }}>
                     {quoteResult ? 'Refresh Quote' : 'Get Quote'}
                   </button>
                   <button type="button" onClick={handleCheckout} disabled={!simpleCheckoutAllowed} style={{ minHeight: 44, borderRadius: 12, border: 'none', background: simpleCheckoutAllowed ? '#ea580c' : '#cbd5e1', color: '#fff', fontWeight: 800, cursor: simpleCheckoutAllowed ? 'pointer' : 'not-allowed' }}>
@@ -16079,7 +16096,7 @@ return (
                         />
                       </label>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                        <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ minHeight: 44, borderRadius: 12, border: '1px solid #ea580c', background: '#fff', color: '#9a3412', fontWeight: 800, cursor: 'pointer' }}>Refresh Quote</button>
+                        <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0 || storefrontClosedByHours} style={{ minHeight: 44, borderRadius: 12, border: '1px solid #ea580c', background: '#fff', color: '#9a3412', fontWeight: 800, cursor: storefrontClosedByHours ? 'not-allowed' : 'pointer' }}>Refresh Quote</button>
                         <button type="button" onClick={handleCheckout} disabled={!checkoutAllowed} style={{ minHeight: 44, borderRadius: 12, border: 'none', background: checkoutAllowed ? '#ea580c' : '#cbd5e1', color: '#fff', fontWeight: 800, cursor: checkoutAllowed ? 'pointer' : 'not-allowed' }}>{checkoutLoading ? 'Processing...' : 'Place Order'}</button>
                       </div>
                       {quoteError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{quoteError}</p>}
@@ -16701,7 +16718,7 @@ return (
                       </div>
                       <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                         {!hasServiceCart && checkoutPermitted && accessCapabilities.quote !== false && (
-                          <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.55)', background: '#ffffff', color: '#0f766e', padding: '11px 12px', fontWeight: 800 }}>{isFnbMode ? 'Refresh Quote' : 'Quote'}</button>
+                          <button type="button" onClick={handleQuote} disabled={!selectedStore || cart.length === 0 || storefrontClosedByHours} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.55)', background: '#ffffff', color: '#0f766e', padding: '11px 12px', fontWeight: 800 }}>{isFnbMode ? 'Refresh Quote' : 'Quote'}</button>
                         )}
                         <button type="button" onClick={handleCheckout} disabled={!checkoutAllowed} style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,.2)', background: '#0b3d3a', color: '#fff', padding: '11px 12px', fontWeight: 800 }}>{checkoutLoading ? 'Processing...' : (hasServiceCart ? 'Submit Booking' : (isFnbMode ? 'Place Order' : 'Checkout'))}</button>
                       </div>
@@ -16709,6 +16726,11 @@ return (
                     {hasStockViolation && (
                       <p style={{ marginTop: 10, fontSize: 13, color: '#b91c1c', fontWeight: 700 }}>
                         Cannot checkout: one or more lines exceed current stock.
+                      </p>
+                    )}
+                    {storefrontClosedByHours && (
+                      <p style={{ marginTop: 10, fontSize: 13, color: '#b45309', fontWeight: 700 }}>
+                        Ordering is paused outside business hours{storefrontHoursLabel ? `: ${storefrontHoursLabel}` : '.'}
                       </p>
                     )}
                     {!hasServiceCart && !quoteResult && cart.length > 0 && (

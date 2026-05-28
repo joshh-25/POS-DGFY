@@ -12,6 +12,7 @@ export const getCheckoutBlockReason = ({
   if (Number(cartCount) <= 0) return 'empty_cart';
   if (checkoutLoading) return 'checkout_loading';
   if (hasStockViolation) return 'stock_violation';
+  if (selectedStore?.storefront_hours_status?.is_open_now === false) return 'business_hours';
   if (hasServiceCart && accessCapabilities?.booking === false) return 'access_mode';
   if (!hasServiceCart && (accessCapabilities?.checkout === false || accessCapabilities?.quote === false)) return 'access_mode';
   if (hasServiceCart) return null;

@@ -39,6 +39,7 @@ import {
 } from '../../shared/utils/itemFinancialPolicy.js';
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
+import { isDateWithinStorefrontBusinessHours } from '../../shared/utils/storefrontBusinessHours.js';
 
 const INVOICE_COUNTER_KEY = 'POS_OR';
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
@@ -493,91 +494,20 @@ const validateScheduledFor = (scheduledFor) => {
     return parsed;
 };
 
-const WEEKDAY_INDEX_BY_TOKEN = Object.freeze({
-    sun: 0,
-    sunday: 0,
-    mon: 1,
-    monday: 1,
-    tue: 2,
-    tues: 2,
-    tuesday: 2,
-    wed: 3,
-    wednesday: 3,
-    thu: 4,
-    thur: 4,
-    thurs: 4,
-    thursday: 4,
-    fri: 5,
-    friday: 5,
-    sat: 6,
-    saturday: 6
-});
-
-const toMinutesFrom12Hour = (hour, minute, meridiem) => {
-    const safeHour = Number.parseInt(hour, 10);
-    const safeMinute = Number.parseInt(minute, 10);
-    const normalizedMeridiem = String(meridiem || '').trim().toUpperCase();
-    if (!Number.isInteger(safeHour) || safeHour < 1 || safeHour > 12) return null;
-    if (!Number.isInteger(safeMinute) || safeMinute < 0 || safeMinute > 59) return null;
-    if (normalizedMeridiem !== 'AM' && normalizedMeridiem !== 'PM') return null;
-    let hour24 = safeHour % 12;
-    if (normalizedMeridiem === 'PM') hour24 += 12;
-    return (hour24 * 60) + safeMinute;
-};
-
-const parseStorefrontHoursWindow = (rawHours) => {
-    const text = String(rawHours || '').trim();
-    if (!text) return null;
-
-    const match = text.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)\s*-\s*(\d{1,2}):(\d{2})\s*(AM|PM)\s*(.*)$/i);
-    if (!match) return null;
-
-    const startMinutes = toMinutesFrom12Hour(match[1], match[2], match[3]);
-    const endMinutes = toMinutesFrom12Hour(match[4], match[5], match[6]);
-    if (startMinutes == null || endMinutes == null) return null;
-
-    const dayPart = String(match[7] || '').trim().toLowerCase();
-    let activeDays = new Set([0, 1, 2, 3, 4, 5, 6]);
-
-    if (dayPart && dayPart !== 'daily' && dayPart !== 'everyday' && dayPart !== 'all days') {
-        const tokens = dayPart
-            .split(',')
-            .map((entry) => entry.trim().replace(/\./g, '').toLowerCase())
-            .filter(Boolean);
-        if (tokens.length === 0) return null;
-        activeDays = new Set();
-        for (const token of tokens) {
-            const dayIndex = WEEKDAY_INDEX_BY_TOKEN[token];
-            if (dayIndex == null) return null;
-            activeDays.add(dayIndex);
-        }
-        if (activeDays.size === 0) return null;
-    }
-
-    return { activeDays, startMinutes, endMinutes };
-};
-
-const isScheduledTimeWithinStorefrontHours = (scheduledFor, parsedHoursWindow) => {
-    if (!scheduledFor || !parsedHoursWindow) return true;
-    if (!parsedHoursWindow.activeDays.has(scheduledFor.getDay())) return false;
-
-    const timeMinutes = (scheduledFor.getHours() * 60) + scheduledFor.getMinutes();
-    const { startMinutes, endMinutes } = parsedHoursWindow;
-    if (startMinutes === endMinutes) return true;
-    if (endMinutes > startMinutes) return timeMinutes >= startMinutes && timeMinutes <= endMinutes;
-    return timeMinutes >= startMinutes || timeMinutes <= endMinutes;
-};
-
-const assertScheduledForWithinStorefrontHours = ({ scheduledFor, settings }) => {
-    if (!scheduledFor) return;
-    const parsedHoursWindow = parseStorefrontHoursWindow(settings?.storefront_hours?.value);
-    if (!parsedHoursWindow) return;
-
-    if (!isScheduledTimeWithinStorefrontHours(scheduledFor, parsedHoursWindow)) {
+const assertCheckoutTimeWithinStorefrontHours = ({ scheduledFor, settings }) => {
+    const checkoutTime = scheduledFor || new Date();
+    if (!isDateWithinStorefrontBusinessHours(checkoutTime, settings?.storefront_hours?.value)) {
         throw new DomainError(
             DomainErrorCode.VALIDATION_FAILED,
-            'scheduled_for is outside store business hours',
-            { statusCode: 422 }
+            scheduledFor
+                ? 'scheduled_for is outside store business hours'
+                : 'Storefront is outside business hours and not accepting orders',
+            {
+                statusCode: 422,
+                details: {
+                    reason_code: 'OUTSIDE_STOREFRONT_BUSINESS_HOURS'
+                }
+            }
         );
     }
 };
@@ -1115,7 +1045,7 @@ const resolveCheckoutContext = async ({
         settings,
         orderMethod
     });
-    assertScheduledForWithinStorefrontHours({
+    assertCheckoutTimeWithinStorefrontHours({
         scheduledFor,
         settings
     });

@@ -10,12 +10,17 @@ import {
     isCustomerAccessModesEnabled,
     resolveAccessPolicyFromSettings
 } from '../../shared/utils/customerAccessPolicy.js';
+import { isDateWithinStorefrontBusinessHours } from '../../shared/utils/storefrontBusinessHours.js';
 
 const BOOKING_STATUSES = Object.freeze(['requested', 'confirmed', 'checked_in', 'in_service', 'completed', 'cancelled', 'no_show']);
 const PAYMENT_POLICIES = Object.freeze(['customer_choice', 'prepaid_required', 'postpaid_only', 'deposit_allowed']);
 const PAYMENT_TIMINGS = Object.freeze(['prepaid', 'postpaid', 'deposit']);
 const WAITLIST_STATUSES = Object.freeze(['waiting', 'notified', 'booked', 'expired', 'cancelled']);
 const REMINDER_STATUSES = Object.freeze(['pending', 'sent', 'failed', 'skipped']);
+const SERVICE_STOREFRONT_SETTING_KEYS = Object.freeze([
+    ...CUSTOMER_ACCESS_SETTING_KEYS,
+    'storefront_hours'
+]);
 const CLAIM_TOKEN_TTL_MS = 30 * 60 * 1000;
 const BOOKING_HOLD_TTL_MS = 10 * 60 * 1000;
 const MAX_REFERENCE_ATTEMPTS = 20;
@@ -116,12 +121,16 @@ const currentTenantAccessContext = () => {
 const isCustomerAccessEnabledForCurrentTenant = () => (
     isCustomerAccessModesEnabled(currentTenantAccessContext())
 );
-const resolveServiceAccessPolicy = async (serviceRepository, options = {}) => {
+const loadServiceStorefrontSettings = async (serviceRepository, options = {}) => {
     if (typeof serviceRepository?.getSettingsByKeys !== 'function') {
-        return resolveAccessPolicyFromSettings({}, { featureEnabled: isCustomerAccessEnabledForCurrentTenant() });
+        return {};
     }
-    const rows = await serviceRepository.getSettingsByKeys(CUSTOMER_ACCESS_SETTING_KEYS, options);
-    return resolveAccessPolicyFromSettings(mapSettingsRows(rows), { featureEnabled: isCustomerAccessEnabledForCurrentTenant() });
+    const rows = await serviceRepository.getSettingsByKeys(SERVICE_STOREFRONT_SETTING_KEYS, options);
+    return mapSettingsRows(rows);
+};
+const resolveServiceAccessPolicy = async (serviceRepository, options = {}, settings = null) => {
+    const resolvedSettings = settings || await loadServiceStorefrontSettings(serviceRepository, options);
+    return resolveAccessPolicyFromSettings(resolvedSettings, { featureEnabled: isCustomerAccessEnabledForCurrentTenant() });
 };
 const assertServiceStorefrontActionAllowed = ({ action, capability, accessPolicy }) => {
     if (!isCustomerAccessEnabledForCurrentTenant()) return;
@@ -145,6 +154,21 @@ const setIfProvided = (target, payload, key, resolver, includeDefaults) => {
     if (includeDefaults || payload[key] !== undefined) {
         target[key] = resolver(payload[key]);
     }
+};
+const assertServiceBookingWithinStorefrontHours = ({ startAt, settings, action }) => {
+    if (!(startAt instanceof Date) || !Number.isFinite(startAt.getTime())) return;
+    if (isDateWithinStorefrontBusinessHours(startAt, settings?.storefront_hours?.value)) return;
+    throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'Service booking is outside store business hours',
+        {
+            statusCode: 422,
+            details: {
+                reason_code: 'OUTSIDE_STOREFRONT_BUSINESS_HOURS',
+                action
+            }
+        }
+    );
 };
 
 const serviceDetailsPayload = (payload = {}, { includeDefaults = true } = {}) => {
@@ -1664,8 +1688,10 @@ export const buildCreateServiceBookingUseCase = ({ serviceRepository }) => async
         const requestHash = idempotencyKey
             ? hashRequestPayload(bookingRequestHashPayload({ payload, source, storeCustomer }))
             : null;
+        let storefrontSettings = null;
         if (source === 'storefront') {
-            const accessPolicy = await resolveServiceAccessPolicy(serviceRepository, { transaction });
+            storefrontSettings = await loadServiceStorefrontSettings(serviceRepository, { transaction });
+            const accessPolicy = await resolveServiceAccessPolicy(serviceRepository, { transaction }, storefrontSettings);
             assertServiceStorefrontActionAllowed({
                 action: 'service_booking',
                 capability: 'booking',
@@ -1691,6 +1717,13 @@ export const buildCreateServiceBookingUseCase = ({ serviceRepository }) => async
                     outcome: 'idempotent_replay',
                     idempotent_replay: true
                 }
+            });
+        }
+        if (source === 'storefront') {
+            assertServiceBookingWithinStorefrontHours({
+                startAt: parseDate(payload.start_at || payload.scheduled_for, 'start_at'),
+                settings: storefrontSettings,
+                action: 'service_booking'
             });
         }
         const created = await createServiceBookingRecord({
@@ -1733,8 +1766,10 @@ export const buildCreateServiceBookingHoldUseCase = ({ serviceRepository }) => a
         const requestHash = idempotencyKey
             ? hashRequestPayload(holdRequestHashPayload({ payload, source, storeCustomer }))
             : null;
+        let storefrontSettings = null;
         if (source === 'storefront') {
-            const accessPolicy = await resolveServiceAccessPolicy(serviceRepository, { transaction });
+            storefrontSettings = await loadServiceStorefrontSettings(serviceRepository, { transaction });
+            const accessPolicy = await resolveServiceAccessPolicy(serviceRepository, { transaction }, storefrontSettings);
             assertServiceStorefrontActionAllowed({
                 action: 'service_booking_hold',
                 capability: 'booking',
@@ -1757,6 +1792,13 @@ export const buildCreateServiceBookingHoldUseCase = ({ serviceRepository }) => a
                     }
                 });
             }
+        }
+        if (source === 'storefront') {
+            assertServiceBookingWithinStorefrontHours({
+                startAt: parseDate(payload.start_at || payload.scheduled_for, 'start_at'),
+                settings: storefrontSettings,
+                action: 'service_booking_hold'
+            });
         }
         const validated = await createServiceBookingRecord({
             serviceRepository,
@@ -1808,8 +1850,10 @@ export const buildCreateServiceBookingBatchUseCase = ({ serviceRepository }) => 
         const requestHash = idempotencyKey
             ? hashRequestPayload(bookingRequestHashPayload({ payload, source, storeCustomer }))
             : null;
+        let storefrontSettings = null;
         if (source === 'storefront') {
-            const accessPolicy = await resolveServiceAccessPolicy(serviceRepository, { transaction });
+            storefrontSettings = await loadServiceStorefrontSettings(serviceRepository, { transaction });
+            const accessPolicy = await resolveServiceAccessPolicy(serviceRepository, { transaction }, storefrontSettings);
             assertServiceStorefrontActionAllowed({
                 action: 'service_booking',
                 capability: 'booking',
@@ -1838,6 +1882,15 @@ export const buildCreateServiceBookingBatchUseCase = ({ serviceRepository }) => 
                     outcome: 'idempotent_replay',
                     idempotent_replay: true
                 }
+            });
+        }
+        if (source === 'storefront') {
+            bookingDrafts.forEach((draft, index) => {
+                assertServiceBookingWithinStorefrontHours({
+                    startAt: parseDate(draft?.start_at || draft?.scheduled_for, `bookings[${index}].start_at`),
+                    settings: storefrontSettings,
+                    action: 'service_booking'
+                });
             });
         }
         const pendingRequests = [];
