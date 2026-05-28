@@ -49,6 +49,7 @@ import {
   UtensilsCrossed,
   ChefHat,
   Copy,
+  User,
   ChevronUp,
   ChevronDown,
   Share2,
@@ -61,6 +62,7 @@ import {
   ShieldCheck,
   Zap,
   Heart,
+  LogOut,
   ChevronLeft,
   ChevronRight,
   Info,
@@ -105,6 +107,8 @@ import {
 } from './Components/store/DiscoveryResponsiveLayout.jsx';
 import { SolutionsPage } from './Components/storefront/pages/SolutionsPage.jsx';
 import { FnbProductDetailsPage } from './Components/storefront/pages/FnbProductDetailsPage.jsx';
+import { DgfyCustomerAuthModal } from './components/storefront/pages/DgfyCustomerAuthModal.jsx';
+import { DgfyCustomerAccountPage } from './components/storefront/pages/DgfyCustomerAccountPage.jsx';
 import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from './components/storefront/hero/StorefrontHeroNameCluster.jsx';
 import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from './components/storefront/hero/StorefrontHeaderNav.jsx';
 import { StorefrontShareQr as SharedStorefrontShareQr } from './components/storefront/hero/StorefrontShareQr.jsx';
@@ -1244,6 +1248,7 @@ const locationsMatchProfileSnapshot = (locations = [], profile = {}) => {
 };
 
 const STOREFRONT_AUTH_TOKEN_KEYS = ['dgfy_store_customer_token', 'store_customer_token', 'store_token'];
+const DGFY_CUSTOMER_AUTH_TOKEN_KEYS = ['dgfy_customer_account_token', 'dgfy_account_token'];
 const STOREFRONT_RECENT_STORES_STORAGE_KEY = 'dgfy_store_recent_stores';
 const STOREFRONT_LAST_STORE_STORAGE_KEY = 'dgfy_store_last_store_slug';
 const STOREFRONT_SAVED_DETAILS_STORAGE_KEY = 'dgfy_store_saved_customer_details_v1';
@@ -1256,12 +1261,22 @@ const EMPTY_ACCOUNT_PANEL = Object.freeze({
   me: null,
   orders: [],
   bookings: [],
-  addresses: []
+  addresses: [],
+  loyalty: null
 });
 
 const readStoreAuthToken = () => {
   if (typeof window === 'undefined') return '';
   for (const key of STOREFRONT_AUTH_TOKEN_KEYS) {
+    const token = String(window.localStorage.getItem(key) || '').trim();
+    if (token) return token;
+  }
+  return '';
+};
+
+const readDgfyAuthToken = () => {
+  if (typeof window === 'undefined') return '';
+  for (const key of DGFY_CUSTOMER_AUTH_TOKEN_KEYS) {
     const token = String(window.localStorage.getItem(key) || '').trim();
     if (token) return token;
   }
@@ -1276,9 +1291,22 @@ const writeStoreAuthToken = (token) => {
   STOREFRONT_AUTH_TOKEN_KEYS.slice(1).forEach((key) => window.localStorage.removeItem(key));
 };
 
+const writeDgfyAuthToken = (token) => {
+  if (typeof window === 'undefined') return;
+  const normalizedToken = String(token || '').trim();
+  if (!normalizedToken) return;
+  window.localStorage.setItem(DGFY_CUSTOMER_AUTH_TOKEN_KEYS[0], normalizedToken);
+  DGFY_CUSTOMER_AUTH_TOKEN_KEYS.slice(1).forEach((key) => window.localStorage.removeItem(key));
+};
+
 const clearStoreAuthToken = () => {
   if (typeof window === 'undefined') return;
   STOREFRONT_AUTH_TOKEN_KEYS.forEach((key) => window.localStorage.removeItem(key));
+};
+
+const clearDgfyAuthToken = () => {
+  if (typeof window === 'undefined') return;
+  DGFY_CUSTOMER_AUTH_TOKEN_KEYS.forEach((key) => window.localStorage.removeItem(key));
 };
 
 const normalizeSavedCustomerDetails = (value) => {
@@ -2338,6 +2366,8 @@ const FnbHero = ({
   openStorefrontActionLink,
   openTrackPanel,
   openAccountPanel,
+  isStorefrontAccountAuthenticated,
+  activeCustomerOrderCount,
   followEnabled,
   shareEnabled,
   followState,
@@ -2400,6 +2430,7 @@ const FnbHero = ({
         onShop={() => document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
         onTrack={openTrackPanel}
         onAccount={openAccountPanel}
+        activeOrderCount={isStorefrontAccountAuthenticated ? activeCustomerOrderCount : 0}
         branchSelector={hasMultipleStoreBranches ? (
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: hasSelectedBranchFromMenu ? 6 : 8, color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: '"Inter", sans-serif', minWidth: 0, maxWidth: isMobileViewport ? 196 : 236, flex: '0 1 236px' }}>
             <MapPin size={16} />
@@ -3055,6 +3086,8 @@ const ServicesHero = ({
   openStorefrontActionLink,
   openTrackPanel,
   openAccountPanel,
+  isStorefrontAccountAuthenticated,
+  activeCustomerOrderCount,
   followEnabled,
   shareEnabled,
   followState,
@@ -3102,6 +3135,7 @@ const ServicesHero = ({
         onShop={() => document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
         onTrack={openTrackPanel}
         onAccount={openAccountPanel}
+        activeOrderCount={isStorefrontAccountAuthenticated ? activeCustomerOrderCount : 0}
         branchSelector={hasMultipleStoreBranches ? (
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: hasSelectedBranchFromMenu ? 6 : 8, color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: '"Inter", sans-serif', minWidth: 0, maxWidth: isMobileViewport ? 196 : 236, flex: '0 1 236px' }}>
             <MapPin size={16} />
@@ -3671,6 +3705,8 @@ const SimpleHero = ({
   openStorefrontActionLink,
   openTrackPanel,
   openAccountPanel,
+  isStorefrontAccountAuthenticated,
+  activeCustomerOrderCount,
   followEnabled = false,
   shareEnabled = true
 }) => {
@@ -3706,6 +3742,7 @@ const SimpleHero = ({
         onShop={() => document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
         onTrack={openTrackPanel}
         onAccount={openAccountPanel}
+        activeOrderCount={isStorefrontAccountAuthenticated ? activeCustomerOrderCount : 0}
         branchSelector={hasMultipleStoreBranches ? (
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: hasSelectedBranchFromMenu ? 6 : 8, color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: '"Inter", sans-serif', minWidth: 0, maxWidth: isMobileViewport ? 196 : 236, flex: '0 1 236px' }}>
             <MapPin size={16} />
@@ -4206,7 +4243,27 @@ export default function StorefrontApp() {
   const [showCompletedTrackingCard, setShowCompletedTrackingCard] = useState(false);
   const completedTrackingDelayTimerRef = useRef(null);
   const [isGuestTrackingDrawerOpen, setIsGuestTrackingDrawerOpen] = useState(false);
-  const [accountPanel, setAccountPanel] = useState({ loading: false, error: '', me: null, orders: [], bookings: [] });
+  const [isAccountDrawerOpen, setIsAccountDrawerOpen] = useState(false);
+  const [accountPanel, setAccountPanel] = useState(EMPTY_ACCOUNT_PANEL);
+  const [trackedCustomerActivity, setTrackedCustomerActivity] = useState(null);
+  const [customerTrackLoadingReference, setCustomerTrackLoadingReference] = useState('');
+  const [customerTrackError, setCustomerTrackError] = useState('');
+  const [dgfyAuthTokenState, setDgfyAuthTokenState] = useState(() => readDgfyAuthToken());
+  const [customerAuthMode, setCustomerAuthMode] = useState('sign_in');
+  const [customerAuthSubmitting, setCustomerAuthSubmitting] = useState(false);
+  const [customerAuthError, setCustomerAuthError] = useState('');
+  const [dgfyLegalTerms, setDgfyLegalTerms] = useState(null);
+  const [dgfyLegalTermsLoading, setDgfyLegalTermsLoading] = useState(false);
+  const [customerSignInForm, setCustomerSignInForm] = useState({ email: '', password: '' });
+  const [customerRegisterForm, setCustomerRegisterForm] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+    password: '',
+    confirm_password: '',
+    accepted_terms: false
+  });
 
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [checkoutTab, setCheckoutTab] = useState('checkout');
@@ -4291,7 +4348,11 @@ export default function StorefrontApp() {
   } = pageModel;
   const isFnbOrderSubpage = isFnbMode && (isOrderSubpage || isTrackSubpage);
   const isStandaloneTrackingPage = isTrackSubpage || (isOrderSubpage && checkoutTab === 'track');
-  const isGuestStorefrontUser = !Boolean(readStoreAuthToken());
+  const storeAuthToken = readStoreAuthToken();
+  const dgfyAuthToken = String(dgfyAuthTokenState || '').trim();
+  const isDgfyCustomerSignedIn = Boolean(dgfyAuthToken);
+  const isStorefrontAccountAuthenticated = Boolean(storeAuthToken || dgfyAuthToken);
+  const isGuestStorefrontUser = !isStorefrontAccountAuthenticated;
   const trackingMode = isFnbMode ? 'fnb' : (isServicesMode ? 'services' : 'simple');
   const trackingAdapterRegistry = useMemo(
     () => createTrackingAdapterRegistry([fnbTrackingAdapter]),
@@ -4347,9 +4408,65 @@ export default function StorefrontApp() {
     if (savedCustomerDetails.name) previewParts.push(savedCustomerDetails.name);
     if (savedCustomerDetails.phone) previewParts.push(maskValue(savedCustomerDetails.phone, 3, 2));
     if (savedCustomerDetails.email) previewParts.push(maskValue(savedCustomerDetails.email, 2, 8));
-    return previewParts.join(' · ');
+    return previewParts.join(' | ');
   }, [savedCustomerDetails]);
   const hasSavedCustomerDetails = Boolean(savedCustomerDetails && (savedCustomerDetails.name || savedCustomerDetails.phone || savedCustomerDetails.email));
+  const accountDisplayName = useMemo(() => {
+    const firstName = String(accountPanel.me?.first_name || '').trim();
+    const lastName = String(accountPanel.me?.last_name || '').trim();
+    const joinedName = [firstName, lastName].filter(Boolean).join(' ').trim();
+    if (joinedName) return joinedName;
+    const accountName = String(accountPanel.me?.name || '').trim();
+    if (accountName) return accountName;
+    const username = String(accountPanel.me?.username || '').trim();
+    if (username) return username;
+    const email = String(accountPanel.me?.email || '').trim();
+    if (email) return email;
+    const savedName = String(savedCustomerDetails?.name || '').trim();
+    if (savedName) return savedName;
+    return 'Guest customer';
+  }, [
+    accountPanel.me?.email,
+    accountPanel.me?.first_name,
+    accountPanel.me?.last_name,
+    accountPanel.me?.name,
+    accountPanel.me?.username,
+    savedCustomerDetails?.name
+  ]);
+  const accountIdentityName = useMemo(() => (
+    accountDisplayName
+  ), [accountDisplayName]);
+  const accountIdentityContact = useMemo(() => {
+    const accountPhone = String(accountPanel.me?.phone || '').trim();
+    const accountEmail = String(accountPanel.me?.email || '').trim();
+    if (accountPhone) return maskValue(accountPhone, 3, 2);
+    if (accountEmail) return maskValue(accountEmail, 2, 8);
+    const savedPhone = String(savedCustomerDetails?.phone || '').trim();
+    const savedEmail = String(savedCustomerDetails?.email || '').trim();
+    if (savedPhone) return maskValue(savedPhone, 3, 2);
+    if (savedEmail) return maskValue(savedEmail, 2, 8);
+    return 'No linked account details yet';
+  }, [accountPanel.me?.email, accountPanel.me?.phone, savedCustomerDetails?.email, savedCustomerDetails?.phone]);
+  const accountIdentityInitials = useMemo(() => {
+    const base = String(accountDisplayName || '').trim();
+    if (!base) return 'GU';
+    const parts = base.split(/\s+/).filter(Boolean).slice(0, 2);
+    const initials = parts.map((part) => part.charAt(0).toUpperCase()).join('');
+    return initials || 'GU';
+  }, [accountDisplayName]);
+  const isGuestAccountDrawerState = !isStorefrontAccountAuthenticated;
+  const accountDrawerTitle = isGuestAccountDrawerState ? 'DGFY Account' : 'My Account';
+  const accountDrawerSubtitle = isGuestAccountDrawerState
+    ? 'Orders, tracking, profile, addresses, loyalty, and company invitations.'
+    : 'Manage your bookings, orders, tickets and more.';
+  const accountPrimaryDescription = 'View and manage your saved bookings, orders, tickets, receipts, and the latest linked transaction.';
+  const activeCustomerOrders = useMemo(() => {
+    const activeStatuses = new Set(['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery']);
+    return (Array.isArray(accountPanel.orders) ? accountPanel.orders : []).filter((order) => (
+      activeStatuses.has(String(order?.status || '').trim().toLowerCase())
+    ));
+  }, [accountPanel.orders]);
+  const activeCustomerOrderCount = activeCustomerOrders.length;
 
   const applySavedCustomerDetails = useCallback(() => {
     if (!savedCustomerDetails) return;
@@ -4363,6 +4480,29 @@ export default function StorefrontApp() {
     clearSavedCustomerDetails();
     setSavedCustomerDetails(null);
     toast.success('Saved details cleared.');
+  }, []);
+  const loadDgfyLegalTerms = useCallback(async () => {
+    if (dgfyLegalTerms || dgfyLegalTermsLoading) return dgfyLegalTerms;
+    setDgfyLegalTermsLoading(true);
+    try {
+      const data = await requestJson('/api/v1/dgfy/legal-terms/current', { cache: 'no-store' });
+      setDgfyLegalTerms(data || null);
+      return data || null;
+    } catch (error) {
+      const message = normalizeStorefrontErrorMessage(error, 'Unable to load account registration requirements.');
+      setCustomerAuthError(message);
+      throw error;
+    } finally {
+      setDgfyLegalTermsLoading(false);
+    }
+  }, [dgfyLegalTerms, dgfyLegalTermsLoading]);
+
+  const handleCustomerSignInFieldChange = useCallback((field, value) => {
+    setCustomerSignInForm((previous) => ({ ...previous, [field]: value }));
+  }, []);
+
+  const handleCustomerRegisterFieldChange = useCallback((field, value) => {
+    setCustomerRegisterForm((previous) => ({ ...previous, [field]: value }));
   }, []);
   const renderSavedDetailsCard = () => (
     <div style={{ border: '1px solid #dbe5ee', borderRadius: 12, padding: '10px 12px', background: '#f8fafc', display: 'grid', gap: 10 }}>
@@ -4734,7 +4874,7 @@ export default function StorefrontApp() {
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
-    const lockBodyScroll = isFnbOrderSubpage || isCheckoutOpen || isGuestTrackingDrawerOpen;
+    const lockBodyScroll = isFnbOrderSubpage || isCheckoutOpen || isGuestTrackingDrawerOpen || isAccountDrawerOpen;
     if (!lockBodyScroll) return undefined;
 
     const previousOverflow = document.body.style.overflow;
@@ -4753,7 +4893,7 @@ export default function StorefrontApp() {
       document.body.style.overscrollBehavior = previousOverscrollBehavior;
       document.body.style.touchAction = previousTouchAction;
     };
-  }, [isCheckoutOpen, isFnbOrderSubpage, isGuestTrackingDrawerOpen]);
+  }, [isAccountDrawerOpen, isCheckoutOpen, isFnbOrderSubpage, isGuestTrackingDrawerOpen]);
 
   useEffect(() => {
     if (!isFnbOrderSubpage) return;
@@ -4774,7 +4914,7 @@ export default function StorefrontApp() {
   }, [currentPathSubpage, isFnbOrderSubpage, pendingOrderInitialTab, routeSlug, routeSubpage, selectedStore?.slug, trackingPinInput, selectedTrackingPin]);
 
   useEffect(() => {
-    const isSignedIn = Boolean(readStoreAuthToken());
+    const isSignedIn = Boolean(readStoreAuthToken() || readDgfyAuthToken());
     setRememberCustomerDetails((previous) => (previous ? true : isSignedIn));
   }, [accountPanel.me]);
 
@@ -4798,6 +4938,48 @@ export default function StorefrontApp() {
       setIsGuestTrackingDrawerOpen(false);
     }
   }, [isGuestStorefrontUser, isGuestTrackingDrawerOpen, isStandaloneTrackingPage, selectedStore?.slug]);
+
+  useEffect(() => {
+    if (!isAccountDrawerOpen || customerAuthMode !== 'create_account' || isStorefrontAccountAuthenticated || dgfyLegalTerms || dgfyLegalTermsLoading) {
+      return;
+    }
+    loadDgfyLegalTerms().catch(() => {});
+  }, [customerAuthMode, dgfyLegalTerms, dgfyLegalTermsLoading, isAccountDrawerOpen, isStorefrontAccountAuthenticated, loadDgfyLegalTerms]);
+
+  useEffect(() => {
+    if (!dgfyAuthToken || accountPanel.loading) return;
+    const hasLoadedAccountData = Boolean(
+      accountPanel.me
+      || (Array.isArray(accountPanel.orders) && accountPanel.orders.length > 0)
+      || (Array.isArray(accountPanel.bookings) && accountPanel.bookings.length > 0)
+      || (Array.isArray(accountPanel.addresses) && accountPanel.addresses.length > 0)
+      || accountPanel.loyalty
+      || accountPanel.error
+    );
+    if (hasLoadedAccountData) return;
+    handleLoadAccountPanel();
+  }, [accountPanel.addresses, accountPanel.bookings, accountPanel.error, accountPanel.loading, accountPanel.loyalty, accountPanel.me, accountPanel.orders, dgfyAuthToken]);
+
+  useEffect(() => {
+    if (!isAccountDrawerOpen) {
+      setCustomerAuthError('');
+      setCustomerTrackError('');
+      setCustomerTrackLoadingReference('');
+    }
+  }, [isAccountDrawerOpen]);
+
+  useEffect(() => {
+    if (!isAccountDrawerOpen) return undefined;
+    const handleAccountDrawerKeydown = (event) => {
+      if (event.key === 'Escape') {
+        setIsAccountDrawerOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleAccountDrawerKeydown);
+    return () => {
+      window.removeEventListener('keydown', handleAccountDrawerKeydown);
+    };
+  }, [isAccountDrawerOpen]);
 
   useEffect(() => () => {
     if (orderSuccessAnimationTimerRef.current) {
@@ -6585,8 +6767,9 @@ export default function StorefrontApp() {
     goStoreTrackPage({ pin: normalizedPin });
   };
   const openAccountPanel = () => {
-    setCheckoutTab('account');
-    setIsCheckoutOpen(true);
+    setIsCheckoutOpen(false);
+    setIsGuestTrackingDrawerOpen(false);
+    setIsAccountDrawerOpen(true);
     handleLoadAccountPanel();
   };
   const beginServiceBooking = (serviceItem) => {
@@ -7418,30 +7601,157 @@ export default function StorefrontApp() {
   }, [checkoutTab, fetchTrackingPayload, guestTrackedOrders, isFnbOrderSubpage, selectedTrackingPin, syncTrackedOrderSnapshot, toTrackingViewState, trackingPinInput]);
 
   const handleLoadAccountPanel = async () => {
-    if (!selectedStore?.slug) return;
-    const authToken = readStoreAuthToken();
-    if (!authToken) {
-      setAccountPanel({ loading: false, error: 'Sign in to view saved bookings, orders, tickets, and receipts.', me: null, orders: [], bookings: [] });
+    const dgfyToken = readDgfyAuthToken();
+    const storeToken = readStoreAuthToken();
+    if (!dgfyToken && !storeToken) {
+      setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: '' });
       return;
     }
     setAccountPanel((prev) => ({ ...prev, loading: true, error: '' }));
     try {
+      if (dgfyToken) {
+        const [meData, dashboardData, loyaltyData] = await Promise.all([
+          requestJson('/api/v1/dgfy/auth/me', { authToken: dgfyToken, cache: 'no-store' }),
+          requestJson('/api/v1/dgfy/customer/dashboard', { authToken: dgfyToken, cache: 'no-store' }),
+          requestJson('/api/v1/dgfy/customer/loyalty', { authToken: dgfyToken, cache: 'no-store' }).catch(() => null)
+        ]);
+        setAccountPanel({
+          loading: false,
+          error: '',
+          me: meData?.account || dashboardData?.account || meData || null,
+          orders: Array.isArray(dashboardData?.orders) ? dashboardData.orders : [],
+          bookings: Array.isArray(dashboardData?.bookings) ? dashboardData.bookings : [],
+          addresses: Array.isArray(dashboardData?.addresses) ? dashboardData.addresses : [],
+          loyalty: loyaltyData?.loyalty || dashboardData?.loyalty || null
+        });
+        return;
+      }
+
+      if (!selectedStore?.slug) {
+        setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: 'Select a storefront to view tenant-specific account activity.' });
+        return;
+      }
+
       const [me, ordersData, bookingsData] = await Promise.all([
-        requestJson('/api/v1/store/auth/me', { storeSlug: selectedStore.slug, authToken }),
-        requestJson('/api/v1/store/orders?limit=25', { storeSlug: selectedStore.slug, authToken }),
-        requestJson('/api/v1/store/services/bookings?limit=25', { storeSlug: selectedStore.slug, authToken }).catch(() => ({ bookings: [] }))
+        requestJson('/api/v1/store/auth/me', { storeSlug: selectedStore.slug, authToken: storeToken }),
+        requestJson('/api/v1/store/orders?limit=25', { storeSlug: selectedStore.slug, authToken: storeToken }),
+        requestJson('/api/v1/store/services/bookings?limit=25', { storeSlug: selectedStore.slug, authToken: storeToken }).catch(() => ({ bookings: [] }))
       ]);
       setAccountPanel({
         loading: false,
         error: '',
         me: me?.customer || me || null,
         orders: Array.isArray(ordersData?.orders) ? ordersData.orders : [],
-        bookings: Array.isArray(bookingsData?.bookings) ? bookingsData.bookings : []
+        bookings: Array.isArray(bookingsData?.bookings) ? bookingsData.bookings : [],
+        addresses: [],
+        loyalty: null
       });
     } catch (error) {
-      setAccountPanel({ loading: false, error: normalizeStorefrontErrorMessage(error, 'Unable to load account.'), me: null, orders: [], bookings: [] });
+      setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: normalizeStorefrontErrorMessage(error, 'Unable to load account.') });
     }
   };
+  const handleTrackCustomerReference = useCallback(async (reference) => {
+    const normalizedReference = String(reference || '').trim().toUpperCase();
+    if (!normalizedReference) return;
+    const dgfyToken = readDgfyAuthToken();
+    if (!dgfyToken) {
+      setCustomerTrackError('Sign in to track account-linked activity.');
+      return;
+    }
+    setCustomerTrackError('');
+    setCustomerTrackLoadingReference(normalizedReference);
+    try {
+      const payload = await requestJson('/api/v1/dgfy/customer/track', {
+        method: 'POST',
+        authToken: dgfyToken,
+        cache: 'no-store',
+        body: { reference: normalizedReference }
+      });
+      setTrackedCustomerActivity(payload?.activity || null);
+    } catch (error) {
+      setCustomerTrackError(normalizeStorefrontErrorMessage(error, 'Unable to load tracked activity.'));
+      setTrackedCustomerActivity(null);
+    } finally {
+      setCustomerTrackLoadingReference('');
+    }
+  }, []);
+  const closeAccountDrawer = useCallback(() => {
+    setIsAccountDrawerOpen(false);
+  }, []);
+  const handleStorefrontSignOut = useCallback(async () => {
+    const dgfyToken = readDgfyAuthToken();
+    if (dgfyToken) {
+      try {
+        await requestJson('/api/v1/dgfy/auth/logout', { method: 'POST', authToken: dgfyToken, cache: 'no-store' });
+      } catch {
+      }
+    }
+    clearDgfyAuthToken();
+    clearStoreAuthToken();
+    setDgfyAuthTokenState('');
+    setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: '' });
+    setTrackedCustomerActivity(null);
+    setCustomerTrackLoadingReference('');
+    setCustomerTrackError('');
+    setCustomerAuthMode('sign_in');
+    setCustomerAuthError('');
+    toast.success('Signed out.');
+  }, []);
+
+  const handleCustomerAuthSubmit = useCallback(async () => {
+    if (customerAuthSubmitting) return;
+    setCustomerAuthError('');
+    setCustomerAuthSubmitting(true);
+    try {
+      if (customerAuthMode === 'sign_in') {
+        const payload = await requestJson('/api/v1/dgfy/auth/login', {
+          method: 'POST',
+          cache: 'no-store',
+          body: {
+            email: customerSignInForm.email,
+            password: customerSignInForm.password
+          }
+        });
+        const token = String(payload?.token || '').trim();
+        if (!token) throw new Error('Missing customer auth token.');
+        writeDgfyAuthToken(token);
+        setDgfyAuthTokenState(token);
+        setCustomerSignInForm({ email: '', password: '' });
+      } else {
+        const legalTerms = dgfyLegalTerms || await loadDgfyLegalTerms();
+        const snapshot = legalTerms?.flows?.account_registration?.snapshot || {};
+        const payload = await requestJson('/api/v1/dgfy/auth/register', {
+          method: 'POST',
+          cache: 'no-store',
+          body: {
+            ...customerRegisterForm,
+            accepted_terms: Boolean(customerRegisterForm.accepted_terms),
+            terms_version: snapshot.terms_version,
+            privacy_version: snapshot.privacy_version,
+            marketplace_terms_version: snapshot.marketplace_terms_version
+          }
+        });
+        const token = String(payload?.token || '').trim();
+        if (!token) throw new Error('Missing customer auth token.');
+        writeDgfyAuthToken(token);
+        setDgfyAuthTokenState(token);
+        setCustomerRegisterForm({
+          first_name: '',
+          last_name: '',
+          email: '',
+          phone: '',
+          password: '',
+          confirm_password: '',
+          accepted_terms: false
+        });
+      }
+      await handleLoadAccountPanel();
+    } catch (error) {
+      setCustomerAuthError(normalizeStorefrontErrorMessage(error, customerAuthMode === 'sign_in' ? 'Unable to sign in.' : 'Unable to create your DGFY account.'));
+    } finally {
+      setCustomerAuthSubmitting(false);
+    }
+  }, [customerAuthMode, customerAuthSubmitting, customerRegisterForm, customerSignInForm, dgfyLegalTerms, loadDgfyLegalTerms]);
 
   const handleNearMe = () => {
     const currentSearch = String(searchRef.current || search || '').trim();
@@ -8578,25 +8888,35 @@ export default function StorefrontApp() {
             ) : null}
             <section style={{ display: activeDiscoveryNavItem === 'Solutions' ? 'none' : 'grid', gap: 0, paddingBottom: 8 }}>
 
-              {/* ── NAV ── */}
+              {/* â”€â”€ NAV â”€â”€ */}
               <DiscoveryHeader
                 viewportMode={discoveryViewportMode}
                 logoSrc={dgfyHeaderLogo}
                 onLogoClick={() => goDiscovery()}
                 navItems={['Explore', 'Solutions', 'Contact Us']}
                 activeItem={activeDiscoveryNavItem}
+                isAuthenticated={isDgfyCustomerSignedIn}
+                accountLabel="My Account"
+                authLabel="Log in / Sign up"
+                businessLabel="Register Your Business"
                 menuOpen={isDiscoveryNavMenuOpen}
                 onMenuToggle={() => setIsDiscoveryNavMenuOpen((open) => !open)}
                 onItemClick={handleDiscoveryNavItemClick}
-	                onRegisterClick={() => {
-	                  if (typeof window !== 'undefined') {
-	                    window.location.href = 'https://skupervisor.dgfy.ph/register-company';
-	                  }
-	                }}
-	              />
+                onAuthClick={() => {
+                  setIsDiscoveryNavMenuOpen(false);
+                  setCustomerAuthError('');
+                  setCustomerAuthMode('sign_in');
+                  openAccountPanel();
+                }}
+                onBusinessClick={() => {
+                  if (typeof window !== 'undefined') {
+                    window.location.href = 'https://skupervisor.dgfy.ph/register-company?source=dgfy&auth=login#dgfy-profile';
+                  }
+                }}
+              />
 
 
-              {/* ── HERO ── */}
+              {/* â”€â”€ HERO â”€â”€ */}
               <div
                 style={{
                   display: 'none',
@@ -8636,7 +8956,7 @@ export default function StorefrontApp() {
                   {' '}For You
                 </h1>
 	                <p style={{ margin: isMobileViewport ? '16px auto 0' : '14px auto 0', maxWidth: isMobileViewport ? 332 : 800, color: '#94a3b8', fontSize: isMobileViewport ? 14 : 16.5, lineHeight: isMobileViewport ? 1.45 : 1.6, boxSizing: 'border-box' }}>
-                  Find nearby products, services, and businesses—faster, smarter, and all in one place.
+                  Find nearby products, services, and businesses-faster, smarter, and all in one place.
                 </p>
               </div>
 
@@ -8659,13 +8979,13 @@ export default function StorefrontApp() {
                     {' '}For You
                   </>
                 )}
-	                subtitle="Find nearby products, services, and businesses—faster, smarter, and all in one place."
+	                subtitle="Find nearby products, services, and businesses-faster, smarter, and all in one place."
               />
 
               <div ref={discoveryInteractiveAreaRef} style={{ display: 'grid', gap: isDiscoveryMobileViewport ? 10 : isDiscoveryTabletViewport ? 12 : 12, width: '100%', minWidth: 0 }}>
               <div style={{ position: 'sticky', top: isDiscoveryMobileViewport ? 'calc(env(safe-area-inset-top, 0px) + 8px)' : discoveryLayout.navOffset, zIndex: 49, backgroundColor: '#ffffff', display: 'grid', gap: isDiscoveryMobileViewport ? 10 : isDiscoveryTabletViewport ? 12 : 12, width: '100%', minWidth: 0 }}>
 
-                {/* ── PERMANENT SEARCH ── */}
+                {/* â”€â”€ PERMANENT SEARCH â”€â”€ */}
                   <DiscoverySearchRegion viewportMode={discoveryViewportMode}>
                   <div style={{ width: '100%', minWidth: 0, padding: discoveryLayout.searchPadding, boxSizing: 'border-box' }}>
 
@@ -9006,7 +9326,7 @@ export default function StorefrontApp() {
                   </DiscoverySearchRegion>
 
 
-                  {/* ── STATIC HERO MAP ── */}
+                  {/* â”€â”€ STATIC HERO MAP â”€â”€ */}
                   {!hasDiscoverySearch && (
                     <>
                       <DiscoveryMapCard viewportMode={discoveryViewportMode}>
@@ -9192,7 +9512,7 @@ export default function StorefrontApp() {
               </div>
             </section>
 
-                    {/* ── WHY CHOOSE DGFY ── */}
+                    {/* â”€â”€ WHY CHOOSE DGFY â”€â”€ */}
                     {false && (
                     <section style={{ padding: isMobileViewport ? '56px 16px 28px' : '88px 0 44px', maxWidth: 1220, margin: '0 auto' }}>
                       <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, .95fr) minmax(0, 1.15fr)', gap: isMobileViewport ? 28 : 34, alignItems: 'center' }}>
@@ -9271,7 +9591,7 @@ export default function StorefrontApp() {
 
                     )}
 
-                    {/* ── HOW DGFY WORKS ── */}
+                    {/* â”€â”€ HOW DGFY WORKS â”€â”€ */}
                     <section style={{ padding: isMobileViewport ? '60px 16px' : '100px 0 80px', maxWidth: 1140, margin: '0 auto', textAlign: 'center', position: 'relative' }}>
                       <h2 style={{ fontSize: isMobileViewport ? 28 : 36, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em', marginBottom: 16 }}>
                         How <span style={{ color: '#1a4e8d' }}>DGFY</span> Works
@@ -9414,7 +9734,7 @@ export default function StorefrontApp() {
                       </div>
                     </section>
 
-                    {/* ── FEATURED MERCHANTS ── */}
+                    {/* â”€â”€ FEATURED MERCHANTS â”€â”€ */}
                     <section ref={featuredSectionRef} style={{ padding: isMobileViewport ? '40px 16px 80px' : '40px 0 100px', maxWidth: 1200, margin: '0 auto', textAlign: 'center', overflow: 'hidden' }}>
                       <h2 style={{ fontSize: isMobileViewport ? 28 : 36, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em', marginBottom: 12 }}>
                         Featured <span style={{ color: '#1a4e8d' }}>Local Merchants</span>
@@ -9655,7 +9975,7 @@ export default function StorefrontApp() {
                       </div>
                     </section>
 
-                    {/* ── FOR BUSINESS OWNERS ── */}
+                    {/* â”€â”€ FOR BUSINESS OWNERS â”€â”€ */}
                     <section style={{ padding: isMobileViewport ? '16px 16px 80px' : '8px 0 108px', maxWidth: 1220, margin: '0 auto' }}>
                       <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, .95fr) minmax(0, 1.15fr)', gap: isMobileViewport ? 28 : 34, alignItems: 'center' }}>
                         <div style={{ display: 'grid', gap: 22 }}>
@@ -9731,7 +10051,7 @@ export default function StorefrontApp() {
                       </div>
                     </section>
 
-                    {/* ── DISCOVERY FAQ ── */}
+                    {/* â”€â”€ DISCOVERY FAQ â”€â”€ */}
                     <section style={{ padding: isMobileViewport ? '0 16px 88px' : '0 0 112px', maxWidth: 1180, margin: '0 auto' }}>
                       <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, .82fr) minmax(0, 1.18fr)', gap: isMobileViewport ? 28 : 42, alignItems: 'start' }}>
                         <div style={{ display: 'grid', gap: 18 }}>
@@ -9931,7 +10251,7 @@ export default function StorefrontApp() {
                         </div>
                       </div>
                     </footer>
-                {/* ── DYNAMIC MAP & LIST ── */}
+                {/* â”€â”€ DYNAMIC MAP & LIST â”€â”€ */}
                 {false && hasDiscoverySearch && (
                 <div style={{ borderRadius: 20, overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 4px 24px rgba(15,23,42,.08)' }}>
                   <div style={{ display: 'flex', flexDirection: isDiscoveryTabletViewport ? 'column' : 'row', alignItems: 'stretch', position: 'relative', overflow: 'hidden', transition: 'all 350ms cubic-bezier(0.4,0,0.2,1)' }}>
@@ -9959,7 +10279,7 @@ export default function StorefrontApp() {
                           {loadingStores ? 'Loading map...' : storesError || getDiscoveryEmptyStateMessage(search)}
                         </div>
                       )}
-                      {/* View All Stores / Hide List — top-right overlay */}
+                      {/* View All Stores / Hide List â€” top-right overlay */}
                       <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 11 }}>
                         <button
                           type="button"
@@ -9988,7 +10308,7 @@ export default function StorefrontApp() {
 
                     </div>
 
-                    {/* RESULTS PANEL — slides in from right */}
+                    {/* RESULTS PANEL â€” slides in from right */}
                     <aside
                       style={{
                         background: '#fff',
@@ -10078,9 +10398,9 @@ export default function StorefrontApp() {
                                     <span style={{ color: '#f59e0b', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}><Star size={12} fill="currentColor" />{rating}</span>
                                     <span style={{ color: '#64748b' }}>({ratingCount})</span>
                                     <span style={{ color: '#94a3b8' }}>·</span>
-                                    <span style={{ color: '#64748b' }}>{Number.isFinite(Number(store.nearest_distance_km)) ? `${Number(store.nearest_distance_km).toFixed(1)} km` : '—'}</span>
+                                    <span style={{ color: '#64748b' }}>{Number.isFinite(Number(store.nearest_distance_km)) ? `${Number(store.nearest_distance_km).toFixed(1)} km` : '-'}</span>
                                     <span style={{ color: '#94a3b8' }}>·</span>
-                                    <span style={{ color: '#64748b' }}>{store.estimated_wait_minutes || 10}–{Number(store.estimated_wait_minutes || 10) + 5} min</span>
+                                    <span style={{ color: '#64748b' }}>{store.estimated_wait_minutes || 10}-{Number(store.estimated_wait_minutes || 10) + 5} min</span>
                                     <span style={{ borderRadius: 999, padding: '2px 7px', fontSize: 10, fontWeight: 700, background: store.storefront_open ? '#ecfdf5' : '#fff7ed', color: store.storefront_open ? '#16a34a' : '#c2410c' }}>{store.storefront_open ? 'Open Now' : 'Closed'}</span>
                                   </div>
                                   <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
@@ -10406,6 +10726,8 @@ export default function StorefrontApp() {
 	                openStorefrontActionLink={openStorefrontActionLink}
 	                openTrackPanel={openTrackPanel}
 	                openAccountPanel={openAccountPanel}
+	                isStorefrontAccountAuthenticated={isStorefrontAccountAuthenticated}
+	                activeCustomerOrderCount={activeCustomerOrderCount}
 	                followEnabled={followEnabledForStore}
 	                shareEnabled={shareEnabledForStore}
 	                followState={followState}
@@ -10658,6 +10980,8 @@ export default function StorefrontApp() {
 	                  openStorefrontActionLink={openStorefrontActionLink}
 	                  openTrackPanel={openTrackPanel}
 	                  openAccountPanel={openAccountPanel}
+	                  isStorefrontAccountAuthenticated={isStorefrontAccountAuthenticated}
+	                  activeCustomerOrderCount={activeCustomerOrderCount}
 	                  followEnabled={followEnabledForStore}
 	                  shareEnabled={shareEnabledForStore}
 	                  followState={followState}
@@ -10686,6 +11010,8 @@ export default function StorefrontApp() {
                     openStorefrontActionLink={openStorefrontActionLink}
                     openTrackPanel={openTrackPanel}
                     openAccountPanel={openAccountPanel}
+                    isStorefrontAccountAuthenticated={isStorefrontAccountAuthenticated}
+                    activeCustomerOrderCount={activeCustomerOrderCount}
                     followEnabled={followEnabledForStore}
                     shareEnabled={shareEnabledForStore}
                     followState={followState}
@@ -12602,10 +12928,10 @@ return (
     `}</style>
   <div style={{
     display: 'grid',
-    gap: 24,
+    gap: isFnbMode ? 0 : 24,
     gridTemplateColumns: (isServicesMode && !isMobileViewport) ? '1fr 340px' : '1fr'
   }}>
-    <div style={{ display: 'grid', gap: 24 }}>
+    <div style={{ display: 'grid', gap: isFnbMode ? 0 : 24 }}>
       {!(isSimpleMode && isResolvedOrderSubpage) && (
       <section id="storefront-catalog-section" style={{
         display: 'grid',
@@ -13650,6 +13976,10 @@ return (
             layoutVariant="compact"
             palette="fnb"
             titleFontFamily={modeAdapter.heroTheme?.displayFont}
+            sectionPadding={isMobileViewport ? '36px 0 40px' : '44px 0 48px'}
+            contentMaxWidth={1280}
+            sectionBackground="#ffffff"
+            collapseSpacing
           />
 
           <SharedStorefrontReviewsSection
@@ -13663,6 +13993,11 @@ return (
             titleFontFamily={modeAdapter.heroTheme?.displayFont}
             cardVariant="white"
             writeButtonColor="#f97316"
+            sectionPadding={isMobileViewport ? '36px 0 40px' : '44px 0 48px'}
+            contentMaxWidth={1280}
+            titleSize={isMobileViewport ? 28 : 36}
+            subtitleSize={isMobileViewport ? 14 : 16}
+            collapseSpacing
             starSymbol="*"
           />
 
@@ -14110,7 +14445,7 @@ return (
           </div>
         );
       })()}
-      {isServicesCartDrawerMode && (
+      {!isAccountDrawerOpen && isServicesCartDrawerMode && (
         <>
           <button
             type="button"
@@ -14354,7 +14689,7 @@ return (
           </div>
         </>
       )}
-      {isSimpleCartSurfaceMode && (
+      {!isAccountDrawerOpen && isSimpleCartSurfaceMode && (
         <>
           <button
             type="button"
@@ -14627,7 +14962,9 @@ return (
           right: isMobileViewport ? 20 : 36,
           left: isFnbMode ? 'auto' : (isMobileViewport ? 10 : 'auto'),
           bottom: isMobileViewport ? 10 : 18,
-          display: isServicesCartDrawerMode
+          display: isAccountDrawerOpen
+            ? 'none'
+            : isServicesCartDrawerMode
             ? 'none'
             : (
               isServicesMode && isDesktopViewport
@@ -14823,8 +15160,7 @@ return (
                 ...(isServicesMode && hasServiceCart ? [{ id: 'review', label: 'Booking Summary' }] : []),
                 { id: 'checkout', label: isServicesMode && hasServiceCart ? 'Customer Details' : 'Checkout' },
                 ...(!isFnbMode ? [
-                  { id: 'track', label: 'Track' },
-                  { id: 'account', label: 'Account' }
+                  { id: 'track', label: 'Track' }
                 ] : [])
               ].map((tab) => (
                 <button
@@ -14832,7 +15168,6 @@ return (
                   type="button"
                   onClick={() => {
                     setCheckoutTab(tab.id);
-                    if (tab.id === 'account') handleLoadAccountPanel();
                   }}
                   style={{ borderRadius: 999, border: `1px solid ${checkoutTab === tab.id ? '#0f766e' : '#cbd5e1'}`, background: checkoutTab === tab.id ? '#e6fffb' : '#fff', color: checkoutTab === tab.id ? '#0f766e' : '#334155', padding: '8px 14px', fontWeight: 700, cursor: 'pointer' }}
                 >
@@ -14897,7 +15232,7 @@ return (
                   </div>
                 </section>
 
-                {/* ── Content area (padded, max-width constrained) ─────────────────── */}
+                {/* â”€â”€ Content area (padded, max-width constrained) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
                 <div style={{ display: 'grid', gap: 18, maxWidth: 1240, margin: '0 auto', width: '100%', padding: isDesktopCheckout ? '20px 40px 40px' : '10px 16px 20px', boxSizing: 'border-box' }}>
 
                 <section style={{ background: '#fff', padding: isMobileViewport ? '4px 0 8px' : '4px 0 12px', display: 'grid', gap: 6 }}>
@@ -15165,7 +15500,7 @@ return (
                           <div style={{ fontSize: 15, fontWeight: 800, color: '#1e293b' }}>3. Where should we deliver your order?</div>
                           <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '280px minmax(0, 1fr)', gap: 14, alignItems: 'start' }}>
                             <div style={{ display: 'grid', gap: 10 }}>
-                              {/* Scrollable saved locations — capped at ~3 visible cards */}
+                              {/* Scrollable saved locations â€” capped at ~3 visible cards */}
                               <div
                                 className={deliverySavedLocations.length > 3 ? 'fnb-saved-locations-scroll' : undefined}
                                 style={{
@@ -15217,7 +15552,7 @@ return (
                                   );
                                 })}
                               </div>
-                              {/* "Use new location" — always visible below the scroll area */}
+                              {/* "Use new location" â€” always visible below the scroll area */}
                               <button
                                 type="button"
                                 aria-label="Add New Location"
@@ -16405,7 +16740,7 @@ return (
                     return (
                       <div style={{ maxWidth: 560, margin: '0 auto', borderRadius: 20, padding: isMobileViewport ? 20 : 28, background: '#fff', boxShadow: '0 4px 32px rgba(15,23,42,.07)', border: '1px solid #e2e8f0' }}>
 
-                        {/* ── Hero checkmark ── */}
+                        {/* â”€â”€ Hero checkmark â”€â”€ */}
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 10, marginBottom: 24 }}>
                           <div style={{ position: 'relative', width: 80, height: 80, marginBottom: 4 }}>
                             <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#ecfdf5', border: '2px solid #86efac', color: '#16a34a', display: 'grid', placeItems: 'center' }}>
@@ -16425,7 +16760,7 @@ return (
                           </div>
                         </div>
 
-                        {/* ── Store card ── */}
+                        {/* â”€â”€ Store card â”€â”€ */}
                         <div style={{ border: '1px solid #f1f5f9', borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12 }}>
                           <div style={{ width: 52, height: 52, borderRadius: 12, background: '#f1f5f9', overflow: 'hidden', flexShrink: 0, display: 'flex', placeItems: 'center', justifyContent: 'center' }}>
                             {storeLogoUrl
@@ -16446,7 +16781,7 @@ return (
                           </button>
                         </div>
 
-                        {/* ── Reference / date / type strip ── */}
+                        {/* â”€â”€ Reference / date / type strip â”€â”€ */}
                         <div style={{ border: '1px solid #f1f5f9', borderRadius: 14, padding: '14px 16px', display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 20 }}>
                           {[
                             { icon: <FileText size={16} color={dgfyPrimary} />, label: 'Reference No.', value: trackingResult.tracking_pin || trackingPinInput },
@@ -16460,7 +16795,7 @@ return (
                           ))}
                         </div>
 
-                        {/* ── Ordered items ── */}
+                        {/* â”€â”€ Ordered items â”€â”€ */}
                         {receiptItems.length > 0 && (
                           <div style={{ marginBottom: 12 }}>
                             <div style={{ fontSize: 12, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
@@ -16491,7 +16826,7 @@ return (
                           </div>
                         )}
 
-                        {/* ── Total amount ── */}
+                        {/* â”€â”€ Total amount â”€â”€ */}
                         <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 14, marginBottom: 20 }}>
                           {showBreakdown && (
                             <>
@@ -16518,7 +16853,7 @@ return (
                           </div>
                         </div>
 
-                        {/* ── Order Again CTA ── */}
+                        {/* â”€â”€ Order Again CTA â”€â”€ */}
                         <button
                           type="button"
                           onClick={goStoreCatalogPage}
@@ -16914,67 +17249,68 @@ return (
               </div>
             )}
 
-            {checkoutTab === 'account' && (
-              <div style={{ display: 'grid', gap: 14, maxWidth: 860 }}>
-                <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 16, background: '#fff', boxShadow: '0 8px 24px rgba(15,23,42,.04)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
-                    <div>
-                      <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 22 }}>My Account</h3>
-                      <p style={{ marginTop: 0, color: '#64748b', fontSize: 13 }}>Bookings, orders, tickets, receipts, and the latest linked transaction.</p>
-                    </div>
-                    <button type="button" onClick={handleLoadAccountPanel} style={{ borderRadius: 12, border: '1px solid #334155', background: '#334155', color: '#fff', padding: '10px 14px', fontWeight: 700 }}>Refresh</button>
-                  </div>
-                  {accountPanel.loading && <p style={{ color: '#64748b' }}>Loading account...</p>}
-                  {accountPanel.error && <p style={{ color: '#b91c1c' }}>{accountPanel.error}</p>}
-                  {accountPanel.me && (
-                    <div style={{ marginTop: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', padding: '10px 12px' }}>
-                      <strong>{accountPanel.me.name || accountPanel.me.email || 'Customer'}</strong>
-                      <div style={{ fontSize: 12, color: '#64748b' }}>{accountPanel.me.email || accountPanel.me.phone || 'Signed in'}</div>
-                    </div>
-                  )}
-                  <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>
-                      Saved details: {hasSavedCustomerDetails ? maskedSavedCustomerPreview : 'None'}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={clearSavedCustomerDetailsForDevice}
-                      disabled={!hasSavedCustomerDetails}
-                      style={{ borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '8px 12px', fontSize: 12, fontWeight: 700, cursor: hasSavedCustomerDetails ? 'pointer' : 'not-allowed' }}
-                    >
-                      Clear saved details
-                    </button>
-                  </div>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr' : '1fr', gap: 12 }}>
-                  <section style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: '#fff' }}>
-                    <h4 style={{ margin: '0 0 8px 0', fontSize: 16 }}>My Bookings</h4>
-                    {accountPanel.bookings.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No saved bookings yet.</p>}
-                    {accountPanel.bookings.map((booking) => (
-                      <div key={booking.booking_id} style={{ borderTop: '1px solid #e2e8f0', padding: '9px 0', fontSize: 13 }}>
-                        <strong>{booking.public_reference}</strong>
-                        <div style={{ color: '#475569' }}>{booking.service_name || booking.service?.name || 'Service'} Â· {booking.status}</div>
-                        <div style={{ color: '#64748b' }}>{booking.start_at ? formatTicketDate(booking.start_at) : 'Unscheduled'} Â· {booking.payment_status}</div>
-                      </div>
-                    ))}
-                  </section>
-                  <section style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: '#fff' }}>
-                    <h4 style={{ margin: '0 0 8px 0', fontSize: 16 }}>My Orders & Tickets</h4>
-                    {accountPanel.orders.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No saved orders yet.</p>}
-                    {accountPanel.orders.map((order) => (
-                      <div key={order.pos_transaction_id || order.tracking_pin} style={{ borderTop: '1px solid #e2e8f0', padding: '9px 0', fontSize: 13 }}>
-                        <strong>{order.tracking_pin || order.receipt_number || 'Order'}</strong>
-                        <div style={{ color: '#475569' }}>{order.status_label || order.status || 'Placed'} Â· {money(order.total_amount)}</div>
-                        <div style={{ color: '#64748b' }}>{order.created_at ? formatTicketDate(order.created_at) : 'Recent transaction'}</div>
-                      </div>
-                    ))}
-                  </section>
-                </div>
-              </div>
-            )}
           </div>
         </aside>
       </div>
+      {showOrderSuccessAnimation && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 2600, background: 'rgba(15,23,42,0.4)', display: 'grid', placeItems: 'center', pointerEvents: 'none' }}>
+          <div style={{ width: 132, height: 132, borderRadius: '50%', background: '#ffffff', border: '1px solid #dbe5ee', boxShadow: '0 24px 60px rgba(15,23,42,0.25)', display: 'grid', placeItems: 'center' }}>
+            <div style={{ width: 68, height: 68, borderRadius: '50%', background: '#22c55e', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 34, fontWeight: 900, boxShadow: '0 0 0 10px rgba(34,197,94,0.18)' }}>
+              ✓
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )}
+      {isAccountDrawerOpen && (isGuestAccountDrawerState ? (
+        <DgfyCustomerAuthModal
+          isMobileViewport={isMobileViewport}
+          onClose={closeAccountDrawer}
+          customerAuthMode={customerAuthMode}
+          customerAuthError={customerAuthError}
+          customerAuthSubmitting={customerAuthSubmitting}
+          dgfyLegalTermsLoading={dgfyLegalTermsLoading}
+          customerSignInForm={customerSignInForm}
+          customerRegisterForm={customerRegisterForm}
+          onCustomerAuthModeChange={(nextMode) => {
+            setCustomerAuthMode(nextMode);
+            setCustomerAuthError('');
+            if (nextMode === 'create_account') {
+              loadDgfyLegalTerms().catch(() => {});
+            }
+          }}
+          onSignInFieldChange={handleCustomerSignInFieldChange}
+          onRegisterFieldChange={handleCustomerRegisterFieldChange}
+          onSubmit={handleCustomerAuthSubmit}
+        />
+      ) : (
+        <DgfyCustomerAccountPage
+          isMobileViewport={isMobileViewport}
+          onClose={closeAccountDrawer}
+          onRefresh={handleLoadAccountPanel}
+          onTrackReference={handleTrackCustomerReference}
+          onSignOut={handleStorefrontSignOut}
+          onHelp={() => toast.info('Help center is not connected yet.')}
+          onRegisterBusiness={() => {
+            if (typeof window !== 'undefined') {
+              window.location.href = 'https://skupervisor.dgfy.ph/register-company?source=dgfy&auth=login#dgfy-profile';
+            }
+          }}
+          onClearSavedDetails={clearSavedCustomerDetailsForDevice}
+          accountIdentityInitials={accountIdentityInitials}
+          accountIdentityName={accountIdentityName}
+          accountIdentityContact={accountIdentityContact}
+          accountPanel={accountPanel}
+          hasSavedCustomerDetails={hasSavedCustomerDetails}
+          maskedSavedCustomerPreview={maskedSavedCustomerPreview}
+          activeOrders={activeCustomerOrders}
+          activeOrderCount={activeCustomerOrderCount}
+          trackedCustomerActivity={trackedCustomerActivity}
+          customerTrackLoadingReference={customerTrackLoadingReference}
+          customerTrackError={customerTrackError}
+        />
+      ))}
       {isGuestTrackingDrawerOpen && isGuestStorefrontUser && !isStandaloneTrackingPage && (
         <>
           <button
@@ -17178,17 +17514,6 @@ return (
           </aside>
         </>
       )}
-      {showOrderSuccessAnimation && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 2600, background: 'rgba(15,23,42,0.4)', display: 'grid', placeItems: 'center', pointerEvents: 'none' }}>
-          <div style={{ width: 132, height: 132, borderRadius: '50%', background: '#ffffff', border: '1px solid #dbe5ee', boxShadow: '0 24px 60px rgba(15,23,42,0.25)', display: 'grid', placeItems: 'center' }}>
-            <div style={{ width: 68, height: 68, borderRadius: '50%', background: '#22c55e', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 34, fontWeight: 900, boxShadow: '0 0 0 10px rgba(34,197,94,0.18)' }}>
-              ✓
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  )}
     </main >
   );
 }

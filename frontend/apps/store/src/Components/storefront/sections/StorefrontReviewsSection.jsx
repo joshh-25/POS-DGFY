@@ -16,6 +16,10 @@ export function StorefrontReviewsSection({
   sectionBackground = '#ffffff',
   cardVariant = 'soft',
   sectionPadding = null,
+  collapseSpacing = false,
+  contentMaxWidth = 1320,
+  titleSize = null,
+  subtitleSize = null,
   summaryEnabled = false,
   starSymbol = '*'
 }) {
@@ -33,19 +37,20 @@ export function StorefrontReviewsSection({
     <section
       style={{
         marginTop: 0,
+        marginBottom: 0,
         marginLeft: 'calc(50% - 50vw)',
         width: '100vw',
         padding: sectionPadding || (isMobileViewport ? '18px 0 20px' : '22px 0 24px'),
         background: sectionBackground,
-        borderTop: '1px solid #e2e8f0',
-        borderBottom: '1px solid #e2e8f0',
+        borderTop: `1px solid ${collapseSpacing ? '#edf2f7' : '#e2e8f0'}`,
+        borderBottom: collapseSpacing ? 'none' : '1px solid #e2e8f0',
         display: 'grid',
         gap: 18
       }}
     >
       <div
         style={{
-          maxWidth: 1320,
+          maxWidth: contentMaxWidth,
           width: '100%',
           margin: '0 auto',
           paddingLeft: isMobileViewport ? 16 : 24,
@@ -64,11 +69,11 @@ export function StorefrontReviewsSection({
           }}
         >
           <div>
-            <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, fontWeight: 900, color: '#0f172a', fontFamily: titleFontFamily }}>
+            <h2 style={{ margin: 0, fontSize: titleSize || (isMobileViewport ? 24 : 32), fontWeight: titleSize ? 800 : 900, color: '#0f172a', fontFamily: titleFontFamily, lineHeight: 1.08 }}>
               {title}
             </h2>
             {subtitle && (
-              <p style={{ margin: '6px 0 0 0', fontSize: 14, color: '#64748b' }}>
+              <p style={{ margin: '6px 0 0 0', fontSize: subtitleSize || 14, color: '#64748b', lineHeight: 1.45 }}>
                 {subtitle}
               </p>
             )}
@@ -174,7 +179,7 @@ export function StorefrontReviewsSection({
               background: emptyBackground,
               border: emptyBorder,
               borderRadius: cardVariant === 'white' ? 20 : 18,
-              padding: isMobileViewport ? 20 : 24,
+              padding: isMobileViewport ? 22 : 28,
               boxShadow: cardVariant === 'white' ? 'none' : '0 10px 24px rgba(15, 23, 42, 0.05)',
               fontSize: 14,
               color: '#64748b',

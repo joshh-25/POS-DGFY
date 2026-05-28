@@ -64,7 +64,7 @@ const makeJsonResponse = (data, ok = true) => ({
   json: async () => ({ data })
 });
 
-describe('storefront profile launcher', () => {
+describe('discovery header customer account actions', () => {
   let fetchMock;
 
   beforeEach(() => {
@@ -74,20 +74,8 @@ describe('storefront profile launcher', () => {
       const normalized = String(url);
       if (normalized.includes('/api/v1/storefront/discovery?')) {
         return makeJsonResponse({
-          stores: [
-            {
-              tenant_id: 'tenant-1',
-              tenant_name: 'Alpha Foods',
-              slug: 'alpha',
-              workflow_mode: 'msme',
-              storefront_open: true,
-              address_line: 'Iloilo City',
-              latitude: 10.72,
-              longitude: 122.56,
-              catalog_count: 2
-            }
-          ],
-          pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+          stores: [],
+          pagination: { page: 1, limit: 100, total: 0, totalPages: 1 },
           applied_filters: {
             result_mode: 'union',
             stock_filter: 'include_out_of_stock',
@@ -96,22 +84,18 @@ describe('storefront profile launcher', () => {
           }
         });
       }
-      if (normalized.includes('/api/v1/storefront/discovery/')) {
+      if (normalized.includes('/api/v1/dgfy/legal-terms/current')) {
         return makeJsonResponse({
-          slug: 'alpha',
-          tenant_name: 'Alpha Foods',
-          workflow_mode: 'msme',
-          location_id: 11,
-          address_line: 'Iloilo City',
-          storefront_open: true,
-          catalog_count: 2
+          flows: {
+            account_registration: {
+              snapshot: {
+                terms_version: 'terms-v1',
+                privacy_version: 'privacy-v1',
+                marketplace_terms_version: 'market-v1'
+              }
+            }
+          }
         });
-      }
-      if (normalized.includes('/api/v1/store/locations')) {
-        return makeJsonResponse({ locations: [], primary_location_id: null });
-      }
-      if (normalized.includes('/api/v1/store/catalog')) {
-        return makeJsonResponse({ items: [] });
       }
       if (normalized.includes('/api/v1/dgfy/auth/me')) {
         return makeJsonResponse({
@@ -131,17 +115,7 @@ describe('storefront profile launcher', () => {
             last_name: 'Coleen',
             email: 'kate@example.com'
           },
-          orders: [
-            {
-              activity_id: 'order-1',
-              reference: 'ORD-001',
-              store_name: 'Alpha Foods',
-              status: 'preparing',
-              status_label: 'Preparing',
-              occurred_at: '2026-05-28T08:00:00.000Z',
-              total_amount: 189
-            }
-          ],
+          orders: [],
           bookings: [],
           addresses: []
         });
@@ -161,52 +135,35 @@ describe('storefront profile launcher', () => {
     window.localStorage.clear();
   });
 
-  it('does not show the profile launcher entry on the main discovery page', async () => {
-    window.localStorage.setItem('dgfy_store_recent_stores', JSON.stringify([
-      {
-        slug: 'alpha',
-        tenant_name: 'Alpha Foods',
-        address_line: 'Iloilo City'
-      }
-    ]));
-    window.localStorage.setItem('dgfy_store_last_store_slug', 'alpha');
+  it('shows separate customer auth and business registration actions on discovery header', async () => {
+    render(<App />);
 
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    expect(screen.getByRole('button', { name: /log in \/ sign up/i })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: /register your business/i }).length).toBeGreaterThan(0);
+  });
+
+  it('opens the DGFY account drawer from the discovery auth action', async () => {
     const user = userEvent.setup();
     render(<App />);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(screen.queryByRole('button', { name: /^Profile$/i })).toBeNull();
-  });
-
-  it('opens account panel from the profile launcher button on a store page', async () => {
-    window.history.pushState({}, '', '/tenant-store/alpha');
-    const user = userEvent.setup();
-    render(<App />);
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    await waitFor(() => {
-      expect(screen.getAllByText('Alpha Foods').length).toBeGreaterThan(0);
-    });
-
-    const profileButton = screen.getAllByRole('button', { name: /^Profile$/i })
-      .find((button) => window.getComputedStyle(button).pointerEvents !== 'none');
-    expect(profileButton).toBeTruthy();
-    await user.click(profileButton);
+    await user.click(screen.getByRole('button', { name: /log in \/ sign up/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('DGFY Account')).toBeTruthy();
-      expect(screen.getByRole('button', { name: /sign in with dgfy/i })).toBeTruthy();
+      expect(screen.getByRole('dialog', { name: /dgfy account/i })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /^sign in$/i })).toBeTruthy();
     });
   });
 
-  it('shows an active order badge on storefront headers for signed-in customers with in-progress orders', async () => {
+  it('switches discovery header to My Account when a DGFY customer session exists', async () => {
     window.localStorage.setItem('dgfy_customer_account_token', 'dgfy-test-token');
-    window.history.pushState({}, '', '/tenant-store/alpha');
     render(<App />);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    await waitFor(() => {
-      expect(screen.getByLabelText(/1 active order/i)).toBeTruthy();
-    });
+
+    expect(screen.getByRole('button', { name: /^my account$/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /log in \/ sign up/i })).toBeNull();
   });
 });

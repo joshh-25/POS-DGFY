@@ -8,7 +8,11 @@ export function StorefrontPromoSection({
   isMobileViewport,
   layoutVariant = 'feature',
   palette = 'orange',
-  titleFontFamily
+  titleFontFamily,
+  sectionPadding = null,
+  collapseSpacing = false,
+  contentMaxWidth = 1320,
+  sectionBackground = '#ffffff'
 }) {
   if (!Array.isArray(items) || items.length === 0) return null;
 
@@ -16,7 +20,6 @@ export function StorefrontPromoSection({
   const isFnb = palette === 'fnb';
 
   /* ── Section & card colour tokens ── */
-  const sectionBackground = '#ffffff';
   const accentColor = isFnb ? '#f97316' : (isTeal ? '#0f766e' : '#1a4e8d');
   const accentDark  = isFnb ? '#c2410c' : (isTeal ? '#134e4a' : '#1e3a6e');
   const accentSoft  = isFnb ? '#16a34a' : accentColor;
@@ -29,31 +32,32 @@ export function StorefrontPromoSection({
         marginLeft: 'calc(50% - 50vw)',
         width: '100vw',
         marginTop: 0,
-        padding: isMobileViewport ? '16px 0 18px' : '20px 0 22px',
+        marginBottom: 0,
+        padding: sectionPadding || (isMobileViewport ? '16px 0 18px' : '20px 0 22px'),
         background: sectionBackground,
         display: 'grid',
         gap: 0,
-        borderTop: '1px solid #f1f5f9',
-        borderBottom: '1px solid #f1f5f9'
+        borderTop: `1px solid ${collapseSpacing ? '#edf2f7' : '#f1f5f9'}`,
+        borderBottom: collapseSpacing ? 'none' : '1px solid #f1f5f9'
       }}
     >
       <div
         style={{
-          maxWidth: 1320,
+          maxWidth: contentMaxWidth,
           width: '100%',
           margin: '0 auto',
           paddingLeft: isMobileViewport ? 16 : 24,
           paddingRight: isMobileViewport ? 16 : 24,
           display: 'grid',
-          gap: 14
+          gap: isFnb ? (isMobileViewport ? 18 : 24) : 14
         }}
       >
         {/* Section heading */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div
             style={{
-              width: 32,
-              height: 32,
+              width: isFnb ? 36 : 32,
+              height: isFnb ? 36 : 32,
               borderRadius: 10,
               background: accentTint,
               border: `1px solid ${cardBorder}`,
@@ -69,16 +73,16 @@ export function StorefrontPromoSection({
             <h2
               style={{
                 margin: 0,
-                fontSize: isMobileViewport ? 18 : 22,
-                fontWeight: 900,
+                fontSize: isFnb ? (isMobileViewport ? 24 : 36) : (isMobileViewport ? 18 : 22),
+                fontWeight: isFnb ? 800 : 900,
                 color: '#0f172a',
                 fontFamily: titleFontFamily,
-                lineHeight: 1.1
+                lineHeight: isFnb ? 1.05 : 1.1
               }}
             >
               Current Promos
             </h2>
-            <p style={{ margin: 0, fontSize: 12, color: '#64748b', lineHeight: 1 }}>
+            <p style={{ margin: isFnb ? '4px 0 0 0' : 0, fontSize: isFnb ? (isMobileViewport ? 14 : 16) : 12, color: '#64748b', lineHeight: isFnb ? 1.35 : 1 }}>
               Limited-time offers available from this storefront.
             </p>
           </div>
@@ -88,8 +92,9 @@ export function StorefrontPromoSection({
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))',
-            gap: isMobileViewport ? 10 : 14,
+            gridTemplateColumns: isMobileViewport ? '1fr' : (isFnb ? 'repeat(auto-fit, minmax(260px, 320px))' : 'repeat(auto-fill, minmax(300px, 1fr))'),
+            gap: isMobileViewport ? 12 : (isFnb ? 18 : 14),
+            justifyContent: isFnb ? 'start' : 'stretch',
           }}
         >
           {items.map((promoEntry, index) => {
@@ -120,7 +125,7 @@ export function StorefrontPromoSection({
                   display: 'flex',
                   flexDirection: 'row',
                   alignItems: 'stretch',
-                  minHeight: 112,
+                  minHeight: isFnb ? 132 : 112,
                   transition: 'transform 0.2s ease, box-shadow 0.2s ease',
                   animation: layoutVariant === 'feature' ? 'promoCardFloatIn 380ms ease both' : undefined,
                   animationDelay: layoutVariant === 'feature' ? `${index * 80}ms` : undefined
@@ -139,9 +144,9 @@ export function StorefrontPromoSection({
                 {/* Left accent bar */}
                 <div
                   style={{
-                    width: 6,
+                    width: isFnb ? 4 : 6,
                     flexShrink: 0,
-                    background: `linear-gradient(180deg, ${accentColor} 0%, ${accentDark} 100%)`,
+                    background: isFnb ? accentColor : `linear-gradient(180deg, ${accentColor} 0%, ${accentDark} 100%)`,
                     borderRadius: '0'
                   }}
                 />
@@ -150,9 +155,9 @@ export function StorefrontPromoSection({
                 <div
                   style={{
                     flex: 1,
-                    padding: isMobileViewport ? '14px 14px 12px' : '16px 18px 14px',
+                    padding: isMobileViewport ? '14px 14px 12px' : (isFnb ? '18px 20px 16px' : '16px 18px 14px'),
                     display: 'grid',
-                    gap: 8
+                    gap: isFnb ? 10 : 8
                   }}
                 >
                   {/* Top row: icon + badge pill + dot */}
@@ -185,8 +190,8 @@ export function StorefrontPromoSection({
                           background: accentTint,
                           border: `1px solid ${cardBorder}`,
                           color: accentColor,
-                          fontSize: 10,
-                          fontWeight: 900,
+                          fontSize: isFnb ? 11 : 10,
+                          fontWeight: isFnb ? 800 : 900,
                           textTransform: 'uppercase',
                           letterSpacing: '0.07em',
                           lineHeight: 1
@@ -214,9 +219,9 @@ export function StorefrontPromoSection({
                   <div style={{ display: 'grid', gap: 4 }}>
                     <div
                       style={{
-                        fontSize: isMobileViewport ? 20 : 24,
+                        fontSize: isFnb ? (isMobileViewport ? 24 : 30) : (isMobileViewport ? 20 : 24),
                         lineHeight: 1,
-                        fontWeight: 900,
+                        fontWeight: isFnb ? 800 : 900,
                         color: '#0f172a',
                         letterSpacing: '-0.03em',
                         fontFamily: titleFontFamily || 'inherit'
@@ -224,7 +229,7 @@ export function StorefrontPromoSection({
                     >
                       {title}
                     </div>
-                    <div style={{ fontSize: 12, lineHeight: 1.5, color: '#64748b', maxWidth: 500 }}>
+                    <div style={{ fontSize: isFnb ? 13 : 12, lineHeight: 1.5, color: '#64748b', maxWidth: 500 }}>
                       {description}
                     </div>
                   </div>
@@ -242,7 +247,7 @@ export function StorefrontPromoSection({
                         background: '#f8fafc',
                         border: '1px solid #e2e8f0',
                         color: '#475569',
-                        fontSize: 11,
+                        fontSize: isFnb ? 12 : 11,
                         fontWeight: 700
                       }}
                     >

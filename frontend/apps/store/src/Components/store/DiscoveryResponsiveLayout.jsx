@@ -88,9 +88,12 @@ export function DiscoveryHeader({
   onLogoClick,
   navItems = [],
   activeItem = 'Explore',
-  onProfileClick,
-  profileLabel = 'Profile',
-  onRegisterClick,
+  onAuthClick,
+  authLabel = 'Log in / Sign up',
+  onBusinessClick,
+  businessLabel = 'Register Your Business',
+  isAuthenticated = false,
+  accountLabel = 'My Account',
   menuOpen = false,
   onMenuToggle = () => {},
   onItemClick
@@ -123,8 +126,8 @@ export function DiscoveryHeader({
         <div className="discovery-header__actions">
           {isMobileViewport ? (
             <>
-              {typeof onProfileClick === 'function' && (
-                <button type="button" onClick={onProfileClick} className="discovery-header__profileButton" aria-label={profileLabel}>
+              {typeof onAuthClick === 'function' && isAuthenticated && (
+                <button type="button" onClick={onAuthClick} className="discovery-header__profileButton" aria-label={accountLabel}>
                   <UserCircle2 size={20} />
                 </button>
               )}
@@ -134,15 +137,15 @@ export function DiscoveryHeader({
             </>
           ) : (
             <>
-              {typeof onProfileClick === 'function' && (
-                <button type="button" onClick={onProfileClick} className="discovery-header__secondaryAction">
+              {typeof onAuthClick === 'function' && (
+                <button type="button" onClick={onAuthClick} className="discovery-header__secondaryAction">
                   <UserCircle2 size={isTabletViewport ? 14 : 15} />
-                  {profileLabel}
+                  {isAuthenticated ? accountLabel : authLabel}
                 </button>
               )}
-              <button type="button" onClick={onRegisterClick} className={cx('discovery-header__cta', isTabletViewport && 'discovery-header__cta--tablet')}>
+              <button type="button" onClick={onBusinessClick} className={cx('discovery-header__cta', isTabletViewport && 'discovery-header__cta--tablet')}>
                 <User size={isTabletViewport ? 14 : 15} />
-                Create Your Account
+                {businessLabel}
               </button>
             </>
           )}
@@ -196,15 +199,15 @@ export function DiscoveryHeader({
                 })}
               </div>
               <div className="discovery-header__drawerFooter">
-                {typeof onProfileClick === 'function' && (
-                  <button type="button" onClick={onProfileClick} className="discovery-header__menuSecondaryAction">
+                {typeof onAuthClick === 'function' && (
+                  <button type="button" onClick={onAuthClick} className="discovery-header__menuSecondaryAction">
                     <UserCircle2 size={15} />
-                    {profileLabel}
+                    {isAuthenticated ? accountLabel : authLabel}
                   </button>
                 )}
-                <button type="button" onClick={onRegisterClick} className="discovery-header__menuCta">
+                <button type="button" onClick={onBusinessClick} className="discovery-header__menuCta">
                   <User size={15} />
-                  Create Your Account
+                  {businessLabel}
                 </button>
               </div>
             </div>
