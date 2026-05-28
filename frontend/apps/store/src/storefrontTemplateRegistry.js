@@ -74,11 +74,11 @@ const MODE_TEMPLATE_OVERRIDES = Object.freeze({
       'footer'
     ]),
     tokens: Object.freeze({
-      navigationAccent: '#1c0f07',
-      heroAccent: '#c96a2b',
-      promoAccent: '#c96a2b',
-      reviewAccent: '#166534',
-      footerAccent: '#1c0f07'
+      navigationAccent: '#0f2942',
+      heroAccent: '#d97706',
+      promoAccent: '#d97706',
+      reviewAccent: '#d97706',
+      footerAccent: '#0f2942'
     })
   }),
   hospitality: Object.freeze({

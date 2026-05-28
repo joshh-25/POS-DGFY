@@ -91,7 +91,7 @@ import {
 } from './customerAccess.js';
 import { getFoodBeverageStorefrontViewModel } from './fnbStorefrontViewModel.js';
 import { getBusinessModePinMeta, renderBusinessModePinSvg } from './businessModePins.js';
-import { getDiscoveryMarkerKey } from './discoveryMapDom.js';
+import { createSharedCoordinatePreviewNode, getDiscoveryMarkerKey, makeClusterElement } from './discoveryMapDom.js';
 import { normalizeStorefrontPageModel } from './normalizeStorefrontPageModel.js';
 import { createStoreMarkerPreviewNode } from './storefrontMarkerPreview.js';
 import {
@@ -103,6 +103,8 @@ import {
   getDiscoveryLayoutTokens,
   getDiscoveryViewportState
 } from './Components/store/DiscoveryResponsiveLayout.jsx';
+import { SolutionsPage } from './Components/storefront/pages/SolutionsPage.jsx';
+import { FnbProductDetailsPage } from './Components/storefront/pages/FnbProductDetailsPage.jsx';
 import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from './components/storefront/hero/StorefrontHeroNameCluster.jsx';
 import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from './components/storefront/hero/StorefrontHeaderNav.jsx';
 import { StorefrontShareQr as SharedStorefrontShareQr } from './components/storefront/hero/StorefrontShareQr.jsx';
@@ -252,6 +254,45 @@ function formatReverseGeocodedAddress(payload = {}) {
 function formatFollowersLabel(count) {
   const normalized = Math.max(0, Number(count || 0));
   return `${normalized} ${normalized === 1 ? 'follower' : 'followers'}`;
+}
+
+function BrandFacebookIcon({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+      <path d="M13.5 22v-8h2.7l.4-3h-3.1V9.1c0-.9.3-1.5 1.6-1.5H16.8V4.8c-.3 0-1.4-.1-2.6-.1-2.6 0-4.3 1.6-4.3 4.4V11H7v3h2.9v8h3.6Z" />
+    </svg>
+  );
+}
+
+function BrandMessengerIcon({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+      <path d="M12 3C6.9 3 3 6.7 3 11.2c0 2.6 1.3 4.9 3.4 6.4V21l3.2-1.8c.8.2 1.6.3 2.4.3 5.1 0 9-3.7 9-8.2S17.1 3 12 3Zm1 11.4-2.3-2.5-4.5 2.5 5-5.3 2.4 2.5 4.4-2.5-5 5.3Z" />
+    </svg>
+  );
+}
+
+function getStorefrontContactIcon(label) {
+  const normalized = String(label || '').trim().toLowerCase();
+  if (normalized === 'call' || normalized === 'phone') {
+    return <Phone size={16} />;
+  }
+  if (normalized === 'facebook') {
+    return <BrandFacebookIcon size={16} />;
+  }
+  if (normalized === 'messenger' || normalized === 'message') {
+    return <BrandMessengerIcon size={16} />;
+  }
+  if (normalized === 'email') {
+    return <Mail size={16} />;
+  }
+  if (normalized === 'address' || normalized === 'location') {
+    return <MapPin size={16} />;
+  }
+  if (normalized === 'hours') {
+    return <Clock3 size={16} />;
+  }
+  return <Clock3 size={16} />;
 }
 
 const STOREFRONT_FOLLOW_STORE_ICON = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJsdWNpZGUgbHVjaWRlLXN0b3JlLWljb24gbHVjaWRlLXN0b3JlIj48cGF0aCBkPSJNMTUgMjF2LTVhMSAxIDAgMCAwLTEtMWgtNGExIDEgMCAwIDAtMSAxdjUiLz48cGF0aCBkPSJNMTcuNzc0IDEwLjMxYTEuMTIgMS4xMiAwIDAgMC0xLjU0OSAwIDIuNSAyLjUgMCAwIDEtMy40NTEgMCAxLjEyIDEuMTIgMCAwIDAtMS41NDggMCAyLjUgMi41IDAgMCAxLTMuNDUyIDAgMS4xMiAxLjEyIDAgMCAwLTEuNTQ5IDAgMi41IDIuNSAwIDAgMS0zLjc3LTMuMjQ4bDIuODg5LTQuMTg0QTIgMiAwIDAgMSA3IDJoMTBhMiAyIDAgMCAxIDEuNjUzLjg3M2wyLjg5NSA0LjE5MmEyLjUgMi41IDAgMCAxLTMuNzc0IDMuMjQ0Ii8+PHBhdGggZD0iTTQgMTAuOTVWMTlhMiAyIDAgMCAwIDIgMmgxMmEyIDIgMCAwIDAgMi0ydi04LjA1Ii8+PC9zdmc+';
@@ -837,6 +878,7 @@ const STORE_BOOKING_SUBPAGE = 'book';
 const STORE_ORDER_SUBPAGE = 'order';
 const STORE_TRACK_SUBPAGE = 'track';
 const STORE_SERVICE_SUBPAGE = 'service';
+const STORE_ITEM_SUBPAGE = 'item';
 const storePath = (slug, subpage = null, query = '') => `${TENANT_STORE_BASE_PATH}/${encodeURIComponent(toSlug(slug))}${subpage ? `/${subpage}` : ''}${query || ''}`;
 const toNumberOrNull = (value) => {
   const parsed = Number(value);
@@ -914,6 +956,12 @@ const readStoreServiceItemId = () => {
   if (typeof window === 'undefined') return null;
   const params = new URLSearchParams(window.location.search || '');
   const raw = String(params.get('service') || '').trim();
+  return raw || null;
+};
+const readStoreItemId = () => {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search || '');
+  const raw = String(params.get('item') || '').trim();
   return raw || null;
 };
 const readTrackingPinFromQuery = () => {
@@ -1698,7 +1746,7 @@ function StoresMap({
       acc[key].push(store);
       return acc;
     }, {});
-    const coordinateIndexes = {};
+    const renderedCoordinateGroups = new Set();
 
 	    uniqueRows.forEach((store) => {
       if (!store) return;
@@ -1706,20 +1754,64 @@ function StoresMap({
       const lng = Number(store?.longitude);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
       const coordinateKey = `${lat.toFixed(6)}:${lng.toFixed(6)}`;
+      if (renderedCoordinateGroups.has(coordinateKey)) return;
+      renderedCoordinateGroups.add(coordinateKey);
       const group = Array.isArray(coordinateGroups[coordinateKey]) ? coordinateGroups[coordinateKey] : [];
-      const groupIndex = coordinateIndexes[coordinateKey] || 0;
-      coordinateIndexes[coordinateKey] = groupIndex + 1;
-      const displayCoordinate = getSpreadMarkerCoordinate(lat, lng, groupIndex, group.length);
-      const displayLat = Number(displayCoordinate.latitude);
-      const displayLng = Number(displayCoordinate.longitude);
-      const markerKey = getDiscoveryMarkerKey(store) || `${lat}:${lng}`;
+      if (group.length === 0) return;
+      const clusterSelected = selectedKey
+        ? group.some((entry) => String(getDiscoveryMarkerKey(entry) || '') === String(selectedKey))
+        : group.some((entry) => entry?.is_primary_storefront === true);
+
+      if (group.length > 1) {
+        const clusterElement = makeClusterElement(group.length, clusterSelected, `${group.length} storefronts at this location`);
+        const clusterPopup = new maplibregl.Popup({
+          anchor: 'bottom',
+          offset: { bottom: [0, -14], top: [0, 12], left: [12, 0], right: [-12, 0] },
+          closeOnClick: false,
+          focusAfterOpen: false
+        });
+        popupsRef.current.push(clusterPopup);
+        const clusterNode = createSharedCoordinatePreviewNode(group, {
+          onSelect: (selectedStorefront) => {
+            clusterPopup.remove();
+            onSelectStoreRef.current?.(selectedStorefront);
+          },
+          onClose: () => {
+            clusterPopup.remove();
+          }
+        });
+        clusterPopup.setDOMContent(clusterNode);
+        const openClusterPopup = (event) => {
+          event?.preventDefault?.();
+          event?.stopPropagation?.();
+          clusterPopup.setLngLat([lng, lat]).addTo(map);
+        };
+        clusterElement.addEventListener('click', openClusterPopup);
+        clusterElement.addEventListener('pointerup', openClusterPopup);
+        clusterElement.addEventListener('touchend', openClusterPopup, { passive: false });
+        clusterElement.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            openClusterPopup(event);
+          }
+        });
+        const clusterMarker = new maplibregl.Marker({ element: clusterElement, anchor: 'center' })
+          .setLngLat([lng, lat])
+          .addTo(map);
+        markersRef.current.push(clusterMarker);
+        bounds.push([lng, lat]);
+        return;
+      }
+
+      const [singleStore] = group;
+      const markerKey = getDiscoveryMarkerKey(singleStore) || `${lat}:${lng}`;
       const highlighted = selectedKey
         ? markerKey === String(selectedKey)
-        : store.is_primary_storefront === true;
-      const branchName = String(store?.location_name || store?.nearest_location_name || 'Branch');
-      const tenantName = String(store?.tenant_name || 'Storefront');
+        : singleStore.is_primary_storefront === true;
+      const branchName = String(singleStore?.location_name || singleStore?.nearest_location_name || 'Branch');
+      const tenantName = String(singleStore?.tenant_name || 'Storefront');
       const markerAriaLabel = `Preview ${tenantName} at ${branchName}`;
-      const el = makePinElement(store.workflow_mode || store.business_mode, highlighted, markerAriaLabel);
+      const el = makePinElement(singleStore.workflow_mode || singleStore.business_mode, highlighted, markerAriaLabel);
 	      const popup = new maplibregl.Popup({
 	        anchor: 'bottom',
 	        offset: { bottom: [0, -14], top: [0, 12], left: [12, 0], right: [-12, 0] },
@@ -1744,7 +1836,7 @@ function StoresMap({
         popupOpening = true;
         try {
           if (popupGenerationRef.current !== generation) return;
-          popup.setLngLat([displayLng, displayLat]).addTo(map);
+          popup.setLngLat([lng, lat]).addTo(map);
         } finally {
           popupOpening = false;
         }
@@ -1757,9 +1849,9 @@ function StoresMap({
           }
         }, 120);
       };
-      const previewNode = createStoreMarkerPreviewNode(store, {
+      const previewNode = createStoreMarkerPreviewNode(singleStore, {
         resolveAssetUrl: withAssetOrigin,
-        onAction: () => onSelectStoreRef.current?.(store),
+        onAction: () => onSelectStoreRef.current?.(singleStore),
         onClose: () => {
           markerHovered = false;
           previewHovered = false;
@@ -1828,14 +1920,14 @@ function StoresMap({
           schedulePopupClose();
         });
       }
-	      const marker = new maplibregl.Marker({ element: el })
-	        .setLngLat([displayLng, displayLat])
+	      const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+	        .setLngLat([lng, lat])
 	        .addTo(map);
 	      if (autoOpenPopups) {
 	        autoOpenCallbacks.push({ key: markerKey, open: openPopup });
 	      }
 	      markersRef.current.push(marker);
-	      bounds.push([displayLng, displayLat]);
+	      bounds.push([lng, lat]);
     });
 
     if (userMarkerRef.current) {
@@ -1886,6 +1978,35 @@ function StoresMap({
 	  }, [stores, selectedKey, userLocation, autoOpenPopups, openPopupOnHover]);
 
   return <div ref={ref} style={{ height, border: '1px solid #d6e2e8', borderRadius: 24, overflow: 'hidden' }} />;
+}
+
+function StorefrontExpandedMapModal({
+  open,
+  onClose,
+  title = 'Large Map',
+  subtitle = 'View the store location in a larger map.',
+  stores,
+  selectedKey
+}) {
+  if (!open) return null;
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 2100, background: 'rgba(15,23,42,0.46)', display: 'grid', placeItems: 'center', padding: 20 }}>
+      <div style={{ width: 'min(980px, 100%)', maxHeight: '90vh', overflow: 'auto', borderRadius: 20, background: '#fff', border: '1px solid #dbe5ee', boxShadow: '0 26px 60px rgba(15,23,42,0.22)', padding: 20, display: 'grid', gap: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'grid', gap: 4 }}>
+            <div style={{ fontSize: 16, fontWeight: 900, color: '#1e293b' }}>{title}</div>
+            <div style={{ fontSize: 12, color: '#64748b' }}>{subtitle}</div>
+          </div>
+          <button type="button" onClick={onClose} style={{ minHeight: 40, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}>
+            Close
+          </button>
+        </div>
+        <div style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid #dbe5ee', background: '#f8fafc' }}>
+          <StoresMap stores={stores} selectedKey={selectedKey} onSelectStore={() => {}} height={520} />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function DeliveryPinMap({
@@ -2101,6 +2222,12 @@ const GhostButton = ({ children, onClick, disabled, style }) => (
 );
 
 const HERO_CANVAS_MAX_WIDTH = 1320;
+const STOREFRONT_INFO_PANEL_MAX_WIDTH = HERO_CANVAS_MAX_WIDTH - 84;
+const STOREFRONT_CONTACT_INFO_COLUMNS = 'minmax(0, 0.96fr) minmax(248px, 1.04fr)';
+const STOREFRONT_INFO_ROW_GAP = 12;
+const STOREFRONT_INFO_ICON_COLUMN = 20;
+const MAX_STOREFRONT_CONTACT_ROWS = 4;
+const MAX_STOREFRONT_WHY_CHOOSE_US = 4;
 const DGFY_HEADER_LOGO_URL = dgfyHeaderLogo;
 const DGFY_LOGO_ICON_URL = dgfySymbolLogo;
 
@@ -2210,12 +2337,14 @@ const FnbHero = ({
   selectedLocation,
   openStorefrontActionLink,
   openTrackPanel,
+  openAccountPanel,
   followEnabled,
   shareEnabled,
   followState,
   handleFollowAction,
   handleShareAction
 }) => {
+  const [isExpandedMapOpen, setIsExpandedMapOpen] = useState(false);
   const heroTheme = modeAdapter.heroTheme || {};
   const followersLabel = formatFollowersLabel(followState?.followersCount);
   const addressText = String(heroSectionModel.addressLine || heroSectionModel.locationLabel || '').trim();
@@ -2231,12 +2360,20 @@ const FnbHero = ({
         fnbViewModel,
         categories: [heroSectionModel.primaryCategoryLabel, heroSectionModel.locationSummary]
       });
-  const hasWhyChooseUs = whyChooseUs.length > 0;
-  const hasContactRows = heroSectionModel.contactRows.length > 0
-    || Boolean(heroSectionModel.facebookLink)
-    || Boolean(heroSectionModel.hours)
-    || hasAddress;
-  const desktopColumns = hasWhyChooseUs ? '1fr 1.45fr 1fr' : '1fr 1.45fr';
+  const visibleWhyChooseUs = whyChooseUs.slice(0, MAX_STOREFRONT_WHY_CHOOSE_US);
+  const visibleContactRows = useMemo(() => buildVisibleStorefrontContactRows({
+    contactRows: heroSectionModel.contactRows,
+    hours: heroSectionModel.hours,
+    addressText,
+    directionsUrl: buildGoogleMapsDirectionsUrl({
+      latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
+      longitude: selectedLocation?.longitude ?? selectedStore?.longitude,
+      addressLine: addressText
+    })
+  }), [heroSectionModel.contactRows, heroSectionModel.hours, addressText, selectedLocation?.latitude, selectedLocation?.longitude, selectedStore?.latitude, selectedStore?.longitude]);
+  const hasWhyChooseUs = visibleWhyChooseUs.length > 0;
+  const hasContactRows = visibleContactRows.length > 0;
+  const desktopColumns = hasWhyChooseUs ? '1fr 1.6fr 0.92fr' : '1fr 1.6fr';
   const orderLabel = cartCount > 0 ? 'Open Cart' : (heroSectionModel.actions?.orderLabel || 'Browse Menu');
   const profileImageKey = `hero-profile:${selectedStore.slug}`;
   const mapStores = storeLocations.length > 0
@@ -2246,6 +2383,9 @@ const FnbHero = ({
       }))
     : [selectedStore];
   const mapSelectedKey = selectedLocationId != null ? `loc-${selectedLocationId}` : `tenant-${selectedStore?.tenant_id || selectedStore?.slug || 'store'}`;
+  const deliveryPlatformLinks = useMemo(() => (
+    getDeliveryPlatformLinks(heroSectionModel.deliveryPartners)
+  ), [heroSectionModel.deliveryPartners]);
   const storefrontShareUrl = useMemo(() => {
     if (!selectedStore?.slug) return '';
     return buildPublicStorefrontUrl(selectedStore.slug);
@@ -2259,6 +2399,7 @@ const FnbHero = ({
         onBack={goDiscovery}
         onShop={() => document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
         onTrack={openTrackPanel}
+        onAccount={openAccountPanel}
         branchSelector={hasMultipleStoreBranches ? (
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: hasSelectedBranchFromMenu ? 6 : 8, color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: '"Inter", sans-serif', minWidth: 0, maxWidth: isMobileViewport ? 196 : 236, flex: '0 1 236px' }}>
             <MapPin size={16} />
@@ -2278,9 +2419,9 @@ const FnbHero = ({
                 padding: '4px 34px 4px 2px',
                 fontFamily: '"Inter", sans-serif'
               }}
-              optionStyle={{ fontFamily: '"Inter", sans-serif' }}
               containerStyle={{ minWidth: 0, flex: '1 1 auto' }}
-              menuStyle={{ minWidth: 240 }}
+              menuStyle={{ minWidth: 320, width: 'max-content', maxWidth: 'min(420px, calc(100vw - 32px))', padding: 10 }}
+              optionStyle={{ padding: '12px 18px', fontFamily: '"Inter", sans-serif' }}
               selectedLabelStyle={{ fontSize: 14, fontWeight: 700 }}
             />
           </label>
@@ -2433,24 +2574,24 @@ const FnbHero = ({
       </StorefrontHeroShell>
 
       <div style={{
-        maxWidth: 1180,
+        maxWidth: STOREFRONT_INFO_PANEL_MAX_WIDTH,
         margin: isMobileViewport ? '40px 16px 32px' : '70px auto 40px',
-        padding: isMobileViewport ? 18 : 24,
+        padding: isMobileViewport ? 18 : 26,
         background: '#ffffff',
-        border: '1px solid #e5e7eb',
-        borderRadius: 18,
-        boxShadow: '0 14px 35px rgba(15, 23, 42, 0.08)',
+        border: '1px solid #e8edf3',
+        borderRadius: 24,
+        boxShadow: '0 18px 42px rgba(15, 23, 42, 0.07)',
         display: 'grid',
         gridTemplateColumns: isMobileViewport ? '1fr' : desktopColumns,
-        gap: isMobileViewport ? 24 : 24
+        gap: isMobileViewport ? 24 : 26
       }}>
-        <div style={{ display: 'grid', gap: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: heroTheme.bodyFont }}>Overview</div>
-          <div style={{ display: 'grid', gap: 10 }}>
+        <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: heroTheme.bodyFont }}>Overview</div>
+          <div style={{ display: 'grid', gap: 12 }}>
             <p style={{
               fontSize: 13,
-              lineHeight: 1.55,
-              color: '#111827',
+              lineHeight: 1.7,
+              color: '#475569',
               margin: 0,
               display: '-webkit-box',
               WebkitLineClamp: hasAboutToggle ? 3 : 'unset',
@@ -2463,10 +2604,10 @@ const FnbHero = ({
           </div>
 
           {galleryImages.length > 0 && (
-            <div style={{ display: 'grid', gap: 10 }}>
-              <div style={{ display: isMobileViewport ? 'flex' : 'grid', gridTemplateColumns: isMobileViewport ? undefined : 'repeat(4, 1fr)', gap: 8, marginTop: 2, overflowX: isMobileViewport ? 'auto' : 'visible', paddingBottom: isMobileViewport ? 4 : 0 }}>
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div style={{ display: isMobileViewport ? 'flex' : 'grid', gridTemplateColumns: isMobileViewport ? undefined : 'repeat(4, 1fr)', gap: 10, marginTop: 2, overflowX: isMobileViewport ? 'auto' : 'visible', paddingBottom: isMobileViewport ? 4 : 0 }}>
                 {galleryImages.slice(0, 4).map((url, index) => (
-                  <div key={`${url}-${index}`} style={{ width: isMobileViewport ? 84 : '100%', minWidth: isMobileViewport ? 84 : 0, height: 56, borderRadius: 8, overflow: 'hidden', position: 'relative', background: '#e2e8f0', flexShrink: 0 }}>
+                  <div key={`${url}-${index}`} style={{ width: isMobileViewport ? 84 : '100%', minWidth: isMobileViewport ? 84 : 0, height: 72, borderRadius: 10, overflow: 'hidden', position: 'relative', background: '#e2e8f0', flexShrink: 0 }}>
                     <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   </div>
                 ))}
@@ -2475,26 +2616,24 @@ const FnbHero = ({
           )}
         </div>
 
-        <div style={{ display: 'grid', gap: 12, paddingLeft: isMobileViewport ? 0 : 24, borderLeft: isMobileViewport ? 'none' : '1px solid #e5e7eb' }}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: heroTheme.bodyFont }}>Contact & Location</div>
-          <div style={{ display: 'grid', gridTemplateColumns: hasMapData && !isMobileViewport ? '0.9fr 1.1fr' : '1fr', gap: 18, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gap: 14, paddingLeft: isMobileViewport ? 0 : 26, borderLeft: isMobileViewport ? 'none' : '1px solid #eef2f6', alignContent: 'start' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: heroTheme.bodyFont }}>Contact & Location</div>
+          <div style={{ display: 'grid', gridTemplateColumns: hasMapData && !isMobileViewport ? STOREFRONT_CONTACT_INFO_COLUMNS : '1fr', gap: 20, alignItems: 'start' }}>
             {hasContactRows && (
-              <div style={{ display: 'grid', gap: 10 }}>
-                {heroSectionModel.contactRows.map((row) => {
-                  const icon = row.label === 'Call' || row.label === 'Phone'
-                    ? <Phone size={16} />
-                    : row.label === 'Message'
-                      ? <MessageCircle size={16} />
-                      : row.label === 'Facebook'
-                        ? <MessageCircle size={16} />
-                        : row.label === 'Email'
-                          ? <Mail size={16} />
-                          : <Clock3 size={16} />;
+              <div style={{ display: 'grid', gap: 16, alignContent: 'start', paddingTop: 4 }}>
+                {visibleContactRows.map((row) => {
+                  const icon = getStorefrontContactIcon(row.label);
+                  const isCompactSingleLine = !isMobileViewport && ['call', 'phone', 'facebook', 'messenger', 'message', 'hours'].includes(String(row.label || '').trim().toLowerCase());
                   const content = (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827', fontFamily: heroTheme.bodyFont }}>
-                      <div style={{ color: heroTheme.accentDark || STYLES.colors.brandDark, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{icon}</div>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', wordBreak: 'break-word' }}>{row.value}</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: `${STOREFRONT_INFO_ICON_COLUMN}px minmax(0, 1fr)`, alignItems: 'start', columnGap: STOREFRONT_INFO_ROW_GAP, fontSize: 13, color: '#111827', fontFamily: heroTheme.bodyFont }}>
+                      <div style={{ width: STOREFRONT_INFO_ICON_COLUMN, minWidth: STOREFRONT_INFO_ICON_COLUMN, color: row.label === 'Messenger' ? '#7c3aed' : row.label === 'Facebook' ? '#2563eb' : row.label === 'Address' ? '#64748b' : '#64748b', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{icon}</div>
+                      <div style={{ minWidth: 0, display: 'grid', gap: row.actionHref ? 4 : 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', whiteSpace: isCompactSingleLine ? 'nowrap' : 'normal', wordBreak: isCompactSingleLine ? 'normal' : 'break-word', lineHeight: 1.35 }}>{row.value}</div>
+                        {row.actionHref ? (
+                          <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openStorefrontActionLink(row.actionHref); }} style={{ padding: 0, border: 'none', background: 'transparent', color: '#f97316', fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start', fontFamily: heroTheme.bodyFont }}>
+                            {row.actionLabel || 'Get directions'}
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   );
@@ -2506,62 +2645,99 @@ const FnbHero = ({
                     <div key={row.label}>{content}</div>
                   );
                 })}
-
-                {heroSectionModel.hours && !heroSectionModel.contactRows.some((row) => row.label === 'Hours') && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827', fontFamily: heroTheme.bodyFont }}>
-                    <div style={{ color: STYLES.colors.teal, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <Clock3 size={16} />
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{heroSectionModel.hours}</div>
-                    </div>
-                  </div>
-                )}
-
-                {hasAddress && (
-                  <div style={{ display: 'grid', gap: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#111827', fontFamily: heroTheme.bodyFont }}>
-                      <div style={{ color: '#1a4e8d', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <MapPin size={16} />
-                      </div>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{addressText}</div>
-                      </div>
-                    </div>
-                    {selectedStore?.latitude && selectedStore?.longitude && (
-                      <button type="button" onClick={() => openStorefrontActionLink(buildGoogleMapsDirectionsUrl({ latitude: selectedLocation?.latitude ?? selectedStore?.latitude, longitude: selectedLocation?.longitude ?? selectedStore?.longitude, addressLine: addressText }))} style={{ padding: 0, border: 'none', background: 'transparent', color: heroTheme.accent || STYLES.colors.brand, fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start', fontFamily: heroTheme.bodyFont }}>
-                        Get directions
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
             )}
 
             {hasMapData && (
-              <div style={{ width: '100%', height: 150, borderRadius: 14, overflow: 'hidden', border: '1px solid #e5e7eb', background: '#f8fafc' }}>
-                <StoresMap stores={mapStores} selectedKey={mapSelectedKey} onSelectStore={() => { }} />
+              <div style={{ display: 'grid', gap: 10, alignContent: 'start', marginTop: isMobileViewport ? 0 : -30 }}>
+                <div style={{ position: 'relative', width: '100%', height: 156, borderRadius: 14, overflow: 'hidden', border: '1px solid #edf2f7', background: '#f8fafc' }}>
+                  <StoresMap stores={mapStores} selectedKey={mapSelectedKey} onSelectStore={() => { }} />
+                  <button
+                    type="button"
+                    onClick={() => setIsExpandedMapOpen(true)}
+                    aria-label="Open large map"
+                    title="Open large map"
+                    style={{
+                      position: 'absolute',
+                      top: 12,
+                      right: 12,
+                      width: 36,
+                      height: 36,
+                      borderRadius: 10,
+                      background: '#fff',
+                      border: '1px solid #cbd5e1',
+                      boxShadow: '0 4px 12px rgba(15,23,42,0.1)',
+                      display: 'grid',
+                      placeItems: 'center',
+                      cursor: 'pointer',
+                      color: '#334155',
+                      zIndex: 10
+                    }}
+                  >
+                    <Maximize size={18} />
+                  </button>
+                </div>
+                {deliveryPlatformLinks.length > 0 ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'nowrap', minWidth: 0 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: '#334155', whiteSpace: 'nowrap', fontFamily: heroTheme.bodyFont }}>
+                      We deliver via
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'nowrap', minWidth: 0 }}>
+                      {deliveryPlatformLinks.map((platform) => {
+                        const badge = (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 20, flexShrink: 0 }}>
+                            {platform.logoUrl ? (
+                              <img src={platform.logoUrl} alt={platform.label} style={{ maxHeight: 14, width: 'auto', display: 'block', objectFit: 'contain' }} />
+                            ) : (
+                              <span style={{ fontSize: 12, fontWeight: 800, color: '#475569', whiteSpace: 'nowrap' }}>{platform.label}</span>
+                            )}
+                          </span>
+                        );
+                        return platform.href ? (
+                          <button
+                            key={`delivery-platform-${platform.partner}`}
+                            type="button"
+                            onClick={() => openStorefrontActionLink(platform.href)}
+                            style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                          >
+                            {badge}
+                          </button>
+                        ) : (
+                          <div key={`delivery-platform-${platform.partner}`}>{badge}</div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             )}
           </div>
         </div>
 
         {hasWhyChooseUs && (
-          <div style={{ display: 'grid', gap: 12, paddingLeft: isMobileViewport ? 0 : 24, borderLeft: isMobileViewport ? 'none' : '1px solid #e5e7eb' }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: heroTheme.bodyFont }}>Why Choose Us</div>
-            <div style={{ display: 'grid', gap: 12 }}>
-              {whyChooseUs.map((item, index) => (
-                <div key={`${item}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#111827', lineHeight: 1.4, fontFamily: heroTheme.bodyFont }}>
-                  <div style={{ width: 28, height: 28, borderRadius: 999, background: heroTheme.accentSoft || '#fff7ed', color: heroTheme.accent || '#f97316', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div style={{ display: 'grid', gap: 14, alignContent: 'start', alignItems: 'start', paddingLeft: isMobileViewport ? 0 : 26, borderLeft: isMobileViewport ? 'none' : '1px solid #eef2f6' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: heroTheme.bodyFont }}>Why Choose Us?</div>
+            <div style={{ display: 'grid', gap: 16, alignContent: 'start', paddingTop: 4 }}>
+              {visibleWhyChooseUs.map((item, index) => (
+                <div key={`${item}-${index}`} style={{ display: 'grid', gridTemplateColumns: `30px minmax(0, 1fr)`, alignItems: 'center', columnGap: 12, fontSize: 13, color: '#111827', lineHeight: 1.4, fontFamily: heroTheme.bodyFont }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 999, background: '#fff4ec', color: '#f97316', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Sparkles size={14} />
                   </div>
-                  <div>{item}</div>
+                  <div style={{ color: '#334155', fontWeight: 600 }}>{item}</div>
                 </div>
               ))}
             </div>
           </div>
         )}
       </div>
+      <StorefrontExpandedMapModal
+        open={isExpandedMapOpen}
+        onClose={() => setIsExpandedMapOpen(false)}
+        title={`${heroSectionModel.name || selectedStore?.tenant_name || 'Store'} Map`}
+        subtitle="View the store location in a larger map."
+        stores={mapStores}
+        selectedKey={mapSelectedKey}
+      />
     </section>
   );
 };
@@ -2572,7 +2748,8 @@ const FnbProductCard = ({
   available,
   modeAdapter,
   addToCart,
-  isMobileViewport
+  isMobileViewport,
+  onViewDetails
 }) => {
   const heroTheme = modeAdapter.heroTheme || {};
   const sectionVisualMeta = item.sectionVisualMeta || {};
@@ -2598,7 +2775,7 @@ const FnbProductCard = ({
   const cartButtonWidth = isMobileViewport ? 62 : 70;
   const availabilityTone = item.availabilityMeta?.tone || (available ? 'ready' : 'sold_out');
   const availabilityColor = availabilityTone === 'sold_out' ? '#be123c' : availabilityTone === 'limited' ? '#b45309' : '#047857';
-  const descriptionLineClamp = isMobileViewport ? 2 : 3;
+  const descriptionLineClamp = 2;
 
   return (
     <article
@@ -2630,7 +2807,7 @@ const FnbProductCard = ({
             color: accentDeep,
             fontWeight: 800,
             fontFamily: cardUiFont,
-            background: `radial-gradient(circle at top, ${accentSoft} 0%, ${cardSurfaceInset} 58%, #f8e3cf 100%)`
+            background: '#f8fafc'
           }}>
             <div style={{ display: 'grid', gap: 10, justifyItems: 'center' }}>
               <div style={{
@@ -2668,7 +2845,7 @@ const FnbProductCard = ({
           fontFamily: cardUiFont,
           lineHeight: 1
         }}>
-          {money(item.default_sale_price ?? 0).replace('PHP ', '₱')}
+          {money(item.default_sale_price ?? 0)}
         </div>
       </div>
       <div style={{ padding: isMobileViewport ? '15px 14px 14px' : '18px 18px 16px', flex: 1, display: 'grid', gap: 14 }}>
@@ -2678,7 +2855,7 @@ const FnbProductCard = ({
             margin: 0,
             fontSize: isMobileViewport ? 13 : 14,
             lineHeight: 1.5,
-            color: cardTextMuted,
+            color: '#111827',
             fontFamily: cardUiFont,
             display: '-webkit-box',
             WebkitLineClamp: descriptionLineClamp,
@@ -2697,24 +2874,24 @@ const FnbProductCard = ({
         }}>
           <button
             type="button"
-            onClick={() => toast('Product details page is the next F&B storefront step.')}
+            onClick={() => onViewDetails?.(item)}
             onMouseEnter={() => setIsDetailsHovered(true)}
             onMouseLeave={() => setIsDetailsHovered(false)}
             style={{
               minHeight: actionHeight,
               height: actionHeight,
               borderRadius: 18,
-              border: `1px solid ${cardBorder}`,
-              background: cardSurfaceInset,
+              border: '1px solid #22C55E',
+              background: '#ffffff',
               fontSize: isMobileViewport ? 14 : 15,
               fontWeight: 700,
-              color: cardTextMuted,
+              color: '#15803d',
               cursor: 'pointer',
               fontFamily: cardUiFont,
               transform: isDetailsHovered ? 'translateY(-2px)' : 'translateY(0)',
               transition: 'all 0.2s ease',
               padding: '0 18px',
-              boxShadow: isDetailsHovered ? '0 10px 22px rgba(73,38,20,0.08)' : 'none'
+              boxShadow: 'none'
             }}
           >
             View Details
@@ -2731,14 +2908,14 @@ const FnbProductCard = ({
               height: actionHeight,
               borderRadius: 18,
               border: 'none',
-              background: available ? accent : '#e5e7eb',
+              background: available ? '#16a34a' : '#e5e7eb',
               color: buttonTextOnAccent,
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: 8,
               cursor: available ? 'pointer' : 'not-allowed',
-              boxShadow: available ? (isCartHovered ? '0 12px 26px rgba(217,119,6,0.28)' : '0 10px 20px rgba(217,119,6,0.22)') : 'none',
+              boxShadow: 'none',
               transform: available && isCartHovered ? 'translateY(-2px)' : 'translateY(0)',
               transition: 'all 0.2s ease',
               padding: '0 14px',
@@ -2757,11 +2934,11 @@ const FnbProductCard = ({
                 height: 14,
                 borderRadius: 999,
                 background: '#ffffff',
-                color: available ? '#f59e0b' : '#94a3b8',
+                color: available ? '#22C55E' : '#94a3b8',
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: available ? '0 2px 8px rgba(255,255,255,0.45)' : 'none'
+                boxShadow: 'none'
               }}>
                 <Plus size={10} strokeWidth={3} />
               </span>
@@ -2876,11 +3053,14 @@ const ServicesHero = ({
   isServiceGalleryExpanded,
   setIsServiceGalleryExpanded,
   openStorefrontActionLink,
+  openTrackPanel,
+  openAccountPanel,
   followEnabled,
   shareEnabled,
   followState,
   handleFollowAction
 }) => {
+  const [isExpandedMapOpen, setIsExpandedMapOpen] = useState(false);
   const addressText = String(serviceHeroModel.addressLine || serviceHeroModel.locationLabel || '').trim();
   const galleryImages = Array.isArray(serviceHeroModel.galleryImages) ? serviceHeroModel.galleryImages.filter(Boolean) : [];
   const previewImages = isServiceGalleryExpanded ? galleryImages : galleryImages.slice(0, 4);
@@ -2889,12 +3069,16 @@ const ServicesHero = ({
   const hasAddress = Boolean(addressText);
   const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
     && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
-  const hasWhyChooseUs = Array.isArray(serviceHeroModel.whyChooseUs) && serviceHeroModel.whyChooseUs.length > 0;
-  const hasContactRows = serviceHeroModel.contactRows.length > 0
-    || Boolean(serviceHeroModel.facebookLink)
-    || Boolean(serviceHeroModel.hours)
-    || hasAddress;
-  const desktopColumns = hasWhyChooseUs ? '1fr 1.45fr 1fr' : '1fr 1.45fr';
+  const visibleWhyChooseUs = Array.isArray(serviceHeroModel.whyChooseUs) ? serviceHeroModel.whyChooseUs.slice(0, MAX_STOREFRONT_WHY_CHOOSE_US) : [];
+  const visibleContactRows = useMemo(() => buildVisibleStorefrontContactRows({
+    contactRows: serviceHeroModel.contactRows,
+    hours: serviceHeroModel.hours,
+    addressText,
+    directionsUrl: serviceHeroModel.directionsUrl
+  }), [serviceHeroModel.contactRows, serviceHeroModel.hours, serviceHeroModel.directionsUrl, addressText]);
+  const hasWhyChooseUs = visibleWhyChooseUs.length > 0;
+  const hasContactRows = visibleContactRows.length > 0;
+  const desktopColumns = hasWhyChooseUs ? '1fr 1.6fr 0.92fr' : '1fr 1.6fr';
   const servicesPrimary = modeAdapter?.heroTheme?.accent || '#0f766e';
   const servicesPrimaryDark = modeAdapter?.heroTheme?.accentDark || '#134e4a';
   const servicesPrimarySoft = modeAdapter?.heroTheme?.accentSoft || '#ecfeff';
@@ -2916,6 +3100,8 @@ const ServicesHero = ({
         bodyFont={servicesBodyFont}
         onBack={goDiscovery}
         onShop={() => document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+        onTrack={openTrackPanel}
+        onAccount={openAccountPanel}
         branchSelector={hasMultipleStoreBranches ? (
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: hasSelectedBranchFromMenu ? 6 : 8, color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: '"Inter", sans-serif', minWidth: 0, maxWidth: isMobileViewport ? 196 : 236, flex: '0 1 236px' }}>
             <MapPin size={16} />
@@ -2935,9 +3121,9 @@ const ServicesHero = ({
                 padding: '4px 34px 4px 2px',
                 fontFamily: '"Inter", sans-serif'
               }}
-              optionStyle={{ fontFamily: '"Inter", sans-serif' }}
               containerStyle={{ minWidth: 0, flex: '1 1 auto' }}
-              menuStyle={{ minWidth: 240 }}
+              menuStyle={{ minWidth: 320, width: 'max-content', maxWidth: 'min(420px, calc(100vw - 32px))', padding: 10 }}
+              optionStyle={{ padding: '12px 18px', fontFamily: '"Inter", sans-serif' }}
               selectedLabelStyle={{ fontSize: 14, fontWeight: 700 }}
             />
           </label>
@@ -3083,24 +3269,24 @@ const ServicesHero = ({
       </StorefrontHeroShell>
 
       <div style={{
-        maxWidth: 1180,
+        maxWidth: STOREFRONT_INFO_PANEL_MAX_WIDTH,
         margin: servicesResponsiveLayout.isMobileViewport ? '40px 16px 32px' : servicesResponsiveLayout.isTabletViewport ? '56px 24px 36px' : '70px auto 40px',
-        padding: servicesResponsiveLayout.isMobileViewport ? 18 : servicesResponsiveLayout.isTabletViewport ? 20 : 24,
+        padding: servicesResponsiveLayout.isMobileViewport ? 18 : 26,
         background: '#ffffff',
-        border: '1px solid #e5e7eb',
-        borderRadius: 18,
-        boxShadow: '0 14px 35px rgba(15, 23, 42, 0.08)',
+        border: '1px solid #e8edf3',
+        borderRadius: 24,
+        boxShadow: '0 18px 42px rgba(15, 23, 42, 0.07)',
         display: 'grid',
         gridTemplateColumns: servicesResponsiveLayout.isDesktopViewport ? desktopColumns : '1fr',
-        gap: servicesResponsiveLayout.isMobileViewport ? 24 : servicesResponsiveLayout.isTabletViewport ? 22 : 24
+        gap: servicesResponsiveLayout.isMobileViewport ? 24 : 26
       }}>
-        <div style={{ display: 'grid', gap: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Overview</div>
+        <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Overview</div>
           <div style={{ display: 'grid', gap: 10 }}>
             <p style={{
               fontSize: 13,
-              lineHeight: 1.55,
-              color: '#111827',
+              lineHeight: 1.7,
+              color: '#475569',
               margin: 0,
               display: isAboutExpanded ? 'block' : '-webkit-box',
               WebkitLineClamp: isAboutExpanded ? 'unset' : 3,
@@ -3118,9 +3304,9 @@ const ServicesHero = ({
 
           {galleryImages.length > 0 && (
             <div style={{ display: 'grid', gap: 10 }}>
-              <div style={{ display: isMobileViewport ? 'flex' : 'grid', gridTemplateColumns: isMobileViewport ? undefined : 'repeat(4, 1fr)', gap: 8, marginTop: 2, overflowX: isMobileViewport ? 'auto' : 'visible', paddingBottom: isMobileViewport ? 4 : 0 }}>
+              <div style={{ display: isMobileViewport ? 'flex' : 'grid', gridTemplateColumns: isMobileViewport ? undefined : 'repeat(4, 1fr)', gap: 10, marginTop: 2, overflowX: isMobileViewport ? 'auto' : 'visible', paddingBottom: isMobileViewport ? 4 : 0 }}>
                 {previewImages.map((url, index) => (
-                  <div key={`${url}-${index}`} style={{ width: isMobileViewport ? 84 : '100%', minWidth: isMobileViewport ? 84 : 0, height: 56, borderRadius: 8, overflow: 'hidden', position: 'relative', background: '#e2e8f0', flexShrink: 0 }}>
+                  <div key={`${url}-${index}`} style={{ width: isMobileViewport ? 84 : '100%', minWidth: isMobileViewport ? 84 : 0, height: 72, borderRadius: 10, overflow: 'hidden', position: 'relative', background: '#e2e8f0', flexShrink: 0 }}>
                     <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   </div>
                 ))}
@@ -3134,26 +3320,24 @@ const ServicesHero = ({
           )}
         </div>
 
-        <div style={{ display: 'grid', gap: 12, paddingLeft: isMobileViewport ? 0 : 24, borderLeft: isMobileViewport ? 'none' : '1px solid #e5e7eb' }}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Contact & Location</div>
-          <div style={{ display: 'grid', gridTemplateColumns: hasMapData && !isMobileViewport ? '0.9fr 1.1fr' : '1fr', gap: 18, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gap: 14, paddingLeft: isMobileViewport ? 0 : 26, borderLeft: isMobileViewport ? 'none' : '1px solid #eef2f6', alignContent: 'start' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Contact & Location</div>
+          <div style={{ display: 'grid', gridTemplateColumns: hasMapData && !isMobileViewport ? STOREFRONT_CONTACT_INFO_COLUMNS : '1fr', gap: 20, alignItems: 'start' }}>
             {hasContactRows && (
-              <div style={{ display: 'grid', gap: 10 }}>
-                {serviceHeroModel.contactRows.map((row) => {
-                  const icon = row.label === 'Call' || row.label === 'Phone'
-                    ? <Phone size={16} />
-                    : row.label === 'Message'
-                      ? <MessageCircle size={16} />
-                      : row.label === 'Facebook'
-                        ? <MessageCircle size={16} />
-                        : row.label === 'Email'
-                          ? <Mail size={16} />
-                          : <Clock3 size={16} />;
+              <div style={{ display: 'grid', gap: 16, alignContent: 'start', paddingTop: 4 }}>
+                {visibleContactRows.map((row) => {
+                  const icon = getStorefrontContactIcon(row.label);
+                  const isCompactSingleLine = !isMobileViewport && ['call', 'phone', 'facebook', 'messenger', 'message', 'hours'].includes(String(row.label || '').trim().toLowerCase());
                   const content = (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827' }}>
-                      <div style={{ color: servicesPrimaryDark, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{icon}</div>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', wordBreak: 'break-word' }}>{row.value}</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: `${STOREFRONT_INFO_ICON_COLUMN}px minmax(0, 1fr)`, alignItems: 'center', columnGap: STOREFRONT_INFO_ROW_GAP, fontSize: 13, color: '#334155', lineHeight: 1.35 }}>
+                      <div style={{ width: STOREFRONT_INFO_ICON_COLUMN, color: servicesPrimaryDark, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{icon}</div>
+                      <div style={{ minWidth: 0, display: 'grid', gap: row.actionHref ? 4 : 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', whiteSpace: isCompactSingleLine ? 'nowrap' : 'normal', wordBreak: isCompactSingleLine ? 'normal' : 'break-word' }}>{row.value}</div>
+                        {row.actionHref ? (
+                          <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openStorefrontActionLink(row.actionHref); }} style={{ padding: 0, border: 'none', background: 'transparent', color: servicesPrimary, fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start', fontFamily: servicesBodyFont }}>
+                            {row.actionLabel || 'Open'}
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   );
@@ -3165,53 +3349,50 @@ const ServicesHero = ({
                     <div key={row.label}>{content}</div>
                   );
                 })}
-
-                {serviceHeroModel.hours && !serviceHeroModel.contactRows.some((row) => row.label === 'Hours') && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827' }}>
-                    <div style={{ color: STYLES.colors.teal, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <Clock3 size={16} />
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{serviceHeroModel.hours}</div>
-                    </div>
-                  </div>
-                )}
-
-                {hasAddress && (
-                  <div style={{ display: 'grid', gap: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#111827' }}>
-                      <div style={{ color: servicesPrimary, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <MapPin size={16} />
-                      </div>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{addressText}</div>
-                      </div>
-                    </div>
-                    {serviceHeroModel.directionsUrl && (
-                      <button type="button" onClick={() => openStorefrontActionLink(serviceHeroModel.directionsUrl)} style={{ padding: 0, border: 'none', background: 'transparent', color: servicesPrimary, fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start', fontFamily: servicesBodyFont }}>
-                        Get directions
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
             )}
 
             {hasMapData && (
-              <div style={{ width: '100%', height: 150, borderRadius: 14, overflow: 'hidden', border: '1px solid #e5e7eb', background: '#f8fafc' }}>
-                <StoresMap stores={serviceHeroModel.mapStores} selectedKey={serviceHeroModel.mapSelectedKey} onSelectStore={() => { }} />
+              <div style={{ display: 'grid', gap: 10, alignContent: 'start', marginTop: isMobileViewport ? 0 : -30 }}>
+                <div style={{ position: 'relative', width: '100%', height: 156, borderRadius: 14, overflow: 'hidden', border: '1px solid #edf2f7', background: '#f8fafc' }}>
+                  <StoresMap stores={serviceHeroModel.mapStores} selectedKey={serviceHeroModel.mapSelectedKey} onSelectStore={() => { }} />
+                  <button
+                    type="button"
+                    onClick={() => setIsExpandedMapOpen(true)}
+                    aria-label="Open large map"
+                    title="Open large map"
+                    style={{
+                      position: 'absolute',
+                      top: 12,
+                      right: 12,
+                      width: 36,
+                      height: 36,
+                      borderRadius: 10,
+                      background: '#fff',
+                      border: '1px solid #cbd5e1',
+                      boxShadow: '0 4px 12px rgba(15,23,42,0.1)',
+                      display: 'grid',
+                      placeItems: 'center',
+                      cursor: 'pointer',
+                      color: '#334155',
+                      zIndex: 10
+                    }}
+                  >
+                    <Maximize size={18} />
+                  </button>
+                </div>
               </div>
             )}
           </div>
         </div>
 
         {hasWhyChooseUs && (
-          <div style={{ display: 'grid', gap: 12, paddingLeft: isMobileViewport ? 0 : 24, borderLeft: isMobileViewport ? 'none' : '1px solid #e5e7eb' }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Why Choose Us</div>
-            <div style={{ display: 'grid', gap: 12 }}>
-              {serviceHeroModel.whyChooseUs.map((item, index) => (
-                <div key={`${item}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#111827', lineHeight: 1.4 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: 999, background: servicesPrimarySoft, color: servicesPrimary, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div style={{ display: 'grid', gap: 14, alignContent: 'start', alignItems: 'start', paddingLeft: isMobileViewport ? 0 : 26, borderLeft: isMobileViewport ? 'none' : '1px solid #eef2f6' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Why Choose Us?</div>
+            <div style={{ display: 'grid', gap: 16, alignContent: 'start', paddingTop: 4 }}>
+              {visibleWhyChooseUs.map((item, index) => (
+                <div key={`${item}-${index}`} style={{ display: 'grid', gridTemplateColumns: `30px minmax(0, 1fr)`, alignItems: 'center', columnGap: 12, fontSize: 13, color: '#334155', lineHeight: 1.35 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 999, background: servicesPrimarySoft, color: servicesPrimary, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Sparkles size={14} />
                   </div>
                   <div>{item}</div>
@@ -3221,6 +3402,14 @@ const ServicesHero = ({
           </div>
         )}
       </div>
+      <StorefrontExpandedMapModal
+        open={isExpandedMapOpen}
+        onClose={() => setIsExpandedMapOpen(false)}
+        title={`${serviceHeroModel.name || selectedStore?.tenant_name || 'Store'} Map`}
+        subtitle="View the store location in a larger map."
+        stores={serviceHeroModel.mapStores}
+        selectedKey={serviceHeroModel.mapSelectedKey}
+      />
     </section>
   );
 };
@@ -3259,12 +3448,53 @@ const getPreferredSocialContact = ({ messengerLink = '', facebookLink = '' } = {
   const normalizedMessengerLink = String(messengerLink || '').trim();
   const normalizedFacebookLink = String(facebookLink || '').trim();
   if (normalizedMessengerLink) {
-    return { label: 'Messenger', value: 'Messenger', href: normalizedMessengerLink };
+    return { label: 'Messenger', value: 'Message us', href: normalizedMessengerLink };
   }
   if (normalizedFacebookLink) {
     return { label: 'Facebook', value: 'Facebook', href: normalizedFacebookLink };
   }
   return null;
+};
+
+const buildVisibleStorefrontContactRows = ({
+  contactRows = [],
+  hours = '',
+  addressText = '',
+  directionsUrl = ''
+} = {}) => {
+  const normalizedRows = Array.isArray(contactRows)
+    ? contactRows
+      .map((row) => ({
+        ...row,
+        label: String(row?.label || '').trim(),
+        value: String(row?.value || '').trim(),
+        href: String(row?.href || '').trim()
+      }))
+      .filter((row) => row.label && row.value)
+    : [];
+  const findRow = (...labels) => normalizedRows.find((row) => labels.includes(row.label.toLowerCase()));
+  const phoneRow = findRow('call', 'phone');
+  const socialRow = findRow('messenger', 'message', 'facebook');
+  const emailRow = findRow('email');
+  const normalizedHours = String(hours || '').trim();
+  const normalizedAddressText = String(addressText || '').trim();
+  const normalizedDirectionsUrl = String(directionsUrl || '').trim();
+  return [
+    phoneRow,
+    socialRow,
+    normalizedHours ? { label: 'Hours', value: normalizedHours } : null,
+    normalizedAddressText
+      ? {
+          label: 'Address',
+          value: normalizedAddressText,
+          actionLabel: normalizedDirectionsUrl ? 'Get directions' : '',
+          actionHref: normalizedDirectionsUrl
+        }
+      : null,
+    emailRow
+  ]
+    .filter(Boolean)
+    .slice(0, MAX_STOREFRONT_CONTACT_ROWS);
 };
 
 const maskReviewerName = (value) => {
@@ -3289,6 +3519,11 @@ const deriveStorefrontRegistrationYear = (value) => {
 
 const STOREFRONT_FOOTER_SOCIAL_LABELS = ['Website', 'Facebook', 'Instagram', 'TikTok', 'Messenger'];
 const STOREFRONT_FOOTER_CONTACT_LABELS = ['Call', 'Email'];
+const DELIVERY_PARTNER_LOGOS = Object.freeze({
+  grab: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSboB_YmMRIM3d5SN4mxXvUZmG5j0kbI1N2hg&s',
+  foodpanda: 'https://cdn.worldvectorlogo.com/logos/foodpanda-logo.svg',
+  lalamove: 'https://images.seeklogo.com/logo-png/44/1/lalamove-logo-png_seeklogo-447373.png'
+});
 
 const getStorefrontSocialFooterLinks = (links = []) => (
   (Array.isArray(links) ? links : []).filter((link) => STOREFRONT_FOOTER_SOCIAL_LABELS.includes(link?.label))
@@ -3297,6 +3532,84 @@ const getStorefrontSocialFooterLinks = (links = []) => (
 const getStorefrontContactFooterLinks = (links = []) => (
   (Array.isArray(links) ? links : []).filter((link) => STOREFRONT_FOOTER_CONTACT_LABELS.includes(link?.label))
 );
+
+const getDeliveryPlatformLinks = (deliveryPartners = []) => (
+  (Array.isArray(deliveryPartners) ? deliveryPartners : [])
+    .map((entry) => {
+      const partner = String(entry?.partner || '').trim().toLowerCase();
+      if (!partner) return null;
+      return {
+        partner,
+        label: String(entry?.label || (partner === 'foodpanda' ? 'foodpanda' : partner.charAt(0).toUpperCase() + partner.slice(1))).trim(),
+        href: sanitizeExternalLink(entry?.url),
+        logoUrl: DELIVERY_PARTNER_LOGOS[partner] || ''
+      };
+    })
+    .filter(Boolean)
+);
+
+const normalizeFnbModifierGroups = (item = {}) => {
+  const rawGroups = parseOptionalArray(item?.fnb_modifier_groups);
+  return rawGroups
+    .map((group, groupIndex) => {
+      if (!group || typeof group !== 'object' || Array.isArray(group)) return null;
+      const options = parseOptionalArray(group.options || group.modifier_options || group.items)
+        .map((option, optionIndex) => {
+          if (!option || typeof option !== 'object' || Array.isArray(option)) return null;
+          const optionName = String(option.option_name || option.name || option.label || '').trim();
+          if (!optionName) return null;
+          return {
+            modifier_option_id: option.modifier_option_id ?? option.option_id ?? option.id ?? `option-${groupIndex}-${optionIndex}`,
+            option_name: optionName,
+            price_delta: Number(option.price_delta ?? option.price ?? option.default_sale_price ?? 0) || 0
+          };
+        })
+        .filter(Boolean);
+      if (options.length === 0) return null;
+      return {
+        modifier_group_id: group.modifier_group_id ?? group.group_id ?? group.id ?? `group-${groupIndex}`,
+        group_name: String(group.group_name || group.name || group.label || `Add-on Group ${groupIndex + 1}`).trim(),
+        min_select: Number(group.min_select ?? group.min ?? 0) || 0,
+        max_select: Number(group.max_select ?? group.max ?? options.length) || options.length,
+        options
+      };
+    })
+    .filter(Boolean);
+};
+
+const buildFnbNutritionCards = (item = {}) => {
+  const rawNutrition = parseOptionalObject(item?.nutrition) || item?.nutrition;
+  if (!rawNutrition || typeof rawNutrition !== 'object' || Array.isArray(rawNutrition)) return [];
+  return Object.entries(rawNutrition)
+    .map(([label, value]) => ({
+      label: String(label || '').trim(),
+      value: String(value ?? '').trim()
+    }))
+    .filter((entry) => entry.label && entry.value)
+    .slice(0, 8);
+};
+
+const buildFnbAllergens = (item = {}) => (
+  parseOptionalArray(item?.allergens)
+    .map((entry) => {
+      if (typeof entry === 'string') return String(entry).trim();
+      if (entry && typeof entry === 'object') return String(entry.allergen_name || entry.label || entry.name || '').trim();
+      return '';
+    })
+    .filter(Boolean)
+    .slice(0, 8)
+);
+
+const countSelectedModifiersByGroup = (selectedModifiers = []) => {
+  const counts = {};
+  (Array.isArray(selectedModifiers) ? selectedModifiers : []).forEach((entry) => {
+    const groupId = entry?.modifier_group_id;
+    if (groupId == null) return;
+    const key = String(groupId);
+    counts[key] = Number(counts[key] || 0) + 1;
+  });
+  return counts;
+};
 
 const buildSimpleFallbackReasons = ({ categories = [], catalog = [] } = {}) => {
   const reasons = [];
@@ -3361,6 +3674,7 @@ const SimpleHero = ({
   followEnabled = false,
   shareEnabled = true
 }) => {
+  const [isExpandedMapOpen, setIsExpandedMapOpen] = useState(false);
   const heroTheme = modeAdapter.heroTheme || {};
   const addressText = String(simpleHeroModel.addressLine || simpleHeroModel.locationLabel || '').trim();
   const aboutText = String(simpleHeroModel.aboutText || '').trim();
@@ -3368,9 +3682,16 @@ const SimpleHero = ({
   const hasAddress = Boolean(addressText);
   const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
     && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
-  const hasWhyChooseUs = Array.isArray(simpleHeroModel.whyChooseUs) && simpleHeroModel.whyChooseUs.length > 0;
-  const hasContactRows = simpleHeroModel.contactRows.length > 0 || Boolean(simpleHeroModel.hours) || hasAddress;
-  const desktopColumns = hasWhyChooseUs ? '1fr 1.45fr 1fr' : '1fr 1.45fr';
+  const visibleWhyChooseUs = Array.isArray(simpleHeroModel.whyChooseUs) ? simpleHeroModel.whyChooseUs.slice(0, MAX_STOREFRONT_WHY_CHOOSE_US) : [];
+  const visibleContactRows = useMemo(() => buildVisibleStorefrontContactRows({
+    contactRows: simpleHeroModel.contactRows,
+    hours: simpleHeroModel.hours,
+    addressText,
+    directionsUrl: simpleHeroModel.directionsUrl
+  }), [simpleHeroModel.contactRows, simpleHeroModel.hours, simpleHeroModel.directionsUrl, addressText]);
+  const hasWhyChooseUs = visibleWhyChooseUs.length > 0;
+  const hasContactRows = visibleContactRows.length > 0;
+  const desktopColumns = hasWhyChooseUs ? '1fr 1.6fr 0.92fr' : '1fr 1.6fr';
   const storefrontShareUrl = useMemo(() => {
     if (!selectedStore?.slug) return '';
     return buildPublicStorefrontUrl(selectedStore.slug);
@@ -3404,9 +3725,9 @@ const SimpleHero = ({
                 padding: '4px 34px 4px 2px',
                 fontFamily: '"Inter", sans-serif'
               }}
-              optionStyle={{ fontFamily: '"Inter", sans-serif' }}
               containerStyle={{ minWidth: 0, flex: '1 1 auto' }}
-              menuStyle={{ minWidth: 240 }}
+              menuStyle={{ minWidth: 320, width: 'max-content', maxWidth: 'min(420px, calc(100vw - 32px))', padding: 10 }}
+              optionStyle={{ padding: '12px 18px', fontFamily: '"Inter", sans-serif' }}
               selectedLabelStyle={{ fontSize: 14, fontWeight: 700 }}
             />
           </label>
@@ -3538,24 +3859,24 @@ const SimpleHero = ({
       </StorefrontHeroShell>
 
       <div style={{
-        maxWidth: 1180,
+        maxWidth: STOREFRONT_INFO_PANEL_MAX_WIDTH,
         margin: isMobileViewport ? '40px 16px 32px' : '70px auto 40px',
-        padding: isMobileViewport ? 18 : 24,
+        padding: isMobileViewport ? 18 : 26,
         background: '#ffffff',
-        border: '1px solid #e5e7eb',
-        borderRadius: 18,
-        boxShadow: '0 14px 35px rgba(15, 23, 42, 0.08)',
+        border: '1px solid #e8edf3',
+        borderRadius: 24,
+        boxShadow: '0 18px 42px rgba(15, 23, 42, 0.07)',
         display: 'grid',
         gridTemplateColumns: isMobileViewport ? '1fr' : desktopColumns,
-        gap: isMobileViewport ? 24 : 24
+        gap: isMobileViewport ? 24 : 26
       }}>
-        <div style={{ display: 'grid', gap: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Overview</div>
+        <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Overview</div>
           <div style={{ display: 'grid', gap: 10 }}>
             <p style={{
               fontSize: 13,
-              lineHeight: 1.55,
-              color: '#111827',
+              lineHeight: 1.7,
+              color: '#475569',
               margin: 0,
               display: '-webkit-box',
               WebkitLineClamp: hasAboutToggle ? 3 : 'unset',
@@ -3567,26 +3888,24 @@ const SimpleHero = ({
           </div>
         </div>
 
-        <div style={{ display: 'grid', gap: 12, paddingLeft: isMobileViewport ? 0 : 24, borderLeft: isMobileViewport ? 'none' : '1px solid #e5e7eb' }}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Contact & Location</div>
-          <div style={{ display: 'grid', gridTemplateColumns: hasMapData && !isMobileViewport ? '0.9fr 1.1fr' : '1fr', gap: 18, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gap: 14, paddingLeft: isMobileViewport ? 0 : 26, borderLeft: isMobileViewport ? 'none' : '1px solid #eef2f6', alignContent: 'start' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Contact & Location</div>
+          <div style={{ display: 'grid', gridTemplateColumns: hasMapData && !isMobileViewport ? STOREFRONT_CONTACT_INFO_COLUMNS : '1fr', gap: 20, alignItems: 'start' }}>
             {hasContactRows && (
-              <div style={{ display: 'grid', gap: 10 }}>
-                {simpleHeroModel.contactRows.map((row) => {
-                  const icon = row.label === 'Call' || row.label === 'Phone'
-                    ? <Phone size={16} />
-                    : row.label === 'Message'
-                      ? <MessageCircle size={16} />
-                      : row.label === 'Facebook'
-                        ? <MessageCircle size={16} />
-                        : row.label === 'Email'
-                          ? <Mail size={16} />
-                          : <Clock3 size={16} />;
+              <div style={{ display: 'grid', gap: 16, alignContent: 'start', paddingTop: 4 }}>
+                {visibleContactRows.map((row) => {
+                  const icon = getStorefrontContactIcon(row.label);
+                  const isCompactSingleLine = !isMobileViewport && ['call', 'phone', 'facebook', 'messenger', 'message', 'hours'].includes(String(row.label || '').trim().toLowerCase());
                   const content = (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827' }}>
-                      <div style={{ color: heroTheme.accentDark || STYLES.colors.brandDark, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{icon}</div>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', wordBreak: 'break-word' }}>{row.value}</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: `${STOREFRONT_INFO_ICON_COLUMN}px minmax(0, 1fr)`, alignItems: 'center', columnGap: STOREFRONT_INFO_ROW_GAP, fontSize: 13, color: '#334155', lineHeight: 1.35 }}>
+                      <div style={{ width: STOREFRONT_INFO_ICON_COLUMN, color: heroTheme.accentDark || STYLES.colors.brandDark, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{icon}</div>
+                      <div style={{ minWidth: 0, display: 'grid', gap: row.actionHref ? 4 : 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', whiteSpace: isCompactSingleLine ? 'nowrap' : 'normal', wordBreak: isCompactSingleLine ? 'normal' : 'break-word' }}>{row.value}</div>
+                        {row.actionHref ? (
+                          <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openStorefrontActionLink(row.actionHref); }} style={{ padding: 0, border: 'none', background: 'transparent', color: heroTheme.accent || STYLES.colors.brand, fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start' }}>
+                            {row.actionLabel || 'Open'}
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   );
@@ -3598,53 +3917,50 @@ const SimpleHero = ({
                     <div key={row.label}>{content}</div>
                   );
                 })}
-
-                {simpleHeroModel.hours && !simpleHeroModel.contactRows.some((row) => row.label === 'Hours') && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#111827' }}>
-                    <div style={{ color: heroTheme.accent || STYLES.colors.teal, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <Clock3 size={16} />
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{simpleHeroModel.hours}</div>
-                    </div>
-                  </div>
-                )}
-
-                {hasAddress && (
-                  <div style={{ display: 'grid', gap: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#111827' }}>
-                      <div style={{ color: '#1a4e8d', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <MapPin size={16} />
-                      </div>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{addressText}</div>
-                      </div>
-                    </div>
-                    {simpleHeroModel.directionsUrl && (
-                      <button type="button" onClick={() => openStorefrontActionLink(simpleHeroModel.directionsUrl)} style={{ padding: 0, border: 'none', background: 'transparent', color: heroTheme.accent || STYLES.colors.brand, fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start' }}>
-                        Get directions
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
             )}
 
             {hasMapData && (
-              <div style={{ width: '100%', height: 150, borderRadius: 14, overflow: 'hidden', border: '1px solid #e5e7eb', background: '#f8fafc' }}>
-                <StoresMap stores={simpleHeroModel.mapStores} selectedKey={simpleHeroModel.mapSelectedKey} onSelectStore={() => { }} />
+              <div style={{ display: 'grid', gap: 10, alignContent: 'start', marginTop: isMobileViewport ? 0 : -30 }}>
+                <div style={{ position: 'relative', width: '100%', height: 156, borderRadius: 14, overflow: 'hidden', border: '1px solid #edf2f7', background: '#f8fafc' }}>
+                  <StoresMap stores={simpleHeroModel.mapStores} selectedKey={simpleHeroModel.mapSelectedKey} onSelectStore={() => { }} />
+                  <button
+                    type="button"
+                    onClick={() => setIsExpandedMapOpen(true)}
+                    aria-label="Open large map"
+                    title="Open large map"
+                    style={{
+                      position: 'absolute',
+                      top: 12,
+                      right: 12,
+                      width: 36,
+                      height: 36,
+                      borderRadius: 10,
+                      background: '#fff',
+                      border: '1px solid #cbd5e1',
+                      boxShadow: '0 4px 12px rgba(15,23,42,0.1)',
+                      display: 'grid',
+                      placeItems: 'center',
+                      cursor: 'pointer',
+                      color: '#334155',
+                      zIndex: 10
+                    }}
+                  >
+                    <Maximize size={18} />
+                  </button>
+                </div>
               </div>
             )}
           </div>
         </div>
 
         {hasWhyChooseUs && (
-          <div style={{ display: 'grid', gap: 12, paddingLeft: isMobileViewport ? 0 : 24, borderLeft: isMobileViewport ? 'none' : '1px solid #e5e7eb' }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Why Shop Here</div>
-            <div style={{ display: 'grid', gap: 12 }}>
-              {simpleHeroModel.whyChooseUs.map((item, index) => (
-                <div key={`${item}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#111827', lineHeight: 1.4 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: 999, background: '#ecfeff', color: heroTheme.accent || '#0f766e', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div style={{ display: 'grid', gap: 14, alignContent: 'start', alignItems: 'start', paddingLeft: isMobileViewport ? 0 : 26, borderLeft: isMobileViewport ? 'none' : '1px solid #eef2f6' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Why Shop Here?</div>
+            <div style={{ display: 'grid', gap: 16, alignContent: 'start', paddingTop: 4 }}>
+              {visibleWhyChooseUs.map((item, index) => (
+                <div key={`${item}-${index}`} style={{ display: 'grid', gridTemplateColumns: `30px minmax(0, 1fr)`, alignItems: 'center', columnGap: 12, fontSize: 13, color: '#334155', lineHeight: 1.35 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 999, background: '#ecfeff', color: heroTheme.accent || '#0f766e', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Sparkles size={14} />
                   </div>
                   <div>{item}</div>
@@ -3654,6 +3970,14 @@ const SimpleHero = ({
           </div>
         )}
       </div>
+      <StorefrontExpandedMapModal
+        open={isExpandedMapOpen}
+        onClose={() => setIsExpandedMapOpen(false)}
+        title={`${simpleHeroModel.name || selectedStore?.tenant_name || 'Store'} Map`}
+        subtitle="View the store location in a larger map."
+        stores={simpleHeroModel.mapStores}
+        selectedKey={simpleHeroModel.mapSelectedKey}
+      />
     </section>
   );
 };
@@ -3662,6 +3986,7 @@ export default function StorefrontApp() {
   const [routeSlug, setRouteSlug] = useState(() => readRouteSlug());
   const [routeSubpage, setRouteSubpage] = useState(() => readStoreSubpage());
   const [routeServiceItemId, setRouteServiceItemId] = useState(() => readStoreServiceItemId());
+  const [routeItemId, setRouteItemId] = useState(() => readStoreItemId());
   const previousRouteSlugRef = useRef(routeSlug);
   const bookingPreferredDateInputRef = useRef(null);
 
@@ -3690,6 +4015,9 @@ export default function StorefrontApp() {
   const [isDiscoveryNoMatchToastActive, setIsDiscoveryNoMatchToastActive] = useState(false);
   const [isCategoryRowExpanded, setIsCategoryRowExpanded] = useState(false);
   const mobileCategoryRailRef = useRef(null);
+  const desktopCategoryRailRef = useRef(null);
+  const [hasDesktopCategoryOverflow, setHasDesktopCategoryOverflow] = useState(false);
+  const [showDesktopCategoryOverflowCue, setShowDesktopCategoryOverflowCue] = useState(false);
   const [mobileCategoryGroupIndex, setMobileCategoryGroupIndex] = useState(0);
   const [selectedMapPin, setSelectedMapPin] = useState(null);
   const [isStoreListVisible, setIsStoreListVisible] = useState(false);
@@ -3716,9 +4044,13 @@ export default function StorefrontApp() {
   const isOrderSubpage = routeSubpage === STORE_ORDER_SUBPAGE;
   const isTrackSubpage = routeSubpage === STORE_TRACK_SUBPAGE;
   const isServiceDetailsSubpage = routeSubpage === STORE_SERVICE_SUBPAGE;
+  const isFnbDetailsSubpage = routeSubpage === STORE_ITEM_SUBPAGE;
   const isResolvedOrderSubpage = isOrderSubpage || isTrackSubpage || currentPathSubpage === STORE_ORDER_SUBPAGE || currentPathSubpage === STORE_TRACK_SUBPAGE;
 
   const [selectedServiceDetail, setSelectedServiceDetail] = useState(null);
+  const [selectedFnbDetail, setSelectedFnbDetail] = useState(null);
+  const [selectedFnbDetailQuantity, setSelectedFnbDetailQuantity] = useState(1);
+  const [selectedFnbLineModifiers, setSelectedFnbLineModifiers] = useState([]);
   const [serviceDraftQuantity, setServiceDraftQuantity] = useState(1);
   const [serviceDraftNotes, setServiceDraftNotes] = useState('');
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
@@ -3759,6 +4091,29 @@ export default function StorefrontApp() {
   const closeServiceDetail = () => {
     setSelectedServiceDetail(null);
     setRouteServiceItemId(null);
+    goStoreCatalogPage();
+  };
+  const openFnbDetail = (item) => {
+    const normalized = toSlug(selectedStore?.slug || routeSlug);
+    const itemId = String(item?.item_id || '').trim();
+    if (!normalized || !itemId || typeof window === 'undefined') return;
+    const target = storePath(normalized, STORE_ITEM_SUBPAGE, `?item=${encodeURIComponent(itemId)}`);
+    if (`${window.location.pathname}${window.location.search}` !== target) {
+      window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_ITEM_SUBPAGE, itemId }, '', target);
+    }
+    setSelectedFnbDetail(item);
+    setSelectedFnbDetailQuantity(1);
+    setSelectedFnbLineModifiers([]);
+    setRouteSlug(normalized);
+    setRouteSubpage(STORE_ITEM_SUBPAGE);
+    setRouteItemId(itemId);
+    setIsCheckoutOpen(false);
+  };
+  const closeFnbDetail = () => {
+    setSelectedFnbDetail(null);
+    setSelectedFnbDetailQuantity(1);
+    setSelectedFnbLineModifiers([]);
+    setRouteItemId(null);
     goStoreCatalogPage();
   };
   const [activeServiceTab, setActiveServiceTab] = useState(null);
@@ -3868,6 +4223,7 @@ export default function StorefrontApp() {
   ));
   const [openDiscoveryFaqIndex, setOpenDiscoveryFaqIndex] = useState(0);
   const [isDiscoveryNavMenuOpen, setIsDiscoveryNavMenuOpen] = useState(false);
+  const [activeDiscoveryNavItem, setActiveDiscoveryNavItem] = useState('Explore');
   const isMobileViewport = viewportWidth < 840;
   const isDesktopViewport = viewportWidth >= 1024;
   const discoveryViewport = useMemo(() => getDiscoveryViewportState(viewportWidth), [viewportWidth]);
@@ -3878,6 +4234,27 @@ export default function StorefrontApp() {
     isDesktopViewport: isDiscoveryDesktopViewport
   } = discoveryViewport;
   const discoveryLayout = useMemo(() => getDiscoveryLayoutTokens(discoveryViewportMode), [discoveryViewportMode]);
+  useEffect(() => {
+    if (isDiscoveryMobileViewport) {
+      setHasDesktopCategoryOverflow(false);
+      setShowDesktopCategoryOverflowCue(false);
+      return undefined;
+    }
+    const railElement = desktopCategoryRailRef.current;
+    if (!railElement) return undefined;
+    const syncDesktopCategoryOverflow = () => {
+      const maxScrollLeft = Math.max(0, railElement.scrollWidth - railElement.clientWidth);
+      setHasDesktopCategoryOverflow(maxScrollLeft > 8);
+      setShowDesktopCategoryOverflowCue(maxScrollLeft > 8 && railElement.scrollLeft < (maxScrollLeft - 8));
+    };
+    syncDesktopCategoryOverflow();
+    railElement.addEventListener('scroll', syncDesktopCategoryOverflow, { passive: true });
+    window.addEventListener('resize', syncDesktopCategoryOverflow);
+    return () => {
+      railElement.removeEventListener('scroll', syncDesktopCategoryOverflow);
+      window.removeEventListener('resize', syncDesktopCategoryOverflow);
+    };
+  }, [isCategoryRowExpanded, isDiscoveryMobileViewport]);
   const discoveryRequestSequenceRef = useRef(0);
   const storeLoadRequestSequenceRef = useRef(0);
   const locationCatalogRequestSequenceRef = useRef(0);
@@ -4114,7 +4491,9 @@ export default function StorefrontApp() {
             ? storePath(profile.slug, STORE_ORDER_SUBPAGE)
           : routeSubpage === STORE_SERVICE_SUBPAGE && routeServiceItemId
             ? storePath(profile.slug, STORE_SERVICE_SUBPAGE, `?service=${encodeURIComponent(routeServiceItemId)}`)
-            : storePath(profile.slug);
+          : routeSubpage === STORE_ITEM_SUBPAGE && routeItemId
+            ? storePath(profile.slug, STORE_ITEM_SUBPAGE, `?item=${encodeURIComponent(routeItemId)}`)
+          : storePath(profile.slug);
         if (`${window.location.pathname}${window.location.search}` !== canonicalPath) {
           window.history.replaceState({ storeSlug: profile.slug, storeSubpage: routeSubpage }, '', canonicalPath);
         }
@@ -4292,6 +4671,20 @@ export default function StorefrontApp() {
   }, [catalog]);
 
   useEffect(() => {
+    if (!isFnbMode) return;
+    if (!routeItemId) {
+      setSelectedFnbDetail(null);
+      setSelectedFnbDetailQuantity(1);
+      setSelectedFnbLineModifiers([]);
+      return;
+    }
+    const matchedItem = catalog.find((entry) => String(entry?.item_id) === String(routeItemId)) || null;
+    setSelectedFnbDetail(matchedItem);
+    setSelectedFnbDetailQuantity(1);
+    setSelectedFnbLineModifiers([]);
+  }, [catalog, isFnbMode, routeItemId]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const loadDiscoveryLocations = async () => {
@@ -4333,6 +4726,7 @@ export default function StorefrontApp() {
       setRouteSlug(readRouteSlug());
       setRouteSubpage(readStoreSubpage());
       setRouteServiceItemId(readStoreServiceItemId());
+      setRouteItemId(readStoreItemId());
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
@@ -4504,6 +4898,7 @@ export default function StorefrontApp() {
     setRouteSlug(normalized);
     setRouteSubpage(null);
     setRouteServiceItemId(null);
+    setRouteItemId(null);
   };
   const goStoreOrderForDiscovery = (slug, locationId = null) => {
     const normalized = toSlug(slug);
@@ -4523,6 +4918,7 @@ export default function StorefrontApp() {
     setRouteSlug(normalized);
     setRouteSubpage(targetSubpage);
     setRouteServiceItemId(null);
+    setRouteItemId(null);
     setPendingOrderInitialTab(resolvedInitialTab);
     const preferredPin = String(persistedTrackedOrders[0]?.tracking_pin || persistedTrackingPin || '').trim().toUpperCase();
     if (!trackingPinInput && preferredPin) {
@@ -4544,6 +4940,7 @@ export default function StorefrontApp() {
     setRouteSlug(normalized);
     setRouteSubpage(STORE_BOOKING_SUBPAGE);
     setRouteServiceItemId(null);
+    setRouteItemId(null);
     if (!preserveSelectedService) {
       setSelectedServiceDetail(null);
     }
@@ -4561,6 +4958,7 @@ export default function StorefrontApp() {
     setRouteSlug(normalized);
     setRouteSubpage(STORE_ORDER_SUBPAGE);
     setRouteServiceItemId(null);
+    setRouteItemId(null);
     setPendingOrderInitialTab(resolvedInitialTab);
     if (!trackingPinInput) {
       const preferredPin = String(persistedTrackedOrders[0]?.tracking_pin || readLastTrackingPinForStore(normalized) || '').trim().toUpperCase();
@@ -4587,6 +4985,7 @@ export default function StorefrontApp() {
     setRouteSlug(normalized);
     setRouteSubpage(STORE_TRACK_SUBPAGE);
     setRouteServiceItemId(null);
+    setRouteItemId(null);
     setPendingOrderInitialTab('track');
     if (normalizedPin) {
       setSelectedTrackingPin(normalizedPin);
@@ -4608,6 +5007,7 @@ export default function StorefrontApp() {
     setRouteSlug(normalized);
     setRouteSubpage(null);
     setRouteServiceItemId(null);
+    setRouteItemId(null);
     setFnbOrderStep(2);
     setSimpleOrderStep(1);
   };
@@ -4617,6 +5017,7 @@ export default function StorefrontApp() {
     setRouteSlug(null);
     setRouteSubpage(null);
     setRouteServiceItemId(null);
+    setRouteItemId(null);
     setSelectedStore(null);
     setStoreLocations([]);
     setPrimaryLocationId(null);
@@ -4628,7 +5029,25 @@ export default function StorefrontApp() {
     setCatalogErrorGuidance('');
     setDiscoveryAppliedFilters(null);
     setIsCheckoutOpen(false);
+    setActiveDiscoveryNavItem('Explore');
   };
+
+  const handleDiscoveryNavItemClick = useCallback((item) => {
+    const nextItem = String(item || '').trim();
+    if (!nextItem) return;
+    setIsDiscoveryNavMenuOpen(false);
+    setActiveDiscoveryNavItem(nextItem);
+    if (nextItem === 'Explore' && typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (nextItem === 'Contact Us' && typeof document !== 'undefined') {
+      const contactAnchor = document.getElementById('discovery-contact-anchor');
+      if (contactAnchor && typeof contactAnchor.scrollIntoView === 'function') {
+        contactAnchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  }, []);
 
   const handleBranchMenuSelection = useCallback((nextValue) => {
     const nextLocationId = nextValue ? Number(nextValue) : null;
@@ -5404,6 +5823,60 @@ export default function StorefrontApp() {
     filteredFnbViewModel,
     modeAdapter.heroDescription
   ]);
+  const detailPageFnbItem = useMemo(() => (
+    selectedFnbDetail || (routeItemId ? catalog.find((item) => String(item?.item_id) === String(routeItemId)) || null : null)
+  ), [catalog, routeItemId, selectedFnbDetail]);
+  const detailPageFnbModifierGroups = useMemo(() => (
+    normalizeFnbModifierGroups(detailPageFnbItem)
+  ), [detailPageFnbItem]);
+  const detailPageFnbModifierCounts = useMemo(() => (
+    countSelectedModifiersByGroup(selectedFnbLineModifiers)
+  ), [selectedFnbLineModifiers]);
+  const detailPageFnbNutritionCards = useMemo(() => (
+    buildFnbNutritionCards(detailPageFnbItem)
+  ), [detailPageFnbItem]);
+  const detailPageFnbAllergens = useMemo(() => (
+    buildFnbAllergens(detailPageFnbItem)
+  ), [detailPageFnbItem]);
+  const detailPageFnbRelatedItems = useMemo(() => {
+    if (!detailPageFnbItem) return [];
+    const currentSection = String(detailPageFnbItem.sectionKey || '').trim();
+    const currentItemId = Number(detailPageFnbItem.item_id);
+    const baseItems = Array.isArray(filteredFnbViewModel?.menuItems) ? filteredFnbViewModel.menuItems : [];
+    const sameSection = baseItems.filter((item) => (
+      Number(item?.item_id) !== currentItemId
+      && String(item?.sectionKey || '').trim() === currentSection
+    ));
+    const fallbackItems = baseItems.filter((item) => Number(item?.item_id) !== currentItemId);
+    return (sameSection.length > 0 ? sameSection : fallbackItems).slice(0, 3);
+  }, [detailPageFnbItem, filteredFnbViewModel]);
+  const toggleFnbDetailModifier = useCallback((group, option) => {
+    if (!group || !option) return;
+    const groupId = group.modifier_group_id;
+    const optionId = option.modifier_option_id;
+    setSelectedFnbLineModifiers((previous) => {
+      const normalized = Array.isArray(previous) ? previous : [];
+      const exists = normalized.some((entry) => Number(entry.modifier_group_id) === Number(groupId) && Number(entry.modifier_option_id) === Number(optionId));
+      const maxSelect = Math.max(0, Number(group.max_select || 0));
+      if (exists) {
+        return normalized.filter((entry) => !(Number(entry.modifier_group_id) === Number(groupId) && Number(entry.modifier_option_id) === Number(optionId)));
+      }
+      if (maxSelect === 1) {
+        return [
+          ...normalized.filter((entry) => Number(entry.modifier_group_id) !== Number(groupId)),
+          { modifier_group_id: groupId, modifier_option_id: optionId, option_name: option.option_name, price_delta: Number(option.price_delta || 0) }
+        ];
+      }
+      const groupSelections = normalized.filter((entry) => Number(entry.modifier_group_id) === Number(groupId));
+      if (maxSelect > 0 && groupSelections.length >= maxSelect) {
+        return normalized;
+      }
+      return [
+        ...normalized,
+        { modifier_group_id: groupId, modifier_option_id: optionId, option_name: option.option_name, price_delta: Number(option.price_delta || 0) }
+      ];
+    });
+  }, []);
   const simpleStorefrontModel = useMemo(() => {
     if (!selectedStore || !isSimpleMode) return null;
     const socialLinks = parseOptionalObject(selectedStore?.storefront_social_links) || {};
@@ -5972,11 +6445,24 @@ export default function StorefrontApp() {
     }
   };
 
-  const addToCart = (item) => {
+  const addToCart = (item, options = {}) => {
     if (isServiceCatalogItem(item) ? !bookingPermitted : !productCartPermitted) {
       toast.error('This storefront is not accepting online checkout right now.');
       return;
     }
+    const requestedQuantity = Math.max(1, Number(options?.quantity || 1));
+    const lineModifiers = (Array.isArray(options?.line_modifiers) ? options.line_modifiers : [])
+      .map((entry) => ({
+        modifier_group_id: entry?.modifier_group_id,
+        modifier_option_id: entry?.modifier_option_id,
+        option_name: String(entry?.option_name || '').trim(),
+        price_delta: Number(entry?.price_delta || 0) || 0
+      }))
+      .filter((entry) => entry.modifier_group_id != null && entry.modifier_option_id != null);
+    const modifierKey = JSON.stringify(lineModifiers.map((entry) => ({
+      modifier_group_id: entry.modifier_group_id,
+      modifier_option_id: entry.modifier_option_id
+    })));
     let stockWarning = '';
     const normalizedItemId = Number(item?.item_id);
     if (Number.isFinite(normalizedItemId)) {
@@ -5988,25 +6474,33 @@ export default function StorefrontApp() {
       });
     }
     setCart((prev) => {
-      const found = prev.find((l) => Number(l.item_id) === Number(item.item_id));
+      const found = prev.find((l) => (
+        Number(l.item_id) === Number(item.item_id)
+        && JSON.stringify((Array.isArray(l.line_modifiers) ? l.line_modifiers : []).map((entry) => ({
+          modifier_group_id: entry?.modifier_group_id,
+          modifier_option_id: entry?.modifier_option_id
+        }))) === modifierKey
+      ));
       const price = Number(item.default_sale_price ?? 0);
       const maxStock = isItemAvailable(item) ? Number.POSITIVE_INFINITY : 0;
       const baseLine = {
         item_id: item.item_id,
+        cart_line_id: options?.cart_line_id || `${item.item_id}:${modifierKey || 'default'}`,
         name: item.name,
         variantName: item.variantName || '',
         category: isServiceCatalogItem(item) ? 'service' : String(item.category || '').trim().toLowerCase(),
         service_detail: item.service_detail || null,
-        quantity: 1,
+        quantity: requestedQuantity,
         price,
         image_url: withAssetOrigin(item.image_url) || null,
         unit_of_measure: item.unit_of_measure || '',
         max_stock: maxStock,
         serviceAreaLabel: item.serviceAreaLabel || '',
-        durationLabel: item.durationLabel || ''
+        durationLabel: item.durationLabel || '',
+        line_modifiers: lineModifiers
       };
       if (found) {
-        const requestedQty = Number(found.quantity) + 1;
+        const requestedQty = Number(found.quantity) + requestedQuantity;
         const safeQty = Math.max(0, Math.min(requestedQty, maxStock));
         if (requestedQty > maxStock) {
           stockWarning = buildStockExceededMessage({
@@ -6017,7 +6511,11 @@ export default function StorefrontApp() {
           });
         }
         return prev.map((line) => Number(line.item_id) === Number(item.item_id)
-          ? { ...line, quantity: safeQty, max_stock: maxStock }
+          ? (
+            line.cart_line_id === found.cart_line_id
+              ? { ...line, quantity: safeQty, max_stock: maxStock }
+              : line
+          )
           : line);
       }
       if (isServiceCatalogItem(item)) {
@@ -6030,7 +6528,7 @@ export default function StorefrontApp() {
       }
       return [...prev, {
         ...baseLine,
-        quantity: maxStock > 0 ? 1 : 0
+        quantity: maxStock > 0 ? requestedQuantity : 0
       }];
     });
     setCheckoutTab(isFnbMode ? 'cart' : 'review');
@@ -6205,7 +6703,18 @@ export default function StorefrontApp() {
     delivery_longitude: isDeliveryOrder ? toNumberOrNull(customerPin?.longitude) : null,
     scheduled_for: fnbScheduleMode === 'schedule' && fnbScheduledFor ? new Date(fnbScheduledFor).toISOString() : null,
     special_instructions: String(fnbSpecialInstructions || '').trim(),
-    lines: cart.map((line) => ({ item_id: Number(line.item_id), quantity: Number(line.quantity) }))
+    lines: cart.map((line) => ({
+      item_id: Number(line.item_id),
+      quantity: Number(line.quantity),
+      ...(Array.isArray(line.line_modifiers) && line.line_modifiers.length > 0
+        ? {
+            line_modifiers: line.line_modifiers.map((entry) => ({
+              modifier_group_id: Number(entry.modifier_group_id),
+              modifier_option_id: Number(entry.modifier_option_id)
+            }))
+          }
+        : {})
+    }))
   });
 
   const handlePinMyLocation = () => {
@@ -8056,23 +8565,36 @@ export default function StorefrontApp() {
       }}>
         {!isStorePage && (
           <>
-            <section style={{ display: 'grid', gap: 0, paddingBottom: 8 }}>
+            {activeDiscoveryNavItem === 'Solutions' ? (
+              <SolutionsPage
+                logoSrc={dgfyHeaderLogo}
+                onExploreClick={() => {
+                  setActiveDiscoveryNavItem('Explore');
+                  if (typeof window !== 'undefined') {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }
+                }}
+              />
+            ) : null}
+            <section style={{ display: activeDiscoveryNavItem === 'Solutions' ? 'none' : 'grid', gap: 0, paddingBottom: 8 }}>
 
               {/* ── NAV ── */}
               <DiscoveryHeader
                 viewportMode={discoveryViewportMode}
                 logoSrc={dgfyHeaderLogo}
                 onLogoClick={() => goDiscovery()}
-                navItems={['Explore', 'Solutions', 'About Us', 'Contact Us']}
-                activeItem="Explore"
+                navItems={['Explore', 'Solutions', 'Contact Us']}
+                activeItem={activeDiscoveryNavItem}
                 menuOpen={isDiscoveryNavMenuOpen}
                 onMenuToggle={() => setIsDiscoveryNavMenuOpen((open) => !open)}
+                onItemClick={handleDiscoveryNavItemClick}
 	                onRegisterClick={() => {
 	                  if (typeof window !== 'undefined') {
 	                    window.location.href = 'https://skupervisor.dgfy.ph/register-company';
 	                  }
 	                }}
 	              />
+
 
               {/* ── HERO ── */}
               <div
@@ -8322,52 +8844,68 @@ export default function StorefrontApp() {
 		                          boxShadow: '0 2px 8px rgba(15,23,42,.04)',
 		                          transition: 'all 200ms ease'
 	                        });
-		                        const visibleCategories = isDiscoveryMobileViewport
-		                          ? allMobileCategories
-		                          : (isCategoryRowExpanded ? [...primaryCats, ...extendedCats] : primaryCats);
+                        const visibleCategories = isDiscoveryMobileViewport
+                          ? allMobileCategories
+                          : (isCategoryRowExpanded ? [...primaryCats, ...extendedCats] : primaryCats);
+                        const desktopRailWidth = isCategoryRowExpanded ? 'min(100%, 980px)' : 'max-content';
                         return (
                           <DiscoveryCategoryRail viewportMode={discoveryViewportMode}>
                             <div style={{ marginTop: isDiscoveryMobileViewport ? 18 : 24 }}>
                               <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 14, display: isDiscoveryMobileViewport ? 'block' : 'none' }}>Categories</div>
                               <div style={{ display: 'flex', justifyContent: isDiscoveryMobileViewport ? 'flex-start' : 'center', width: '100%', minWidth: 0 }}>
-	                                <div
-	                                  style={{
-	                                    position: 'relative',
-	                                    display: 'flex',
-	                                    alignItems: 'center',
-	                                    justifyContent: isDiscoveryMobileViewport ? 'flex-start' : 'center',
-	                                    gap: isDiscoveryMobileViewport ? 10 : 8,
-	                                    overflowX: 'auto',
-                                    paddingBottom: isDiscoveryMobileViewport ? 8 : 2,
-                                    width: isDiscoveryMobileViewport ? '100%' : 'max-content',
+                                <div
+                                  style={{
+                                    position: 'relative',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: isDiscoveryMobileViewport ? 'flex-start' : 'center',
+                                    gap: isDiscoveryMobileViewport ? 10 : 10,
+                                    width: isDiscoveryMobileViewport ? '100%' : desktopRailWidth,
                                     maxWidth: '100%',
                                     minWidth: 0,
-                                    margin: isDiscoveryMobileViewport ? '0' : '0 auto',
-                                    scrollbarWidth: 'none',
-	                                    msOverflowStyle: 'none'
-	                                  }}
-	                                >
-                                  {!isDiscoveryMobileViewport && <span style={{ fontSize: 12, lineHeight: 1, color: '#94a3b8', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', marginRight: 2, flexShrink: 0 }}>Categories</span>}
-		                                  {visibleCategories.map((cat, index) => (
-	                                    <button
-	                                      key={cat.label}
-	                                      type="button"
-	                                      data-mobile-category-index={isDiscoveryMobileViewport ? index : undefined}
-	                                      onClick={() => handlePopularDiscoveryCategory(cat.label)}
-	                                      style={cardStyle(cat)}
-	                                    >
-		                                      <div style={{
-		                                        display: 'flex',
-		                                        alignItems: 'center',
-		                                        justifyContent: 'center',
-		                                        width: isDiscoveryMobileViewport ? 16 : 18,
-		                                        height: isDiscoveryMobileViewport ? 16 : 18
-		                                      }}>
-		                                        {cat.icon}
-		                                      </div>
-	                                      <span style={{ display: 'block', textAlign: 'center', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cat.label}</span>
-		                                    </button>
-		                                  ))}
+                                    margin: isDiscoveryMobileViewport ? '0' : '0 auto'
+                                  }}
+                                >
+                                  {!isDiscoveryMobileViewport && (
+                                    <span style={{ fontSize: 12, lineHeight: 1, color: '#94a3b8', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', flexShrink: 0 }}>
+                                      Categories
+                                    </span>
+                                  )}
+                                  <div
+                                    ref={isDiscoveryMobileViewport ? mobileCategoryRailRef : desktopCategoryRailRef}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: isDiscoveryMobileViewport ? 'flex-start' : (isCategoryRowExpanded ? 'flex-start' : 'center'),
+                                      gap: isDiscoveryMobileViewport ? 10 : 8,
+                                      overflowX: 'auto',
+                                      paddingBottom: isDiscoveryMobileViewport ? 8 : 2,
+                                      width: isDiscoveryMobileViewport ? '100%' : (isCategoryRowExpanded ? '100%' : 'auto'),
+                                      minWidth: 0,
+                                      scrollbarWidth: 'none',
+                                      msOverflowStyle: 'none'
+                                    }}
+                                  >
+                                    {visibleCategories.map((cat, index) => (
+                                      <button
+                                        key={cat.label}
+                                        type="button"
+                                        data-mobile-category-index={isDiscoveryMobileViewport ? index : undefined}
+                                        onClick={() => handlePopularDiscoveryCategory(cat.label)}
+                                        style={cardStyle(cat)}
+                                      >
+                                        <div style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          width: isDiscoveryMobileViewport ? 16 : 18,
+                                          height: isDiscoveryMobileViewport ? 16 : 18
+                                        }}>
+                                          {cat.icon}
+                                        </div>
+                                        <span style={{ display: 'block', textAlign: 'center', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cat.label}</span>
+                                      </button>
+                                    ))}
 		                                  {isDiscoveryMobileViewport && mobileOverflowGroups > 0 && (
 		                                    <button
 		                                      type="button"
@@ -8415,24 +8953,48 @@ export default function StorefrontApp() {
 	                                      <ChevronRight size={16} />
 	                                    </button>
 	                                  )}
-	                                  {!isDiscoveryMobileViewport && (
+                                    {!isDiscoveryMobileViewport && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setIsCategoryRowExpanded(!isCategoryRowExpanded)}
+                                        style={{
+                                          ...cardStyle({ bg: '#fff', color: '#64748b', border: '#dbe3ee' }),
+                                          border: '1.5px solid #dbe3ee',
+                                          minHeight: 34,
+                                          minWidth: 84
+                                        }}
+                                      >
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                          <MoreHorizontal size={16} />
+                                        </div>
+                                        {isCategoryRowExpanded ? 'Less' : 'More'}
+                                      </button>
+                                    )}
+                                  </div>
+                                  {!isDiscoveryMobileViewport && isCategoryRowExpanded && hasDesktopCategoryOverflow && showDesktopCategoryOverflowCue && (
                                     <button
                                       type="button"
-                                      onClick={() => setIsCategoryRowExpanded(!isCategoryRowExpanded)}
+                                      onClick={() => desktopCategoryRailRef.current?.scrollBy({ left: 220, behavior: 'smooth' })}
+                                      aria-label="Show more categories"
                                       style={{
-                                        ...cardStyle({ bg: '#fff', color: '#64748b', border: '#dbe3ee' }),
-                                        border: '1.5px solid #dbe3ee',
-                                        minHeight: 34,
-                                        minWidth: 84
+                                        flexShrink: 0,
+                                        width: 34,
+                                        height: 34,
+                                        borderRadius: 999,
+                                        border: '1px solid rgba(226,232,240,.9)',
+                                        background: '#ffffff',
+                                        color: '#64748b',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        boxShadow: '0 6px 16px rgba(15,23,42,.08)',
+                                        cursor: 'pointer'
                                       }}
                                     >
-                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <MoreHorizontal size={16} />
-                                      </div>
-                                      {isCategoryRowExpanded ? 'Less' : 'More'}
+                                      <ChevronRight size={16} />
                                     </button>
                                   )}
-                                </div>
+	                                </div>
                               </div>
 
                             </div>
@@ -9272,7 +9834,7 @@ export default function StorefrontApp() {
                       </div>
                     </section>
 
-                    <footer style={{ marginLeft: 'calc(50% - 50vw)', width: '100%', minWidth: '100vw', background: 'linear-gradient(180deg, #0c3c86 0%, #0a3475 38%, #082c63 100%)', color: '#fff', position: 'relative', overflow: 'hidden' }}>
+                    <footer id="discovery-contact-anchor" style={{ marginLeft: 'calc(50% - 50vw)', width: '100%', minWidth: '100vw', background: 'linear-gradient(180deg, #0c3c86 0%, #0a3475 38%, #082c63 100%)', color: '#fff', position: 'relative', overflow: 'hidden' }}>
                       <div style={{ position: 'absolute', top: -42, left: '-4%', right: '-4%', height: 88, background: 'linear-gradient(90deg, rgba(59,130,246,.38) 0%, rgba(96,165,250,.18) 35%, rgba(59,130,246,.34) 100%)', borderBottomLeftRadius: '50% 100%', borderBottomRightRadius: '50% 100%', opacity: 0.9 }} />
                       <div style={{ position: 'absolute', top: -20, left: '-8%', right: '-8%', height: 54, background: 'linear-gradient(90deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,.04) 50%, rgba(255,255,255,.10) 100%)', borderBottomLeftRadius: '50% 100%', borderBottomRightRadius: '50% 100%', opacity: 0.75 }} />
 
@@ -9842,6 +10404,8 @@ export default function StorefrontApp() {
 	                isServiceGalleryExpanded={isServiceGalleryExpanded}
 	                setIsServiceGalleryExpanded={setIsServiceGalleryExpanded}
 	                openStorefrontActionLink={openStorefrontActionLink}
+	                openTrackPanel={openTrackPanel}
+	                openAccountPanel={openAccountPanel}
 	                followEnabled={followEnabledForStore}
 	                shareEnabled={shareEnabledForStore}
 	                followState={followState}
@@ -10071,7 +10635,7 @@ export default function StorefrontApp() {
                 )}
 
                 {/* ZONE 2: Hero Branding */}
-                {isFnbMode && !isOrderSubpage ? (
+                {isFnbMode && !isOrderSubpage && !isFnbDetailsSubpage ? (
                   <FnbHero
                     modeAdapter={modeAdapter}
                     heroSectionModel={heroSectionModel}
@@ -10093,6 +10657,7 @@ export default function StorefrontApp() {
                   selectedLocation={selectedLocation}
 	                  openStorefrontActionLink={openStorefrontActionLink}
 	                  openTrackPanel={openTrackPanel}
+	                  openAccountPanel={openAccountPanel}
 	                  followEnabled={followEnabledForStore}
 	                  shareEnabled={shareEnabledForStore}
 	                  followState={followState}
@@ -10120,6 +10685,7 @@ export default function StorefrontApp() {
                     selectedLocation={selectedLocation}
                     openStorefrontActionLink={openStorefrontActionLink}
                     openTrackPanel={openTrackPanel}
+                    openAccountPanel={openAccountPanel}
                     followEnabled={followEnabledForStore}
                     shareEnabled={shareEnabledForStore}
                     followState={followState}
@@ -10166,15 +10732,15 @@ export default function StorefrontApp() {
               const resolvedFnbSection = isMultiFnbSection
                 ? (activeServiceTab && fnbSections.some((section) => section.sectionKey === activeServiceTab)
                   ? activeServiceTab
-                  : fnbSections[0]?.sectionKey)
-                : null;
-              const activeFnbSection = isMultiFnbSection
-                ? (fnbSections.find((section) => section.sectionKey === resolvedFnbSection) || fnbSections[0])
+                  : '')
+                : '';
+              const activeFnbSection = resolvedFnbSection
+                ? (fnbSections.find((section) => section.sectionKey === resolvedFnbSection) || null)
                 : null;
               const rawItemsToRender = isServicesMode
                 ? (resolvedTab ? (activeGroup?.items || []) : servicesViewModel.allServices)
                 : isFnbMode
-                  ? (isMultiFnbSection ? (activeFnbSection?.items || []) : filteredFnbViewModel.menuItems)
+                  ? (resolvedFnbSection ? (activeFnbSection?.items || []) : filteredFnbViewModel.menuItems)
                   : filteredCatalog;
               const itemsToRender = isFnbMode
                 ? [...rawItemsToRender].sort((left, right) => {
@@ -10198,6 +10764,41 @@ export default function StorefrontApp() {
               const catalogItemsToRender = isFnbMode ? paginatedFnbItems : itemsToRender;
               const activeGroupMeta = activeGroup?.categoryMeta;
               const ActiveServiceGroupIcon = activeGroupMeta?.iconToken ? (SERVICE_CATEGORY_ICON_MAP[activeGroupMeta.iconToken] || Sparkles) : Sparkles;
+
+              if (isFnbMode && isFnbDetailsSubpage) {
+                const reviewSummary = fnbCommunityModel?.reviewSummary || null;
+                return (
+                  <FnbProductDetailsPage
+                    item={detailPageFnbItem}
+                    storeName={selectedStore?.tenant_name || 'Storefront'}
+                    storeLogoUrl={withAssetOrigin(selectedStore?.storefront_profile_image_url)}
+                    branchLabel={selectedLocation?.name || selectedStore?.location_name || 'Main Branch'}
+                    onBack={closeFnbDetail}
+                    quantity={selectedFnbDetailQuantity}
+                    setQuantity={setSelectedFnbDetailQuantity}
+                    selectedModifiers={selectedFnbLineModifiers}
+                    modifierGroups={detailPageFnbModifierGroups}
+                    modifierCounts={detailPageFnbModifierCounts}
+                    onToggleModifier={toggleFnbDetailModifier}
+                    onAddToCart={() => addToCart(detailPageFnbItem, { quantity: selectedFnbDetailQuantity, line_modifiers: selectedFnbLineModifiers })}
+                    onBuyNow={() => {
+                      addToCart(detailPageFnbItem, { quantity: selectedFnbDetailQuantity, line_modifiers: selectedFnbLineModifiers });
+                      goStoreOrderPage({ initialTab: 'cart' });
+                    }}
+                    available={detailPageFnbItem ? isItemAvailable(detailPageFnbItem) : false}
+                    unitPrice={Number(detailPageFnbItem?.default_sale_price ?? 0)}
+                    totalPrice={(Number(detailPageFnbItem?.default_sale_price ?? 0) + selectedFnbLineModifiers.reduce((sum, entry) => sum + Number(entry?.price_delta || 0), 0)) * Math.max(1, Number(selectedFnbDetailQuantity || 1))}
+                    nutritionCards={detailPageFnbNutritionCards}
+                    allergens={detailPageFnbAllergens}
+                    relatedItems={detailPageFnbRelatedItems}
+                    onSelectRelatedItem={openFnbDetail}
+                    onQuickAdd={(item) => addToCart(item)}
+                    isMobileViewport={isMobileViewport}
+                    ratingScore={reviewSummary?.score ?? null}
+                    reviewCount={reviewSummary?.total_count ?? reviewSummary?.totalCount ?? null}
+                  />
+                );
+              }
 
               if (isServicesMode) {
                 const searchFilteredServices = filterCatalogItems(itemsToRender, catalogSearch);
@@ -10242,7 +10843,7 @@ export default function StorefrontApp() {
                 const isLeadGenLayout = resolvedServicesLayoutMode === 'lead_gen';
                 const isBookingHeavyLayout = resolvedServicesLayoutMode === 'booking_heavy';
                 const isDirectoryLayout = !isLeadGenLayout && !isBookingHeavyLayout;
-                const controlRadius = 999;
+                const controlRadius = 18;
                 const serviceCategoryOptions = [
                   {
                     key: '',
@@ -12090,7 +12691,7 @@ return (
                 const activeCategoryOption = categoryOptions.find((option) => option.key === (resolvedFnbSection || '')) || categoryOptions[0];
                 const ActiveCategoryIcon = FNB_CATEGORY_ICON_MAP[activeCategoryOption.iconToken] || Sparkles;
                 const controlHeight = isMobileViewport ? 54 : 56;
-                const controlRadius = 999;
+                const controlRadius = 18;
 
                 return (
                   <div style={{ display: 'grid', gap: 14 }}>
@@ -12528,6 +13129,7 @@ return (
                       modeAdapter={modeAdapter}
                       addToCart={addToCart}
                       isMobileViewport={isMobileViewport}
+                      onViewDetails={openFnbDetail}
                     />
                   ) : isSimpleMode ? (
                     <SimpleProductCard
@@ -13040,13 +13642,13 @@ return (
         </>
       )}
 
-      {isFnbMode && !isOrderSubpage && fnbCommunityModel && (
+      {isFnbMode && !isOrderSubpage && !isFnbDetailsSubpage && fnbCommunityModel && (
         <>
           <SharedStorefrontPromoSection
             items={promoSectionModel}
             isMobileViewport={isMobileViewport}
             layoutVariant="compact"
-            palette="orange"
+            palette="fnb"
             titleFontFamily={modeAdapter.heroTheme?.displayFont}
           />
 
@@ -13060,8 +13662,8 @@ return (
             emptyMessage="Customer reviews will appear here once this storefront adds review data in SKUpervisor."
             titleFontFamily={modeAdapter.heroTheme?.displayFont}
             cardVariant="white"
-            sectionPadding={isMobileViewport ? '20px 0 24px' : '30px 0 34px'}
-            starSymbol="★"
+            writeButtonColor="#f97316"
+            starSymbol="*"
           />
 
           <SharedStorefrontFooterSection
@@ -13070,7 +13672,7 @@ return (
             registrationYear={fnbCommunityModel.registrationYear}
             description={fnbCommunityModel.tagline || fnbCommunityModel.aboutText || 'Food and beverage storefront powered by SKUpervisor content.'}
             displayFont={modeAdapter.heroTheme?.displayFont}
-            badgeLinks={[]}
+            badgeLinks={getStorefrontSocialFooterLinks(fnbCommunityModel.footerLinks)}
             columns={[
               {
                 title: 'Menu Categories',
@@ -14009,20 +14611,20 @@ return (
           borderRadius: isFnbMode ? 999 : (isMobileViewport ? 16 : 22),
           background: (isServicesMode && hasServiceCart)
             ? '#ffffff'
-            : (isFnbMode ? 'linear-gradient(135deg,#1a4586,#1a4e8d)' : 'linear-gradient(135deg,#1a4586,#1a4e8d)'),
+            : (isFnbMode ? '#f97316' : 'linear-gradient(135deg,#1a4586,#1a4e8d)'),
           color: (isServicesMode && hasServiceCart)
             ? '#0f172a'
             : '#fff',
           boxShadow: (isServicesMode && hasServiceCart)
             ? '0 22px 48px rgba(15,23,42,.16)'
-            : '0 14px 34px rgba(26,69,134,.38)',
+            : (isFnbMode ? '0 14px 34px rgba(249,115,22,.38)' : '0 14px 34px rgba(26,69,134,.38)'),
           padding: (isServicesMode && hasServiceCart) ? (isMobileViewport ? '12px 14px' : '16px 18px') : (isFnbMode ? 0 : '12px 18px'),
           width: isFnbMode ? (isMobileViewport ? 62 : 68) : undefined,
           height: isFnbMode ? (isMobileViewport ? 62 : 68) : undefined,
           minWidth: (isServicesMode && hasServiceCart) ? (isMobileViewport ? 0 : 320) : (isFnbMode ? undefined : (isMobileViewport ? 0 : 255)),
           textAlign: 'left',
           cursor: 'pointer',
-          right: isMobileViewport ? 10 : 18,
+          right: isMobileViewport ? 20 : 36,
           left: isFnbMode ? 'auto' : (isMobileViewport ? 10 : 'auto'),
           bottom: isMobileViewport ? 10 : 18,
           display: isServicesCartDrawerMode
@@ -14076,7 +14678,7 @@ return (
                 height: 22,
                 padding: '0 6px',
                 borderRadius: 999,
-                background: '#0f172a',
+                background: '#15803d',
                 color: '#fff',
                 border: '2px solid #fff',
                 display: 'inline-flex',

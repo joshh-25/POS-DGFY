@@ -96,6 +96,9 @@ export function StorefrontHeaderNav({
           )}
           <button
             type="button"
+            aria-label="Profile"
+            title="Profile"
+            onClick={onAccount || undefined}
             style={{
               width: 38,
               height: 38,
@@ -105,7 +108,7 @@ export function StorefrontHeaderNav({
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer',
+              cursor: typeof onAccount === 'function' ? 'pointer' : 'default',
               color: '#0f172a',
               marginLeft: 8,
               flexShrink: 0,

@@ -142,7 +142,7 @@ describe('storefront profile launcher', () => {
     expect(screen.queryByRole('button', { name: /^Profile$/i })).toBeNull();
   });
 
-  it('routes into the full profile page from a store page', async () => {
+  it('opens account panel from the profile launcher button on a store page', async () => {
     window.history.pushState({}, '', '/tenant-store/alpha');
     const user = userEvent.setup();
     render(<App />);
@@ -158,9 +158,9 @@ describe('storefront profile launcher', () => {
     await user.click(profileButton);
 
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/tenant-store-profile');
-      expect(window.location.search).toContain('store=alpha');
-      expect(screen.getAllByRole('button', { name: /Sign In/i }).length).toBeGreaterThan(0);
+      expect(
+        screen.getByText((text) => /create account|sign in/i.test(text))
+      ).toBeTruthy();
     });
   });
 });

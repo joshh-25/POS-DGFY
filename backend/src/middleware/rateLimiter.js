@@ -81,6 +81,46 @@ const firstForwardedIp = (req) => {
   return first || null;
 };
 
+const isDevelopmentPreviewIp = (rawIp) => {
+  const normalized = String(rawIp || '').trim().toLowerCase();
+  if (!normalized) return false;
+  const ip = normalized.replace(/^::ffff:/, '');
+  if (ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') return true;
+  if (ip.startsWith('10.')) return true;
+  if (ip.startsWith('192.168.')) return true;
+  const parts = ip.split('.');
+  if (parts.length === 4 && parts.every((part) => /^\d+$/.test(part))) {
+    const firstOctet = Number(parts[0]);
+    const secondOctet = Number(parts[1]);
+    if (firstOctet === 172 && secondOctet >= 16 && secondOctet <= 31) return true;
+  }
+  return false;
+};
+
+const shouldSkipLocalPreviewDiscoveryRateLimit = (req) => {
+  if (!isDevelopment && process.env.ALLOW_LOCAL_RATE_LIMIT_BYPASS !== 'true') return false;
+  const forwardedIp = firstForwardedIp(req);
+  const directIp = req.ip || req.connection?.remoteAddress || '';
+  return isDevelopmentPreviewIp(forwardedIp) || isDevelopmentPreviewIp(directIp);
+};
+
+const normalizeIpForComparison = (rawIp) => String(rawIp || '').trim().toLowerCase().replace(/^::ffff:/, '');
+
+const parseTrackingIpBypassList = () => String(process.env.RATE_LIMIT_STORE_TRACKING_BYPASS_IPS || '')
+  .split(',')
+  .map((ip) => normalizeIpForComparison(ip))
+  .filter(Boolean);
+
+const trackingIpBypassList = new Set(parseTrackingIpBypassList());
+
+const shouldSkipTrackingRateLimitForIp = (req) => {
+  const forwardedIp = normalizeIpForComparison(firstForwardedIp(req));
+  const directIp = normalizeIpForComparison(req.ip || req.connection?.remoteAddress || '');
+  if (trackingIpBypassList.has(forwardedIp) || trackingIpBypassList.has(directIp)) return true;
+  if (isDevelopmentPreviewIp(forwardedIp) || isDevelopmentPreviewIp(directIp)) return true;
+  return shouldSkipLocalPreviewDiscoveryRateLimit(req);
+};
+
 const normalizeCompanyTokenHeader = (value) => {
   if (typeof value !== 'string') return '';
   return value.trim();
@@ -386,9 +426,10 @@ export const authLimiter = rateLimit({
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },
-  skip: () => {
+  skip: (req) => {
     if (process.env.NODE_ENV === 'test') return true;
     if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    if (shouldSkipLocalPreviewDiscoveryRateLimit(req)) return true;
     return false;
   },
 });
@@ -422,9 +463,10 @@ export const emailOtpLimiter = rateLimit({
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },
-  skip: () => {
+  skip: (req) => {
     if (process.env.NODE_ENV === 'test') return true;
     if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    if (shouldSkipTrackingRateLimitForIp(req)) return true;
     return false;
   },
 });
@@ -455,9 +497,10 @@ export const adminAuthLimiter = rateLimit({
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },
-  skip: () => {
+  skip: (req) => {
     if (process.env.NODE_ENV === 'test') return true;
     if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    if (shouldSkipTrackingRateLimitForIp(req)) return true;
     return false;
   },
 });
@@ -560,9 +603,10 @@ export const storefrontDiscoveryLimiter = rateLimit({
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },
-  skip: () => {
+  skip: (req) => {
     if (process.env.NODE_ENV === 'test') return true;
     if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    if (shouldSkipLocalPreviewDiscoveryRateLimit(req)) return true;
     return false;
   },
 });

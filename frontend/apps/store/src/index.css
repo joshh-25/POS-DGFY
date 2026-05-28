@@ -253,6 +253,132 @@
   z-index: 1;
 }
 
+.discovery-result-cluster {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 3px solid #ffffff;
+  background: #1a4e8d;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.26);
+}
+
+.discovery-result-cluster.is-selected {
+  outline: 3px solid rgba(174, 232, 244, 0.76);
+  outline-offset: 2px;
+}
+
+.discovery-cluster-preview-card {
+  width: min(280px, calc(100vw - 48px));
+  max-height: min(360px, calc(100vh - 140px));
+  overflow: hidden;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.22);
+  border: 1px solid #dbe5ee;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #0f172a;
+}
+
+.discovery-cluster-preview-header {
+  min-height: 42px;
+  padding: 9px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.discovery-cluster-preview-header strong {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.discovery-cluster-preview-summary {
+  padding: 8px 10px 0;
+  font-size: 10px;
+  line-height: 1.35;
+  color: #64748b;
+  font-weight: 800;
+}
+
+.discovery-cluster-preview-close {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid #dbe5ee;
+  background: #f8fafc;
+  color: #334155;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.discovery-cluster-preview-list {
+  max-height: min(278px, calc(100vh - 214px));
+  overflow: auto;
+  padding: 6px;
+  display: grid;
+  gap: 4px;
+  scrollbar-gutter: stable;
+}
+
+.discovery-cluster-preview-list.is-scrollable {
+  border-top: 1px solid #f1f5f9;
+  margin-top: 8px;
+}
+
+.discovery-cluster-preview-entry {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: #ffffff;
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  padding: 7px 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.discovery-cluster-preview-entry:hover,
+.discovery-cluster-preview-entry:focus-visible {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  outline: none;
+}
+
+.discovery-cluster-preview-entry strong {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.2;
+  color: #0f172a;
+}
+
+.discovery-cluster-preview-entry span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 1.2;
+  color: #64748b;
+}
+
 .discovery-result-pin-visual {
   position: relative;
   display: flex;
@@ -340,15 +466,20 @@
   }
 }
 
-.maplibregl-popup-content:has(.store-marker-preview-card) {
+.maplibregl-popup-content:has(.store-marker-preview-card),
+.maplibregl-popup-content:has(.discovery-cluster-preview-card) {
   padding: 0;
   border-radius: 12px;
   overflow: hidden;
-  max-height: 210px;
+  max-height: min(360px, calc(100vh - 140px));
 }
 
 .maplibregl-popup:has(.store-marker-preview-card) {
   max-width: min(clamp(196px, 24vw, 230px), calc(100vw - 48px)) !important;
+}
+
+.maplibregl-popup:has(.discovery-cluster-preview-card) {
+  max-width: min(290px, calc(100vw - 48px)) !important;
 }
 
 @media (max-width: 1024px) {
@@ -603,19 +734,24 @@
 .discovery-header__navItem {
   border: none;
   background: transparent;
-  padding: 7px 16px;
-  border-radius: 8px;
+  padding: 6px 16px 8px;
+  border-bottom: 2px solid transparent;
   color: #64748b;
   cursor: pointer;
   font-weight: 500;
   font-size: 14px;
-  transition: background 150ms ease, color 150ms ease;
+  transition: border-color 150ms ease, color 150ms ease;
   white-space: nowrap;
 }
 
+.discovery-header__navItem:hover {
+  color: #1a4e8d;
+}
+
 .discovery-header__navItem.is-active {
-  background: #f8fafc;
-  color: #0f172a;
+  background: transparent;
+  border-bottom-color: #1a4e8d;
+  color: #1a4e8d;
   font-weight: 700;
 }
 
@@ -1270,4 +1406,78 @@
 
 .tracking-step-active-dot {
   animation: trackingActiveStepPulse 1.6s ease-out infinite;
+}
+
+/* ── SOLUTIONS PAGE ANIMATIONS ── */
+@keyframes solutionsFloat {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+.solutions-float-item {
+  animation: solutionsFloat 4.8s ease-in-out infinite;
+}
+
+@keyframes mapRouteTrace {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+.solutions-route-animated {
+  stroke-dasharray: 6, 6;
+  animation: mapRouteTrace 1.6s linear infinite;
+}
+
+@keyframes solutionsPulseGlow {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.4);
+    opacity: 0.1;
+  }
+  100% {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+}
+
+.solutions-pulse-glow {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(26, 78, 141, 0.42);
+  animation: solutionsPulseGlow 2.1s ease-out infinite;
+  pointer-events: none;
+}
+
+.solutions-reveal-section {
+  opacity: 0;
+  transform: translateY(32px);
+  transition: opacity 800ms cubic-bezier(0.16, 1, 0.3, 1), transform 800ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.solutions-reveal-section.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.solutions-bar-grow {
+  transform-origin: bottom;
+  transform: scaleY(0);
+  transition: transform 1200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.solutions-bar-grow.is-visible {
+  transform: scaleY(1);
 }

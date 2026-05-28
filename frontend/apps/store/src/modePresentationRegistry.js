@@ -196,21 +196,21 @@ export const ModePresentationRegistry = Object.freeze({
       })
     }),
     heroTheme: Object.freeze({
-      displayFont: "'Palatino Linotype', 'Book Antiqua', Palatino, serif",
-      menuTitleFont: "'Palatino Linotype', 'Book Antiqua', Palatino, serif",
-      bodyFont: "'Trebuchet MS', 'Segoe UI', sans-serif",
-      accent: '#c96a2b',
-      accentDark: '#6f3415',
-      accentSoft: '#fff0e2',
-      accentMuted: '#e7b78f',
-      surface: '#1c0f07',
-      surfaceRaised: '#fffaf4',
-      surfaceMuted: '#fff8f0',
-      surfaceInset: '#fff3e8',
-      borderSoft: '#edd4bc',
-      textPrimary: '#2f1f16',
-      textMuted: '#7c6757',
-      buttonTextOnAccent: '#fffdf9'
+      displayFont: "'Outfit', 'Avenir Next', 'Segoe UI', sans-serif",
+      menuTitleFont: "'Outfit', 'Avenir Next', 'Segoe UI', sans-serif",
+      bodyFont: "'Outfit', 'Avenir Next', 'Segoe UI', sans-serif",
+      accent: '#FF8F00',
+      accentDark: '#2E7D32',
+      accentSoft: '#FFF8F0',
+      accentMuted: '#FF8F00',
+      surface: '#F8F9F4',
+      surfaceRaised: '#ffffff',
+      surfaceMuted: '#FFF8F0',
+      surfaceInset: '#F8F9F4',
+      borderSoft: '#DDE5D8',
+      textPrimary: '#1F1F1F',
+      textMuted: '#6B7280',
+      buttonTextOnAccent: '#ffffff'
     })
   }),
   hospitality: Object.freeze({

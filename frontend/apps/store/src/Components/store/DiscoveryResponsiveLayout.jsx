@@ -92,7 +92,8 @@ export function DiscoveryHeader({
   profileLabel = 'Profile',
   onRegisterClick,
   menuOpen = false,
-  onMenuToggle = () => {}
+  onMenuToggle = () => {},
+  onItemClick
 }) {
   const isMobileViewport = viewportMode === 'mobile';
   const isTabletViewport = viewportMode === 'tablet';
@@ -109,6 +110,7 @@ export function DiscoveryHeader({
               <button
                 key={item}
                 type="button"
+                onClick={() => onItemClick?.(item)}
                 className={cx('discovery-header__navItem', item === activeItem && 'is-active')}
                 style={{ fontFamily: '"Inter", sans-serif' }}
               >
@@ -174,7 +176,13 @@ export function DiscoveryHeader({
                   const Icon = meta.icon;
                   const isActive = item === activeItem;
                   return (
-                    <button key={item} type="button" className={cx('discovery-header__menuItem', isActive && 'is-active')} style={{ fontFamily: '"Inter", sans-serif' }}>
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => onItemClick?.(item)}
+                      className={cx('discovery-header__menuItem', isActive && 'is-active')}
+                      style={{ fontFamily: '"Inter", sans-serif' }}
+                    >
                       <span className="discovery-header__menuItemLead">
                         <span className="discovery-header__menuItemIcon"><Icon size={17} /></span>
                         <span>{item}</span>

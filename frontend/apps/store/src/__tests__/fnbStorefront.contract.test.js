@@ -17,6 +17,17 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain('line_modifiers');
   });
 
+  it('supports a deep-linkable item detail subpage for food and beverage menus', () => {
+    const source = appSource();
+
+    expect(source).toContain("const STORE_ITEM_SUBPAGE = 'item';");
+    expect(source).toContain('?item=');
+    expect(source).toContain('<FnbProductDetailsPage');
+    expect(source).toContain('const openFnbDetail = (item) => {');
+    expect(source).toContain('const closeFnbDetail = () => {');
+    expect(source).toContain('isFnbDetailsSubpage');
+  });
+
   it('exposes the public reservation request tab for F&B storefronts', () => {
     const source = appSource();
     const panel = panelSource();
