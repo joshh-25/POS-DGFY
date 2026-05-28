@@ -209,19 +209,19 @@ Landlord account field update:
 
 Landlord tables:
 
-1. `dgfy_customer_activities` stores account-facing activity snapshots across tenant databases. Activity rows include DGFY account, tenant, optional store customer, activity type, public reference, store label, status, payment status, total amount, customer contact snapshot, display snapshot, and occurrence timestamp.
+1. `dgfy_customer_activities` stores account-facing activity snapshots across tenant databases. Activity rows include DGFY account, tenant, optional store customer, activity type (`order`, `service_booking`, `hospitality_booking`, or `fnb_order`), public reference, store label, status, payment status, total amount, customer contact snapshot, display snapshot, and occurrence timestamp.
 2. `dgfy_customer_addresses` stores global saved addresses for DGFY customer accounts, including label, address lines, city/province/postal/country, phone, coordinates, metadata, and default-address flag.
-3. `dgfy_customer_reviews` stores account-gated product reviews. Reviews are purchase-gated by DGFY customer activity and start pending approval.
+3. `dgfy_customer_reviews` stores account-gated typed reviews. Reviews are purchase-gated by paid or completed DGFY customer activity, start pending approval, and identify `target_type`/`target_id` for product, service, Hospitality booking, F&B order, or F&B item review targets.
 4. `dgfy_loyalty_transactions` stores read-only DGFY loyalty ledger rows. Balance is an aggregate of all transactions, not only recent visible rows.
 5. `dgfy_tracking_recovery_codes` stores hashed tracking-recovery codes with generic production responses, attempt limits, expiry, and single-use consumption.
-6. `dgfy_customer_backfill_runs` stores historical backfill audit rows, including dry-run/apply status, tenant/activity counters, mode-specific `order_count`, `service_booking_count`, `hospitality_booking_count`, matched-account/upsert counters, failures, timestamps, and JSON summary.
+6. `dgfy_customer_backfill_runs` stores historical backfill audit rows, including dry-run/apply status, tenant/activity counters, mode-specific `order_count`, `service_booking_count`, `hospitality_booking_count`, `fnb_order_count`, matched-account/upsert counters, failures, timestamps, and JSON summary.
 
 Operational contract:
 
 - `npm run backfill:dgfy-customer-activity:apply` runs landlord migrations before applying historical customer activity writes.
 - Dry-run uses `npm run backfill:dgfy-customer-activity -- ...` and does not write activity rows.
-- Historical backfill scans POS customer orders, Services bookings, and Hospitality reservations.
-- Production dry-runs can require mode evidence with `--require-activity-types=order,service_booking,hospitality_booking` before apply.
+- Historical backfill scans POS customer orders, F&B checks linked through POS transactions, Services bookings, and Hospitality reservations.
+- Production dry-runs can require mode evidence with `--require-activity-types=order,service_booking,hospitality_booking,fnb_order` before apply.
 - Phone verification remains deferred for the customer account rollout. Phone values are matching/contact data only and must not be treated as verified identity.
 
 ### 2. Tenant Databases (Isolated Contexts)

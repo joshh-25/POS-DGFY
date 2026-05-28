@@ -13,7 +13,7 @@ GitHub Actions deploys for Namecheap shared hosting are documented in `docs/ops/
 
 ## DGFY Customer Activity Backfill
 
-Historical DGFY customer activity backfill is an operator command, not a public API. It populates landlord-scoped DGFY customer activity from tenant POS orders, Services bookings, and Hospitality reservations.
+Historical DGFY customer activity backfill is an operator command, not a public API. It populates landlord-scoped DGFY customer activity from tenant POS orders, F&B checks linked through POS transactions, Services bookings, and Hospitality reservations.
 
 Dry-run:
 ```bash
@@ -28,7 +28,7 @@ npm run backfill:dgfy-customer-activity:apply
 Apply mode runs landlord migrations first, then writes activity rows. Before production apply, use the required activity type gate when all customer-facing modes must be proven present:
 
 ```bash
-npm run backfill:dgfy-customer-activity -- --all-transactions --require-activity-types=order,service_booking,hospitality_booking
+npm run backfill:dgfy-customer-activity -- --all-transactions --require-activity-types=order,service_booking,hospitality_booking,fnb_order
 ```
 
 ## 1. `scripts/deploy.sh`

@@ -42,6 +42,8 @@ This is a frontend capability/status reference, not a new architecture decision.
 - Storefront follow/share controls are available where tenant flags enable them.
 - Storefront headers expose `Log in / Sign up` as an immediately visible DGFY account action, separate from checkout-only account prompts.
 - Storefront DGFY account registration uses the same backend-owned legal-terms endpoint and fail-closed acknowledgement contract as `/register-company`.
+- Signed-in storefront sessions auto-load DGFY customer context, prefill empty checkout contact fields from the account profile, prefill an empty delivery address from the default saved address, and expose saved-address use/save actions across checkout, booking, and account surfaces.
+- Signed-in account surfaces now prefer the unified DGFY history endpoint. The History panel filters all, Orders, F&B, Services, and Hospitality activities; rows preserve eligible track/cancel/reorder actions and expose typed review targets returned by the backend.
 - `Register Your Business` routes to SKUpervisor company registration with the DGFY login/profile handoff (`source=dgfy`, `auth=login`, `#dgfy-profile`).
 - Checkout and Services booking confirmations render backend `account_action` signals so signed-in DGFY customers, signup-eligible guests, guests whose email already has an account, and download-only guests receive distinct guidance.
 - Discovery map initialization is defensive. If MapLibre/WebGL cannot initialize in the browser, the Storefront discovery page remains usable, renders the `Log in / Sign up` account action, and shows a list fallback instead of blanking the page.
@@ -79,20 +81,24 @@ This is a frontend capability/status reference, not a new architecture decision.
 ## Storefront Regression Standing (Latest Run)
 Run date: `2026-05-28`
 
-Targeted Storefront discovery commands:
-- `npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx apps/store/src/__tests__/discoveryFlow.integration.test.jsx --testTimeout 15000`
-- `npm run test:backend -- backend/tests/emailService.deliveryProvider.test.js backend/tests/servicesMode.usecases.test.js backend/tests/dgfyAuthUseCases.test.js backend/tests/storeFnbModifiers.usecases.test.js`
-- `npm --prefix frontend run build`
-- `npm run build:store`
-- `npm --prefix frontend run build:skupervisor`
+Targeted Storefront discovery/account commands:
+- `npm --prefix backend test -- --runInBand tests/dgfyCustomerHandlers.transport.test.js`
+- `npm --prefix backend test -- --runInBand tests/dgfyCustomerUseCases.test.js`
+- `npm --prefix frontend test -- apps/store/src/__tests__/discoveryFlow.integration.test.jsx --testTimeout 15000`
+- `npm --prefix frontend run build:store`
+- `npm run check:architecture`
+- `npm run lint:docs`
+- `git diff --check`
 
 Targeted matrix result:
-- DGFY registration/storefront account frontend tests: `PASS` (`33/33` targeted tests)
-- DGFY/account/backend regression tests: `PASS` (`59/59` targeted tests)
-- Root frontend build: `PASS`
+- DGFY customer handler transport tests: `PASS` (`2/2` targeted tests)
+- DGFY customer use-case tests: `PASS` (`16/16` targeted tests)
+- Storefront discovery/account integration tests: `PASS` (`21/21` targeted tests)
 - Storefront production build: `PASS`
-- SKUpervisor production build: `PASS` with the existing large-chunk warning only.
-- Local rendered QA: `PASS` on desktop and mobile for `/register-company?source=dgfy&auth=login#dgfy-profile`, and on Storefront production preview for visible `Log in / Sign up`, `Register Your Business`, account drawer registration terms, and MapLibre/WebGL fallback. The Browser plugin was unavailable because the Node REPL kernel exited unexpectedly, so the evidence was collected through a standalone Chrome DevTools Protocol script against local Vite/preview servers.
+- Architecture guardrails and controller-boundary checks: `PASS`
+- Governed docs lint: `PASS`
+- Diff whitespace check: `PASS`
+- Local rendered QA: `PASS` on desktop and mobile for `/tenant-store/alpha` with mocked API responses, signed-in DGFY token, default saved address prefilled in checkout inputs, visible saved-address/order action controls, and unified History filters proving F&B and Services rows render from the account activity endpoint. Browser plugin tooling was not exposed in this session, so evidence was collected through a Playwright fallback against a local Vite store server.
 
 ## Notes
 - This file intentionally tracks the frontend standing and test evidence snapshot only.

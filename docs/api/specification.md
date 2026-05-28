@@ -4414,6 +4414,7 @@ Front-facing customer account endpoints live under `/api/v1/dgfy/customer`. Exce
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/dgfy/customer/dashboard` | Return DGFY profile summary, recent account activity, orders, bookings, addresses, and read-only loyalty summary |
+| `GET` | `/dgfy/customer/activities` | Return paginated normalized cross-store history with filters for `type`, `tenant_id`, `store_slug`, `status`, `payment_status`, date range, page, and limit |
 | `GET` | `/dgfy/customer/orders` | List account-linked order activities |
 | `GET` | `/dgfy/customer/bookings` | List account-linked service/hospitality booking activities |
 | `POST` | `/dgfy/customer/track` | Track an account-linked reference by `reference` or `tracking_pin` |
@@ -4425,13 +4426,19 @@ Front-facing customer account endpoints live under `/api/v1/dgfy/customer`. Exce
 | `PATCH` | `/dgfy/customer/addresses/:address_id/default` | Set a saved address as the account default |
 | `DELETE` | `/dgfy/customer/addresses/:address_id` | Delete a saved address |
 | `GET` | `/dgfy/customer/loyalty` | Return read-only loyalty balance and transactions |
-| `POST` | `/dgfy/customer/reviews` | Submit a paid-or-completed purchase-gated product review as pending approval |
+| `POST` | `/dgfy/customer/reviews` | Submit a paid-or-completed activity-gated typed review as pending approval |
 | `POST` | `/dgfy/customer/tracking-recovery/request` | Request a generic tracking recovery response for email/phone lookup |
 | `POST` | `/dgfy/customer/tracking-recovery/verify` | Verify a six-digit recovery code and return matching activity references |
 
+`PATCH /dgfy/customer/addresses/:address_id/default` is a transport alias for updating the address with `is_default=true`; it must remain registered before the generic `PATCH /dgfy/customer/addresses/:address_id` route. Storefront checkout and booking forms consume the default saved address for signed-in customers only when the visible customer address field is still empty.
+
+`GET /dgfy/customer/activities` is the canonical customer history endpoint. Activity `type` may be `order`, `service_booking`, `hospitality_booking`, `fnb_order`, `booking`, or `all`; `booking` expands to Services and Hospitality activity. Response cards include `reference`, `store`, `type`, `status`, `payment_status`, `occurred_at`, `total_amount`, `summary_lines`, `allowed_actions`, and `review_targets`.
+
+`POST /dgfy/customer/reviews` accepts `activity_id`, `target_type`, optional `target_id`, `rating`, `comment`, and optional `anonymous`. Supported target types are `product`, `service`, `hospitality_booking`, `fnb_order`, and `fnb_item`; the activity snapshot must prove eligibility, and reviews remain pending until moderated. Public review reads may filter by `tenant_id`, `item_id`, `target_type`, and `target_id` and only return approved rows.
+
 Tracking recovery intentionally uses generic production responses and does not reveal whether a lookup matched an order or whether delivery was attempted. Email delivery is used when matching activity has an email address. Phone OTP remains deferred and phone values must not be treated as verified; phone lookup supports common Philippine variants for matching only.
 
-Historical DGFY customer activity backfill is an operator command, not a public API. Use `npm run backfill:dgfy-customer-activity:apply` for apply mode so landlord migrations run before activity writes. Dry-run uses `npm run backfill:dgfy-customer-activity -- ...`. The backfill indexes POS customer orders, Services bookings, and Hospitality reservations into `dgfy_customer_activities`. Production dry-runs can require mode discovery with `--require-activity-types=order,service_booking,hospitality_booking` before apply.
+Historical DGFY customer activity backfill is an operator command, not a public API. Use `npm run backfill:dgfy-customer-activity:apply` for apply mode so landlord migrations run before activity writes. Dry-run uses `npm run backfill:dgfy-customer-activity -- ...`. The backfill indexes POS customer orders, F&B checks linked through POS transactions, Services bookings, and Hospitality reservations into `dgfy_customer_activities`. Production dry-runs can require mode discovery with `--require-activity-types=order,service_booking,hospitality_booking,fnb_order` before apply.
 
 Storefront checkout and Services booking responses include `account_action` when account follow-up is available:
 
