@@ -1362,6 +1362,83 @@ const StorefrontAccountAuthForm = ({
   );
 };
 
+const normalizeCheckoutAddress = (value) => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+const hasText = (value) => String(value || '').trim().length > 0;
+const toFiniteNumberOrNull = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const getAccountDisplayName = (account = {}) => (
+  [
+    account.first_name,
+    account.middle_name,
+    account.last_name
+  ].map((value) => String(value || '').trim()).filter(Boolean).join(' ')
+  || String(account.name || account.username || '').trim()
+);
+
+const getDefaultAccountAddress = (addresses = []) => (
+  Array.isArray(addresses)
+    ? addresses.find((address) => address?.is_default === true) || addresses[0] || null
+    : null
+);
+
+const getAddressPin = (address = {}) => {
+  const latitude = toFiniteNumberOrNull(address.latitude);
+  const longitude = toFiniteNumberOrNull(address.longitude);
+  return latitude != null && longitude != null ? { latitude, longitude } : null;
+};
+
+const getAddressLabel = (address = {}) => String(address.label || 'Saved address').trim() || 'Saved address';
+
+const SavedAccountAddressControls = ({
+  addresses = [],
+  onUseAddress,
+  onSaveCurrentAddress,
+  currentAddress = '',
+  disabled = false,
+  compact = false
+}) => {
+  const usableAddresses = Array.isArray(addresses)
+    ? addresses.filter((address) => hasText(address?.address_line)).slice(0, compact ? 2 : 4)
+    : [];
+  if (usableAddresses.length === 0 && !hasText(currentAddress)) return null;
+
+  return (
+    <div style={{ display: 'grid', gap: 8, border: '1px solid #dbeafe', background: '#f8fbff', borderRadius: 12, padding: 10 }}>
+      {usableAddresses.length > 0 && (
+        <div style={{ display: 'grid', gap: 7 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: '#1e3a8a' }}>Saved DGFY addresses</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+            {usableAddresses.map((address) => (
+              <button
+                key={address.address_id || address.address_line}
+                type="button"
+                onClick={() => onUseAddress(address)}
+                disabled={disabled}
+                style={{ borderRadius: 999, border: '1px solid #bfdbfe', background: address.is_default ? '#dbeafe' : '#fff', color: '#1e3a8a', padding: '7px 10px', fontSize: 12, fontWeight: 800, cursor: disabled ? 'not-allowed' : 'pointer' }}
+              >
+                Use {getAddressLabel(address)}{address.is_default ? ' default' : ''}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {hasText(currentAddress) && (
+        <button
+          type="button"
+          onClick={onSaveCurrentAddress}
+          disabled={disabled}
+          style={{ justifySelf: 'start', borderRadius: 10, border: '1px solid #1a4e8d', background: '#fff', color: '#1a4e8d', padding: '7px 10px', fontSize: 12, fontWeight: 800, cursor: disabled ? 'not-allowed' : 'pointer' }}
+        >
+          Save current address to DGFY
+        </button>
+      )}
+    </div>
+  );
+};
+
 const openBusinessRegistration = () => {
   if (typeof window !== 'undefined') {
     window.location.href = getBusinessRegistrationUrl();
@@ -4275,7 +4352,9 @@ export default function StorefrontApp() {
   const [trackingPinInput, setTrackingPinInput] = useState('');
   const [trackingResult, setTrackingResult] = useState(null);
   const [trackingError, setTrackingError] = useState('');
-  const [accountPanel, setAccountPanel] = useState({ loading: false, error: '', me: null, orders: [], bookings: [], addresses: [], loyalty: null });
+  const [accountPanel, setAccountPanel] = useState({ loading: false, error: '', me: null, activities: [], orders: [], bookings: [], addresses: [], loyalty: null });
+  const accountAutoLoadKeyRef = useRef('');
+  const accountPrefillKeyRef = useRef('');
   const [accountAuthMode, setAccountAuthMode] = useState('login');
   const [accountAuthForm, setAccountAuthForm] = useState({
     firstName: '',
@@ -4297,6 +4376,7 @@ export default function StorefrontApp() {
   const [accountAddressForm, setAccountAddressForm] = useState({ label: '', address_line: '' });
   const [accountRecoveryForm, setAccountRecoveryForm] = useState({ lookup: '', code: '' });
   const [accountRecoveryActivities, setAccountRecoveryActivities] = useState([]);
+  const [accountActivityFilter, setAccountActivityFilter] = useState('all');
   const [accountReviewDrafts, setAccountReviewDrafts] = useState({});
   const accountLegalSnapshot = getDgfyFlowSnapshot(accountLegalTerms, 'account_registration');
   const accountLegalDocuments = getDgfyFlowDocuments(accountLegalTerms, 'account_registration');
@@ -6889,6 +6969,33 @@ export default function StorefrontApp() {
         ? activity.lines
         : []
   );
+  const getAccountReviewTargets = (activity) => (
+    Array.isArray(activity?.review_targets) && activity.review_targets.length
+      ? activity.review_targets
+      : getAccountActivityLines(activity)
+          .map((line) => ({ target_type: activity?.type === 'fnb_order' ? 'fnb_item' : 'product', target_id: Number(line.item_id), label: line.name || 'Purchased item' }))
+          .filter((target) => target.target_id)
+  );
+  const isAccountOrderActivity = (activity) => ['order', 'fnb_order'].includes(String(activity?.type || activity?.activity_type || '').toLowerCase());
+  const isAccountBookingActivity = (activity) => ['service_booking', 'hospitality_booking'].includes(String(activity?.type || activity?.activity_type || '').toLowerCase());
+  const normalizeAccountPanelData = ({ me = null, activities = [], orders = [], bookings = [], addresses = [], loyalty = null } = {}) => {
+    const normalizedActivities = Array.isArray(activities) && activities.length
+      ? activities
+      : [
+          ...(Array.isArray(orders) ? orders.map((order) => ({ ...order, type: order.type || 'order' })) : []),
+          ...(Array.isArray(bookings) ? bookings.map((booking) => ({ ...booking, type: booking.type || 'service_booking' })) : [])
+        ];
+    return {
+      loading: false,
+      error: '',
+      me,
+      activities: normalizedActivities,
+      orders: Array.isArray(orders) && orders.length ? orders : normalizedActivities.filter((activity) => String(activity?.type || activity?.activity_type || '').toLowerCase() === 'order'),
+      bookings: Array.isArray(bookings) && bookings.length ? bookings : normalizedActivities.filter(isAccountBookingActivity),
+      addresses: Array.isArray(addresses) ? addresses : [],
+      loyalty
+    };
+  };
   const setAccountActionMessage = (message) => setAccountActionState({ loadingKey: '', message, error: '' });
   const setAccountActionError = (error, fallback) => setAccountActionState({ loadingKey: '', message: '', error: normalizeStorefrontErrorMessage(error, fallback) });
 
@@ -6932,44 +7039,165 @@ export default function StorefrontApp() {
   const handleLoadAccountPanel = async () => {
     const authToken = readStoreAuthToken();
     if (!authToken) {
-      setAccountPanel({ loading: false, error: 'Sign in to view saved bookings, orders, tickets, and receipts.', me: null, orders: [], bookings: [], addresses: [], loyalty: null });
+      setAccountPanel({ loading: false, error: 'Sign in to view saved bookings, orders, tickets, and receipts.', me: null, activities: [], orders: [], bookings: [], addresses: [], loyalty: null });
       return;
     }
     setAccountPanel((prev) => ({ ...prev, loading: true, error: '' }));
     try {
       if (!selectedStore?.slug) {
-        const dashboard = await requestJson('/api/v1/dgfy/customer/dashboard', { authToken });
-        setAccountPanel({
-          loading: false,
-          error: '',
+        const [dashboard, activitiesData] = await Promise.all([
+          requestJson('/api/v1/dgfy/customer/dashboard', { authToken }),
+          requestJson('/api/v1/dgfy/customer/activities?limit=25', { authToken }).catch(() => ({ activities: [] }))
+        ]);
+        setAccountPanel(normalizeAccountPanelData({
           me: dashboard?.account || null,
+          activities: Array.isArray(activitiesData?.activities) && activitiesData.activities.length ? activitiesData.activities : dashboard?.activities,
           orders: Array.isArray(dashboard?.orders) ? dashboard.orders : [],
           bookings: Array.isArray(dashboard?.bookings) ? dashboard.bookings : [],
           addresses: Array.isArray(dashboard?.addresses) ? dashboard.addresses : [],
           loyalty: dashboard?.loyalty || null
-        });
+        }));
         return;
       }
-      const [me, ordersData, bookingsData, addressData, loyaltyData] = await Promise.all([
+      const [me, activitiesData, ordersData, bookingsData, addressData, loyaltyData] = await Promise.all([
         requestJson('/api/v1/store/auth/me', { storeSlug: selectedStore.slug, authToken }),
+        requestJson(`/api/v1/dgfy/customer/activities?limit=25&store_slug=${encodeURIComponent(selectedStore.slug)}`, { authToken }).catch(() => ({ activities: [] })),
         requestJson('/api/v1/store/orders?limit=25', { storeSlug: selectedStore.slug, authToken }),
         requestJson('/api/v1/store/services/bookings?limit=25', { storeSlug: selectedStore.slug, authToken }).catch(() => ({ bookings: [] })),
         requestJson('/api/v1/dgfy/customer/addresses', { authToken }).catch(() => ({ addresses: [] })),
         requestJson('/api/v1/dgfy/customer/loyalty', { authToken }).catch(() => ({ loyalty: null }))
       ]);
-      setAccountPanel({
-        loading: false,
-        error: '',
+      setAccountPanel(normalizeAccountPanelData({
         me: me?.customer || me || null,
+        activities: Array.isArray(activitiesData?.activities) ? activitiesData.activities : [],
         orders: Array.isArray(ordersData?.orders) ? ordersData.orders : [],
         bookings: Array.isArray(bookingsData?.bookings) ? bookingsData.bookings : [],
         addresses: Array.isArray(addressData?.addresses) ? addressData.addresses : [],
         loyalty: loyaltyData?.loyalty || null
-      });
+      }));
     } catch (error) {
-      setAccountPanel({ loading: false, error: normalizeStorefrontErrorMessage(error, 'Unable to load account.'), me: null, orders: [], bookings: [], addresses: [], loyalty: null });
+      setAccountPanel({ loading: false, error: normalizeStorefrontErrorMessage(error, 'Unable to load account.'), me: null, activities: [], orders: [], bookings: [], addresses: [], loyalty: null });
     }
   };
+
+  const applyAccountAddressToCheckout = (address, { showToast = true } = {}) => {
+    const addressLine = String(address?.address_line || '').trim();
+    if (!addressLine) return;
+    setOrderMethod('delivery');
+    setCustomerAddress(addressLine);
+    const pin = getAddressPin(address);
+    if (pin) setCustomerPin(pin);
+    if (showToast) {
+      toast.success(`${getAddressLabel(address)} is ready for checkout.`);
+    }
+  };
+
+  const handleSaveCurrentCheckoutAddress = async () => {
+    const authToken = readStoreAuthToken();
+    if (!authToken) {
+      setAccountActionState({ loadingKey: '', message: '', error: 'Sign in before saving an address.' });
+      openAccountPanel();
+      return;
+    }
+    const addressLine = String(customerAddress || '').trim();
+    if (!addressLine) {
+      toast.error('Enter a delivery address before saving it.');
+      return;
+    }
+    const normalizedCurrentAddress = normalizeCheckoutAddress(addressLine);
+    const existing = (Array.isArray(accountPanel.addresses) ? accountPanel.addresses : [])
+      .find((address) => normalizeCheckoutAddress(address.address_line) === normalizedCurrentAddress);
+    const pin = customerPin && Number.isFinite(Number(customerPin.latitude)) && Number.isFinite(Number(customerPin.longitude))
+      ? { latitude: Number(customerPin.latitude), longitude: Number(customerPin.longitude) }
+      : null;
+
+    try {
+      setAccountActionState({ loadingKey: 'address:checkout-save', message: '', error: '' });
+      if (existing?.address_id) {
+        const shouldUpdatePin = pin && (
+          toFiniteNumberOrNull(existing.latitude) !== pin.latitude
+          || toFiniteNumberOrNull(existing.longitude) !== pin.longitude
+        );
+        if (shouldUpdatePin) {
+          await requestJson(`/api/v1/dgfy/customer/addresses/${encodeURIComponent(existing.address_id)}`, {
+            method: 'PATCH',
+            authToken,
+            body: {
+              latitude: pin.latitude,
+              longitude: pin.longitude
+            }
+          });
+        }
+        await handleLoadAccountPanel();
+        setAccountActionMessage(shouldUpdatePin ? 'Saved address pin updated.' : 'Address is already saved.');
+        toast.success(shouldUpdatePin ? 'Saved address pin updated.' : 'Address is already saved.');
+        return;
+      }
+
+      await requestJson('/api/v1/dgfy/customer/addresses', {
+        method: 'POST',
+        authToken,
+        body: {
+          label: selectedStore?.tenant_name ? `${selectedStore.tenant_name} delivery` : 'Checkout address',
+          address_line: addressLine,
+          latitude: pin?.latitude ?? null,
+          longitude: pin?.longitude ?? null,
+          is_default: !getDefaultAccountAddress(accountPanel.addresses)
+        }
+      });
+      await handleLoadAccountPanel();
+      setAccountActionMessage('Checkout address saved to DGFY.');
+      toast.success('Checkout address saved to DGFY.');
+    } catch (error) {
+      setAccountActionError(error, 'Unable to save checkout address.');
+      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to save checkout address.'));
+    }
+  };
+
+  useEffect(() => {
+    if (!isStorePage) return;
+    const authToken = readStoreAuthToken();
+    if (!authToken) {
+      accountAutoLoadKeyRef.current = '';
+      accountPrefillKeyRef.current = '';
+      return;
+    }
+    const autoLoadKey = `${selectedStore?.slug || routeSlug || 'store'}:${authToken.slice(-16)}`;
+    if (accountAutoLoadKeyRef.current === autoLoadKey || accountPanel.loading || accountPanel.me) return;
+    accountAutoLoadKeyRef.current = autoLoadKey;
+    handleLoadAccountPanel();
+  }, [isStorePage, selectedStore?.slug, routeSlug, accountPanel.loading, accountPanel.me]);
+
+  useEffect(() => {
+    if (!isStorePage || !accountPanel.me) return;
+    const defaultAddress = getDefaultAccountAddress(accountPanel.addresses);
+    const prefillKey = [
+      selectedStore?.slug || routeSlug || 'store',
+      accountPanel.me.id || accountPanel.me.customer_id || accountPanel.me.email || 'account',
+      defaultAddress?.address_id || defaultAddress?.address_line || 'no-address'
+    ].join(':');
+    if (accountPrefillKeyRef.current === prefillKey) return;
+
+    const accountName = getAccountDisplayName(accountPanel.me);
+    if (!hasText(customerName) && accountName) setCustomerName(accountName);
+    if (!hasText(customerEmail) && accountPanel.me.email) setCustomerEmail(accountPanel.me.email);
+    if (!hasText(customerPhone) && accountPanel.me.phone) setCustomerPhone(accountPanel.me.phone);
+    if (isDeliveryOrder && !hasText(customerAddress) && defaultAddress?.address_line) {
+      applyAccountAddressToCheckout(defaultAddress, { showToast: false });
+    }
+    accountPrefillKeyRef.current = prefillKey;
+  }, [
+    isStorePage,
+    selectedStore?.slug,
+    routeSlug,
+    accountPanel.me,
+    accountPanel.addresses,
+    customerName,
+    customerEmail,
+    customerPhone,
+    customerAddress,
+    isDeliveryOrder
+  ]);
 
   const handleTrackAccountReference = async (reference = '') => {
     const nextReference = String(reference || trackingPinInput || '').trim().toUpperCase();
@@ -7060,6 +7288,13 @@ export default function StorefrontApp() {
     event.preventDefault();
     const authToken = readStoreAuthToken();
     if (!authToken) return;
+    const formAddressLine = String(accountAddressForm.address_line || '').trim();
+    const shouldAttachCurrentPin = customerPin
+      && normalizeCheckoutAddress(formAddressLine) === normalizeCheckoutAddress(customerAddress);
+    const pin = shouldAttachCurrentPin ? {
+      latitude: Number(customerPin.latitude),
+      longitude: Number(customerPin.longitude)
+    } : null;
     try {
       setAccountActionState({ loadingKey: 'address:save', message: '', error: '' });
       await requestJson('/api/v1/dgfy/customer/addresses', {
@@ -7067,7 +7302,9 @@ export default function StorefrontApp() {
         authToken,
         body: {
           label: accountAddressForm.label || 'Address',
-          address_line: accountAddressForm.address_line,
+          address_line: formAddressLine,
+          latitude: Number.isFinite(pin?.latitude) ? pin.latitude : null,
+          longitude: Number.isFinite(pin?.longitude) ? pin.longitude : null,
           is_default: accountPanel.addresses.length === 0
         }
       });
@@ -7084,10 +7321,9 @@ export default function StorefrontApp() {
     if (!authToken || !addressId) return;
     try {
       setAccountActionState({ loadingKey: `address:default:${addressId}`, message: '', error: '' });
-      await requestJson(`/api/v1/dgfy/customer/addresses/${encodeURIComponent(addressId)}`, {
+      await requestJson(`/api/v1/dgfy/customer/addresses/${encodeURIComponent(addressId)}/default`, {
         method: 'PATCH',
-        authToken,
-        body: { is_default: true }
+        authToken
       });
       await handleLoadAccountPanel();
       setAccountActionMessage('Default address updated.');
@@ -7141,13 +7377,14 @@ export default function StorefrontApp() {
     }
   };
 
-  const handleSubmitAccountReview = async ({ activity, line }) => {
+  const handleSubmitAccountReview = async ({ activity, target }) => {
     const authToken = readStoreAuthToken();
     const activityId = Number(activity?.activity_id);
-    const itemId = Number(line?.item_id);
-    const key = `${activityId}:${itemId}`;
+    const targetType = String(target?.target_type || '').trim();
+    const targetId = Number(target?.target_id);
+    const key = `${activityId}:${targetType}:${targetId || 'activity'}`;
     const draft = accountReviewDrafts[key] || {};
-    if (!authToken || !activityId || !itemId) return;
+    if (!authToken || !activityId || !targetType) return;
     try {
       setAccountActionState({ loadingKey: `review:${key}`, message: '', error: '' });
       await requestJson('/api/v1/dgfy/customer/reviews', {
@@ -7155,7 +7392,8 @@ export default function StorefrontApp() {
         authToken,
         body: {
           activity_id: activityId,
-          item_id: itemId,
+          target_type: targetType,
+          target_id: Number.isFinite(targetId) && targetId > 0 ? targetId : undefined,
           rating: Number(draft.rating || 5),
           comment: draft.comment || ''
         }
@@ -7213,7 +7451,7 @@ export default function StorefrontApp() {
       storeDgfyAccountSession(data || {});
       await handleLoadAccountPanel();
     } catch (error) {
-      setAccountPanel({ loading: false, error: normalizeStorefrontErrorMessage(error, 'DGFY account sign-in failed.'), me: null, orders: [], bookings: [], addresses: [], loyalty: null });
+      setAccountPanel({ loading: false, error: normalizeStorefrontErrorMessage(error, 'DGFY account sign-in failed.'), me: null, activities: [], orders: [], bookings: [], addresses: [], loyalty: null });
     } finally {
       setAccountAuthLoading(false);
     }
@@ -8477,28 +8715,28 @@ export default function StorefrontApp() {
                       {trackingResult && <div style={{ border: '1px solid #dbeafe', borderRadius: 12, background: '#f8fbff', padding: 10, fontSize: 13 }}>Status: <strong>{trackingResult.status_label || trackingResult.status || 'Tracked'}</strong></div>}
                     </section>
                     <section style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#fff' }}>
-                      <h3 style={{ margin: 0, fontSize: 16 }}>Orders & Tickets</h3>
-                      {accountPanel.orders.length === 0 ? <p style={{ color: '#64748b', fontSize: 13 }}>No saved orders yet.</p> : accountPanel.orders.slice(0, 5).map((order) => (
+                      <h3 style={{ margin: 0, fontSize: 16 }}>History</h3>
+                      {accountPanel.activities.length === 0 ? <p style={{ color: '#64748b', fontSize: 13 }}>No saved history yet.</p> : accountPanel.activities.slice(0, 5).map((order) => (
                         <div key={order.activity_id || order.reference || order.tracking_pin} style={{ borderTop: '1px solid #e2e8f0', padding: '9px 0', fontSize: 13 }}>
                           <strong>{order.reference || order.tracking_pin || 'Order'}</strong>
                           <div style={{ color: '#475569' }}>{order.store_name || 'DGFY Store'} - {order.status_label || order.status || 'Placed'}</div>
                           <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             <button type="button" onClick={() => handleTrackAccountReference(getAccountActivityReference(order))} style={{ borderRadius: 9, border: '1px solid #cbd5e1', background: '#fff', padding: '6px 9px', fontWeight: 700, cursor: 'pointer' }}>Track</button>
-                            {['placed', 'confirmed'].includes(String(order.status || '').toLowerCase()) && (
+                            {String(order.type || order.activity_type || '').toLowerCase() === 'order' && ['placed', 'confirmed'].includes(String(order.status || '').toLowerCase()) && (
                               <button type="button" onClick={() => handleCancelAccountOrder(getAccountActivityReference(order))} disabled={accountActionState.loadingKey === `cancel:${getAccountActivityReference(order)}`} style={{ borderRadius: 9, border: '1px solid #fecaca', background: '#fff7f7', color: '#b91c1c', padding: '6px 9px', fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
                             )}
-                            <button type="button" onClick={() => handleReorderAccountOrder(getAccountActivityReference(order))} disabled={accountActionState.loadingKey === `reorder:${getAccountActivityReference(order)}`} style={{ borderRadius: 9, border: '1px solid #1a4e8d', background: '#1a4e8d', color: '#fff', padding: '6px 9px', fontWeight: 700, cursor: 'pointer' }}>Reorder</button>
+                            {String(order.type || order.activity_type || '').toLowerCase() === 'order' && <button type="button" onClick={() => handleReorderAccountOrder(getAccountActivityReference(order))} disabled={accountActionState.loadingKey === `reorder:${getAccountActivityReference(order)}`} style={{ borderRadius: 9, border: '1px solid #1a4e8d', background: '#1a4e8d', color: '#fff', padding: '6px 9px', fontWeight: 700, cursor: 'pointer' }}>Reorder</button>}
                           </div>
-                          {getAccountActivityLines(order).slice(0, 2).map((line) => {
-                            const reviewKey = `${order.activity_id}:${line.item_id}`;
+                          {getAccountReviewTargets(order).slice(0, 2).map((target) => {
+                            const reviewKey = `${order.activity_id}:${target.target_type}:${target.target_id || 'activity'}`;
                             const draft = accountReviewDrafts[reviewKey] || { rating: 5, comment: '' };
                             return (
                               <div key={reviewKey} style={{ marginTop: 8, display: 'grid', gap: 6, borderTop: '1px dashed #e2e8f0', paddingTop: 8 }}>
-                                <strong style={{ fontSize: 12 }}>{line.name || 'Purchased item'}</strong>
+                                <strong style={{ fontSize: 12 }}>{target.label || 'Review target'}</strong>
                                 <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '72px 1fr auto', gap: 6 }}>
                                   <input type="number" min="1" max="5" value={draft.rating} onChange={(event) => setAccountReviewDrafts((current) => ({ ...current, [reviewKey]: { ...draft, rating: event.target.value } }))} aria-label="Rating" style={{ border: '1px solid #cbd5e1', borderRadius: 9, padding: '7px 8px' }} />
-                                  <input value={draft.comment} onChange={(event) => setAccountReviewDrafts((current) => ({ ...current, [reviewKey]: { ...draft, comment: event.target.value } }))} placeholder="Review this item" style={{ border: '1px solid #cbd5e1', borderRadius: 9, padding: '7px 8px' }} />
-                                  <button type="button" onClick={() => handleSubmitAccountReview({ activity: order, line })} disabled={accountActionState.loadingKey === `review:${reviewKey}`} style={{ borderRadius: 9, border: '1px solid #0f766e', background: '#0f766e', color: '#fff', padding: '7px 9px', fontWeight: 700 }}>Review</button>
+                                  <input value={draft.comment} onChange={(event) => setAccountReviewDrafts((current) => ({ ...current, [reviewKey]: { ...draft, comment: event.target.value } }))} placeholder="Review this activity" style={{ border: '1px solid #cbd5e1', borderRadius: 9, padding: '7px 8px' }} />
+                                  <button type="button" onClick={() => handleSubmitAccountReview({ activity: order, target })} disabled={accountActionState.loadingKey === `review:${reviewKey}`} style={{ borderRadius: 9, border: '1px solid #0f766e', background: '#0f766e', color: '#fff', padding: '7px 9px', fontWeight: 700 }}>Review</button>
                                 </div>
                               </div>
                             );
@@ -11246,6 +11484,13 @@ export default function StorefrontApp() {
                                                 placeholder="Barangay, street, subdivision, city, and other address details"
                                                 style={{ ...BOOKING_FIELD_STYLE, minHeight: 92, resize: 'vertical' }}
                                               />
+                                              <SavedAccountAddressControls
+                                                addresses={accountPanel.addresses}
+                                                currentAddress={customerAddress}
+                                                onUseAddress={applyAccountAddressToCheckout}
+                                                onSaveCurrentAddress={handleSaveCurrentCheckoutAddress}
+                                                disabled={accountActionState.loadingKey === 'address:checkout-save'}
+                                              />
                                               {!bookingFieldPlan.addressField && (
                                                 <span style={{ display: 'block', marginTop: 8, fontSize: 12, color: '#64748b' }}>
                                                   This address will be included with the booking notes for the service team.
@@ -13650,6 +13895,13 @@ return (
                     <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
                       Delivery Address *
                       <textarea value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} placeholder="House no., street, barangay, landmark" rows={3} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical' }} />
+                      <SavedAccountAddressControls
+                        addresses={accountPanel.addresses}
+                        currentAddress={customerAddress}
+                        onUseAddress={applyAccountAddressToCheckout}
+                        onSaveCurrentAddress={handleSaveCurrentCheckoutAddress}
+                        disabled={accountActionState.loadingKey === 'address:checkout-save'}
+                      />
                     </label>
                   )}
                 </div>
@@ -16277,6 +16529,18 @@ return (
                           disabled={!isDeliveryOrder}
                           style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: isDeliveryOrder ? '#fff' : '#f1f5f9' }}
                         />
+                        {isDeliveryOrder && (
+                          <div style={{ marginTop: 8 }}>
+                            <SavedAccountAddressControls
+                              addresses={accountPanel.addresses}
+                              currentAddress={customerAddress}
+                              onUseAddress={applyAccountAddressToCheckout}
+                              onSaveCurrentAddress={handleSaveCurrentCheckoutAddress}
+                              disabled={accountActionState.loadingKey === 'address:checkout-save'}
+                              compact
+                            />
+                          </div>
+                        )}
                       </label>
                     )}
                     {selectedLocation?.is_open === false && (
@@ -16619,7 +16883,58 @@ return (
                   )}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr' : '1fr', gap: 12 }}>
-                  <section style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: '#fff' }}>
+                  <section style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: '#fff', gridColumn: isDesktopCheckout ? '1 / -1' : 'auto' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                      <h4 style={{ margin: 0, fontSize: 16 }}>History</h4>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {[
+                          ['all', 'All'],
+                          ['order', 'Orders'],
+                          ['fnb_order', 'F&B'],
+                          ['service_booking', 'Services'],
+                          ['hospitality_booking', 'Hospitality']
+                        ].map(([id, label]) => (
+                          <button key={id} type="button" onClick={() => setAccountActivityFilter(id)} style={{ borderRadius: 999, border: `1px solid ${accountActivityFilter === id ? '#0f766e' : '#cbd5e1'}`, background: accountActivityFilter === id ? '#e6fffb' : '#fff', color: accountActivityFilter === id ? '#0f766e' : '#334155', padding: '6px 10px', fontWeight: 800, fontSize: 12 }}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {accountPanel.activities.filter((activity) => accountActivityFilter === 'all' || String(activity.type || activity.activity_type) === accountActivityFilter).length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No saved history yet.</p>}
+                    {accountPanel.activities.filter((activity) => accountActivityFilter === 'all' || String(activity.type || activity.activity_type) === accountActivityFilter).map((activity) => {
+                      const reference = getAccountActivityReference(activity);
+                      const activityType = String(activity.type || activity.activity_type || '').toLowerCase();
+                      return (
+                        <div key={activity.activity_id || reference} style={{ borderTop: '1px solid #e2e8f0', padding: '10px 0', fontSize: 13 }}>
+                          <strong>{activity.reference || activity.tracking_pin || activity.public_reference || activity.type_label || 'Activity'}</strong>
+                          <div style={{ color: '#475569' }}>{activity.type_label || activityType || 'Activity'} - {activity.store_name || activity.store?.name || selectedStore?.name || 'DGFY Store'}</div>
+                          <div style={{ color: '#64748b' }}>{activity.status_label || activity.status || 'Tracked'} - {activity.total_amount ? money(activity.total_amount) : (activity.payment_status || 'Payment status pending')} - {activity.occurred_at ? formatTicketDate(activity.occurred_at) : 'Recent activity'}</div>
+                          <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {reference && <button type="button" onClick={() => handleTrackAccountReference(reference)} style={{ borderRadius: 9, border: '1px solid #cbd5e1', background: '#fff', padding: '6px 9px', fontWeight: 700, cursor: 'pointer' }}>Track</button>}
+                            {activityType === 'order' && ['placed', 'confirmed'].includes(String(activity.status || '').toLowerCase()) && (
+                              <button type="button" onClick={() => handleCancelAccountOrder(reference)} disabled={accountActionState.loadingKey === `cancel:${reference}`} style={{ borderRadius: 9, border: '1px solid #fecaca', background: '#fff7f7', color: '#b91c1c', padding: '6px 9px', fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
+                            )}
+                            {activityType === 'order' && <button type="button" onClick={() => handleReorderAccountOrder(reference)} disabled={accountActionState.loadingKey === `reorder:${reference}`} style={{ borderRadius: 9, border: '1px solid #1a4e8d', background: '#1a4e8d', color: '#fff', padding: '6px 9px', fontWeight: 700 }}>Reorder</button>}
+                          </div>
+                          {getAccountReviewTargets(activity).slice(0, 2).map((target) => {
+                            const reviewKey = `${activity.activity_id}:${target.target_type}:${target.target_id || 'activity'}`;
+                            const draft = accountReviewDrafts[reviewKey] || { rating: 5, comment: '' };
+                            return (
+                              <div key={reviewKey} style={{ marginTop: 8, display: 'grid', gap: 6, borderTop: '1px dashed #e2e8f0', paddingTop: 8 }}>
+                                <strong style={{ fontSize: 12 }}>{target.label || 'Review target'}</strong>
+                                <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? '72px 1fr auto' : '1fr', gap: 6 }}>
+                                  <input type="number" min="1" max="5" value={draft.rating} onChange={(event) => setAccountReviewDrafts((current) => ({ ...current, [reviewKey]: { ...draft, rating: event.target.value } }))} aria-label="Rating" style={{ border: '1px solid #cbd5e1', borderRadius: 9, padding: '7px 8px' }} />
+                                  <input value={draft.comment} onChange={(event) => setAccountReviewDrafts((current) => ({ ...current, [reviewKey]: { ...draft, comment: event.target.value } }))} placeholder="Review this activity" style={{ border: '1px solid #cbd5e1', borderRadius: 9, padding: '7px 8px' }} />
+                                  <button type="button" onClick={() => handleSubmitAccountReview({ activity, target })} disabled={accountActionState.loadingKey === `review:${reviewKey}`} style={{ borderRadius: 9, border: '1px solid #0f766e', background: '#0f766e', color: '#fff', padding: '7px 9px', fontWeight: 700 }}>Review</button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </section>
+                  {accountPanel.activities.length === 0 && <section style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: '#fff' }}>
                     <h4 style={{ margin: '0 0 8px 0', fontSize: 16 }}>My Bookings</h4>
                     {accountPanel.bookings.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No saved bookings yet.</p>}
                     {accountPanel.bookings.map((booking) => (
@@ -16629,8 +16944,8 @@ return (
                         <div style={{ color: '#64748b' }}>{booking.start_at ? formatTicketDate(booking.start_at) : 'Unscheduled'} Â· {booking.payment_status}</div>
                       </div>
                     ))}
-                  </section>
-                  <section style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: '#fff' }}>
+                  </section>}
+                  {accountPanel.activities.length === 0 && <section style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: '#fff' }}>
                     <h4 style={{ margin: '0 0 8px 0', fontSize: 16 }}>My Orders & Tickets</h4>
                     {accountPanel.orders.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No saved orders yet.</p>}
                     {accountPanel.orders.map((order) => (
@@ -16638,9 +16953,16 @@ return (
                         <strong>{order.tracking_pin || order.reference || order.receipt_number || 'Order'}</strong>
                         <div style={{ color: '#475569' }}>{order.status_label || order.status || 'Placed'} Â· {money(order.total_amount)}</div>
                         <div style={{ color: '#64748b' }}>{order.created_at ? formatTicketDate(order.created_at) : order.occurred_at ? formatTicketDate(order.occurred_at) : 'Recent transaction'}</div>
+                        <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <button type="button" onClick={() => handleTrackAccountReference(getAccountActivityReference(order))} style={{ borderRadius: 9, border: '1px solid #cbd5e1', background: '#fff', padding: '6px 9px', fontWeight: 700, cursor: 'pointer' }}>Track</button>
+                          {['placed', 'confirmed'].includes(String(order.status || '').toLowerCase()) && (
+                            <button type="button" onClick={() => handleCancelAccountOrder(getAccountActivityReference(order))} disabled={accountActionState.loadingKey === `cancel:${getAccountActivityReference(order)}`} style={{ borderRadius: 9, border: '1px solid #fecaca', background: '#fff7f7', color: '#b91c1c', padding: '6px 9px', fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
+                          )}
+                          <button type="button" onClick={() => handleReorderAccountOrder(getAccountActivityReference(order))} disabled={accountActionState.loadingKey === `reorder:${getAccountActivityReference(order)}`} style={{ borderRadius: 9, border: '1px solid #1a4e8d', background: '#1a4e8d', color: '#fff', padding: '6px 9px', fontWeight: 700 }}>Reorder</button>
+                        </div>
                       </div>
                     ))}
-                  </section>
+                  </section>}
                   <section style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: '#fff' }}>
                     <h4 style={{ margin: '0 0 8px 0', fontSize: 16 }}>Saved Addresses</h4>
                     {accountPanel.addresses.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>No saved addresses yet.</p>}
@@ -16648,6 +16970,11 @@ return (
                       <div key={address.address_id} style={{ borderTop: '1px solid #e2e8f0', padding: '9px 0', fontSize: 13 }}>
                         <strong>{address.label || 'Address'}{address.is_default ? ' - Default' : ''}</strong>
                         <div style={{ color: '#475569' }}>{address.address_line}</div>
+                        <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <button type="button" onClick={() => applyAccountAddressToCheckout(address)} style={{ borderRadius: 9, border: '1px solid #1a4e8d', background: '#fff', color: '#1a4e8d', padding: '6px 9px', fontWeight: 700 }}>Use for Checkout</button>
+                          {!address.is_default && <button type="button" onClick={() => handleSetDefaultAccountAddress(address.address_id)} style={{ borderRadius: 9, border: '1px solid #cbd5e1', background: '#fff', padding: '6px 9px', fontWeight: 700 }}>Set Default</button>}
+                          <button type="button" onClick={() => handleDeleteAccountAddress(address.address_id)} style={{ borderRadius: 9, border: '1px solid #fecaca', background: '#fff7f7', color: '#b91c1c', padding: '6px 9px', fontWeight: 700 }}>Delete</button>
+                        </div>
                       </div>
                     ))}
                   </section>
