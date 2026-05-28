@@ -44,6 +44,7 @@ import Login from '../Login.jsx';
 const dgfyAccount = {
   id: 'dgfy-1',
   first_name: 'Ada',
+  middle_name: null,
   last_name: 'Lovelace',
   username: 'Ada',
   email: 'ada@example.test',
@@ -149,6 +150,78 @@ describe('RegisterCompany DGFY handoff', () => {
     expect(screen.queryByLabelText('Company Name')).toBeNull();
   });
 
+  it('starts business-registration handoff links on DGFY sign in', () => {
+    renderRegistrationFlow(['/register-company?source=dgfy&auth=login']);
+
+    expect(screen.getByRole('button', { name: /sign in with dgfy/i }).type).toBe('submit');
+    expect(screen.queryByLabelText('Last Name')).toBeNull();
+  });
+
+  it('lands storefront business-registration handoff on the signed-in DGFY profile area', async () => {
+    renderRegistrationFlow(['/register-company?source=dgfy&auth=login#dgfy-profile']);
+
+    await signInDgfy();
+
+    expect(document.querySelector('#dgfy-profile')).toBeTruthy();
+    expect(screen.getByText('DGFY Profile')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /create company/i })).toBeTruthy();
+  });
+
+  it('collects DGFY account fields in the approved order with terms modal and password visibility', async () => {
+    dgfyAuthMock.registerDgfyAccount.mockResolvedValue({
+      token: 'dgfy-token',
+      account: {
+        ...dgfyAccount,
+        middle_name: 'Byron'
+      }
+    });
+
+    renderRegistrationFlow();
+    await screen.findByRole('button', { name: /view terms/i });
+
+    const submitButton = screen.getAllByRole('button', { name: /create dgfy account/i })
+      .find((button) => button.type === 'submit');
+    const labels = Array.from(submitButton.closest('form').querySelectorAll('label'))
+      .map((label) => label.textContent.trim());
+    expect(labels.slice(0, 7)).toEqual([
+      'Last Name',
+      'First Name',
+      'Optional Middle Name',
+      'Email',
+      'Contact Number',
+      'Password',
+      'Confirm Password'
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: /view terms/i }));
+    expect(screen.getByRole('dialog', { name: /current dgfy terms/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+
+    fireEvent.change(screen.getByLabelText('Last Name'), { target: { value: 'Lovelace' } });
+    fireEvent.change(screen.getByLabelText('First Name'), { target: { value: 'Ada' } });
+    fireEvent.change(screen.getByLabelText('Optional Middle Name'), { target: { value: 'Byron' } });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'ada@example.test' } });
+    fireEvent.change(screen.getByLabelText('Contact Number'), { target: { value: '+639123456789' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
+    fireEvent.change(screen.getByLabelText('Confirm Password'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getAllByRole('button', { name: /^show password$/i })[0]);
+    expect(screen.getByLabelText('Password').type).toBe('text');
+    fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Account Terms/i));
+    fireEvent.click(submitButton);
+
+    await waitFor(() => expect(dgfyAuthMock.registerDgfyAccount).toHaveBeenCalledWith(expect.objectContaining({
+      first_name: 'Ada',
+      middle_name: 'Byron',
+      last_name: 'Lovelace',
+      email: 'ada@example.test',
+      phone: '+639123456789',
+      accepted_terms: true,
+      terms_version: 'dgfy-account-terms-2026-05-26',
+      privacy_version: 'dgfy-privacy-2026-05-26',
+      marketplace_terms_version: 'dgfy-marketplace-provider-2026-05-26'
+    })));
+  });
+
   it('disables registration when current DGFY legal terms cannot load', async () => {
     dgfyAuthMock.fetchDgfyLegalTerms.mockRejectedValue(new Error('terms unavailable'));
 
@@ -158,6 +231,27 @@ describe('RegisterCompany DGFY handoff', () => {
     const submitButton = screen.getAllByRole('button', { name: /create dgfy account/i })
       .find((button) => button.type === 'submit');
     expect(submitButton.disabled).toBe(true);
+  });
+
+  it('fail-closes account and company registration when legal versions are incomplete', async () => {
+    dgfyAuthMock.fetchDgfyLegalTerms.mockResolvedValue({
+      flows: {
+        account_registration: { snapshot: {}, documents: [] },
+        company_registration: { snapshot: {}, documents: [] }
+      }
+    });
+
+    renderRegistrationFlow();
+
+    expect(await screen.findByText(/account terms are incomplete/i)).toBeTruthy();
+    const accountSubmit = screen.getAllByRole('button', { name: /create dgfy account/i })
+      .find((button) => button.type === 'submit');
+    expect(accountSubmit.disabled).toBe(true);
+
+    await signInDgfy();
+
+    expect(await screen.findByText(/company terms are incomplete/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /create company/i }).disabled).toBe(true);
   });
 
   it('registers a company from the signed-in DGFY account', async () => {
@@ -179,7 +273,7 @@ describe('RegisterCompany DGFY handoff', () => {
       });
 
     renderRegistrationFlow();
-    await screen.findByText('DGFY Account Terms');
+    await screen.findByRole('button', { name: /view terms/i });
     await signInDgfy();
 
     fireEvent.change(screen.getByLabelText('Company Name'), {
@@ -215,10 +309,12 @@ describe('RegisterCompany DGFY handoff', () => {
 
   it('requires marketplace acknowledgement before company registration can be submitted', async () => {
     renderRegistrationFlow();
-    await screen.findByText('DGFY Account Terms');
+    await screen.findByRole('button', { name: /view terms/i });
     await signInDgfy();
 
+    fireEvent.click(screen.getByRole('button', { name: /view terms/i }));
     expect(screen.getByText(/DGFY is an e-marketplace\/platform service provider/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /close/i }));
     expect(screen.getByRole('button', { name: /create company/i }).disabled).toBe(true);
 
     fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
@@ -228,7 +324,7 @@ describe('RegisterCompany DGFY handoff', () => {
 
   it('renames Business Mode to Business Industry without exposing legacy manufacturing', async () => {
     renderRegistrationFlow();
-    await screen.findByText('DGFY Account Terms');
+    await screen.findByRole('button', { name: /view terms/i });
     await signInDgfy();
 
     const options = Array.from(screen.getByLabelText('Business Industry').querySelectorAll('option'))
@@ -247,6 +343,7 @@ describe('RegisterCompany DGFY handoff', () => {
       account: {
         ...dgfyAccount,
         first_name: 'Grace',
+        middle_name: 'Brewster',
         last_name: 'Hopper',
         username: 'Grace',
         phone: '+639987654321'
@@ -254,22 +351,26 @@ describe('RegisterCompany DGFY handoff', () => {
     });
 
     renderRegistrationFlow();
-    await screen.findByText('DGFY Account Terms');
+    await screen.findByRole('button', { name: /view terms/i });
     await signInDgfy();
 
     fireEvent.change(screen.getByLabelText('First Name'), {
       target: { value: 'Grace' }
     });
+    fireEvent.change(screen.getByLabelText('Optional Middle Name'), {
+      target: { value: 'Brewster' }
+    });
     fireEvent.change(screen.getByLabelText('Last Name'), {
       target: { value: 'Hopper' }
     });
-    fireEvent.change(screen.getByLabelText('Phone Number'), {
+    fireEvent.change(screen.getByLabelText('Contact Number'), {
       target: { value: '+639987654321' }
     });
     fireEvent.click(screen.getByRole('button', { name: /save profile/i }));
 
     await waitFor(() => expect(dgfyAuthMock.updateDgfyProfile).toHaveBeenCalledWith({
       first_name: 'Grace',
+      middle_name: 'Brewster',
       last_name: 'Hopper',
       phone: '+639987654321'
     }, 'dgfy-token'));

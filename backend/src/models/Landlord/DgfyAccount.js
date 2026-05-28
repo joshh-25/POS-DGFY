@@ -13,6 +13,10 @@ export default (sequelize) => {
             type: DataTypes.STRING(80),
             allowNull: false
         },
+        middle_name: {
+            type: DataTypes.STRING(80),
+            allowNull: true
+        },
         last_name: {
             type: DataTypes.STRING(80),
             allowNull: false

@@ -58,7 +58,7 @@ const resolveOrCreateCustomerForDgfyAccount = async (account) => {
         ...(supportsDgfyAccountId ? { dgfy_account_id: account.id } : {}),
         email,
         password_hash: DGFY_LINKED_STORE_PASSWORD_HASH,
-        name: `${account.first_name || ''} ${account.last_name || ''}`.trim() || account.username || email,
+        name: `${account.first_name || ''} ${account.middle_name || ''} ${account.last_name || ''}`.trim() || account.username || email,
         phone: account.phone || null,
         is_active: true,
         last_login: new Date()

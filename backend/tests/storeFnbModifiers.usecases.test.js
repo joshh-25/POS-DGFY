@@ -123,6 +123,101 @@ describe('storefront F&B modifier checkout contract', () => {
     }));
   });
 
+  it('marks guest checkout with a new email as eligible for DGFY account signup', async () => {
+    const repository = buildRepository([burgerItem], {
+      findCustomerByEmail: jest.fn().mockResolvedValue(null),
+      getOrderById: jest.fn().mockResolvedValue({
+        pos_transaction_id: 501,
+        tracking_pin: 'SK-ABC123',
+        invoice_number: 'INV-000001',
+        order_source: 'online_store',
+        order_method: 'pickup',
+        fulfillment_status: 'placed',
+        status: 'completed',
+        customer_name: 'Ana Guest',
+        customer_phone: '09170000000',
+        customer_email: 'guest@example.test',
+        store_customer_id: null,
+        total_amount: 101,
+        lines: []
+      })
+    });
+    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+
+    const result = await useCase({
+      tenantId,
+      payload: {
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        idempotency_key: 'guest-new-email-checkout',
+        customer_name: 'Ana Guest',
+        customer_phone: '09170000000',
+        customer_email: 'guest@example.test',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(true);
+    expect(repository.findCustomerByEmail).toHaveBeenCalledWith('guest@example.test', expect.any(Object));
+    expect(result.data.account_action).toEqual(expect.objectContaining({
+      type: 'offer_signup',
+      allow_image_download: true,
+      show_signup: true,
+      claim_token: expect.any(String)
+    }));
+  });
+
+  it('marks authenticated DGFY customer checkout as linked without signup prompt', async () => {
+    const repository = buildRepository([burgerItem], {
+      findCustomerByEmail: jest.fn(),
+      getOrderById: jest.fn().mockResolvedValue({
+        pos_transaction_id: 502,
+        tracking_pin: 'SK-LINKED',
+        invoice_number: 'INV-000002',
+        order_source: 'online_store',
+        order_method: 'pickup',
+        fulfillment_status: 'placed',
+        status: 'completed',
+        customer_name: 'Ada Byron Lovelace',
+        customer_phone: '+639123456789',
+        customer_email: 'ada@example.test',
+        store_customer_id: 55,
+        total_amount: 101,
+        lines: []
+      })
+    });
+    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+
+    const result = await useCase({
+      tenantId,
+      storeCustomer: {
+        customer_id: 55,
+        dgfy_account_id: 'dgfy-1',
+        name: 'Ada Byron Lovelace',
+        email: 'ada@example.test',
+        phone: '+639123456789'
+      },
+      payload: {
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        idempotency_key: 'authenticated-checkout',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(true);
+    expect(repository.findCustomerByEmail).not.toHaveBeenCalled();
+    expect(repository.createOnlineTransactionWithLines.mock.calls[0][0].header.store_customer_id).toBe(55);
+    expect(result.data.account_action).toEqual(expect.objectContaining({
+      type: 'linked_authenticated',
+      allow_image_download: true,
+      show_signup: false,
+      claim_token: null
+    }));
+  });
+
   it('rejects selected modifier options that are not published for the menu item', async () => {
     const repository = buildRepository([burgerItem]);
     const useCase = buildStoreCartQuoteUseCase({ storeRepository: repository });

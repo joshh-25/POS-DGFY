@@ -487,6 +487,7 @@ export const buildGetDgfyCustomerDashboardUseCase = ({ repository = dgfyCustomer
             account: {
                 id: dgfyAccount.id,
                 first_name: dgfyAccount.first_name,
+                middle_name: dgfyAccount.middle_name || null,
                 last_name: dgfyAccount.last_name,
                 username: dgfyAccount.username,
                 email: dgfyAccount.email,

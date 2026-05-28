@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../src/services/api.js';
 import {
     acceptDgfyInvitation,
@@ -29,6 +29,15 @@ const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const getFlowSnapshot = (legalTerms, flowKey) => legalTerms?.flows?.[flowKey]?.snapshot || {};
 const getFlowDocuments = (legalTerms, flowKey) => legalTerms?.flows?.[flowKey]?.documents || [];
+const hasAccountLegalVersions = (snapshot = {}) => Boolean(
+    snapshot.terms_version
+    && snapshot.privacy_version
+    && snapshot.marketplace_terms_version
+);
+const hasCompanyLegalVersions = (snapshot = {}) => Boolean(
+    snapshot.company_terms_version
+    && snapshot.marketplace_terms_version
+);
 
 const PasswordInput = ({
     id,
@@ -76,57 +85,116 @@ const LegalAcknowledgementBox = ({
     documents,
     snapshotText,
     versionLabel
-}) => (
-    <div className="rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4 text-sm text-slate-700">
-        <label htmlFor={id} className="flex gap-3 leading-6">
-            <input
-                id={id}
-                type="checkbox"
-                checked={checked}
-                onChange={onChange}
-                disabled={disabled}
-                className="mt-1 h-4 w-4 shrink-0"
-                required
-            />
-            <span>{label}</span>
-        </label>
-        {disabledReason ? (
-            <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">{disabledReason}</p>
-        ) : null}
-        {versionLabel ? (
-            <p className="mt-3 text-xs font-medium uppercase tracking-wide text-slate-500">{versionLabel}</p>
-        ) : null}
-        <div className="mt-3 space-y-2">
-            {documents.map((document) => (
-                <details key={document.key || document.version} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                    <summary className="cursor-pointer text-sm font-medium text-slate-800">
-                        {document.title} <span className="text-xs text-slate-500">({document.version})</span>
-                    </summary>
-                    <p className="mt-2 text-xs leading-5 text-slate-600">{document.summary}</p>
-                    {document.href ? (
-                        <a className="mt-2 inline-block text-xs font-medium text-[#1f5f9f] hover:underline" href={document.href} target="_blank" rel="noreferrer">
-                            Open full terms
-                        </a>
-                    ) : null}
-                </details>
-            ))}
+}) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const closeButtonRef = useRef(null);
+
+    useEffect(() => {
+        if (!isOpen) return undefined;
+
+        closeButtonRef.current?.focus();
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [isOpen]);
+
+    return (
+        <div className="rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4 text-sm text-slate-700">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <label htmlFor={id} className="flex gap-3 leading-6">
+                    <input
+                        id={id}
+                        type="checkbox"
+                        checked={checked}
+                        onChange={onChange}
+                        disabled={disabled}
+                        className="mt-1 h-5 w-5 shrink-0 accent-[#1f5f9f]"
+                        required
+                    />
+                    <span>{label}</span>
+                </label>
+                <button
+                    type="button"
+                    onClick={() => setIsOpen(true)}
+                    className="self-start rounded-lg border border-[#1f5f9f] px-3 py-1.5 text-xs font-semibold text-[#1f5f9f] hover:bg-[#e8f4ff]"
+                >
+                    View terms
+                </button>
+            </div>
+            {disabledReason ? (
+                <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">{disabledReason}</p>
+            ) : null}
+            {versionLabel ? (
+                <p className="mt-3 text-xs font-medium uppercase tracking-wide text-slate-500">{versionLabel}</p>
+            ) : null}
+            {isOpen ? (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 py-6"
+                    onMouseDown={(event) => {
+                        if (event.target === event.currentTarget) {
+                            setIsOpen(false);
+                        }
+                    }}
+                >
+                    <div role="dialog" aria-modal="true" aria-labelledby={`${id}-terms-title`} className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
+                        <div className="flex items-start justify-between gap-4">
+                            <div>
+                                <h2 id={`${id}-terms-title`} className="text-lg font-semibold text-[#132033]">Current DGFY Terms</h2>
+                                {versionLabel ? (
+                                    <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">{versionLabel}</p>
+                                ) : null}
+                            </div>
+                            <button ref={closeButtonRef} type="button" onClick={() => setIsOpen(false)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+                                Close
+                            </button>
+                        </div>
+                        <div className="mt-4 grid gap-3">
+                            {documents.map((document) => (
+                                <section key={document.key || document.version} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                                    <h3 className="text-sm font-semibold text-slate-800">
+                                        {document.title} <span className="text-xs text-slate-500">({document.version})</span>
+                                    </h3>
+                                    <p className="mt-2 text-xs leading-5 text-slate-600">{document.summary}</p>
+                                    {document.href ? (
+                                        <a className="mt-2 inline-block text-xs font-medium text-[#1f5f9f] hover:underline" href={document.href} target="_blank" rel="noreferrer">
+                                            Open full terms
+                                        </a>
+                                    ) : null}
+                                </section>
+                            ))}
+                        </div>
+                        {snapshotText ? (
+                            <p className="mt-4 rounded-xl bg-[#f7fbfa] px-3 py-2 text-xs leading-5 text-slate-600">{snapshotText}</p>
+                        ) : null}
+                    </div>
+                </div>
+            ) : null}
         </div>
-        {snapshotText ? (
-            <p className="mt-3 rounded-xl bg-white px-3 py-2 text-xs leading-5 text-slate-600">{snapshotText}</p>
-        ) : null}
-    </div>
-);
+    );
+};
 
 export default function RegisterCompany() {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const profileSectionRef = useRef(null);
+    const initialAuthMode = searchParams.get('auth') === 'login' || searchParams.get('source') === 'dgfy'
+        ? 'login'
+        : 'register';
     const [dgfyToken, setDgfyToken] = useState(() => getStoredDgfyToken());
     const [dgfyAccount, setDgfyAccount] = useState(() => getStoredDgfyAccount());
     const [dgfyMemberships, setDgfyMemberships] = useState([]);
     const [legalTerms, setLegalTerms] = useState(null);
     const [legalTermsError, setLegalTermsError] = useState('');
-    const [authMode, setAuthMode] = useState('register');
+    const [authMode, setAuthMode] = useState(initialAuthMode);
     const [authForm, setAuthForm] = useState({
         firstName: '',
+        middleName: '',
         lastName: '',
         email: '',
         phone: '',
@@ -137,7 +205,7 @@ export default function RegisterCompany() {
     const [loginForm, setLoginForm] = useState({ email: '', password: '' });
     const [resetForm, setResetForm] = useState({ email: '', code: '', password: '', confirmPassword: '' });
     const [resetStep, setResetStep] = useState('request');
-    const [profileForm, setProfileForm] = useState({ firstName: '', lastName: '', phone: '' });
+    const [profileForm, setProfileForm] = useState({ firstName: '', middleName: '', lastName: '', phone: '' });
     const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
     const [companyForm, setCompanyForm] = useState({
         companyName: '',
@@ -202,10 +270,33 @@ export default function RegisterCompany() {
         if (!dgfyAccount) return;
         setProfileForm({
             firstName: dgfyAccount.first_name || '',
+            middleName: dgfyAccount.middle_name || '',
             lastName: dgfyAccount.last_name || '',
             phone: dgfyAccount.phone || ''
         });
     }, [dgfyAccount]);
+
+    useEffect(() => {
+        if (!dgfyAccount) return;
+        const shouldFocusProfile = searchParams.get('source') === 'dgfy'
+            || (typeof window !== 'undefined' && window.location.hash === '#dgfy-profile');
+        if (!shouldFocusProfile) return;
+
+        const focusProfile = () => {
+            const profileSection = profileSectionRef.current;
+            if (typeof profileSection?.scrollIntoView === 'function') {
+                profileSection.scrollIntoView({ block: 'start', behavior: 'smooth' });
+            }
+            if (typeof profileSection?.focus === 'function') {
+                profileSection.focus({ preventScroll: true });
+            }
+        };
+        if (typeof window.requestAnimationFrame === 'function') {
+            window.requestAnimationFrame(focusProfile);
+        } else {
+            focusProfile();
+        }
+    }, [dgfyAccount, searchParams]);
 
     const businessIndustryOptions = useMemo(() => WORKFLOW_MODE_SELECT_VALUES.map((mode) => ({
         value: mode,
@@ -215,7 +306,14 @@ export default function RegisterCompany() {
     const companyLegalSnapshot = getFlowSnapshot(legalTerms, 'company_registration');
     const accountLegalDocuments = getFlowDocuments(legalTerms, 'account_registration');
     const companyLegalDocuments = getFlowDocuments(legalTerms, 'company_registration');
-    const legalTermsUnavailable = !legalTerms || Boolean(legalTermsError);
+    const accountLegalTermsUnavailable = !legalTerms || Boolean(legalTermsError) || !hasAccountLegalVersions(accountLegalSnapshot);
+    const companyLegalTermsUnavailable = !legalTerms || Boolean(legalTermsError) || !hasCompanyLegalVersions(companyLegalSnapshot);
+    const accountLegalDisabledReason = legalTermsError
+        || (!legalTerms ? 'Current DGFY account terms must load before creating an account.' : '')
+        || (!hasAccountLegalVersions(accountLegalSnapshot) ? 'Current DGFY account terms are incomplete. Registration is disabled until the current terms are published.' : '');
+    const companyLegalDisabledReason = legalTermsError
+        || (!legalTerms ? 'Current DGFY company terms must load before registering a company.' : '')
+        || (!hasCompanyLegalVersions(companyLegalSnapshot) ? 'Current DGFY company terms are incomplete. Company registration is disabled until the current terms are published.' : '');
 
     const setDgfySessionState = (session) => {
         setDgfyToken(session?.token || getStoredDgfyToken());
@@ -238,7 +336,7 @@ export default function RegisterCompany() {
         setError('');
 
         if (!authForm.firstName.trim() || !authForm.lastName.trim()) {
-            setError('First name and last name are required.');
+            setError('Last name and first name are required.');
             return;
         }
         if (!emailPattern.test(authForm.email.trim())) {
@@ -257,8 +355,8 @@ export default function RegisterCompany() {
             setError('Accept the DGFY account terms before creating an account.');
             return;
         }
-        if (legalTermsUnavailable) {
-            setError(legalTermsError || 'Current DGFY terms must load before creating an account.');
+        if (accountLegalTermsUnavailable) {
+            setError(accountLegalDisabledReason || 'Current DGFY terms must load before creating an account.');
             return;
         }
 
@@ -266,6 +364,7 @@ export default function RegisterCompany() {
         try {
             const session = await registerDgfyAccount({
                 first_name: authForm.firstName,
+                middle_name: authForm.middleName,
                 last_name: authForm.lastName,
                 email: authForm.email,
                 phone: authForm.phone,
@@ -362,6 +461,7 @@ export default function RegisterCompany() {
         try {
             const result = await updateDgfyProfile({
                 first_name: profileForm.firstName,
+                middle_name: profileForm.middleName,
                 last_name: profileForm.lastName,
                 phone: profileForm.phone
             }, dgfyToken);
@@ -480,8 +580,8 @@ export default function RegisterCompany() {
             setError('Accept the DGFY company terms before registering a company.');
             return;
         }
-        if (legalTermsUnavailable) {
-            setError(legalTermsError || 'Current DGFY company terms must load before registering a company.');
+        if (companyLegalTermsUnavailable) {
+            setError(companyLegalDisabledReason || 'Current DGFY company terms must load before registering a company.');
             return;
         }
 
@@ -630,13 +730,17 @@ export default function RegisterCompany() {
                                 <form onSubmit={handleRegisterDgfyAccount} className="space-y-4">
                                     <div className="grid gap-4 md:grid-cols-2">
                                         <div>
-                                            <Label htmlFor="firstName">First Name</Label>
-                                            <Input id="firstName" value={authForm.firstName} onChange={(e) => setAuthForm({ ...authForm, firstName: e.target.value })} required disabled={isLoading} className="mt-1" />
-                                        </div>
-                                        <div>
                                             <Label htmlFor="lastName">Last Name</Label>
                                             <Input id="lastName" value={authForm.lastName} onChange={(e) => setAuthForm({ ...authForm, lastName: e.target.value })} required disabled={isLoading} className="mt-1" />
                                         </div>
+                                        <div>
+                                            <Label htmlFor="firstName">First Name</Label>
+                                            <Input id="firstName" value={authForm.firstName} onChange={(e) => setAuthForm({ ...authForm, firstName: e.target.value })} required disabled={isLoading} className="mt-1" />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <Label htmlFor="middleName">Optional Middle Name</Label>
+                                        <Input id="middleName" value={authForm.middleName} onChange={(e) => setAuthForm({ ...authForm, middleName: e.target.value })} disabled={isLoading} className="mt-1" />
                                     </div>
                                     <div className="grid gap-4 md:grid-cols-2">
                                         <div>
@@ -644,7 +748,7 @@ export default function RegisterCompany() {
                                             <Input id="dgfyEmail" type="email" value={authForm.email} onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })} required disabled={isLoading} className="mt-1" />
                                         </div>
                                         <div>
-                                            <Label htmlFor="dgfyPhone">Phone Number</Label>
+                                            <Label htmlFor="dgfyPhone">Contact Number</Label>
                                             <Input id="dgfyPhone" type="tel" value={authForm.phone} onChange={(e) => setAuthForm({ ...authForm, phone: e.target.value })} required disabled={isLoading} className="mt-1" />
                                         </div>
                                     </div>
@@ -662,14 +766,14 @@ export default function RegisterCompany() {
                                         id="acceptedTerms"
                                         checked={authForm.acceptedTerms}
                                         onChange={(e) => setAuthForm({ ...authForm, acceptedTerms: e.target.checked })}
-                                        disabled={isLoading || legalTermsUnavailable}
-                                        disabledReason={legalTermsError}
+                                        disabled={isLoading || accountLegalTermsUnavailable}
+                                        disabledReason={accountLegalTermsUnavailable ? accountLegalDisabledReason : ''}
                                         label="I have reviewed and agree to the current DGFY Account Terms, Privacy Policy, and Marketplace Provider Terms."
                                         documents={accountLegalDocuments}
                                         snapshotText={accountLegalSnapshot.acknowledgement_text}
                                         versionLabel={accountLegalSnapshot.marketplace_terms_version ? `Marketplace terms version ${accountLegalSnapshot.marketplace_terms_version}` : ''}
                                     />
-                                    <Button type="submit" disabled={isLoading || !authForm.acceptedTerms || legalTermsUnavailable} className="w-full bg-[#1f5f9f] hover:bg-[#174f86]">
+                                    <Button type="submit" disabled={isLoading || !authForm.acceptedTerms || accountLegalTermsUnavailable} className="w-full bg-[#1f5f9f] hover:bg-[#174f86]">
                                         {isLoading ? 'Creating account...' : 'Create DGFY Account'}
                                     </Button>
                                 </form>
@@ -718,14 +822,14 @@ export default function RegisterCompany() {
                             )}
                         </section>
                     ) : (
-                        <div className="space-y-5">
+                        <div id="dgfy-profile" ref={profileSectionRef} tabIndex={-1} className="space-y-5 scroll-mt-6 outline-none focus-visible:ring-2 focus-visible:ring-[#1f5f9f]">
                             <div className="flex items-center justify-between gap-4 rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">
                                 <div className="flex items-center gap-3">
                                     <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#e8f4ff] text-[#1f5f9f]">
                                         <UserRound className="h-5 w-5" />
                                     </div>
                                     <div>
-                                        <p className="text-sm font-semibold text-[#132033]">{dgfyAccount.first_name} {dgfyAccount.last_name}</p>
+                                        <p className="text-sm font-semibold text-[#132033]">{[dgfyAccount.first_name, dgfyAccount.middle_name, dgfyAccount.last_name].filter(Boolean).join(' ')}</p>
                                         <p className="text-xs text-slate-600">{dgfyAccount.email} &middot; {dgfyAccount.phone}</p>
                                     </div>
                                 </div>
@@ -739,16 +843,20 @@ export default function RegisterCompany() {
                                     <p className="text-sm font-semibold text-[#132033]">DGFY Profile</p>
                                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
                                         <div>
-                                            <Label htmlFor="profileFirstName">First Name</Label>
-                                            <Input id="profileFirstName" value={profileForm.firstName} onChange={(e) => setProfileForm({ ...profileForm, firstName: e.target.value })} disabled={isLoading} className="mt-1 bg-white" />
-                                        </div>
-                                        <div>
                                             <Label htmlFor="profileLastName">Last Name</Label>
                                             <Input id="profileLastName" value={profileForm.lastName} onChange={(e) => setProfileForm({ ...profileForm, lastName: e.target.value })} disabled={isLoading} className="mt-1 bg-white" />
                                         </div>
+                                        <div>
+                                            <Label htmlFor="profileFirstName">First Name</Label>
+                                            <Input id="profileFirstName" value={profileForm.firstName} onChange={(e) => setProfileForm({ ...profileForm, firstName: e.target.value })} disabled={isLoading} className="mt-1 bg-white" />
+                                        </div>
                                     </div>
                                     <div className="mt-3">
-                                        <Label htmlFor="profilePhone">Phone Number</Label>
+                                        <Label htmlFor="profileMiddleName">Optional Middle Name</Label>
+                                        <Input id="profileMiddleName" value={profileForm.middleName} onChange={(e) => setProfileForm({ ...profileForm, middleName: e.target.value })} disabled={isLoading} className="mt-1 bg-white" />
+                                    </div>
+                                    <div className="mt-3">
+                                        <Label htmlFor="profilePhone">Contact Number</Label>
                                         <Input id="profilePhone" value={profileForm.phone} onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })} disabled={isLoading} className="mt-1 bg-white" />
                                         <p className="mt-2 text-xs text-slate-500">Phone verification is reserved for a future OTP rollout.</p>
                                     </div>
@@ -882,15 +990,15 @@ export default function RegisterCompany() {
                                     id="acceptedCompanyTerms"
                                     checked={companyForm.acceptedCompanyTerms}
                                     onChange={(e) => setCompanyForm({ ...companyForm, acceptedCompanyTerms: e.target.checked })}
-                                    disabled={isLoading || legalTermsUnavailable}
-                                    disabledReason={legalTermsError}
+                                    disabled={isLoading || companyLegalTermsUnavailable}
+                                    disabledReason={companyLegalTermsUnavailable ? companyLegalDisabledReason : ''}
                                     label="I have reviewed and agree to the current DGFY Company Registration Terms and Marketplace Provider Terms."
                                     documents={companyLegalDocuments}
                                     snapshotText={companyLegalSnapshot.acknowledgement_text}
                                     versionLabel={companyLegalSnapshot.marketplace_terms_version ? `Marketplace terms version ${companyLegalSnapshot.marketplace_terms_version}` : ''}
                                 />
 
-                                <Button type="submit" disabled={isLoading || !isDgfyEmailVerified || !companyForm.acceptedCompanyTerms || legalTermsUnavailable} className="w-full bg-[#1f5f9f] hover:bg-[#174f86]">
+                                <Button type="submit" disabled={isLoading || !isDgfyEmailVerified || !companyForm.acceptedCompanyTerms || companyLegalTermsUnavailable} className="w-full bg-[#1f5f9f] hover:bg-[#174f86]">
                                     {isLoading ? 'Creating Company...' : 'Create Company'}
                                 </Button>
                             </form>

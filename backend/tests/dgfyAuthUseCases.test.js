@@ -18,6 +18,7 @@ import { DGFY_LEGAL_TERM_VERSIONS } from '../src/modules/shared/utils/dgfyLegalT
 const createAccount = (overrides = {}) => ({
     id: 'dgfy-1',
     first_name: 'Ada',
+    middle_name: null,
     last_name: 'Lovelace',
     username: 'Ada',
     email: 'ada@example.test',
@@ -53,6 +54,7 @@ describe('dgfyAuthUseCases', () => {
         const result = await useCase({
             body: {
                 first_name: 'Ada',
+                middle_name: 'Byron',
                 last_name: 'Lovelace',
                 email: 'ADA@EXAMPLE.TEST',
                 phone: '+63 912 345 6789',
@@ -75,12 +77,14 @@ describe('dgfyAuthUseCases', () => {
         expect(repository.transaction).toHaveBeenCalled();
         expect(repository.create).toHaveBeenCalledWith(expect.objectContaining({
             first_name: 'Ada',
+            middle_name: 'Byron',
             last_name: 'Lovelace',
             username: 'Ada',
             email: 'ada@example.test',
             phone: '+63 912 345 6789'
         }), { transaction: 'tx-account' });
         expect(result.data.payload.data.token).toBeTruthy();
+        expect(result.data.payload.data.account.middle_name).toBe('Byron');
         expect(repository.mirrorPendingInvitationsForAccount).toHaveBeenCalledWith(expect.anything(), { transaction: 'tx-account' });
         expect(repository.recordLegalAcknowledgement).toHaveBeenCalledWith(expect.objectContaining({
             flow: 'dgfy_account_registration',
@@ -280,6 +284,7 @@ describe('dgfyAuthUseCases', () => {
             account,
             body: {
                 first_name: 'Grace',
+                middle_name: 'Brewster',
                 last_name: 'Hopper',
                 phone: '+639987654321'
             }
@@ -288,11 +293,13 @@ describe('dgfyAuthUseCases', () => {
         expect(result.success).toBe(true);
         expect(repository.updateProfile).toHaveBeenCalledWith(account, expect.objectContaining({
             first_name: 'Grace',
+            middle_name: 'Brewster',
             last_name: 'Hopper',
             username: 'Grace',
             phone: '+639987654321',
             phone_verified_at: null
         }));
+        expect(result.data.payload.data.account.middle_name).toBe('Brewster');
         expect(result.data.payload.data.account.username).toBe('Grace');
     });
 

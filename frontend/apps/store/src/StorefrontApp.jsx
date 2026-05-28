@@ -1093,11 +1093,273 @@ const clearDgfyAccountSession = () => {
   window.localStorage.removeItem('dgfyAccount');
 };
 
+const DGFY_ACCOUNT_TERMS_UNAVAILABLE = 'DGFY terms are temporarily unavailable. Registration is disabled until the current terms load.';
+const getDgfyFlowSnapshot = (legalTerms, flowKey) => legalTerms?.flows?.[flowKey]?.snapshot || {};
+const getDgfyFlowDocuments = (legalTerms, flowKey) => legalTerms?.flows?.[flowKey]?.documents || [];
+const hasDgfyAccountLegalVersions = (snapshot = {}) => Boolean(
+  snapshot.terms_version
+  && snapshot.privacy_version
+  && snapshot.marketplace_terms_version
+);
+
+const appendBusinessRegistrationParams = (url) => {
+  const rawUrl = String(url || '').trim();
+  const isAbsoluteUrl = /^[a-z][a-z\d+.-]*:\/\//i.test(rawUrl);
+  try {
+    const parsed = new URL(rawUrl, 'https://skupervisor.dgfy.ph');
+    parsed.searchParams.set('source', parsed.searchParams.get('source') || 'dgfy');
+    parsed.searchParams.set('auth', 'login');
+    if (!parsed.hash) parsed.hash = '#dgfy-profile';
+    return isAbsoluteUrl ? parsed.toString() : `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    const [baseAndQuery, hash = 'dgfy-profile'] = rawUrl.split('#');
+    const separator = baseAndQuery.includes('?') ? '&' : '?';
+    return `${baseAndQuery}${separator}source=dgfy&auth=login#${hash || 'dgfy-profile'}`;
+  }
+};
+
 const getBusinessRegistrationUrl = () => {
-  if (typeof window === 'undefined') return 'https://skupervisor.dgfy.ph/register-company';
+  if (typeof window === 'undefined') return 'https://skupervisor.dgfy.ph/register-company?source=dgfy&auth=login#dgfy-profile';
   const configured = String(import.meta.env?.VITE_SKUPERVISOR_REGISTER_URL || '').trim();
-  if (configured) return configured;
-  return `${window.location.protocol}//skupervisor.dgfy.ph/register-company?source=dgfy`;
+  if (configured) return appendBusinessRegistrationParams(configured);
+  return `${window.location.protocol}//skupervisor.dgfy.ph/register-company?source=dgfy&auth=login#dgfy-profile`;
+};
+
+const getCheckoutAccountActionMessage = (accountAction, { isBooking = false } = {}) => {
+  const transactionLabel = isBooking ? 'booking' : 'order';
+  const transactionLabelPlural = isBooking ? 'bookings' : 'orders';
+  switch (accountAction?.type) {
+    case 'linked_authenticated':
+      return 'Saved to your DGFY account. Open Log in / Sign up to view your orders and bookings.';
+    case 'offer_signup':
+      return `Guest ${transactionLabel} complete. Create or sign in to a DGFY account to save this transaction.`;
+    case 'existing_account_download_only':
+      return `Guest ${transactionLabel} complete with an email that already has a DGFY account. Sign in to view saved ${transactionLabelPlural}.`;
+    case 'download_only_guest_no_email':
+      return `Guest ${transactionLabel} complete. Keep this ticket image or recover it later with your tracking details.`;
+    default:
+      return 'This ticket can be kept as an image for your gallery.';
+  }
+};
+
+const AccountPasswordField = ({
+  value,
+  onChange,
+  placeholder,
+  visible,
+  onToggle,
+  autoComplete,
+  required = true
+}) => (
+  <div style={{ position: 'relative' }}>
+    <input
+      type={visible ? 'text' : 'password'}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      autoComplete={autoComplete}
+      required={required}
+      style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 42px 11px 12px' }}
+    />
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={visible ? `Hide ${placeholder.toLowerCase()}` : `Show ${placeholder.toLowerCase()}`}
+      style={{ position: 'absolute', top: '50%', right: 10, transform: 'translateY(-50%)', border: 'none', background: 'transparent', color: '#64748b', cursor: 'pointer', display: 'inline-flex' }}
+    >
+      {visible ? <EyeOff size={17} /> : <Eye size={17} />}
+    </button>
+  </div>
+);
+
+const StorefrontAccountLegalAcknowledgement = ({
+  checked,
+  onChange,
+  disabled,
+  disabledReason,
+  documents,
+  snapshotText,
+  versionLabel
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const closeButtonRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    closeButtonRef.current?.focus();
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  return (
+    <div style={{ border: '1px solid #d8e8e3', background: '#f7fbfa', borderRadius: 12, padding: 12, display: 'grid', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, fontSize: 13, color: '#334155', lineHeight: 1.45, flex: '1 1 240px' }}>
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={onChange}
+            disabled={disabled}
+            required
+            style={{ marginTop: 2, width: 18, height: 18, accentColor: '#1a4e8d' }}
+          />
+          <span>I have reviewed and agree to the current DGFY Account Terms, Privacy Policy, and Marketplace Provider Terms.</span>
+        </label>
+        <button type="button" onClick={() => setIsOpen(true)} style={{ borderRadius: 9, border: '1px solid #1a4e8d', background: '#fff', color: '#1a4e8d', padding: '7px 10px', fontWeight: 800, cursor: 'pointer' }}>
+          View terms
+        </button>
+      </div>
+      {disabledReason && <p style={{ margin: 0, borderRadius: 9, background: '#fff7ed', color: '#b45309', padding: '8px 10px', fontSize: 12 }}>{disabledReason}</p>}
+      {versionLabel && <p style={{ margin: 0, fontSize: 11, color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>{versionLabel}</p>}
+      {isOpen && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(15,23,42,.62)' }}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsOpen(false);
+            }
+          }}
+        >
+          <div role="dialog" aria-modal="true" aria-labelledby="storefront-account-terms-title" style={{ width: 'min(680px, 100%)', maxHeight: '86vh', overflowY: 'auto', borderRadius: 16, background: '#fff', boxShadow: '0 24px 60px rgba(15,23,42,.24)', padding: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <h3 id="storefront-account-terms-title" style={{ margin: 0, fontSize: 18, color: '#0f172a' }}>Current DGFY Terms</h3>
+                {versionLabel && <p style={{ margin: '4px 0 0', fontSize: 11, color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>{versionLabel}</p>}
+              </div>
+              <button ref={closeButtonRef} type="button" onClick={() => setIsOpen(false)} style={{ borderRadius: 9, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '7px 10px', fontWeight: 800, cursor: 'pointer' }}>
+                Close
+              </button>
+            </div>
+            <div style={{ marginTop: 14, display: 'grid', gap: 10 }}>
+              {documents.map((document) => (
+                <section key={document.key || document.version} style={{ border: '1px solid #e2e8f0', background: '#f8fafc', borderRadius: 12, padding: 12 }}>
+                  <h4 style={{ margin: 0, color: '#0f172a', fontSize: 14 }}>{document.title} <span style={{ color: '#64748b', fontSize: 12 }}>({document.version})</span></h4>
+                  <p style={{ margin: '8px 0 0', color: '#475569', fontSize: 12, lineHeight: 1.5 }}>{document.summary}</p>
+                  {document.href && (
+                    <a href={document.href} target="_blank" rel="noreferrer" style={{ marginTop: 8, display: 'inline-flex', color: '#1a4e8d', fontSize: 12, fontWeight: 800 }}>
+                      Open full terms
+                    </a>
+                  )}
+                </section>
+              ))}
+            </div>
+            {snapshotText && <p style={{ margin: '12px 0 0', borderRadius: 12, background: '#f7fbfa', padding: 12, color: '#475569', fontSize: 12, lineHeight: 1.5 }}>{snapshotText}</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const StorefrontAccountAuthForm = ({
+  accountAuthMode,
+  setAccountAuthMode,
+  accountAuthForm,
+  setAccountAuthForm,
+  accountAuthLoading,
+  accountPasswordVisible,
+  setAccountPasswordVisible,
+  accountConfirmPasswordVisible,
+  setAccountConfirmPasswordVisible,
+  accountLegalTermsLoading,
+  accountLegalTermsUnavailable,
+  accountLegalDisabledReason,
+  accountLegalDocuments,
+  accountLegalSnapshot,
+  onSubmit,
+  isTwoColumn,
+  accentColor = '#1a4e8d',
+  submitRegisterLabel = 'Create DGFY Account',
+  formStyle = {}
+}) => {
+  const inputStyle = { border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' };
+  const modeOptions = [
+    { id: 'login', label: 'Sign in' },
+    { id: 'register', label: 'Create account' }
+  ];
+
+  return (
+    <form onSubmit={onSubmit} style={{ display: 'grid', gap: 10, ...formStyle }}>
+      <div style={{ display: 'inline-flex', border: '1px solid #cbd5e1', borderRadius: 999, padding: 3, justifySelf: 'start', background: '#f8fafc' }}>
+        {modeOptions.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => setAccountAuthMode(option.id)}
+            style={{
+              border: 'none',
+              borderRadius: 999,
+              padding: '7px 12px',
+              background: accountAuthMode === option.id ? accentColor : 'transparent',
+              color: accountAuthMode === option.id ? '#fff' : '#334155',
+              fontWeight: 800,
+              cursor: 'pointer'
+            }}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      {accountAuthMode === 'register' && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: isTwoColumn ? '1fr 1fr' : '1fr', gap: 10 }}>
+            <input value={accountAuthForm.lastName} onChange={(event) => setAccountAuthForm((current) => ({ ...current, lastName: event.target.value }))} placeholder="Last name" required style={inputStyle} />
+            <input value={accountAuthForm.firstName} onChange={(event) => setAccountAuthForm((current) => ({ ...current, firstName: event.target.value }))} placeholder="First name" required style={inputStyle} />
+          </div>
+          <input value={accountAuthForm.middleName} onChange={(event) => setAccountAuthForm((current) => ({ ...current, middleName: event.target.value }))} placeholder="Middle name (optional)" style={inputStyle} />
+        </>
+      )}
+      <input type="email" value={accountAuthForm.email} onChange={(event) => setAccountAuthForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" required style={inputStyle} />
+      {accountAuthMode === 'register' && (
+        <input value={accountAuthForm.phone} onChange={(event) => setAccountAuthForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Contact number" required style={inputStyle} />
+      )}
+      <AccountPasswordField
+        value={accountAuthForm.password}
+        onChange={(event) => setAccountAuthForm((current) => ({ ...current, password: event.target.value }))}
+        placeholder="Password"
+        autoComplete={accountAuthMode === 'register' ? 'new-password' : 'current-password'}
+        visible={accountPasswordVisible}
+        onToggle={() => setAccountPasswordVisible((current) => !current)}
+      />
+      {accountAuthMode === 'register' && (
+        <>
+          <AccountPasswordField
+            value={accountAuthForm.confirmPassword}
+            onChange={(event) => setAccountAuthForm((current) => ({ ...current, confirmPassword: event.target.value }))}
+            placeholder="Confirm password"
+            autoComplete="new-password"
+            visible={accountConfirmPasswordVisible}
+            onToggle={() => setAccountConfirmPasswordVisible((current) => !current)}
+          />
+          {accountLegalTermsLoading && <p style={{ margin: 0, color: '#64748b', fontSize: 12 }}>Loading current DGFY terms...</p>}
+          <StorefrontAccountLegalAcknowledgement
+            checked={accountAuthForm.acceptedTerms}
+            onChange={(event) => setAccountAuthForm((current) => ({ ...current, acceptedTerms: event.target.checked }))}
+            disabled={accountAuthLoading || accountLegalTermsUnavailable}
+            disabledReason={accountLegalTermsUnavailable ? accountLegalDisabledReason : ''}
+            documents={accountLegalDocuments}
+            snapshotText={accountLegalSnapshot.acknowledgement_text}
+            versionLabel={accountLegalSnapshot.marketplace_terms_version ? `Marketplace terms version ${accountLegalSnapshot.marketplace_terms_version}` : ''}
+          />
+        </>
+      )}
+      <button
+        type="submit"
+        disabled={accountAuthLoading || (accountAuthMode === 'register' && (!accountAuthForm.acceptedTerms || accountLegalTermsUnavailable))}
+        style={{ borderRadius: 12, border: `1px solid ${accentColor}`, background: accentColor, color: '#fff', padding: '11px 14px', fontWeight: 800, cursor: accountAuthLoading ? 'wait' : 'pointer' }}
+      >
+        {accountAuthLoading ? 'Working...' : accountAuthMode === 'register' ? submitRegisterLabel : 'Sign in with DGFY'}
+      </button>
+    </form>
+  );
 };
 
 const openBusinessRegistration = () => {
@@ -2321,7 +2583,7 @@ const FnbHero = ({
               style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: heroTheme.bodyFont }}
             >
               <HeartHandshake size={16} />
-              Account
+              Log in / Sign up
             </button>
           </div>
         </div>
@@ -3538,7 +3800,7 @@ const SimpleHero = ({
               style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: heroTheme.bodyFont }}
             >
               <HeartHandshake size={16} />
-              Account
+              Log in / Sign up
             </button>
           </div>
         </div>
@@ -3836,6 +4098,7 @@ export default function StorefrontApp() {
   const [activeDiscoveryFilterDropdown, setActiveDiscoveryFilterDropdown] = useState(null);
   const [featuredCategoryFilter, setFeaturedCategoryFilter] = useState('all');
   const [featuredBaseStores, setFeaturedBaseStores] = useState([]);
+  const [featuredCarouselPage, setFeaturedCarouselPage] = useState(0);
   const [renderDiscoveryResetButton, setRenderDiscoveryResetButton] = useState(false);
   const [showDiscoveryResetButton, setShowDiscoveryResetButton] = useState(false);
   const [highlightedStoreSlug, setHighlightedStoreSlug] = useState('');
@@ -3966,19 +4229,33 @@ export default function StorefrontApp() {
   const [accountAuthMode, setAccountAuthMode] = useState('login');
   const [accountAuthForm, setAccountAuthForm] = useState({
     firstName: '',
+    middleName: '',
     lastName: '',
     email: '',
     phone: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    acceptedTerms: false
   });
   const [accountAuthLoading, setAccountAuthLoading] = useState(false);
   const [accountPasswordVisible, setAccountPasswordVisible] = useState(false);
+  const [accountConfirmPasswordVisible, setAccountConfirmPasswordVisible] = useState(false);
+  const [accountLegalTerms, setAccountLegalTerms] = useState(null);
+  const [accountLegalTermsLoading, setAccountLegalTermsLoading] = useState(false);
+  const [accountLegalTermsError, setAccountLegalTermsError] = useState('');
   const [accountActionState, setAccountActionState] = useState({ loadingKey: '', message: '', error: '' });
   const [accountAddressForm, setAccountAddressForm] = useState({ label: '', address_line: '' });
   const [accountRecoveryForm, setAccountRecoveryForm] = useState({ lookup: '', code: '' });
   const [accountRecoveryActivities, setAccountRecoveryActivities] = useState([]);
   const [accountReviewDrafts, setAccountReviewDrafts] = useState({});
+  const accountLegalSnapshot = getDgfyFlowSnapshot(accountLegalTerms, 'account_registration');
+  const accountLegalDocuments = getDgfyFlowDocuments(accountLegalTerms, 'account_registration');
+  const accountLegalTermsUnavailable = !accountLegalTerms
+    || Boolean(accountLegalTermsError)
+    || !hasDgfyAccountLegalVersions(accountLegalSnapshot);
+  const accountLegalDisabledReason = accountLegalTermsError
+    || (!accountLegalTerms ? DGFY_ACCOUNT_TERMS_UNAVAILABLE : '')
+    || (!hasDgfyAccountLegalVersions(accountLegalSnapshot) ? 'Current DGFY account terms are incomplete. Registration is disabled until the current terms are published.' : '');
 
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [checkoutTab, setCheckoutTab] = useState('checkout');
@@ -4017,6 +4294,31 @@ export default function StorefrontApp() {
       cancelled = true;
     };
   }, []);
+  useEffect(() => {
+    if (accountAuthMode !== 'register') return undefined;
+    if (accountLegalTerms || accountLegalTermsError) return undefined;
+
+    let cancelled = false;
+    setAccountLegalTermsLoading(true);
+    requestJson('/api/v1/dgfy/legal-terms/current', { cache: 'no-store' })
+      .then((data) => {
+        if (cancelled) return;
+        setAccountLegalTerms(data || null);
+        setAccountLegalTermsError('');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAccountLegalTerms(null);
+        setAccountLegalTermsError(DGFY_ACCOUNT_TERMS_UNAVAILABLE);
+      })
+      .finally(() => {
+        if (!cancelled) setAccountLegalTermsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accountAuthMode, accountLegalTerms, accountLegalTermsError]);
   const [viewportWidth, setViewportWidth] = useState(() => (
     typeof window === 'undefined' ? 1280 : window.innerWidth
   ));
@@ -6818,17 +7120,40 @@ export default function StorefrontApp() {
   const handleDgfyAccountAuth = async (event) => {
     event.preventDefault();
     setAccountPanel((prev) => ({ ...prev, error: '' }));
+    if (accountAuthMode === 'register') {
+      if (!accountAuthForm.firstName.trim() || !accountAuthForm.lastName.trim()) {
+        setAccountPanel((prev) => ({ ...prev, error: 'Last name and first name are required.' }));
+        return;
+      }
+      if (accountAuthForm.password !== accountAuthForm.confirmPassword) {
+        setAccountPanel((prev) => ({ ...prev, error: 'Passwords do not match.' }));
+        return;
+      }
+      if (!accountAuthForm.acceptedTerms) {
+        setAccountPanel((prev) => ({ ...prev, error: 'Accept the DGFY account terms before creating an account.' }));
+        return;
+      }
+      if (accountLegalTermsUnavailable) {
+        setAccountPanel((prev) => ({ ...prev, error: accountLegalDisabledReason || DGFY_ACCOUNT_TERMS_UNAVAILABLE }));
+        return;
+      }
+    }
     setAccountAuthLoading(true);
     try {
       const endpoint = accountAuthMode === 'register' ? '/api/v1/dgfy/auth/register' : '/api/v1/dgfy/auth/login';
       const payload = accountAuthMode === 'register'
         ? {
             first_name: accountAuthForm.firstName,
+            middle_name: accountAuthForm.middleName,
             last_name: accountAuthForm.lastName,
             email: accountAuthForm.email,
             phone: accountAuthForm.phone,
             password: accountAuthForm.password,
-            confirm_password: accountAuthForm.confirmPassword
+            confirm_password: accountAuthForm.confirmPassword,
+            accepted_terms: true,
+            terms_version: accountLegalSnapshot.terms_version,
+            privacy_version: accountLegalSnapshot.privacy_version,
+            marketplace_terms_version: accountLegalSnapshot.marketplace_terms_version
           }
         : {
             email: accountAuthForm.email,
@@ -6969,6 +7294,41 @@ export default function StorefrontApp() {
       })
       .slice(0, 10);
   }, [featuredBaseStores, featuredCategoryFilter]);
+  const featuredCarouselStep = 304;
+  const featuredCarouselPageCount = useMemo(
+    () => Math.max(1, Math.min(5, Math.ceil(featuredVisibleStores.length / 2))),
+    [featuredVisibleStores.length]
+  );
+  const getFeaturedCarouselPageForScroll = useCallback((scrollLeft = 0) => {
+    const rawPage = Math.round(Number(scrollLeft || 0) / featuredCarouselStep);
+    return Math.max(0, Math.min(featuredCarouselPageCount - 1, rawPage));
+  }, [featuredCarouselPageCount, featuredCarouselStep]);
+  const scrollFeaturedCarouselToPage = useCallback((page) => {
+    const nextPage = Math.max(0, Math.min(featuredCarouselPageCount - 1, Number(page || 0)));
+    setFeaturedCarouselPage(nextPage);
+    featuredCarouselRef.current?.scrollTo?.({ left: nextPage * featuredCarouselStep, behavior: 'smooth' });
+  }, [featuredCarouselPageCount, featuredCarouselStep]);
+  const scrollFeaturedCarouselByPage = useCallback((direction) => {
+    const currentPage = getFeaturedCarouselPageForScroll(featuredCarouselRef.current?.scrollLeft || 0);
+    scrollFeaturedCarouselToPage(currentPage + direction);
+  }, [getFeaturedCarouselPageForScroll, scrollFeaturedCarouselToPage]);
+  useEffect(() => {
+    setFeaturedCarouselPage(0);
+    featuredCarouselRef.current?.scrollTo?.({ left: 0, behavior: 'auto' });
+  }, [featuredCategoryFilter, featuredVisibleStores.length]);
+  useEffect(() => {
+    const carousel = featuredCarouselRef.current;
+    if (!carousel) return undefined;
+
+    const syncFeaturedCarouselPage = () => {
+      const nextPage = getFeaturedCarouselPageForScroll(carousel.scrollLeft);
+      setFeaturedCarouselPage((currentPage) => (currentPage === nextPage ? currentPage : nextPage));
+    };
+
+    syncFeaturedCarouselPage();
+    carousel.addEventListener('scroll', syncFeaturedCarouselPage, { passive: true });
+    return () => carousel.removeEventListener('scroll', syncFeaturedCarouselPage);
+  }, [getFeaturedCarouselPageForScroll, featuredVisibleStores.length]);
   const discoveryBusinessModeOptions = useMemo(() => ([
     ['all', 'Category: All'],
     ...WORKFLOW_MODE_SELECT_VALUES.map((modeKey) => [
@@ -8000,49 +8360,26 @@ export default function StorefrontApp() {
                 {accountActionState.error && <p style={{ color: '#b91c1c', margin: 0, fontSize: 13 }}>{accountActionState.error}</p>}
 
                 {!accountPanel.me && (
-                  <form onSubmit={handleDgfyAccountAuth} style={{ display: 'grid', gap: 10 }}>
-                    <div style={{ display: 'inline-flex', border: '1px solid #cbd5e1', borderRadius: 999, padding: 3, justifySelf: 'start', background: '#f8fafc' }}>
-                      {[
-                        { id: 'login', label: 'Sign in' },
-                        { id: 'register', label: 'Create account' }
-                      ].map((option) => (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => setAccountAuthMode(option.id)}
-                          style={{
-                            border: 'none',
-                            borderRadius: 999,
-                            padding: '7px 12px',
-                            background: accountAuthMode === option.id ? '#1a4e8d' : 'transparent',
-                            color: accountAuthMode === option.id ? '#fff' : '#334155',
-                            fontWeight: 800,
-                            cursor: 'pointer'
-                          }}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                    {accountAuthMode === 'register' && (
-                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
-                        <input value={accountAuthForm.firstName} onChange={(event) => setAccountAuthForm((current) => ({ ...current, firstName: event.target.value }))} placeholder="First name" required style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' }} />
-                        <input value={accountAuthForm.lastName} onChange={(event) => setAccountAuthForm((current) => ({ ...current, lastName: event.target.value }))} placeholder="Last name" required style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' }} />
-                        <input value={accountAuthForm.phone} onChange={(event) => setAccountAuthForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Phone number" required style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' }} />
-                        <input type={accountPasswordVisible ? 'text' : 'password'} value={accountAuthForm.confirmPassword} onChange={(event) => setAccountAuthForm((current) => ({ ...current, confirmPassword: event.target.value }))} placeholder="Confirm password" required style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' }} />
-                      </div>
-                    )}
-                    <input type="email" value={accountAuthForm.email} onChange={(event) => setAccountAuthForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" required style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' }} />
-                    <div style={{ position: 'relative' }}>
-                      <input type={accountPasswordVisible ? 'text' : 'password'} value={accountAuthForm.password} onChange={(event) => setAccountAuthForm((current) => ({ ...current, password: event.target.value }))} placeholder="Password" required style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 42px 11px 12px' }} />
-                      <button type="button" onClick={() => setAccountPasswordVisible((current) => !current)} aria-label={accountPasswordVisible ? 'Hide password' : 'Show password'} style={{ position: 'absolute', top: '50%', right: 10, transform: 'translateY(-50%)', border: 'none', background: 'transparent', color: '#64748b', cursor: 'pointer', display: 'inline-flex' }}>
-                        {accountPasswordVisible ? <EyeOff size={17} /> : <Eye size={17} />}
-                      </button>
-                    </div>
-                    <button type="submit" disabled={accountAuthLoading} style={{ borderRadius: 12, border: '1px solid #1a4e8d', background: '#1a4e8d', color: '#fff', padding: '11px 14px', fontWeight: 800, cursor: 'pointer' }}>
-                      {accountAuthLoading ? 'Working...' : accountAuthMode === 'register' ? 'Create DGFY Account' : 'Sign in with DGFY'}
-                    </button>
-                  </form>
+                  <StorefrontAccountAuthForm
+                    accountAuthMode={accountAuthMode}
+                    setAccountAuthMode={setAccountAuthMode}
+                    accountAuthForm={accountAuthForm}
+                    setAccountAuthForm={setAccountAuthForm}
+                    accountAuthLoading={accountAuthLoading}
+                    accountPasswordVisible={accountPasswordVisible}
+                    setAccountPasswordVisible={setAccountPasswordVisible}
+                    accountConfirmPasswordVisible={accountConfirmPasswordVisible}
+                    setAccountConfirmPasswordVisible={setAccountConfirmPasswordVisible}
+                    accountLegalTermsLoading={accountLegalTermsLoading}
+                    accountLegalTermsUnavailable={accountLegalTermsUnavailable}
+                    accountLegalDisabledReason={accountLegalDisabledReason}
+                    accountLegalDocuments={accountLegalDocuments}
+                    accountLegalSnapshot={accountLegalSnapshot}
+                    onSubmit={handleDgfyAccountAuth}
+                    isTwoColumn={!isMobileViewport}
+                    accentColor="#1a4e8d"
+                    submitRegisterLabel="Create DGFY Account"
+                  />
                 )}
 
                 {!accountPanel.me && (
@@ -8072,7 +8409,7 @@ export default function StorefrontApp() {
                 {accountPanel.me && (
                   <div style={{ display: 'grid', gap: 12 }}>
                     <section style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#f8fafc' }}>
-                      <strong>{`${accountPanel.me.first_name || ''} ${accountPanel.me.last_name || ''}`.trim() || accountPanel.me.name || accountPanel.me.email || 'Customer'}</strong>
+                      <strong>{[accountPanel.me.first_name, accountPanel.me.middle_name, accountPanel.me.last_name].filter(Boolean).join(' ') || accountPanel.me.name || accountPanel.me.email || 'Customer'}</strong>
                       <div style={{ fontSize: 12, color: '#64748b' }}>{accountPanel.me.email} {accountPanel.me.phone ? `- ${accountPanel.me.phone}` : ''}</div>
                       <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         <button type="button" onClick={handleDgfyAccountLogout} style={{ borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '7px 10px', fontWeight: 700 }}>Sign out</button>
@@ -9150,15 +9487,43 @@ export default function StorefrontApp() {
 
                       {/* Carousel Controls */}
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 20, marginTop: 16 }}>
-                        <div onClick={() => featuredCarouselRef.current?.scrollBy({ left: -304, behavior: 'smooth' })} style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: '#94a3b8', cursor: 'pointer', transition: 'all 0.2s', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }} onMouseOver={(e)=>e.currentTarget.style.color='#1a4e8d'} onMouseOut={(e)=>e.currentTarget.style.color='#94a3b8'}><ChevronLeft size={20} /></div>
+                        <button
+                          type="button"
+                          onClick={() => scrollFeaturedCarouselByPage(-1)}
+                          disabled={featuredCarouselPage === 0}
+                          aria-label="Show previous featured merchants"
+                          style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: featuredCarouselPage === 0 ? '#cbd5e1' : '#94a3b8', cursor: featuredCarouselPage === 0 ? 'not-allowed' : 'pointer', transition: 'all 0.2s', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }}
+                          onMouseOver={(e) => { if (featuredCarouselPage !== 0) e.currentTarget.style.color = '#1a4e8d'; }}
+                          onMouseOut={(e) => { e.currentTarget.style.color = featuredCarouselPage === 0 ? '#cbd5e1' : '#94a3b8'; }}
+                        >
+                          <ChevronLeft size={20} />
+                        </button>
                         <div style={{ display: 'flex', gap: 8 }}>
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#1a4e8d' }} />
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 304, behavior: 'smooth' })} />
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 608, behavior: 'smooth' })} />
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 912, behavior: 'smooth' })} />
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 1216, behavior: 'smooth' })} />
+                          {Array.from({ length: featuredCarouselPageCount }, (_, pageIndex) => {
+                            const isActivePage = featuredCarouselPage === pageIndex;
+                            return (
+                              <button
+                                key={pageIndex}
+                                type="button"
+                                onClick={() => scrollFeaturedCarouselToPage(pageIndex)}
+                                aria-label={`Show featured merchants page ${pageIndex + 1}`}
+                                aria-current={isActivePage ? 'page' : undefined}
+                                style={{ width: 8, height: 8, borderRadius: '50%', border: 0, padding: 0, background: isActivePage ? '#1a4e8d' : '#e2e8f0', cursor: 'pointer' }}
+                              />
+                            );
+                          })}
                         </div>
-                        <div onClick={() => featuredCarouselRef.current?.scrollBy({ left: 304, behavior: 'smooth' })} style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: '#1a4e8d', cursor: 'pointer', transition: 'all 0.2s', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }} onMouseOver={(e)=>{e.currentTarget.style.background='#f8fafc'}} onMouseOut={(e)=>{e.currentTarget.style.background='#fff'}}><ChevronRight size={20} /></div>
+                        <button
+                          type="button"
+                          onClick={() => scrollFeaturedCarouselByPage(1)}
+                          disabled={featuredCarouselPage >= featuredCarouselPageCount - 1}
+                          aria-label="Show next featured merchants"
+                          style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: featuredCarouselPage >= featuredCarouselPageCount - 1 ? '#cbd5e1' : '#1a4e8d', cursor: featuredCarouselPage >= featuredCarouselPageCount - 1 ? 'not-allowed' : 'pointer', transition: 'all 0.2s', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }}
+                          onMouseOver={(e) => { if (featuredCarouselPage < featuredCarouselPageCount - 1) e.currentTarget.style.background = '#f8fafc'; }}
+                          onMouseOut={(e) => { e.currentTarget.style.background = '#fff'; }}
+                        >
+                          <ChevronRight size={20} />
+                        </button>
                       </div>
                     </section>
 
@@ -15157,7 +15522,7 @@ return (
                 { id: 'checkout', label: isServicesMode && hasServiceCart ? 'Customer Details' : 'Checkout' },
                 ...(!isFnbMode ? [
                   { id: 'track', label: 'Track' },
-                  { id: 'account', label: 'Account' }
+                  { id: 'account', label: 'Log in / Sign up' }
                 ] : [])
               ].map((tab) => (
                 <button
@@ -16064,20 +16429,18 @@ return (
                         <p style={{ margin: 0, fontSize: 13, color: '#0f766e' }}>
                           {checkoutResult?.booking ? 'Booking created.' : 'Order placed.'} Reference: <strong>{checkoutResult.booking?.public_reference || checkoutResult.tracking_pin}</strong>
                         </p>
-                        {checkoutResult?.account_action?.show_signup === true && (
-                          <p style={{ margin: 0, fontSize: 12, color: '#0f766e' }}>
-                            You can sign in or register to save this latest transaction to your account.
-                          </p>
+                        <p style={{ margin: 0, fontSize: 12, color: '#0f766e' }}>
+                          {getCheckoutAccountActionMessage(checkoutResult?.account_action, { isBooking: Boolean(checkoutResult?.booking) })}
+                        </p>
+                        {['offer_signup', 'existing_account_download_only'].includes(checkoutResult?.account_action?.type) && (
+                          <button type="button" onClick={openAccountPanel} style={{ justifySelf: 'start', borderRadius: 10, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 800 }}>
+                            Log in / Sign up
+                          </button>
                         )}
                         {checkoutResult?.payment?.checkout_url && (
                           <a href={checkoutResult.payment.checkout_url} target="_blank" rel="noreferrer" style={{ justifySelf: 'start', borderRadius: 10, border: '1px solid #0f766e', background: '#0f766e', color: '#fff', padding: '8px 12px', fontWeight: 800, textDecoration: 'none' }}>
                             Pay Now
                           </a>
-                        )}
-                        {checkoutResult?.account_action?.show_signup !== true && (
-                          <p style={{ margin: 0, fontSize: 12, color: '#0f766e' }}>
-                            This ticket can be kept as an image for your gallery.
-                          </p>
                         )}
                         <button type="button" onClick={handleDownloadCheckoutImage} style={{ justifySelf: 'start', borderRadius: 10, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 800 }}>
                           Download Image
@@ -16168,55 +16531,31 @@ return (
                   {accountPanel.loading && <p style={{ color: '#64748b' }}>Loading account...</p>}
                   {accountPanel.error && <p style={{ color: '#b91c1c' }}>{accountPanel.error}</p>}
                   {!accountPanel.me && (
-                    <form onSubmit={handleDgfyAccountAuth} style={{ marginTop: 12, display: 'grid', gap: 10 }}>
-                      <div style={{ display: 'inline-flex', border: '1px solid #cbd5e1', borderRadius: 999, padding: 3, justifySelf: 'start', background: '#f8fafc' }}>
-                        {[
-                          { id: 'login', label: 'Sign in' },
-                          { id: 'register', label: 'Create account' }
-                        ].map((option) => (
-                          <button
-                            key={option.id}
-                            type="button"
-                            onClick={() => setAccountAuthMode(option.id)}
-                            style={{
-                              border: 'none',
-                              borderRadius: 999,
-                              padding: '7px 12px',
-                              background: accountAuthMode === option.id ? '#0f766e' : 'transparent',
-                              color: accountAuthMode === option.id ? '#fff' : '#334155',
-                              fontWeight: 800,
-                              cursor: 'pointer'
-                            }}
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
-                      {accountAuthMode === 'register' && (
-                        <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr' : '1fr', gap: 10 }}>
-                          <input value={accountAuthForm.firstName} onChange={(event) => setAccountAuthForm((current) => ({ ...current, firstName: event.target.value }))} placeholder="First name" required style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' }} />
-                          <input value={accountAuthForm.lastName} onChange={(event) => setAccountAuthForm((current) => ({ ...current, lastName: event.target.value }))} placeholder="Last name" required style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' }} />
-                          <input value={accountAuthForm.phone} onChange={(event) => setAccountAuthForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Phone number" required style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' }} />
-                          <input type={accountPasswordVisible ? 'text' : 'password'} value={accountAuthForm.confirmPassword} onChange={(event) => setAccountAuthForm((current) => ({ ...current, confirmPassword: event.target.value }))} placeholder="Confirm password" required style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' }} />
-                        </div>
-                      )}
-                      <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? '1fr 1fr auto' : '1fr', gap: 10 }}>
-                        <input type="email" value={accountAuthForm.email} onChange={(event) => setAccountAuthForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" required style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' }} />
-                        <div style={{ position: 'relative' }}>
-                          <input type={accountPasswordVisible ? 'text' : 'password'} value={accountAuthForm.password} onChange={(event) => setAccountAuthForm((current) => ({ ...current, password: event.target.value }))} placeholder="Password" required style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 42px 11px 12px' }} />
-                          <button type="button" onClick={() => setAccountPasswordVisible((current) => !current)} aria-label={accountPasswordVisible ? 'Hide password' : 'Show password'} style={{ position: 'absolute', top: '50%', right: 10, transform: 'translateY(-50%)', border: 'none', background: 'transparent', color: '#64748b', cursor: 'pointer', display: 'inline-flex' }}>
-                            {accountPasswordVisible ? <EyeOff size={17} /> : <Eye size={17} />}
-                          </button>
-                        </div>
-                        <button type="submit" disabled={accountAuthLoading} style={{ borderRadius: 12, border: '1px solid #0f766e', background: '#0f766e', color: '#fff', padding: '10px 14px', fontWeight: 800, cursor: 'pointer' }}>
-                          {accountAuthLoading ? 'Working...' : accountAuthMode === 'register' ? 'Create' : 'Sign in'}
-                        </button>
-                      </div>
-                    </form>
+                    <StorefrontAccountAuthForm
+                      accountAuthMode={accountAuthMode}
+                      setAccountAuthMode={setAccountAuthMode}
+                      accountAuthForm={accountAuthForm}
+                      setAccountAuthForm={setAccountAuthForm}
+                      accountAuthLoading={accountAuthLoading}
+                      accountPasswordVisible={accountPasswordVisible}
+                      setAccountPasswordVisible={setAccountPasswordVisible}
+                      accountConfirmPasswordVisible={accountConfirmPasswordVisible}
+                      setAccountConfirmPasswordVisible={setAccountConfirmPasswordVisible}
+                      accountLegalTermsLoading={accountLegalTermsLoading}
+                      accountLegalTermsUnavailable={accountLegalTermsUnavailable}
+                      accountLegalDisabledReason={accountLegalDisabledReason}
+                      accountLegalDocuments={accountLegalDocuments}
+                      accountLegalSnapshot={accountLegalSnapshot}
+                      onSubmit={handleDgfyAccountAuth}
+                      isTwoColumn={isDesktopCheckout}
+                      accentColor="#0f766e"
+                      submitRegisterLabel="Create DGFY Account"
+                      formStyle={{ marginTop: 12 }}
+                    />
                   )}
                   {accountPanel.me && (
                     <div style={{ marginTop: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', padding: '10px 12px' }}>
-                      <strong>{accountPanel.me.name || `${accountPanel.me.first_name || ''} ${accountPanel.me.last_name || ''}`.trim() || accountPanel.me.email || 'Customer'}</strong>
+                      <strong>{accountPanel.me.name || [accountPanel.me.first_name, accountPanel.me.middle_name, accountPanel.me.last_name].filter(Boolean).join(' ') || accountPanel.me.email || 'Customer'}</strong>
                       <div style={{ fontSize: 12, color: '#64748b' }}>{accountPanel.me.email || accountPanel.me.phone || 'Signed in'}</div>
                       <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         <button type="button" onClick={handleDgfyAccountLogout} style={{ borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '7px 10px', fontWeight: 700 }}>
