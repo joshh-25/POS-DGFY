@@ -22,8 +22,12 @@ const ACTIVITY_COUNT_KEYS = {
     order: 'order_count',
     pos_order: 'order_count',
     service_booking: 'service_booking_count',
-    hospitality_booking: 'hospitality_booking_count'
+    hospitality_booking: 'hospitality_booking_count',
+    fnb_order: 'fnb_order_count'
 };
+const ORDER_ACTIVITY_TYPES = new Set(['order', 'fnb_order']);
+const BOOKING_ACTIVITY_TYPES = new Set(['service_booking', 'hospitality_booking']);
+const REVIEW_TARGET_TYPES = new Set(['product', 'service', 'hospitality_booking', 'fnb_order', 'fnb_item']);
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const normalizeReference = (value) => String(value || '').trim().toUpperCase();
@@ -39,20 +43,81 @@ const parseRequiredActivityTypes = (value) => {
         .filter((entry) => Object.prototype.hasOwnProperty.call(ACTIVITY_COUNT_KEYS, entry)))];
 };
 
-const publicActivity = (activity = {}) => ({
-    activity_id: activity.activity_id,
-    type: activity.activity_type,
-    reference: activity.reference,
-    store_slug: activity.store_slug,
-    store_name: activity.store_name,
-    status: activity.status,
-    status_label: activity.status_label,
-    payment_status: activity.payment_status,
-    total_amount: activity.total_amount,
-    currency: activity.currency || 'PHP',
-    occurred_at: activity.occurred_at,
-    display: activity.display_snapshot || {}
-});
+const buildReviewTargets = (activity = {}) => {
+    const display = activity.display_snapshot || {};
+    const activityType = activity.activity_type || (Array.isArray(display.lines) ? 'order' : null);
+    const targets = [];
+    if (activityType === 'order') {
+        (Array.isArray(display.lines) ? display.lines : []).forEach((line) => {
+            const itemId = parsePositiveInt(line.item_id);
+            if (itemId) targets.push({ target_type: 'product', target_id: itemId, label: line.name || 'Purchased item' });
+        });
+    }
+    if (activityType === 'fnb_order') {
+        targets.push({ target_type: 'fnb_order', target_id: parsePositiveInt(display.check_id) || parsePositiveInt(activity.activity_id), label: 'F&B order' });
+        (Array.isArray(display.lines) ? display.lines : []).forEach((line) => {
+            const itemId = parsePositiveInt(line.item_id);
+            if (itemId) targets.push({ target_type: 'fnb_item', target_id: itemId, label: line.name || 'Menu item' });
+        });
+    }
+    if (activityType === 'service_booking') {
+        targets.push({
+            target_type: 'service',
+            target_id: parsePositiveInt(display.service_item_id) || parsePositiveInt(display.booking_id) || parsePositiveInt(activity.activity_id),
+            label: display.service_name || 'Service booking'
+        });
+    }
+    if (activityType === 'hospitality_booking') {
+        targets.push({
+            target_type: 'hospitality_booking',
+            target_id: parsePositiveInt(display.reservation_id) || parsePositiveInt(activity.activity_id),
+            label: 'Hospitality booking'
+        });
+    }
+    return targets;
+};
+
+const buildAllowedActions = (activity = {}) => {
+    const status = String(activity.status || '').toLowerCase();
+    const hasLines = Array.isArray(activity.display_snapshot?.lines) && activity.display_snapshot.lines.length > 0;
+    return {
+        track: Boolean(activity.reference),
+        cancel: activity.activity_type === 'order' && ['placed', 'confirmed'].includes(status),
+        reorder: activity.activity_type === 'order' && hasLines,
+        rebook: BOOKING_ACTIVITY_TYPES.has(activity.activity_type),
+        review: isReviewEligibleActivity(activity) && buildReviewTargets(activity).length > 0
+    };
+};
+
+const publicActivity = (activity = {}) => {
+    const display = activity.display_snapshot || {};
+    return {
+        activity_id: activity.activity_id,
+        type: activity.activity_type,
+        type_label: {
+            order: 'Order',
+            service_booking: 'Service booking',
+            hospitality_booking: 'Hospitality booking',
+            fnb_order: 'F&B order'
+        }[activity.activity_type] || 'Activity',
+        reference: activity.reference,
+        store_slug: activity.store_slug,
+        store_name: activity.store_name,
+        store: { slug: activity.store_slug || null, name: activity.store_name || null },
+        status: activity.status,
+        status_label: activity.status_label,
+        payment_status: activity.payment_status,
+        total_amount: activity.total_amount,
+        currency: activity.currency || 'PHP',
+        occurred_at: activity.occurred_at,
+        display,
+        summary_lines: Array.isArray(display.lines)
+            ? display.lines.slice(0, 4).map((line) => ({ item_id: line.item_id || null, label: line.name || line.label || 'Item', quantity: Number(line.quantity || 1) }))
+            : [],
+        allowed_actions: buildAllowedActions(activity),
+        review_targets: buildReviewTargets(activity)
+    };
+};
 
 const genericRecoveryResponse = (extra = {}) => ({
     message: 'If matching orders exist, a recovery code has been sent by email.',
@@ -396,13 +461,73 @@ const defaultTenantHospitalityReservationReader = ({ tenant, batchSize, transact
     }
 });
 
+const defaultTenantFnbOrderReader = async ({ tenant, batchSize, transactionLimit }) => {
+    const rows = [];
+    await withTenantContext(tenant.id, async ({ sequelize }) => {
+        const FnbCheck = dbStore.get('FnbCheck');
+        const FnbCheckLine = dbStore.get('FnbCheckLine');
+        const PosTransaction = dbStore.get('PosTransaction');
+        const StoreCustomer = dbStore.get('StoreCustomer');
+        const Item = dbStore.get('Item');
+        if (!FnbCheck) return;
+        const checkAttributes = await existingModelAttributes(sequelize, FnbCheck);
+        if (!checkAttributes.includes('check_id')) return;
+        const include = [];
+        if (PosTransaction) {
+            const transactionAttributes = await existingModelAttributes(sequelize, PosTransaction);
+            if (transactionAttributes.length) {
+                const transactionInclude = [];
+                if (StoreCustomer) {
+                    const storeCustomerAttributes = await existingModelAttributes(sequelize, StoreCustomer);
+                    if (storeCustomerAttributes.length) transactionInclude.push({ model: StoreCustomer, as: 'storeCustomer', required: false, attributes: storeCustomerAttributes });
+                }
+                include.push({ model: PosTransaction, as: 'posTransaction', required: false, attributes: transactionAttributes, include: transactionInclude });
+            }
+        }
+        if (FnbCheckLine) {
+            const lineAttributes = await existingModelAttributes(sequelize, FnbCheckLine);
+            const itemAttributes = Item ? await existingModelAttributes(sequelize, Item) : [];
+            if (lineAttributes.length) include.push({
+                model: FnbCheckLine,
+                as: 'lines',
+                required: false,
+                attributes: lineAttributes,
+                ...(Item && itemAttributes.length ? { include: [{ model: Item, as: 'item', required: false, attributes: itemAttributes }] } : {})
+            });
+        }
+        const limit = safeLimit(batchSize, HISTORICAL_BACKFILL_ORDER_BATCH_SIZE, 1000);
+        const maxRows = transactionLimit === null || transactionLimit === undefined
+            ? Number.POSITIVE_INFINITY
+            : Math.max(1, Number.parseInt(transactionLimit, 10) || 1);
+        let lastId = 0;
+        while (rows.length < maxRows) {
+            const batch = await FnbCheck.findAll({
+                where: { check_id: { [Op.gt]: lastId } },
+                include,
+                attributes: checkAttributes,
+                order: [['check_id', 'ASC']],
+                limit: Math.min(limit, maxRows - rows.length)
+            });
+            if (!batch.length) break;
+            for (const row of batch) {
+                const plain = typeof row.toJSON === 'function' ? row.toJSON() : row;
+                rows.push(plain);
+                lastId = Number(plain.check_id || lastId);
+            }
+            if (batch.length < limit) break;
+        }
+    });
+    return rows;
+};
+
 const defaultTenantActivityReader = async ({ tenant, batchSize, transactionLimit }) => {
-    const [orders, serviceBookings, hospitalityReservations] = await Promise.all([
+    const [orders, serviceBookings, hospitalityReservations, fnbOrders] = await Promise.all([
         defaultTenantOrderReader({ tenant, batchSize, transactionLimit }),
         defaultTenantServiceBookingReader({ tenant, batchSize, transactionLimit }),
-        defaultTenantHospitalityReservationReader({ tenant, batchSize, transactionLimit })
+        defaultTenantHospitalityReservationReader({ tenant, batchSize, transactionLimit }),
+        defaultTenantFnbOrderReader({ tenant, batchSize, transactionLimit })
     ]);
-    return { orders, serviceBookings, hospitalityReservations };
+    return { orders, serviceBookings, hospitalityReservations, fnbOrders };
 };
 
 const serviceBookingActivityPayload = ({ tenant, booking, account }) => {
@@ -464,6 +589,41 @@ const hospitalityReservationActivityPayload = ({ tenant, reservation, account })
     };
 };
 
+const fnbOrderActivityPayload = ({ tenant, check, account }) => {
+    const posTransaction = check.posTransaction || {};
+    const storeCustomer = posTransaction.storeCustomer || check.storeCustomer || {};
+    const totalAmount = Number(posTransaction.total_amount ?? check.total_amount ?? 0);
+    const reference = normalizeReference(posTransaction.tracking_pin || check.public_reference || `FNB-${check.check_id}`);
+    return {
+        dgfy_account_id: account?.id || storeCustomer.dgfy_account_id || null,
+        tenant_id: tenant.id,
+        store_customer_id: posTransaction.store_customer_id || storeCustomer.customer_id || null,
+        activity_type: 'fnb_order',
+        reference,
+        store_slug: tenant.company_token || null,
+        store_name: tenant.name || null,
+        status: check.status || posTransaction.fulfillment_status || null,
+        status_label: check.status || posTransaction.status_label || null,
+        payment_status: posTransaction.payment_status || (check.status === 'paid' ? 'paid' : null),
+        total_amount: Number.isFinite(totalAmount) && totalAmount > 0 ? totalAmount : null,
+        customer_email: normalizeEmail(posTransaction.customer_email || storeCustomer.email) || null,
+        customer_phone: posTransaction.customer_phone || storeCustomer.phone || null,
+        display_snapshot: {
+            check_id: check.check_id || null,
+            order_method: check.order_method || null,
+            opened_at: check.opened_at || null,
+            closed_at: check.closed_at || null,
+            lines: (Array.isArray(check.lines) ? check.lines : []).map((line) => ({
+                item_id: line.item_id || line.item?.item_id || null,
+                name: line.item?.name || line.name || 'Menu item',
+                quantity: Number(line.quantity || 1),
+                price: Number(line.unit_price ?? line.price ?? 0)
+            }))
+        },
+        occurred_at: check.closed_at || check.opened_at || posTransaction.created_at || new Date()
+    };
+};
+
 const hashRecoveryCode = ({ lookup, code }) => (
     crypto
         .createHash('sha256')
@@ -510,7 +670,13 @@ export const buildListDgfyCustomerActivitiesUseCase = ({ repository = dgfyCustom
     try {
         const dgfyAccount = ensureAccount(account);
         const result = await repository.listActivitiesForAccount(dgfyAccount.id, {
-            type,
+            type: type || query.type || null,
+            tenantId: query.tenant_id || query.tenantId,
+            storeSlug: query.store_slug || query.storeSlug,
+            status: query.status,
+            paymentStatus: query.payment_status || query.paymentStatus,
+            dateFrom: query.date_from || query.dateFrom,
+            dateTo: query.date_to || query.dateTo,
             page: query.page,
             limit: query.limit
         });
@@ -693,10 +859,13 @@ export const buildSubmitDgfyCustomerReviewUseCase = ({ repository = dgfyCustomer
             throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'payload must be an object.', { statusCode: 422 });
         }
         const activityId = parsePositiveInt(body.activity_id);
-        const itemId = parsePositiveInt(body.item_id);
+        const requestedTargetType = String(body.target_type || (body.item_id ? 'product' : '')).trim().toLowerCase();
+        const targetType = REVIEW_TARGET_TYPES.has(requestedTargetType) ? requestedTargetType : null;
+        const targetId = parsePositiveInt(body.target_id ?? body.item_id);
+        const itemId = ['product', 'fnb_item'].includes(targetType) ? targetId : null;
         const rating = Number.parseInt(body.rating, 10);
-        if (!activityId || !itemId || !Number.isInteger(rating) || rating < 1 || rating > 5) {
-            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'activity_id, item_id, and rating 1-5 are required.', { statusCode: 422 });
+        if (!activityId || !targetType || !Number.isInteger(rating) || rating < 1 || rating > 5) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'activity_id, target_type, and rating 1-5 are required.', { statusCode: 422 });
         }
         const activityResult = await repository.listActivitiesForAccount(dgfyAccount.id, { limit: 100 });
         const activity = activityResult.rows.find((entry) => Number(entry.activity_id) === activityId);
@@ -706,26 +875,39 @@ export const buildSubmitDgfyCustomerReviewUseCase = ({ repository = dgfyCustomer
         if (!isReviewEligibleActivity(activity)) {
             throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Review requires a completed or paid purchase.', { statusCode: 403 });
         }
-        const purchased = Array.isArray(activity.display_snapshot?.lines)
-            && activity.display_snapshot.lines.some((line) => Number(line.item_id) === itemId);
-        if (!purchased) {
-            throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Review requires a purchased item.', { statusCode: 403 });
+        const eligibleTargets = buildReviewTargets(activity);
+        const target = eligibleTargets.find((entry) => entry.target_type === targetType && (
+            targetId ? Number(entry.target_id) === Number(targetId) : true
+        ));
+        if (!target) {
+            throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Review requires an eligible account activity target.', { statusCode: 403 });
         }
-        const existing = await repository.findReviewByAccountActivityItem({
-            dgfyAccountId: dgfyAccount.id,
-            activityId,
-            itemId
-        });
+        const reviewTargetId = targetId || parsePositiveInt(target.target_id) || activityId;
+        const existing = typeof repository.findReviewByAccountActivityTarget === 'function'
+            ? await repository.findReviewByAccountActivityTarget({
+                dgfyAccountId: dgfyAccount.id,
+                activityId,
+                targetType,
+                targetId: reviewTargetId
+            })
+            : await repository.findReviewByAccountActivityItem({
+                dgfyAccountId: dgfyAccount.id,
+                activityId,
+                itemId: itemId || reviewTargetId
+            });
         if (existing) {
-            throw new DomainError(DomainErrorCode.CONFLICT, 'A review already exists for this purchased item.', { statusCode: 409 });
+            throw new DomainError(DomainErrorCode.CONFLICT, 'A review already exists for this activity target.', { statusCode: 409 });
         }
         const review = await repository.createReview({
             dgfy_account_id: dgfyAccount.id,
             activity_id: activityId,
             tenant_id: activity.tenant_id,
             item_id: itemId,
+            target_type: targetType,
+            target_id: reviewTargetId,
             rating,
             comment: String(body.comment || '').trim().slice(0, 2000) || null,
+            anonymous: body.anonymous === true,
             status: 'pending'
         });
         return ok({ review });
@@ -738,12 +920,16 @@ export const buildListPublicDgfyCustomerReviewsUseCase = ({ repository = dgfyCus
     try {
         const tenantId = String(query.tenant_id || '').trim();
         const itemId = parsePositiveInt(query.item_id);
-        if (!tenantId && !itemId) {
-            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'tenant_id or item_id is required.', { statusCode: 422 });
+        const targetType = String(query.target_type || '').trim().toLowerCase() || null;
+        const targetId = parsePositiveInt(query.target_id);
+        if (!tenantId && !itemId && !targetType) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'tenant_id, item_id, or target_type is required.', { statusCode: 422 });
         }
         const result = await repository.listPublicReviews({
             tenantId: tenantId || null,
             itemId,
+            targetType,
+            targetId,
             limit: query.limit
         });
         return ok({ reviews: result.rows || [], summary: result.summary || { average_rating: null, total_count: 0 } });
@@ -757,6 +943,7 @@ export const buildListDgfyCustomerReviewsForModerationUseCase = ({ repository = 
         const result = await repository.listReviewsForModeration({
             status: String(query.status || 'pending').trim().toLowerCase(),
             tenantId: String(query.tenant_id || '').trim() || null,
+            targetType: String(query.target_type || '').trim().toLowerCase() || null,
             limit: query.limit,
             page: query.page
         });
@@ -817,7 +1004,9 @@ export const buildDgfyHistoricalBackfillUseCase = ({
         order_count: 0,
         service_booking_count: 0,
         hospitality_booking_count: 0,
+        fnb_order_count: 0,
         matched_account_count: 0,
+        unmatched_account_count: 0,
         activity_upsert_count: 0,
         loyalty_upsert_count: 0,
         failure_count: 0,
@@ -862,13 +1051,15 @@ export const buildDgfyHistoricalBackfillUseCase = ({
                                 transactionLimit: transactionLimitPerTenant
                             }),
                             serviceBookings: [],
-                            hospitalityReservations: []
+                            hospitalityReservations: [],
+                            fnbOrders: []
                         };
                     for (const order of activityRows.orders || []) {
                         summary.transaction_count += 1;
                         summary.order_count += 1;
                         const account = matchAccountForOrder(order, accountLookup);
                         if (account?.id) summary.matched_account_count += 1;
+                        else summary.unmatched_account_count += 1;
                         if (!dryRun) {
                             const storeCustomer = order.storeCustomer || {};
                             const beforeLoyalty = summary.loyalty_upsert_count;
@@ -893,6 +1084,7 @@ export const buildDgfyHistoricalBackfillUseCase = ({
                         summary.service_booking_count += 1;
                         const account = matchAccountForCustomerRecord(booking, accountLookup);
                         if (account?.id) summary.matched_account_count += 1;
+                        else summary.unmatched_account_count += 1;
                         if (!dryRun) {
                             const activity = await repository.upsertActivity(serviceBookingActivityPayload({ tenant, booking, account }));
                             if (activity) summary.activity_upsert_count += 1;
@@ -903,8 +1095,20 @@ export const buildDgfyHistoricalBackfillUseCase = ({
                         summary.hospitality_booking_count += 1;
                         const account = matchAccountForCustomerRecord(reservation, accountLookup);
                         if (account?.id) summary.matched_account_count += 1;
+                        else summary.unmatched_account_count += 1;
                         if (!dryRun) {
                             const activity = await repository.upsertActivity(hospitalityReservationActivityPayload({ tenant, reservation, account }));
+                            if (activity) summary.activity_upsert_count += 1;
+                        }
+                    }
+                    for (const fnbOrder of activityRows.fnbOrders || []) {
+                        summary.transaction_count += 1;
+                        summary.fnb_order_count += 1;
+                        const account = matchAccountForOrder(fnbOrder.posTransaction || fnbOrder, accountLookup);
+                        if (account?.id) summary.matched_account_count += 1;
+                        else summary.unmatched_account_count += 1;
+                        if (!dryRun) {
+                            const activity = await repository.upsertActivity(fnbOrderActivityPayload({ tenant, check: fnbOrder, account }));
                             if (activity) summary.activity_upsert_count += 1;
                         }
                     }
@@ -945,6 +1149,7 @@ export const buildDgfyHistoricalBackfillUseCase = ({
                 order_count: summary.order_count,
                 service_booking_count: summary.service_booking_count,
                 hospitality_booking_count: summary.hospitality_booking_count,
+                fnb_order_count: summary.fnb_order_count,
                 matched_account_count: summary.matched_account_count,
                 activity_upsert_count: summary.activity_upsert_count,
                 loyalty_upsert_count: summary.loyalty_upsert_count,

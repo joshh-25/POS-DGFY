@@ -104,9 +104,9 @@ export const acceptDgfyInvitationUseCase = buildAcceptDgfyInvitationUseCase({
 });
 
 export const getDgfyCustomerDashboardUseCase = buildGetDgfyCustomerDashboardUseCase();
-const listDgfyCustomerActivitiesUseCase = buildListDgfyCustomerActivitiesUseCase();
+export const listDgfyCustomerActivitiesUseCase = buildListDgfyCustomerActivitiesUseCase();
 export const listDgfyCustomerOrdersUseCase = (args = {}) => listDgfyCustomerActivitiesUseCase({ ...args, type: 'order' });
-export const listDgfyCustomerBookingsUseCase = (args = {}) => listDgfyCustomerActivitiesUseCase({ ...args, type: 'service_booking' });
+export const listDgfyCustomerBookingsUseCase = (args = {}) => listDgfyCustomerActivitiesUseCase({ ...args, type: 'booking' });
 export const trackDgfyCustomerReferenceUseCase = buildTrackDgfyCustomerReferenceUseCase();
 export const cancelDgfyCustomerOrderUseCase = buildCancelDgfyCustomerOrderUseCase();
 export const reorderDgfyCustomerOrderUseCase = buildReorderDgfyCustomerOrderUseCase();

@@ -26,12 +26,14 @@ import {
     getDgfyCustomerLoyalty,
     listDgfyCustomerReviewsForModeration,
     listDgfyCustomerAddresses,
+    listDgfyCustomerActivities,
     listDgfyCustomerBookings,
     listDgfyCustomerOrders,
     listPublicDgfyCustomerReviews,
     moderateDgfyCustomerReview,
     reorderDgfyCustomerOrder,
     requestDgfyTrackingRecovery,
+    setDefaultDgfyCustomerAddress,
     submitDgfyCustomerReview,
     trackDgfyCustomerReference,
     updateDgfyCustomerAddress,
@@ -56,6 +58,7 @@ router.post('/auth/handoff', authenticateDgfyAccount, createDgfyHandoff);
 router.post('/invitations/:membership_id/accept', authenticateDgfyAccount, acceptDgfyInvitation);
 
 router.get('/customer/dashboard', authenticateDgfyAccount, getDgfyCustomerDashboard);
+router.get('/customer/activities', authenticateDgfyAccount, listDgfyCustomerActivities);
 router.get('/customer/orders', authenticateDgfyAccount, listDgfyCustomerOrders);
 router.get('/customer/bookings', authenticateDgfyAccount, listDgfyCustomerBookings);
 router.post('/customer/track', authenticateDgfyAccount, trackDgfyCustomerReference);
@@ -64,6 +67,7 @@ router.post('/customer/orders/:reference/reorder', authenticateDgfyAccount, reor
 router.get('/customer/addresses', authenticateDgfyAccount, listDgfyCustomerAddresses);
 router.post('/customer/addresses', authenticateDgfyAccount, createDgfyCustomerAddress);
 router.put('/customer/addresses/:address_id', authenticateDgfyAccount, updateDgfyCustomerAddress);
+router.patch('/customer/addresses/:address_id/default', authenticateDgfyAccount, setDefaultDgfyCustomerAddress);
 router.patch('/customer/addresses/:address_id', authenticateDgfyAccount, updateDgfyCustomerAddress);
 router.delete('/customer/addresses/:address_id', authenticateDgfyAccount, deleteDgfyCustomerAddress);
 router.get('/customer/loyalty', authenticateDgfyAccount, getDgfyCustomerLoyalty);

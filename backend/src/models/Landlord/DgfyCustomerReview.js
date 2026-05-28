@@ -23,7 +23,16 @@ export default (sequelize) => {
         },
         item_id: {
             type: DataTypes.INTEGER,
-            allowNull: false
+            allowNull: true
+        },
+        target_type: {
+            type: DataTypes.ENUM('product', 'service', 'hospitality_booking', 'fnb_order', 'fnb_item'),
+            allowNull: false,
+            defaultValue: 'product'
+        },
+        target_id: {
+            type: DataTypes.INTEGER,
+            allowNull: true
         },
         rating: {
             type: DataTypes.INTEGER,
@@ -54,6 +63,11 @@ export default (sequelize) => {
         review_note: {
             type: DataTypes.TEXT,
             allowNull: true
+        },
+        anonymous: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false
         }
     }, {
         sequelize,
@@ -63,7 +77,9 @@ export default (sequelize) => {
         timestamps: true,
         indexes: [
             { fields: ['dgfy_account_id', 'tenant_id', 'item_id'], name: 'idx_dgfy_customer_reviews_account_item' },
-            { fields: ['tenant_id', 'item_id', 'status'], name: 'idx_dgfy_customer_reviews_public' }
+            { fields: ['tenant_id', 'item_id', 'status'], name: 'idx_dgfy_customer_reviews_public' },
+            { fields: ['dgfy_account_id', 'activity_id', 'target_type', 'target_id'], name: 'idx_dgfy_customer_reviews_account_target' },
+            { fields: ['tenant_id', 'target_type', 'target_id', 'status'], name: 'idx_dgfy_customer_reviews_public_target' }
         ]
     });
 

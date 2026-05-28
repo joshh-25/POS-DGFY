@@ -156,9 +156,42 @@ export const dgfyCustomerRepository = {
         return toPlain(await activity.reload());
     },
 
-    async listActivitiesForAccount(dgfyAccountId, { type = null, limit = 25, page = 1 } = {}) {
+    async listActivitiesForAccount(dgfyAccountId, {
+        type = null,
+        tenantId = null,
+        storeSlug = null,
+        status = null,
+        paymentStatus = null,
+        dateFrom = null,
+        dateTo = null,
+        limit = 25,
+        page = 1
+    } = {}) {
         const where = { dgfy_account_id: dgfyAccountId };
-        if (type) where.activity_type = type;
+        if (type) {
+            const rawTypes = Array.isArray(type) ? type : String(type).split(',');
+            const types = rawTypes.map((entry) => String(entry || '').trim()).filter(Boolean);
+            const mappedTypes = types.flatMap((entry) => {
+                if (entry === 'booking') return ['service_booking', 'hospitality_booking'];
+                if (entry === 'order') return ['order'];
+                if (entry === 'all') return [];
+                return [entry];
+            });
+            if (mappedTypes.length === 1) where.activity_type = mappedTypes[0];
+            if (mappedTypes.length > 1) where.activity_type = { [Op.in]: mappedTypes };
+        }
+        if (tenantId) where.tenant_id = String(tenantId).trim();
+        if (storeSlug) where.store_slug = String(storeSlug).trim();
+        if (status) where.status = String(status).trim();
+        if (paymentStatus) where.payment_status = String(paymentStatus).trim();
+        if (dateFrom || dateTo) {
+            where.occurred_at = {};
+            const from = dateFrom ? new Date(dateFrom) : null;
+            const to = dateTo ? new Date(dateTo) : null;
+            if (from && !Number.isNaN(from.getTime())) where.occurred_at[Op.gte] = from;
+            if (to && !Number.isNaN(to.getTime())) where.occurred_at[Op.lte] = to;
+            if (!Object.keys(where.occurred_at).length) delete where.occurred_at;
+        }
         const safeLimit = Math.max(1, Math.min(Number.parseInt(limit, 10) || 25, 100));
         const safePage = Math.max(1, Number.parseInt(page, 10) || 1);
         const result = await DgfyCustomerActivity.findAndCountAll({
@@ -315,11 +348,13 @@ export const dgfyCustomerRepository = {
         return toPlain(row);
     },
 
-    async listPublicReviews({ tenantId, itemId = null, limit = 20 } = {}) {
+    async listPublicReviews({ tenantId, itemId = null, targetType = null, targetId = null, limit = 20 } = {}) {
         const where = { status: 'approved' };
         if (tenantId) where.tenant_id = tenantId;
         if (itemId) where.item_id = Number.parseInt(itemId, 10);
-        if (!where.tenant_id && !where.item_id) return { rows: [], summary: { average_rating: null, total_count: 0 } };
+        if (targetType) where.target_type = targetType;
+        if (targetId) where.target_id = Number.parseInt(targetId, 10);
+        if (!where.tenant_id && !where.item_id && !where.target_type) return { rows: [], summary: { average_rating: null, total_count: 0 } };
 
         const safeLimit = Math.max(1, Math.min(Number.parseInt(limit, 10) || 20, 50));
         const [rows, allRows] = await Promise.all([
@@ -346,10 +381,11 @@ export const dgfyCustomerRepository = {
         };
     },
 
-    async listReviewsForModeration({ status = 'pending', tenantId = null, limit = 50, page = 1 } = {}) {
+    async listReviewsForModeration({ status = 'pending', tenantId = null, targetType = null, limit = 50, page = 1 } = {}) {
         const where = {};
         if (status && status !== 'all') where.status = status;
         if (tenantId) where.tenant_id = tenantId;
+        if (targetType) where.target_type = targetType;
         const safeLimit = Math.max(1, Math.min(Number.parseInt(limit, 10) || 50, 100));
         const safePage = Math.max(1, Number.parseInt(page, 10) || 1);
         const result = await DgfyCustomerReview.findAndCountAll({
@@ -387,6 +423,18 @@ export const dgfyCustomerRepository = {
                 dgfy_account_id: dgfyAccountId,
                 activity_id: activityId,
                 item_id: itemId
+            }
+        });
+        return toPlain(row);
+    },
+
+    async findReviewByAccountActivityTarget({ dgfyAccountId, activityId, targetType, targetId }) {
+        const row = await DgfyCustomerReview.findOne({
+            where: {
+                dgfy_account_id: dgfyAccountId,
+                activity_id: activityId,
+                target_type: targetType,
+                target_id: targetId
             }
         });
         return toPlain(row);

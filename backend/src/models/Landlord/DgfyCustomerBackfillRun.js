@@ -53,6 +53,11 @@ export default (sequelize) => {
             allowNull: false,
             defaultValue: 0
         },
+        fnb_order_count: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 0
+        },
         matched_account_count: {
             type: DataTypes.INTEGER,
             allowNull: false,

@@ -6,6 +6,7 @@ import {
     getDgfyCustomerLoyaltyUseCase,
     listDgfyCustomerReviewsForModerationUseCase,
     listDgfyCustomerAddressesUseCase,
+    listDgfyCustomerActivitiesUseCase,
     listDgfyCustomerBookingsUseCase,
     listDgfyCustomerOrdersUseCase,
     listPublicDgfyCustomerReviewsUseCase,
@@ -52,6 +53,14 @@ export const getDgfyCustomerDashboard = async (req, res, next) => {
 export const listDgfyCustomerOrders = async (req, res, next) => {
     try {
         return send(res, await listDgfyCustomerOrdersUseCase({ account: req.dgfyAccount, query: req.query }));
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const listDgfyCustomerActivities = async (req, res, next) => {
+    try {
+        return send(res, await listDgfyCustomerActivitiesUseCase({ account: req.dgfyAccount, query: req.query, type: req.query?.type || null }));
     } catch (error) {
         next(error);
     }
@@ -114,6 +123,20 @@ export const updateDgfyCustomerAddress = async (req, res, next) => {
     try {
         return send(res, await updateDgfyCustomerAddressUseCase({ account: req.dgfyAccount, addressId: req.params.address_id, body: req.body }), {
             message: 'Address updated successfully'
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const setDefaultDgfyCustomerAddress = async (req, res, next) => {
+    try {
+        return send(res, await updateDgfyCustomerAddressUseCase({
+            account: req.dgfyAccount,
+            addressId: req.params.address_id,
+            body: { is_default: true }
+        }), {
+            message: 'Default address updated successfully'
         });
     } catch (error) {
         next(error);
