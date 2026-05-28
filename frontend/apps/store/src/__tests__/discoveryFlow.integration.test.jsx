@@ -216,6 +216,26 @@ describe('storefront discovery integration flow', () => {
     expect(mapOptions.pitch).toBe(0);
   });
 
+  it('keeps account access visible when MapLibre cannot initialize WebGL', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    maplibregl.Map.mockImplementationOnce(function MapUnavailable() {
+      throw new Error('webgl unavailable');
+    });
+
+    try {
+      render(<App />);
+
+      expect(await screen.findByText('Store map unavailable')).toBeTruthy();
+      expect(await screen.findByText('Log in / Sign up')).toBeTruthy();
+
+      fireEvent.click(screen.getByText('Log in / Sign up'));
+
+      expect(await screen.findByText('DGFY Account')).toBeTruthy();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it('registers from the storefront account panel with approved field order and terms acknowledgement', async () => {
     const defaultFetch = fetchMock.getMockImplementation();
     fetchMock.mockImplementation(async (url, options = {}) => {

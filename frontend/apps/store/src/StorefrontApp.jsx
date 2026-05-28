@@ -1602,6 +1602,7 @@ function StoresMap({
   const onOpenStoreRef = useRef(onOpenStore);
   const autoOpenFrameRef = useRef(null);
   const popupGenerationRef = useRef(0);
+  const [mapUnavailable, setMapUnavailable] = useState(false);
 
   useEffect(() => {
     onSelectStoreRef.current = onSelectStore;
@@ -1635,15 +1636,22 @@ function StoresMap({
 
   useEffect(() => {
     if (!ref.current || mapRef.current) return;
-    const map = new maplibregl.Map({
-      container: ref.current,
-      style: TILING_SERVER,
-      transformRequest: tileTransformRequest,
-      center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
-      zoom: 11,
-      bearing: 0,
-      pitch: 0,
-    });
+    let map;
+    try {
+      map = new maplibregl.Map({
+        container: ref.current,
+        style: TILING_SERVER,
+        transformRequest: tileTransformRequest,
+        center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
+        zoom: 11,
+        bearing: 0,
+        pitch: 0,
+      });
+    } catch (error) {
+      console.warn('[MapLibre init unavailable]', error);
+      setMapUnavailable(true);
+      return undefined;
+    }
     mapRef.current = map;
 
     map.on('error', (e) => console.error('[MapLibre error]', e));
@@ -1980,6 +1988,32 @@ function StoresMap({
     };
   }, [stores, userLocation, autoOpenPopups, openPopupOnHover, setActiveMarkerElement]);
 
+  if (mapUnavailable) {
+    return (
+      <div style={{ minHeight: height, border: '1px solid #d6e2e8', borderRadius: 24, overflow: 'hidden', background: '#f8fafc', padding: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#1f5f9f', fontWeight: 900 }}>
+          <MapPin size={18} />
+          Store map unavailable
+        </div>
+        <p style={{ margin: '8px 0 16px', color: '#64748b', fontSize: 13 }}>
+          Map rendering is unavailable on this device, but storefront discovery remains available from the list.
+        </p>
+        <div style={{ display: 'grid', gap: 8 }}>
+          {(stores || []).slice(0, 6).map((store) => (
+            <button
+              key={getStoreResultKey(store)}
+              type="button"
+              onClick={() => onSelectStore?.(store)}
+              style={{ textAlign: 'left', border: '1px solid #dbeafe', background: '#fff', borderRadius: 12, padding: '10px 12px', color: '#0f172a', fontWeight: 800 }}
+            >
+              {store.tenant_name || store.store_name || store.slug || 'Storefront'}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return <div ref={ref} style={{ height, border: '1px solid #d6e2e8', borderRadius: 24, overflow: 'hidden' }} />;
 }
 
@@ -1987,16 +2021,24 @@ function DeliveryPinMap({ pin = null, onPinChange, disabled = false }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
   const markerRef = useRef(null);
+  const [mapUnavailable, setMapUnavailable] = useState(false);
 
   useEffect(() => {
     if (!ref.current || mapRef.current) return undefined;
-    const map = new maplibregl.Map({
-      container: ref.current,
-      style: TILING_SERVER,
-      transformRequest: tileTransformRequest,
-      center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
-      zoom: 13
-    });
+    let map;
+    try {
+      map = new maplibregl.Map({
+        container: ref.current,
+        style: TILING_SERVER,
+        transformRequest: tileTransformRequest,
+        center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
+        zoom: 13
+      });
+    } catch (error) {
+      console.warn('[DeliveryPinMap] MapLibre init unavailable', error);
+      setMapUnavailable(true);
+      return undefined;
+    }
     map.getCanvas().style.zIndex = '0';
     map.on('error', (e) => console.error('[DeliveryPinMap] MapLibre error', e));
     mapRef.current = map;
@@ -2057,6 +2099,14 @@ function DeliveryPinMap({ pin = null, onPinChange, disabled = false }) {
     const timer = setTimeout(() => map.resize(), 120);
     return () => clearTimeout(timer);
   }, [disabled]);
+
+  if (mapUnavailable) {
+    return (
+      <div style={{ marginBottom: 10, width: '100%', minHeight: 260, border: '1px solid #cbd5e1', borderRadius: 12, background: '#f8fafc', padding: 16, color: '#475569', fontSize: 13 }}>
+        Map pin selection is unavailable on this device. Use the delivery address fields instead.
+      </div>
+    );
+  }
 
   return (
     <div style={{ position: 'relative', marginBottom: 10, width: '100%', maxWidth: '100%', aspectRatio: '16 / 10', minHeight: 260, overflow: 'hidden', border: '1px solid #cbd5e1', borderRadius: 12, isolation: 'isolate', zIndex: 0 }}>
