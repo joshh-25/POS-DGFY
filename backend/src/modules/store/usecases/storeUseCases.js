@@ -894,8 +894,6 @@ const serializeStoreCatalogItem = (item = {}, accessPolicy = {}) => {
         name: item.name,
         category: item.category,
         product_type: item.product_type || null,
-        description: item.description || null,
-        folder_name: item.folder_name || item.product_folder || null,
         unit_of_measure: item.unit_of_measure || null,
         default_sale_price: item.default_sale_price,
         vat_type: item.vat_type || 'vatable',

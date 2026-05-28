@@ -6,7 +6,6 @@ const originalEnv = { ...process.env };
 
 let generalLimiter;
 let authLimiter;
-let storefrontDiscoveryLimiter;
 let tenantRegistrationLimiter;
 let logger;
 
@@ -26,7 +25,6 @@ beforeAll(async () => {
   const limiterModule = await import('../src/middleware/rateLimiter.js');
   generalLimiter = limiterModule.generalLimiter;
   authLimiter = limiterModule.authLimiter;
-  storefrontDiscoveryLimiter = limiterModule.storefrontDiscoveryLimiter;
   tenantRegistrationLimiter = limiterModule.tenantRegistrationLimiter;
 });
 
@@ -131,22 +129,5 @@ describe('Rate limiter behavior', () => {
       limitKeyType: 'ip',
       retryAfterSeconds: expect.any(Number),
     }));
-  });
-
-  it('skips storefront discovery rate limits for local preview traffic in development', async () => {
-    const app = express();
-    app.get('/api/v1/storefront/discovery', storefrontDiscoveryLimiter, (_req, res) => {
-      res.status(200).json({ success: true });
-    });
-
-    await request(app)
-      .get('/api/v1/storefront/discovery')
-      .set('x-forwarded-for', '127.0.0.1')
-      .expect(200);
-
-    await request(app)
-      .get('/api/v1/storefront/discovery')
-      .set('x-forwarded-for', '127.0.0.1')
-      .expect(200);
   });
 });

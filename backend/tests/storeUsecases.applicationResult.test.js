@@ -99,35 +99,6 @@ describe('store use-cases application result contract', () => {
         expect(result.data.items[0]).not.toHaveProperty('cost_per_unit');
     });
 
-    it('listStoreCatalog preserves description and storefront folder label in the public payload', async () => {
-        const useCase = buildListStoreCatalogUseCase({
-            storeRepository: {
-                listStoreCatalog: jest.fn().mockResolvedValue([
-                    {
-                        item_id: 503,
-                        name: 'Omelette Rice Bowl with Dangit',
-                        description: 'Omelette Rice Bowl with Dangit from Space Bar. A filling breakfast rice bowl built for all-day cafe service with rice, egg, and a savory main topping.',
-                        folder_name: 'Rice Bowls',
-                        availability_status: 'in_stock',
-                        default_sale_price: 185
-                    }
-                ])
-            }
-        });
-
-        const result = await useCase({ query: { limit: 10 } });
-
-        expect(result.success).toBe(true);
-        expect(result.data.items[0]).toEqual(expect.objectContaining({
-            item_id: 503,
-            description: 'Omelette Rice Bowl with Dangit from Space Bar. A filling breakfast rice bowl built for all-day cafe service with rice, egg, and a savory main topping.',
-            folder_name: 'Rice Bowls',
-            is_available: true
-        }));
-        expect(result.data.items[0]).not.toHaveProperty('current_stock');
-        expect(result.data.items[0]).not.toHaveProperty('cost_per_unit');
-    });
-
     it('listStoreCatalog suppresses customer-visible rows without explicit sale price', async () => {
         const useCase = buildListStoreCatalogUseCase({
             storeRepository: {

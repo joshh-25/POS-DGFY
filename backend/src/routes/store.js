@@ -94,7 +94,7 @@ router.post('/services/bookings/:public_reference/claim', requireWorkflowCapabil
 router.post('/services/waitlist', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, optionalStoreCustomer, validateCreateServiceWaitlistEntry, createPublicServiceWaitlistEntry);
 router.post('/fnb/reservations', requireWorkflowCapability('fnbDining', 'Food & Beverage'), setNoStoreCacheControl, optionalStoreCustomer, validateCreateFnbReservation, createPublicFnbReservation);
 
-router.get('/track/:tracking_pin', storeTrackingLimiter, setNoStoreCacheControl, validateStoreTrackingPinParam, storeController.trackOrder);
+router.get('/track/:tracking_pin', storeTrackingLimiter, trackingReadCacheControl, validateStoreTrackingPinParam, storeController.trackOrder);
 router.post('/orders/:tracking_pin/claim', setNoStoreCacheControl, storeTrackingLimiter, authenticateStoreCustomer, validateStoreTrackingPinParam, validateStoreClaimOrder, storeController.claimOrder);
 router.patch('/orders/:tracking_pin/cancel', setNoStoreCacheControl, storeTrackingLimiter, optionalStoreCustomer, validateStoreTrackingPinParam, validateStoreCancelOrder, storeController.cancelOrder);
 router.get('/orders', setNoStoreCacheControl, authenticateStoreCustomer, validateStoreOrderHistoryQuery, storeController.listStoreCustomerOrders);

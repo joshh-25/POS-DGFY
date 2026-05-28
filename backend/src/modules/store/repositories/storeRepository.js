@@ -199,16 +199,6 @@ const buildStorefrontCatalogDetailIncludes = () => {
     const ItemAllergen = dbStore.get('ItemAllergen');
     const FnbModifierGroup = dbStore.get('FnbModifierGroup');
     const FnbModifierOption = dbStore.get('FnbModifierOption');
-    const ItemFolder = dbStore.get('ItemFolder');
-
-    if (ItemFolder) {
-        includes.push({
-            model: ItemFolder,
-            as: 'folder',
-            attributes: ['name'],
-            required: false
-        });
-    }
 
     if (ServiceItemDetail) {
         includes.push({
@@ -400,8 +390,6 @@ export const storeRepository = {
                 'name',
                 'category',
                 'product_type',
-                'description',
-                'product_folder',
                 'unit_of_measure',
                 'current_stock',
                 'default_sale_price',
@@ -490,8 +478,6 @@ export const storeRepository = {
                 'name',
                 'category',
                 'product_type',
-                'description',
-                'product_folder',
                 'unit_of_measure',
                 'current_stock',
                 'default_sale_price',
@@ -512,14 +498,11 @@ export const storeRepository = {
                 item_id: row.item_id,
                 name: row.name,
                 category: row.category,
-                description: row.description || null,
-                product_folder: row.product_folder || null,
                 unit_of_measure: row.unit_of_measure,
                 current_stock: isStockExemptServiceItem(row) ? 0 : row.current_stock,
                 default_sale_price: row.default_sale_price,
                 cost_per_unit: row.cost_per_unit,
                 vat_type: row.vat_type,
-                folder_name: row?.folder?.name || row.product_folder || null,
                 image_url: mapStorefrontCatalogImageUrl(row, { allowLegacyPosFallback }),
                 service_detail: row?.serviceDetail || null,
                 nutrition: row?.nutrition || null,
