@@ -19,6 +19,30 @@ describe('corsPolicy', () => {
     })).toBe(false);
   });
 
+  it('rejects public API preflights that request mutation methods', () => {
+    const policy = buildCorsPolicy({
+      corsOrigin: 'https://dgfy.ph',
+      publicApiCorsOrigin: 'https://mapviu.com,https://*.mapviu.com',
+      isProduction: true
+    });
+
+    expect(policy.resolveCorsAllowed('https://app.mapviu.com', {
+      method: 'OPTIONS',
+      path: '/api/v1/storefront/discovery/map-pins',
+      headers: {
+        'access-control-request-method': 'POST'
+      }
+    })).toBe(false);
+
+    expect(policy.resolveCorsAllowed('https://app.mapviu.com', {
+      method: 'OPTIONS',
+      path: '/api/v1/storefront/discovery/map-pins',
+      headers: {
+        'access-control-request-method': 'GET'
+      }
+    })).toBe(true);
+  });
+
   it('keeps primary CORS origins globally allowed', () => {
     const policy = buildCorsPolicy({
       corsOrigin: 'https://dgfy.ph',

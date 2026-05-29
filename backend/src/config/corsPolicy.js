@@ -98,6 +98,8 @@ export const buildCorsPolicy = ({
   const isPublicApiCorsRequest = (req = {}) => {
     const method = String(req.method || 'GET').toUpperCase();
     if (!PUBLIC_API_CORS_METHODS.has(method)) return false;
+    const requestedMethod = String(req.headers?.['access-control-request-method'] || method).toUpperCase();
+    if (!PUBLIC_API_CORS_METHODS.has(requestedMethod)) return false;
 
     const path = normalizePath(req.path || req.originalUrl || req.url);
     return PUBLIC_API_CORS_PATHS.some((allowedPath) => path === allowedPath);
