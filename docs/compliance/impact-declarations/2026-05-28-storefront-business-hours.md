@@ -1,7 +1,7 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-05-28
+last_reviewed: 2026-05-29
 related_adr: docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md
 declaration_id: 2026-05-28-storefront-business-hours
 classification: regulatory
@@ -60,3 +60,14 @@ Additional validation from the reconciliation:
 - `npm --prefix backend test -- --runTestsByPath tests/dgfyCustomerUseCases.test.js tests/dgfyCustomerHandlers.transport.test.js tests/storefrontBusinessHours.test.js tests/storeRepository.locationStockFallback.test.js`
 - `npm --prefix frontend test -- --run apps/store/src/__tests__/fnbOrderTracking.contract.test.js apps/store/src/__tests__/fnbStorefront.contract.test.js apps/store/src/__tests__/profileLauncher.integration.test.jsx apps/store/src/__tests__/discoveryHeaderAccount.integration.test.jsx apps/store/src/__tests__/checkoutRules.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/storefrontFollow.integration.test.jsx apps/store/src/__tests__/storefrontErrorMessages.test.js apps/store/src/__tests__/normalizeStorefrontPageModel.test.js --testTimeout 20000`
 - `npm --prefix frontend run build:store`
+
+## Production Build Import Evidence
+
+The 2026-05-29 production deployment exposed Windows-only import casing in `frontend/Pages/Settings.jsx`. The Settings page now imports shared UI controls through the existing `@/components/ui/*` alias, which resolves to `frontend/Components/ui` in the SKUpervisor Vite config and preserves the same Storefront business-hours behavior.
+
+Validation for the import repair:
+
+- `npm --prefix frontend run build:skupervisor`
+- `npm --prefix frontend run build:store`
+- `npm run check:architecture`
+- `npm run check:compliance`
