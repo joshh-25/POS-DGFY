@@ -28,7 +28,9 @@ import {
     buildReorderDgfyCustomerOrderUseCase,
     buildRequestDgfyTrackingRecoveryUseCase,
     buildSubmitDgfyCustomerReviewUseCase,
+    buildSubmitDgfyGuestReviewInviteUseCase,
     buildTrackDgfyCustomerReferenceUseCase,
+    buildValidateDgfyReviewInviteUseCase,
     buildVerifyDgfyTrackingRecoveryUseCase
 } from './usecases/dgfyCustomerUseCases.js';
 import { requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
@@ -117,6 +119,8 @@ export const updateDgfyCustomerAddressUseCase = addressUseCases.update;
 export const deleteDgfyCustomerAddressUseCase = addressUseCases.remove;
 export const getDgfyCustomerLoyaltyUseCase = buildGetDgfyCustomerLoyaltyUseCase();
 export const submitDgfyCustomerReviewUseCase = buildSubmitDgfyCustomerReviewUseCase();
+export const validateDgfyReviewInviteUseCase = buildValidateDgfyReviewInviteUseCase();
+export const submitDgfyGuestReviewInviteUseCase = buildSubmitDgfyGuestReviewInviteUseCase();
 export const listPublicDgfyCustomerReviewsUseCase = buildListPublicDgfyCustomerReviewsUseCase();
 export const listDgfyCustomerReviewsForModerationUseCase = buildListDgfyCustomerReviewsForModerationUseCase();
 export const moderateDgfyCustomerReviewUseCase = buildModerateDgfyCustomerReviewUseCase();

@@ -363,7 +363,7 @@ const readStorefrontProfileSettings = async ({ tenantId, cacheVersion, cacheSign
         storefront_about: toTrimmedString(settingsMap.storefront_about, 1000),
         storefront_phone: toTrimmedString(settingsMap.storefront_phone, 50),
         storefront_email: toTrimmedString(settingsMap.storefront_email, 120),
-        storefront_hours: formatStorefrontBusinessHoursDisplay(settingsMap.storefront_hours),
+        storefront_hours: toTrimmedString(formatStorefrontBusinessHoursDisplay(settingsMap.storefront_hours), 120),
         storefront_hours_status: storefrontHoursStatus,
         storefront_why_choose_us: whyChooseUs,
         storefront_social_links: social,

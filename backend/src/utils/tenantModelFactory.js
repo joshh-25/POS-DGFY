@@ -23,6 +23,7 @@ const NON_TENANT_MODEL_EXPORTS = new Set([
     'DgfyCustomerReview',
     'DgfyLoyaltyTransaction',
     'DgfyTrackingRecoveryCode',
+    'DgfyReviewInvite',
     'TenantComplianceArtifact',
     'TenantCompliancePeripheral',
     'TenantComplianceAuditLog',

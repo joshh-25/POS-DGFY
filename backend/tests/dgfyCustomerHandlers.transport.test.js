@@ -21,8 +21,10 @@ jest.unstable_mockModule('../src/modules/dgfy/index.js', () => ({
     reorderDgfyCustomerOrderUseCase: jest.fn(),
     requestDgfyTrackingRecoveryUseCase: jest.fn(),
     submitDgfyCustomerReviewUseCase: jest.fn(),
+    submitDgfyGuestReviewInviteUseCase: jest.fn(),
     trackDgfyCustomerReferenceUseCase: jest.fn(),
     updateDgfyCustomerAddressUseCase: mockUpdateDgfyCustomerAddressUseCase,
+    validateDgfyReviewInviteUseCase: jest.fn(),
     verifyDgfyTrackingRecoveryUseCase: jest.fn()
 }));
 

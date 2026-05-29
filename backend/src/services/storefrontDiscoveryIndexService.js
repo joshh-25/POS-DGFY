@@ -655,7 +655,7 @@ const buildTenantSnapshot = async (tenant) => {
         storefront_about: toTrimmedString(settings.storefront_about, 1000),
         storefront_phone: toTrimmedString(settings.storefront_phone, 50),
         storefront_email: toTrimmedString(settings.storefront_email, 120),
-        storefront_hours: formatStorefrontBusinessHoursDisplay(settings.storefront_hours),
+        storefront_hours: toTrimmedString(formatStorefrontBusinessHoursDisplay(settings.storefront_hours), 120),
         storefront_why_choose_us: storefrontWhyChooseUs,
         storefront_social_links: storefrontSocialLinks,
         storefront_review_highlights: storefrontReviewHighlights,

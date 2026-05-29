@@ -7,7 +7,9 @@ import {
     buildModerateDgfyCustomerReviewUseCase,
     buildRequestDgfyTrackingRecoveryUseCase,
     buildSubmitDgfyCustomerReviewUseCase,
+    buildSubmitDgfyGuestReviewInviteUseCase,
     buildTrackDgfyCustomerReferenceUseCase,
+    buildValidateDgfyReviewInviteUseCase,
     buildVerifyDgfyTrackingRecoveryUseCase
 } from '../src/modules/dgfy/usecases/dgfyCustomerUseCases.js';
 import { buildPhoneLookupVariants } from '../src/modules/dgfy/repositories/dgfyCustomerRepository.js';
@@ -203,7 +205,7 @@ describe('dgfyCustomerUseCases', () => {
             repository: {
                 listPublicReviews: jest.fn().mockResolvedValue({
                     rows: [{ review_id: 1, status: 'approved', rating: 5 }],
-                    summary: { average_rating: 5, total_count: 1 }
+                    summary: { average_rating: 5, total_count: 1, verified_count: 1, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 1 } }
                 })
             }
         });
@@ -213,6 +215,81 @@ describe('dgfyCustomerUseCases', () => {
         expect(result.success).toBe(true);
         expect(result.data.reviews).toHaveLength(1);
         expect(result.data.summary.total_count).toBe(1);
+        expect(result.data.summary.verified_count).toBe(1);
+        expect(result.data.summary.distribution[5]).toBe(1);
+    });
+
+    it('validates an active guest review invite token for a fulfilled menu item', async () => {
+        const useCase = buildValidateDgfyReviewInviteUseCase({
+            repository: {
+                findReviewInviteByTokenHash: jest.fn().mockResolvedValue({
+                    invite_id: 8,
+                    tenant_id: 'tenant-1',
+                    tracking_pin: 'SK-ABCD12',
+                    target_type: 'fnb_item',
+                    target_id: 44,
+                    item_name: 'Adobo Platter',
+                    delivery_channel: 'tracking',
+                    status: 'issued',
+                    expires_at: new Date(Date.now() + 60_000).toISOString(),
+                    activity_id: 90
+                }),
+                markReviewInviteOpened: jest.fn().mockResolvedValue({})
+            }
+        });
+
+        const result = await useCase({ token: 'public-review-token' });
+
+        expect(result.success).toBe(true);
+        expect(result.data.invite).toEqual(expect.objectContaining({
+            tracking_pin: 'SK-ABCD12',
+            target_type: 'fnb_item',
+            target_id: 44,
+            item_name: 'Adobo Platter'
+        }));
+    });
+
+    it('submits a fulfilled guest review invite once and marks it as pending moderation', async () => {
+        const repository = {
+            findReviewInviteByTokenHash: jest.fn().mockResolvedValue({
+                invite_id: 5,
+                tenant_id: 'tenant-1',
+                activity_id: 61,
+                target_type: 'fnb_item',
+                target_id: 14,
+                delivery_channel: 'tracking',
+                status: 'opened',
+                expires_at: new Date(Date.now() + 60_000).toISOString()
+            }),
+            findReviewByTrackingActivityTarget: jest.fn().mockResolvedValue(null),
+            createReview: jest.fn().mockImplementation((payload) => Promise.resolve({ review_id: 77, ...payload })),
+            markReviewInviteSubmitted: jest.fn().mockResolvedValue({ invite_id: 5, status: 'submitted', submitted_review_id: 77 })
+        };
+        const useCase = buildSubmitDgfyGuestReviewInviteUseCase({ repository });
+
+        const result = await useCase({
+            token: 'invite-token',
+            body: {
+                name: 'Ada Lovelace',
+                anonymous: false,
+                rating: 5,
+                comment: 'The serving was generous and the flavor was balanced.'
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.createReview).toHaveBeenCalledWith(expect.objectContaining({
+            dgfy_account_id: null,
+            activity_id: 61,
+            tenant_id: 'tenant-1',
+            target_type: 'fnb_item',
+            target_id: 14,
+            reviewer_name: 'Ada Lovelace',
+            reviewer_initials: 'AL',
+            verified_purchase: true,
+            status: 'pending'
+        }));
+        expect(repository.markReviewInviteSubmitted).toHaveBeenCalledWith({ inviteId: 5, reviewId: 77 });
     });
 
     it('allows admins to approve or reject pending reviews', async () => {

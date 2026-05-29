@@ -34,9 +34,11 @@ import {
     reorderDgfyCustomerOrder,
     requestDgfyTrackingRecovery,
     setDefaultDgfyCustomerAddress,
+    submitDgfyGuestReviewInvite,
     submitDgfyCustomerReview,
     trackDgfyCustomerReference,
     updateDgfyCustomerAddress,
+    validateDgfyReviewInvite,
     verifyDgfyTrackingRecovery
 } from '../modules/dgfy/controllers/dgfyCustomerHandlers.js';
 
@@ -73,6 +75,8 @@ router.delete('/customer/addresses/:address_id', authenticateDgfyAccount, delete
 router.get('/customer/loyalty', authenticateDgfyAccount, getDgfyCustomerLoyalty);
 router.post('/customer/reviews', authenticateDgfyAccount, submitDgfyCustomerReview);
 router.get('/customer/reviews/public', listPublicDgfyCustomerReviews);
+router.get('/customer/review-invites/:token', validateDgfyReviewInvite);
+router.post('/customer/review-invites/:token/submit', submitDgfyGuestReviewInvite);
 router.get('/customer/reviews/moderation', authenticateAdmin, listDgfyCustomerReviewsForModeration);
 router.post('/customer/reviews/:review_id/moderate', authenticateAdmin, moderateDgfyCustomerReview);
 router.post('/customer/tracking-recovery/request', authLimiter, requestDgfyTrackingRecovery);
