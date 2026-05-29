@@ -157,7 +157,7 @@ if (isProduction) {
 }
 
 // CORS configuration - must be applied before helmet
-const { resolveCorsAllowed } = buildCorsPolicy({
+const { resolveCorsAccess } = buildCorsPolicy({
   corsOrigin: process.env.CORS_ORIGIN || '',
   publicApiCorsOrigin: process.env.PUBLIC_API_CORS_ORIGIN || '',
   isProduction
@@ -165,7 +165,8 @@ const { resolveCorsAllowed } = buildCorsPolicy({
 
 const corsOptionsDelegate = (req, callback) => {
   const origin = req.headers.origin || null;
-  const allowed = resolveCorsAllowed(origin, req);
+  const corsAccess = resolveCorsAccess(origin, req);
+  const allowed = corsAccess.allowed;
 
   if (!allowed) {
     const correlationId = req.headers['x-request-id'] || req.headers['x-correlation-id'] || `cors-${crypto.randomUUID()}`;
@@ -182,6 +183,7 @@ const corsOptionsDelegate = (req, callback) => {
   callback(null, {
     origin: true,
     credentials: true,
+    methods: corsAccess.publicApi ? ['GET', 'HEAD', 'OPTIONS'] : undefined,
     optionsSuccessStatus: 200,
     exposedHeaders: ['Content-Disposition', 'Content-Length']
   });

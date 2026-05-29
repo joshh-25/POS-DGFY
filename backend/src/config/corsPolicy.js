@@ -105,9 +105,9 @@ export const buildCorsPolicy = ({
     return PUBLIC_API_CORS_PATHS.some((allowedPath) => path === allowedPath);
   };
 
-  const resolveCorsAllowed = (origin, req = {}) => {
+  const resolveCorsAccess = (origin, req = {}) => {
     if (configuredCorsOrigins.length > 0 && isExplicitOriginAllowed(origin)) {
-      return true;
+      return { allowed: true, publicApi: false };
     }
 
     if (
@@ -115,20 +115,26 @@ export const buildCorsPolicy = ({
       && isPublicApiCorsRequest(req)
       && isPublicApiOriginAllowed(origin)
     ) {
-      return true;
+      return { allowed: true, publicApi: true };
     }
 
     if (!isProduction) {
-      return isDevelopmentOriginAllowed(origin);
+      return { allowed: isDevelopmentOriginAllowed(origin), publicApi: false };
     }
 
-    return configuredCorsOrigins.length === 0 && isDevelopmentOriginAllowed(origin);
+    return {
+      allowed: configuredCorsOrigins.length === 0 && isDevelopmentOriginAllowed(origin),
+      publicApi: false
+    };
   };
+
+  const resolveCorsAllowed = (origin, req = {}) => resolveCorsAccess(origin, req).allowed;
 
   return {
     configuredCorsOrigins,
     publicApiCorsOrigins,
     isPublicApiCorsRequest,
+    resolveCorsAccess,
     resolveCorsAllowed
   };
 };

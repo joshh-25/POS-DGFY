@@ -12,6 +12,13 @@ describe('corsPolicy', () => {
       method: 'GET',
       path: '/api/v1/storefront/discovery/map-pins'
     })).toBe(true);
+    expect(policy.resolveCorsAccess('https://app.mapviu.com', {
+      method: 'GET',
+      path: '/api/v1/storefront/discovery/map-pins'
+    })).toEqual({
+      allowed: true,
+      publicApi: true
+    });
 
     expect(policy.resolveCorsAllowed('https://app.mapviu.com', {
       method: 'POST',
