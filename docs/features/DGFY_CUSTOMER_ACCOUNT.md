@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-05-28
+last_reviewed: 2026-05-29
 applies_to: dgfy_customer_account, storefront_account, customer_tracking
 topic: dgfy_customer_account
 ---
@@ -30,6 +30,7 @@ Guest users can:
 - Complete checkout or booking as a guest when the storefront policy allows it.
 - Track a known reference.
 - Request tracking recovery with an email or phone lookup. Production responses are always generic and do not expose whether a match or delivery channel exists.
+- Submit a fulfilled-order guest review only when the completed tracking response returns a valid review invite. Guest review invites are token-scoped, single-use, and separate from signed-in DGFY account history.
 - Create or sign in to a DGFY account from the customer account surface. Registration collects Last Name, First Name, Optional Middle Name, email, contact number, password, and confirm password, with password visibility toggles.
 
 ## Signed-In DGFY Users
@@ -62,6 +63,12 @@ Storefront order checkout and Services booking responses return `account_action`
 
 Copy must be order- or booking-specific. Guest service bookings should not be described as generic checkout orders.
 
+## Fulfilled Guest Review Invites
+
+Guest review invites are additive to the signed-in account review contract. When Storefront tracking resolves a completed order, the backend can return `review_invites` for eligible fulfilled item targets. The storefront can show `Review Item` entry points from the completed tracking view and F&B product-detail review surface.
+
+Invite tokens are stored as hashes, are scoped to the fulfilled activity target, expire, and become unusable after submission or revocation. `GET /api/v1/dgfy/customer/review-invites/:token` validates a token and returns safe target metadata. `POST /api/v1/dgfy/customer/review-invites/:token/submit` creates a pending review and marks the invite submitted. This path must not create a DGFY account, link tenant-local `store_customers`, or mutate the signed-in customer activity index.
+
 ## API Surface
 
 Global customer endpoints:
@@ -81,6 +88,8 @@ Global customer endpoints:
 - `DELETE /api/v1/dgfy/customer/addresses/:address_id`
 - `GET /api/v1/dgfy/customer/loyalty`
 - `POST /api/v1/dgfy/customer/reviews`
+- `GET /api/v1/dgfy/customer/review-invites/:token`
+- `POST /api/v1/dgfy/customer/review-invites/:token/submit`
 - `POST /api/v1/dgfy/customer/tracking-recovery/request`
 - `POST /api/v1/dgfy/customer/tracking-recovery/verify`
 
@@ -89,6 +98,7 @@ Global customer endpoints:
 - Phone verification is intentionally deferred. Phone numbers are contact data only and must not be presented as verified.
 - Loyalty redemption is not included in this rollout.
 - Public display and moderation management supports typed review targets at the API level; richer merchant/admin UX remains incremental work.
+- Guest invite review submission is limited to fulfilled tracking targets and remains pending moderation. Merchant/admin moderation UX can expand later without changing the token contract.
 - Tracking recovery currently sends email when an order email is available; phone OTP delivery remains future work. Phone lookup accepts common Philippine formats for matching only.
 - The dashboard's request-time recent backfill remains intentionally bounded for latency safety. Full historical completeness for POS orders, F&B checks, Services bookings, and Hospitality reservations is handled by the explicit operator backfill command, not by broad request-time scans.
 - Full phone OTP verification, loyalty redemption, and DGFY email-change flows remain separate governed work.
@@ -101,7 +111,9 @@ Current validation must include:
 - `npm run lint:docs`
 - `npm --prefix backend test -- --runInBand tests/dgfyCustomerHandlers.transport.test.js`
 - `npm --prefix backend test -- --runInBand tests/dgfyCustomerUseCases.test.js`
+- `npm --prefix backend test -- --runTestsByPath tests/dgfyCustomerUseCases.test.js tests/dgfyCustomerHandlers.transport.test.js tests/storefrontBusinessHours.test.js tests/storeRepository.locationStockFallback.test.js`
 - `npm --prefix frontend test -- apps/store/src/__tests__/discoveryFlow.integration.test.jsx --testTimeout 15000`
+- `npm --prefix frontend test -- --run apps/store/src/__tests__/fnbOrderTracking.contract.test.js apps/store/src/__tests__/fnbStorefront.contract.test.js apps/store/src/__tests__/profileLauncher.integration.test.jsx apps/store/src/__tests__/discoveryHeaderAccount.integration.test.jsx apps/store/src/__tests__/checkoutRules.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/storefrontFollow.integration.test.jsx apps/store/src/__tests__/storefrontErrorMessages.test.js apps/store/src/__tests__/normalizeStorefrontPageModel.test.js --testTimeout 20000`
 - `npm run backfill:dgfy-customer-activity -- --tenant-page-size 1 --transaction-limit-per-tenant 1`
 - `npm run backfill:dgfy-customer-activity -- --all-transactions --require-activity-types=order,service_booking,hospitality_booking,fnb_order` when production release evidence must prove all customer-facing modes are present.
 - DGFY auth and Storefront checkout/order regression tests.

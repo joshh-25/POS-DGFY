@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: frontend
-last_reviewed: 2026-05-28
+last_reviewed: 2026-05-29
 applies_to: storefront_all_modes
 topic: storefront_current_standing
 ---
@@ -23,6 +23,7 @@ This is a frontend capability/status reference, not a new architecture decision.
 - `docs/architecture/adr/0019-food-and-beverage-mode-full-service-restaurant.md`
 - `docs/architecture/adr/0022-global-dgfy-account-business-registration.md`
 - `docs/architecture/adr/0023-front-facing-dgfy-customer-account.md`
+- `docs/architecture/adr/0024-fulfilled-guest-item-reviews.md`
 
 ## Classification
 - Change class for this documentation update: `within-existing-boundary`
@@ -44,6 +45,7 @@ This is a frontend capability/status reference, not a new architecture decision.
 - Storefront DGFY account registration uses the same backend-owned legal-terms endpoint and fail-closed acknowledgement contract as `/register-company`.
 - Signed-in storefront sessions auto-load DGFY customer context, prefill empty checkout contact fields from the account profile, prefill an empty delivery address from the default saved address, and expose saved-address use/save actions across checkout, booking, and account surfaces.
 - Signed-in account surfaces now prefer the unified DGFY history endpoint. The History panel filters all, Orders, F&B, Services, and Hospitality activities; rows preserve eligible track/cancel/reorder actions and expose typed review targets returned by the backend.
+- Completed Storefront tracking can expose item-level `Review Item` entry points through fulfilled guest review invites. The invite path is separate from signed-in account history and creates pending moderated reviews only after token validation.
 - `Register Your Business` routes to SKUpervisor company registration with the DGFY login/profile handoff (`source=dgfy`, `auth=login`, `#dgfy-profile`).
 - Checkout and Services booking confirmations render backend `account_action` signals so signed-in DGFY customers, signup-eligible guests, guests whose email already has an account, and download-only guests receive distinct guidance.
 - Discovery map initialization is defensive. If MapLibre/WebGL cannot initialize in the browser, the Storefront discovery page remains usable, renders the `Log in / Sign up` account action, and shows a list fallback instead of blanking the page.
@@ -70,6 +72,7 @@ This is a frontend capability/status reference, not a new architecture decision.
 - F&B view model, menu grouping, default modifier selection, allergen presentation, and mode-specific catalog sections are active.
 - F&B ordering flow supports customer/order details and mode-aware checkout progression.
 - F&B reservation entry is active through the restaurant reservation surface.
+- F&B product detail pages include item review summary/detail sections, and completed F&B/order tracking can route eligible fulfilled item targets into the review flow.
 - F&B contract anchors and storefront rendering expectations are currently satisfied by tests.
 
 ## 4) Simple Mode (`msme` presentation)
@@ -79,26 +82,26 @@ This is a frontend capability/status reference, not a new architecture decision.
 - Simple storefront contract coverage is active.
 
 ## Storefront Regression Standing (Latest Run)
-Run date: `2026-05-28`
+Run date: `2026-05-29`
 
 Targeted Storefront discovery/account commands:
-- `npm --prefix backend test -- --runInBand tests/dgfyCustomerHandlers.transport.test.js`
-- `npm --prefix backend test -- --runInBand tests/dgfyCustomerUseCases.test.js`
-- `npm --prefix frontend test -- apps/store/src/__tests__/discoveryFlow.integration.test.jsx --testTimeout 15000`
+- `npm --prefix backend test -- --runTestsByPath tests/dgfyCustomerUseCases.test.js tests/dgfyCustomerHandlers.transport.test.js tests/storefrontBusinessHours.test.js tests/storeRepository.locationStockFallback.test.js`
+- `npm --prefix frontend test -- --run apps/store/src/__tests__/fnbOrderTracking.contract.test.js apps/store/src/__tests__/fnbStorefront.contract.test.js apps/store/src/__tests__/profileLauncher.integration.test.jsx apps/store/src/__tests__/discoveryHeaderAccount.integration.test.jsx apps/store/src/__tests__/checkoutRules.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/storefrontFollow.integration.test.jsx apps/store/src/__tests__/storefrontErrorMessages.test.js apps/store/src/__tests__/normalizeStorefrontPageModel.test.js --testTimeout 20000`
 - `npm --prefix frontend run build:store`
 - `npm run check:architecture`
 - `npm run lint:docs`
+- `npm run check:compliance`
 - `git diff --check`
 
 Targeted matrix result:
-- DGFY customer handler transport tests: `PASS` (`2/2` targeted tests)
-- DGFY customer use-case tests: `PASS` (`16/16` targeted tests)
-- Storefront discovery/account integration tests: `PASS` (`21/21` targeted tests)
+- Backend DGFY customer, review invite, business-hours, and location-stock fallback tests: `PASS` (`29/29` targeted tests)
+- Storefront F&B tracking/product detail, account/profile launcher, discovery, checkout, follow, error-message, and normalization tests: `PASS` (`58/58` targeted tests)
 - Storefront production build: `PASS`
 - Architecture guardrails and controller-boundary checks: `PASS`
 - Governed docs lint: `PASS`
+- Compliance drift/declaration checks: `PASS`
 - Diff whitespace check: `PASS`
-- Local rendered QA: `PASS` on desktop and mobile for `/tenant-store/alpha` with mocked API responses, signed-in DGFY token, default saved address prefilled in checkout inputs, visible saved-address/order action controls, and unified History filters proving F&B and Services rows render from the account activity endpoint. Browser plugin tooling was not exposed in this session, so evidence was collected through a Playwright fallback against a local Vite store server.
+- Local rendered QA: `not run` in this reconciliation session because no in-app browser tool was exposed and Playwright was not installed in the checkout. Runtime behavior was covered by targeted jsdom Storefront integration tests plus the production store build.
 
 ## Notes
 - This file intentionally tracks the frontend standing and test evidence snapshot only.

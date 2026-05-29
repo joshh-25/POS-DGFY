@@ -4429,6 +4429,8 @@ Front-facing customer account endpoints live under `/api/v1/dgfy/customer`. Exce
 | `DELETE` | `/dgfy/customer/addresses/:address_id` | Delete a saved address |
 | `GET` | `/dgfy/customer/loyalty` | Return read-only loyalty balance and transactions |
 | `POST` | `/dgfy/customer/reviews` | Submit a paid-or-completed activity-gated typed review as pending approval |
+| `GET` | `/dgfy/customer/review-invites/:token` | Validate a fulfilled guest review invite token and return safe review target metadata |
+| `POST` | `/dgfy/customer/review-invites/:token/submit` | Submit a fulfilled guest invite review as pending approval and consume the single-use token |
 | `POST` | `/dgfy/customer/tracking-recovery/request` | Request a generic tracking recovery response for email/phone lookup |
 | `POST` | `/dgfy/customer/tracking-recovery/verify` | Verify a six-digit recovery code and return matching activity references |
 
@@ -4436,7 +4438,9 @@ Front-facing customer account endpoints live under `/api/v1/dgfy/customer`. Exce
 
 `GET /dgfy/customer/activities` is the canonical customer history endpoint. Activity `type` may be `order`, `service_booking`, `hospitality_booking`, `fnb_order`, `booking`, or `all`; `booking` expands to Services and Hospitality activity. Response cards include `reference`, `store`, `type`, `status`, `payment_status`, `occurred_at`, `total_amount`, `summary_lines`, `allowed_actions`, and `review_targets`.
 
-`POST /dgfy/customer/reviews` accepts `activity_id`, `target_type`, optional `target_id`, `rating`, `comment`, and optional `anonymous`. Supported target types are `product`, `service`, `hospitality_booking`, `fnb_order`, and `fnb_item`; the activity snapshot must prove eligibility, and reviews remain pending until moderated. Public review reads may filter by `tenant_id`, `item_id`, `target_type`, and `target_id` and only return approved rows.
+`POST /dgfy/customer/reviews` accepts `activity_id`, `target_type`, optional `target_id`, `rating`, `comment`, and optional `anonymous`. Supported target types are `product`, `service`, `hospitality_booking`, `fnb_order`, and `fnb_item`; the activity snapshot must prove eligibility, and reviews remain pending until moderated. Public review reads require `tenant_id` plus `item_id` or explicit `target_type`/`target_id`, only return approved rows, and include summary fields such as average rating, total count, verified count, and rating distribution.
+
+Guest review invite endpoints are public token routes. Invite tokens are stored as hashes, are scoped to fulfilled activity targets, and can be rejected when expired, submitted, revoked, duplicated, or replayed. `GET /dgfy/customer/review-invites/:token` returns safe target/store/item metadata for a valid invite. `POST /dgfy/customer/review-invites/:token/submit` accepts `rating`, `comment`, and optional `anonymous`, creates a pending review, and marks the invite submitted. The guest invite path must not create or mutate signed-in DGFY account activity/history.
 
 Tracking recovery intentionally uses generic production responses and does not reveal whether a lookup matched an order or whether delivery was attempted. Email delivery is used when matching activity has an email address. Phone OTP remains deferred and phone values must not be treated as verified; phone lookup supports common Philippine variants for matching only.
 

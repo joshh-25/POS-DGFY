@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-05-28
+last_reviewed: 2026-05-29
 applies_to: dgfy_accounts, storefront_account, customer_orders, customer_tracking
 topic: front_facing_dgfy_customer_account
 ---
@@ -23,7 +23,7 @@ DGFY account registration now precedes company registration. The same global DGF
 3. Tenant-local `store_customers` rows gain nullable `dgfy_account_id`; DGFY account linkage is preferred over email fallback.
 4. A landlord-scoped DGFY customer activity index stores account-facing order, F&B order, booking, and ticket snapshots across tenants. Dashboard loading may opportunistically backfill recent tenant order activity by DGFY email and normalized Philippine phone variants.
 5. Global DGFY customer endpoints live under `/api/v1/dgfy/customer/*` and require DGFY account auth except tracking-recovery request/verify.
-6. Customer reviews are account-gated, purchase-gated, limited to paid or completed account activity, and saved as pending approval by default. Review targets are typed as `product`, `service`, `hospitality_booking`, `fnb_order`, or `fnb_item`; the account activity snapshot must prove that the target is eligible before the review can be created.
+6. Customer reviews created through the signed-in DGFY account surface are account-gated, purchase-gated, limited to paid or completed account activity, and saved as pending approval by default. Review targets are typed as `product`, `service`, `hospitality_booking`, `fnb_order`, or `fnb_item`; the account activity snapshot must prove that the target is eligible before the review can be created. ADR 0024 adds a separate fulfilled guest review-invite path and does not weaken this signed-in account gate.
 7. Loyalty is DGFY-account scoped and read-only in this rollout; balance is aggregated from all DGFY loyalty transactions and redemption requires a separate governed design.
 8. Tracking recovery uses email delivery when a matching activity email exists. Phone OTP remains deferred and phone numbers must not be treated as verified. Production recovery responses are generic and must not reveal match or delivery status.
 9. Reorder returns reusable cart lines only; checkout still revalidates current catalog visibility, price, inventory, access mode, and fulfillment rules.
@@ -38,6 +38,7 @@ DGFY account registration now precedes company registration. The same global DGF
 3. Existing tenant-local customer history remains readable through the compatibility bridge, but new cross-store account views read from the landlord activity index.
 4. Recovery, reviews, loyalty, reorder, and address management have backend and storefront contracts before future native mobile or admin moderation surfaces expand the product.
 5. The dashboard backfill is intentionally bounded for request latency. Exhaustive historical completeness uses the explicit operator backfill command instead of broadening request-time scans.
+6. Guest review invites must remain separate from signed-in DGFY account history. A guest invite token can validate and submit a pending review for its fulfilled order target, but it must not create, mutate, or replace account-owned activity/history state.
 
 ## Validation
 
