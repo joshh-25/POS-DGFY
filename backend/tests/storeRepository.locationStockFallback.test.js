@@ -12,6 +12,7 @@ jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
             if (name === 'ServiceItemDetail') return {};
             if (name === 'ItemNutrition') return null;
             if (name === 'ItemAllergen') return null;
+            if (name === 'ItemFolder') return {};
             if (name === 'FnbModifierGroup') return null;
             if (name === 'FnbModifierOption') return null;
             if (name === 'ItemLocationStock') return { findAll: itemLocationStockFindAllMock };
@@ -58,8 +59,10 @@ const missingServiceItemDetailsTableError = () => ({
 const buildCatalogRow = (overrides = {}) => ({
     item_id: overrides.item_id || 10,
     name: overrides.name || 'Test Item',
+    description: overrides.description || 'Test item description',
     category: 'product',
     product_type: 'finished_goods',
+    product_folder: overrides.product_folder || 'Rocket Fuel',
     unit_of_measure: 'pc',
     current_stock: overrides.current_stock ?? 7,
     default_sale_price: 25,
@@ -97,6 +100,8 @@ describe('storeRepository location-stock schema fallback', () => {
         expect(result).toHaveLength(1);
         expect(result[0]).toEqual(expect.objectContaining({
             item_id: 100,
+            description: 'Test item description',
+            folder_name: 'Rocket Fuel',
             current_stock: 5,
             is_available: true,
             availability_status: 'in_stock'

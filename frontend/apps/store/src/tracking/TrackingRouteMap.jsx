@@ -1,8 +1,3 @@
-import { useEffect, useRef } from 'react';
-import maplibregl from 'maplibre-gl';
-
-const DEFAULT_CENTER = { latitude: 10.7202, longitude: 122.5621 };
-
 const toNumberOrNull = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
@@ -13,232 +8,161 @@ const hasCoordinate = (point) => (
   && Number.isFinite(Number(point?.longitude))
 );
 
-const buildMarkerElement = (color, label = '') => {
-  const wrapper = document.createElement('div');
-  wrapper.style.display = 'grid';
-  wrapper.style.gap = '6px';
-  wrapper.style.justifyItems = 'center';
-  wrapper.style.transform = 'translateY(-6px)';
+function PointBadge({ label, tone = 'store', title }) {
+  const isStore = tone === 'store';
+  const ring = isStore ? '#0F6FFF' : '#F97316';
+  const shadow = isStore ? 'rgba(15,111,255,0.14)' : 'rgba(249,115,22,0.16)';
 
-  const marker = document.createElement('div');
-  marker.style.width = '16px';
-  marker.style.height = '16px';
-  marker.style.borderRadius = '999px';
-  marker.style.background = color;
-  marker.style.border = '2px solid #ffffff';
-  marker.style.boxShadow = '0 4px 10px rgba(15,23,42,.25)';
-  wrapper.appendChild(marker);
-
-  if (label) {
-    const badge = document.createElement('div');
-    badge.textContent = label;
-    badge.style.fontSize = '11px';
-    badge.style.fontWeight = '800';
-    badge.style.letterSpacing = '0.02em';
-    badge.style.color = '#0f172a';
-    badge.style.background = 'rgba(255,255,255,0.96)';
-    badge.style.border = '1px solid #dbe5ee';
-    badge.style.borderRadius = '999px';
-    badge.style.padding = '3px 8px';
-    badge.style.boxShadow = '0 3px 10px rgba(15,23,42,.12)';
-    badge.style.whiteSpace = 'nowrap';
-    wrapper.appendChild(badge);
-  }
-
-  return wrapper;
-};
+  return (
+    <div style={{ display: 'grid', justifyItems: 'center', gap: 8, minWidth: 92 }}>
+      <div
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 999,
+          background: '#fff',
+          border: `2px solid ${ring}`,
+          boxShadow: `0 12px 24px ${shadow}`,
+          color: ring,
+          display: 'grid',
+          placeItems: 'center',
+          fontSize: 15,
+          fontWeight: 900
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '7px 12px',
+          borderRadius: 999,
+          background: 'rgba(255,255,255,0.96)',
+          border: '1px solid #dbe5ee',
+          boxShadow: '0 10px 24px rgba(15,23,42,.06)',
+          color: '#0f172a',
+          fontSize: 12,
+          fontWeight: 800,
+          whiteSpace: 'nowrap'
+        }}
+      >
+        {title}
+      </div>
+    </div>
+  );
+}
 
 export default function TrackingRouteMap({
   storePin = null,
   customerPin = null,
-  styleUrl,
-  transformRequest,
   mapHeight = 280
 }) {
-  const mapRootRef = useRef(null);
-  const mapRef = useRef(null);
-  const storeMarkerRef = useRef(null);
-  const customerMarkerRef = useRef(null);
-  const resizeObserverRef = useRef(null);
-
-  useEffect(() => {
-    if (!mapRootRef.current || mapRef.current) return;
-    const initialCenter = hasCoordinate(storePin)
-      ? [Number(storePin.longitude), Number(storePin.latitude)]
-      : [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude];
-
-    const map = new maplibregl.Map({
-      container: mapRootRef.current,
-      style: styleUrl,
-      center: initialCenter,
-      zoom: 13,
-      attributionControl: true,
-      transformRequest
-    });
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-    mapRef.current = map;
-
-    if (typeof ResizeObserver !== 'undefined') {
-      const observer = new ResizeObserver(() => {
-        try {
-          map.resize();
-        } catch {
-          // ignore resize races during unmount
-        }
-      });
-      observer.observe(mapRootRef.current);
-      resizeObserverRef.current = observer;
-    }
-
-    map.once('load', () => {
-      requestAnimationFrame(() => {
-        try {
-          map.resize();
-        } catch {
-          // ignore map teardown race
-        }
-      });
-    });
-
-    return () => {
-      if (resizeObserverRef.current) {
-        resizeObserverRef.current.disconnect();
-        resizeObserverRef.current = null;
-      }
-      if (storeMarkerRef.current) {
-        storeMarkerRef.current.remove();
-        storeMarkerRef.current = null;
-      }
-      if (customerMarkerRef.current) {
-        customerMarkerRef.current.remove();
-        customerMarkerRef.current = null;
-      }
-      map.remove();
-      mapRef.current = null;
-    };
-  }, [storePin, styleUrl, transformRequest]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const normalizedStorePin = hasCoordinate(storePin) ? {
-      latitude: Number(storePin.latitude),
-      longitude: Number(storePin.longitude)
-    } : null;
-    const normalizedCustomerPin = hasCoordinate(customerPin) ? {
-      latitude: Number(customerPin.latitude),
-      longitude: Number(customerPin.longitude)
-    } : null;
-
-    if (storeMarkerRef.current) {
-      storeMarkerRef.current.remove();
-      storeMarkerRef.current = null;
-    }
-    if (customerMarkerRef.current) {
-      customerMarkerRef.current.remove();
-      customerMarkerRef.current = null;
-    }
-
-    if (normalizedStorePin) {
-      storeMarkerRef.current = new maplibregl.Marker({ element: buildMarkerElement('#1a4e8d', 'Store') })
-        .setLngLat([normalizedStorePin.longitude, normalizedStorePin.latitude])
-        .addTo(map);
-    }
-    if (normalizedCustomerPin) {
-      customerMarkerRef.current = new maplibregl.Marker({ element: buildMarkerElement('#ea580c', 'Customer') })
-        .setLngLat([normalizedCustomerPin.longitude, normalizedCustomerPin.latitude])
-        .addTo(map);
-    }
-
-    const updateRouteLayer = () => {
-      const routeSourceId = 'tracking-route-source';
-      const routeLayerId = 'tracking-route-line';
-      const hasRoute = Boolean(normalizedStorePin && normalizedCustomerPin);
-      const existingSource = map.getSource(routeSourceId);
-
-      try {
-        map.resize();
-      } catch {
-        // ignore while style/container are settling
-      }
-
-      if (!hasRoute) {
-        if (map.getLayer(routeLayerId)) map.removeLayer(routeLayerId);
-        if (existingSource) map.removeSource(routeSourceId);
-      } else {
-        const routeFeature = {
-          type: 'Feature',
-          properties: {},
-          geometry: {
-            type: 'LineString',
-            coordinates: [
-              [normalizedStorePin.longitude, normalizedStorePin.latitude],
-              [normalizedCustomerPin.longitude, normalizedCustomerPin.latitude]
-            ]
-          }
-        };
-        if (existingSource) {
-          existingSource.setData(routeFeature);
-        } else {
-          map.addSource(routeSourceId, {
-            type: 'geojson',
-            data: routeFeature
-          });
-          map.addLayer({
-            id: routeLayerId,
-            type: 'line',
-            source: routeSourceId,
-            paint: {
-              'line-color': '#1a4e8d',
-              'line-width': 4,
-              'line-opacity': 0.8,
-              'line-dasharray': [2, 2]
-            }
-          });
-        }
-      }
-
-      if (normalizedStorePin && normalizedCustomerPin) {
-        const bounds = new maplibregl.LngLatBounds(
-          [normalizedStorePin.longitude, normalizedStorePin.latitude],
-          [normalizedCustomerPin.longitude, normalizedCustomerPin.latitude]
-        );
-        map.fitBounds(bounds, { padding: 56, maxZoom: 14, duration: 350 });
-      } else if (normalizedStorePin) {
-        map.easeTo({ center: [normalizedStorePin.longitude, normalizedStorePin.latitude], zoom: 14, duration: 350 });
-      } else if (normalizedCustomerPin) {
-        map.easeTo({ center: [normalizedCustomerPin.longitude, normalizedCustomerPin.latitude], zoom: 14, duration: 350 });
-      } else {
-        map.easeTo({ center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude], zoom: 12, duration: 350 });
-      }
-    };
-
-    if (map.isStyleLoaded()) {
-      updateRouteLayer();
-    } else {
-      map.once('load', updateRouteLayer);
-    }
-  }, [customerPin, storePin]);
-
   const hasStorePin = hasCoordinate(storePin);
   const hasCustomerPin = hasCoordinate(customerPin);
-  const hasRoute = hasStorePin && hasCustomerPin;
+  const isDeliveryPreview = hasCustomerPin;
+  const rightTitle = isDeliveryPreview ? 'Your pin' : 'Point B';
+  const footerText = isDeliveryPreview
+    ? 'Simple delivery direction preview from point A to point B.'
+    : 'Route preview is under development. Live tracking is not available yet.';
 
   return (
-    <div style={{ height: mapHeight, borderRadius: 20, border: '1px solid #e2e8f0', background: '#f8fafc', overflow: 'hidden', position: 'relative' }}>
-      <div ref={mapRootRef} style={{ width: '100%', height: '100%' }} />
-      {!hasRoute && (
-        <div style={{ position: 'absolute', left: 14, bottom: 14, background: 'rgba(255,255,255,0.92)', border: '1px solid #dbe5ee', borderRadius: 12, padding: '8px 10px', fontSize: 12, color: '#475569' }}>
-          {hasStorePin && !hasCustomerPin ? 'Waiting for customer pin to draw route.' : 'Map centered on store area.'}
+    <div
+      style={{
+        height: mapHeight,
+        borderRadius: 20,
+        border: '1px solid #dbe5ee',
+        background: '#f8fafc',
+        overflow: 'hidden',
+        position: 'relative',
+        boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.4)'
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background:
+            'linear-gradient(rgba(148,163,184,0.10) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.10) 1px, transparent 1px)',
+          backgroundSize: '26px 26px',
+          opacity: 0.85
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background:
+            'radial-gradient(circle at 24% 28%, rgba(15,111,255,0.08) 0, rgba(15,111,255,0.08) 72px, transparent 74px), radial-gradient(circle at 78% 74%, rgba(249,115,22,0.08) 0, rgba(249,115,22,0.08) 84px, transparent 86px)'
+        }}
+      />
+
+      <div style={{ position: 'relative', height: '100%', width: '100%', padding: 24, display: 'grid' }}>
+        <div style={{ alignSelf: 'center', justifySelf: 'center', width: '100%', maxWidth: 420, display: 'grid', gap: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 18 }}>
+            <PointBadge label="A" tone="store" title={hasStorePin ? 'Store' : 'Point A'} />
+            <div style={{ flex: 1, minWidth: 86, position: 'relative', height: 18, display: 'flex', alignItems: 'center' }}>
+              <div style={{ width: '100%', borderTop: '4px dashed #94a3b8' }} />
+              <div
+                style={{
+                  position: 'absolute',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  padding: '5px 10px',
+                  borderRadius: 999,
+                  background: '#fff',
+                  border: '1px solid #dbe5ee',
+                  color: '#64748b',
+                  fontSize: 11,
+                  fontWeight: 800,
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                A to B
+              </div>
+            </div>
+            <PointBadge label="B" tone="customer" title={rightTitle} />
+          </div>
         </div>
-      )}
-      {hasRoute && (
-        <div style={{ position: 'absolute', left: 14, bottom: 14, background: 'rgba(255,255,255,0.92)', border: '1px solid #dbe5ee', borderRadius: 12, padding: '8px 10px', fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ display: 'inline-block', width: 22, height: 0, borderTop: '3px dashed #1a4e8d' }} />
-          Planned route preview (not live GPS yet)
+
+        <div style={{ alignSelf: 'end', justifySelf: 'stretch', display: 'grid', gap: 10 }}>
+          <div
+            style={{
+              justifySelf: 'start',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '10px 14px',
+              borderRadius: 999,
+              background: 'rgba(255,255,255,0.94)',
+              border: '1px solid #dbe5ee',
+              color: '#475569',
+              fontSize: 12,
+              fontWeight: 700
+            }}
+          >
+            {footerText}
+          </div>
+          <div
+            style={{
+              justifySelf: 'start',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '10px 14px',
+              borderRadius: 999,
+              background: '#fff7ed',
+              border: '1px solid #fed7aa',
+              color: '#9a3412',
+              fontSize: 12,
+              fontWeight: 800
+            }}
+          >
+            Route preview is under development
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

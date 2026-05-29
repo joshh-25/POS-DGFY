@@ -51,7 +51,7 @@ describe('F&B storefront tracking contract', () => {
       deliveryAddress: 'Iloilo City'
     });
     expect(result.normalized.items).toEqual([
-      expect.objectContaining({ name: 'Burger', qty: 2, amount: 250 })
+      expect.objectContaining({ item_id: 10, name: 'Burger', qty: 2, amount: 250 })
     ]);
     expect(result.normalized.timeline.map((step) => step.id)).toEqual([
       'placed',

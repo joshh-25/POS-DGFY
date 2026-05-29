@@ -195,7 +195,7 @@ describe('storefront profile launcher', () => {
 
     await waitFor(() => {
       expect(screen.getByText('DGFY Account')).toBeTruthy();
-      expect(screen.getByRole('button', { name: /sign in with dgfy/i })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /sign in to dgfy/i })).toBeTruthy();
     });
   });
 

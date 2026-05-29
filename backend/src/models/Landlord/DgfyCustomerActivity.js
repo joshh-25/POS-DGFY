@@ -1,4 +1,4 @@
-import { DataTypes, Model } from 'sequelize';
+﻿import { DataTypes, Model } from 'sequelize';
 
 export default (sequelize) => {
     class DgfyCustomerActivity extends Model { }
@@ -22,7 +22,7 @@ export default (sequelize) => {
             allowNull: true
         },
         activity_type: {
-            type: DataTypes.ENUM('order', 'service_booking', 'hospitality_booking'),
+            type: DataTypes.ENUM('order', 'service_booking', 'hospitality_booking', 'fnb_order'),
             allowNull: false,
             defaultValue: 'order'
         },

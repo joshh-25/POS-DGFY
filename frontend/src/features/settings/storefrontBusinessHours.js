@@ -1,0 +1,170 @@
+﻿export const STOREFRONT_BUSINESS_DAY_OPTIONS = Object.freeze([
+  { key: 'sun', label: 'Sun' },
+  { key: 'mon', label: 'Mon' },
+  { key: 'tue', label: 'Tue' },
+  { key: 'wed', label: 'Wed' },
+  { key: 'thu', label: 'Thu' },
+  { key: 'fri', label: 'Fri' },
+  { key: 'sat', label: 'Sat' }
+]);
+
+const DEFAULT_TIMEZONE = 'Asia/Manila';
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+const defaultDay = (enabled = true) => ({
+  enabled,
+  open: '09:00',
+  close: '18:00'
+});
+
+export const createDefaultStorefrontBusinessHours = () => ({
+  mode: 'weekly',
+  timezone: DEFAULT_TIMEZONE,
+  weekly: {
+    sun: defaultDay(false),
+    mon: defaultDay(true),
+    tue: defaultDay(true),
+    wed: defaultDay(true),
+    thu: defaultDay(true),
+    fri: defaultDay(true),
+    sat: defaultDay(true)
+  },
+  display: 'Mon-Sat 9:00 AM - 6:00 PM'
+});
+
+const parseJsonLoose = (value) => {
+  if (value == null) return null;
+  if (typeof value === 'object') return value;
+  if (typeof value !== 'string') return null;
+  try {
+    const parsed = JSON.parse(value);
+    return typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+  } catch {
+    return null;
+  }
+};
+
+const normalizeDay = (entry, fallbackEnabled) => ({
+  enabled: entry?.enabled == null ? fallbackEnabled : entry.enabled === true,
+  open: TIME_PATTERN.test(String(entry?.open || '').trim()) ? String(entry.open).trim() : '09:00',
+  close: TIME_PATTERN.test(String(entry?.close || '').trim()) ? String(entry.close).trim() : '18:00'
+});
+
+const to24Hour = (hour, minute, meridiem) => {
+  const parsedHour = Number.parseInt(hour, 10);
+  const parsedMinute = Number.parseInt(minute, 10);
+  const marker = String(meridiem || '').trim().toUpperCase();
+  if (!Number.isInteger(parsedHour) || parsedHour < 1 || parsedHour > 12) return null;
+  if (!Number.isInteger(parsedMinute) || parsedMinute < 0 || parsedMinute > 59) return null;
+  if (marker !== 'AM' && marker !== 'PM') return null;
+  let hour24 = parsedHour % 12;
+  if (marker === 'PM') hour24 += 12;
+  return `${String(hour24).padStart(2, '0')}:${String(parsedMinute).padStart(2, '0')}`;
+};
+
+const parseLegacyHours = (value) => {
+  const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)\s*-\s*(\d{1,2}):(\d{2})\s*(AM|PM)\s*(.*)$/i);
+  if (!match) return null;
+  const open = to24Hour(match[1], match[2], match[3]);
+  const close = to24Hour(match[4], match[5], match[6]);
+  if (!open || !close) return null;
+
+  const dayPart = String(match[7] || '').trim().toLowerCase();
+  const enabledKeys = new Set(STOREFRONT_BUSINESS_DAY_OPTIONS.map((day) => day.key));
+  if (dayPart && !['daily', 'everyday', 'all days'].includes(dayPart)) {
+    enabledKeys.clear();
+    dayPart.split(',').map((entry) => entry.trim().slice(0, 3)).forEach((token) => {
+      if (token === 'thu') enabledKeys.add('thu');
+      const day = STOREFRONT_BUSINESS_DAY_OPTIONS.find((option) => option.key === token);
+      if (day) enabledKeys.add(day.key);
+    });
+    if (enabledKeys.size === 0) return null;
+  }
+
+  const schedule = createDefaultStorefrontBusinessHours();
+  STOREFRONT_BUSINESS_DAY_OPTIONS.forEach((day) => {
+    schedule.weekly[day.key] = {
+      enabled: enabledKeys.has(day.key),
+      open,
+      close
+    };
+  });
+  schedule.display = formatStorefrontBusinessHoursDisplay(schedule);
+  return schedule;
+};
+
+export const normalizeStorefrontBusinessHours = (value) => {
+  const fallback = createDefaultStorefrontBusinessHours();
+  const parsed = parseJsonLoose(value);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return parseLegacyHours(value) || fallback;
+  }
+
+  return {
+    mode: 'weekly',
+    timezone: String(parsed.timezone || DEFAULT_TIMEZONE).trim() || DEFAULT_TIMEZONE,
+    weekly: STOREFRONT_BUSINESS_DAY_OPTIONS.reduce((acc, day) => {
+      acc[day.key] = normalizeDay(parsed.weekly?.[day.key], fallback.weekly[day.key].enabled);
+      return acc;
+    }, {}),
+    display: String(parsed.display || '').trim()
+  };
+};
+
+const formatMinutes = (time) => {
+  const [hourRaw, minuteRaw] = String(time || '00:00').split(':');
+  const hour24 = Number.parseInt(hourRaw, 10);
+  const minute = Number.parseInt(minuteRaw, 10);
+  if (!Number.isFinite(hour24) || !Number.isFinite(minute)) return '';
+  const meridiem = hour24 >= 12 ? 'PM' : 'AM';
+  const hour12 = hour24 % 12 || 12;
+  return `${hour12}:${String(minute).padStart(2, '0')} ${meridiem}`;
+};
+
+export const formatStorefrontBusinessHoursDisplay = (hours) => {
+  const schedule = normalizeStorefrontBusinessHours(hours);
+  const segments = [];
+  let current = null;
+  const flush = () => {
+    if (!current) return;
+    const label = current.start === current.end ? current.startLabel : `${current.startLabel}-${current.endLabel}`;
+    const hoursLabel = current.open === current.close ? '24 hours' : `${formatMinutes(current.open)} - ${formatMinutes(current.close)}`;
+    segments.push(`${label} ${hoursLabel}`);
+  };
+
+  STOREFRONT_BUSINESS_DAY_OPTIONS.forEach((day) => {
+    const entry = schedule.weekly[day.key];
+    if (!entry?.enabled) {
+      flush();
+      current = null;
+      return;
+    }
+    const signature = `${entry.open}-${entry.close}`;
+    if (current?.signature === signature) {
+      current.end = day.key;
+      current.endLabel = day.label;
+      return;
+    }
+    flush();
+    current = {
+      start: day.key,
+      end: day.key,
+      startLabel: day.label,
+      endLabel: day.label,
+      open: entry.open,
+      close: entry.close,
+      signature
+    };
+  });
+  flush();
+
+  return segments.length > 0 ? segments.join('; ') : 'Closed';
+};
+
+export const serializeStorefrontBusinessHours = (hours) => {
+  const normalized = normalizeStorefrontBusinessHours(hours);
+  return {
+    ...normalized,
+    display: formatStorefrontBusinessHoursDisplay(normalized)
+  };
+};

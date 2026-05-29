@@ -834,7 +834,7 @@ export function SolutionsPage({ logoSrc, onExploreClick }) {
       </RevealSection>
 
       {/* ── 5. FOOTER ── */}
-      <footer style={{
+      <footer id="solutions-contact-anchor" style={{
         width: '100%',
         background: 'linear-gradient(180deg, #0c3c86 0%, #0a3475 38%, #082c63 100%)',
         color: '#fff',

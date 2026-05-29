@@ -1,12 +1,15 @@
-import { jest } from '@jest/globals';
+﻿import { jest } from '@jest/globals';
 import {
     buildDgfyHistoricalBackfillUseCase,
     buildGetDgfyCustomerDashboardUseCase,
+    buildListDgfyCustomerActivitiesUseCase,
     buildListPublicDgfyCustomerReviewsUseCase,
     buildModerateDgfyCustomerReviewUseCase,
     buildRequestDgfyTrackingRecoveryUseCase,
     buildSubmitDgfyCustomerReviewUseCase,
+    buildSubmitDgfyGuestReviewInviteUseCase,
     buildTrackDgfyCustomerReferenceUseCase,
+    buildValidateDgfyReviewInviteUseCase,
     buildVerifyDgfyTrackingRecoveryUseCase
 } from '../src/modules/dgfy/usecases/dgfyCustomerUseCases.js';
 import { buildPhoneLookupVariants } from '../src/modules/dgfy/repositories/dgfyCustomerRepository.js';
@@ -111,6 +114,76 @@ describe('dgfyCustomerUseCases', () => {
         expect(result.error.statusCode).toBe(403);
     });
 
+    it('lists unified activities with filter and pagination arguments', async () => {
+        const repository = {
+            listActivitiesForAccount: jest.fn().mockResolvedValue({
+                rows: [{
+                    activity_id: 30,
+                    activity_type: 'fnb_order',
+                    reference: 'FNB-30',
+                    tenant_id: 'tenant-1',
+                    store_name: 'Cafe',
+                    status: 'paid',
+                    payment_status: 'paid',
+                    display_snapshot: { check_id: 30, lines: [{ item_id: 88, name: 'Pasta' }] }
+                }],
+                pagination: { page: 2, limit: 5, total: 6, totalPages: 2 }
+            })
+        };
+        const useCase = buildListDgfyCustomerActivitiesUseCase({ repository });
+
+        const result = await useCase({
+            account,
+            query: { type: 'fnb_order', tenant_id: 'tenant-1', status: 'paid', payment_status: 'paid', date_from: '2026-05-01', date_to: '2026-05-28', page: 2, limit: 5 }
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.listActivitiesForAccount).toHaveBeenCalledWith(account.id, expect.objectContaining({
+            type: 'fnb_order',
+            tenantId: 'tenant-1',
+            status: 'paid',
+            paymentStatus: 'paid',
+            dateFrom: '2026-05-01',
+            dateTo: '2026-05-28',
+            page: 2,
+            limit: 5
+        }));
+        expect(result.data.activities[0]).toEqual(expect.objectContaining({
+            type: 'fnb_order',
+            type_label: 'F&B order',
+            allowed_actions: expect.objectContaining({ review: true }),
+            review_targets: expect.arrayContaining([expect.objectContaining({ target_type: 'fnb_item', target_id: 88 })])
+        }));
+    });
+
+    it('accepts typed service reviews from paid account booking activity', async () => {
+        const repository = {
+            listActivitiesForAccount: jest.fn().mockResolvedValue({
+                rows: [{
+                    activity_id: 77,
+                    activity_type: 'service_booking',
+                    tenant_id: 'tenant-1',
+                    status: 'completed',
+                    payment_status: 'paid',
+                    display_snapshot: { booking_id: 77, service_item_id: 44, service_name: 'Consultation' }
+                }]
+            }),
+            findReviewByAccountActivityTarget: jest.fn().mockResolvedValue(null),
+            createReview: jest.fn().mockImplementation((payload) => Promise.resolve({ review_id: 9, ...payload }))
+        };
+        const useCase = buildSubmitDgfyCustomerReviewUseCase({ repository });
+
+        const result = await useCase({ account, body: { activity_id: 77, target_type: 'service', target_id: 44, rating: 5, comment: 'Helpful' } });
+
+        expect(result.success).toBe(true);
+        expect(repository.createReview).toHaveBeenCalledWith(expect.objectContaining({
+            item_id: null,
+            target_type: 'service',
+            target_id: 44,
+            status: 'pending'
+        }));
+    });
+
     it('rejects reviews until the account activity is paid or completed', async () => {
         const useCase = buildSubmitDgfyCustomerReviewUseCase({
             repository: {
@@ -132,7 +205,7 @@ describe('dgfyCustomerUseCases', () => {
             repository: {
                 listPublicReviews: jest.fn().mockResolvedValue({
                     rows: [{ review_id: 1, status: 'approved', rating: 5 }],
-                    summary: { average_rating: 5, total_count: 1 }
+                    summary: { average_rating: 5, total_count: 1, verified_count: 1, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 1 } }
                 })
             }
         });
@@ -142,6 +215,81 @@ describe('dgfyCustomerUseCases', () => {
         expect(result.success).toBe(true);
         expect(result.data.reviews).toHaveLength(1);
         expect(result.data.summary.total_count).toBe(1);
+        expect(result.data.summary.verified_count).toBe(1);
+        expect(result.data.summary.distribution[5]).toBe(1);
+    });
+
+    it('validates an active guest review invite token for a fulfilled menu item', async () => {
+        const useCase = buildValidateDgfyReviewInviteUseCase({
+            repository: {
+                findReviewInviteByTokenHash: jest.fn().mockResolvedValue({
+                    invite_id: 8,
+                    tenant_id: 'tenant-1',
+                    tracking_pin: 'SK-ABCD12',
+                    target_type: 'fnb_item',
+                    target_id: 44,
+                    item_name: 'Adobo Platter',
+                    delivery_channel: 'tracking',
+                    status: 'issued',
+                    expires_at: new Date(Date.now() + 60_000).toISOString(),
+                    activity_id: 90
+                }),
+                markReviewInviteOpened: jest.fn().mockResolvedValue({})
+            }
+        });
+
+        const result = await useCase({ token: 'public-review-token' });
+
+        expect(result.success).toBe(true);
+        expect(result.data.invite).toEqual(expect.objectContaining({
+            tracking_pin: 'SK-ABCD12',
+            target_type: 'fnb_item',
+            target_id: 44,
+            item_name: 'Adobo Platter'
+        }));
+    });
+
+    it('submits a fulfilled guest review invite once and marks it as pending moderation', async () => {
+        const repository = {
+            findReviewInviteByTokenHash: jest.fn().mockResolvedValue({
+                invite_id: 5,
+                tenant_id: 'tenant-1',
+                activity_id: 61,
+                target_type: 'fnb_item',
+                target_id: 14,
+                delivery_channel: 'tracking',
+                status: 'opened',
+                expires_at: new Date(Date.now() + 60_000).toISOString()
+            }),
+            findReviewByTrackingActivityTarget: jest.fn().mockResolvedValue(null),
+            createReview: jest.fn().mockImplementation((payload) => Promise.resolve({ review_id: 77, ...payload })),
+            markReviewInviteSubmitted: jest.fn().mockResolvedValue({ invite_id: 5, status: 'submitted', submitted_review_id: 77 })
+        };
+        const useCase = buildSubmitDgfyGuestReviewInviteUseCase({ repository });
+
+        const result = await useCase({
+            token: 'invite-token',
+            body: {
+                name: 'Ada Lovelace',
+                anonymous: false,
+                rating: 5,
+                comment: 'The serving was generous and the flavor was balanced.'
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.createReview).toHaveBeenCalledWith(expect.objectContaining({
+            dgfy_account_id: null,
+            activity_id: 61,
+            tenant_id: 'tenant-1',
+            target_type: 'fnb_item',
+            target_id: 14,
+            reviewer_name: 'Ada Lovelace',
+            reviewer_initials: 'AL',
+            verified_purchase: true,
+            status: 'pending'
+        }));
+        expect(repository.markReviewInviteSubmitted).toHaveBeenCalledWith({ inviteId: 5, reviewId: 77 });
     });
 
     it('allows admins to approve or reject pending reviews', async () => {
@@ -196,7 +344,7 @@ describe('dgfyCustomerUseCases', () => {
         expect(repository.updateBackfillRun).toHaveBeenCalledWith('run-1', expect.objectContaining({ status: 'completed' }));
     });
 
-    it('backfills service and hospitality booking activity alongside POS orders', async () => {
+    it('backfills service, hospitality, and F&B activity alongside POS orders', async () => {
         const repository = {
             createBackfillRun: jest.fn().mockResolvedValue({ run_id: 'run-1' }),
             updateBackfillRun: jest.fn().mockImplementation((runId, payload) => Promise.resolve({ run_id: runId, ...payload })),
@@ -217,6 +365,9 @@ describe('dgfyCustomerUseCases', () => {
             ],
             hospitalityReservations: [
                 { reservation_id: 9, public_reference: 'HSP-A1B2C3D4E5', customer_phone: '09123456789', status: 'confirmed', payment_status: 'deposit_paid', check_in_date: '2026-06-10', check_out_date: '2026-06-12' }
+            ],
+            fnbOrders: [
+                { check_id: 11, status: 'paid', posTransaction: { tracking_pin: 'FNB-A1B2C3', customer_email: account.email, payment_status: 'paid', total_amount: 399 }, lines: [{ item_id: 15, quantity: 1, item: { name: 'Brunch Set' } }] }
             ]
         });
         const activityRecorder = jest.fn().mockResolvedValue({ activity_id: 1, dgfy_account_id: account.id, status: 'completed' });
@@ -231,7 +382,7 @@ describe('dgfyCustomerUseCases', () => {
                 dryRun: false,
                 tenantPageSize: 1,
                 transactionLimitPerTenant: null,
-                requiredActivityTypes: 'order,service_booking,hospitality_booking'
+                requiredActivityTypes: 'order,service_booking,hospitality_booking,fnb_order'
             }
         });
 
@@ -239,7 +390,8 @@ describe('dgfyCustomerUseCases', () => {
         expect(result.data.summary.order_count).toBe(1);
         expect(result.data.summary.service_booking_count).toBe(1);
         expect(result.data.summary.hospitality_booking_count).toBe(1);
-        expect(result.data.summary.matched_account_count).toBe(3);
+        expect(result.data.summary.fnb_order_count).toBe(1);
+        expect(result.data.summary.matched_account_count).toBe(4);
         expect(activityRecorder).toHaveBeenCalledTimes(1);
         expect(repository.upsertActivity).toHaveBeenCalledWith(expect.objectContaining({
             activity_type: 'service_booking',
@@ -249,6 +401,11 @@ describe('dgfyCustomerUseCases', () => {
         expect(repository.upsertActivity).toHaveBeenCalledWith(expect.objectContaining({
             activity_type: 'hospitality_booking',
             reference: 'HSP-A1B2C3D4E5',
+            dgfy_account_id: account.id
+        }));
+        expect(repository.upsertActivity).toHaveBeenCalledWith(expect.objectContaining({
+            activity_type: 'fnb_order',
+            reference: 'FNB-A1B2C3',
             dgfy_account_id: account.id
         }));
     });

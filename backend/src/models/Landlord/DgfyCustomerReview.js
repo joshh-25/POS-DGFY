@@ -1,4 +1,4 @@
-import { DataTypes, Model } from 'sequelize';
+﻿import { DataTypes, Model } from 'sequelize';
 
 export default (sequelize) => {
     class DgfyCustomerReview extends Model { }
@@ -11,7 +11,7 @@ export default (sequelize) => {
         },
         dgfy_account_id: {
             type: DataTypes.UUID,
-            allowNull: false
+            allowNull: true
         },
         activity_id: {
             type: DataTypes.INTEGER,
@@ -23,7 +23,16 @@ export default (sequelize) => {
         },
         item_id: {
             type: DataTypes.INTEGER,
-            allowNull: false
+            allowNull: true
+        },
+        target_type: {
+            type: DataTypes.ENUM('product', 'service', 'hospitality_booking', 'fnb_order', 'fnb_item'),
+            allowNull: false,
+            defaultValue: 'product'
+        },
+        target_id: {
+            type: DataTypes.INTEGER,
+            allowNull: true
         },
         rating: {
             type: DataTypes.INTEGER,
@@ -31,6 +40,28 @@ export default (sequelize) => {
         },
         comment: {
             type: DataTypes.TEXT,
+            allowNull: true
+        },
+        reviewer_name: {
+            type: DataTypes.STRING(255),
+            allowNull: true
+        },
+        reviewer_initials: {
+            type: DataTypes.STRING(12),
+            allowNull: true
+        },
+        verified_purchase: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: true
+        },
+        submission_channel: {
+            type: DataTypes.ENUM('account', 'tracking', 'order_success', 'qr', 'receipt'),
+            allowNull: false,
+            defaultValue: 'account'
+        },
+        media_json: {
+            type: DataTypes.JSON,
             allowNull: true
         },
         status: {
@@ -54,6 +85,11 @@ export default (sequelize) => {
         review_note: {
             type: DataTypes.TEXT,
             allowNull: true
+        },
+        anonymous: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false
         }
     }, {
         sequelize,
@@ -63,7 +99,9 @@ export default (sequelize) => {
         timestamps: true,
         indexes: [
             { fields: ['dgfy_account_id', 'tenant_id', 'item_id'], name: 'idx_dgfy_customer_reviews_account_item' },
-            { fields: ['tenant_id', 'item_id', 'status'], name: 'idx_dgfy_customer_reviews_public' }
+            { fields: ['tenant_id', 'item_id', 'status'], name: 'idx_dgfy_customer_reviews_public' },
+            { fields: ['dgfy_account_id', 'activity_id', 'target_type', 'target_id'], name: 'idx_dgfy_customer_reviews_account_target' },
+            { fields: ['tenant_id', 'target_type', 'target_id', 'status'], name: 'idx_dgfy_customer_reviews_public_target' }
         ]
     });
 

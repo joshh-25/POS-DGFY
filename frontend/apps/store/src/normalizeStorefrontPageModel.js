@@ -1,6 +1,7 @@
 import { getStorefrontModeAdapter } from './modePresentationRegistry.js';
 import { getFoodBeverageStorefrontViewModel } from './fnbStorefrontViewModel.js';
 import { getServicesStorefrontViewModel } from './servicesStorefrontViewModel.js';
+import { formatStorefrontBusinessHoursDisplay } from '../../../src/features/settings/storefrontBusinessHours.js';
 
 const trimText = (value) => String(value || '').trim();
 
@@ -160,7 +161,11 @@ export const normalizeStorefrontPageModel = ({
   const messageHref = buildStorefrontMessageHref({ messengerLink, phone, email });
   const locationSummary = trimText(selectedStore?.location_name || selectedStore?.address_line);
   const addressLine = trimText(selectedStore?.address_line);
-  const hours = trimText(selectedStore?.storefront_hours);
+  const hours = trimText(
+    selectedStore?.storefront_hours_status?.display
+    || formatStorefrontBusinessHoursDisplay(selectedStore?.storefront_hours)
+    || selectedStore?.storefront_hours
+  );
   
   const contactRows = [];
   if (phone) contactRows.push({ label: 'Call', value: phone, href: `tel:${phone}` });

@@ -107,6 +107,7 @@ import DgfyCustomerBackfillRunFactory from './Landlord/DgfyCustomerBackfillRun.j
 import DgfyCustomerReviewFactory from './Landlord/DgfyCustomerReview.js';
 import DgfyLoyaltyTransactionFactory from './Landlord/DgfyLoyaltyTransaction.js';
 import DgfyTrackingRecoveryCodeFactory from './Landlord/DgfyTrackingRecoveryCode.js';
+import DgfyReviewInviteFactory from './Landlord/DgfyReviewInvite.js';
 import PaymentFactory from './Landlord/Payment.js';
 import WebhookLogFactory from './Landlord/WebhookLog.js';
 import EngagementEventFactory from './Landlord/EngagementEvent.js';
@@ -131,6 +132,7 @@ const DgfyCustomerBackfillRun = DgfyCustomerBackfillRunFactory(sequelize);
 const DgfyCustomerReview = DgfyCustomerReviewFactory(sequelize);
 const DgfyLoyaltyTransaction = DgfyLoyaltyTransactionFactory(sequelize);
 const DgfyTrackingRecoveryCode = DgfyTrackingRecoveryCodeFactory(sequelize);
+const DgfyReviewInvite = DgfyReviewInviteFactory(sequelize);
 const Payment = PaymentFactory(sequelize);
 const WebhookLog = WebhookLogFactory(sequelize);
 const EngagementEvent = EngagementEventFactory(sequelize);
@@ -659,6 +661,7 @@ const db = {
   DgfyCustomerReview,
   DgfyLoyaltyTransaction,
   DgfyTrackingRecoveryCode,
+  DgfyReviewInvite,
   Payment,
   WebhookLog,
   EngagementEvent,
@@ -781,6 +784,7 @@ export {
   DgfyCustomerReview,
   DgfyLoyaltyTransaction,
   DgfyTrackingRecoveryCode,
+  DgfyReviewInvite,
   Payment,
   WebhookLog,
   EngagementEvent,

@@ -197,6 +197,7 @@ const buildStorefrontCatalogDetailIncludes = () => {
     const ServiceItemDetail = dbStore.get('ServiceItemDetail');
     const ItemNutrition = dbStore.get('ItemNutrition');
     const ItemAllergen = dbStore.get('ItemAllergen');
+    const ItemFolder = dbStore.get('ItemFolder');
     const FnbModifierGroup = dbStore.get('FnbModifierGroup');
     const FnbModifierOption = dbStore.get('FnbModifierOption');
 
@@ -220,6 +221,15 @@ const buildStorefrontCatalogDetailIncludes = () => {
         includes.push({
             model: ItemAllergen,
             as: 'allergens',
+            required: false
+        });
+    }
+
+    if (ItemFolder) {
+        includes.push({
+            model: ItemFolder,
+            as: 'folder',
+            attributes: ['folder_id', 'name'],
             required: false
         });
     }
@@ -388,8 +398,10 @@ export const storeRepository = {
             attributes: [
                 'item_id',
                 'name',
+                'description',
                 'category',
                 'product_type',
+                'product_folder',
                 'unit_of_measure',
                 'current_stock',
                 'default_sale_price',
@@ -476,8 +488,10 @@ export const storeRepository = {
             attributes: [
                 'item_id',
                 'name',
+                'description',
                 'category',
                 'product_type',
+                'product_folder',
                 'unit_of_measure',
                 'current_stock',
                 'default_sale_price',
@@ -497,7 +511,9 @@ export const storeRepository = {
             .map((row) => ({
                 item_id: row.item_id,
                 name: row.name,
+                description: row.description,
                 category: row.category,
+                folder_name: row.product_folder || row?.folder?.name || null,
                 unit_of_measure: row.unit_of_measure,
                 current_stock: isStockExemptServiceItem(row) ? 0 : row.current_stock,
                 default_sale_price: row.default_sale_price,

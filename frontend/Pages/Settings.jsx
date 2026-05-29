@@ -19,12 +19,12 @@ import {
   Trash2,
   Wand2
 } from 'lucide-react';
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Slider } from "@/components/ui/slider";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "../components/ui/button.jsx";
+import { Input } from "../components/ui/input.jsx";
+import { Label } from "../components/ui/label.jsx";
+import { Switch } from "../components/ui/switch.jsx";
+import { Slider } from "../components/ui/slider.jsx";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card.jsx";
 import {
   Dialog,
   DialogContent,
@@ -32,11 +32,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle
-} from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+} from "../components/ui/dialog.jsx";
+import { Separator } from "../components/ui/separator.jsx";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs.jsx";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn } from "../src/lib/utils.js";
 import useStore from '../src/store/useStore.js';
 import * as userService from '../src/services/userService.js';
 import * as settingsService from '../src/services/settingsService.js';
@@ -60,6 +60,13 @@ import {
   WORKFLOW_MODE_LABELS,
   WORKFLOW_MODE_SELECT_VALUES
 } from '../src/features/settings/workflowMode.js';
+import {
+  STOREFRONT_BUSINESS_DAY_OPTIONS,
+  createDefaultStorefrontBusinessHours,
+  formatStorefrontBusinessHoursDisplay,
+  normalizeStorefrontBusinessHours,
+  serializeStorefrontBusinessHours
+} from '../src/features/settings/storefrontBusinessHours.js';
 import resolveAssetUrl from '../src/utils/assetUrl.js';
 import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../src/utils/phoneNumber.js';
 import { generateReadablePassword, isPasswordLongEnough } from '../src/utils/passwordPolicy.js';
@@ -161,7 +168,7 @@ const createDefaultSettings = ({ workflowMode = DEFAULT_WORKFLOW_MODE } = {}) =>
   storefrontAbout: '',
   storefrontPhone: '',
   storefrontEmail: '',
-  storefrontHours: '',
+  storefrontHours: createDefaultStorefrontBusinessHours(),
   storefrontWhyChooseUs: [''],
   storefrontSocialMessenger: '',
   storefrontSocialFacebook: '',
@@ -690,7 +697,7 @@ export default function Settings() {
           storefrontAbout: String(systemSettings.storefront_about?.value || ''),
           storefrontPhone: String(systemSettings.storefront_phone?.value || ''),
           storefrontEmail: String(systemSettings.storefront_email?.value || ''),
-          storefrontHours: String(systemSettings.storefront_hours?.value || ''),
+          storefrontHours: normalizeStorefrontBusinessHours(systemSettings.storefront_hours?.value),
           storefrontWhyChooseUs: normalizeStringList(systemSettings.storefront_why_choose_us?.value, 6, 120).length > 0
             ? normalizeStringList(systemSettings.storefront_why_choose_us?.value, 6, 120)
             : [''],
@@ -842,6 +849,42 @@ export default function Settings() {
       const next = Array.isArray(prev.storefrontWhyChooseUs) ? [...prev.storefrontWhyChooseUs] : [''];
       next[index] = String(value || '');
       return { ...prev, storefrontWhyChooseUs: next };
+    });
+  };
+
+  const handleStorefrontHoursDayChange = (dayKey, patch) => {
+    setSettings((prev) => {
+      const current = normalizeStorefrontBusinessHours(prev.storefrontHours);
+      return {
+        ...prev,
+        storefrontHours: {
+          ...current,
+          weekly: {
+            ...current.weekly,
+            [dayKey]: {
+              ...current.weekly[dayKey],
+              ...patch
+            }
+          }
+        }
+      };
+    });
+  };
+
+  const copyStorefrontHoursToAllDays = (sourceDayKey = 'mon') => {
+    setSettings((prev) => {
+      const current = normalizeStorefrontBusinessHours(prev.storefrontHours);
+      const source = current.weekly[sourceDayKey] || current.weekly.mon;
+      return {
+        ...prev,
+        storefrontHours: {
+          ...current,
+          weekly: STOREFRONT_BUSINESS_DAY_OPTIONS.reduce((acc, day) => {
+            acc[day.key] = { ...source };
+            return acc;
+          }, {})
+        }
+      };
     });
   };
 
@@ -1593,7 +1636,7 @@ export default function Settings() {
         storefront_about: String(settings.storefrontAbout || '').trim(),
         storefront_phone: String(settings.storefrontPhone || '').trim(),
         storefront_email: String(settings.storefrontEmail || '').trim(),
-        storefront_hours: String(settings.storefrontHours || '').trim(),
+        storefront_hours: serializeStorefrontBusinessHours(settings.storefrontHours),
         storefront_why_choose_us: storefrontWhyChooseUs,
         storefront_social_links: {
           messenger: String(settings.storefrontSocialMessenger || '').trim(),
@@ -2661,16 +2704,60 @@ export default function Settings() {
                   <Input value={settings.storefrontTagline} onChange={(e) => handleChange('storefrontTagline', e.target.value)} placeholder="Grilled to perfection. Made with love." />
                 </div>
                 <div className="space-y-2">
-                  <Label>Store Hours</Label>
-                  <Input value={settings.storefrontHours} onChange={(e) => handleChange('storefrontHours', e.target.value)} placeholder="10:00 AM - 10:00 PM Daily" />
-                </div>
-                <div className="space-y-2">
                   <Label>Phone</Label>
                   <Input value={settings.storefrontPhone} onChange={(e) => handleChange('storefrontPhone', e.target.value)} placeholder="0917 123 4567" />
                 </div>
                 <div className="space-y-2">
                   <Label>Email</Label>
                   <Input value={settings.storefrontEmail} onChange={(e) => handleChange('storefrontEmail', e.target.value)} placeholder="store@email.com" />
+                </div>
+              </div>
+              <div className="space-y-3 rounded-lg border border-slate-200 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <Label>Business Hours</Label>
+                    <p className="mt-1 text-xs text-slate-500">These hours appear on the storefront and gate checkout availability. Times use Asia/Manila.</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-700">Preview: {formatStorefrontBusinessHoursDisplay(settings.storefrontHours)}</p>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={() => copyStorefrontHoursToAllDays('mon')}>
+                    <Copy className="w-4 h-4 mr-1" />Copy Mon
+                  </Button>
+                </div>
+                <div className="grid gap-2">
+                  {STOREFRONT_BUSINESS_DAY_OPTIONS.map((day) => {
+                    const dayHours = normalizeStorefrontBusinessHours(settings.storefrontHours).weekly[day.key];
+                    const isAllDay = dayHours.enabled && dayHours.open === dayHours.close;
+                    return (
+                      <div key={day.key} className="grid grid-cols-[48px_1fr_1fr_auto_auto] items-center gap-2 rounded-md bg-slate-50 px-3 py-2">
+                        <span className="text-xs font-semibold text-slate-700">{day.label}</span>
+                        <Input
+                          type="time"
+                          value={dayHours.open}
+                          disabled={!dayHours.enabled}
+                          onChange={(e) => handleStorefrontHoursDayChange(day.key, { open: e.target.value })}
+                          className="h-9"
+                        />
+                        <Input
+                          type="time"
+                          value={dayHours.close}
+                          disabled={!dayHours.enabled}
+                          onChange={(e) => handleStorefrontHoursDayChange(day.key, { close: e.target.value })}
+                          className="h-9"
+                        />
+                        <Switch
+                          checked={dayHours.enabled}
+                          onCheckedChange={(checked) => handleStorefrontHoursDayChange(day.key, { enabled: checked === true })}
+                        />
+                        <button
+                          type="button"
+                          className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
+                          onClick={() => handleStorefrontHoursDayChange(day.key, isAllDay ? { open: '09:00', close: '18:00' } : { enabled: true, open: '00:00', close: '00:00' })}
+                        >
+                          {isAllDay ? '24h' : (dayHours.enabled ? 'Set 24h' : 'Closed')}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
               <div className="space-y-2">

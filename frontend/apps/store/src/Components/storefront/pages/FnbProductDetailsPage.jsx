@@ -24,6 +24,43 @@ import {
   Store
 } from 'lucide-react';
 
+const STAR_COLOR = '#f59e0b';
+const STAR_SOFT = '#fef3c7';
+
+const formatRelativeDate = (value) => {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return 'Recently';
+  const diffMs = Date.now() - date.getTime();
+  const diffDays = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+  if (diffDays <= 0) return 'Today';
+  if (diffDays === 1) return '1 day ago';
+  if (diffDays < 30) return `${diffDays} days ago`;
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths <= 1) return '1 month ago';
+  if (diffMonths < 12) return `${diffMonths} months ago`;
+  const diffYears = Math.floor(diffMonths / 12);
+  return diffYears <= 1 ? '1 year ago' : `${diffYears} years ago`;
+};
+
+function FractionalStars({ value = 0, size = 16, gap = 4 }) {
+  const rating = Math.max(0, Math.min(5, Number(value || 0)));
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap }}>
+      {Array.from({ length: 5 }, (_, index) => {
+        const fillRatio = Math.max(0, Math.min(1, rating - index));
+        return (
+          <span key={`fractional-star-${index}`} style={{ position: 'relative', width: size, height: size, display: 'inline-grid', placeItems: 'center' }}>
+            <Star size={size} color="#cbd5e1" strokeWidth={1.8} />
+            <span style={{ position: 'absolute', inset: 0, width: `${fillRatio * 100}%`, overflow: 'hidden', display: 'grid', placeItems: 'center', transition: 'width 220ms ease' }}>
+              <Star size={size} color={STAR_COLOR} fill={STAR_COLOR} strokeWidth={1.8} />
+            </span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 const money = (value) => `PHP ${Number(value || 0).toFixed(2)}`;
 
 const withAssetOrigin = (url) => {
@@ -142,7 +179,13 @@ export function FnbProductDetailsPage({
   onQuickAdd,
   isMobileViewport,
   ratingScore = null,
-  reviewCount = null
+  reviewCount = null,
+  reviewDistribution = null,
+  reviews = [],
+  reviewsLoading = false,
+  canWriteReview = false,
+  onOpenWriteReview = null,
+  reviewSectionHighlighted = false
 }) {
   const [activeTab, setActiveTab] = React.useState('nutrition');
   const [isDescExpanded, setIsDescExpanded] = React.useState(false);
@@ -240,6 +283,7 @@ export function FnbProductDetailsPage({
     && Number.isFinite(Number(reviewCount)) && Number(reviewCount) > 0;
   const desktopSummaryTop = isMobileViewport ? 'auto' : 88;
   const hasModifiers = Array.isArray(modifierGroups) && modifierGroups.length > 0;
+  const reviewEntries = Array.isArray(reviews) ? reviews : [];
 
   const renderNutritionAndAllergens = () => {
     if (!hasInfoSection) return null;
@@ -710,6 +754,171 @@ export function FnbProductDetailsPage({
                 </div>
               </div>
             ) : null}
+
+            <div
+              id="fnb-item-reviews-section"
+              style={{
+              display: 'grid',
+              gap: 16,
+              borderTop: '1px solid rgba(226, 232, 240, 0.6)',
+              paddingTop: 24,
+              marginTop: 24,
+              scrollMarginTop: 96,
+              transition: 'box-shadow 220ms ease, border-color 220ms ease',
+              ...(reviewSectionHighlighted ? {
+                borderRadius: 24,
+                paddingInline: 16,
+                paddingBottom: 12,
+                marginInline: -16,
+                boxShadow: '0 0 0 2px rgba(15,111,255,0.16), 0 18px 36px rgba(15,111,255,0.08)'
+              } : {})
+            }}
+            >
+              <div style={{ display: 'flex', alignItems: isMobileViewport ? 'stretch' : 'center', justifyContent: 'space-between', gap: 16, flexDirection: isMobileViewport ? 'column' : 'row' }}>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0f172a' }}>Reviews & Ratings</h3>
+                  <div style={{ fontSize: 13, color: '#64748b' }}>Verified customer feedback for this menu item.</div>
+                </div>
+                {canWriteReview ? (
+                  <button
+                    type="button"
+                    onClick={onOpenWriteReview}
+                    style={{
+                      ...actionButtonBase,
+                      minHeight: 42,
+                      padding: '0 18px',
+                      borderRadius: 14,
+                      border: '1px solid #bfdbfe',
+                      background: '#eff6ff',
+                      color: '#0F6FFF',
+                      boxShadow: '0 10px 24px rgba(15,111,255,0.08)'
+                    }}
+                  >
+                    Write a Review
+                  </button>
+                ) : null}
+              </div>
+
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 280px) minmax(0, 1fr)',
+                gap: 18
+              }}>
+                <div style={{
+                  border: '1px solid rgba(226, 232, 240, 0.8)',
+                  borderRadius: 20,
+                  background: '#fff',
+                  padding: 18,
+                  display: 'grid',
+                  gap: 14,
+                  boxShadow: '0 12px 26px rgba(15,23,42,0.04)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ fontSize: 34, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>
+                      {hasReviewSummary ? Number(ratingScore).toFixed(2) : '0.00'}
+                    </div>
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      <FractionalStars value={ratingScore || 0} size={18} />
+                      <div style={{ fontSize: 12, color: '#64748b' }}>{Number(reviewCount || 0)} review{Number(reviewCount || 0) === 1 ? '' : 's'}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {[5, 4, 3, 2, 1].map((starValue) => {
+                      const total = Math.max(1, Number(reviewCount || 0));
+                      const count = Number(reviewDistribution?.[starValue] || 0);
+                      const width = `${Math.min(100, (count / total) * 100)}%`;
+                      return (
+                        <div key={`distribution-${starValue}`} style={{ display: 'grid', gridTemplateColumns: '22px 1fr 26px', gap: 10, alignItems: 'center' }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>{starValue}</div>
+                          <div style={{ height: 8, borderRadius: 999, background: '#eef2f7', overflow: 'hidden' }}>
+                            <div style={{ width, height: '100%', borderRadius: 999, background: 'linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%)', transition: 'width 240ms ease' }} />
+                          </div>
+                          <div style={{ fontSize: 12, color: '#64748b', textAlign: 'right' }}>{count}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {reviewsLoading ? (
+                  <div style={{ display: 'grid', placeItems: 'center', minHeight: 200, border: '1px solid rgba(226, 232, 240, 0.8)', borderRadius: 20, background: '#fff', color: '#64748b', fontSize: 14 }}>
+                    Loading customer reviews...
+                  </div>
+                ) : reviewEntries.length > 0 ? (
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))',
+                    gap: 14
+                  }}>
+                    {reviewEntries.map((entry) => {
+                      const reviewerName = String(entry?.reviewer_name || 'Customer').trim() || 'Customer';
+                      const initials = String(entry?.reviewer_initials || reviewerName.split(/\s+/).map((part) => part.charAt(0).toUpperCase()).slice(0, 2).join('') || 'CU').slice(0, 2);
+                      const mediaEntries = Array.isArray(entry?.media_json) ? entry.media_json.filter(Boolean).slice(0, 3) : [];
+                      return (
+                        <article
+                          key={`review-card-${entry?.review_id || `${reviewerName}-${entry?.submitted_at || ''}`}`}
+                          style={{
+                            display: 'grid',
+                            gap: 12,
+                            border: '1px solid rgba(226, 232, 240, 0.8)',
+                            borderRadius: 18,
+                            padding: 16,
+                            background: '#fff',
+                            boxShadow: '0 12px 26px rgba(15,23,42,0.04)',
+                            transition: 'transform 160ms ease, box-shadow 160ms ease'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                              <div style={{ width: 42, height: 42, borderRadius: 999, background: '#eff6ff', color: '#0F6FFF', display: 'grid', placeItems: 'center', fontSize: 15, fontWeight: 900, flexShrink: 0 }}>
+                                {initials}
+                              </div>
+                              <div style={{ display: 'grid', gap: 4, minWidth: 0 }}>
+                                <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{reviewerName}</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                  <FractionalStars value={Number(entry?.rating || 0)} size={14} gap={3} />
+                                  <span style={{ fontSize: 12, fontWeight: 700, color: '#b45309' }}>{Number(entry?.rating || 0).toFixed(2)}</span>
+                                </div>
+                              </div>
+                            </div>
+                            {entry?.verified_purchase === true ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999, background: '#ecfdf3', color: '#15803d', fontSize: 11, fontWeight: 800, border: '1px solid #bbf7d0', flexShrink: 0 }}>
+                                <BadgeCheck size={14} />
+                                Verified
+                              </span>
+                            ) : null}
+                          </div>
+
+                          {String(entry?.comment || '').trim() ? (
+                            <div style={{ fontSize: 14, lineHeight: 1.65, color: '#475569' }}>
+                              "{String(entry.comment).trim()}"
+                            </div>
+                          ) : null}
+
+                          {mediaEntries.length > 0 ? (
+                            <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
+                              {mediaEntries.map((mediaEntry, index) => (
+                                <div key={`review-media-${entry?.review_id || 'item'}-${index}`} style={{ width: 72, height: 72, borderRadius: 12, background: STAR_SOFT, border: '1px dashed #fdba74', display: 'grid', placeItems: 'center', color: '#c2410c', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                                  {String(mediaEntry?.label || mediaEntry?.name || 'Photo').trim()}
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+
+                          <div style={{ fontSize: 12, color: '#64748b' }}>
+                            {formatRelativeDate(entry?.submitted_at)}{entry?.verified_purchase === true ? ' - Verified Order' : ''}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', placeItems: 'center', minHeight: 200, border: '1px solid rgba(226, 232, 240, 0.8)', borderRadius: 20, background: '#fff', color: '#64748b', fontSize: 14, padding: 20, textAlign: 'center' }}>
+                    No verified reviews for this item yet.
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* -- RIGHT COLUMN: Summary + Sticky Actions (Consolidated clean cardless panel) -- */}

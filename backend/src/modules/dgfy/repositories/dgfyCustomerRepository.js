@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+﻿import crypto from 'crypto';
 import { Op } from 'sequelize';
 import {
     DgfyAccount,
@@ -7,6 +7,7 @@ import {
     DgfyCustomerBackfillRun,
     DgfyCustomerReview,
     DgfyLoyaltyTransaction,
+    DgfyReviewInvite,
     DgfyTrackingRecoveryCode,
     Tenant
 } from '../../../models/index.js';
@@ -48,6 +49,13 @@ export const hashTrackingRecoveryLookup = (value) => (
     crypto
         .createHash('sha256')
         .update(`${String(value || '').trim().toLowerCase()}:${process.env.EMAIL_OTP_SECRET || process.env.JWT_SECRET || 'dgfy_recovery_local_fallback'}`)
+        .digest('hex')
+);
+
+export const hashReviewInviteToken = (value) => (
+    crypto
+        .createHash('sha256')
+        .update(`${String(value || '').trim()}:${process.env.EMAIL_OTP_SECRET || process.env.JWT_SECRET || 'dgfy_review_invite_local_fallback'}`)
         .digest('hex')
 );
 
@@ -156,9 +164,42 @@ export const dgfyCustomerRepository = {
         return toPlain(await activity.reload());
     },
 
-    async listActivitiesForAccount(dgfyAccountId, { type = null, limit = 25, page = 1 } = {}) {
+    async listActivitiesForAccount(dgfyAccountId, {
+        type = null,
+        tenantId = null,
+        storeSlug = null,
+        status = null,
+        paymentStatus = null,
+        dateFrom = null,
+        dateTo = null,
+        limit = 25,
+        page = 1
+    } = {}) {
         const where = { dgfy_account_id: dgfyAccountId };
-        if (type) where.activity_type = type;
+        if (type) {
+            const rawTypes = Array.isArray(type) ? type : String(type).split(',');
+            const types = rawTypes.map((entry) => String(entry || '').trim()).filter(Boolean);
+            const mappedTypes = types.flatMap((entry) => {
+                if (entry === 'booking') return ['service_booking', 'hospitality_booking'];
+                if (entry === 'order') return ['order'];
+                if (entry === 'all') return [];
+                return [entry];
+            });
+            if (mappedTypes.length === 1) where.activity_type = mappedTypes[0];
+            if (mappedTypes.length > 1) where.activity_type = { [Op.in]: mappedTypes };
+        }
+        if (tenantId) where.tenant_id = String(tenantId).trim();
+        if (storeSlug) where.store_slug = String(storeSlug).trim();
+        if (status) where.status = String(status).trim();
+        if (paymentStatus) where.payment_status = String(paymentStatus).trim();
+        if (dateFrom || dateTo) {
+            where.occurred_at = {};
+            const from = dateFrom ? new Date(dateFrom) : null;
+            const to = dateTo ? new Date(dateTo) : null;
+            if (from && !Number.isNaN(from.getTime())) where.occurred_at[Op.gte] = from;
+            if (to && !Number.isNaN(to.getTime())) where.occurred_at[Op.lte] = to;
+            if (!Object.keys(where.occurred_at).length) delete where.occurred_at;
+        }
         const safeLimit = Math.max(1, Math.min(Number.parseInt(limit, 10) || 25, 100));
         const safePage = Math.max(1, Number.parseInt(page, 10) || 1);
         const result = await DgfyCustomerActivity.findAndCountAll({
@@ -315,11 +356,13 @@ export const dgfyCustomerRepository = {
         return toPlain(row);
     },
 
-    async listPublicReviews({ tenantId, itemId = null, limit = 20 } = {}) {
+    async listPublicReviews({ tenantId, itemId = null, targetType = null, targetId = null, limit = 20 } = {}) {
         const where = { status: 'approved' };
         if (tenantId) where.tenant_id = tenantId;
         if (itemId) where.item_id = Number.parseInt(itemId, 10);
-        if (!where.tenant_id && !where.item_id) return { rows: [], summary: { average_rating: null, total_count: 0 } };
+        if (targetType) where.target_type = targetType;
+        if (targetId) where.target_id = Number.parseInt(targetId, 10);
+        if (!where.tenant_id && !where.item_id && !where.target_type) return { rows: [], summary: { average_rating: null, total_count: 0 } };
 
         const safeLimit = Math.max(1, Math.min(Number.parseInt(limit, 10) || 20, 50));
         const [rows, allRows] = await Promise.all([
@@ -330,26 +373,38 @@ export const dgfyCustomerRepository = {
             }),
             DgfyCustomerReview.findAll({
                 where,
-                attributes: ['rating']
+                attributes: ['rating', 'verified_purchase']
             })
         ]);
         const ratings = allRows.map((row) => Number(row.rating || 0)).filter((rating) => rating > 0);
         const average = ratings.length
             ? Math.round((ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length) * 100) / 100
             : null;
+        const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+        let verifiedCount = 0;
+        allRows.forEach((row) => {
+            const rating = Number(row.rating || 0);
+            if (Number.isInteger(rating) && distribution[rating] !== undefined) {
+                distribution[rating] += 1;
+            }
+            if (row.verified_purchase === true) verifiedCount += 1;
+        });
         return {
             rows: rows.map(toPlain),
             summary: {
                 average_rating: average,
-                total_count: ratings.length
+                total_count: ratings.length,
+                verified_count: verifiedCount,
+                distribution
             }
         };
     },
 
-    async listReviewsForModeration({ status = 'pending', tenantId = null, limit = 50, page = 1 } = {}) {
+    async listReviewsForModeration({ status = 'pending', tenantId = null, targetType = null, limit = 50, page = 1 } = {}) {
         const where = {};
         if (status && status !== 'all') where.status = status;
         if (tenantId) where.tenant_id = tenantId;
+        if (targetType) where.target_type = targetType;
         const safeLimit = Math.max(1, Math.min(Number.parseInt(limit, 10) || 50, 100));
         const safePage = Math.max(1, Number.parseInt(page, 10) || 1);
         const result = await DgfyCustomerReview.findAndCountAll({
@@ -390,6 +445,103 @@ export const dgfyCustomerRepository = {
             }
         });
         return toPlain(row);
+    },
+
+    async findReviewByAccountActivityTarget({ dgfyAccountId, activityId, targetType, targetId }) {
+        const row = await DgfyCustomerReview.findOne({
+            where: {
+                dgfy_account_id: dgfyAccountId,
+                activity_id: activityId,
+                target_type: targetType,
+                target_id: targetId
+            }
+        });
+        return toPlain(row);
+    },
+
+    async findActivityByTenantReference({ tenantId, reference }) {
+        const row = await DgfyCustomerActivity.findOne({
+            where: {
+                tenant_id: String(tenantId || '').trim(),
+                reference: String(reference || '').trim().toUpperCase()
+            }
+        });
+        return toPlain(row);
+    },
+
+    async findReviewByTrackingActivityTarget({ tenantId, activityId = null, targetType, targetId }) {
+        const where = {
+            tenant_id: String(tenantId || '').trim(),
+            target_type: targetType,
+            target_id: Number.parseInt(targetId, 10)
+        };
+        if (activityId) where.activity_id = Number.parseInt(activityId, 10);
+        const row = await DgfyCustomerReview.findOne({ where });
+        return toPlain(row);
+    },
+
+    async findActiveReviewInvite({ tenantId, trackingPin, targetType, targetId }) {
+        const row = await DgfyReviewInvite.findOne({
+            where: {
+                tenant_id: String(tenantId || '').trim(),
+                tracking_pin: String(trackingPin || '').trim().toUpperCase(),
+                target_type: String(targetType || '').trim(),
+                target_id: Number.parseInt(targetId, 10),
+                status: { [Op.in]: ['issued', 'opened'] },
+                expires_at: { [Op.gt]: new Date() }
+            },
+            order: [['invite_id', 'DESC']]
+        });
+        return toPlain(row);
+    },
+
+    async createReviewInvite(payload = {}) {
+        const row = await DgfyReviewInvite.create(payload);
+        return toPlain(row);
+    },
+
+    async revokeActiveReviewInvites({ tenantId, trackingPin, targetType, targetId }) {
+        await DgfyReviewInvite.update(
+            { status: 'revoked' },
+            {
+                where: {
+                    tenant_id: String(tenantId || '').trim(),
+                    tracking_pin: String(trackingPin || '').trim().toUpperCase(),
+                    target_type: String(targetType || '').trim(),
+                    target_id: Number.parseInt(targetId, 10),
+                    status: { [Op.in]: ['issued', 'opened'] }
+                }
+            }
+        );
+    },
+
+    async findReviewInviteByTokenHash(tokenHash) {
+        const row = await DgfyReviewInvite.findOne({
+            where: { token_hash: tokenHash }
+        });
+        return toPlain(row);
+    },
+
+    async markReviewInviteOpened(inviteId) {
+        const row = await DgfyReviewInvite.findByPk(inviteId);
+        if (!row) return null;
+        if (!row.opened_at) {
+            await row.update({
+                opened_at: new Date(),
+                status: row.status === 'issued' ? 'opened' : row.status
+            });
+        }
+        return toPlain(await row.reload());
+    },
+
+    async markReviewInviteSubmitted({ inviteId, reviewId }) {
+        const row = await DgfyReviewInvite.findByPk(inviteId);
+        if (!row) return null;
+        await row.update({
+            status: 'submitted',
+            submitted_review_id: reviewId || null
+        });
+        return toPlain(await row.reload());
     },
 
     async createRecoveryCode(payload = {}) {

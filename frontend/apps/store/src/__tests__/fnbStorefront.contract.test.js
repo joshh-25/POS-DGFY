@@ -22,10 +22,20 @@ describe('Food & Beverage storefront contract', () => {
 
     expect(source).toContain("const STORE_ITEM_SUBPAGE = 'item';");
     expect(source).toContain('?item=');
+    expect(source).toContain('review_token');
     expect(source).toContain('<FnbProductDetailsPage');
-    expect(source).toContain('const openFnbDetail = (item) => {');
+    expect(source).toContain('const openFnbDetail = (item, options = {}) => {');
     expect(source).toContain('const closeFnbDetail = () => {');
     expect(source).toContain('isFnbDetailsSubpage');
+  });
+
+  it('adds item-level reviews to the F&B detail experience without redesigning the page shell', () => {
+    const source = appSource();
+
+    expect(source).toContain('/api/v1/dgfy/customer/reviews/public?');
+    expect(source).toContain('/api/v1/dgfy/customer/review-invites/');
+    expect(source).toContain('openFnbItemReviewFromInvite');
+    expect(source).toContain('review_invites');
   });
 
   it('exposes the public reservation request tab for F&B storefronts', () => {

@@ -1,4 +1,4 @@
-import bcrypt from 'bcryptjs';
+﻿import bcrypt from 'bcryptjs';
 import { dgfyAccountRepository } from './repositories/dgfyAccountRepository.js';
 import { buildGetDgfyLegalTermsUseCase } from './usecases/dgfyLegalUseCases.js';
 import {
@@ -28,7 +28,9 @@ import {
     buildReorderDgfyCustomerOrderUseCase,
     buildRequestDgfyTrackingRecoveryUseCase,
     buildSubmitDgfyCustomerReviewUseCase,
+    buildSubmitDgfyGuestReviewInviteUseCase,
     buildTrackDgfyCustomerReferenceUseCase,
+    buildValidateDgfyReviewInviteUseCase,
     buildVerifyDgfyTrackingRecoveryUseCase
 } from './usecases/dgfyCustomerUseCases.js';
 import { requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
@@ -104,9 +106,9 @@ export const acceptDgfyInvitationUseCase = buildAcceptDgfyInvitationUseCase({
 });
 
 export const getDgfyCustomerDashboardUseCase = buildGetDgfyCustomerDashboardUseCase();
-const listDgfyCustomerActivitiesUseCase = buildListDgfyCustomerActivitiesUseCase();
+export const listDgfyCustomerActivitiesUseCase = buildListDgfyCustomerActivitiesUseCase();
 export const listDgfyCustomerOrdersUseCase = (args = {}) => listDgfyCustomerActivitiesUseCase({ ...args, type: 'order' });
-export const listDgfyCustomerBookingsUseCase = (args = {}) => listDgfyCustomerActivitiesUseCase({ ...args, type: 'service_booking' });
+export const listDgfyCustomerBookingsUseCase = (args = {}) => listDgfyCustomerActivitiesUseCase({ ...args, type: 'booking' });
 export const trackDgfyCustomerReferenceUseCase = buildTrackDgfyCustomerReferenceUseCase();
 export const cancelDgfyCustomerOrderUseCase = buildCancelDgfyCustomerOrderUseCase();
 export const reorderDgfyCustomerOrderUseCase = buildReorderDgfyCustomerOrderUseCase();
@@ -117,6 +119,8 @@ export const updateDgfyCustomerAddressUseCase = addressUseCases.update;
 export const deleteDgfyCustomerAddressUseCase = addressUseCases.remove;
 export const getDgfyCustomerLoyaltyUseCase = buildGetDgfyCustomerLoyaltyUseCase();
 export const submitDgfyCustomerReviewUseCase = buildSubmitDgfyCustomerReviewUseCase();
+export const validateDgfyReviewInviteUseCase = buildValidateDgfyReviewInviteUseCase();
+export const submitDgfyGuestReviewInviteUseCase = buildSubmitDgfyGuestReviewInviteUseCase();
 export const listPublicDgfyCustomerReviewsUseCase = buildListPublicDgfyCustomerReviewsUseCase();
 export const listDgfyCustomerReviewsForModerationUseCase = buildListDgfyCustomerReviewsForModerationUseCase();
 export const moderateDgfyCustomerReviewUseCase = buildModerateDgfyCustomerReviewUseCase();

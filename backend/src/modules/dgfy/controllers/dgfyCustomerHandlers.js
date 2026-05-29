@@ -1,4 +1,4 @@
-import {
+﻿import {
     cancelDgfyCustomerOrderUseCase,
     createDgfyCustomerAddressUseCase,
     deleteDgfyCustomerAddressUseCase,
@@ -6,6 +6,7 @@ import {
     getDgfyCustomerLoyaltyUseCase,
     listDgfyCustomerReviewsForModerationUseCase,
     listDgfyCustomerAddressesUseCase,
+    listDgfyCustomerActivitiesUseCase,
     listDgfyCustomerBookingsUseCase,
     listDgfyCustomerOrdersUseCase,
     listPublicDgfyCustomerReviewsUseCase,
@@ -13,8 +14,10 @@ import {
     reorderDgfyCustomerOrderUseCase,
     requestDgfyTrackingRecoveryUseCase,
     submitDgfyCustomerReviewUseCase,
+    submitDgfyGuestReviewInviteUseCase,
     trackDgfyCustomerReferenceUseCase,
     updateDgfyCustomerAddressUseCase,
+    validateDgfyReviewInviteUseCase,
     verifyDgfyTrackingRecoveryUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
@@ -52,6 +55,14 @@ export const getDgfyCustomerDashboard = async (req, res, next) => {
 export const listDgfyCustomerOrders = async (req, res, next) => {
     try {
         return send(res, await listDgfyCustomerOrdersUseCase({ account: req.dgfyAccount, query: req.query }));
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const listDgfyCustomerActivities = async (req, res, next) => {
+    try {
+        return send(res, await listDgfyCustomerActivitiesUseCase({ account: req.dgfyAccount, query: req.query, type: req.query?.type || null }));
     } catch (error) {
         next(error);
     }
@@ -120,6 +131,20 @@ export const updateDgfyCustomerAddress = async (req, res, next) => {
     }
 };
 
+export const setDefaultDgfyCustomerAddress = async (req, res, next) => {
+    try {
+        return send(res, await updateDgfyCustomerAddressUseCase({
+            account: req.dgfyAccount,
+            addressId: req.params.address_id,
+            body: { is_default: true }
+        }), {
+            message: 'Default address updated successfully'
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const deleteDgfyCustomerAddress = async (req, res, next) => {
     try {
         return send(res, await deleteDgfyCustomerAddressUseCase({ account: req.dgfyAccount, addressId: req.params.address_id }), {
@@ -152,6 +177,25 @@ export const submitDgfyCustomerReview = async (req, res, next) => {
 export const listPublicDgfyCustomerReviews = async (req, res, next) => {
     try {
         return send(res, await listPublicDgfyCustomerReviewsUseCase({ query: req.query }));
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const validateDgfyReviewInvite = async (req, res, next) => {
+    try {
+        return send(res, await validateDgfyReviewInviteUseCase({ token: req.params.token }));
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const submitDgfyGuestReviewInvite = async (req, res, next) => {
+    try {
+        return send(res, await submitDgfyGuestReviewInviteUseCase({ token: req.params.token, body: req.body }), {
+            status: 201,
+            message: 'Review submitted for approval'
+        });
     } catch (error) {
         next(error);
     }

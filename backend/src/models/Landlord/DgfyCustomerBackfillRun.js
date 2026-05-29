@@ -1,4 +1,4 @@
-import { DataTypes, Model } from 'sequelize';
+﻿import { DataTypes, Model } from 'sequelize';
 
 export default (sequelize) => {
     class DgfyCustomerBackfillRun extends Model { }
@@ -49,6 +49,11 @@ export default (sequelize) => {
             defaultValue: 0
         },
         hospitality_booking_count: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 0
+        },
+        fnb_order_count: {
             type: DataTypes.INTEGER,
             allowNull: false,
             defaultValue: 0

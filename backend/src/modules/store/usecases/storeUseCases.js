@@ -39,6 +39,7 @@ import {
 } from '../../shared/utils/itemFinancialPolicy.js';
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
+import { issueReviewInvitesForOrder } from '../../dgfy/utils/reviewInviteIssuer.js';
 
 const INVOICE_COUNTER_KEY = 'POS_OR';
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
@@ -892,8 +893,10 @@ const serializeStoreCatalogItem = (item = {}, accessPolicy = {}) => {
     return {
         item_id: item.item_id,
         name: item.name,
+        description: item.description || null,
         category: item.category,
         product_type: item.product_type || null,
+        folder_name: item.folder_name || item.product_folder || item?.folder?.name || null,
         unit_of_measure: item.unit_of_measure || null,
         default_sale_price: item.default_sale_price,
         vat_type: item.vat_type || 'vatable',
@@ -2146,6 +2149,14 @@ export const buildTrackStoreOrderUseCase = ({ storeRepository }) => {
 
             const rejected = order.fulfillment_status === 'rejected';
             const cancelled = order.fulfillment_status === 'cancelled';
+            const reviewInvites = order.fulfillment_status === 'completed'
+                ? await issueReviewInvitesForOrder({
+                    tenantId,
+                    order,
+                    trackingPin: normalizedTrackingPin,
+                    deliveryChannel: 'tracking'
+                }).catch(() => [])
+                : [];
 
             return ok({
                 tracking_pin: normalizedTrackingPin,
@@ -2157,7 +2168,8 @@ export const buildTrackStoreOrderUseCase = ({ storeRepository }) => {
                     : cancelled
                         ? 'This order was cancelled.'
                         : 'Tracking information loaded successfully.',
-                order: serializeOrderForPublicTracking(order)
+                order: serializeOrderForPublicTracking(order),
+                review_invites: reviewInvites
             });
         } catch (error) {
             if (error?.code === DomainErrorCode.VALIDATION_FAILED || error?.code === DomainErrorCode.RESOURCE_NOT_FOUND) {
