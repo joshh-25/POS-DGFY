@@ -2890,6 +2890,53 @@ List publicly discoverable stores for list/grid/map storefront views.
   - `access_limitation_reason`
   - `customer_access_modes_enabled`
 
+### GET /storefront/discovery/map-pins
+List publicly discoverable storefront locations in a flat JSON shape for third-party map auto-parsers.
+
+**Auth**: Public
+**Tenant Context**: Not required
+**Caching Contract**: `Cache-Control: public, max-age=20, s-maxage=20, stale-while-revalidate=40, stale-if-error=90`
+**CORS Contract**: Third-party callers such as MapViu must be listed in `PUBLIC_API_CORS_ORIGIN`. This public allowlist applies only to `GET`/`HEAD`/`OPTIONS` reads for public storefront discovery endpoints and does not open authenticated backend APIs.
+
+Supported query parameters match `GET /storefront/discovery`. The backend forces `include_match_meta=false` and defaults `limit=100` when no limit is provided.
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "pins": [
+      {
+        "title": "DGFY Demo Store",
+        "latitude": 10.7202,
+        "longitude": 122.5621,
+        "subtitle": "Main Branch",
+        "description": "Fresh daily",
+        "category": "retail",
+        "address": "Iloilo City",
+        "slug": "dgfy-demo-store",
+        "storefront_url": "https://dgfy.ph/store/dgfy-demo-store",
+        "tenant_id": "tenant-1",
+        "location_id": 10,
+        "storefront_open": true,
+        "supports_delivery": true,
+        "supports_pickup": true,
+        "supports_dine_in": false,
+        "catalog_count": 12
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 100,
+      "total": 1,
+      "totalPages": 1
+    }
+  },
+  "timestamp": "2026-05-29T00:00:00.000Z"
+}
+```
+
 ### GET /storefront/discovery/:slug
 Resolve one storefront profile by tenant slug for public storefront entry.
 

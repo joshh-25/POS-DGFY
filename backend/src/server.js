@@ -38,6 +38,7 @@ import { auditBillingFunnelIntegrity } from './services/engagementIntegrityAudit
 import { buildHealthResponse } from './services/healthService.js';
 import { metricsEnabled, renderPrometheusMetrics } from './services/metricsService.js';
 import { auditRuntimeSchemaReadiness } from './services/runtimeSchemaAuditService.js';
+import { buildCorsPolicy } from './config/corsPolicy.js';
 import {
   startStorefrontDiscoveryIndexReconciliationScheduler,
   stopStorefrontDiscoveryIndexReconciliationScheduler
@@ -156,83 +157,15 @@ if (isProduction) {
 }
 
 // CORS configuration - must be applied before helmet
-const configuredCorsOrigins = (process.env.CORS_ORIGIN || '')
-  .split(',')
-  .map((entry) => entry.trim())
-  .filter(Boolean);
-
-const matchesWildcardOrigin = (origin, wildcardPattern) => {
-  if (!origin || !wildcardPattern.startsWith('*.')) return false;
-  try {
-    const parsed = new URL(origin);
-    const suffix = wildcardPattern.slice(1).toLowerCase();
-    return parsed.hostname.toLowerCase().endsWith(suffix);
-  } catch {
-    return false;
-  }
-};
-
-const isExplicitOriginAllowed = (origin) => {
-  if (!origin) return true;
-  return configuredCorsOrigins.some((allowedOrigin) => {
-    if (allowedOrigin.startsWith('*.')) {
-      return matchesWildcardOrigin(origin, allowedOrigin);
-    }
-    return allowedOrigin === origin;
-  });
-};
-
-const isDevelopmentOriginAllowed = (origin) => {
-  if (!origin) return true;
-
-  const developmentOriginPatterns = [
-    /^http:\/\/localhost:517[0-9]$/,
-    /^http:\/\/127\.0\.0\.1:517[0-9]$/,
-    /^http:\/\/localhost:417[0-9]$/,
-    /^http:\/\/127\.0\.0\.1:417[0-9]$/,
-    /^http:\/\/localhost:5000$/,
-    /^http:\/\/127\.0\.0\.1:5000$/,
-    /^http:\/\/\d{1,3}(?:\.\d{1,3}){3}:517[0-9]$/,
-    /^http:\/\/\d{1,3}(?:\.\d{1,3}){3}:417[0-9]$/,
-    /^https?:\/\/(?:skupervisor|pos|store)\.localhost:517[0-9]$/,
-    /^https?:\/\/(?:skupervisor|pos|store)\.localhost:417[0-9]$/,
-    /^https?:\/\/(?:skupervisor|pos|store)\.local(?:host)?(?::\d{2,5})?$/
-  ];
-
-  if (developmentOriginPatterns.some((pattern) => pattern.test(origin))) {
-    return true;
-  }
-
-  try {
-    const parsed = new URL(origin);
-    const host = parsed.hostname.toLowerCase();
-    const knownSurface = host === 'skupervisor.surebizcorp.com'
-      || host === 'pos.surebizcorp.com'
-      || host === 'surebizcorp.com'
-      || host === 'store.surebizcorp.com'
-      || host === 'skupervisor.dgfy.ph'
-      || host === 'pos.dgfy.ph'
-      || host === 'dgfy.ph'
-      || host === 'store.dgfy.ph';
-    return Boolean(knownSurface);
-  } catch {
-    return false;
-  }
-};
-
-const resolveCorsAllowed = (origin) => {
-  if (configuredCorsOrigins.length > 0 && isExplicitOriginAllowed(origin)) {
-    return true;
-  }
-  if (!isProduction) {
-    return isDevelopmentOriginAllowed(origin);
-  }
-  return configuredCorsOrigins.length === 0 && isDevelopmentOriginAllowed(origin);
-};
+const { resolveCorsAllowed } = buildCorsPolicy({
+  corsOrigin: process.env.CORS_ORIGIN || '',
+  publicApiCorsOrigin: process.env.PUBLIC_API_CORS_ORIGIN || '',
+  isProduction
+});
 
 const corsOptionsDelegate = (req, callback) => {
   const origin = req.headers.origin || null;
-  const allowed = resolveCorsAllowed(origin);
+  const allowed = resolveCorsAllowed(origin, req);
 
   if (!allowed) {
     const correlationId = req.headers['x-request-id'] || req.headers['x-correlation-id'] || `cors-${crypto.randomUUID()}`;

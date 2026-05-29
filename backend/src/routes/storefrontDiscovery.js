@@ -2,6 +2,7 @@ import express from 'express';
 import * as storefrontDiscoveryController from '../controllers/storefrontDiscoveryController.js';
 import {
     validateStorefrontDiscoveryQuery,
+    validateStorefrontMapPinsQuery,
     validateStorefrontSlugParam
 } from '../validators/storefrontDiscoveryValidator.js';
 import { storefrontDiscoveryLimiter } from '../middleware/rateLimiter.js';
@@ -24,6 +25,7 @@ const discoveryProfileCacheControl = setReadCacheControl({
 });
 
 router.get('/discovery', storefrontDiscoveryLimiter, discoveryListCacheControl, validateStorefrontDiscoveryQuery, storefrontDiscoveryController.listStorefrontDiscovery);
+router.get('/discovery/map-pins', storefrontDiscoveryLimiter, discoveryListCacheControl, validateStorefrontMapPinsQuery, storefrontDiscoveryController.listStorefrontMapPins);
 router.get('/discovery/:slug', storefrontDiscoveryLimiter, discoveryProfileCacheControl, validateStorefrontSlugParam, storefrontDiscoveryController.getStorefrontProfile);
 
 export default router;

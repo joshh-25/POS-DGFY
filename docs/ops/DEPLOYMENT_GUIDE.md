@@ -49,6 +49,7 @@ No-staging release policy reference:
   - `https://dgfy.ph`
   - `https://store.dgfy.ph`
   - `https://staging.dgfy.ph` (staging IMS — added 2026-05-19)
+- Third-party public map/API consumers must use `PUBLIC_API_CORS_ORIGIN`, not the global authenticated `CORS_ORIGIN`. For MapViu, set `PUBLIC_API_CORS_ORIGIN=https://mapviu.com,https://*.mapviu.com`; this only permits public `GET`/`HEAD`/`OPTIONS` reads for `/api/v1/storefront/discovery`, `/api/v1/storefront/discovery/map-pins`, and `/api/v1/storefront/geo-search`.
 - Optional deploy override:
   - `DEPLOY_RUN_BILLING_VERIFY=auto|0|1` (default `auto`)
     - `auto`: billing checks run only when `PAYMENTS_ENABLED=true`

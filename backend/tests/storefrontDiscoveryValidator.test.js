@@ -1,5 +1,8 @@
 import { jest } from '@jest/globals';
-import { validateStorefrontDiscoveryQuery } from '../src/validators/storefrontDiscoveryValidator.js';
+import {
+    validateStorefrontDiscoveryQuery,
+    validateStorefrontMapPinsQuery
+} from '../src/validators/storefrontDiscoveryValidator.js';
 
 const mockRes = () => {
     const res = {};
@@ -49,6 +52,20 @@ describe('storefrontDiscoveryValidator query contracts', () => {
         });
         expect(req.validatedQuery.stock_filter).toBeUndefined();
         expect(req.validatedQuery.pin_scope).toBeUndefined();
+    });
+
+    it('defaults the third-party map-pins feed to the maximum public page size', () => {
+        const req = { query: {} };
+        const res = mockRes();
+        const next = jest.fn();
+
+        validateStorefrontMapPinsQuery(req, res, next);
+
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(req.validatedQuery).toMatchObject({
+            limit: 100,
+            include_match_meta: false
+        });
     });
 
     it('rejects unsupported result_mode values', () => {
