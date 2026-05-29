@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { cn } from '../../lib/utils.js';
-import { Button } from '../../../components/ui/button.jsx';
+import { Button } from '@/components/ui/button';
 
 const TILE_BASE = 'https://tiles.openfreemap.org';
 const TILING_SERVER = import.meta.env.DEV

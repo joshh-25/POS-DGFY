@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../components/ui/dialog.jsx";
-import { Button } from "../../components/ui/button.jsx";
-import { Input } from "../../components/ui/input.jsx";
-import { Switch } from "../../components/ui/switch.jsx";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import * as userService from '../../src/services/userService.js';
 import PermissionMatrix from './PermissionMatrix';
