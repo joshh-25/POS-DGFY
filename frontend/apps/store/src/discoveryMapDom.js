@@ -75,7 +75,8 @@ export const createSharedCoordinatePreviewNode = (stores = [], {
     button.type = 'button';
     button.className = 'discovery-cluster-preview-entry';
     const tenantName = String(store?.tenant_name || 'Storefront').trim();
-    const branchName = String(store?.location_name || store?.nearest_location_name || 'Branch').trim();
+    const rawBranchName = String(store?.location_name || store?.nearest_location_name || 'Main Branch').trim();
+    const branchName = rawBranchName === 'Main' ? 'Main Branch' : rawBranchName;
     button.setAttribute('aria-label', `Select ${tenantName} at ${branchName}`);
     button.innerHTML = `<strong></strong><span></span>`;
     button.querySelector('strong').textContent = tenantName;

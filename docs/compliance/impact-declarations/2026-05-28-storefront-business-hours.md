@@ -8,7 +8,7 @@ classification: regulatory
 surfaces: settings,onboarding,storefront,checkout,services,compliance
 reason_codes_impacted: OUTSIDE_STOREFRONT_BUSINESS_HOURS
 policy_version: 2026.05.28
-verification_evidence: npm run lint:docs,npm run check:compliance,npm --prefix backend test -- --runTestsByPath tests/storeFnbModifiers.usecases.test.js,npm --prefix frontend test -- --run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx,npm --prefix frontend run build
+verification_evidence: npm run lint:docs,npm run check:compliance,npm --prefix backend test -- --runTestsByPath tests/storefrontBusinessHours.test.js tests/storeRepository.locationStockFallback.test.js,npm --prefix frontend test -- --run apps/store/src/__tests__/checkoutRules.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx,npm --prefix frontend run build:store
 rollback_note: Hide the structured Settings/onboarding controls and stop writing structured storefront_hours. Legacy free-text storefront_hours remains display-compatible.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -47,3 +47,16 @@ This declaration covers structured Storefront business hours that display on pub
 - `npm --prefix backend test -- --runTestsByPath tests/storefrontBusinessHours.test.js tests/storeFnbModifiers.usecases.test.js tests/servicesMode.usecases.test.js`
 - `npm --prefix frontend test -- --run apps/store/src/__tests__/checkoutRules.test.js src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx`
 - `npm --prefix frontend run build`
+
+## Reconciliation Evidence
+
+The 2026-05-29 PR #10 reconciliation preserved the existing structured Storefront business-hours enforcement while adding fulfilled guest review invites and the revised Storefront UI. The reconciliation kept the compliance preconditions above: malformed legacy hours remain display-compatible and do not unexpectedly block checkout, while valid structured weekly schedules continue gating immediate/scheduled checkout and Storefront service booking paths.
+
+Additional validation from the reconciliation:
+
+- `npm run check:architecture`
+- `npm run lint:docs`
+- `npm run check:compliance`
+- `npm --prefix backend test -- --runTestsByPath tests/dgfyCustomerUseCases.test.js tests/dgfyCustomerHandlers.transport.test.js tests/storefrontBusinessHours.test.js tests/storeRepository.locationStockFallback.test.js`
+- `npm --prefix frontend test -- --run apps/store/src/__tests__/fnbOrderTracking.contract.test.js apps/store/src/__tests__/fnbStorefront.contract.test.js apps/store/src/__tests__/profileLauncher.integration.test.jsx apps/store/src/__tests__/discoveryHeaderAccount.integration.test.jsx apps/store/src/__tests__/checkoutRules.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/storefrontFollow.integration.test.jsx apps/store/src/__tests__/storefrontErrorMessages.test.js apps/store/src/__tests__/normalizeStorefrontPageModel.test.js --testTimeout 20000`
+- `npm --prefix frontend run build:store`

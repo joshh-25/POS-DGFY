@@ -83,9 +83,24 @@ vi.mock('maplibre-gl', () => {
   };
 });
 
+const injectWorkflowMode = (obj) => {
+  if (!obj || typeof obj !== 'object') return obj;
+  const newObj = { ...obj };
+  if (Array.isArray(newObj.stores)) {
+    newObj.stores = newObj.stores.map(store => ({
+      workflow_mode: 'services',
+      ...store
+    }));
+  }
+  if (typeof newObj.slug === 'string') {
+    newObj.workflow_mode = 'services';
+  }
+  return newObj;
+};
+
 const makeJsonResponse = (data, ok = true) => ({
   ok,
-  json: async () => ({ data })
+  json: async () => ({ data: injectWorkflowMode(data) })
 });
 
 const dgfyLegalTerms = {
@@ -429,7 +444,7 @@ describe('storefront discovery integration flow', () => {
     await waitFor(() => {
       expect(fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl).includes('/api/v1/dgfy/customer/dashboard'))).toBe(true);
     });
-    fireEvent.click((await screen.findAllByRole('button', { name: /log in \/ sign up/i }))[0]);
+    fireEvent.click((await screen.findAllByRole('button', { name: /^profile$/i }))[0]);
 
     expect(await screen.findByText('My Account')).toBeTruthy();
     expect(await screen.findByText('Ada Lovelace')).toBeTruthy();

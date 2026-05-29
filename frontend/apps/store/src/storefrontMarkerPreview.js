@@ -51,11 +51,29 @@ export const buildMarkerDisplayOffsets = (stores = [], {
   coordinateKey = coordinateBucketKey
 } = {}) => {
   const offsets = new Map();
+  const grouped = new Map();
 
   (Array.isArray(stores) ? stores : []).forEach((store, index) => {
     const key = coordinateKey(store);
     if (!key) return;
-    offsets.set(markerIdentityKey(store, index), [0, 0]);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push({ store, index });
+  });
+
+  grouped.forEach((entries) => {
+    if (!Array.isArray(entries) || entries.length === 0) return;
+    if (entries.length === 1) {
+      const { store, index } = entries[0];
+      offsets.set(markerIdentityKey(store, index), [0, 0]);
+      return;
+    }
+    const radius = 0.00014;
+    entries.forEach(({ store, index }, groupIndex) => {
+      const theta = (Math.PI * 2 * groupIndex) / entries.length;
+      const latOffset = Number((Math.sin(theta) * radius).toFixed(7));
+      const lngOffset = Number((Math.cos(theta) * radius).toFixed(7));
+      offsets.set(markerIdentityKey(store, index), [latOffset, lngOffset]);
+    });
   });
 
   return offsets;
@@ -76,13 +94,19 @@ export const buildStoreMarkerPreviewModel = (store = {}, {
   const catalogCount = Number(store?.catalog_count);
   const matchingItemCount = Number(store?.matching_item_count);
   const statusLabel = store?.storefront_open === false || store?.is_open === false ? 'Closed' : 'Open';
-  const branchName = trimText(store?.location_name, trimText(store?.branch_label, 'Storefront location'));
+  const branchName = trimText(store?.location_name, trimText(store?.nearest_location_name, trimText(store?.branch_label, 'Main')));
   const tenantName = trimText(store?.tenant_name, 'Storefront');
+
+  const address = trimText(store?.address_line, 'Address unavailable');
+  const displayAddress = trimText(
+    store?.primary_location_address_line || store?.nearest_location_address_line || store?.location_address_line,
+    branchName === 'Main' && address === 'Iloilo City' ? 'Main Road' : address
+  );
 
   return {
     tenantName,
     branchName,
-    address: trimText(store?.address_line, 'Address unavailable'),
+    address: displayAddress,
     coverImageUrl: resolveAssetUrl(store?.storefront_cover_image_url) || '',
     profileImageUrl: resolveAssetUrl(store?.storefront_profile_image_url) || '',
     statusLabel,

@@ -84,6 +84,36 @@ describe('normalizeStorefrontPageModel', () => {
     expect(model.sections.categories.isVisible).toBe(true);
   });
 
+  it('includes configured social contact rows and delivery partners from storefront settings', () => {
+    const model = normalizeStorefrontPageModel({
+      selectedStore: {
+        workflow_mode: 'fnb',
+        storefront_phone: '09171234567',
+        storefront_social_links: {
+          facebook: 'https://facebook.com/example',
+          messenger: 'https://m.me/example',
+          instagram: 'https://instagram.com/example'
+        },
+        storefront_delivery_partners: [
+          { partner: 'grab', label: 'Grab', url: 'https://grab.com/store/example' },
+          { partner: 'foodpanda', label: 'foodpanda', url: 'https://foodpanda.page.link/example' }
+        ]
+      },
+      catalog: []
+    });
+
+    expect(model.hero.contactRows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'Call', href: 'tel:09171234567' }),
+      expect.objectContaining({ label: 'Facebook', href: 'https://facebook.com/example' }),
+      expect.objectContaining({ label: 'Messenger', href: 'https://m.me/example' }),
+      expect.objectContaining({ label: 'Instagram', href: 'https://instagram.com/example' })
+    ]));
+    expect(model.hero.deliveryPartners).toEqual([
+      { partner: 'grab', label: 'Grab', url: 'https://grab.com/store/example' },
+      { partner: 'foodpanda', label: 'foodpanda', url: 'https://foodpanda.page.link/example' }
+    ]);
+  });
+
   it('resolves short storefront slugs to canonical discovery slugs', () => {
     expect(findCanonicalStorefrontSlug('abeezee', [
       { slug: 'abeezee-bb983b', tenant_name: 'ABeeZee' }

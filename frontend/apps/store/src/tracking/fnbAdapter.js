@@ -62,6 +62,7 @@ export const fnbTrackingAdapter = Object.freeze({
         : (Number.isFinite(salePrice) && Number.isFinite(quantity) ? salePrice * quantity : null);
       return {
         id: line?.line_id ?? line?.item_id ?? line?.id ?? null,
+        item_id: line?.item_id ?? null,
         name: String(line?.item_name || line?.name || '').trim(),
         qty: quantity,
         amount: Number.isFinite(Number(computedAmount)) ? Number(computedAmount) : null

@@ -19,12 +19,12 @@ import {
   Trash2,
   Wand2
 } from 'lucide-react';
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Slider } from "@/components/ui/slider";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "../components/ui/button.jsx";
+import { Input } from "../components/ui/input.jsx";
+import { Label } from "../components/ui/label.jsx";
+import { Switch } from "../components/ui/switch.jsx";
+import { Slider } from "../components/ui/slider.jsx";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card.jsx";
 import {
   Dialog,
   DialogContent,
@@ -32,11 +32,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle
-} from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+} from "../components/ui/dialog.jsx";
+import { Separator } from "../components/ui/separator.jsx";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs.jsx";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn } from "../src/lib/utils.js";
 import useStore from '../src/store/useStore.js';
 import * as userService from '../src/services/userService.js';
 import * as settingsService from '../src/services/settingsService.js';

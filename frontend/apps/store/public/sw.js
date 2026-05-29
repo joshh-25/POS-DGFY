@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'sku-store';
-const SHELL_CACHE_NAME = `${CACHE_PREFIX}-shell-v4`;
+const SHELL_CACHE_NAME = `${CACHE_PREFIX}-shell-v6`;
 const RUNTIME_CACHE_NAME = `${CACHE_PREFIX}-runtime-v1`;
 const MAX_RUNTIME_CACHE_ENTRIES = 120;
 const STATIC_CACHEABLE_DESTINATIONS = new Set(['script', 'style', 'image', 'font', 'manifest']);
@@ -11,7 +11,16 @@ const resolveBasePath = () => {
   return path.endsWith('/') ? path : `${path}/`;
 };
 const BASE_PATH = resolveBasePath();
-const SHELL_ASSETS = [BASE_PATH, `${BASE_PATH}manifest.json`, `${BASE_PATH}favicon.svg`];
+const SHELL_ASSETS = [
+  BASE_PATH,
+  `${BASE_PATH}manifest.json`,
+  `${BASE_PATH}manifest.webmanifest`,
+  `${BASE_PATH}dgfy-symbologo-16.png`,
+  `${BASE_PATH}dgfy-symbologo-32.png`,
+  `${BASE_PATH}dgfy-symbologo-180.png`,
+  `${BASE_PATH}dgfy-symbologo-192.png`,
+  `${BASE_PATH}dgfy-symbologo-512.png`
+];
 
 const isBypassPath = (pathname = '/') => (
   BYPASS_PATH_PREFIXES.some((prefix) => (

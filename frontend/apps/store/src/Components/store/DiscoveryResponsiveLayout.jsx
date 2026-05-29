@@ -1,5 +1,5 @@
 import React from 'react';
-import { CalendarCheck2, ChevronRight, FileText, Home, Menu, Store, UserCircle2, X } from 'lucide-react';
+import { CalendarCheck2, ChevronRight, FileText, Home, Menu, User, UserCircle2, X } from 'lucide-react';
 
 export const getDiscoveryViewportState = (viewportWidth = 1280) => {
   const width = Number(viewportWidth || 0);
@@ -88,10 +88,15 @@ export function DiscoveryHeader({
   onLogoClick,
   navItems = [],
   activeItem = 'Explore',
-  onAccountClick,
-  onRegisterClick,
+  onAuthClick,
+  authLabel = 'Log in / Sign up',
+  onBusinessClick,
+  businessLabel = 'Register Your Business',
+  isAuthenticated = false,
+  accountLabel = 'My Account',
   menuOpen = false,
-  onMenuToggle = () => {}
+  onMenuToggle = () => {},
+  onItemClick
 }) {
   const isMobileViewport = viewportMode === 'mobile';
   const isTabletViewport = viewportMode === 'tablet';
@@ -108,7 +113,9 @@ export function DiscoveryHeader({
               <button
                 key={item}
                 type="button"
+                onClick={() => onItemClick?.(item)}
                 className={cx('discovery-header__navItem', item === activeItem && 'is-active')}
+                style={{ fontFamily: '"Inter", sans-serif' }}
               >
                 {item}
               </button>
@@ -118,18 +125,27 @@ export function DiscoveryHeader({
 
         <div className="discovery-header__actions">
           {isMobileViewport ? (
-            <button type="button" onClick={onMenuToggle} className="discovery-header__menuButton" aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}>
-              {menuOpen ? <X size={22} /> : <Menu size={24} />}
-            </button>
+            <>
+              {typeof onAuthClick === 'function' && isAuthenticated && (
+                <button type="button" onClick={onAuthClick} className="discovery-header__profileButton" aria-label={accountLabel}>
+                  <UserCircle2 size={20} />
+                </button>
+              )}
+              <button type="button" onClick={onMenuToggle} className="discovery-header__menuButton" aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}>
+                {menuOpen ? <X size={22} /> : <Menu size={24} />}
+              </button>
+            </>
           ) : (
             <>
-              <button type="button" onClick={onAccountClick} className={cx('discovery-header__accountCta', isTabletViewport && 'discovery-header__accountCta--tablet')}>
-                <UserCircle2 size={isTabletViewport ? 14 : 15} />
-                Log in / Sign up
-              </button>
-              <button type="button" onClick={onRegisterClick} className={cx('discovery-header__cta', isTabletViewport && 'discovery-header__cta--tablet')}>
-                <Store size={isTabletViewport ? 14 : 15} />
-                Register Your Business
+              {typeof onAuthClick === 'function' && (
+                <button type="button" onClick={onAuthClick} className="discovery-header__secondaryAction">
+                  <UserCircle2 size={isTabletViewport ? 14 : 15} />
+                  {isAuthenticated ? accountLabel : authLabel}
+                </button>
+              )}
+              <button type="button" onClick={onBusinessClick} className={cx('discovery-header__cta', isTabletViewport && 'discovery-header__cta--tablet')}>
+                <User size={isTabletViewport ? 14 : 15} />
+                {businessLabel}
               </button>
             </>
           )}
@@ -163,7 +179,13 @@ export function DiscoveryHeader({
                   const Icon = meta.icon;
                   const isActive = item === activeItem;
                   return (
-                    <button key={item} type="button" className={cx('discovery-header__menuItem', isActive && 'is-active')}>
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => onItemClick?.(item)}
+                      className={cx('discovery-header__menuItem', isActive && 'is-active')}
+                      style={{ fontFamily: '"Inter", sans-serif' }}
+                    >
                       <span className="discovery-header__menuItemLead">
                         <span className="discovery-header__menuItemIcon"><Icon size={17} /></span>
                         <span>{item}</span>
@@ -177,13 +199,15 @@ export function DiscoveryHeader({
                 })}
               </div>
               <div className="discovery-header__drawerFooter">
-                <button type="button" onClick={onAccountClick} className="discovery-header__menuSecondaryCta">
-                  <UserCircle2 size={15} />
-                  Log in / Sign up
-                </button>
-                <button type="button" onClick={onRegisterClick} className="discovery-header__menuCta">
-                  <Store size={15} />
-                  Register Your Business
+                {typeof onAuthClick === 'function' && (
+                  <button type="button" onClick={onAuthClick} className="discovery-header__menuSecondaryAction">
+                    <UserCircle2 size={15} />
+                    {isAuthenticated ? accountLabel : authLabel}
+                  </button>
+                )}
+                <button type="button" onClick={onBusinessClick} className="discovery-header__menuCta">
+                  <User size={15} />
+                  {businessLabel}
                 </button>
               </div>
             </div>

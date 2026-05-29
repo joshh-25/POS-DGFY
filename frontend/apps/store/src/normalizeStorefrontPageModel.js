@@ -1,8 +1,15 @@
 import { getStorefrontModeAdapter } from './modePresentationRegistry.js';
 import { getFoodBeverageStorefrontViewModel } from './fnbStorefrontViewModel.js';
 import { getServicesStorefrontViewModel } from './servicesStorefrontViewModel.js';
+import { formatStorefrontBusinessHoursDisplay } from '../../../src/features/settings/storefrontBusinessHours.js';
 
 const trimText = (value) => String(value || '').trim();
+
+const STOREFRONT_TEMP_CONTACT_OVERRIDES = Object.freeze({
+  abeezee: Object.freeze({
+    phone: '09102323238'
+  })
+});
 
 const parseOptionalArray = (value) => {
   if (Array.isArray(value)) return value;
@@ -56,10 +63,67 @@ const normalizeReviewSummary = (value) => {
   };
 };
 
+const getStorefrontTempContactOverride = (selectedStore = null) => {
+  const slug = trimText(selectedStore?.slug).toLowerCase();
+  const tenantName = trimText(selectedStore?.tenant_name).toLowerCase();
+  if (slug && STOREFRONT_TEMP_CONTACT_OVERRIDES[slug]) {
+    return STOREFRONT_TEMP_CONTACT_OVERRIDES[slug];
+  }
+  if (slug.startsWith('abeezee') || tenantName === 'abeezee' || tenantName.startsWith('abeezee')) {
+    return STOREFRONT_TEMP_CONTACT_OVERRIDES.abeezee;
+  }
+  return null;
+};
+
+const buildStorefrontMessageHref = ({ messengerLink = '', phone = '', email = '' } = {}) => {
+  const messenger = trimText(messengerLink);
+  const contactPhone = trimText(phone);
+  const contactEmail = trimText(email);
+  if (messenger) return messenger;
+  if (contactPhone) return `sms:${contactPhone}`;
+  if (contactEmail) return `mailto:${contactEmail}`;
+  return '';
+};
+
 const formatRatingLabel = (reviewSummary) => {
   if (!reviewSummary || reviewSummary.score == null) return '';
   const countLabel = reviewSummary.totalCount > 0 ? ` (${reviewSummary.totalCount})` : '';
   return `${Number(reviewSummary.score).toFixed(1)}${countLabel}`;
+};
+
+const normalizeStorefrontDeliveryPartners = (value) => {
+  const allowedPartners = new Set(['grab', 'foodpanda', 'lalamove', 'custom']);
+  const seen = new Set();
+  return parseOptionalArray(value)
+    .map((entry) => {
+      if (typeof entry === 'string') {
+        const partner = trimText(entry).toLowerCase();
+        if (!allowedPartners.has(partner)) return null;
+        return {
+          partner,
+          label: partner === 'foodpanda'
+            ? 'foodpanda'
+            : partner.charAt(0).toUpperCase() + partner.slice(1),
+          url: ''
+        };
+      }
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+      const partner = trimText(entry.partner).toLowerCase();
+      if (!allowedPartners.has(partner)) return null;
+      return {
+        partner,
+        label: trimText(entry.label)
+          || (partner === 'foodpanda' ? 'foodpanda' : partner.charAt(0).toUpperCase() + partner.slice(1)),
+        url: trimText(entry.url)
+      };
+    })
+    .filter((entry) => {
+      const key = `${entry.partner}::${entry.url}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .filter(Boolean);
 };
 
 export const normalizeStorefrontPageModel = ({
@@ -81,29 +145,33 @@ export const normalizeStorefrontPageModel = ({
   const galleryImages = normalizeGalleryArray(selectedStore?.storefront_gallery_images);
   const categories = normalizeTextArray(selectedStore?.storefront_categories);
   const whyChooseUs = normalizeTextArray(selectedStore?.storefront_why_choose_us);
+  const deliveryPartners = normalizeStorefrontDeliveryPartners(selectedStore?.storefront_delivery_partners);
   const aboutText = trimText(selectedStore?.storefront_about);
   const tagline = trimText(selectedStore?.storefront_tagline);
   const coverImage = trimText(selectedStore?.storefront_cover_image_url || selectedStore?.storefront_cover_image_path);
   const profileImage = trimText(selectedStore?.storefront_profile_image_url || selectedStore?.storefront_profile_image_path);
-  const phone = trimText(selectedStore?.storefront_phone);
+  const tempContactOverride = getStorefrontTempContactOverride(selectedStore);
+  const phone = trimText(selectedStore?.storefront_phone || tempContactOverride?.phone);
   const email = trimText(selectedStore?.storefront_email);
   const messengerLink = trimText(socialLinks.messenger);
   const facebookLink = trimText(socialLinks.facebook);
+  const instagramLink = trimText(socialLinks.instagram);
   const preferredSupportLink = messengerLink || facebookLink;
   const preferredSupportLabel = messengerLink ? 'Messenger' : (facebookLink ? 'Facebook' : '');
+  const messageHref = buildStorefrontMessageHref({ messengerLink, phone, email });
   const locationSummary = trimText(selectedStore?.location_name || selectedStore?.address_line);
   const addressLine = trimText(selectedStore?.address_line);
-  const hours = trimText(selectedStore?.storefront_hours);
+  const hours = trimText(
+    selectedStore?.storefront_hours_status?.display
+    || formatStorefrontBusinessHoursDisplay(selectedStore?.storefront_hours)
+    || selectedStore?.storefront_hours
+  );
   
   const contactRows = [];
   if (phone) contactRows.push({ label: 'Call', value: phone, href: `tel:${phone}` });
-  if (preferredSupportLink) {
-    contactRows.push({
-      label: preferredSupportLabel,
-      value: preferredSupportLabel,
-      href: preferredSupportLink
-    });
-  }
+  if (facebookLink) contactRows.push({ label: 'Facebook', value: 'Facebook', href: facebookLink });
+  if (messengerLink) contactRows.push({ label: 'Messenger', value: 'Messenger', href: messengerLink });
+  if (instagramLink) contactRows.push({ label: 'Instagram', value: 'Instagram', href: instagramLink });
   if (hours) contactRows.push({ label: 'Hours', value: hours, href: '' });
 
   const derivedServiceCategoryLabels = servicesViewModel.serviceGroups
@@ -155,16 +223,19 @@ export const normalizeStorefrontPageModel = ({
       email,
       hours,
       messengerLink: preferredSupportLink,
+      facebookLink,
+      instagramLink,
       socialLinks,
+      deliveryPartners,
       contactRows,
       whyChooseUs,
       galleryPreview: galleryImages.slice(0, 4).map(img => img.url),
       actions: {
         canCall: Boolean(phone),
-        canMessage: Boolean(messengerLink || email),
+        canMessage: Boolean(messageHref),
         canOrder: true,
         callHref: phone ? `tel:${phone}` : '',
-        messageHref: messengerLink ? messengerLink : (email ? `mailto:${email}` : ''),
+        messageHref,
         orderLabel: isServicesMode ? 'Order Now' : modeAdapter.primaryActionLabel
       }
     },
@@ -177,6 +248,7 @@ export const normalizeStorefrontPageModel = ({
         email,
         messengerLink
       },
+      deliveryPartners,
       location: {
         label: trimText(selectedStore?.location_name) || 'Main location',
         addressLine: trimText(selectedStore?.address_line)

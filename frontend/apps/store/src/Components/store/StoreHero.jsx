@@ -1,139 +1,136 @@
 import React from 'react';
 
-// Icons
-const InfoIcon = () => (
-  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-    <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
-    <path d="M12 16v-4M12 8h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+const PinIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+    <path d="M12 21s-6-4.35-6-10a6 6 0 1 1 12 0c0 5.65-6 10-6 10z" />
+    <circle cx="12" cy="11" r="2.5" />
   </svg>
 );
 
-const ChatIcon = () => (
-  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+const ClockIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3 2" />
   </svg>
 );
 
-const PhoneIcon = () => (
-  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+const MessageIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+    <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
   </svg>
 );
 
-const BagIcon = () => (
-  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
-    <line x1="3" y1="6" x2="21" y2="6" />
-    <path d="M16 10a4 4 0 0 1-8 0" />
-  </svg>
-);
-
-// Desktop Store Hero
-export function StoreHeroDesktop({ store, onNavigate }) {
+const renderAction = (action, variant, onAction) => {
+  if (!action?.label) return null;
   return (
-    <section className="relative h-[220px] bg-gray-900 bg-cover bg-center"
-      style={{ backgroundImage: 'linear-gradient(to right, rgba(0,0,0,0.65), rgba(0,0,0,0.25)), url(https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=1200&h=400&fit=crop)' }}
+    <button
+      key={`${action.label}-${variant}`}
+      type="button"
+      className={`sf-button sf-button--${variant}`}
+      onClick={() => onAction?.(action)}
     >
-      <div className="relative flex items-end justify-between h-full max-w-7xl mx-auto px-6 pb-6">
-        {/* Left: Logo Card */}
-        <div className="flex items-end gap-5">
-          <div className="w-36 h-36 bg-white rounded-2xl flex flex-col items-center justify-center shadow-lg">
-            <span className="text-4xl mb-1">🔥</span>
-            <div className="font-extrabold text-xl text-[#E8540A] leading-tight text-center">
-              KUYA DING&apos;S<br/>BBQ
+      {action.label}
+    </button>
+  );
+};
+
+function StoreHeroSection({ hero = {}, theme = {}, viewportKind = 'desktop', onAction }) {
+  const coverImageUrl = hero.coverImageUrl || '';
+  const profileImageUrl = hero.profileImageUrl || '';
+  const metrics = Array.isArray(hero.metrics) ? hero.metrics : [];
+  const supportItems = Array.isArray(hero.supportItems) ? hero.supportItems : [];
+  const metaItems = Array.isArray(hero.metaItems) ? hero.metaItems : [];
+
+  const heroStyle = {
+    '--sf-hero-image': coverImageUrl ? `url("${coverImageUrl}")` : 'linear-gradient(135deg, rgba(15, 118, 110, 0.18), rgba(15, 23, 42, 0.12))'
+  };
+
+  return (
+    <section className="sf-template__container">
+      <div className="sf-template__section sf-hero" style={heroStyle}>
+        <div className="sf-hero__inner">
+          <div className="sf-hero__copy">
+            <span className="sf-hero__eyebrow">{hero.eyebrow || 'Storefront template'}</span>
+            <div className="sf-stack" style={{ gap: 12 }}>
+              <h1 className="sf-hero__title" style={{ fontFamily: theme.displayFont }}>{hero.name || 'Storefront template'}</h1>
+              {hero.tagline ? (
+                <p className="sf-hero__tagline" style={{ fontFamily: theme.bodyFont }}>{hero.tagline}</p>
+              ) : null}
+              {hero.description ? (
+                <p className="sf-hero__description" style={{ fontFamily: theme.bodyFont }}>{hero.description}</p>
+              ) : null}
             </div>
-            <div className="text-[9px] text-gray-500 mt-1 tracking-widest">EST. 2020</div>
-          </div>
-        </div>
 
-        {/* Center: Store Info */}
-        <div className="flex-1 pl-8">
-          <div className="flex items-center gap-3 mb-2">
-            <span className="bg-green-500 text-white text-xs font-semibold px-2.5 py-1 rounded-md">Open</span>
-            <span className="text-white text-sm flex items-center gap-1">
-              <InfoIcon /> Closes {store.closesAt}
-            </span>
-          </div>
-          <h1 className="text-4xl font-bold text-white mb-1">{store.name}</h1>
-          <p className="text-lg text-amber-500 italic font-[Pacifico] mb-2">{store.tagline}</p>
-          <div className="flex items-center gap-3 text-white text-sm">
-            <span className="flex items-center gap-1">
-              <span>⭐</span>
-              <strong>{store.rating}</strong> ({store.reviewCount})
-            </span>
-            <span className="text-white/60">•</span>
-            <span>{store.categories.join(', ')}</span>
-            <span className="text-white/60">•</span>
-            <span>📍 {store.address}</span>
-          </div>
-        </div>
+            {metaItems.length > 0 ? (
+              <div className="sf-hero__meta">
+                {metaItems.map((item) => (
+                  <span key={`${item.label}-${item.value}`} className="sf-chip sf-chip--dark" style={{ fontFamily: theme.bodyFont }}>
+                    {item.icon === 'location' ? <PinIcon /> : item.icon === 'hours' ? <ClockIcon /> : <MessageIcon />}
+                    {item.value}
+                  </span>
+                ))}
+              </div>
+            ) : null}
 
-        {/* Right: Action Buttons */}
-        <div className="flex items-end gap-3">
-          <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-2 border-white text-white font-semibold text-sm hover:bg-white/10 transition-colors">
-            <ChatIcon /> Message
-          </button>
-          <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-2 border-white text-white font-semibold text-sm hover:bg-white/10 transition-colors">
-            <PhoneIcon /> Call
-          </button>
-          <button
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#E8540A] border-2 border-[#E8540A] text-white font-semibold text-sm hover:bg-[#F26522] transition-colors"
-            onClick={() => onNavigate?.('/tenant-store')}
-          >
-            <BagIcon /> Order Now
-          </button>
+            {metrics.length > 0 ? (
+              <div className="sf-hero__metrics">
+                {metrics.map((metric) => (
+                  <span key={`${metric.label}-${metric.value}`} className="sf-chip" style={{ fontFamily: theme.bodyFont }}>
+                    <strong>{metric.value}</strong>
+                    <span>{metric.label}</span>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="sf-hero__actions">
+              {renderAction(hero.primaryAction, 'primary', onAction)}
+              {renderAction(hero.secondaryAction, 'secondary', onAction)}
+              {renderAction(hero.tertiaryAction, viewportKind === 'mobile' ? 'secondary' : 'ghost', onAction)}
+            </div>
+          </div>
+
+          <aside className="sf-hero__panel">
+            <div className="sf-hero__profile-card">
+              <div className="sf-hero__profile-row">
+                {profileImageUrl ? (
+                  <img src={profileImageUrl} alt={hero.name || 'Store'} className="sf-hero__profile-image" />
+                ) : (
+                  <div className="sf-hero__profile-fallback">{(hero.name || 'S').charAt(0)}</div>
+                )}
+                <div className="sf-hero__profile-copy">
+                  <h2 className="sf-hero__profile-title" style={{ fontFamily: theme.displayFont }}>{hero.profileTitle || hero.name || 'Storefront'}</h2>
+                  {hero.profileSubtitle ? (
+                    <p className="sf-hero__profile-subtitle" style={{ fontFamily: theme.bodyFont }}>{hero.profileSubtitle}</p>
+                  ) : null}
+                  {hero.supportBadge ? (
+                    <span className="sf-chip sf-chip--solid" style={{ width: 'fit-content', fontFamily: theme.bodyFont }}>{hero.supportBadge}</span>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            {supportItems.length > 0 ? (
+              <div className="sf-hero__support">
+                {supportItems.map((item) => (
+                  <div key={`${item.label}-${item.value}`} className="sf-hero__support-item">
+                    <span className="sf-hero__support-label" style={{ fontFamily: theme.bodyFont }}>{item.label}</span>
+                    <span className="sf-hero__support-value" style={{ fontFamily: theme.bodyFont }}>{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </aside>
         </div>
       </div>
     </section>
   );
 }
 
-// Mobile Store Hero
-export function StoreHeroMobile({ store, onNavigate }) {
-  return (
-    <>
-      <div className="relative h-60 bg-gray-900 bg-cover bg-center"
-        style={{ backgroundImage: 'linear-gradient(to bottom, rgba(0,0,0,0.3), rgba(0,0,0,0.6)), url(https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=600&h=400&fit=crop)' }}
-      >
-        <button 
-          className="absolute top-4 left-4 w-9 h-9 rounded-full bg-white/90 border-none cursor-pointer flex items-center justify-center"
-          onClick={() => onNavigate?.('/tenant-store')}
-        >
-          ←
-        </button>
-        <div className="absolute top-4 right-4 flex items-center gap-2 bg-black/50 px-3 py-1.5 rounded-lg">
-          <span className="bg-green-500 text-white text-[11px] font-semibold px-2 py-0.5 rounded">Open</span>
-          <span className="text-white text-xs">Closes {store.closesAt}</span>
-        </div>
-      </div>
-      <div className="relative px-4 pb-4 bg-white">
-        <div className="absolute -mt-12 left-4 w-24 h-24 rounded-full bg-[#1A1A1A] border-4 border-white shadow-lg flex flex-col items-center justify-center">
-          <span className="text-3xl">🔥</span>
-          <div className="text-[10px] text-white font-bold leading-tight text-center">KUYA<br/>DING&apos;S<br/>BBQ</div>
-        </div>
-        <div className="pt-14">
-          <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-bold text-[#1A1A1A]">{store.name}</h1>
-            <span className="w-5 h-5 rounded-full bg-[#E8540A] flex items-center justify-center text-white text-xs">✓</span>
-          </div>
-          <p className="text-sm text-[#E8540A] italic font-[Pacifico] mb-2">{store.tagline}</p>
-          <div className="flex items-center gap-2 text-sm text-gray-600 flex-wrap">
-            <span>⭐ {store.rating} ({store.reviewCount})</span>
-            <span className="text-gray-300">|</span>
-            <span>🍴 {store.categories.join(', ')}</span>
-            <span className="text-gray-300">|</span>
-            <span>📍 Antipolo City</span>
-          </div>
-          <div className="flex gap-3 mt-4">
-            <button className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-300 text-gray-700 font-semibold text-sm">
-              <ChatIcon /> Message
-            </button>
-            <button className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-[#E8540A] border border-[#E8540A] text-white font-semibold text-sm">
-              <PhoneIcon /> Call
-            </button>
-          </div>
-        </div>
-      </div>
-    </>
-  );
+export function StoreHeroDesktop(props) {
+  return <StoreHeroSection {...props} viewportKind="desktop" />;
+}
+
+export function StoreHeroMobile(props) {
+  return <StoreHeroSection {...props} viewportKind="mobile" />;
 }

@@ -89,6 +89,19 @@ describe('storefront error message normalization', () => {
     expect(result.guidance).toContain('fulfillment location is invalid');
   });
 
+  it('classifies 429 catalog errors with retry guidance', () => {
+    const result = classifyStoreCatalogError({
+      status: 429,
+      errorCode: 'RATE_LIMITED',
+      message: 'Too many requests from this IP, please try again later.',
+      details: {
+        retryAfterSeconds: 381
+      }
+    });
+    expect(result.message).toContain('temporarily rate-limited');
+    expect(result.guidance).toContain('Please wait about 7 minute(s)');
+  });
+
   it('does not inject setup/runtime guidance when no explicit catalog code is present', () => {
     const result = classifyStoreCatalogError({
       status: 500,
