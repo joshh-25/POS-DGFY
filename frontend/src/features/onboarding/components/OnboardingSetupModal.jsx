@@ -27,13 +27,6 @@ import {
   serializeStorefrontBusinessHours
 } from '../../settings/storefrontBusinessHours.js';
 import {
-  STOREFRONT_BUSINESS_DAY_OPTIONS,
-  createDefaultStorefrontBusinessHours,
-  formatStorefrontBusinessHoursDisplay,
-  normalizeStorefrontBusinessHours,
-  serializeStorefrontBusinessHours
-} from '@/src/features/settings/storefrontBusinessHours.js';
-import {
   getDefaultItemPreset,
   resolveModeItemTaxonomy
 } from '../../settings/modeItemTaxonomy.js';
