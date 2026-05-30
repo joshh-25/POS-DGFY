@@ -73,12 +73,19 @@ const collectSalesRedirectEvidence = async (browser) => {
   const redirectedUrl = page.url();
   await page.close();
   const expectedSalesUrl = `${expectedSkupervisorOrigin}/sales`;
+  const expectedLoginUrl = `${expectedSkupervisorOrigin}/login`;
+  const directSalesHandoff = redirectedUrl.startsWith(expectedSalesUrl)
+    || failedRequests.some((url) => String(url || '').startsWith(expectedSalesUrl));
+  const authGuardedSalesHandoff = redirectedUrl.startsWith(expectedLoginUrl);
   return {
     expectedSkupervisorOrigin,
+    expectedSalesUrl,
+    expectedLoginUrl,
     redirectedUrl,
     failedRequests,
-    passed: redirectedUrl.startsWith(expectedSalesUrl)
-      || failedRequests.some((url) => String(url || '').startsWith(expectedSalesUrl))
+    directSalesHandoff,
+    authGuardedSalesHandoff,
+    passed: directSalesHandoff || authGuardedSalesHandoff
   };
 };
 

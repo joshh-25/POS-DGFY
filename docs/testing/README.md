@@ -56,7 +56,7 @@ Repeatable DGFY POS split-surface smoke:
    - desktop `1440x960`, tablet `820x1180`, and mobile `390x844` render terminal identity, POS catalog, current sale, and lock drawer
    - login form fields are editable
    - locked drawer blocks catalog actions until unlock
-   - standalone `/sales` redirects to the SKUpervisor origin
+   - standalone `/sales` hands off to the SKUpervisor origin; production may complete that proof as an auth-guarded `/login` redirect when no SKUpervisor session is present
    - no console errors
 
 Targeted DGFY POS split-surface contract checks:
