@@ -48,6 +48,7 @@
     "backfill:dgfy-customer-activity": "cd backend && npm run backfill:dgfy-customer-activity --",
     "backfill:dgfy-customer-activity:apply": "cd backend && npm run backfill:dgfy-customer-activity:apply --",
     "smoke:pos-local": "cd backend && npm run smoke:pos-local",
+    "smoke:pos-terminal-ui": "node scripts/smoke-pos-terminal-ui.js",
     "qa:fnb-readiness": "node scripts/run-fnb-readiness-gate.js",
     "check:architecture": "cd backend && npm run check:architecture-guardrails && npm run check:controller-boundaries",
     "check:compliance": "node scripts/check-compliance-impact.js && node scripts/check-compliance-api-contracts.js",

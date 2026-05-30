@@ -5,9 +5,9 @@ const path = require('path');
 const projectRoot = process.cwd();
 const legacyAssetsDir = path.join(projectRoot, 'frontend', 'dist', 'assets');
 const multiAppAssetsDirs = [
-  path.join(projectRoot, 'dist-apps', 'skupervisor', 'assets'),
-  path.join(projectRoot, 'dist-apps', 'pos', 'assets'),
-  path.join(projectRoot, 'dist-apps', 'store', 'assets')
+  { app: 'skupervisor', dir: path.join(projectRoot, 'dist-apps', 'skupervisor', 'assets') },
+  { app: 'pos', dir: path.join(projectRoot, 'dist-apps', 'pos', 'assets') },
+  { app: 'store', dir: path.join(projectRoot, 'dist-apps', 'store', 'assets') }
 ];
 
 const fail = (message) => {
@@ -15,22 +15,23 @@ const fail = (message) => {
   process.exit(1);
 };
 
-const existingMultiAppAssetsDirs = multiAppAssetsDirs.filter((dirPath) => fs.existsSync(dirPath));
+const existingMultiAppAssetsDirs = multiAppAssetsDirs.filter(({ dir }) => fs.existsSync(dir));
 const existingAssetsDirs = existingMultiAppAssetsDirs.length > 0
   ? existingMultiAppAssetsDirs
-  : [legacyAssetsDir].filter((dirPath) => fs.existsSync(dirPath));
+  : [{ app: 'legacy', dir: legacyAssetsDir }].filter(({ dir }) => fs.existsSync(dir));
 
 if (existingAssetsDirs.length === 0) {
   fail('Missing built assets. Run `npm run build:frontend` or `npm -C frontend run build:all` first.');
 }
 
-const jsFiles = existingAssetsDirs.flatMap((assetsDir) => fs.readdirSync(assetsDir)
+const jsFiles = existingAssetsDirs.flatMap(({ app, dir: assetsDir }) => fs.readdirSync(assetsDir)
   .filter((name) => name.endsWith('.js'))
   .map((name) => {
     const fullPath = path.join(assetsDir, name);
     const stats = fs.statSync(fullPath);
     return {
       name,
+      app,
       size: stats.size,
       mtimeMs: stats.mtimeMs,
       source: path.relative(projectRoot, fullPath)
@@ -38,32 +39,37 @@ const jsFiles = existingAssetsDirs.flatMap((assetsDir) => fs.readdirSync(assetsD
   }));
 
 const routeBudgets = [
-  { prefix: 'Login-', limitKb: 20 },
-  // Rebased 2026-04-21 after POS/compliance/location-binding feature growth.
-  // Keep strict limits with minimal headroom over observed production build output.
-  // Rebased 2026-05-21 after CI/local builds put the route chunk near 52.4KiB.
-  { prefix: 'POSCheckoutTerminal-', limitKb: 54 },
-  { prefix: 'POSPage-', limitKb: 10 },
+  { app: 'skupervisor', prefix: 'Login-', limitKb: 20 },
+  // Rebased 2026-05-30 after PR #11 split the POS surfaces and the shared checkout
+  // terminal settled at 62.2KiB in the SKUpervisor production build.
+  { app: 'skupervisor', prefix: 'POSCheckoutTerminal-', limitKb: 64 },
+  // Standalone POS owns the cashier terminal route after PR #11. Keep it separately
+  // budgeted so the split app cannot drift behind the admin-only surface.
+  { app: 'pos', prefix: 'POSCheckoutTerminal-', limitKb: 67 },
+  // PR #11 renamed the admin POS route chunk from POSPage-* to SkupervisorPOSPage-*.
+  { app: 'skupervisor', prefix: 'SkupervisorPOSPage-', limitKb: 58 },
   // Rebased 2026-05-05 after barcode scan metadata was added to terminal flows.
-  { prefix: 'TerminalPage-', limitKb: 35 },
-  { prefix: 'SalesPage-', limitKb: 20 }
+  { app: 'skupervisor', prefix: 'TerminalPage-', limitKb: 35 },
+  { app: 'skupervisor', prefix: 'SalesPage-', limitKb: 20 }
 ];
 
 const toKb = (bytes) => Number((bytes / 1024).toFixed(2));
 const errors = [];
 const warnings = [];
 
-const findByPrefix = (prefix) => {
+const formatBudgetName = (budget) => `${budget.app}:${budget.prefix}`;
+
+const findByBudget = (budget) => {
   const matches = jsFiles
-    .filter((f) => f.name.startsWith(prefix))
+    .filter((f) => f.name.startsWith(budget.prefix) && f.app === budget.app)
     .sort((a, b) => b.mtimeMs - a.mtimeMs);
   return matches[0];
 };
 
 for (const budget of routeBudgets) {
-  const match = findByPrefix(budget.prefix);
+  const match = findByBudget(budget);
   if (!match) {
-    errors.push(`Missing expected chunk with prefix "${budget.prefix}"`);
+    errors.push(`Missing expected chunk "${formatBudgetName(budget)}"`);
     continue;
   }
 
@@ -82,6 +88,9 @@ for (const chunk of largestChunks) {
   if (chunk.name.startsWith('vendor-maplibre-') && chunk.sizeKb <= 1100) {
     continue;
   }
+  if (chunk.name.startsWith('MapPinPicker-') && chunk.sizeKb <= 1100) {
+    continue;
+  }
   if (chunk.sizeKb > 950) {
     warnings.push(`Very large chunk detected: ${chunk.name} (${chunk.sizeKb}KB)`);
   }
@@ -89,11 +98,11 @@ for (const chunk of largestChunks) {
 
 console.log('[frontend-budgets] Route chunk budget check');
 for (const budget of routeBudgets) {
-  const match = findByPrefix(budget.prefix);
+  const match = findByBudget(budget);
   if (!match) {
-    console.log(`- ${budget.prefix} : missing`);
+    console.log(`- ${formatBudgetName(budget)} : missing`);
   } else {
-    console.log(`- ${match.name} (${match.source}) : ${toKb(match.size)}KB / ${budget.limitKb}KB`);
+    console.log(`- ${formatBudgetName(budget)} -> ${match.name} (${match.source}) : ${toKb(match.size)}KB / ${budget.limitKb}KB`);
   }
 }
 

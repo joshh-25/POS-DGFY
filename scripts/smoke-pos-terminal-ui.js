@@ -1,0 +1,125 @@
+#!/usr/bin/env node
+const { URL } = require('url');
+const playwright = require('../backend/node_modules/playwright');
+
+const baseUrl = String(process.env.POS_UI_BASE_URL || 'http://localhost:5174').replace(/\/+$/, '');
+const expectedSkupervisorOrigin = String(process.env.POS_UI_EXPECT_SKUPERVISOR_ORIGIN || '').trim()
+  || (() => {
+    const parsed = new URL(baseUrl);
+    if (parsed.port === '5174') {
+      parsed.port = '5173';
+    } else if (parsed.hostname.startsWith('pos.')) {
+      parsed.hostname = parsed.hostname.replace(/^pos\./, 'skupervisor.');
+    }
+    return parsed.origin;
+  })();
+
+const viewports = [
+  { name: 'desktop', width: 1440, height: 960, isMobile: false },
+  { name: 'tablet', width: 820, height: 1180, isMobile: false },
+  { name: 'mobile', width: 390, height: 844, isMobile: true }
+];
+
+const collectTerminalEvidence = async (browser, viewport) => {
+  const page = await browser.newPage({
+    viewport: { width: viewport.width, height: viewport.height },
+    isMobile: viewport.isMobile
+  });
+  const logs = [];
+  page.on('console', (message) => logs.push({ type: message.type(), text: message.text() }));
+  page.on('pageerror', (error) => logs.push({ type: 'pageerror', text: error.message }));
+
+  await page.goto(`${baseUrl}/terminal`, { waitUntil: 'networkidle', timeout: 15000 });
+  const bodyText = await page.locator('body').innerText({ timeout: 10000 });
+  await page.getByPlaceholder('cashier@company.com').fill(`cashier-${viewport.name}@example.test`);
+  await page.getByPlaceholder('COUNTER-01').fill(`COUNTER-${viewport.name.toUpperCase()}`);
+
+  const filterButton = page.getByRole('button', { name: /filter/i });
+  const lockDrawerBlocksCatalog = await filterButton.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const topElement = document.elementFromPoint(centerX, centerY);
+    return topElement !== element && !element.contains(topElement);
+  });
+
+  const evidence = {
+    viewport,
+    hasTerminal: bodyText.includes('DGFY Terminal Workspace'),
+    hasCatalog: bodyText.includes('POS Catalog'),
+    hasCurrentSale: bodyText.includes('Current Sale'),
+    hasLogin: bodyText.includes('Login and Unlock'),
+    loginFormEditable: (await page.getByPlaceholder('cashier@company.com').inputValue()).includes(viewport.name)
+      && (await page.getByPlaceholder('COUNTER-01').inputValue()).includes(viewport.name.toUpperCase()),
+    lockDrawerBlocksCatalog,
+    errors: logs.filter((entry) => entry.type === 'error' || entry.type === 'pageerror').map((entry) => entry.text),
+    warnings: logs.filter((entry) => entry.type === 'warning').map((entry) => entry.text)
+  };
+
+  await page.close();
+  return evidence;
+};
+
+const collectSalesRedirectEvidence = async (browser) => {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  const failedRequests = [];
+  page.on('requestfailed', (request) => failedRequests.push(request.url()));
+  try {
+    await page.goto(`${baseUrl}/sales?source=pos-smoke`, { waitUntil: 'domcontentloaded', timeout: 8000 });
+    await page.waitForTimeout(750);
+  } catch {
+    // The SKUpervisor dev server may be offline; URL mutation still proves redirect intent.
+  }
+  const redirectedUrl = page.url();
+  await page.close();
+  const expectedSalesUrl = `${expectedSkupervisorOrigin}/sales`;
+  return {
+    expectedSkupervisorOrigin,
+    redirectedUrl,
+    failedRequests,
+    passed: redirectedUrl.startsWith(expectedSalesUrl)
+      || failedRequests.some((url) => String(url || '').startsWith(expectedSalesUrl))
+  };
+};
+
+const run = async () => {
+  const browser = await playwright.chromium.launch({ headless: true });
+  try {
+    const terminalEvidence = [];
+    for (const viewport of viewports) {
+      terminalEvidence.push(await collectTerminalEvidence(browser, viewport));
+    }
+    const salesRedirect = await collectSalesRedirectEvidence(browser);
+    const failures = [];
+
+    for (const evidence of terminalEvidence) {
+      for (const key of ['hasTerminal', 'hasCatalog', 'hasCurrentSale', 'hasLogin', 'loginFormEditable', 'lockDrawerBlocksCatalog']) {
+        if (!evidence[key]) {
+          failures.push(`${evidence.viewport.name}.${key}`);
+        }
+      }
+      if (evidence.errors.length > 0) {
+        failures.push(`${evidence.viewport.name}.consoleErrors=${evidence.errors.join(' | ')}`);
+      }
+    }
+    if (!salesRedirect.passed) {
+      failures.push(`salesRedirect=${salesRedirect.redirectedUrl}`);
+    }
+
+    console.log('[pos-terminal-ui-smoke] evidence');
+    console.log(JSON.stringify({ baseUrl, terminalEvidence, salesRedirect }, null, 2));
+
+    if (failures.length > 0) {
+      console.error(`[pos-terminal-ui-smoke] FAIL ${failures.join(', ')}`);
+      process.exit(1);
+    }
+    console.log('[pos-terminal-ui-smoke] PASS');
+  } finally {
+    await browser.close();
+  }
+};
+
+run().catch((error) => {
+  console.error('[pos-terminal-ui-smoke] failed:', error);
+  process.exit(1);
+});
