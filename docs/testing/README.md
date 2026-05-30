@@ -23,6 +23,8 @@ Current bundle-gate expectations:
 1. `npm run check:frontend-budgets` enforces route-chunk ceilings for login, POS, terminal, and sales surfaces.
 2. The shared MapLibre dependency is intentionally isolated as `vendor-maplibre-*`; it is large but lazy-loaded by map-picker surfaces and is checked against the dedicated build cap instead of being treated as a generic vendor regression.
 3. Other vendor growth still remains actionable through the largest-chunk report.
+4. After the PR #11 DGFY POS surface split, the budget gate enforces the renamed SKUpervisor POS route chunk and the standalone POS checkout chunk separately. Do not treat a missing or renamed route chunk as harmless without updating the budget script and recording new evidence in `docs/testing/pos-readiness-status.md`.
+5. The merged frontend toolchain targets Vite 8 / `@vitejs/plugin-react` 6. Deterministic installs for frontend builds require a Node version accepted by that toolchain (`^20.19.0 || ^22.12.0 || >=24.0.0`), even though backend runtime support can remain broader.
 
 ## Claim Guardrail
 
@@ -47,6 +49,24 @@ Use this checklist for final cashier/admin acceptance before changing status fro
 - Cross-app manual readiness runbook (IMS + POS + Store):
   - `docs/testing/manual-qa-readiness-runbook-pos-ims-store.md`
 
+Repeatable DGFY POS split-surface smoke:
+1. Start standalone POS locally, for example `npm --prefix frontend run dev:pos -- --port 5174`.
+2. Run `npm run smoke:pos-terminal-ui`.
+3. Expected proof:
+   - desktop `1440x960`, tablet `820x1180`, and mobile `390x844` render terminal identity, POS catalog, current sale, and lock drawer
+   - login form fields are editable
+   - locked drawer blocks catalog actions until unlock
+   - standalone `/sales` redirects to the SKUpervisor origin
+   - no console errors
+
+Targeted DGFY POS split-surface contract checks:
+1. Run `npm --prefix frontend test -- --run src/features/pos/utils/__tests__/checkoutSurfaceContract.test.js src/features/pos/__tests__/checkoutSurfaceParity.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/receiptContractConformance.contract.test.js`.
+2. Expected proof:
+   - standalone POS and SKUpervisor POS use the shared checkout payload builder
+   - terminal ID, payment handoff, discount, F&B metadata, modifiers, kitchen station, and scan metadata stay aligned
+   - DGFY fee label/rate and receipt fallback behavior stay centralized
+   - intentional UI differences remain documented by contract assertions
+
 Current price/cost readiness checks:
 - POS, Storefront, Dispatch Orders, and barcode cart handoff require `default_sale_price > 0` for customer-facing sale lines.
 - Missing or zero selling price must fail closed with setup/readiness feedback; customer sale flows must not use `cost_per_unit` as a fallback price.
@@ -63,7 +83,7 @@ Historical note:
 - Legacy SKU expansion manual walkthrough notes were archived to `docs/archive/testing/2026-03/sku-expansion-manual-test-runbook-2026-03-31.md`.
 - Dated release go/no-go snapshot was archived to `docs/archive/testing/2026-04/release-go-no-go-checklist-2026-04-21.md`.
 - Active POS readiness source of truth is `docs/testing/pos-readiness-status.md`; historical run logs remain evidence-only and must not be used as current behavior contracts.
-- Latest fee/branding contract hardening evidence is recorded in section `3.14` of `docs/testing/pos-readiness-status.md`.
+- Latest DGFY POS/SKUpervisor surface split review and post-fix ratings are recorded in section `3.24` of `docs/testing/pos-readiness-status.md`.
 
 ## Compliance Activation Readiness E2E
 
