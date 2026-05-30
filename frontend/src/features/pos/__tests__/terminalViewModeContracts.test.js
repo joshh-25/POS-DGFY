@@ -73,7 +73,7 @@ describe('POS terminal view-mode contracts', () => {
 
   it('keeps cashier scroll-zone badge contextual to desktop sidebar usage', () => {
     expect(terminalWorkspaceSidebarContent).toContain('showScrollZoneBadge = true');
-    expect(terminalWorkspaceSidebarContent).toContain('{showScrollZoneBadge && (');
+    expect(terminalWorkspaceSidebarContent).not.toContain('Scroll zone');
     expect(terminalPageLayoutContent).toContain('showScrollZoneBadge={false}');
     expect(terminalPageLayoutContent).toContain('showScrollZoneBadge');
   });
@@ -109,9 +109,9 @@ describe('POS terminal view-mode contracts', () => {
     expect(posHistoryPanelContent).toContain('All Sources');
     expect(posHistoryPanelContent).toContain('Online Store');
     expect(posHistoryPanelContent).not.toContain('Online (Legacy)');
-    expect(posHistoryPanelContent).toContain('aria-label={`View POS history transaction ${row.invoice_number || row.pos_transaction_id}`}');
-    expect(posHistoryPanelContent).toContain('aria-label={`Open ${row.invoice_number || row.pos_transaction_id} in sales report`}');
-    expect(posHistoryPanelContent).toContain('<caption className="sr-only">POS transaction history with receipt and sales-report actions</caption>');
+    expect(posHistoryPanelContent).toContain('aria-label={`Open actions for ${row.invoice_number || row.pos_transaction_id}`}');
+    expect(posHistoryPanelContent).toContain('data-testid={`pos-history-row-open-sales-report-${row.pos_transaction_id}`}');
+    expect(posHistoryPanelContent).toContain('<caption className="sr-only">POS transaction history with receipt and sales report actions</caption>');
     expect(posHistoryPanelContent).toContain('event.stopPropagation();');
   });
 
@@ -156,7 +156,7 @@ describe('POS terminal view-mode contracts', () => {
   it('keeps scanner wedge capture and routed ticket feedback out of cart mutation', () => {
     expect(posCheckoutTerminalContent).toContain('POSBarcodeScanner');
     expect(posBarcodeScannerContent).toContain('scannerBufferRef');
-    expect(posBarcodeScannerContent).toContain('submitScan(bufferedCode);');
+    expect(posBarcodeScannerContent).toContain('setScannerCode(nextCode);');
     expect(posBarcodeScannerContent).toContain("result?.status === 'routed'");
     expect(posBarcodeScannerContent).toContain("tone: 'info'");
     expect(posBarcodeScannerContent).toContain('toast.info(message);');
@@ -196,8 +196,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalLockDrawerContent).toContain('registryEnforced ?');
     expect(terminalLockDrawerContent).toContain('Select configured terminal');
     expect(terminalLockDrawerContent).toContain('list="terminal-id-options"');
-    expect(terminalPageLayoutContent).toContain('normalizedActiveTerminalId');
-    expect(terminalPageLayoutContent).toContain("normalizedActiveTerminalId || 'Not selected'");
+    expect(terminalPageLayoutContent).not.toContain('normalizedActiveTerminalId');
     expect(terminalPageLayoutContent).not.toContain('Terminal identity: <span className="font-semibold text-slate-900">DGFY</span>');
     expect(posCheckoutTerminalContent).toContain('terminalId = \'\'');
     expect(posCheckoutTerminalContent).toContain('const terminalIdentityLabel = normalizedTerminalId');
@@ -212,7 +211,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-open-sales-report"');
     expect(posCheckoutTerminalContent).toContain("params.set('source', 'POS');");
     expect(posCheckoutTerminalContent).toContain("params.set('pos_order_source', historyOrderSource);");
-    expect(posCheckoutTerminalContent).toContain('navigate(`/sales');
+    expect(posCheckoutTerminalContent).toContain("openSkupervisorPath('/sales', query)");
   });
 
   it('exposes deterministic sidebar test hook for history mode switching', () => {
@@ -222,9 +221,9 @@ describe('POS terminal view-mode contracts', () => {
 
   it('uses adaptive responsive layout primitives and avoids hard-coded viewport math', () => {
     expect(terminalPageLayoutContent).toContain('min-h-[100dvh]');
-    expect(terminalPageLayoutContent).toContain("2xl:grid-cols-[260px_minmax(0,1fr)_360px]");
+    expect(terminalPageLayoutContent).toContain("xl:grid ${effectiveSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[244px_minmax(0,1fr)]'}");
     expect(posCheckoutTerminalContent).toContain('checkoutGridClassName');
-    expect(posCheckoutTerminalContent).toContain('splitPaneScrollClassName');
+    expect(posCheckoutTerminalContent).not.toContain('splitPaneScrollClassName');
     expect(posCheckoutTerminalContent).not.toContain('calc(100vh-13.5rem)');
   });
 });

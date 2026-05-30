@@ -3,7 +3,12 @@ import {
   AlertCircle,
   AlertTriangle,
   Banknote,
+  CalendarDays,
   CheckCircle2,
+  CircleDollarSign,
+  ClipboardList,
+  Info,
+  Lightbulb,
   MapPinned,
   RefreshCcw,
   Receipt,
@@ -105,24 +110,55 @@ const QUEUE_OPERATION_LABELS = {
 };
 
 function WorkspaceShell({ icon: Icon, title, subtitle, children, terminalUser, locked }) {
-  return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
-        <div className="flex items-start gap-3">
-          <div className="rounded-lg border border-teal-200 bg-teal-50 p-2 text-teal-700">
-            <Icon className="h-5 w-5" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">{title}</h2>
-            <p className="text-sm text-slate-600">{subtitle}</p>
+  const isIncomingQueue = title === MODE_META.incoming_queue.title;
+
+  if (isIncomingQueue) {
+    return (
+      <section className="space-y-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/80">
+          <div className="flex items-center gap-4">
+            <div className="flex min-w-0 items-center gap-4">
+              <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-blue-50 text-[#1A4E8D]">
+                <Icon className="h-7 w-7" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-2xl font-black tracking-tight text-[#0F172A]">{title}</h2>
+                <p className="mt-1 text-sm leading-5 text-[#475569]">{subtitle}</p>
+              </div>
+            </div>
           </div>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-right">
-          <p className="text-[11px] uppercase tracking-wide text-slate-500">Operator</p>
-          <p className="text-sm font-semibold text-slate-900">{terminalUser?.username || 'Terminal Locked'}</p>
-          <p className={`text-[11px] ${locked ? 'text-amber-700' : 'text-emerald-700'}`}>
-            {locked ? 'Locked' : 'Active'}
-          </p>
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/80">
+          {children}
+          {locked && (
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              Terminal is locked. Unlock to run protected operational actions.
+            </div>
+          )}
+          {!locked && (
+            <div className="mt-4 flex items-center gap-3 rounded-lg border border-cyan-100 bg-cyan-50/60 px-3 py-3 text-sm leading-5 text-[#334155]">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-cyan-200 bg-cyan-50 text-teal-600">
+                <Lightbulb className="h-4 w-4" />
+              </span>
+              Right-side panel remains available for secondary context while this workspace is your primary active mode.
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
+      <div className="border-b border-slate-100 pb-4">
+        <div className="flex items-start gap-3">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-2 text-[#1A4E8D]">
+            <Icon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-xl font-black tracking-tight text-[#0F172A]">{title}</h2>
+            <p className="mt-1 text-sm leading-5 text-[#5B6B86]">{subtitle}</p>
+          </div>
         </div>
       </div>
       <div className="pt-4">{children}</div>
@@ -155,18 +191,37 @@ function IncomingQueueWorkspace({
     : (locations.find((location) => Number(location.location_id) === Number(queueLocationScopeId))?.name || 'Selected Location');
 
   return (
-    <div id={sectionId} className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-        <p className="text-sm text-slate-700">
-          Location scope: <span className="font-semibold text-slate-900">{selectedLocationName}</span>
-        </p>
-        <Button type="button" variant="outline" onClick={() => refreshIncomingOrders?.()} disabled={incomingOrdersState?.loading || locked}>
+    <div id={sectionId} className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-blue-50 text-[#1A4E8D]">
+            <MapPinned className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-sm leading-5 text-[#475569]">Location scope:</p>
+            <p className="text-lg font-black leading-6 text-[#0F172A]">{selectedLocationName}</p>
+          </div>
+        </div>
+        <Button
+          type="button"
+          onClick={() => refreshIncomingOrders?.()}
+          disabled={incomingOrdersState?.loading || locked}
+          className="h-10 rounded-lg !bg-[#2563EB] px-5 text-sm font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
+        >
+          <RefreshCcw className="mr-2 h-4 w-4" />
           {incomingOrdersState?.loading ? 'Refreshing...' : 'Refresh Queue'}
         </Button>
       </div>
-      <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-        Completed or cancelled online orders move to History/Receipt Preview. Incoming Queue shows active fulfillment statuses only.
-      </p>
+      <div className="flex items-start gap-3 rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-3 text-sm leading-5 text-[#334155]">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-blue-500 text-white">
+          <Info className="h-4 w-4" />
+        </span>
+        <p>
+          Completed or cancelled online orders move to History/Receipt Preview.
+          <br />
+          Incoming Queue shows active fulfillment statuses only.
+        </p>
+      </div>
 
       {!canViewPos || incomingOrdersAccessState === 'forbidden' ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
@@ -179,7 +234,25 @@ function IncomingQueueWorkspace({
       ) : incomingOrdersState?.loading && incomingOrders.length === 0 ? (
         <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Loading incoming orders...</p>
       ) : incomingOrders.length === 0 ? (
-        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">No online orders in active queue.</p>
+        <div className="grid min-h-[11rem] grid-cols-1 items-center gap-5 rounded-lg border border-slate-200 bg-white px-5 py-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
+          <div className="flex justify-center md:border-r md:border-slate-200">
+            <div className="relative grid h-32 w-40 place-items-end">
+              <div className="absolute inset-x-4 bottom-1 h-3 rounded-full bg-blue-100/70 blur-sm" />
+              <div className="relative h-16 w-28 rounded-b-lg rounded-t-xl border-2 border-blue-300 bg-blue-50 shadow-inner">
+                <div className="absolute -top-4 left-8 h-5 w-12 rounded-b-lg border-x-2 border-b-2 border-blue-300 bg-white" />
+                <div className="absolute -top-12 left-11 h-10 w-8 rounded-md border border-blue-200 bg-white shadow-sm">
+                  <span className="mx-auto mt-2 block h-1 w-4 rounded bg-blue-200" />
+                  <span className="mx-auto mt-2 block h-1 w-5 rounded bg-blue-100" />
+                  <span className="mx-auto mt-2 block h-1 w-3 rounded bg-blue-100" />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <p className="text-xl font-black tracking-tight text-[#0F172A]">No online orders in active queue.</p>
+            <p className="mt-2 text-sm leading-5 text-[#475569]">New online orders will appear here once they are received.</p>
+          </div>
+        </div>
       ) : (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {incomingOrders.map((order) => {
@@ -190,10 +263,10 @@ function IncomingQueueWorkspace({
               ? `https://maps.google.com/?q=${deliveryCoords.latitude},${deliveryCoords.longitude}`
               : '';
             return (
-              <div key={`incoming-workspace-${order.pos_transaction_id}`} className="rounded-xl border border-slate-200 bg-white p-3">
+              <div key={`incoming-workspace-${order.pos_transaction_id}`} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/70">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-slate-900">{order.customer_name || 'Guest Buyer'}</p>
-                  <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+                  <p className="text-sm font-extrabold text-[#0F172A]">{order.customer_name || 'Guest Buyer'}</p>
+                  <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-extrabold text-[#1A4E8D]">
                     {FULFILLMENT_STATUS_LABELS[order.fulfillment_status] || order.fulfillment_status || 'Unknown'}
                   </span>
                 </div>
@@ -207,7 +280,7 @@ function IncomingQueueWorkspace({
                       href={mapLink}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="font-semibold text-teal-700 underline"
+                    className="font-semibold text-[#1A4E8D] underline"
                     >
                       Open pin in map
                     </a>
@@ -479,13 +552,64 @@ function ShiftControlsWorkspace({
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const [switchReason, setSwitchReason] = React.useState('');
   const shiftLocationId = Number(shiftState?.shift?.location_id || 0) || null;
+  const activeShift = shiftState?.shift || null;
+  const shiftLocationLabel = activeShift?.location?.name || activeShift?.location_name || activeShift?.location_id || 'Unassigned';
+  const summaryRows = activeShift ? [
+    {
+      icon: ClipboardList,
+      label: 'Shift ID:',
+      value: `#${activeShift.pos_terminal_shift_id}`,
+      valueClassName: 'text-[18px] font-black text-[#2563EB]'
+    },
+    {
+      icon: CalendarDays,
+      label: 'Business Date:',
+      value: activeShift.business_date || '-',
+      valueClassName: 'text-[18px] font-black text-[#2563EB]'
+    },
+    {
+      icon: AlertCircle,
+      label: 'Opened At:',
+      value: parseIsoDateTime(activeShift.opened_at),
+      valueClassName: 'text-[13px] font-extrabold text-[#0F172A]'
+    },
+    {
+      icon: CircleDollarSign,
+      label: 'Opening Float:',
+      value: `${terminalMeta.pettyCashSymbol} ${money(activeShift.opening_float_amount)}`,
+      valueClassName: 'text-[13px] font-extrabold text-[#0F172A]'
+    },
+    {
+      icon: Banknote,
+      label: 'Expected Cash:',
+      value: `${terminalMeta.pettyCashSymbol} ${money(shiftState.cashSummary?.expected_cash_amount)}`,
+      valueClassName: 'text-[13px] font-extrabold text-emerald-700'
+    },
+    {
+      icon: Banknote,
+      label: 'Cash Sales:',
+      value: `${terminalMeta.pettyCashSymbol} ${money(shiftState.cashSummary?.cash_sales_amount)}`,
+      valueClassName: 'text-[13px] font-extrabold text-emerald-700'
+    },
+    {
+      icon: MapPinned,
+      label: 'Shift location:',
+      value: shiftLocationLabel,
+      valueClassName: 'text-[13px] font-extrabold text-[#0F172A]'
+    }
+  ] : [];
 
   return (
     <div id={sectionId} className="space-y-3">
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-        <Label className="text-xs">Operating Location</Label>
+      <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm shadow-slate-200/70">
+        <div className="flex items-start gap-2.5">
+          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-blue-50 text-[#2563EB]">
+            <MapPinned className="h-4.5 w-4.5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[12px] font-black text-[#0F172A]">Operating Location</p>
         <select
-          className="mt-1 w-full rounded-md border border-slate-200 px-2 py-2 text-sm"
+              className="mt-2 h-10 w-full rounded-lg border border-blue-300 bg-white px-3 text-[12.5px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
           value={operatingLocationId || ''}
           onChange={(event) => {
             const nextValue = event.target.value ? Number(event.target.value) : null;
@@ -498,30 +622,57 @@ function ShiftControlsWorkspace({
             </option>
           ))}
         </select>
-        <p className="mt-2 text-xs text-slate-600">
+            <p className="mt-1.5 text-[11.5px] leading-5 text-[#5B6B86]">
           Catalog, checkout, and dashboard use this location scope.
         </p>
+          </div>
+        </div>
       </div>
       {shiftState.loading ? (
         <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Loading shift context...</p>
-      ) : shiftState.shift ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-3">
-          <div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-2">
-            <p className="text-slate-600">Shift ID: <span className="font-semibold text-slate-900">#{shiftState.shift.pos_terminal_shift_id}</span></p>
-            <p className="text-slate-600">Business Date: <span className="font-semibold text-slate-900">{shiftState.shift.business_date || '-'}</span></p>
-            <p className="text-slate-600">Opened At: <span className="font-semibold text-slate-900">{parseIsoDateTime(shiftState.shift.opened_at)}</span></p>
-            <p className="text-slate-600">Opening Float: <span className="font-semibold text-slate-900">{terminalMeta.pettyCashSymbol} {money(shiftState.shift.opening_float_amount)}</span></p>
-            <p className="text-slate-600">Expected Cash: <span className="font-semibold text-slate-900">{terminalMeta.pettyCashSymbol} {money(shiftState.cashSummary?.expected_cash_amount)}</span></p>
-            <p className="text-slate-600">Cash Sales: <span className="font-semibold text-slate-900">{terminalMeta.pettyCashSymbol} {money(shiftState.cashSummary?.cash_sales_amount)}</span></p>
+      ) : activeShift ? (
+        <div className="space-y-3">
+          <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm shadow-slate-200/70">
+            <div className="grid gap-0 md:grid-cols-2">
+              <div className="space-y-0 md:border-r md:border-slate-200 md:pr-4">
+                {summaryRows.slice(0, 4).map((row, index) => {
+                  const RowIcon = row.icon;
+                  return (
+                    <div key={`shift-summary-left-${row.label}`} className={`flex items-center gap-2.5 py-2.5 ${index < 3 ? 'border-b border-slate-100' : ''}`}>
+                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-slate-200 bg-slate-50 text-[#2563EB]">
+                        <RowIcon className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11.5px] font-medium text-[#5B6B86]">{row.label}</p>
+                        <p className={`${row.valueClassName} mt-0.5 break-words leading-5`}>{row.value}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="space-y-0 md:pl-4">
+                {summaryRows.slice(4).map((row, index) => {
+                  const RowIcon = row.icon;
+                  return (
+                    <div key={`shift-summary-right-${row.label}`} className={`flex items-center gap-2.5 py-2.5 ${index < 2 ? 'border-b border-slate-100' : ''}`}>
+                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-slate-200 bg-slate-50 text-[#2563EB]">
+                        <RowIcon className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11.5px] font-medium text-[#5B6B86]">{row.label}</p>
+                        <p className={`${row.valueClassName} mt-0.5 break-words leading-5`}>{row.value}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-          <p className="mt-2 text-xs text-slate-600">
-            Shift location: <span className="font-semibold text-slate-900">{shiftState?.shift?.location?.name || shiftState?.shift?.location_name || shiftState?.shift?.location_id || 'Unassigned'}</span>
-          </p>
           {canSwitchPosLocation && (
-            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
-              <Label className="text-xs">Switch Shift Location</Label>
+            <div className="rounded-xl border border-slate-200 bg-slate-50/55 p-3.5 shadow-sm shadow-slate-200/50">
+              <p className="text-[12px] font-black text-[#0F172A]">Switch Shift Location</p>
               <select
-                className="w-full rounded-md border border-slate-200 px-2 py-2 text-sm"
+                className="mt-2.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[12.5px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
                 value={operatingLocationId || ''}
                 onChange={(event) => {
                   const nextValue = event.target.value ? Number(event.target.value) : null;
@@ -535,6 +686,7 @@ function ShiftControlsWorkspace({
                 ))}
               </select>
               <Input
+                className="mt-2.5 h-10 rounded-lg border-slate-200 text-[12.5px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
                 value={switchReason}
                 onChange={(event) => setSwitchReason(event.target.value)}
                 placeholder="Reason for location switch"
@@ -542,33 +694,43 @@ function ShiftControlsWorkspace({
               <Button
                 type="button"
                 variant="outline"
+                className="mt-2.5 h-9 rounded-lg border-slate-300 bg-white px-4 text-[12px] font-extrabold text-[#0F172A] hover:bg-slate-50"
                 disabled={shiftActionLoading.switchLocation || !operatingLocationId || Number(operatingLocationId) === Number(shiftLocationId)}
                 onClick={() => handleSwitchShiftLocation?.({
                   targetLocationId: operatingLocationId,
                   reason: switchReason
                 })}
               >
+                <RefreshCcw className="mr-2 h-4 w-4" />
                 {shiftActionLoading.switchLocation ? 'Switching...' : 'Switch Shift Location'}
               </Button>
             </div>
           )}
           {!canSwitchPosLocation && (
-            <p className="mt-2 text-[11px] text-slate-500">
+            <p className="text-[11px] text-slate-500">
               You do not have permission to switch shift location.
             </p>
           )}
-          <Button type="button" variant="outline" className="mt-3" onClick={refreshOperationalContext}>
-            Refresh Shift Data
-          </Button>
+          <div>
+            <Button
+              type="button"
+              onClick={refreshOperationalContext}
+              className="h-9 rounded-lg !bg-[#2563EB] px-4 text-[12px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
+            >
+              <RefreshCcw className="mr-2 h-4 w-4" />
+              Refresh Shift Data
+            </Button>
+          </div>
         </div>
       ) : (
-        <div className="rounded-xl border border-slate-200 bg-white p-3">
-          <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-700">
+        <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm shadow-slate-200/70">
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11.5px] text-amber-700">
             No open shift. Open a shift to enable checkout.
           </p>
-          <div className="mt-3 space-y-2">
-            <Label className="text-xs">Opening Float ({terminalMeta.pettyCashSymbol})</Label>
+          <div className="mt-3 space-y-2.5">
+            <Label className="text-[11.5px] font-black text-[#0F172A]">Opening Float ({terminalMeta.pettyCashSymbol})</Label>
             <Input
+              className="h-10 rounded-lg border-slate-200 text-[12.5px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
               type="number"
               min="0"
               step="0.01"
@@ -576,13 +738,19 @@ function ShiftControlsWorkspace({
               onChange={(event) => setOpenShiftForm((prev) => ({ ...prev, openingFloatAmount: event.target.value }))}
               placeholder={money(terminalMeta.pettyCashAmount)}
             />
-            <Label className="text-xs">Opening Note (Optional)</Label>
+            <Label className="text-[11.5px] font-black text-[#0F172A]">Opening Note (Optional)</Label>
             <Input
+              className="h-10 rounded-lg border-slate-200 text-[12.5px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
               value={openShiftForm.openingNote}
               onChange={(event) => setOpenShiftForm((prev) => ({ ...prev, openingNote: event.target.value }))}
               placeholder="Opening shift cash note"
             />
-            <Button type="button" onClick={handleOpenShift} disabled={shiftActionLoading.open || locked || !canTransactPos}>
+            <Button
+              type="button"
+              className="h-9 rounded-lg !bg-[#2563EB] px-4 text-[12px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
+              onClick={handleOpenShift}
+              disabled={shiftActionLoading.open || locked || !canTransactPos}
+            >
               {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
             </Button>
             {!canTransactPos && <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>}
@@ -875,6 +1043,7 @@ export default function TerminalOperationsWorkspace({
     ? 'shift_controls'
     : viewMode;
   const modeMeta = MODE_META[effectiveViewMode] || MODE_META.shift_controls;
+  const isIncomingQueueView = effectiveViewMode === 'incoming_queue';
 
   const content = useMemo(() => {
     switch (effectiveViewMode) {
@@ -1060,12 +1229,12 @@ export default function TerminalOperationsWorkspace({
       locked={locked}
     >
       {content}
-      {locked && (
+      {locked && !isIncomingQueueView && (
         <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
           Terminal is locked. Unlock to run protected operational actions.
         </div>
       )}
-      {!locked && (
+      {!locked && !isIncomingQueueView && (
         <div className="mt-4 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
           <AlertCircle className="h-4 w-4 text-slate-500" />
           Right-side panel remains available for secondary context while this workspace is your primary active mode.

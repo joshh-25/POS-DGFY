@@ -97,6 +97,7 @@ export default function Layout({ children, currentPageName }) {
     fetchUser();
   }, [setGlobalCurrentUser]);
 
+
   const onboarding = currentUser?.onboarding || null;
   const onboardingState = String(onboarding?.tenant_onboarding_state || 'not_started').trim().toLowerCase();
   const shouldShowOnboardingReminder = Boolean(
@@ -181,7 +182,8 @@ export default function Layout({ children, currentPageName }) {
 
       {/* Sidebar */}
       <aside className={cn(
-        "fixed left-0 top-0 h-full w-64 bg-white border-r border-slate-200 z-50 transition-transform duration-300 lg:translate-x-0 flex flex-col",
+        "fixed left-0 top-0 h-full w-64 bg-white border-r border-slate-200 z-50 transition-transform duration-300 flex flex-col",
+        "lg:translate-x-0",
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="p-6">

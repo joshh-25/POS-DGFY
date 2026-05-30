@@ -1,12 +1,13 @@
-import React, { Suspense, lazy } from 'react';
-import { Menu, X } from 'lucide-react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Bell, Menu, UserRound, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const POSCheckoutTerminal = lazy(() => import('./POSCheckoutTerminal'));
-const TerminalSidebarPanel = lazy(() => import('./TerminalSidebarPanel'));
 const TerminalLockDrawer = lazy(() => import('./TerminalLockDrawer'));
 const TerminalWorkspaceSidebar = lazy(() => import('./TerminalWorkspaceSidebar'));
 const TerminalOperationsWorkspace = lazy(() => import('./TerminalOperationsWorkspace'));
+const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 
 export default function TerminalPageLayout({
     locked,
@@ -34,7 +35,8 @@ export default function TerminalPageLayout({
     handleSelectViewMode,
     handleLock,
     setDrawerOpen,
-    effectiveSidebarCollapsed,
+    effectiveSidebarCollapsed = false,
+    setSidebarCollapsed = () => {},
     isCheckoutWorkspaceMode,
     isOperationsWorkspaceMode,
     TERMINAL_SECTION_IDS,
@@ -64,7 +66,6 @@ export default function TerminalPageLayout({
     incomingReceiptOpeningId,
     incomingHistoryOpeningId,
     refreshIncomingOrders,
-    setSidebarCollapsed,
     activeShiftId,
     checkoutBlockedReason,
     complianceBlockerDetails,
@@ -97,77 +98,281 @@ export default function TerminalPageLayout({
     handleLogin
 }) {
   const navigate = useNavigate();
-  const normalizedActiveTerminalId = String(activeTerminalId || '').trim();
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationReadState, setNotificationReadState] = useState({});
   const queueCount = Number(queuedTerminalOperationCount || 0);
   const blockedQueueCount = Number(queuedTerminalBlockedCount || 0);
   const queueTotalCount = Number(queueSummary?.total || queueCount + blockedQueueCount);
-  const shiftOpen = Boolean(activeShiftId);
   const complianceBlocked = Boolean(complianceBlockerDetails);
-  const shiftLocationLabel = String(
-    shiftState?.shift?.location?.name
-    || shiftState?.shift?.location_name
-    || shiftState?.shift?.location_id
-    || 'Unassigned'
-  ).trim();
-  const statusRailItems = [
-    {
-      label: 'Connectivity',
-      value: isOnline ? 'Online' : 'Offline',
-      tone: isOnline ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'
-    },
-    {
-      label: 'Queued Ops',
-      value: replayingQueuedTerminalOperations
-        ? `Replaying (${queueCount})`
-        : `${queueCount}${blockedQueueCount > 0 ? ` / ${blockedQueueCount} blocked` : ''}`,
-      tone: blockedQueueCount > 0
-        ? 'border-rose-200 bg-rose-50 text-rose-800'
-        : (queueCount > 0 ? 'border-sky-200 bg-sky-50 text-sky-800' : 'border-slate-200 bg-slate-50 text-slate-700')
-    },
-    {
-      label: 'Shift',
-      value: shiftOpen ? `Open #${activeShiftId} @ ${shiftLocationLabel}` : 'Closed',
-      tone: shiftOpen ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-slate-50 text-slate-700'
-    },
-    {
-      label: 'Terminal Policy',
-      value: registryEnforced ? 'Enforce' : 'Warn',
-      tone: registryEnforced ? 'border-indigo-200 bg-indigo-50 text-indigo-900' : 'border-slate-200 bg-slate-50 text-slate-700'
-    },
-    {
-      label: 'Compliance',
-      value: complianceBlocked
-        ? `${complianceBlockerDetails?.reasonCode || 'BLOCKED'}`
-        : 'Cleared',
-      tone: complianceBlocked ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+  const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
+  const notifications = useMemo(() => {
+    const items = [];
+    if (incomingOrders.length > 0) {
+      items.push({
+        id: 'incoming-orders',
+        signature: `incoming-orders:${incomingOrders.length}`,
+        title: `${incomingOrders.length} incoming order${incomingOrders.length === 1 ? '' : 's'}`,
+        description: 'Review and process new online orders.',
+        actionLabel: 'Open Orders',
+        action: () => handleSelectViewMode('incoming_queue')
+      });
     }
-  ];
+    if (queueTotalCount > 0) {
+      items.push({
+        id: 'sync-queue',
+        signature: `sync-queue:${queueTotalCount}:${blockedQueueCount}`,
+        title: `${queueTotalCount} queued terminal operation${queueTotalCount === 1 ? '' : 's'}`,
+        description: blockedQueueCount > 0
+          ? `${blockedQueueCount} need manual resolution in Sync Queue.`
+          : 'Review or replay queued terminal operations.',
+        actionLabel: 'Open Sync Queue',
+        action: () => handleSelectViewMode('sync_queue')
+      });
+    }
+    if (complianceBlocked) {
+      items.push({
+        id: 'compliance-blocked',
+        signature: `compliance-blocked:${complianceBlockerDetails?.title || ''}:${complianceBlockerDetails?.message || ''}:${complianceBlockerDetails?.actionHref || ''}`,
+        title: complianceBlockerDetails?.title || 'Compliance action required',
+        description: complianceBlockerDetails?.message || 'Resolve the compliance blocker before checkout.',
+        actionLabel: complianceBlockerDetails?.actionHref ? 'Open Compliance' : '',
+        action: () => {
+          if (complianceBlockerDetails?.actionHref) {
+            navigate(complianceBlockerDetails.actionHref);
+          }
+        }
+      });
+    }
+    return items;
+  }, [
+    blockedQueueCount,
+    complianceBlocked,
+    complianceBlockerDetails,
+    handleSelectViewMode,
+    incomingOrders.length,
+    navigate,
+    queueTotalCount
+  ]);
+  useEffect(() => {
+    setNotificationReadState((prev) => {
+      const nextState = {};
+      notifications.forEach((item) => {
+        const previousEntry = prev[item.id];
+        nextState[item.id] = previousEntry?.signature === item.signature
+          ? previousEntry
+          : { signature: item.signature, read: false };
+      });
+      return nextState;
+    });
+  }, [notifications]);
+  const unreadNotificationCount = notifications.reduce((count, item) => (
+    notificationReadState[item.id]?.signature === item.signature && notificationReadState[item.id]?.read
+      ? count
+      : count + 1
+  ), 0);
+  const handleNotificationClick = (item) => {
+    setNotificationReadState((prev) => ({
+      ...prev,
+      [item.id]: {
+        signature: item.signature,
+        read: true
+      }
+    }));
+    setNotificationsOpen(false);
+    item.action?.();
+  };
+  const shellLayoutClassName = IS_DGFY_POS_SURFACE
+    ? `lg:grid ${effectiveSidebarCollapsed ? 'lg:grid-cols-[minmax(0,1fr)]' : 'lg:grid-cols-[244px_minmax(0,1fr)]'}`
+    : `xl:grid ${effectiveSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[244px_minmax(0,1fr)]'}`;
+  const persistentSidebarClassName = IS_DGFY_POS_SURFACE
+    ? 'hidden lg:flex lg:min-h-0 lg:overflow-hidden'
+    : 'hidden xl:flex xl:min-h-0 xl:overflow-hidden';
+  const persistentSidebarFallbackClassName = IS_DGFY_POS_SURFACE
+    ? 'hidden lg:block bg-white p-4 text-sm text-slate-500'
+    : 'hidden xl:block bg-white p-4 text-sm text-slate-500';
+  const persistentSidebarBodyClassName = IS_DGFY_POS_SURFACE
+    ? 'hidden lg:flex lg:h-full lg:w-full lg:min-h-0 lg:touch-pan-y'
+    : 'hidden xl:flex xl:h-full xl:w-full xl:min-h-0 xl:touch-pan-y';
+  const headerShellClassName = IS_DGFY_POS_SURFACE
+    ? 'flex min-h-[44px] flex-col gap-1.5 lg:grid lg:min-h-[56px] lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-2.5'
+    : 'grid min-h-[56px] grid-cols-1 gap-2.5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center';
+  const headerSubtitleClassName = IS_DGFY_POS_SURFACE
+    ? 'mt-0.5 hidden max-w-3xl text-[12px] leading-4 text-[#334155] lg:block'
+    : 'mt-0.5 hidden max-w-3xl text-[12px] leading-4 text-[#334155] md:block';
+  const offlineMessageClassName = IS_DGFY_POS_SURFACE
+    ? 'mt-2 hidden text-sm font-semibold text-amber-700 lg:block'
+    : 'mt-2 hidden text-sm font-semibold text-amber-700 md:block';
+  const compactBellClassName = IS_DGFY_POS_SURFACE
+    ? 'relative grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[#1A4E8D] hover:bg-slate-100 lg:hidden'
+    : 'hidden';
+  const compactIdentityClassName = IS_DGFY_POS_SURFACE
+    ? 'hidden'
+    : 'hidden';
+  const desktopBellClassName = IS_DGFY_POS_SURFACE
+    ? 'relative hidden h-10 w-10 shrink-0 place-items-center rounded-lg text-[#1A4E8D] hover:bg-slate-100 lg:grid'
+    : 'relative grid h-10 w-10 shrink-0 place-items-center rounded-lg text-[#1A4E8D] hover:bg-slate-100';
+  const desktopIdentityClassName = IS_DGFY_POS_SURFACE
+    ? 'hidden min-w-0 shrink-0 items-center gap-2.5 lg:flex'
+    : 'flex min-w-0 shrink-0 items-center gap-2.5';
+  const overlayContainerClassName = IS_DGFY_POS_SURFACE
+    ? 'fixed inset-0 z-50 lg:hidden'
+    : 'fixed inset-0 z-50 xl:hidden';
+  const notificationPanel = notificationsOpen ? createPortal(
+    <div className="fixed inset-0 z-[120]" onClick={() => setNotificationsOpen(false)}>
+      <div
+        className="absolute right-4 top-[4.5rem] w-[20rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/15 lg:right-7 lg:top-[4.75rem]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="border-b border-slate-200 px-4 py-3">
+          <p className="text-sm font-extrabold text-[#0F172A]">Notifications</p>
+          <p className="mt-0.5 text-xs text-[#64748B]">Review alerts without leaving the current screen.</p>
+        </div>
+        <div className="max-h-[28.5rem] overflow-y-auto">
+          {notifications.length > 0 ? notifications.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => handleNotificationClick(item)}
+              className={`block w-full border-b border-slate-100 px-4 py-3 text-left transition hover:bg-slate-50 ${
+                notificationReadState[item.id]?.signature === item.signature && notificationReadState[item.id]?.read
+                  ? 'bg-white'
+                  : 'bg-blue-50/40'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-bold text-[#0F172A]">{item.title}</p>
+                {!(notificationReadState[item.id]?.signature === item.signature && notificationReadState[item.id]?.read) && (
+                  <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-[#2563EB]" />
+                )}
+              </div>
+              <p className="mt-1 text-xs leading-5 text-[#64748B]">{item.description}</p>
+              {item.actionLabel ? (
+                <span className="mt-2 inline-flex rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-[#1A4E8D]">
+                  {item.actionLabel}
+                </span>
+              ) : null}
+            </button>
+          )) : (
+            <div className="px-4 py-5 text-center">
+              <p className="text-sm font-semibold text-[#0F172A]">No notifications</p>
+              <p className="mt-1 text-xs text-[#64748B]">New orders and terminal alerts will appear here.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  ) : null;
+  const renderNotificationButton = (className, size) => (
+    <div className="relative">
+      <button
+        type="button"
+        className={className}
+        onClick={() => setNotificationsOpen((open) => !open)}
+        aria-label="Open notifications"
+        aria-expanded={notificationsOpen}
+      >
+        <Bell size={size} />
+        {unreadNotificationCount > 0 && (
+          <span className={size === 20
+            ? 'absolute -right-1.5 -top-1.5 grid h-4.5 w-4.5 place-items-center rounded-full bg-red-500 text-[9px] font-black text-white'
+            : 'absolute -right-2 -top-2 grid h-5 w-5 place-items-center rounded-full bg-red-500 text-[10px] font-black text-white'}
+          >
+            {unreadNotificationCount}
+          </span>
+        )}
+      </button>
+    </div>
+  );
 
     return (
-        <div className="h-[100dvh] min-h-screen min-h-[100dvh] overflow-hidden bg-slate-100 flex flex-col">
-            <div className="border-b border-slate-200 bg-gradient-to-r from-white via-teal-50/70 to-white px-6 py-5">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                        <h1 className="text-3xl font-bold tracking-tight text-slate-900">DGFY Terminal Workspace</h1>
-                        <p className="mt-1 text-base text-slate-700">{headerSubtitle}</p>
+        <div className={`dgfy-pos-shell h-[100dvh] min-h-screen min-h-[100dvh] overflow-hidden bg-[#F1F5F9] text-[#0F172A] ${shellLayoutClassName}`}>
+            {notificationPanel}
+            {!effectiveSidebarCollapsed && (
+            <div className={persistentSidebarClassName}>
+                <Suspense fallback={<div className={persistentSidebarFallbackClassName}>Loading POS navigation...</div>}>
+                    <TerminalWorkspaceSidebar
+                        className={persistentSidebarBodyClassName}
+                        showScrollZoneBadge
+                        locked={locked}
+                        isMsmeMode={isMsmeMode}
+                        terminalUser={terminalUser}
+                        currentViewMode={posViewMode}
+                        canViewPos={canViewPos}
+                        canAdjustCashDrawer={canAdjustCashDrawer}
+                        canCloseDay={canCloseDay}
+                        shiftState={shiftState}
+                        incomingOrdersState={incomingOrdersState}
+                        locationsState={locationsState}
+                        queueLocationScopeId={queueLocationScopeId}
+                        queueSummary={queueSummary}
+                        onSelectViewMode={handleSelectViewMode}
+                        onUnlock={() => setDrawerOpen(true)}
+                        onLock={handleLock}
+                    />
+                </Suspense>
+            </div>
+            )}
+            <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+            <div className="border-b border-slate-200 bg-white/95 px-4 py-2 backdrop-blur sm:px-5 lg:px-7">
+                <div className={headerShellClassName}>
+                    <div className="flex min-w-0 items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-3">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (isDesktopWide) {
+                                    setSidebarCollapsed((collapsed) => !collapsed);
+                                    return;
+                                }
+                                setMobileNavOpen(true);
+                            }}
+                            className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-[#1A4E8D] hover:bg-slate-100"
+                            aria-label={isDesktopWide ? (effectiveSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar') : 'Open sidebar menu'}
+                            aria-pressed={isDesktopWide ? effectiveSidebarCollapsed : undefined}
+                        >
+                            <Menu className="h-6 w-6" />
+                        </button>
+                        <div className="min-w-0 flex-1">
+                        <h1 className={IS_DGFY_POS_SURFACE ? 'truncate text-base font-black tracking-tight text-[#0F172A] sm:text-[18px] lg:text-lg' : 'truncate text-lg font-black tracking-tight text-[#0F172A] sm:text-[22px]'}>DGFY Terminal Workspace</h1>
+                        <p className={headerSubtitleClassName}>{headerSubtitle}</p>
                         {!isOnline && (
-                            <p className="mt-2 text-sm font-semibold text-amber-700">
+                            <p className={offlineMessageClassName}>
                                 You are offline. Online queue refresh and online-order actions are paused until connection is restored.
                             </p>
                         )}
+                        </div>
+                        </div>
+                        {renderNotificationButton(compactBellClassName, 20)}
                     </div>
-                    <div
-                        className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
-                            locked
-                                ? 'border-amber-200 bg-amber-50 text-amber-700'
-                                : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                        }`}
-                    >
-                        {locked ? 'DGFY Terminal Locked' : 'DGFY Terminal Active'}
+                    <div className="flex min-w-0 items-center justify-between gap-3 sm:gap-4 lg:justify-end">
+                    <div className={compactIdentityClassName}>
+                        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#0B449C] text-white">
+                            <UserRound size={25} className="text-white" />
+                        </div>
+                        <div className="min-w-0 leading-tight">
+                            <div className="truncate text-[13px] font-extrabold">{terminalUser?.username || 'Locked'}</div>
+                            <div className="truncate text-[11px] text-[#64748B]">{terminalUser?.email || 'Sign in required'}</div>
+                        </div>
+                    </div>
+                    {renderNotificationButton(desktopBellClassName, 24)}
+                    <div className={desktopIdentityClassName}>
+                        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#0B449C] text-white">
+                            <UserRound size={25} className="text-white" />
+                        </div>
+                        <div className="min-w-0 leading-tight">
+                            <div className="truncate text-[13px] font-extrabold">{terminalUser?.username || 'Locked'}</div>
+                            <div className="truncate text-[11px] text-[#64748B]">{terminalUser?.email || 'Sign in required'}</div>
+                        </div>
+                    </div>
                     </div>
                 </div>
             </div>
 
+            <div
+                ref={workspacePaneRef}
+                className={`dgfy-pos-scrollbar-hidden flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y xl:overflow-y-auto xl:overscroll-contain xl:overscroll-y-contain xl:touch-pan-y ${locked ? 'pointer-events-none select-none opacity-90 blur-[1px]' : ''}`}
+            >
             {modeChangeNotice && (
                 <div className="mx-4 mt-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3">
                     <p className="text-sm font-semibold text-sky-900">
@@ -191,41 +396,6 @@ export default function TerminalPageLayout({
                     </div>
                 </div>
             )}
-
-            <div className="mx-4 mt-3 grid grid-cols-2 gap-2 xl:grid-cols-5">
-                {statusRailItems.map((item) => (
-                    <div key={item.label} className={`rounded-lg border px-3 py-2 ${item.tone}`}>
-                        <p className="text-[11px] font-semibold uppercase tracking-wide">{item.label}</p>
-                        <p className="mt-1 text-sm font-semibold">{item.value}</p>
-                    </div>
-                ))}
-            </div>
-            <div className="mx-4 mt-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
-                Terminal identity: <span className="font-semibold text-slate-900">{normalizedActiveTerminalId || 'Not selected'}</span>
-                <span className="ml-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
-                    {isMsmeMode ? 'MSME Mode' : 'Manufacturing Mode'}
-                </span>
-                {complianceBlocked && complianceBlockerDetails?.actionHref && (
-                    <button
-                        type="button"
-                        className="ml-2 rounded border border-amber-300 bg-amber-50 px-2 py-0.5 font-semibold text-amber-900"
-                        onClick={() => navigate(complianceBlockerDetails.actionHref)}
-                    >
-                        Fix now
-                    </button>
-                )}
-            </div>
-
-            <div className="px-4 pt-3 xl:hidden">
-                <button
-                    type="button"
-                    onClick={() => setMobileNavOpen(true)}
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm"
-                >
-                    <Menu className="h-4 w-4" />
-                    POS Menu
-                </button>
-            </div>
 
             {complianceBlockerDetails && (
                 <div className="mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
@@ -313,22 +483,29 @@ export default function TerminalPageLayout({
             )}
 
             {!isDesktopWide && mobileNavOpen && (
-                <div className="fixed inset-0 z-50 xl:hidden">
-                    <div className="absolute inset-0 bg-slate-900/40" onClick={() => setMobileNavOpen(false)} />
-                    <div className="absolute left-0 top-0 h-full w-[88%] max-w-sm overflow-y-auto bg-white p-3 shadow-xl">
-                        <div className="mb-2 flex items-center justify-between">
-                            <p className="text-sm font-semibold text-slate-900">POS Navigation</p>
+                <div className={overlayContainerClassName}>
+                    <div className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm" onClick={() => setMobileNavOpen(false)} />
+                    <div className="dgfy-pos-scrollbar-hidden absolute left-0 top-0 h-full w-[82%] max-w-[304px] overflow-y-auto bg-white p-3 shadow-2xl shadow-slate-950/30">
+                        <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
+                            <img
+                                src="/dgfy-horizontal_logo-removebg-preview.png"
+                                alt="DGFY"
+                                className="h-8 w-auto min-w-0 object-contain"
+                            />
                             <button
                                 type="button"
                                 onClick={() => setMobileNavOpen(false)}
-                                className="rounded-md border border-slate-200 p-1 text-slate-600"
+                                className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-[#1A4E8D] hover:bg-slate-100"
+                                aria-label="Close sidebar menu"
                             >
-                                <X className="h-4 w-4" />
+                                <Menu className="h-6 w-6" />
                             </button>
                         </div>
                         <Suspense fallback={<div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-500">Loading menu...</div>}>
                             <TerminalWorkspaceSidebar
                                 className="flex"
+                                showBrand={false}
+                                showIdentityInSidebar
                                 showScrollZoneBadge={false}
                                 locked={locked}
                                 isMsmeMode={isMsmeMode}
@@ -357,52 +534,23 @@ export default function TerminalPageLayout({
                 </div>
             )}
 
-            <div
-                className={`grid grid-cols-1 gap-4 p-4 xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)] ${
-                    effectiveSidebarCollapsed
-                        ? '2xl:grid-cols-[260px_minmax(0,1fr)_72px]'
-                        : '2xl:grid-cols-[260px_minmax(0,1fr)_360px]'
-                }`}
-            >
-                <div className="hidden xl:flex xl:min-h-0 xl:max-h-[72dvh] xl:overflow-hidden">
-                    <Suspense fallback={<div className="hidden xl:block rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Loading POS navigation...</div>}>
-                        <TerminalWorkspaceSidebar
-                            className="hidden xl:flex xl:h-full xl:w-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:overscroll-y-contain xl:touch-pan-y"
-                            showScrollZoneBadge
-                            locked={locked}
-                            isMsmeMode={isMsmeMode}
-                            terminalUser={terminalUser}
-                            currentViewMode={posViewMode}
-                            canViewPos={canViewPos}
-                            canAdjustCashDrawer={canAdjustCashDrawer}
-                            canCloseDay={canCloseDay}
-                            shiftState={shiftState}
-                            incomingOrdersState={incomingOrdersState}
-                            locationsState={locationsState}
-                            queueLocationScopeId={queueLocationScopeId}
-                            queueSummary={queueSummary}
-                            onSelectViewMode={handleSelectViewMode}
-                            onUnlock={() => setDrawerOpen(true)}
-                            onLock={handleLock}
-                        />
-                    </Suspense>
-                </div>
-
+            <div className="grid grid-cols-1 gap-4 p-4 xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]">
                 <div
                     id={TERMINAL_SECTION_IDS.checkoutWorkspace}
-                    ref={workspacePaneRef}
-                    className={`transition xl:h-full xl:min-h-0 xl:max-h-[72dvh] xl:overflow-y-auto xl:overscroll-contain xl:overscroll-y-contain xl:touch-pan-y ${locked ? 'pointer-events-none select-none opacity-90 blur-[1px]' : ''}`}
+                    className="transition"
                 >
                     {isCheckoutWorkspaceMode && (
-                        <Suspense fallback={<div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
+                        <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
                             <POSCheckoutTerminal
                                 sessionLocked={locked}
                                 isMsmeMode={isMsmeMode}
+                                sidebarCollapsed={effectiveSidebarCollapsed}
                                 canViewHistory={canViewPos}
                                 queueReplayManagedExternally
                                 selectedLocationId={operatingLocationId}
                                 activeShiftId={activeShiftId}
                                 terminalId={activeTerminalId}
+                                terminalMeta={terminalMeta}
                                 checkoutBlockedReason={checkoutBlockedReason}
                                 complianceBlockerDetails={complianceBlockerDetails}
                                 onCheckoutCompleted={handleCheckoutCompleted}
@@ -425,7 +573,7 @@ export default function TerminalPageLayout({
                     )}
 
                     {isOperationsWorkspaceMode && (
-                        <Suspense fallback={<div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading operations workspace...</div>}>
+                        <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading operations workspace...</div>}>
                             <TerminalOperationsWorkspace
                                 viewMode={posViewMode}
                                 isMsmeMode={isMsmeMode}
@@ -480,55 +628,7 @@ export default function TerminalPageLayout({
                         </Suspense>
                     )}
                 </div>
-
-                <div className="xl:min-h-0 xl:max-h-[72dvh] xl:overflow-hidden xl:col-span-2 2xl:col-span-1">
-                    <Suspense fallback={<div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Loading terminal controls...</div>}>
-                        <TerminalSidebarPanel
-                            className="flex xl:h-full xl:min-h-0"
-                            isCollapsed={effectiveSidebarCollapsed}
-                            onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
-                            isMsmeMode={isMsmeMode}
-                            terminalUser={terminalUser}
-                            locked={locked}
-                            terminalMeta={terminalMeta}
-                            shiftState={shiftState}
-                            todayDashboard={todayDashboard}
-                            canViewPos={canViewPos}
-                            canTransactPos={canTransactPos}
-                            canAdjustCashDrawer={canAdjustCashDrawer}
-                            canCloseDay={canCloseDay}
-                            openShiftForm={openShiftForm}
-                            setOpenShiftForm={setOpenShiftForm}
-                            cashEventForm={cashEventForm}
-                            setCashEventForm={setCashEventForm}
-                            closeShiftForm={closeShiftForm}
-                            setCloseShiftForm={setCloseShiftForm}
-                            shiftActionLoading={shiftActionLoading}
-                            handleOpenShift={handleOpenShift}
-                            canSwitchPosLocation={canSwitchPosLocation}
-                            handleSwitchShiftLocation={handleSwitchShiftLocation}
-                            handleRecordCashEvent={handleRecordCashEvent}
-                            handleCloseShift={handleCloseShift}
-                            refreshOperationalContext={refreshOperationalContext}
-                            locationsState={locationsState}
-                            operatingLocationId={operatingLocationId}
-                            setOperatingLocationId={setOperatingLocationId}
-                            queueLocationScopeId={queueLocationScopeId}
-                            setQueueLocationScopeId={setQueueLocationScopeId}
-                            incomingOrdersState={incomingOrdersState}
-                            incomingOrderActionState={incomingOrderActionState}
-                            handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
-                            handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
-                            handleOpenIncomingOrderHistory={handleOpenIncomingOrderHistory}
-                            incomingReceiptOpeningId={incomingReceiptOpeningId}
-                            incomingHistoryOpeningId={incomingHistoryOpeningId}
-                            refreshIncomingOrders={refreshIncomingOrders}
-                            handleLock={handleLock}
-                            setDrawerOpen={setDrawerOpen}
-                            sectionIds={TERMINAL_SECTION_IDS}
-                        />
-                    </Suspense>
-                </div>
+            </div>
             </div>
 
             {locked && <div className="fixed inset-0 bg-slate-900/20 pointer-events-none" />}
@@ -546,6 +646,7 @@ export default function TerminalPageLayout({
                     onSubmit={handleLogin}
                 />
             </Suspense>
+            </main>
         </div>
     );
 }
