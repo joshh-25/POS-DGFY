@@ -109,7 +109,7 @@ const QUEUE_OPERATION_LABELS = {
   order_status_update: 'Order Status Update'
 };
 
-function WorkspaceShell({ icon: Icon, title, subtitle, children, terminalUser, locked }) {
+function WorkspaceShell({ icon: Icon, title, subtitle, children, locked }) {
   const isIncomingQueue = title === MODE_META.incoming_queue.title;
 
   if (isIncomingQueue) {
@@ -992,7 +992,6 @@ function TerminalSetupWorkspace({ terminalMeta, sectionId }) {
 export default function TerminalOperationsWorkspace({
   viewMode,
   isMsmeMode = false,
-  terminalUser,
   locked,
   terminalMeta,
   shiftState,
@@ -1225,7 +1224,6 @@ export default function TerminalOperationsWorkspace({
       icon={modeMeta.icon}
       title={modeMeta.title}
       subtitle={modeMeta.subtitle}
-      terminalUser={terminalUser}
       locked={locked}
     >
       {content}

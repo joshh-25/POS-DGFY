@@ -74,6 +74,7 @@ export default function TerminalWorkspaceSidebar({
   return (
     <aside
       className={`${className} rounded-none border-0 border-r border-slate-200 bg-white shadow-sm xl:h-full xl:min-h-0 xl:overflow-hidden`}
+      data-scroll-zone-context={showScrollZoneBadge ? 'desktop-sidebar' : undefined}
     >
       <div className="dgfy-pos-sidebar-scroll min-h-0 flex-1 overflow-y-auto">
         {showBrand && (

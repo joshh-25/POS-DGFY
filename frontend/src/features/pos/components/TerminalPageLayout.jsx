@@ -1,6 +1,6 @@
-import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bell, Menu, UserRound, X } from 'lucide-react';
+import { Bell, Menu, UserRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const POSCheckoutTerminal = lazy(() => import('./POSCheckoutTerminal'));
@@ -153,18 +153,6 @@ export default function TerminalPageLayout({
     navigate,
     queueTotalCount
   ]);
-  useEffect(() => {
-    setNotificationReadState((prev) => {
-      const nextState = {};
-      notifications.forEach((item) => {
-        const previousEntry = prev[item.id];
-        nextState[item.id] = previousEntry?.signature === item.signature
-          ? previousEntry
-          : { signature: item.signature, read: false };
-      });
-      return nextState;
-    });
-  }, [notifications]);
   const unreadNotificationCount = notifications.reduce((count, item) => (
     notificationReadState[item.id]?.signature === item.signature && notificationReadState[item.id]?.read
       ? count

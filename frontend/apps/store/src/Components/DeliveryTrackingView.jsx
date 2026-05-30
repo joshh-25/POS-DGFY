@@ -216,7 +216,7 @@ export const DeliveryTrackingView = ({ result, mapProps, formatting, onBackToMen
           <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, 1fr)', gap: 16 }}>
             <div style={{ display: 'flex', gap: 12 }}><MapPin size={24} color="#1a4e8d" /><div><div style={{ fontSize: 14, fontWeight: 800 }}>Live tracking</div><div style={{ fontSize: 12, color: '#64748b' }}>Real-time updates on your order</div></div></div>
             <div style={{ display: 'flex', gap: 12 }}><ShieldCheck size={24} color="#1a4e8d" /><div><div style={{ fontSize: 14, fontWeight: 800 }}>Your safety matters</div><div style={{ fontSize: 12, color: '#64748b' }}>Verified and secure transactions</div></div></div>
-            <div style={{ display: 'flex', gap: 12 }}><ThumbsUp size={24} color="#1a4e8d" /><div><div style={{ fontSize: 14, fontWeight: 800 }}>Top-rated support</div><div style={{ fontSize: 12, color: '#64748b' }}>We're here to help anytime</div></div></div>
+            <div style={{ display: 'flex', gap: 12 }}><ThumbsUp size={24} color="#1a4e8d" /><div><div style={{ fontSize: 14, fontWeight: 800 }}>Top-rated support</div><div style={{ fontSize: 12, color: '#64748b' }}>We&apos;re here to help anytime</div></div></div>
           </div>
         </div>
 
@@ -267,7 +267,7 @@ export const DeliveryTrackingView = ({ result, mapProps, formatting, onBackToMen
             <div style={{ fontSize: 24 }} aria-hidden="true">???</div>
             <div>
               <div style={{ fontSize: 14, fontWeight: 800, color: '#14532d' }}>Thank you for your order!</div>
-              <div style={{ fontSize: 13, color: '#166534' }}>We'll update you as your order progresses.</div>
+              <div style={{ fontSize: 13, color: '#166534' }}>We&apos;ll update you as your order progresses.</div>
             </div>
           </div>
 

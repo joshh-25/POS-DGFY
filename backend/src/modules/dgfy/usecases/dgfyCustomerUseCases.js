@@ -25,7 +25,6 @@ const ACTIVITY_COUNT_KEYS = {
     hospitality_booking: 'hospitality_booking_count',
     fnb_order: 'fnb_order_count'
 };
-const ORDER_ACTIVITY_TYPES = new Set(['order', 'fnb_order']);
 const BOOKING_ACTIVITY_TYPES = new Set(['service_booking', 'hospitality_booking']);
 const REVIEW_TARGET_TYPES = new Set(['product', 'service', 'hospitality_booking', 'fnb_order', 'fnb_item']);
 const REVIEW_CHANNEL_TYPES = new Set(['account', 'tracking', 'order_success', 'qr', 'receipt']);

@@ -891,7 +891,7 @@ export function FnbProductDetailsPage({
 
                           {String(entry?.comment || '').trim() ? (
                             <div style={{ fontSize: 14, lineHeight: 1.65, color: '#475569' }}>
-                              "{String(entry.comment).trim()}"
+                              &ldquo;{String(entry.comment).trim()}&rdquo;
                             </div>
                           ) : null}
 

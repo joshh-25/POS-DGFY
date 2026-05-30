@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   bulkCreateOnboardingItems,
@@ -34,10 +34,10 @@ import {
   createHospitalityRoom,
   createHospitalityRoomType
 } from '../../hospitality/api/hospitalityApi.js';
-import MapPinPicker from '../../../components/maps/MapPinPicker.jsx';
 
 const WIZARD_STEPS = Object.freeze(['brand_assets', 'primary_location', 'bulk_items']);
 const HOSPITALITY_WIZARD_STEPS = Object.freeze(['brand_assets', 'primary_location', 'hospitality_rooms']);
+const MapPinPicker = React.lazy(() => import('../../../components/maps/MapPinPicker.jsx'));
 
 const getProgress = (onboarding) => {
   const snapshot = onboarding?.tenant_onboarding_progress?.checklist_snapshot;
@@ -680,12 +680,14 @@ export default function OnboardingSetupModal({
                   <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.address_line} onChange={(event) => setLocationForm((prev) => ({ ...prev, address_line: event.target.value }))} disabled={locationsLoading} />
                 </label>
                 <div className="sm:col-span-2">
-                  <MapPinPicker
-                    latitude={locationForm.latitude}
-                    longitude={locationForm.longitude}
-                    deliveryRadiusKm={locationForm.delivery_radius_km}
-                    onChange={handleLocationPinChange}
-                  />
+                  <Suspense fallback={<div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs font-semibold text-slate-500">Loading map picker...</div>}>
+                    <MapPinPicker
+                      latitude={locationForm.latitude}
+                      longitude={locationForm.longitude}
+                      deliveryRadiusKm={locationForm.delivery_radius_km}
+                      onChange={handleLocationPinChange}
+                    />
+                  </Suspense>
                 </div>
                 <label className="text-xs text-slate-700">
                   Latitude
