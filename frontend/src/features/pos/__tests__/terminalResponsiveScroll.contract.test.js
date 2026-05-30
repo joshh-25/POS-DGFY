@@ -23,42 +23,49 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).not.toContain('xl:h-screen');
   });
 
-  it('keeps checkout panes shrink-safe and avoids legacy 100vh calc sizing', () => {
-    expect(posCheckoutContent).toContain('min-h-0 overflow-hidden');
-    expect(posCheckoutContent).toContain('splitPaneScrollClassName');
+  it('lets checkout cards expand naturally and avoids legacy 100vh calc sizing', () => {
+    expect(posCheckoutContent).toContain("const shellClassName = 'space-y-5';");
+    expect(posCheckoutContent).toContain("const checkoutGridClassName = 'grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_325px] 2xl:gap-6';");
+    expect(posCheckoutContent).toContain("const checkoutPaneClassName = '2xl:min-h-[32rem] 2xl:max-h-none';");
+    expect(posCheckoutContent).toContain("const catalogViewportClassName = 'min-h-0 flex-1 overflow-visible pr-0 pb-3';");
+    expect(posCheckoutContent).toContain("const currentSaleItemsListClassName = 'h-[17.25rem] overflow-y-auto pr-1';");
+    expect(posCheckoutContent).not.toContain('splitPaneScrollClassName');
     expect(posCheckoutContent).not.toContain('calc(100vh-13.5rem)');
   });
 
-  it('pins current-sale terminal actions with sticky footer controls', () => {
-    expect(posCheckoutContent).toContain('sticky bottom-0 grid grid-cols-1 gap-2');
+  it('pins current-sale terminal actions in a dedicated footer action grid', () => {
+    expect(posCheckoutContent).toContain('grid grid-cols-2 gap-2 border-t border-slate-200 pt-3');
     expect(posCheckoutContent).toContain('Checkout');
     expect(posCheckoutContent).toContain('Close Day / Z-Reading');
   });
 
-  it('uses viewport-aware split-pane detection and truthful scroll affordances', () => {
-    expect(posCheckoutContent).toContain("window.matchMedia('(min-width: 1536px)')");
-    expect(posCheckoutContent).toContain('const hasSplitPaneScroll = isAtLeast2xlViewport;');
-    expect(posCheckoutContent).not.toContain('const hasSplitPaneScroll = isEmbeddedLayout || isAtLeast2xlViewport;');
-    expect(posCheckoutContent).toContain("'Catalog scroll' : 'Page scroll'");
-    expect(posCheckoutContent).toContain("'Sale scroll' : 'Page scroll'");
-    expect(posCheckoutContent).toContain('Hover or focus a pane to scroll it.');
+  it('removes legacy scroll badges without restoring split-pane detection', () => {
+    expect(posCheckoutContent).not.toContain("window.matchMedia('(min-width: 1536px)')");
+    expect(posCheckoutContent).not.toContain('const hasSplitPaneScroll');
+    expect(posCheckoutContent).not.toContain('isAtLeast2xlViewport');
+    expect(posCheckoutContent).not.toContain('Page scroll');
+    expect(posCheckoutContent).not.toContain('Catalog scroll');
+    expect(posCheckoutContent).not.toContain('Sale scroll');
+    expect(posCheckoutContent).not.toContain('Hover or focus a pane to scroll it.');
   });
 
-  it('keeps catalog/current-sale panes keyboard-scrollable with explicit focus targets', () => {
-    expect(posCheckoutContent).toContain('aria-label="POS catalog scroll area"');
-    expect(posCheckoutContent).toContain('aria-label="Current sale scroll area"');
-    expect(posCheckoutContent).toContain('onKeyDown={handleScrollPaneKeyDown}');
-    expect(posCheckoutContent).toContain('onScroll={syncCatalogPaneScrollState}');
-    expect(posCheckoutContent).toContain('onScroll={syncCurrentSalePaneScrollState}');
-    expect(posCheckoutContent).toContain('handlePaneScrollKeyDown(event)');
-    expect(posCheckoutContent).toContain('tabIndex={0}');
+  it('keeps catalog/current-sale content exposed as non-scroll regions', () => {
+    expect(posCheckoutContent).toContain('aria-label="POS catalog contents"');
+    expect(posCheckoutContent).toContain('aria-label="Current sale contents"');
+    expect(posCheckoutContent).not.toContain('onKeyDown={handleScrollPaneKeyDown}');
+    expect(posCheckoutContent).not.toContain('onScroll={syncCatalogPaneScrollState}');
+    expect(posCheckoutContent).not.toContain('onScroll={syncCurrentSalePaneScrollState}');
+    expect(posCheckoutContent).not.toContain('handlePaneScrollKeyDown(event)');
+    expect(posCheckoutContent).not.toContain('tabIndex={0}');
   });
 
-  it('renders overflow cues only when pane content is actually scrollable', () => {
-    expect(posCheckoutContent).toContain('catalogPaneScrollState.canScroll');
-    expect(posCheckoutContent).toContain('currentSalePaneScrollState.canScroll');
-    expect(posCheckoutContent).toContain('!catalogPaneScrollState.atTop');
-    expect(posCheckoutContent).toContain('!currentSalePaneScrollState.atBottom');
+  it('does not render split-pane overflow cues', () => {
+    expect(posCheckoutContent).not.toContain('catalogPaneScrollState.canScroll');
+    expect(posCheckoutContent).not.toContain('currentSalePaneScrollState.canScroll');
+    expect(posCheckoutContent).not.toContain('!catalogPaneScrollState.atTop');
+    expect(posCheckoutContent).not.toContain('!currentSalePaneScrollState.atBottom');
+    expect(posCheckoutContent).not.toContain('bg-gradient-to-b from-white to-transparent');
+    expect(posCheckoutContent).not.toContain('bg-gradient-to-t from-white to-transparent');
   });
 
   it('removes custom ArrowUp/ArrowDown interception in quantity and price inputs', () => {
