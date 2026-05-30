@@ -1,8 +1,8 @@
 import React from 'react';
+import { DGFY_CONVENIENCE_FEE_LABEL } from '../utils/checkoutSurfaceContract.js';
 
 const money = (value) => `PHP ${Number(value || 0).toFixed(2)}`;
 const DGFY_BRAND_NAME = 'DGFY';
-const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
 const DGFY_ACRONYM = 'Discover Goods For You';
 
 const parseTransactionMetadata = (value) => {

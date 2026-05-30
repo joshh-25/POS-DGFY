@@ -27,6 +27,11 @@ import { getAllSettings } from '@/services/settingsService';
 import { usePermission } from '@/hooks/usePermission';
 import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 import { handlePaneScrollKeyDown } from '../utils/scrollKeyControls.js';
+import {
+    DGFY_CONVENIENCE_FEE_LABEL,
+    DGFY_CONVENIENCE_FEE_RATE,
+    buildPosCheckoutPayload
+} from '../utils/checkoutSurfaceContract.js';
 
 const ReceiptPrintView = lazy(() => import('./ReceiptPrintView'));
 const POSBarcodeScanner = lazy(() => import('./SkupervisorPOSBarcodeScanner.jsx'));
@@ -55,8 +60,6 @@ const VAT_TYPE_LABEL = {
     vat_exempt: 'VAT Exempt',
     zero_rated: 'Zero Rated'
 };
-const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
-const DGFY_CONVENIENCE_FEE_RATE = 0.01;
 const normalizeDiscountProfiles = (rawProfiles) => {
     let profiles = rawProfiles;
     if (typeof profiles === 'string') {
@@ -1244,35 +1247,18 @@ export default function POSCheckoutTerminal({
             return;
         }
 
-        const payload = {
-            idempotency_key: createIdempotencyKey(),
-            terminal_id: normalizedTerminalId || undefined,
-            location_id: selectedLocationId || undefined,
-            order_method: orderMethod,
-            payment_type: paymentType,
-            payment_handoff_mode: paymentType === 'cash' ? 'internal' : 'external',
-            discount_amount: Number(calculatedDiscountAmount || 0),
-            discount_profile_name: selectedDiscount?.name || null,
-            discount_rate: selectedDiscount ? Number(selectedDiscount.percentage) : null,
-            shift_id: activeShiftId || undefined,
-            fnb_check_id: normalizedFnbContext?.fnb_check_id || undefined,
-            fnb_table_id: normalizedFnbContext?.fnb_table_id || undefined,
-            fnb_table_label_snapshot: normalizedFnbContext?.fnb_table_label_snapshot || undefined,
-            fnb_guest_count: normalizedFnbContext?.fnb_guest_count || undefined,
-            fnb_server_id: normalizedFnbContext?.fnb_server_id || undefined,
-            restaurant_service_charge: normalizedFnbContext?.restaurant_service_charge || undefined,
-            lines: cart.map((line) => ({
-                item_id: line.item_id,
-                quantity: Number(line.quantity),
-                sale_price: Number(line.sale_price),
-                price_override_reason: String(line.price_override_reason || '').trim() || undefined,
-                course: line.course || normalizedFnbContext?.default_course || undefined,
-                line_modifiers: line.line_modifiers || undefined,
-                special_instructions: line.special_instructions || undefined,
-                kitchen_station_id: line.kitchen_station_id || undefined,
-                scan_metadata: line.scan_metadata || undefined
-            }))
-        };
+        const payload = buildPosCheckoutPayload({
+            idempotencyKey: createIdempotencyKey(),
+            terminalId: normalizedTerminalId,
+            selectedLocationId,
+            orderMethod,
+            paymentType,
+            calculatedDiscountAmount,
+            selectedDiscount,
+            activeShiftId,
+            fnbContext: normalizedFnbContext,
+            cart
+        });
 
         const queueCheckoutIntentLocally = async (source) => {
             await enqueueCheckoutIntent(payload, source);

@@ -201,7 +201,8 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain('terminalId = \'\'');
     expect(posCheckoutTerminalContent).toContain('const terminalIdentityLabel = normalizedTerminalId');
     expect(posCheckoutTerminalContent).toContain('`Terminal ${normalizedTerminalId}`');
-    expect(posCheckoutTerminalContent).toContain('terminal_id: normalizedTerminalId || undefined');
+    expect(posCheckoutTerminalContent).toContain('buildPosCheckoutPayload');
+    expect(posCheckoutTerminalContent).toContain('terminalId: normalizedTerminalId');
   });
 
   it('supports history/receipt handoff into unified sales report with preserved query params', () => {
