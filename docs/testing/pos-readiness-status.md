@@ -11,7 +11,7 @@ Overall status: in_progress
 3. Terminal identity is policy-driven (`warn`/`enforce`) but centralized admin-managed registry governance still requires operational rollout discipline.
 4. Source-separation manual UAT parity proof (POS History source filter vs Sales POS channel filter vs CSV `pos_order_source`) is pending human evidence capture.
 5. Strict location-binding rollout cutover remains gated until legacy shift-location remediation evidence is fully reviewed and accepted by operations.
-6. PR #11 DGFY POS surface split local release blockers are closed as of this pass: POS-specific lint, full frontend lint errors, frontend budget drift, shared checkout contract drift, and local release gate now pass. Production promotion still requires human operator UAT and exact deployed-SHA verification.
+6. PR #11 DGFY POS surface split local release blockers are closed as of this pass: POS-specific lint, full frontend lint errors, frontend budget drift, shared checkout contract drift, local release gate, production deploy, exact deployed-SHA verification, and production POS smoke now pass. Production readiness still requires human operator UAT.
 7. The POS/SKUpervisor surface split requires explicit operator verification that standalone POS checkout, SKUpervisor `/pos`, Sales handoff, receipt preview, barcode scan, Sync Queue, and mode-specific panels still reach the intended surface.
 8. Frontend build toolchain requirements are now documented for release: the merged lockfile targets Vite 8 / `@vitejs/plugin-react` 6, so deterministic frontend builds require a Node version accepted by that toolchain (`^20.19.0 || ^22.12.0 || >=24.0.0`).
 
@@ -144,12 +144,12 @@ Overall status: in_progress
 - tenant-local foreign-key references are covered by tenant model factory tests so mode-specific tables such as Services and F&B cannot be omitted from new tenant schemas
 - approval/auto-approval provisioning failures restore a valid retryable landlord status and drop zombie tenant databases before the admin retries approval
 - future workflow modes must include provisioning graph and disposable schema sync proof before readiness is claimed
-40. DGFY POS/SKUpervisor surface split is partially implemented:
+40. DGFY POS/SKUpervisor surface split is production-deployed with UAT pending:
 - standalone POS (`frontend/apps/pos`) owns the cashier terminal route and redirects Sales reporting to SKUpervisor through `skupervisorHandoff`
 - SKUpervisor IMS `/pos` now loads `SkupervisorPOSPage` and keeps Services/F&B/Hospitality panels in the admin app
 - both checkout surfaces now use a shared checkout payload and DGFY fee-label/rate contract for terminal identity, payment handoff, discount, F&B metadata, modifiers, scan metadata, and receipt fee fallback
 - the split preserves backend POS checkout contracts and local POS/backend/checkout-surface contract tests pass
-- local release readiness now passes for the merge SHA after POS lint cleanup, frontend budget reconciliation, and browser smoke evidence; production readiness remains gated by human UAT and exact deployed-SHA evidence
+- production deploy completed through the governed `scripts/deploy-remote.sh --yes` path; exact deployed-head verification and production POS smoke pass, while human cashier/admin UAT remains the final readiness gate
 
 ## 3) Automated Gate Status (Latest)
 
@@ -183,10 +183,13 @@ Overall status: in_progress
    - `npm --prefix frontend test -- --run src/features/pos/utils/__tests__/checkoutSurfaceContract.test.js src/features/pos/__tests__/checkoutSurfaceParity.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/receiptContractConformance.contract.test.js` -> PASS (`32` tests).
    - POS onboarding performance risk was reduced by lazy-loading `MapPinPicker` inside `OnboardingSetupModal`: POS `OnboardingSetupModal-*` dropped from about `1040KB` to `30.28KB`, and SKUpervisor `index-*` dropped from about `1382KB` to `380.18KB`. The map dependency remains a separate lazy `MapPinPicker-*` chunk around `1011KB`.
    - Production `/api/v1/health` returned healthy production services, Redis, runtime schema, schema indexes, billing telemetry, and tenant pool status; this is health evidence only, not deployed-SHA parity proof.
+   - Production deploy completed through `scripts/deploy-remote.sh --yes` after an auditable no-staging emergency bypass for stale QA deployed-head evidence. The only failed gate was `qa.deploy.summary.sha_match`; QA multi-location smoke, rollback drill, restore drill, docs lint, architecture, and compliance gates passed.
+   - Production deploy summary showed `deployed_head`, `remote_head`, and `expected_commit` matching the deployed release, with backend, IMS, POS, Store, Tenant Store, and frontend asset parity checks passing.
+   - Production POS smoke passed against `https://pos.dgfy.ph` across desktop, tablet, and mobile with terminal workspace, catalog, current sale, lock drawer, editable login fields, no console errors, and auth-guarded SKUpervisor Sales handoff to `https://skupervisor.dgfy.ph/login`.
 4. Remaining production gaps:
-   - Local release gates pass, but human cashier/admin UAT is still required for standalone POS checkout, SKUpervisor `/pos`, Sales handoff, receipt preview, barcode scan, Sync Queue, and mode-specific panels.
-   - Desktop, tablet, and mobile locked-state browser smoke were captured locally; authenticated checkout UAT is still pending.
-   - Live production health was healthy, but the exact merge SHA `6ca61e8d01e304a75f078d11f937aec4425c944e` was not verified as deployed.
+   - Human cashier/admin UAT is still required for authenticated standalone POS checkout, SKUpervisor `/pos`, Sales handoff, receipt preview, barcode scan, Sync Queue, and mode-specific panels.
+   - Production locked-state smoke passed, but authenticated checkout UAT is still pending.
+   - QA deployed-head evidence lagged production and required the explicit no-staging emergency-bypass metadata path; refresh QA deploy evidence before the next release to restore a fully non-bypassed no-staging verdict.
    - Frontend lint still reports warnings, mostly legacy Storefront unused variables/hook dependency warnings; these are not release-script failures but remain technical debt.
    - The large map dependency is isolated and non-initial, but it remains a heavy lazy chunk and should be optimized or replaced before calling the onboarding map experience fully performance-hardened.
 5. Critical findings:
@@ -201,13 +204,12 @@ Overall status: in_progress
    - Product idea and surface separation: `9.2/10`; the split is coherent, route ownership is explicit, and standalone Sales handoff is now repeatably smoke-tested.
    - Backend contract safety: `9.2/10`; focused backend POS tests, compliance checks, architecture checks, runtime doctor, and warning-free backend lint pass, with no material backend contract drift found in this pass.
    - Frontend implementation quality: `9.0/10`; lint errors, POS hook issue, budget-contract drift, backend warning, one Storefront hook warning, initial-chunk bloat, and the checkout-payload overlap are fixed or covered. The score remains below `9.2` because broad component duplication and legacy Storefront warnings still require follow-up.
-   - UI/user readiness: `8.8/10`; desktop/tablet/mobile locked-state smoke, login input editability, locked action interception, and Sales redirect proof are repeatable, but authenticated cashier checkout, receipt preview, barcode scan, Sync Queue, and modal focus/escape proof remain required for `9.2+`.
-   - Documentation/governance after fixes: `9.3/10`; docs, compliance impact declaration, prerequisites, performance notes, smoke command, shared checkout contract evidence, and gate evidence now reflect the merge state and the remaining promotion conditions.
-   - Production readiness overall: `8.7/10`; stronger local release candidate after repeatable UI smoke, initial-chunk optimization, and shared checkout parity coverage, but an honest `9.2+` production rating is blocked until human UAT and exact deployed-SHA verification are complete.
+   - UI/user readiness: `9.0/10`; desktop/tablet/mobile production smoke, login input editability, locked action interception, and SKUpervisor Sales handoff proof are repeatable, but authenticated cashier checkout, receipt preview, barcode scan, Sync Queue, and modal focus/escape proof remain required for `9.2+`.
+   - Documentation/governance after fixes: `9.4/10`; docs, compliance impact declaration, prerequisites, performance notes, smoke command, shared checkout contract evidence, production deploy evidence, and gate evidence now reflect the merge state and the remaining UAT condition.
+   - Production readiness overall: `9.0/10`; production deploy, exact deployed-head proof, public endpoint checks, asset parity, production health, production POS smoke, and shared checkout parity coverage now pass, but an honest `9.2+` production rating is blocked until authenticated cashier/admin UAT is complete and the next no-staging release avoids the stale-QA bypass.
 7. Minimum evidence required to raise every rating to `9.2+`:
-   - Run and attach `npm run smoke:pos-terminal-ui` against the production POS origin.
    - Complete human cashier/admin UAT for standalone POS checkout, SKUpervisor `/pos`, receipt preview, barcode scan, Sync Queue replay, Sales handoff, and mode-specific panels.
-   - Prove deployed parity by making `.deploy-state/last_deployed_commit`, `qa_deploy_summary.txt`, or the production deploy summary show `6ca61e8d01e304a75f078d11f937aec4425c944e`.
+   - Refresh QA deployed-head evidence so the next no-staging verdict passes without emergency bypass.
    - Keep `checkoutSurfaceContract.js` as the source of truth for shared checkout payload and DGFY fee behavior; any future POS/SKUpervisor divergence must be intentional and covered by a parity contract test.
    - Confirm the lazy `MapPinPicker-*` chunk is acceptable for onboarding map usage, or replace/defer the map dependency further.
 
