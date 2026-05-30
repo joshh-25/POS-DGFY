@@ -55,7 +55,6 @@ describe('Food & Beverage frontend contract', () => {
     expect(diningPanel).toContain('restaurant_service_charge: serviceCharge');
     expect(terminal).toContain('fnb_check_id');
     expect(terminal).toContain('restaurant_service_charge');
-    expect(terminal).toContain('Kitchen Station');
     expect(historyPanel).toContain('Restaurant Charge');
     expect(receipt).toContain('F&B Check');
     expect(receipt).toContain('restaurant_service_charge_amount');

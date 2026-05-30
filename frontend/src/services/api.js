@@ -49,6 +49,11 @@ const resolveApiBaseUrl = () => {
 const API_BASE_URL = resolveApiBaseUrl();
 
 const getSessionExpiredRedirect = () => {
+  const appSurface = String(import.meta.env.VITE_APP_SURFACE || '').trim().toLowerCase();
+  if (appSurface === 'pos') {
+    return '/?reason=session_expired';
+  }
+
   const pathname =
     typeof window !== 'undefined' && typeof window?.location?.pathname === 'string'
       ? window.location.pathname

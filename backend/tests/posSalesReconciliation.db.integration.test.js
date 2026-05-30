@@ -1116,6 +1116,27 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     await setSetting('pos_wait_time_minutes', '15', 'number');
     await setSetting('store_delivery_fee', '30', 'number');
     await setSetting('pos_strict_compliance_enabled', 'false', 'boolean');
+    await setSetting('customer_access_mode', 'transaction', 'string');
+    await setSetting(
+      'tenant_onboarding_progress',
+      JSON.stringify({
+        step_payloads: {
+          business_classification: {
+            legitimacy: {
+              registration_status: 'registered'
+            }
+          }
+        },
+        classification_snapshot: {
+          payload: {
+            legitimacy: {
+              registration_status: 'registered'
+            }
+          }
+        }
+      }),
+      'json'
+    );
 
     const businessDate = todayInManila();
     const baselineZ = await runInStoreTenantContext(() => getDailyZReadingUseCase({

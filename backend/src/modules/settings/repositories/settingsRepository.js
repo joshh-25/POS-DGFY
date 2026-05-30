@@ -13,6 +13,7 @@ import {
     normalizeStorefrontAssetPath,
     normalizeStorefrontAssetUrl
 } from '../../shared/utils/storefrontAssetPolicy.js';
+import { normalizeStorefrontBusinessHours } from '../../shared/utils/storefrontBusinessHours.js';
 
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'online', 'appointment'];
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
@@ -318,6 +319,9 @@ const normalizeValueForSettingKey = (settingKey, value) => {
     if (settingKey === 'storefront_review_summary') {
         return normalizeStorefrontReviewSummary(value);
     }
+    if (settingKey === 'storefront_hours') {
+        return normalizeStorefrontBusinessHours(value);
+    }
     return value;
 };
 
@@ -328,7 +332,8 @@ const POS_JSON_SETTING_KEYS = new Set([
     'storefront_categories',
     'storefront_gallery_images',
     'storefront_delivery_partners',
-    'storefront_review_summary'
+    'storefront_review_summary',
+    'storefront_hours'
 ]);
 const STOREFRONT_ASSET_SETTING_KEYS = new Set([
     'storefront_cover_image_url',

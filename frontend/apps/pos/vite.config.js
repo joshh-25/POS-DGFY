@@ -12,7 +12,11 @@ const allowedHosts = ['pos.surebizcorp.com', 'pos.dgfy.ph', 'localhost', '127.0.
 export default defineConfig({
   root: __dirname,
   plugins: [react()],
+  define: {
+    'import.meta.env.VITE_APP_SURFACE': JSON.stringify('pos')
+  },
   resolve: {
+    dedupe: ['react', 'react-dom'],
     alias: [
       { find: '@/hooks', replacement: path.resolve(frontendRoot, 'src/hooks') },
       { find: '@/components', replacement: path.resolve(frontendRoot, 'Components') },

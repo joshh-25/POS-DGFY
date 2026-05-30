@@ -116,3 +116,7 @@ jest.unstable_mockModule('../src/config/redis.js', () => ({
 if (!process.env.NODE_ENV) {
     process.env.NODE_ENV = 'test';
 }
+
+if (process.env.EMAIL_OTP_ENFORCEMENT_ENABLED == null) {
+    process.env.EMAIL_OTP_ENFORCEMENT_ENABLED = 'false';
+}

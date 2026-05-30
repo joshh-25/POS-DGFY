@@ -26,6 +26,7 @@ import {
     resubmitRegistration
 } from '../controllers/adminTenantController.js';
 import { authenticateAdmin } from '../middleware/auth.js';
+import { authenticateDgfyAccount } from '../middleware/dgfyAuth.js';
 import { tenantRegistrationLimiter } from '../middleware/rateLimiter.js';
 import {
     validateComplianceArtifactIdParam,
@@ -43,8 +44,8 @@ import {
 
 const router = express.Router();
 
-// PUBLIC: Submit company registration request (no auth required)
-router.post('/register', tenantRegistrationLimiter, registerCompanyRequest);
+// PUBLIC ENTRY, DGFY ACCOUNT REQUIRED: Submit company registration request.
+router.post('/register', tenantRegistrationLimiter, authenticateDgfyAccount, registerCompanyRequest);
 
 // PUBLIC: Re-submit a rejected registration (x-company-token only, no JWT)
 router.post('/resubmit', tenantRegistrationLimiter, resubmitRegistration);

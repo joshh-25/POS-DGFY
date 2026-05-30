@@ -2,6 +2,7 @@
  * Tenant admin repository contract for landlord-facing tenant lifecycle flows.
  *
  * Expected shape:
+ * - transaction(callback)
  * - findTenantByName(name)
  * - createTenant(payload)
  * - findTenantById(tenantId)
@@ -13,6 +14,7 @@
  * - updateSystemSetting(key, value)
  */
 export const TenantAdminRepositoryContract = Object.freeze([
+    'transaction',
     'findTenantByName',
     'createTenant',
     'findTenantById',

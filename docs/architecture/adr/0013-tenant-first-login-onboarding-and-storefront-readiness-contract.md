@@ -37,7 +37,7 @@ Adopt a tenant-scoped onboarding lifecycle with soft-reminder UX:
 
 4. First-login wizard steps
 - `brand_assets`: optional storefront profile picture and cover photo. Missing images never block completion.
-- `primary_location`: create or update the active primary storefront location pin used by discovery and tenant-page map surfaces. IMS setup surfaces use a MapLibre pin picker for click-to-place, drag-to-adjust, geolocation, and delivery-radius preview while preserving editable coordinate fields.
+- `primary_location`: create or update the active primary storefront location pin used by discovery and tenant-page map surfaces. IMS setup surfaces use a MapLibre pin picker for click-to-place, drag-to-adjust, geolocation, delivery-radius preview, and initial Storefront business-hours setup while preserving editable coordinate fields.
 - `bulk_items`: create starter catalog rows from the active workflow mode's onboarding item presets.
 
 5. Required completion checklist
@@ -63,6 +63,7 @@ Adopt a tenant-scoped onboarding lifecycle with soft-reminder UX:
 
 8. Storefront readiness integration
 - Saving `primary_location` or `bulk_items`, and completing onboarding, triggers storefront discovery sync reliability runner.
+- Saving `primary_location` may also persist `storefront_hours` as the tenant's weekly business-hours schedule. That schedule is displayed on Storefront discovery/profile surfaces and is used by Storefront checkout availability checks.
 - Existing discovery/profile/checkout contracts remain backward compatible.
 
 9. Generation policy
@@ -104,5 +105,17 @@ Adopt a tenant-scoped onboarding lifecycle with soft-reminder UX:
 ## Addendum (2026-05-18): Mode-Aware Three-Step Onboarding
 1. The previous business-profile, business-classification, and readiness-only wizard contract is replaced by three merchant setup steps: optional brand assets, primary storefront location, and mode-aware bulk starter items.
 2. Completion readiness now checks `store_name_ready`, `has_primary_storefront_location`, and `has_priced_starter_item`.
-3. Stock quantity and storefront item images are optional onboarding data. A zero-stock active item can complete onboarding when it has a positive customer selling price and, for corrected modes, a valid onboarding preset.
+3. Stock quantity and item image uploads are optional onboarding data. A zero-stock active item can complete onboarding when it has a positive customer selling price and, for corrected modes, a valid onboarding preset. Merchant-facing onboarding copy uses `Item image`; the existing Storefront catalog image storage/API contract remains unchanged.
 4. Future workflow modes must define onboarding item choices, default hidden fields, financial rules, stock behavior, and backend/frontend tests before being considered production-ready.
+
+## Addendum (2026-05-28): Business Hours Capture
+1. The `primary_location` step now captures weekly Storefront business hours in addition to the primary pin and delivery radius.
+2. Business hours remain non-blocking for onboarding completion, but the saved schedule becomes the long-term `storefront_hours` setting so merchants do not need a second setup pass in Settings.
+3. Storefront discovery/profile surfaces display the derived business-hours label.
+4. Storefront product quote/checkout and service booking/hold/batch mutations use the same setting to reject immediate or scheduled customer transactions outside configured hours while preserving legacy free-text `storefront_hours` values as display-compatible and non-breaking.
+
+## Addendum (2026-05-21): DGFY Account Founder Source
+
+1. Public company registration now requires an authenticated global DGFY account as defined by ADR 0023.
+2. Founder email, phone, username seed, and password hash are derived from that DGFY account instead of being collected directly on the company-registration form.
+3. First login can still use the normal SKUpervisor login handoff with company token, while the DGFY membership registry becomes the durable link between the founder's global account and tenant master-admin user.

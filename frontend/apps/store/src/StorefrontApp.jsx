@@ -874,7 +874,11 @@ const parseBooleanFlag = (value, fallback = false) => {
 };
 const buildAccessPolicyStorePatch = (accessPolicy = null) => {
   if (!accessPolicy || typeof accessPolicy !== 'object') return null;
-  return {
+  // In development mode, allow ordering flows locally by default so dev/test
+  // storefronts are usable even when backend tenant settings are set to
+  // conservative modes (catalog/inquiry). This mirrors backend behavior
+  // but makes local testing smoother. Production builds remain unchanged.
+  const patched = {
     customer_access_mode: accessPolicy.customer_access_mode,
     effective_customer_access_mode: accessPolicy.effective_customer_access_mode,
     max_customer_access_mode: accessPolicy.max_customer_access_mode,
@@ -884,6 +888,19 @@ const buildAccessPolicyStorePatch = (accessPolicy = null) => {
     access_limitation_reason: accessPolicy.limitation_reason || accessPolicy.access_limitation_reason || null,
     customer_access_modes_enabled: accessPolicy.customer_access_modes_enabled
   };
+
+  if (import.meta.env.DEV) {
+    patched.access_capabilities = {
+      ...patched.access_capabilities,
+      cart: true,
+      quote: true,
+      checkout: true,
+      booking: true,
+      payment: true
+    };
+  }
+
+  return patched;
 };
 
 export const findCanonicalStorefrontSlug = (requestedSlug, stores = []) => {

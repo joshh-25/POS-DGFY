@@ -56,6 +56,26 @@ const registeredTransactionSettings = () => [
     }
 ];
 
+const storefrontClosedMondaySettings = () => [
+    ...registeredTransactionSettings(),
+    {
+        setting_key: 'storefront_hours',
+        setting_value: JSON.stringify({
+            mode: 'weekly',
+            timezone: 'Asia/Manila',
+            weekly: {
+                sun: { enabled: false, open: '09:00', close: '18:00' },
+                mon: { enabled: false, open: '09:00', close: '18:00' },
+                tue: { enabled: true, open: '09:00', close: '18:00' },
+                wed: { enabled: true, open: '09:00', close: '18:00' },
+                thu: { enabled: true, open: '09:00', close: '18:00' },
+                fri: { enabled: true, open: '09:00', close: '18:00' },
+                sat: { enabled: true, open: '09:00', close: '18:00' }
+            }
+        })
+    }
+];
+
 describe('Services Mode use cases', () => {
     const originalCustomerAccessFlag = process.env.CUSTOMER_ACCESS_MODES_ENABLED;
 
@@ -327,6 +347,144 @@ describe('Services Mode use cases', () => {
         expect(tx.commit).toHaveBeenCalled();
     });
 
+    it('marks guest service bookings with a new email as eligible for DGFY account signup', async () => {
+        const tx = transaction();
+        const createBooking = jest.fn(async (payload) => ({ booking_id: 13, ...payload }));
+        const useCase = buildCreateServiceBookingUseCase({
+            serviceRepository: {
+                beginTransaction: jest.fn(async () => tx),
+                getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
+                findServiceItemById: jest.fn(async () => serviceItem),
+                findResourceById: jest.fn(async () => ({
+                    resource_id: 7,
+                    name: 'Room 1',
+                    capacity: 1,
+                    is_active: true,
+                    weekly_availability: null,
+                    blackout_dates: []
+                })),
+                listActiveAssignmentsForService: jest.fn(async () => []),
+                findConflictingBookings: jest.fn(async () => []),
+                findStoreCustomerByEmail: jest.fn(async () => null),
+                isBookingReferenceTaken: jest.fn(async () => false),
+                createBooking,
+                getBookingById: jest.fn(async (bookingId) => ({
+                    booking_id: bookingId,
+                    public_reference: 'SV-GUEST1',
+                    service_item_id: 10,
+                    serviceItem,
+                    resource_id: 7,
+                    quantity: 1,
+                    start_at: new Date('2026-06-01T09:00:00Z'),
+                    end_at: new Date('2026-06-01T10:00:00Z'),
+                    status: 'requested',
+                    payment_timing: 'postpaid',
+                    payment_status: 'unpaid'
+                }))
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                service_item_id: 10,
+                resource_id: 7,
+                start_at: '2026-06-01T09:00:00Z',
+                customer_name: 'Ana Guest',
+                customer_email: 'guest-service@example.test',
+                idempotency_key: 'svc-guest-new-email'
+            },
+            source: 'storefront'
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.account_action).toEqual(expect.objectContaining({
+            type: 'offer_signup',
+            allow_image_download: true,
+            show_signup: true,
+            claim_token: expect.any(String)
+        }));
+        expect(createBooking).toHaveBeenCalledWith(expect.objectContaining({
+            store_customer_id: null,
+            customer_email: 'guest-service@example.test',
+            claim_token_hash: expect.any(String),
+            claim_token_expires_at: expect.any(Date)
+        }), expect.any(Object));
+        expect(tx.commit).toHaveBeenCalled();
+    });
+
+    it('links authenticated service bookings to the DGFY customer account', async () => {
+        const tx = transaction();
+        const findStoreCustomerByEmail = jest.fn();
+        const createBooking = jest.fn(async (payload) => ({ booking_id: 14, ...payload }));
+        const useCase = buildCreateServiceBookingUseCase({
+            serviceRepository: {
+                beginTransaction: jest.fn(async () => tx),
+                getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
+                findServiceItemById: jest.fn(async () => serviceItem),
+                findResourceById: jest.fn(async () => ({
+                    resource_id: 7,
+                    name: 'Room 1',
+                    capacity: 1,
+                    is_active: true,
+                    weekly_availability: null,
+                    blackout_dates: []
+                })),
+                listActiveAssignmentsForService: jest.fn(async () => []),
+                findConflictingBookings: jest.fn(async () => []),
+                findStoreCustomerByEmail,
+                isBookingReferenceTaken: jest.fn(async () => false),
+                createBooking,
+                getBookingById: jest.fn(async (bookingId) => ({
+                    booking_id: bookingId,
+                    public_reference: 'SV-AUTH1',
+                    service_item_id: 10,
+                    serviceItem,
+                    resource_id: 7,
+                    quantity: 1,
+                    start_at: new Date('2026-06-01T11:00:00Z'),
+                    end_at: new Date('2026-06-01T12:00:00Z'),
+                    status: 'requested',
+                    payment_timing: 'postpaid',
+                    payment_status: 'unpaid'
+                }))
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                service_item_id: 10,
+                resource_id: 7,
+                start_at: '2026-06-01T11:00:00Z',
+                customer_name: 'Ana Account',
+                customer_email: 'account-service@example.test',
+                idempotency_key: 'svc-auth-account'
+            },
+            source: 'storefront',
+            storeCustomer: {
+                customer_id: 42,
+                name: 'Ana Account',
+                email: 'account-service@example.test',
+                phone: '09123456789'
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.account_action).toEqual(expect.objectContaining({
+            type: 'linked_authenticated',
+            allow_image_download: true,
+            show_signup: false,
+            claim_token: null
+        }));
+        expect(findStoreCustomerByEmail).not.toHaveBeenCalled();
+        expect(createBooking).toHaveBeenCalledWith(expect.objectContaining({
+            store_customer_id: 42,
+            customer_email: 'account-service@example.test'
+        }), expect.any(Object));
+        expect(createBooking.mock.calls[0][0]).not.toHaveProperty('claim_token_hash');
+        expect(createBooking.mock.calls[0][0]).not.toHaveProperty('claim_token_expires_at');
+        expect(tx.commit).toHaveBeenCalled();
+    });
+
     it('returns public service availability only when resource capacity can satisfy quantity', async () => {
         const useCase = buildGetServiceAvailabilityUseCase({
             serviceRepository: {
@@ -528,6 +686,86 @@ describe('Services Mode use cases', () => {
             status: 'active'
         }), expect.any(Object));
         expect(tx.commit).toHaveBeenCalled();
+    });
+
+    it('blocks storefront service booking holds outside configured business hours', async () => {
+        const tx = transaction();
+        const repository = {
+            beginTransaction: jest.fn(async () => tx),
+            getSettingsByKeys: jest.fn(async () => storefrontClosedMondaySettings()),
+            findHoldsByIdempotencyKey: jest.fn(async () => []),
+            findServiceItemById: jest.fn()
+        };
+        const useCase = buildCreateServiceBookingHoldUseCase({ serviceRepository: repository });
+
+        const result = await useCase({
+            payload: {
+                service_item_id: 10,
+                start_at: '2026-06-01T10:00:00+08:00',
+                idempotency_key: 'svc-hold-hours-1'
+            },
+            source: 'storefront'
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.details.reason_code).toBe('OUTSIDE_STOREFRONT_BUSINESS_HOURS');
+        expect(repository.findServiceItemById).not.toHaveBeenCalled();
+        expect(tx.rollback).toHaveBeenCalled();
+    });
+
+    it('blocks storefront service bookings outside configured business hours before service lookup', async () => {
+        const tx = transaction();
+        const repository = {
+            beginTransaction: jest.fn(async () => tx),
+            getSettingsByKeys: jest.fn(async () => storefrontClosedMondaySettings()),
+            findServiceItemById: jest.fn()
+        };
+        const useCase = buildCreateServiceBookingUseCase({ serviceRepository: repository });
+
+        const result = await useCase({
+            payload: {
+                service_item_id: 10,
+                start_at: '2026-06-01T10:00:00+08:00',
+                customer_name: 'Guest',
+                customer_email: 'guest@example.com',
+                idempotency_key: 'svc-booking-hours-1'
+            },
+            source: 'storefront'
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.details.reason_code).toBe('OUTSIDE_STOREFRONT_BUSINESS_HOURS');
+        expect(repository.findServiceItemById).not.toHaveBeenCalled();
+        expect(tx.rollback).toHaveBeenCalled();
+    });
+
+    it('blocks storefront service booking batches when any draft is outside configured business hours', async () => {
+        const tx = transaction();
+        const repository = {
+            beginTransaction: jest.fn(async () => tx),
+            getSettingsByKeys: jest.fn(async () => storefrontClosedMondaySettings()),
+            findServiceItemById: jest.fn()
+        };
+        const useCase = buildCreateServiceBookingBatchUseCase({ serviceRepository: repository });
+
+        const result = await useCase({
+            payload: {
+                customer_name: 'Guest',
+                customer_email: 'guest@example.com',
+                idempotency_key: 'svc-batch-hours-1',
+                bookings: [{
+                    service_item_id: 10,
+                    start_at: '2026-06-01T10:00:00+08:00'
+                }]
+            },
+            source: 'storefront'
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.details.reason_code).toBe('OUTSIDE_STOREFRONT_BUSINESS_HOURS');
+        expect(result.error.details.booking_index).toBeUndefined();
+        expect(repository.findServiceItemById).not.toHaveBeenCalled();
+        expect(tx.rollback).toHaveBeenCalled();
     });
 
     it('replaces a previous active hold without blocking itself on capacity-one resources', async () => {

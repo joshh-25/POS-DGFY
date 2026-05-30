@@ -3,6 +3,8 @@ import app from '../src/server.js';
 import db from '../src/models/index.js';
 import sequelize from '../src/config/database.js';
 import { Op } from 'sequelize';
+import { generateDgfyToken } from '../src/modules/dgfy/usecases/dgfyAuthUseCases.js';
+import { DGFY_LEGAL_TERM_VERSIONS } from '../src/modules/shared/utils/dgfyLegalTerms.js';
 
 // Shared email prefix so afterAll can sweep up anything this suite touches
 // regardless of which individual test created it.
@@ -11,15 +13,35 @@ const ts = Date.now();
 
 const makeEmail = (label) => `${EMAIL_PREFIX}${label}-${ts}@example.com`;
 let previousApprovalMode;
+let dgfyAccountCounter = 0;
+
+const createDgfyAccountForLabel = async (label) => {
+    dgfyAccountCounter += 1;
+    const suffix = `${label}-${dgfyAccountCounter}`.replace(/[^a-z0-9]/gi, '').toLowerCase();
+    const account = await db.DgfyAccount.create({
+        first_name: 'Lookup',
+        last_name: label,
+        username: `lookup_${suffix}`,
+        email: makeEmail(suffix),
+        phone: `+63918${String(ts + dgfyAccountCounter).slice(-7).padStart(7, '0')}`,
+        password_hash: '$2y$10$abcdefghijklmnopqrstuv',
+        is_active: true,
+        email_verified_at: new Date()
+    });
+    return {
+        account,
+        token: generateDgfyToken(account)
+    };
+};
 
 const baseData = (label) => ({
     name: `Lookup V2 Test Corp [${label}] ${ts}`,
-    adminEmail: makeEmail(label),
-    adminPhone: '+63 912 345 6789',
-    adminPassword: 'TestPassword123!',
     plan: 'standard',
     complianceMode: 'non_compliant',
-    workflowMode: 'msme'
+    workflowMode: 'msme',
+    accepted_company_terms: true,
+    company_terms_version: DGFY_LEGAL_TERM_VERSIONS.companyTerms,
+    marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
 });
 
 // ─── Cleanup ────────────────────────────────────────────────────────────────
@@ -39,6 +61,9 @@ afterAll(async () => {
     await db.UserTenantMapping.destroy({
         where: { email: { [Op.like]: `${EMAIL_PREFIX}%` } },
     });
+    await db.DgfyAccount.destroy({
+        where: { email: { [Op.like]: `${EMAIL_PREFIX}%` } },
+    });
     await db.Tenant.destroy({
         where: { admin_email: { [Op.like]: `${EMAIL_PREFIX}%` } },
     });
@@ -52,9 +77,11 @@ describe('Company Token Lookup — full coverage', () => {
     describe('single tenant — happy path', () => {
         it('registers a pending company and looks it up by email, asserting token, name, and status', async () => {
             const data = baseData('happy');
+            const { account, token } = await createDgfyAccountForLabel('happy');
 
             const regRes = await request(app)
                 .post('/api/v1/admin/tenants/register')
+                .set('Authorization', `Bearer ${token}`)
                 .send(data)
                 .expect(201);
 
@@ -64,7 +91,7 @@ describe('Company Token Lookup — full coverage', () => {
 
             const lookupRes = await request(app)
                 .post('/api/v1/auth/lookup')
-                .send({ email: data.adminEmail })
+                .send({ email: account.email })
                 .expect(200);
 
             expect(lookupRes.body.success).toBe(true);
@@ -89,9 +116,11 @@ describe('Company Token Lookup — full coverage', () => {
     describe('email case normalization', () => {
         it('returns the same token when the email is looked up in UPPERCASE', async () => {
             const data = baseData('case');
+            const { account, token } = await createDgfyAccountForLabel('case');
 
             const regRes = await request(app)
                 .post('/api/v1/admin/tenants/register')
+                .set('Authorization', `Bearer ${token}`)
                 .send(data)
                 .expect(201);
 
@@ -100,7 +129,7 @@ describe('Company Token Lookup — full coverage', () => {
             // Lookup with fully uppercased email
             const lookupRes = await request(app)
                 .post('/api/v1/auth/lookup')
-                .send({ email: data.adminEmail.toUpperCase() })
+                .send({ email: account.email.toUpperCase() })
                 .expect(200);
 
             expect(lookupRes.body.data.company_token).toBe(expectedToken);
@@ -108,16 +137,18 @@ describe('Company Token Lookup — full coverage', () => {
 
         it('returns the same token when the email is looked up with mixed case', async () => {
             const data = baseData('mixedcase');
+            const { account, token } = await createDgfyAccountForLabel('mixedcase');
 
             const regRes = await request(app)
                 .post('/api/v1/admin/tenants/register')
+                .set('Authorization', `Bearer ${token}`)
                 .send(data)
                 .expect(201);
 
             const expectedToken = regRes.body.data.company_token;
 
             // Flip casing of every other character
-            const mixedEmail = data.adminEmail
+            const mixedEmail = account.email
                 .split('')
                 .map((c, i) => (i % 2 === 0 ? c.toUpperCase() : c.toLowerCase()))
                 .join('');
@@ -135,31 +166,34 @@ describe('Company Token Lookup — full coverage', () => {
     describe('multiple tenants for one email', () => {
         it('returns multiple: true with a tenants array when the email belongs to two companies', async () => {
             // Register two separate companies under the same admin email
-            const sharedEmail = makeEmail('multi');
+            const { account, token } = await createDgfyAccountForLabel('multi');
+            const sharedEmail = account.email;
 
             const reg1 = await request(app)
                 .post('/api/v1/admin/tenants/register')
+                .set('Authorization', `Bearer ${token}`)
                 .send({
                     name: `Multi Corp A ${ts}`,
-                    adminEmail: sharedEmail,
-                    adminPhone: '+63 912 345 6789',
-                    adminPassword: 'TestPassword123!',
                     plan: 'standard',
                     complianceMode: 'non_compliant',
-                    workflowMode: 'msme'
+                    workflowMode: 'msme',
+                    accepted_company_terms: true,
+                    company_terms_version: DGFY_LEGAL_TERM_VERSIONS.companyTerms,
+                    marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
                 })
                 .expect(201);
 
             const reg2 = await request(app)
                 .post('/api/v1/admin/tenants/register')
+                .set('Authorization', `Bearer ${token}`)
                 .send({
                     name: `Multi Corp B ${ts}`,
-                    adminEmail: sharedEmail,
-                    adminPhone: '+63 912 345 6789',
-                    adminPassword: 'TestPassword123!',
                     plan: 'standard',
                     complianceMode: 'non_compliant',
-                    workflowMode: 'msme'
+                    workflowMode: 'msme',
+                    accepted_company_terms: true,
+                    company_terms_version: DGFY_LEGAL_TERM_VERSIONS.companyTerms,
+                    marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
                 })
                 .expect(201);
 
@@ -197,9 +231,11 @@ describe('Company Token Lookup — full coverage', () => {
     describe('rejected tenant exclusion', () => {
         it('returns 404 when the only tenant for an email has been rejected', async () => {
             const data = baseData('rejected');
+            const { account, token } = await createDgfyAccountForLabel('rejected');
 
             const regRes = await request(app)
                 .post('/api/v1/admin/tenants/register')
+                .set('Authorization', `Bearer ${token}`)
                 .send(data)
                 .expect(201);
 
@@ -214,7 +250,7 @@ describe('Company Token Lookup — full coverage', () => {
             // Lookup should now return 404 — rejected tenants are excluded
             await request(app)
                 .post('/api/v1/auth/lookup')
-                .send({ email: data.adminEmail })
+                .send({ email: account.email })
                 .expect(404);
         });
     });

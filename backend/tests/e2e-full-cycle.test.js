@@ -236,7 +236,7 @@ describe('E2E Full Cycle: PO → JO → Loss → Void', () => {
 
       // Receive PO fully
       const receiptData = {
-        location_id: destinationLocationId,
+        location_id: sourceLocationId,
         line_items: createdPO.lineItems.map(li => ({
           line_item_id: li.line_item_id,
           quantity_received: li.quantity_ordered
@@ -310,7 +310,7 @@ describe('E2E Full Cycle: PO → JO → Loss → Void', () => {
         null,
         'E2E completion',
         10,
-        'passed',
+        'pass',
         sourceLocationId,
         destinationLocationId
       );

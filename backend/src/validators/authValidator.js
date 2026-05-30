@@ -10,6 +10,11 @@ const requiredEmailOtpCodeSchema = () => {
   return isEmailOtpEnforcementEnabled() ? base.required() : base.optional();
 };
 
+const emailOtpCodeSchema = Joi.string().pattern(/^\d{6}$/).messages({
+  'string.pattern.base': 'Email verification code must be 6 digits',
+  'any.required': 'Email verification code is required'
+}).optional();
+
 const phoneNumberSchema = Joi.string()
   .trim()
   .min(7)
@@ -39,7 +44,7 @@ export const registerSchema = Joi.object({
     'string.min': 'Password must be at least 8 characters',
     'any.required': 'Password is required'
   }),
-  email_otp_code: requiredEmailOtpCodeSchema()
+  email_otp_code: emailOtpCodeSchema
   // role is NOT allowed during registration - always defaults to 'staff'
   // Only admins can change roles via User Management
 });
@@ -84,7 +89,7 @@ export const acceptInviteSchema = Joi.object({
     'string.min': 'Password must be at least 8 characters',
     'any.required': 'Password is required'
   }),
-  email_otp_code: requiredEmailOtpCodeSchema()
+  email_otp_code: emailOtpCodeSchema
 });
 
 export const validateInviteTokenSchema = Joi.object({
@@ -134,6 +139,19 @@ export const validateRegister = (req, res, next) => {
       data: null,
       message: 'Validation failed',
       errors,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  if (isEmailOtpEnforcementEnabled() && !String(value.email_otp_code || '').trim()) {
+    return res.status(422).json({
+      success: false,
+      data: null,
+      message: 'Validation failed',
+      errors: [{
+        field: 'email_otp_code',
+        message: 'Email verification code is required'
+      }],
       timestamp: new Date().toISOString()
     });
   }
@@ -226,6 +244,19 @@ export const validateAcceptInvite = (req, res, next) => {
     });
   }
 
+  if (isEmailOtpEnforcementEnabled() && !String(value.email_otp_code || '').trim()) {
+    return res.status(422).json({
+      success: false,
+      data: null,
+      message: 'Validation failed',
+      errors: [{
+        field: 'email_otp_code',
+        message: 'Email verification code is required'
+      }],
+      timestamp: new Date().toISOString()
+    });
+  }
+
   req.validatedData = value;
   next();
 };
@@ -274,4 +305,3 @@ export const validateEmailOtpRequest = (req, res, next) => {
   req.validatedData = value;
   next();
 };
-

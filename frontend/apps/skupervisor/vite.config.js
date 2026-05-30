@@ -13,6 +13,7 @@ export default defineConfig({
   root: __dirname,
   plugins: [react()],
   resolve: {
+    dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom'],
     alias: [
       { find: '@/hooks', replacement: path.resolve(frontendRoot, 'src/hooks') },
       { find: '@/components', replacement: path.resolve(frontendRoot, 'Components') },
@@ -23,6 +24,9 @@ export default defineConfig({
       { find: '@', replacement: frontendRoot }
     ],
     extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json']
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-router-dom']
   },
   server: {
     port: 5173,

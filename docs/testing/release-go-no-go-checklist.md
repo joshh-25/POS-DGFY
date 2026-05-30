@@ -1,15 +1,16 @@
 # Release Go/No-Go Checklist (Current)
 
 Status: reference  
-Last updated: 2026-05-06
+Last updated: 2026-05-21
 
 ## Current Release State
 
-1. Technical gates: passing
-2. Overall readiness: `in_progress` until human/ops signoffs close
-3. Local PM2 production preview: healthy on `ecosystem.config.cjs` with backend, IMS, POS, and Storefront processes online
-4. Production contract smoke: passing against the configured production target
-5. Exact QA deploy parity is mandatory: the latest no-staging gate fails when the QA deploy summary does not match the release target SHA
+1. Technical gates: passing for commit `116247cd75600ca83e13061f8f8123f6e2e03326`
+2. Overall readiness: `deployed`
+3. Latest no-staging verdict: `pass`; QA deployed-head parity matched the release target SHA before production SSH deploy.
+4. Production deploy status: deployed successfully on 2026-05-21 at `116247cd75`.
+5. Improvement completed: the deploy wrapper fetches QA summary evidence to an absolute host path, verifies that file exists, validates the release verdict with `--require-pass true`, and blocks production SSH deploy unless the verdict is deployable.
+6. Current residual risk: visual browser QA for Storefront map zoom/marker placement still requires an interactive browser pass; production endpoint, asset, reconciliation, and release-gate evidence are green.
 
 Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for readiness status and blockers.
 
@@ -23,24 +24,26 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 6. `npm run audit:fifo-drift`
 7. `npm run audit:tenant-index-headroom -- --redundant-groups-threshold=0`
 
-## Latest Technical Evidence (2026-05-06)
+## Latest Technical Evidence (2026-05-21)
 
-1. `pm2 startOrReload ecosystem.config.cjs --env production --update-env` -> PASS locally after hardened `backend/.env`.
-2. `GET http://localhost:5000/health` -> PASS with production, DB connected, Redis connected/required, runtime schema healthy, schema indexes healthy, tenant pool healthy, and fail-closed token blacklist mode.
-3. `GET http://localhost:5173`, `:5174`, and `:5175` -> PASS.
-4. `npm run gate:release:local` -> PASS.
-5. `npm run gate:release:no-staging` with QA env overlay -> PASS only when QA deploy evidence, smoke, rollback, restore, docs lint, and architecture checks all pass for the exact release SHA.
-6. `npm run gate:release:prod-contracts` with exported production values -> PASS (`12/12` checks).
-7. Targeted FIFO/service/F&B backend tests -> PASS (`27` tests).
-8. Targeted FIFO batch viewer frontend tests -> PASS (`6` tests).
-9. `npm --prefix frontend run build:all` -> PASS; `npm run check:frontend-budgets` -> PASS with the known large `vendor-map-*` Storefront map chunk warning.
+1. No-staging release preflight -> PASS for `116247cd75600ca83e13061f8f8123f6e2e03326`.
+2. `npm run lint:docs` -> PASS during release gate and production deploy.
+3. `npm run check:architecture` -> PASS during release gate and production deploy.
+4. QA multi-location smoke -> PASS (`12/12` checks).
+5. QA rollback drill -> PASS.
+6. QA restore drill -> PASS.
+7. QA deployed-head parity -> PASS (`deployed_head=116247cd75600ca83e13061f8f8123f6e2e03326`).
+8. Production deploy -> PASS at commit `116247cd75`; backend, IMS, POS, Storefront, and Tenant Store health checks passed.
+9. Tenant Store asset integrity and frontend asset parity -> PASS for public endpoints.
+10. Storefront discovery reconciliation -> PASS with `status=healthy`, `upserted=8`, `removed=2`, `failed=0`.
+11. Public smoke -> PASS for `https://dgfy.ph/tenant-store` (`200`) and Storefront discovery search `aircon` (`success=true`, matched `A/C Innovative Solutions`).
 
 ## Remaining Non-Technical Blockers (Go/No-Go)
 
 1. Cashier/admin UAT signoff evidence completed and reviewed
 2. Source-separation parity proof reviewed
 3. Strict location-binding operational acceptance logged
-4. Exact post-deploy summary for the committed target SHA captured after production deploy
+4. Visual browser QA evidence for Storefront marker placement across zoom levels and touch/desktop interactions captured
 
 ## Evidence Artifacts
 

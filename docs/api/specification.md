@@ -152,17 +152,19 @@ Passwords only require a minimum length of 8 characters. The registration UI can
 Request a one-time email verification code for public account-entry flows. Email delivery must succeed; this endpoint fails closed when SMTP/Brevo API delivery is unavailable or provider authentication fails. Requests are OTP-rate-limited with `RATE_LIMIT_EMAIL_OTP_WINDOW_MS` and `RATE_LIMIT_EMAIL_OTP_MAX_REQUESTS`.
 
 Supported purposes:
-- `company_registration`: body requires `email`.
+- `company_registration`: body requires `email`; retained for compatibility, but current DGFY company registration uses the authenticated account's `dgfy_account_verification` state and does not ask for this second OTP when the same email is already verified.
 - `tenant_user_registration`: body requires `email` and a tenant context (`x-company-token`).
 - `invitation_acceptance`: body requires `invitation_token`; the backend resolves tenant context and invited email from the invitation when `x-company-token` is absent.
+- `dgfy_account_verification`: requested through the authenticated DGFY account endpoint to verify the global DGFY email.
+- `dgfy_password_reset`: requested through the DGFY password recovery flow before changing a global DGFY account password.
 
 Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 10), lock after `EMAIL_OTP_MAX_ATTEMPTS` (default 5), and are consumed with a conditional update so a concurrently submitted request cannot reuse a code after it is consumed. Production enables enforcement by default; `EMAIL_OTP_ENFORCEMENT_ENABLED=false` is the rollback switch.
 
 **Request**
 ```json
 {
-  "purpose": "company_registration",
-  "email": "admin@acme.com"
+  "purpose": "tenant_user_registration",
+  "email": "staff@acme.com"
 }
 ```
 
@@ -180,8 +182,8 @@ Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 
   "success": true,
   "data": {
     "otp_id": "uuid",
-    "purpose": "company_registration",
-    "email": "admin@acme.com",
+    "purpose": "tenant_user_registration",
+    "email": "staff@acme.com",
     "expires_at": "2026-05-17T04:20:00.000Z",
     "delivery_status": "sent"
   },
@@ -3054,6 +3056,7 @@ Services Mode storefront routes are public or Store JWT-authenticated tenant rou
 
 **Booking/Ticket Contract**
 - Public service booking and waitlist mutations fail closed unless `access_capabilities.booking=true` while enforcement is active.
+- Public service booking, booking-hold, and batch-booking mutations also fail closed when the requested `start_at`/`scheduled_for` is outside a valid weekly `storefront_hours` schedule, returning `422` with `reason_code=OUTSIDE_STOREFRONT_BUSINESS_HOURS` before service capacity is reserved.
 - Ticket means booking/order confirmation; receipt means payment proof.
 - Public booking lookup redacts customer contact details.
 - Authenticated customers are auto-linked to new bookings and receive image-download choice only.
@@ -3185,7 +3188,7 @@ List active tenant fulfillment locations for a specific storefront tenant page.
 ### POST /store/cart/quote
 Compute quote totals for guest or store-customer checkout.
 
-**Auth**: Optional store customer (`Store JWT`)
+**Auth**: Optional store customer (`Store JWT` or global DGFY account JWT). When a DGFY account JWT is supplied, the backend lazily links or creates the tenant-local `store_customers` row before applying existing customer/account behavior.
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
 **Caching Contract**: `Cache-Control: no-store, no-cache, max-age=0, must-revalidate`
 
@@ -3209,7 +3212,7 @@ Route mapping note:
 ### POST /store/checkout
 Create online-store order and return tracking metadata.
 
-**Auth**: Optional store customer (`Store JWT`)
+**Auth**: Optional store customer (`Store JWT` or global DGFY account JWT)
 **Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
 **Caching Contract**: `Cache-Control: no-store, no-cache, max-age=0, must-revalidate`
 
@@ -3220,6 +3223,7 @@ Route mapping note:
 - Validation or stock-constraint breaches return `422` with machine-readable error details.
 - Checkout uses the same aggregate stock-bearing `item_id` quantity validation as quote before persisting lines. Separate submitted lines remain separate receipt/order lines, but their combined stock demand must fit available stock unless the selected location explicitly allows out-of-stock sales.
 - When effective Customer Access Mode is not `transaction`, response is `403` with `error_code=CUSTOMER_ACCESS_MODE_BLOCKED` while enforcement is active.
+- When `storefront_hours` contains a valid weekly business-hours schedule, immediate checkout uses the current tenant/server time and scheduled checkout uses `scheduled_for`; product quotes and orders outside configured hours return `422` with `reason_code=OUTSIDE_STOREFRONT_BUSINESS_HOURS`.
 - Server errors (`500`) are not the expected contract for normal checkout validation failures.
 
 **Persistence Contract**
@@ -4089,7 +4093,381 @@ Reactivate an inactive tenant. Sets `status='active'`, `subscription_status='act
 >
 > **Scope clarification**: `company_token` in this section is internal/admin context only. Public storefront flows use `x-store-slug` and do not expose tenant tokens in discovery payloads.
 
+### GET /dgfy/legal-terms/current
+
+Return the backend-owned current legal-term versions, document summaries, acknowledgement snapshot text, and marketplace-provider clause used by DGFY account and company registration. Registration clients must load this endpoint before enabling legal acknowledgement checkboxes and must submit the returned version fields with the registration mutation.
+
+Clients must fail closed when account registration lacks `terms_version`, `privacy_version`, or `marketplace_terms_version`, or when company registration lacks `company_terms_version` or `marketplace_terms_version`.
+
+**Access:** Public.
+
+**Response (200)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "provider_clause": "DGFY is an e-marketplace/platform service provider...",
+    "versions": {
+      "accountTerms": "dgfy-account-terms-2026-05-26",
+      "privacy": "dgfy-privacy-2026-05-26",
+      "marketplaceTerms": "dgfy-marketplace-provider-2026-05-26",
+      "companyTerms": "dgfy-company-terms-2026-05-26"
+    },
+    "flows": {
+      "account_registration": {
+        "acknowledgement_field": "accepted_terms",
+        "version_fields": ["terms_version", "privacy_version", "marketplace_terms_version"]
+      },
+      "company_registration": {
+        "acknowledgement_field": "accepted_company_terms",
+        "version_fields": ["company_terms_version", "marketplace_terms_version"]
+      }
+    }
+  }
+}
+```
+
+If this endpoint is unavailable, registration UI must fail closed and keep the registration submit action disabled.
+
+### POST /dgfy/auth/register
+
+Create a global DGFY account used for customer account surfaces and business registration.
+
+**Access:** Public, rate-limited.
+
+**Request**
+
+```json
+{
+  "last_name": "Lovelace",
+  "first_name": "Ada",
+  "middle_name": "Byron",
+  "email": "ada@example.com",
+  "phone": "+639123456789",
+  "password": "minimum8",
+  "confirm_password": "minimum8",
+  "accepted_terms": true,
+  "terms_version": "dgfy-account-terms-2026-05-26",
+  "privacy_version": "dgfy-privacy-2026-05-26",
+  "marketplace_terms_version": "dgfy-marketplace-provider-2026-05-26"
+}
+```
+
+Registration requires the current DGFY account terms, privacy terms, and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current`. The account row, mirrored DGFY invitation memberships, and acknowledgement evidence are written in one landlord transaction; persistence misconfiguration fails closed with `500 LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_UNAVAILABLE`. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
+
+The customer-facing registration order is Last Name, First Name, Optional Middle Name, email, contact number, password, and confirm password. Password fields expose visibility toggles. `middle_name` is optional and nullable; when present it is returned on account/profile/customer surfaces.
+
+**Response (201)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "account": {
+      "id": "dgfy-account-uuid",
+      "last_name": "Lovelace",
+      "first_name": "Ada",
+      "middle_name": "Byron",
+      "username": "Ada",
+      "email": "ada@example.com",
+      "phone": "+639123456789",
+      "is_active": true,
+      "last_login_at": null
+    },
+    "token": "dgfy-jwt",
+    "expiresIn": 86400
+  }
+}
+```
+
+### POST /dgfy/auth/login
+
+Sign in to a global DGFY account.
+
+**Access:** Public, rate-limited.
+
+**Request**
+
+```json
+{
+  "email": "ada@example.com",
+  "password": "minimum8"
+}
+```
+
+**Response (200)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "account": {
+      "id": "dgfy-account-uuid",
+      "first_name": "Ada",
+      "middle_name": "Byron",
+      "last_name": "Lovelace",
+      "username": "Ada",
+      "email": "ada@example.com",
+      "phone": "+639123456789",
+      "is_active": true,
+      "last_login_at": "2026-05-21T10:00:00.000Z"
+    },
+    "token": "dgfy-jwt",
+    "expiresIn": 86400
+  }
+}
+```
+
+### POST /dgfy/auth/logout
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Blacklist the current DGFY account JWT. Tenant-local SKUpervisor and Store JWT sessions are separate and are not revoked by this route.
+
+### POST /dgfy/auth/email-verification/request
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Send a purpose-scoped `dgfy_account_verification` email OTP to the authenticated DGFY account email. If the account email is already verified, the response returns `verified: true` without sending another code.
+
+### POST /dgfy/auth/email-verification/verify
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Verify the DGFY account email with the code sent by `/dgfy/auth/email-verification/request`.
+
+**Request**
+
+```json
+{
+  "code": "123456"
+}
+```
+
+**Response (200)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "account": {
+      "id": "dgfy-account-uuid",
+      "email": "ada@example.com",
+      "email_verified_at": "2026-05-21T10:03:00.000Z",
+      "is_email_verified": true
+    }
+  },
+  "message": "DGFY email verified."
+}
+```
+
+### POST /dgfy/auth/handoff
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Create a short-lived DGFY handoff token for browser-to-browser or redirected account flows. The token scope is `dgfy_handoff` and default expiry is two minutes.
+
+### POST /dgfy/auth/handoff/exchange
+
+Exchange a valid DGFY handoff token for a normal DGFY account JWT.
+
+**Request**
+
+```json
+{
+  "handoff_token": "short-lived-dgfy-handoff-token"
+}
+```
+
+### GET /dgfy/auth/me
+
+Return the authenticated DGFY account and linked company memberships. Memberships include pending company invitations when the invited email matches an existing DGFY account.
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+**Response (200)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "account": {
+      "id": "dgfy-account-uuid",
+      "first_name": "Ada",
+      "middle_name": "Byron",
+      "last_name": "Lovelace",
+      "username": "Ada",
+      "email": "ada@example.com",
+      "phone": "+639123456789",
+      "is_active": true,
+      "last_login_at": "2026-05-21T10:00:00.000Z"
+    },
+    "memberships": [
+      {
+        "id": 12,
+        "tenant_id": "tenant-uuid",
+        "tenant_user_id": 7,
+        "role": "admin",
+        "status": "accepted",
+        "source": "founder",
+        "accepted_at": "2026-05-21T10:05:00.000Z",
+        "company": {
+          "id": "tenant-uuid",
+          "name": "Example Foods",
+          "company_token": "token-example-123",
+          "status": "active",
+          "plan": "premium"
+        }
+      }
+    ]
+  }
+}
+```
+
+### PATCH /dgfy/auth/me
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Update the authenticated DGFY profile. Last name, first name, and phone are required in the resulting profile; `middle_name` is optional and nullable. Email changes are rejected from this endpoint until a dedicated verified email-change flow is designed. Changing `phone` clears `phone_verified_at`; phone OTP verification remains deferred.
+
+**Request**
+```json
+{
+  "last_name": "Lovelace",
+  "first_name": "Ada",
+  "middle_name": "Byron",
+  "phone": "+639123456789"
+}
+```
+
+### POST /dgfy/auth/password/change
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Change the authenticated DGFY account password. Passwords require a minimum length of 8 characters.
+
+**Request**
+```json
+{
+  "current_password": "current-password",
+  "new_password": "minimum8",
+  "confirm_password": "minimum8"
+}
+```
+
+### POST /dgfy/auth/password-reset/request
+
+Public, rate-limited. Request a `dgfy_password_reset` email OTP. The response is generic when no active matching DGFY account exists.
+
+**Request**
+```json
+{
+  "email": "ada@example.com"
+}
+```
+
+### POST /dgfy/auth/password-reset/complete
+
+Public, rate-limited. Verify a `dgfy_password_reset` code and set the new DGFY account password.
+
+**Request**
+```json
+{
+  "email": "ada@example.com",
+  "code": "123456",
+  "password": "minimum8",
+  "confirm_password": "minimum8"
+}
+```
+
+### POST /dgfy/invitations/:membership_id/accept
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Accept a pending company invitation from the DGFY account notification surface. This path does not require an invitation link, company token in the URL, or a tenant-local password setup form. The backend activates the matching tenant-local invitation row from the authenticated DGFY account, copies the DGFY email/phone/password hash into that tenant user, writes the landlord email-to-tenant mapping, and marks the DGFY membership accepted.
+
+**Response (200)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "membership": {
+      "id": 12,
+      "tenant_id": "tenant-uuid",
+      "tenant_user_id": 7,
+      "role": "staff",
+      "status": "accepted",
+      "source": "invite",
+      "company": {
+        "name": "Example Foods",
+        "company_token": "tenant-token"
+      }
+    }
+  }
+}
+```
+
+### DGFY Customer Account Endpoints
+
+Front-facing customer account endpoints live under `/api/v1/dgfy/customer`. Except for tracking recovery request/verify, they require `Authorization: Bearer <dgfy-account-token>`.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/dgfy/customer/dashboard` | Return DGFY profile summary, recent account activity, orders, bookings, addresses, and read-only loyalty summary |
+| `GET` | `/dgfy/customer/activities` | Return paginated normalized cross-store history with filters for `type`, `tenant_id`, `store_slug`, `status`, `payment_status`, date range, page, and limit |
+| `GET` | `/dgfy/customer/orders` | List account-linked order activities |
+| `GET` | `/dgfy/customer/bookings` | List account-linked service/hospitality booking activities |
+| `POST` | `/dgfy/customer/track` | Track an account-linked reference by `reference` or `tracking_pin` |
+| `POST` | `/dgfy/customer/orders/:reference/cancel` | Cancel an eligible account-linked order |
+| `POST` | `/dgfy/customer/orders/:reference/reorder` | Return reusable cart lines for a prior order; checkout revalidates current state |
+| `GET` | `/dgfy/customer/addresses` | List global DGFY saved addresses |
+| `POST` | `/dgfy/customer/addresses` | Create a saved address |
+| `PUT/PATCH` | `/dgfy/customer/addresses/:address_id` | Update a saved address |
+| `PATCH` | `/dgfy/customer/addresses/:address_id/default` | Set a saved address as the account default |
+| `DELETE` | `/dgfy/customer/addresses/:address_id` | Delete a saved address |
+| `GET` | `/dgfy/customer/loyalty` | Return read-only loyalty balance and transactions |
+| `POST` | `/dgfy/customer/reviews` | Submit a paid-or-completed activity-gated typed review as pending approval |
+| `POST` | `/dgfy/customer/tracking-recovery/request` | Request a generic tracking recovery response for email/phone lookup |
+| `POST` | `/dgfy/customer/tracking-recovery/verify` | Verify a six-digit recovery code and return matching activity references |
+
+`PATCH /dgfy/customer/addresses/:address_id/default` is a transport alias for updating the address with `is_default=true`; it must remain registered before the generic `PATCH /dgfy/customer/addresses/:address_id` route. Storefront checkout and booking forms consume the default saved address for signed-in customers only when the visible customer address field is still empty.
+
+`GET /dgfy/customer/activities` is the canonical customer history endpoint. Activity `type` may be `order`, `service_booking`, `hospitality_booking`, `fnb_order`, `booking`, or `all`; `booking` expands to Services and Hospitality activity. Response cards include `reference`, `store`, `type`, `status`, `payment_status`, `occurred_at`, `total_amount`, `summary_lines`, `allowed_actions`, and `review_targets`.
+
+`POST /dgfy/customer/reviews` accepts `activity_id`, `target_type`, optional `target_id`, `rating`, `comment`, and optional `anonymous`. Supported target types are `product`, `service`, `hospitality_booking`, `fnb_order`, and `fnb_item`; the activity snapshot must prove eligibility, and reviews remain pending until moderated. Public review reads may filter by `tenant_id`, `item_id`, `target_type`, and `target_id` and only return approved rows.
+
+Tracking recovery intentionally uses generic production responses and does not reveal whether a lookup matched an order or whether delivery was attempted. Email delivery is used when matching activity has an email address. Phone OTP remains deferred and phone values must not be treated as verified; phone lookup supports common Philippine variants for matching only.
+
+Historical DGFY customer activity backfill is an operator command, not a public API. Use `npm run backfill:dgfy-customer-activity:apply` for apply mode so landlord migrations run before activity writes. Dry-run uses `npm run backfill:dgfy-customer-activity -- ...`. The backfill indexes POS customer orders, F&B checks linked through POS transactions, Services bookings, and Hospitality reservations into `dgfy_customer_activities`. Production dry-runs can require mode discovery with `--require-activity-types=order,service_booking,hospitality_booking,fnb_order` before apply.
+
+Storefront checkout and Services booking responses include `account_action` when account follow-up is available:
+
+| Type | Meaning |
+| --- | --- |
+| `linked_authenticated` | The transaction was linked to the authenticated DGFY account. |
+| `offer_signup` | Guest checkout used a new email that can create a DGFY account. |
+| `existing_account_download_only` | Guest checkout used an email that already belongs to a DGFY account; prompt sign-in instead of duplicate registration. |
+| `download_only_guest_no_email` | No account association is available; show only confirmation/download/tracking guidance. |
+
 ### POST /admin/tenants/register
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Public company registration derives founder email, phone, username seed, and password hash from the authenticated DGFY account. Clients must not send founder contact, password, plan, or compliance mode. New companies start `non_compliant_active`; compliance activation is handled later from Settings > Compliance.
+
+**Request**
+
+```json
+{
+  "name": "Example Foods",
+  "workflowMode": "food_manufacturing",
+  "accepted_company_terms": true,
+  "company_terms_version": "dgfy-company-terms-2026-05-26",
+  "marketplace_terms_version": "dgfy-marketplace-provider-2026-05-26"
+}
+```
 Submit a public company registration request.
 
 **Access:** Public, rate-limited.
@@ -4101,28 +4479,14 @@ Submit a public company registration request.
 - Provider subscription registration remains disabled while `PAYMENTS_ENABLED=false`; payloads with `subscriptionId` return `503` with `PAYMENTS_DISABLED`.
 - Auto-standard and manual premium-capable registrations keep `subscription_status: "inactive"` while payments are paused. In that mode, premium route access is plan-driven and does not require an active subscription row.
 - Approval email delivery is non-blocking after provisioning; active responses include `email_sent`.
-- Active registration responses do not include auth tokens. Auto-login is a frontend follow-up call to `POST /auth/login` using the submitted email/password and returned `company_token`.
+- Active registration responses do not include tenant auth tokens. The frontend routes to SKUpervisor login with the DGFY email and returned `company_token`; the founder can sign in through the tenant login path because provisioning seeded the master admin from the DGFY account.
+- Storefront-originated business registration starts at DGFY login and uses `/register-company?source=dgfy&auth=login#dgfy-profile` so the authenticated user lands in the personal DGFY profile/company-creation area before creating a company.
 - Manual pending registrations create founder email lookup mappings during registration. Default auto-standard registrations rely on the provisioning path to create the mapping after successful activation.
 - Abuse control: public company registration is IP rate-limited by `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS` (production default: 5 requests per hour). Keep this strict because each accepted registration provisions an isolated tenant database by default.
 - Auto-login fallback: if the follow-up login call fails after an active response, the frontend keeps the company created state and routes the founder to manual sign-in with email/company token prefilled.
-- Founder contact: public company registration requires `adminPhone`; provisioned founder/admin users receive the same value in `users.phone_number`.
-- `adminPhone` is trimmed and must follow the same 7-40 character phone format used by user registration and Settings profile updates.
-- Founder password: `adminPassword` only requires a minimum length of 8 characters. The registration UI can generate a readable 16-character password and fills both password fields when it does.
-- Email ownership: public company registration requires `email_otp_code` for `adminEmail`. The registration UI requests the code through `POST /auth/email-otp/request` with `purpose=company_registration`, then submits the six-digit code with the final registration payload.
-
-**Request**
-```json
-{
-  "name": "ACME Corp",
-  "adminEmail": "admin@acme.com",
-  "adminPhone": "+63 912 345 6789",
-  "adminPassword": "abcdefgh",
-  "email_otp_code": "123456",
-  "plan": "premium",
-  "complianceMode": "non_compliant",
-  "workflowMode": "food_manufacturing"
-}
-```
+- Founder contact and credentials: public company registration no longer accepts `adminEmail`, `adminPhone`, or `adminPassword`; the server derives them from the authenticated DGFY account.
+- Email ownership: public company registration requires the authenticated DGFY account email to already be verified. If the user registers a company with that same verified DGFY email, clients do not send `email_otp_code` and the backend does not consume a second same-address company OTP. If the DGFY account email changes, it must be verified again before registration can proceed.
+- Legal acknowledgement: public company registration requires the current company terms and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current` before tenant creation. The backend fails closed before tenant creation if legal acknowledgement persistence is unavailable. After confirming the authenticated DGFY email is verified, the landlord tenant row, pending-founder membership when applicable, and acknowledgement evidence are written in one landlord transaction. The acknowledgement states that DGFY is an e-marketplace/platform service provider, the seller owns the product, sets the price, fulfills the order, remains seller of record, payment is processed by a licensed payment partner, and DGFY deducts disclosed fees before remitting the seller's net settlement. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
 
 **Response (201, explicit manual mode)**
 ```json
@@ -4554,6 +4918,8 @@ APP_URL=https://your-domain.com
 
 Run `npm run verify:email` from the repo root before enabling OTP enforcement in a new environment. Use `npm run verify:email -- --send-to operator@example.com` for an end-to-end provider send test. The check fails when placeholder SMTP/Brevo credentials are still present. On production, this check passed after correcting `SMTP_USER` to the Brevo SMTP login.
 
+OTP email sends use `sendEmailOtpCode()` and explicitly set the sender display name to `DGFY`. Generic lifecycle email sends keep the configured `EMAIL_FROM_NAME` value, defaulting to `SKUpervisor`.
+
 ### Email Types
 
 | Email Type | Trigger | Template |
@@ -4561,7 +4927,7 @@ Run `npm run verify:email` from the repo root before enabling OTP enforcement in
 | User Invitation | Creating user invitation via AI or admin panel | `getInvitationTemplate()` |
 | Company Approved | Admin approves pending company registration | `getCompanyApprovedTemplate()` |
 | Company Rejected | Admin rejects pending company registration | `getCompanyRejectedTemplate()` |
-| Email OTP | Company registration, tenant-user registration, invite acceptance, and email change verification | `sendEmailOtpCode()` |
+| Email OTP | DGFY account verification, tenant-user registration, invite acceptance, email change verification, and DGFY password reset | `sendEmailOtpCode()` |
 
 ### Gmail SMTP Setup
 1. Enable 2-Factor Authentication on your Google account
@@ -4576,6 +4942,7 @@ Run `npm run verify:email` from the repo root before enabling OTP enforcement in
 - Non-master users do not own onboarding lifecycle and may receive `onboarding: null`.
 - The active wizard has three steps: `brand_assets`, `primary_location`, and `bulk_items`.
 - The `primary_location` wizard step uses the shared IMS MapLibre pin picker. Click, drag, or browser geolocation updates the same latitude/longitude fields submitted to the tenant-location API.
+- The `primary_location` step also accepts `payload.business_hours` and persists it to the shared `storefront_hours` setting. The schedule uses `mode="weekly"`, `timezone` such as `Asia/Manila`, and `weekly.{sun..sat}` entries with `enabled`, `open`, and `close` in `HH:mm` format.
 - Stored legacy `classification_snapshot` data may remain in older `tenant_onboarding_progress` records, but the current wizard does not create or require business classification output.
 
 ### GET /onboarding/status
@@ -4692,7 +5059,7 @@ Finalize onboarding if required readiness checks are satisfied.
 **Behavior**
 - Returns `422` with `missing_requirements[]` if readiness is incomplete.
 - Missing requirement keys are `store_name_ready`, `has_primary_storefront_location`, and `has_priced_starter_item`.
-- Storefront item image upload and stock quantity never block completion by themselves.
+- Item image upload and stock quantity never block completion by themselves. The merchant-facing onboarding label is `Item image`; the existing Storefront catalog image upload/storage contract remains unchanged.
 - On success, sets onboarding state to `completed` and triggers storefront discovery sync.
 
 ### POST /onboarding/events

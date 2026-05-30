@@ -97,6 +97,16 @@ import TenantFactory from './Landlord/Tenant.js';
 import UserTenantMappingFactory from './Landlord/UserTenantMapping.js';
 import UserInvitationFactory from './Landlord/UserInvitation.js';
 import EmailOtpFactory from './Landlord/EmailOtp.js';
+import DgfyAccountFactory from './Landlord/DgfyAccount.js';
+import DgfyAccountTenantMembershipFactory from './Landlord/DgfyAccountTenantMembership.js';
+import DgfyAccountHandoffFactory from './Landlord/DgfyAccountHandoff.js';
+import DgfyLegalAcknowledgementFactory from './Landlord/DgfyLegalAcknowledgement.js';
+import DgfyCustomerActivityFactory from './Landlord/DgfyCustomerActivity.js';
+import DgfyCustomerAddressFactory from './Landlord/DgfyCustomerAddress.js';
+import DgfyCustomerBackfillRunFactory from './Landlord/DgfyCustomerBackfillRun.js';
+import DgfyCustomerReviewFactory from './Landlord/DgfyCustomerReview.js';
+import DgfyLoyaltyTransactionFactory from './Landlord/DgfyLoyaltyTransaction.js';
+import DgfyTrackingRecoveryCodeFactory from './Landlord/DgfyTrackingRecoveryCode.js';
 import PaymentFactory from './Landlord/Payment.js';
 import WebhookLogFactory from './Landlord/WebhookLog.js';
 import EngagementEventFactory from './Landlord/EngagementEvent.js';
@@ -111,6 +121,16 @@ const Tenant = TenantFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const UserInvitation = UserInvitationFactory(sequelize);
 const EmailOtp = EmailOtpFactory(sequelize);
+const DgfyAccount = DgfyAccountFactory(sequelize);
+const DgfyAccountTenantMembership = DgfyAccountTenantMembershipFactory(sequelize);
+const DgfyAccountHandoff = DgfyAccountHandoffFactory(sequelize);
+const DgfyLegalAcknowledgement = DgfyLegalAcknowledgementFactory(sequelize);
+const DgfyCustomerActivity = DgfyCustomerActivityFactory(sequelize);
+const DgfyCustomerAddress = DgfyCustomerAddressFactory(sequelize);
+const DgfyCustomerBackfillRun = DgfyCustomerBackfillRunFactory(sequelize);
+const DgfyCustomerReview = DgfyCustomerReviewFactory(sequelize);
+const DgfyLoyaltyTransaction = DgfyLoyaltyTransactionFactory(sequelize);
+const DgfyTrackingRecoveryCode = DgfyTrackingRecoveryCodeFactory(sequelize);
 const Payment = PaymentFactory(sequelize);
 const WebhookLog = WebhookLogFactory(sequelize);
 const EngagementEvent = EngagementEventFactory(sequelize);
@@ -141,6 +161,16 @@ Tenant.hasMany(EngagementEvent, { foreignKey: 'tenant_id', as: 'engagementEvents
 EngagementEvent.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasOne(StorefrontDiscoveryIndex, { foreignKey: 'tenant_id', as: 'storefrontDiscoveryIndex' });
 StorefrontDiscoveryIndex.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+DgfyAccount.hasMany(DgfyAccountTenantMembership, { foreignKey: 'dgfy_account_id', as: 'tenantMemberships' });
+DgfyAccountTenantMembership.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
+DgfyAccount.hasMany(DgfyAccountHandoff, { foreignKey: 'dgfy_account_id', as: 'handoffs' });
+DgfyAccountHandoff.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
+Tenant.hasMany(DgfyLegalAcknowledgement, { foreignKey: 'tenant_id', as: 'legalAcknowledgements' });
+DgfyLegalAcknowledgement.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+DgfyAccount.hasMany(DgfyLegalAcknowledgement, { foreignKey: 'dgfy_account_id', as: 'legalAcknowledgements' });
+DgfyLegalAcknowledgement.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
+Tenant.hasMany(DgfyAccountTenantMembership, { foreignKey: 'tenant_id', as: 'dgfyAccountMemberships' });
+DgfyAccountTenantMembership.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(TenantComplianceArtifact, { foreignKey: 'tenant_id', as: 'complianceArtifacts' });
 TenantComplianceArtifact.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(TenantCompliancePeripheral, { foreignKey: 'tenant_id', as: 'compliancePeripherals' });
@@ -619,6 +649,16 @@ const db = {
   UserTenantMapping,
   UserInvitation,
   EmailOtp,
+  DgfyAccount,
+  DgfyAccountTenantMembership,
+  DgfyAccountHandoff,
+  DgfyLegalAcknowledgement,
+  DgfyCustomerActivity,
+  DgfyCustomerAddress,
+  DgfyCustomerBackfillRun,
+  DgfyCustomerReview,
+  DgfyLoyaltyTransaction,
+  DgfyTrackingRecoveryCode,
   Payment,
   WebhookLog,
   EngagementEvent,
@@ -731,6 +771,16 @@ export {
   UserTenantMapping,
   UserInvitation,
   EmailOtp,
+  DgfyAccount,
+  DgfyAccountTenantMembership,
+  DgfyAccountHandoff,
+  DgfyLegalAcknowledgement,
+  DgfyCustomerActivity,
+  DgfyCustomerAddress,
+  DgfyCustomerBackfillRun,
+  DgfyCustomerReview,
+  DgfyLoyaltyTransaction,
+  DgfyTrackingRecoveryCode,
   Payment,
   WebhookLog,
   EngagementEvent,

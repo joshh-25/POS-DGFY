@@ -60,7 +60,7 @@ const Reactivate = lazy(() => import('../Pages/Reactivate.jsx'))
 const MobileReceive = lazy(() => import('../Pages/MobileReceive.jsx'))
 const DispatchOrders = lazy(() => import('../Pages/DispatchOrders.jsx'))
 const AiChat = lazy(() => import('../Pages/AiChat.jsx'))
-const POSPage = lazy(() => import('./features/pos/pages/POSPage.jsx'))
+const POSPage = lazy(() => import('./features/pos/pages/SkupervisorPOSPage.jsx'))
 const TerminalPage = lazy(() => import('./features/pos/pages/TerminalPage.jsx'))
 const SalesPage = lazy(() => import('./features/sales/pages/SalesPage.jsx'))
 const FeedbackViewer = lazy(() => import('../Pages/FeedbackViewer.jsx'))
@@ -269,25 +269,73 @@ function App() {
 }
 
 const rootElement = document.getElementById('root');
-ReactDOM.createRoot(rootElement).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <BrowserRouter
-        future={{
-          v7_startTransition: true,
-          v7_relativeSplatPath: true,
-        }}
-      >
-        <PermissionProvider>
-          <WorkflowModeProvider>
-            <GlobalApiErrorListener />
-            <Toaster position="top-right" />
-            <App />
-          </WorkflowModeProvider>
-        </PermissionProvider>
-      </BrowserRouter>
-    </ErrorBoundary>
-  </React.StrictMode>,
-)
 
-registerAdminServiceWorker()
+const mountApp = () => {
+  ReactDOM.createRoot(rootElement).render(
+    <React.StrictMode>
+      <ErrorBoundary>
+        <BrowserRouter
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        >
+          <PermissionProvider>
+            <WorkflowModeProvider>
+              <GlobalApiErrorListener />
+              <Toaster position="top-right" />
+              <App />
+            </WorkflowModeProvider>
+          </PermissionProvider>
+        </BrowserRouter>
+      </ErrorBoundary>
+    </React.StrictMode>,
+  )
+
+  registerAdminServiceWorker()
+}
+
+// Dev-only auto-login: when running locally, seed a valid tenant + auth session
+// so the POS UI opens unlocked without manual sign-in. This is intentionally
+// gated to development builds only.
+if (import.meta.env.DEV) {
+  (async () => {
+    try {
+      const AUTO_EMAIL = 'admin@test.com';
+      const AUTO_PASSWORD = 'Admin123!';
+      const COMPANY_TOKEN = 'token-original';
+      const TERMINAL_ID = 'COUNTER-01';
+
+      // Attempt to login and store tokens; backend will validate tenant context
+      const resp = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-company-token': COMPANY_TOKEN
+        },
+        body: JSON.stringify({ email: AUTO_EMAIL, password: AUTO_PASSWORD })
+      });
+
+      const body = await resp.json().catch(() => null);
+      if (resp.ok && body?.success && body?.data?.token) {
+        try {
+          localStorage.setItem('companyToken', COMPANY_TOKEN);
+          localStorage.setItem('authToken', body.data.token);
+          if (body.data.refreshToken) localStorage.setItem('refreshToken', body.data.refreshToken);
+          localStorage.setItem('pos_terminal_identity_v1', TERMINAL_ID);
+          // dispatch auth event so PermissionContext picks up new session
+          window.dispatchEvent(new CustomEvent('auth:login'))
+        } catch (e) {
+          // ignore storage errors
+        }
+      }
+    } catch (e) {
+      // best-effort only; do not block app mount
+      // console.warn('Auto-login failed', e);
+    } finally {
+      mountApp();
+    }
+  })();
+} else {
+  mountApp();
+}

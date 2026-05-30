@@ -1,5 +1,9 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
+import {
+    assertDgfyLegalAcknowledgement,
+    DGFY_LEGAL_TERM_FLOWS
+} from '../../shared/utils/dgfyLegalTerms.js';
 import { toValidDate, extendOneCalendarMonth } from './tenantBillingDateUtils.js';
 import { createBillingFunnelTracker } from '../../../services/billingFunnelTelemetryService.js';
 import {
@@ -14,43 +18,62 @@ import {
     resolveRegisteredTenantPlan
 } from './tenantPlanPolicy.js';
 import { isValidPhoneNumber, normalizePhoneNumber } from '../../../utils/phoneNumber.js';
-import { verifyEmailOtp, EMAIL_OTP_PURPOSES } from '../../../services/emailOtpService.js';
+
+const buildLegalPersistenceError = () => new DomainError(
+    DomainErrorCode.INTERNAL_ERROR,
+    'DGFY legal acknowledgement persistence is unavailable.',
+    {
+        statusCode: 500,
+        details: {
+            error_code: 'LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_UNAVAILABLE'
+        }
+    }
+);
+
+const toLegalPersistenceFailure = (error) => (
+    error instanceof DomainError
+        ? error
+        : new DomainError(
+            DomainErrorCode.INTERNAL_ERROR,
+            'Company registration failed while saving legal acknowledgement evidence.',
+            {
+                statusCode: 500,
+                details: {
+                    error_code: 'LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_FAILED'
+                }
+            }
+        )
+);
 
 export const buildRegisterCompanyRequestUseCase = ({
     tenantAdminRepository,
     paypalService,
     trackEngagementEvent,
     addEmailTenantMapping,
+    dgfyAccountRepository,
     provisionTenant,
     emailService,
-    hashPassword,
     idGenerator,
     getTenantRegistrationApprovalMode = () => TENANT_REGISTRATION_APPROVAL_MODES.AUTO_STANDARD,
     logger
 }) => {
-    return async ({ body, correlationId }) => {
+    return async ({ body, dgfyAccount, correlationId, metadata = {} }) => {
         const {
             name,
-            adminEmail,
-            adminPhone,
-            adminPassword,
-            email_otp_code: emailOtpCode,
-            plan = 'premium',
             subscriptionId,
-            complianceMode,
             workflowMode
         } = body || {};
-        const requestedPlan = normalizeRequestedTenantPlan(plan || resolveRegisteredTenantPlan());
+        const adminEmail = String(dgfyAccount?.email || '').trim().toLowerCase();
+        const adminPhone = String(dgfyAccount?.phone || '').trim();
+        const adminUsername = String(dgfyAccount?.first_name || dgfyAccount?.username || 'Admin').trim() || 'Admin';
+        const adminPasswordHash = dgfyAccount?.password_hash || null;
+        const plan = resolveRegisteredTenantPlan();
+        const complianceModeState = 'non_compliant_active';
+        const normalizedComplianceMode = 'non_compliant';
+        const requestedPlan = normalizeRequestedTenantPlan(plan);
         const normalizedPlan = resolveRegisteredTenantPlan();
-        const normalizedComplianceMode = typeof complianceMode === 'string'
-            ? complianceMode.trim().toLowerCase()
-            : '';
         const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
-        const complianceModeState = normalizedComplianceMode === 'compliant'
-            ? 'compliant_pending'
-            : normalizedComplianceMode === 'non_compliant'
-                ? 'non_compliant_active'
-                : null;
+        const workflowModeMissing = workflowMode === undefined || workflowMode === null || String(workflowMode).trim() === '';
         const adminEmailDomain = typeof adminEmail === 'string' && adminEmail.includes('@')
             ? adminEmail.split('@')[1].toLowerCase()
             : null;
@@ -74,15 +97,14 @@ export const buildRegisterCompanyRequestUseCase = ({
         try {
             await tracker.attempt();
 
-            const workflowModeMissing = workflowMode === undefined || workflowMode === null || String(workflowMode).trim() === '';
             const normalizedAdminPhone = normalizePhoneNumber(adminPhone);
-            if (!name || !adminEmail || !normalizedAdminPhone || !adminPassword || !complianceModeState || workflowModeMissing) {
+            if (!dgfyAccount?.id || !name || !adminEmail || !normalizedAdminPhone || !adminPasswordHash || workflowModeMissing) {
                 const missingFields = [
+                    !dgfyAccount?.id ? 'dgfyAccount' : null,
                     !name ? 'name' : null,
                     !adminEmail ? 'adminEmail' : null,
                     !normalizedAdminPhone ? 'adminPhone' : null,
-                    !adminPassword ? 'adminPassword' : null,
-                    !complianceModeState ? 'complianceMode' : null,
+                    !adminPasswordHash ? 'adminPasswordHash' : null,
                     workflowModeMissing ? 'workflowMode' : null
                 ].filter(Boolean);
 
@@ -97,7 +119,7 @@ export const buildRegisterCompanyRequestUseCase = ({
 
                 return fail(new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
-                    'Missing required fields: name, adminEmail, adminPhone, adminPassword, complianceMode, workflowMode',
+                    'A signed-in DGFY account, company name, and business industry are required.',
                     { statusCode: 400 }
                 ));
             }
@@ -116,42 +138,48 @@ export const buildRegisterCompanyRequestUseCase = ({
                 ));
             }
 
-            if (String(adminPassword).length < 8) {
+            if (!dgfyAccount.email_verified_at) {
                 await tracker.failed({
-                    failureCode: 'validation_failed',
-                    failureReason: 'short_admin_password',
-                    httpStatus: 400
+                    failureCode: 'authorization_failed',
+                    failureReason: 'dgfy_email_unverified',
+                    httpStatus: 403
                 });
 
                 return fail(new DomainError(
-                    DomainErrorCode.VALIDATION_FAILED,
-                    'Password must be at least 8 characters',
-                    { statusCode: 400 }
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'Verify your DGFY email before registering a company.',
+                    { statusCode: 403 }
                 ));
             }
 
-            await verifyEmailOtp({
-                purpose: EMAIL_OTP_PURPOSES.COMPANY_REGISTRATION,
-                email: adminEmail,
-                code: emailOtpCode,
-                tenantId: null
-            });
-
-            if (!['non_compliant', 'compliant'].includes(normalizedComplianceMode)) {
+            let legalAcknowledgement;
+            try {
+                legalAcknowledgement = assertDgfyLegalAcknowledgement({
+                    flow: DGFY_LEGAL_TERM_FLOWS.COMPANY_REGISTRATION,
+                    body
+                });
+            } catch (legalError) {
                 await tracker.failed({
-                    failureCode: 'validation_failed',
-                    failureReason: 'invalid_compliance_mode',
-                    httpStatus: 400,
-                    metadata: {
-                        compliance_mode: complianceMode
-                    }
+                    failureCode: 'terms_acknowledgement_required',
+                    failureReason: legalError.message,
+                    httpStatus: legalError.statusCode || 422,
+                    metadata: legalError.details || null
                 });
 
-                return fail(new DomainError(
-                    DomainErrorCode.VALIDATION_FAILED,
-                    'complianceMode must be either non_compliant or compliant.',
-                    { statusCode: 400 }
-                ));
+                return fail(legalError);
+            }
+
+            if (typeof dgfyAccountRepository?.recordLegalAcknowledgement !== 'function'
+                || typeof tenantAdminRepository?.transaction !== 'function') {
+                const persistenceError = buildLegalPersistenceError();
+                await tracker.failed({
+                    failureCode: 'legal_acknowledgement_persistence_unavailable',
+                    failureReason: persistenceError.message,
+                    httpStatus: persistenceError.statusCode,
+                    metadata: persistenceError.details || null
+                });
+
+                return fail(persistenceError);
             }
 
             if (!isWorkflowMode(workflowMode)) {
@@ -274,34 +302,67 @@ export const buildRegisterCompanyRequestUseCase = ({
             const dbName = `sku_tenant_${safeName}_${uuid.split('-')[0]}`;
             const subdomain = `${safeName}-${uuid.split('-')[0]}`;
             const companyToken = `token-${safeName}-${uuid.split('-')[0]}`;
-            const passwordHash = await hashPassword(adminPassword, 10);
+            try {
+                tenant = await tenantAdminRepository.transaction(async (transaction) => {
+                    const createdTenant = await tenantAdminRepository.createTenant({
+                        id: uuid,
+                        name,
+                        domain: subdomain,
+                        db_name: dbName,
+                        company_token: companyToken,
+                        status: shouldProvisionImmediately ? 'pending' : initialStatus,
+                        admin_email: adminEmail,
+                        admin_phone: normalizedAdminPhone,
+                        admin_password_hash: adminPasswordHash,
+                        plan: normalizedPlan,
+                        subscription_status: subscriptionStatus,
+                        paypal_subscription_id: validatedSubscriptionId,
+                        current_period_end: currentPeriodEnd,
+                        billing_cycle_anchor: billingCycleAnchor,
+                        payment_method: paymentMethod,
+                        compliance_mode_state: complianceModeState,
+                        compliance_mode_choice_required: false,
+                        compliance_mode_selected_at: new Date(),
+                        compliance_mode_selected_by: 'registration',
+                        compliance_policy_version: '2026.04.07',
+                        compliance_profile: {},
+                        settings: {
+                            workflow_mode: normalizedWorkflowMode
+                        }
+                    }, { transaction });
 
-            tenant = await tenantAdminRepository.createTenant({
-                id: uuid,
-                name,
-                domain: subdomain,
-                db_name: dbName,
-                company_token: companyToken,
-                status: shouldProvisionImmediately ? 'pending' : initialStatus,
-                admin_email: adminEmail,
-                admin_phone: normalizedAdminPhone,
-                admin_password_hash: passwordHash,
-                plan: normalizedPlan,
-                subscription_status: subscriptionStatus,
-                paypal_subscription_id: validatedSubscriptionId,
-                current_period_end: currentPeriodEnd,
-                billing_cycle_anchor: billingCycleAnchor,
-                payment_method: paymentMethod,
-                compliance_mode_state: complianceModeState,
-                compliance_mode_choice_required: false,
-                compliance_mode_selected_at: new Date(),
-                compliance_mode_selected_by: 'registration',
-                compliance_policy_version: '2026.04.07',
-                compliance_profile: {},
-                settings: {
-                    workflow_mode: normalizedWorkflowMode
-                }
-            });
+                    await dgfyAccountRepository.recordLegalAcknowledgement({
+                        ...legalAcknowledgement,
+                        dgfy_account_id: dgfyAccount.id,
+                        tenant_id: createdTenant.id,
+                        ip_address: metadata.ip_address || null,
+                        user_agent: metadata.user_agent || null,
+                        request_id: metadata.request_id || correlationId || null,
+                        accepted_at: new Date()
+                    }, { transaction });
+
+                    if (!shouldProvisionImmediately && dgfyAccountRepository?.upsertFounderMembership) {
+                        await dgfyAccountRepository.upsertFounderMembership({
+                            dgfyAccountId: dgfyAccount.id,
+                            tenantId: createdTenant.id,
+                            tenantUserId: null,
+                            role: 'admin'
+                        }, { transaction });
+                    }
+
+                    return createdTenant;
+                });
+            } catch (legalPersistenceError) {
+                const persistenceError = toLegalPersistenceFailure(legalPersistenceError);
+                await tracker.failed({
+                    failureCode: 'legal_acknowledgement_persistence_failed',
+                    failureReason: persistenceError.message,
+                    httpStatus: persistenceError.statusCode,
+                    metadata: persistenceError.details || null
+                });
+
+                return fail(persistenceError);
+            }
 
             if (!shouldProvisionImmediately) {
                 try {
@@ -324,9 +385,19 @@ export const buildRegisterCompanyRequestUseCase = ({
                     companyToken: tenant.company_token,
                     adminEmail: tenant.admin_email,
                     adminPhone: tenant.admin_phone,
+                    adminUsername,
                     adminPasswordHash: tenant.admin_password_hash,
                     workflowMode: normalizedWorkflowMode
                 });
+
+                if (dgfyAccountRepository?.upsertFounderMembership) {
+                    await dgfyAccountRepository.upsertFounderMembership({
+                        dgfyAccountId: dgfyAccount.id,
+                        tenantId: tenant.id,
+                        tenantUserId: provisionedTenant?.admin_user_id || null,
+                        role: 'admin'
+                    });
+                }
 
                 let emailSent = false;
                 if (emailService?.isEmailConfigured?.()) {
@@ -393,16 +464,16 @@ export const buildRegisterCompanyRequestUseCase = ({
                 payload: {
                     success: true,
                     message: `Your ${normalizedPlan} plan registration has been submitted for review. You will be notified once approved.`,
-                        data: {
-                            id: tenant.id,
-                            name: tenant.name,
-                            status: 'pending',
-                            plan: normalizedPlan,
-                            compliance_mode_state: complianceModeState,
-                            workflow_mode: normalizedWorkflowMode,
-                            company_token: tenant.company_token
-                        }
+                    data: {
+                        id: tenant.id,
+                        name: tenant.name,
+                        status: 'pending',
+                        plan: normalizedPlan,
+                        compliance_mode_state: complianceModeState,
+                        workflow_mode: normalizedWorkflowMode,
+                        company_token: tenant.company_token
                     }
+                }
             });
         } catch (error) {
             logger?.error?.('Registration request error:', error);

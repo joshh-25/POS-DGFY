@@ -183,6 +183,32 @@ const storefrontPromoSchema = Joi.object({
   validity_text: Joi.string().trim().max(120).allow('', null).optional(),
   active: Joi.boolean().default(false)
 }).optional();
+const businessHoursDaySchema = Joi.object({
+  enabled: Joi.boolean().required(),
+  open: Joi.string().trim().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).required().messages({
+    'string.pattern.base': 'Business hours opening time must use HH:mm format'
+  }),
+  close: Joi.string().trim().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).required().messages({
+    'string.pattern.base': 'Business hours closing time must use HH:mm format'
+  })
+});
+const storefrontBusinessHoursSchema = Joi.alternatives().try(
+  Joi.string().trim().max(120).allow(''),
+  Joi.object({
+    mode: Joi.string().valid('weekly').default('weekly'),
+    timezone: Joi.string().trim().max(80).default('Asia/Manila'),
+    weekly: Joi.object({
+      sun: businessHoursDaySchema.required(),
+      mon: businessHoursDaySchema.required(),
+      tue: businessHoursDaySchema.required(),
+      wed: businessHoursDaySchema.required(),
+      thu: businessHoursDaySchema.required(),
+      fri: businessHoursDaySchema.required(),
+      sat: businessHoursDaySchema.required()
+    }).required(),
+    display: Joi.string().trim().max(120).allow('').optional()
+  })
+);
 const storefrontCategoriesSchema = Joi.array().items(Joi.string().trim().min(1).max(60)).max(12).optional();
 const storefrontGalleryUrlSchema = Joi.string().trim().max(500).uri({ scheme: ['http', 'https'] }).allow('', null).optional();
 const storefrontGalleryPathSchema = Joi.string().trim().max(500).pattern(/^$|^storefront-assets\/[A-Za-z0-9/_\-.]+$/).allow(null).optional().messages({
@@ -287,7 +313,7 @@ export const updateSettingsSchema = Joi.object({
   storefront_about: Joi.string().trim().max(1000).allow('').optional(),
   storefront_phone: Joi.string().trim().max(50).allow('').optional(),
   storefront_email: Joi.string().trim().email({ tlds: { allow: false } }).max(120).allow('').optional(),
-  storefront_hours: Joi.string().trim().max(120).allow('').optional(),
+  storefront_hours: storefrontBusinessHoursSchema.optional(),
   storefront_why_choose_us: storefrontWhyChooseUsSchema,
   storefront_social_links: storefrontSocialLinksSchema,
   storefront_review_highlights: storefrontReviewHighlightsSchema,
@@ -424,7 +450,7 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     storefront_about: Joi.string().trim().max(1000).allow(''),
     storefront_phone: Joi.string().trim().max(50).allow(''),
     storefront_email: Joi.string().trim().email({ tlds: { allow: false } }).max(120).allow(''),
-    storefront_hours: Joi.string().trim().max(120).allow(''),
+    storefront_hours: storefrontBusinessHoursSchema,
     storefront_why_choose_us: storefrontWhyChooseUsSchema,
     storefront_social_links: storefrontSocialLinksSchema,
     storefront_review_highlights: storefrontReviewHighlightsSchema,

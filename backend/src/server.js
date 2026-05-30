@@ -617,6 +617,9 @@ app.use('/uploads', express.static(join(__dirname, '..', 'uploads'), {
 }));
 
 // Tenant Resolution & Context Middleware (Must be before API routes)
+import dgfyRoutes from './routes/dgfy.js';
+app.use('/api/v1/dgfy', dgfyRoutes);
+
 app.use(tenantHandler);
 
 // API routes

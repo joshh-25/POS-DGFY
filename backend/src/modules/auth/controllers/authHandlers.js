@@ -73,7 +73,7 @@ export const register = async (req, res, next) => {
   }
 };
 
-export const requestAuthEmailOtp = async (req, res, next) => {
+export const requestAuthEmailOtp = async (req, res) => {
   try {
     const { purpose, email, invitation_token: invitationToken } = req.validatedData;
     let targetEmail = email;

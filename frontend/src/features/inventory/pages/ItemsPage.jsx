@@ -484,8 +484,17 @@ export default function Items() {
   const checklistFilteredCount = posChecklistItems.length;
 
   const buildBulkImagePreview = useCallback((files = [], surface = 'pos') => {
+    const normalizeImageMatchKey = (value) => String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\.[a-z0-9]+$/i, '')
+      .replace(/[^a-z0-9]+/g, '');
     const skuToItem = new Map(items.map((item) => [
       String(item?.sku_code || '').trim().toUpperCase(),
+      item
+    ]));
+    const nameToItem = new Map(items.map((item) => [
+      normalizeImageMatchKey(item?.name),
       item
     ]));
     const skuCounts = new Map();
@@ -502,7 +511,7 @@ export default function Items() {
       const skuCode = (dotIndex > 0 ? filename.slice(0, dotIndex) : filename).trim();
       const skuKey = skuCode.toUpperCase();
       const duplicate = (skuCounts.get(skuKey) || 0) > 1;
-      const item = skuToItem.get(skuKey);
+      const item = skuToItem.get(skuKey) || nameToItem.get(normalizeImageMatchKey(skuCode));
       const storefrontConfig = item ? resolveStorefrontConfig(item) : null;
       const storefrontVisible = storefrontConfig?.storefront_visible !== false;
       const priceMissing = item ? !hasExplicitSalePrice(item) : false;
@@ -2127,8 +2136,8 @@ export default function Items() {
                 <div className="rounded-lg border border-slate-200 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">POS Images by SKU Filename</p>
-                      <p className="text-xs text-slate-500">Example: FG-001.jpg matches sku_code FG-001 and keeps POS visibility unchanged.</p>
+                      <p className="text-sm font-semibold text-slate-900">POS Images by SKU or Product Name Filename</p>
+                      <p className="text-xs text-slate-500">Examples: FG-001.jpg matches sku_code FG-001, and DGFY Demo Juice.jpg matches item name.</p>
                     </div>
                     <label className="cursor-pointer rounded border border-slate-200 px-3 py-1 text-xs hover:bg-slate-50">
                       Choose Images

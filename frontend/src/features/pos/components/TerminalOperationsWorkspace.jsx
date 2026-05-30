@@ -106,21 +106,21 @@ const QUEUE_OPERATION_LABELS = {
 
 function WorkspaceShell({ icon: Icon, title, subtitle, children, terminalUser, locked }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
         <div className="flex items-start gap-3">
-          <div className="rounded-lg border border-teal-200 bg-teal-50 p-2 text-teal-700">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-2 text-[#1A4E8D]">
             <Icon className="h-5 w-5" />
           </div>
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">{title}</h2>
-            <p className="text-sm text-slate-600">{subtitle}</p>
+          <div className="min-w-0">
+            <h2 className="text-xl font-black tracking-tight text-[#0F172A]">{title}</h2>
+            <p className="mt-1 text-sm leading-5 text-[#334155]">{subtitle}</p>
           </div>
         </div>
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-right">
-          <p className="text-[11px] uppercase tracking-wide text-slate-500">Operator</p>
-          <p className="text-sm font-semibold text-slate-900">{terminalUser?.username || 'Terminal Locked'}</p>
-          <p className={`text-[11px] ${locked ? 'text-amber-700' : 'text-emerald-700'}`}>
+          <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Operator</p>
+          <p className="text-sm font-black text-[#0F172A]">{terminalUser?.username || 'Terminal Locked'}</p>
+          <p className={`text-[11px] font-semibold ${locked ? 'text-amber-700' : 'text-emerald-700'}`}>
             {locked ? 'Locked' : 'Active'}
           </p>
         </div>
@@ -156,15 +156,15 @@ function IncomingQueueWorkspace({
 
   return (
     <div id={sectionId} className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-        <p className="text-sm text-slate-700">
-          Location scope: <span className="font-semibold text-slate-900">{selectedLocationName}</span>
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-blue-50/60 px-3 py-2">
+        <p className="text-sm text-[#334155]">
+          Location scope: <span className="font-extrabold text-[#0F172A]">{selectedLocationName}</span>
         </p>
         <Button type="button" variant="outline" onClick={() => refreshIncomingOrders?.()} disabled={incomingOrdersState?.loading || locked}>
           {incomingOrdersState?.loading ? 'Refreshing...' : 'Refresh Queue'}
         </Button>
       </div>
-      <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+      <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-[#64748B]">
         Completed or cancelled online orders move to History/Receipt Preview. Incoming Queue shows active fulfillment statuses only.
       </p>
 
@@ -190,10 +190,10 @@ function IncomingQueueWorkspace({
               ? `https://maps.google.com/?q=${deliveryCoords.latitude},${deliveryCoords.longitude}`
               : '';
             return (
-              <div key={`incoming-workspace-${order.pos_transaction_id}`} className="rounded-xl border border-slate-200 bg-white p-3">
+              <div key={`incoming-workspace-${order.pos_transaction_id}`} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/70">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-slate-900">{order.customer_name || 'Guest Buyer'}</p>
-                  <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+                  <p className="text-sm font-extrabold text-[#0F172A]">{order.customer_name || 'Guest Buyer'}</p>
+                  <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-extrabold text-[#1A4E8D]">
                     {FULFILLMENT_STATUS_LABELS[order.fulfillment_status] || order.fulfillment_status || 'Unknown'}
                   </span>
                 </div>
@@ -207,7 +207,7 @@ function IncomingQueueWorkspace({
                       href={mapLink}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="font-semibold text-teal-700 underline"
+                    className="font-semibold text-[#1A4E8D] underline"
                     >
                       Open pin in map
                     </a>

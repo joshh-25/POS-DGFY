@@ -86,6 +86,10 @@ const burgerItem = {
 };
 
 describe('storefront F&B modifier checkout contract', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('computes quote totals from database-backed F&B modifier deltas and snapshots selected options', async () => {
     const repository = buildRepository([burgerItem]);
     const useCase = buildStoreCartQuoteUseCase({ storeRepository: repository });
@@ -120,6 +124,141 @@ describe('storefront F&B modifier checkout contract', () => {
         option_name: 'Cheddar',
         price_delta: 15
       })]
+    }));
+  });
+
+  it('blocks product quote outside configured storefront business hours', async () => {
+    const repository = buildRepository([burgerItem], {
+      getSettingsByKeys: jest.fn().mockResolvedValue([
+        ...customerAccessSettings,
+        {
+          setting_key: 'storefront_hours',
+          setting_value: JSON.stringify({
+            mode: 'weekly',
+            timezone: 'Asia/Manila',
+            weekly: {
+              sun: { enabled: false, open: '09:00', close: '18:00' },
+              mon: { enabled: false, open: '09:00', close: '18:00' },
+              tue: { enabled: true, open: '09:00', close: '18:00' },
+              wed: { enabled: true, open: '09:00', close: '18:00' },
+              thu: { enabled: true, open: '09:00', close: '18:00' },
+              fri: { enabled: true, open: '09:00', close: '18:00' },
+              sat: { enabled: true, open: '09:00', close: '18:00' }
+            }
+          })
+        }
+      ])
+    });
+    const useCase = buildStoreCartQuoteUseCase({ storeRepository: repository });
+
+    const result = await useCase({
+      payload: {
+        location_id: 4,
+        order_method: 'pickup',
+        scheduled_for: '2026-06-01T10:00:00+08:00',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.details.reason_code).toBe('OUTSIDE_STOREFRONT_BUSINESS_HOURS');
+    expect(repository.findSellableItemsByIds).not.toHaveBeenCalled();
+  });
+
+  it('marks guest checkout with a new email as eligible for DGFY account signup', async () => {
+    const repository = buildRepository([burgerItem], {
+      findCustomerByEmail: jest.fn().mockResolvedValue(null),
+      getOrderById: jest.fn().mockResolvedValue({
+        pos_transaction_id: 501,
+        tracking_pin: 'SK-ABC123',
+        invoice_number: 'INV-000001',
+        order_source: 'online_store',
+        order_method: 'pickup',
+        fulfillment_status: 'placed',
+        status: 'completed',
+        customer_name: 'Ana Guest',
+        customer_phone: '09170000000',
+        customer_email: 'guest@example.test',
+        store_customer_id: null,
+        total_amount: 101,
+        lines: []
+      })
+    });
+    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+
+    const result = await useCase({
+      tenantId,
+      payload: {
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        idempotency_key: 'guest-new-email-checkout',
+        customer_name: 'Ana Guest',
+        customer_phone: '09170000000',
+        customer_email: 'guest@example.test',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(true);
+    expect(repository.findCustomerByEmail).toHaveBeenCalledWith('guest@example.test', expect.any(Object));
+    expect(result.data.account_action).toEqual(expect.objectContaining({
+      type: 'offer_signup',
+      allow_image_download: true,
+      show_signup: true,
+      claim_token: expect.any(String)
+    }));
+  });
+
+  it('marks authenticated DGFY customer checkout as linked without signup prompt', async () => {
+    const repository = buildRepository([burgerItem], {
+      findCustomerByEmail: jest.fn(),
+      getOrderById: jest.fn().mockResolvedValue({
+        pos_transaction_id: 502,
+        tracking_pin: 'SK-LINKED',
+        invoice_number: 'INV-000002',
+        order_source: 'online_store',
+        order_method: 'pickup',
+        fulfillment_status: 'placed',
+        status: 'completed',
+        customer_name: 'Ada Byron Lovelace',
+        customer_phone: '+639123456789',
+        customer_email: 'ada@example.test',
+        store_customer_id: 55,
+        total_amount: 101,
+        lines: []
+      })
+    });
+    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+
+    const result = await useCase({
+      tenantId,
+      storeCustomer: {
+        customer_id: 55,
+        dgfy_account_id: 'dgfy-1',
+        name: 'Ada Byron Lovelace',
+        email: 'ada@example.test',
+        phone: '+639123456789'
+      },
+      payload: {
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        idempotency_key: 'authenticated-checkout',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(true);
+    expect(repository.findCustomerByEmail).not.toHaveBeenCalled();
+    expect(repository.createOnlineTransactionWithLines.mock.calls[0][0].header.store_customer_id).toBe(55);
+    expect(result.data.account_action).toEqual(expect.objectContaining({
+      type: 'linked_authenticated',
+      allow_image_download: true,
+      show_signup: false,
+      claim_token: null
     }));
   });
 
@@ -411,5 +550,157 @@ describe('storefront F&B modifier checkout contract', () => {
     expect(result.error.details).toEqual(expect.objectContaining({
       reason_code: 'FNB_KITCHEN_ORDER_UNAVAILABLE'
     }));
+  });
+
+  it('allows scheduled checkout inside configured storefront hours', async () => {
+    const repository = buildRepository([burgerItem], {
+      getSettingsByKeys: jest.fn().mockResolvedValue([
+        ...customerAccessSettings,
+        { setting_key: 'storefront_hours', setting_value: '9:00 AM - 6:00 PM daily' }
+      ])
+    });
+    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+
+    const result = await useCase({
+      tenantId,
+      payload: {
+        idempotency_key: 'store-hours-inside',
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        scheduled_for: '2026-05-25T10:30:00',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects scheduled checkout outside configured storefront hours', async () => {
+    const repository = buildRepository([burgerItem], {
+      getSettingsByKeys: jest.fn().mockResolvedValue([
+        ...customerAccessSettings,
+        { setting_key: 'storefront_hours', setting_value: '9:00 AM - 6:00 PM daily' }
+      ])
+    });
+    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+
+    const result = await useCase({
+      tenantId,
+      payload: {
+        idempotency_key: 'store-hours-outside',
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        scheduled_for: '2026-05-25T20:00:00',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.message).toBe('scheduled_for is outside store business hours');
+    expect(result.error.details).toEqual(expect.objectContaining({
+      reason_code: 'OUTSIDE_STOREFRONT_BUSINESS_HOURS'
+    }));
+  });
+
+  it('rejects immediate checkout outside structured storefront business hours', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-25T20:00:00+08:00'));
+    const structuredHours = {
+      mode: 'weekly',
+      timezone: 'Asia/Manila',
+      weekly: {
+        sun: { enabled: false, open: '09:00', close: '18:00' },
+        mon: { enabled: true, open: '09:00', close: '18:00' },
+        tue: { enabled: true, open: '09:00', close: '18:00' },
+        wed: { enabled: true, open: '09:00', close: '18:00' },
+        thu: { enabled: true, open: '09:00', close: '18:00' },
+        fri: { enabled: true, open: '09:00', close: '18:00' },
+        sat: { enabled: true, open: '09:00', close: '18:00' }
+      },
+      display: 'Mon-Sat 9:00 AM - 6:00 PM'
+    };
+    const repository = buildRepository([burgerItem], {
+      getSettingsByKeys: jest.fn().mockResolvedValue([
+        ...customerAccessSettings,
+        { setting_key: 'storefront_hours', setting_value: JSON.stringify(structuredHours) }
+      ])
+    });
+    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+
+    const result = await useCase({
+      tenantId,
+      payload: {
+        idempotency_key: 'store-hours-immediate-outside',
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.message).toBe('Storefront is outside business hours and not accepting orders');
+    jest.useRealTimers();
+  });
+
+  it('does not block scheduled checkout when storefront hours are malformed', async () => {
+    const repository = buildRepository([burgerItem], {
+      getSettingsByKeys: jest.fn().mockResolvedValue([
+        ...customerAccessSettings,
+        { setting_key: 'storefront_hours', setting_value: 'open by appointment' }
+      ])
+    });
+    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+
+    const result = await useCase({
+      tenantId,
+      payload: {
+        idempotency_key: 'store-hours-malformed',
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        scheduled_for: '2026-05-25T20:00:00',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('supports overnight storefront hours windows', async () => {
+    const repository = buildRepository([burgerItem], {
+      getSettingsByKeys: jest.fn().mockResolvedValue([
+        ...customerAccessSettings,
+        { setting_key: 'storefront_hours', setting_value: '10:00 PM - 2:00 AM daily' }
+      ])
+    });
+    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+
+    const result = await useCase({
+      tenantId,
+      payload: {
+        idempotency_key: 'store-hours-overnight',
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        scheduled_for: '2026-05-25T23:30:00',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(true);
   });
 });

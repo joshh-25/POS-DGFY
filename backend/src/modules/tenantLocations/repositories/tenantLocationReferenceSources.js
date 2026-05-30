@@ -112,5 +112,37 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         association: 'ServiceBookingHold.location',
         foreignKeys: ['location_id'],
         where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        key: 'hospitalityRoomTypes',
+        label: 'hospitality room types',
+        modelName: 'HospitalityRoomType',
+        association: 'HospitalityRoomType.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        key: 'hospitalityRooms',
+        label: 'hospitality rooms',
+        modelName: 'HospitalityRoom',
+        association: 'HospitalityRoom.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        key: 'hospitalityPropertyAmenities',
+        label: 'hospitality property amenities',
+        modelName: 'HospitalityPropertyAmenity',
+        association: 'HospitalityPropertyAmenity.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        key: 'hospitalityFacilities',
+        label: 'hospitality facilities',
+        modelName: 'HospitalityFacility',
+        association: 'HospitalityFacility.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
     }
 ]);

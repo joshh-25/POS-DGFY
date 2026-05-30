@@ -60,6 +60,25 @@ const { default: app } = await import('../src/server.js');
 const { sequelize, User, AiUsageLog, AIConversation } = await import('../src/models/index.js');
 const { generateToken } = await import('../src/services/authService.js');
 
+jest.setTimeout(120000);
+
+const ensureColumn = async (tableName, columnName, definitionSql, afterColumnName = null) => {
+    const [rows] = await sequelize.query(
+        `SELECT COUNT(*) AS count
+         FROM information_schema.columns
+         WHERE table_schema = DATABASE()
+           AND table_name = ?
+           AND column_name = ?`,
+        { replacements: [tableName, columnName] }
+    );
+
+    if (Number(rows?.[0]?.count || 0) > 0) return;
+    const afterClause = afterColumnName ? ` AFTER \`${afterColumnName}\`` : '';
+    await sequelize.query(
+        `ALTER TABLE \`${tableName}\` ADD COLUMN \`${columnName}\` ${definitionSql}${afterClause}`
+    );
+};
+
 describe('AI Cost Control Integration Test', () => {
     let user;
     let token;
@@ -68,8 +87,8 @@ describe('AI Cost Control Integration Test', () => {
     const email = `ai-${uniqueSuffix}@test.com`;
 
     beforeAll(async () => {
-        // Sync DB
-        await sequelize.sync();
+        await sequelize.authenticate();
+        await ensureColumn('users', 'role_preset_key', 'VARCHAR(120) NULL', 'role');
         await User.destroy({ where: { username: 'ai_user' } }).catch(() => null);
         await User.destroy({ where: { email } }).catch(() => null);
 
@@ -77,6 +96,7 @@ describe('AI Cost Control Integration Test', () => {
         user = await User.create({
             username,
             email,
+            phone_number: '+63 917 000 4000',
             password_hash: 'hash',
             role: 'manager',
             is_active: true,

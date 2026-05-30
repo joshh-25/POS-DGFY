@@ -220,6 +220,8 @@ Current booking submission continues to rely on:
 
 For customers booking more than one service at once, the storefront submits `/api/v1/store/services/bookings/batch`. Each draft keeps its own service item, schedule, quantity, intake responses, payment timing, and notes. The backend creates every booking in the batch or rejects the whole batch with the failed draft index; customers are not required to wait for an active booking to complete before submitting another valid booking. Public service booking mutations send an idempotency key so a retry of the same request replays the existing booking response instead of creating duplicates.
 
+Storefront service booking, booking-hold, and batch-booking mutations also honor the tenant `storefront_hours` weekly schedule. A storefront request whose selected `start_at`/`scheduled_for` falls outside configured business hours fails closed with `OUTSIDE_STOREFRONT_BUSINESS_HOURS` before service lookup, hold creation, or booking persistence.
+
 Service `quantity > 1` requires a capacity anchor. The current anchor is an active service resource assigned to the service and compatible with the requested location, schedule, blackout dates, and weekly availability. When the storefront does not send `resource_id`, the backend can auto-select a matching assigned resource with enough remaining capacity. Provider-only and location-only service bookings remain effective capacity `1`.
 
 Batch booking responses include every booking reference and every payment handoff. Storefront confirmation must render all references and all `payments[]` checkout links; the singular `payment` field is treated as summary/backward compatibility only.

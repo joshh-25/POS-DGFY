@@ -18,11 +18,14 @@
  */
 
 import request from 'supertest';
+import { jest } from '@jest/globals';
 import app from '../src/server.js';
 import db from '../src/models/index.js';
 import dbStore from '../src/utils/dbStore.js';
 import { DEFAULT_ROLE_PERMISSIONS } from '../src/config/permissions.js';
 import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
+
+jest.setTimeout(120000);
 
 // ─── Shared state ─────────────────────────────────────────────────────────────
 let managerToken;   // JWT for a 'manager' user (has CREATE_ADJUSTMENT permission)
@@ -44,6 +47,7 @@ beforeAll(async () => {
     const managerCreds = {
         username: `void_mgr_${TIMESTAMP}`,
         email: `void_mgr_${TIMESTAMP}@test.com`,
+        phone_number: '+63 917 000 7000',
         password: 'Manager123!'
     };
     await request(app)
@@ -73,6 +77,7 @@ beforeAll(async () => {
     const viewerCreds = {
         username: `void_viewer_${TIMESTAMP}`,
         email: `void_viewer_${TIMESTAMP}@test.com`,
+        phone_number: '+63 917 000 7001',
         password: 'Viewer123!'
     };
     await request(app)
@@ -366,6 +371,7 @@ describe('POST /api/v1/stock-movements/:id/void — Real HTTP Integration', () =
             const creds = {
                 username: `void_tmt_${TIMESTAMP}`,
                 email: `void_tmt_${TIMESTAMP}@tenant.test`,
+                phone_number: '+63 917 000 7002',
                 password: 'TenantMgr1!'
             };
 
@@ -513,6 +519,7 @@ describe('POST /api/v1/stock-movements/:id/void — Real HTTP Integration', () =
                 const creds = {
                     username: `void_iso_${label}_${TIMESTAMP}`,
                     email: `void_iso_${label}_${TIMESTAMP}@iso.test`,
+                    phone_number: label === 'a' ? '+63 917 000 7003' : '+63 917 000 7004',
                     password: 'IsoManager1!'
                 };
                 await request(app)

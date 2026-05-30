@@ -259,4 +259,71 @@ describe('storefrontDiscoveryIndexService catalog visibility', () => {
         expect(mockBumpCacheVersion).not.toHaveBeenCalled();
         expect(mockInvalidateSharedSignature).not.toHaveBeenCalled();
     });
+
+    it('falls back to global stock when item_location_stocks is missing during index sync', async () => {
+        const SystemSetting = {
+            findAll: jest.fn().mockResolvedValue([
+                { setting_key: 'store_is_visible', setting_value: 'true' },
+                { setting_key: 'store_tenant_slug', setting_value: 'location-stock-fallback' },
+                { setting_key: 'ops_workflow_mode', setting_value: 'simple' }
+            ])
+        };
+        const TenantLocation = {
+            findAll: jest.fn().mockResolvedValue([
+                {
+                    location_id: 10,
+                    name: 'Main',
+                    address_line: 'Main Road',
+                    latitude: 10.72,
+                    longitude: 122.56,
+                    is_active: true,
+                    is_primary_storefront: true,
+                    is_open: true
+                }
+            ])
+        };
+        const Item = {
+            findAll: jest.fn().mockResolvedValue([
+                {
+                    item_id: 2,
+                    name: 'Public Storefront Item',
+                    sku_code: 'SHOW-1',
+                    description: 'Storefront visible',
+                    category: 'product',
+                    product_type: 'finished_goods',
+                    current_stock: 3,
+                    storefrontCatalogOverride: { storefront_visible: true }
+                }
+            ])
+        };
+        const ItemLocationStock = {
+            findAll: jest.fn().mockRejectedValue({
+                original: {
+                    code: 'ER_NO_SUCH_TABLE',
+                    sqlMessage: "Table 'tenant_db.item_location_stocks' doesn't exist"
+                }
+            })
+        };
+        mockGetTenantModels.mockReturnValue({
+            SystemSetting,
+            TenantLocation,
+            Item,
+            PosCatalogOverride: null,
+            StorefrontCatalogOverride: { name: 'StorefrontCatalogOverride' },
+            ServiceItemDetail: null,
+            ItemLocationStock
+        });
+
+        const result = await syncStorefrontDiscoveryIndexForTenant({ tenantId: 'tenant-1' });
+
+        expect(result.status).toBe('upserted');
+        const snapshot = mockIndexCreate.mock.calls[0][0];
+        expect(snapshot.item_search_snapshot).toEqual([
+            expect.objectContaining({
+                item_id: 2,
+                matching_location_ids: [10],
+                in_stock_location_ids: [10]
+            })
+        ]);
+    });
 });

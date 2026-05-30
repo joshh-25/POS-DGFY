@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { BarChart3, CalendarDays, ChevronDown, Globe, ListFilter, MoreVertical, Receipt, RotateCcw, Search, Store, UserRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -8,6 +9,47 @@ const ORDER_SOURCE_LABELS = {
     in_store: 'In-Store',
     online_store: 'Online Store'
 };
+
+const SOURCE_BADGE_CLASSNAMES = {
+    in_store: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    online_store: 'border-sky-200 bg-sky-50 text-sky-700'
+};
+
+const formatDateTime = (value) => {
+    if (!value) return '-';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return '-';
+    return {
+        date: parsed.toLocaleDateString(),
+        time: parsed.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })
+    };
+};
+
+const baseSelectClassName = 'w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 pr-10 text-[13px] font-medium text-[#334155] shadow-sm shadow-slate-100 outline-none transition focus:border-[#2563EB] focus:ring-4 focus:ring-blue-100';
+const fieldLabelClassName = 'text-[13px] font-semibold text-[#334155]';
+
+function SelectField({ label, value, onChange, children }) {
+    return (
+        <label className="block">
+            <span className={fieldLabelClassName}>{label}</span>
+            <div className="relative mt-2">
+                <select value={value} onChange={onChange} className={baseSelectClassName}>
+                    {children}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            </div>
+        </label>
+    );
+}
+
+function IconInput({ icon: Icon, children }) {
+    return (
+        <div className="relative mt-2">
+            <Icon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+            {children}
+        </div>
+    );
+}
 
 export default function POSTransactionHistoryPanel({
     historySearch,
@@ -35,153 +77,403 @@ export default function POSTransactionHistoryPanel({
     historyPage,
     historyPagination
 }) {
+    const [openActionMenuId, setOpenActionMenuId] = useState(null);
+    const [expandedRowId, setExpandedRowId] = useState(null);
+    const [isTabletViewport, setIsTabletViewport] = useState(false);
+    const totalEntries = Number(historyPagination?.total || historyRows.length || 0);
+    const pageSize = Number(historyPagination?.limit || historyRows.length || 10);
+    const pageStart = totalEntries === 0 ? 0 : ((Math.max(1, historyPage) - 1) * pageSize) + 1;
+    const pageEnd = Math.min(totalEntries || historyRows.length, pageStart + Math.max(0, historyRows.length - 1));
+    const totalPages = Math.max(1, Number(historyPagination?.totalPages || 1));
+
+    const resetFilters = () => {
+        setHistorySearch('');
+        setHistoryStatus('all');
+        setHistoryPaymentType('all');
+        setHistoryOrderMethod('all');
+        setHistoryOrderSource('all');
+        setHistoryCashierId('');
+        setHistoryDateFrom('');
+        setHistoryDateTo('');
+        loadHistory(1);
+    };
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+        const media = window.matchMedia('(min-width: 768px) and (max-width: 1279px)');
+        const sync = (event) => setIsTabletViewport(Boolean(event.matches));
+        sync(media);
+        if (typeof media.addEventListener === 'function') {
+            media.addEventListener('change', sync);
+            return () => media.removeEventListener('change', sync);
+        }
+        media.addListener(sync);
+        return () => media.removeListener(sync);
+    }, []);
+
     return (
-        <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-4 shadow-sm">
-            <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-                <div>
-                    <h2 className="text-xl font-bold text-slate-900">POS Sales History</h2>
-                    <p className="text-sm text-slate-600">Track invoice times, cashier accountability, and receipt totals.</p>
+        <section className="space-y-5 rounded-2xl bg-white p-2 lg:p-0">
+                <div className="flex flex-col gap-4 border-b border-slate-200 px-4 pb-5 pt-3 xl:flex-row xl:items-start xl:justify-between lg:px-6">
+                    <div className="flex items-start gap-4">
+                        <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-gradient-to-b from-[#2563EB] to-[#1D4ED8] text-white shadow-lg shadow-blue-900/20">
+                            <Receipt className="h-7 w-7" />
+                        </div>
+                        <div className="min-w-0">
+                            <h2 className="text-[22px] font-black tracking-tight text-[#0F172A]">POS Sales History</h2>
+                            <p className="mt-1 text-[13px] text-[#334155]">
+                                Track invoice times, cashier accountability, and receipt totals.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex w-full flex-col gap-3 lg:flex-row xl:w-auto">
+                        <IconInput icon={Search}>
+                            <Input
+                                value={historySearch}
+                                onChange={(event) => setHistorySearch(event.target.value)}
+                                placeholder="Search by invoice number..."
+                                className="h-11 rounded-xl border-slate-200 bg-white pl-12 pr-4 text-[13px] text-[#334155] shadow-sm shadow-slate-100 focus-visible:border-[#2563EB] focus-visible:ring-4 focus-visible:ring-blue-100 lg:min-w-[24rem]"
+                            />
+                        </IconInput>
+                        <Button
+                            type="button"
+                            data-testid="pos-history-open-sales-report"
+                            onClick={() => openInSalesReport()}
+                            className="h-11 rounded-xl bg-[#1A4E8D] px-5 text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 hover:bg-[#143F73]"
+                        >
+                            <BarChart3 className="mr-2 h-5 w-5" />
+                            Open Sales Report
+                        </Button>
+                    </div>
                 </div>
-                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-                    <Input
-                        value={historySearch}
-                        onChange={(event) => setHistorySearch(event.target.value)}
-                        placeholder="Search by invoice number..."
-                        className="sm:max-w-xs"
-                    />
-                    <Button type="button" variant="outline" data-testid="pos-history-open-sales-report" onClick={() => openInSalesReport()}>
-                        Open in Sales Report
-                    </Button>
+
+                <div className="px-4 lg:px-6">
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
+                        <SelectField label="Status" value={historyStatus} onChange={(event) => setHistoryStatus(event.target.value)}>
+                            <option value="all">All Status</option>
+                            <option value="completed">Completed</option>
+                            <option value="voided">Voided</option>
+                        </SelectField>
+
+                        <SelectField label="Payments" value={historyPaymentType} onChange={(event) => setHistoryPaymentType(event.target.value)}>
+                            <option value="all">All Payments</option>
+                            <option value="cash">Cash</option>
+                            <option value="gcash">GCash</option>
+                            <option value="maya">Maya</option>
+                            <option value="card">Card</option>
+                            <option value="bank_transfer">Bank Transfer</option>
+                        </SelectField>
+
+                        <SelectField label="Order Methods" value={historyOrderMethod} onChange={(event) => setHistoryOrderMethod(event.target.value)}>
+                            <option value="all">All Order Methods</option>
+                            <option value="dine_in">Dine In</option>
+                            <option value="takeout">Takeout</option>
+                            <option value="pickup">Pickup</option>
+                            <option value="delivery">Delivery</option>
+                            <option value="appointment">Appointment</option>
+                        </SelectField>
+
+                        <SelectField label="Sources" value={historyOrderSource} onChange={(event) => setHistoryOrderSource(event.target.value)}>
+                            <option value="all">All Sources</option>
+                            <option value="in_store">In-Store</option>
+                            <option value="online_store">Online Store</option>
+                        </SelectField>
+
+                        <label className="block">
+                            <span className={fieldLabelClassName}>Cashier ID</span>
+                            <IconInput icon={UserRound}>
+                                <Input
+                                    type="number"
+                                    min="1"
+                                    value={historyCashierId}
+                                    onChange={(event) => setHistoryCashierId(event.target.value)}
+                                    placeholder="Search cashier ID..."
+                                    className="h-11 rounded-xl border-slate-200 bg-white pl-12 pr-4 text-[13px] text-[#334155] shadow-sm shadow-slate-100 focus-visible:border-[#2563EB] focus-visible:ring-4 focus-visible:ring-blue-100"
+                                />
+                            </IconInput>
+                        </label>
+
+                        <label className="block">
+                            <span className={fieldLabelClassName}>Date From</span>
+                            <IconInput icon={CalendarDays}>
+                                <Input
+                                    type="date"
+                                    value={historyDateFrom}
+                                    max={historyDateTo || undefined}
+                                    onChange={(event) => setHistoryDateFrom(event.target.value)}
+                                    placeholder="Date from"
+                                    className="h-11 rounded-xl border-slate-200 bg-white pl-12 pr-4 text-[13px] text-[#334155] shadow-sm shadow-slate-100 focus-visible:border-[#2563EB] focus-visible:ring-4 focus-visible:ring-blue-100"
+                                />
+                            </IconInput>
+                        </label>
+
+                        <label className="block">
+                            <span className={fieldLabelClassName}>Date To</span>
+                            <IconInput icon={CalendarDays}>
+                                <Input
+                                    type="date"
+                                    value={historyDateTo}
+                                    min={historyDateFrom || undefined}
+                                    max={toDateInput(new Date())}
+                                    onChange={(event) => setHistoryDateTo(event.target.value)}
+                                    placeholder="Date to"
+                                    className="h-11 rounded-xl border-slate-200 bg-white pl-12 pr-4 text-[13px] text-[#334155] shadow-sm shadow-slate-100 focus-visible:border-[#2563EB] focus-visible:ring-4 focus-visible:ring-blue-100"
+                                />
+                            </IconInput>
+                        </label>
+
+                        <div className="flex items-end gap-3 xl:col-start-4">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={resetFilters}
+                                className="h-11 flex-1 rounded-xl border-slate-200 bg-white text-[13px] font-extrabold text-[#334155] hover:bg-slate-50"
+                            >
+                                <RotateCcw className="mr-2 h-5 w-5" />
+                                Reset
+                            </Button>
+                            <Button
+                                type="button"
+                                onClick={() => loadHistory(1)}
+                                className="h-11 flex-[1.15] rounded-xl bg-[#1A4E8D] text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 hover:bg-[#143F73]"
+                            >
+                                <ListFilter className="mr-2 h-5 w-5" />
+                                Apply Filters
+                            </Button>
+                        </div>
+                    </div>
                 </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-3">
-                <select value={historyStatus} onChange={(event) => setHistoryStatus(event.target.value)} className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm">
-                    <option value="all">All Status</option>
-                    <option value="completed">Completed</option>
-                    <option value="voided">Voided</option>
-                </select>
-                <select value={historyPaymentType} onChange={(event) => setHistoryPaymentType(event.target.value)} className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm">
-                    <option value="all">All Payments</option>
-                    <option value="cash">Cash</option>
-                    <option value="gcash">GCash</option>
-                    <option value="maya">Maya</option>
-                    <option value="card">Card</option>
-                    <option value="bank_transfer">Bank Transfer</option>
-                </select>
-                <select value={historyOrderMethod} onChange={(event) => setHistoryOrderMethod(event.target.value)} className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm">
-                    <option value="all">All Order Methods</option>
-                    <option value="dine_in">Dine In</option>
-                    <option value="takeout">Takeout</option>
-                    <option value="pickup">Pickup</option>
-                    <option value="delivery">Delivery</option>
-                    <option value="appointment">Appointment</option>
-                </select>
-                <select value={historyOrderSource} onChange={(event) => setHistoryOrderSource(event.target.value)} className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm">
-                    <option value="all">All Sources</option>
-                    <option value="in_store">In-Store</option>
-                    <option value="online_store">Online Store</option>
-                </select>
-                <Input type="number" min="1" value={historyCashierId} onChange={(event) => setHistoryCashierId(event.target.value)} placeholder="Cashier ID" />
-                <Input type="date" value={historyDateFrom} max={historyDateTo || undefined} onChange={(event) => setHistoryDateFrom(event.target.value)} placeholder="Date from" />
-                <Input type="date" value={historyDateTo} min={historyDateFrom || undefined} max={toDateInput(new Date())} onChange={(event) => setHistoryDateTo(event.target.value)} placeholder="Date to" />
-            </div>
-            <div className="overflow-auto" aria-busy={historyLoading}>
-                <table className="w-full min-w-[760px] text-sm" aria-label="POS transaction history table">
-                    <caption className="sr-only">POS transaction history with receipt and sales-report actions</caption>
-                    <thead>
-                        <tr className="border-b border-slate-200 text-slate-500">
-                            <th scope="col" className="text-left py-2">Invoice</th>
-                            <th scope="col" className="text-left py-2">Datetime</th>
-                            <th scope="col" className="text-left py-2">Source</th>
-                            <th scope="col" className="text-left py-2">Cashier</th>
-                            <th scope="col" className="text-left py-2">Payment</th>
-                            <th scope="col" className="text-left py-2">Discount</th>
-                            <th scope="col" className="text-right py-2">Fee</th>
-                            <th scope="col" className="text-right py-2">Restaurant Charge</th>
-                            <th scope="col" className="text-right py-2">Vatable</th>
-                            <th scope="col" className="text-right py-2">VAT</th>
-                            <th scope="col" className="text-right py-2">Total</th>
-                            <th scope="col" className="text-right py-2">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {historyLoading ? (
-                            <tr>
-                                <td colSpan={12} className="py-4 text-center text-slate-500" aria-live="polite">Loading transactions...</td>
-                            </tr>
-                        ) : (
-                            <>
-                                {historyRows.map((row) => (
-                                    <tr key={row.pos_transaction_id} className="border-b border-slate-100 hover:bg-slate-50">
-                                        <td className="py-2 font-medium text-slate-900">{row.invoice_number}</td>
-                                        <td className="py-2 text-slate-600">{new Date(row.created_at).toLocaleString()}</td>
-                                        <td className="py-2 text-slate-600">
-                                            <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${row.order_source === 'online_store' ? 'bg-sky-100 text-sky-700' : 'bg-slate-200 text-slate-700'}`}>
-                                                {ORDER_SOURCE_LABELS[row.order_source] || ORDER_SOURCE_LABELS.in_store}
-                                            </span>
-                                        </td>
-                                        <td className="py-2 text-slate-600">{row.cashier?.username || row.acceptedByUser?.username || '-'}</td>
-                                        <td className="py-2 text-slate-600 capitalize">{row.payment_type}</td>
-                                        <td className="py-2 text-slate-600">
-                                            {row.discount_label_snapshot
-                                                ? `${row.discount_label_snapshot}${row.discount_rate_snapshot != null ? ` (${money(row.discount_rate_snapshot)}%)` : ''}`
-                                                : '-'}
-                                        </td>
-                                        <td className="py-2 text-right text-slate-600">PHP {money(row.service_fee_amount)}</td>
-                                        <td className="py-2 text-right text-slate-600">PHP {money(row.restaurant_service_charge_amount)}</td>
-                                        <td className="py-2 text-right text-slate-600">PHP {money(row.vatable_sales)}</td>
-                                        <td className="py-2 text-right text-slate-600">PHP {money(row.vat_amount)}</td>
-                                        <td className="py-2 text-right font-semibold text-slate-900">PHP {money(row.total_amount)}</td>
-                                        <td className="py-2 text-right">
-                                            <div className="flex justify-end gap-2">
-                                                <Button
-                                                    type="button"
-                                                    size="sm"
-                                                    variant="outline"
-                                                    onClick={(event) => {
-                                                        event.stopPropagation();
-                                                        openHistoryDetail(row.pos_transaction_id);
-                                                    }}
-                                                    disabled={historyDetailLoading}
-                                                    aria-label={`View POS history transaction ${row.invoice_number || row.pos_transaction_id}`}
-                                                >
-                                                    View
-                                                </Button>
-                                                <Button
-                                                    type="button"
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    data-testid={`pos-history-row-open-sales-report-${row.pos_transaction_id}`}
-                                                    onClick={(event) => {
-                                                        event.stopPropagation();
-                                                        openInSalesReport(row);
-                                                    }}
-                                                    aria-label={`Open ${row.invoice_number || row.pos_transaction_id} in sales report`}
-                                                >
-                                                    Sales
-                                                </Button>
-                                            </div>
+
+                <div className="overflow-hidden border-t border-slate-200">
+                    <div className="dgfy-pos-scrollbar-hidden overflow-x-auto" aria-busy={historyLoading}>
+                        <table className={`w-full text-[13px] ${isTabletViewport ? 'min-w-[820px]' : 'min-w-[1220px]'}`} aria-label="POS transaction history table">
+                            <caption className="sr-only">POS transaction history with receipt and sales-report actions</caption>
+                            <thead>
+                                <tr className="border-b border-slate-200 bg-white text-[#0F172A]">
+                                    <th scope="col" className="px-6 py-4 text-left text-[13px] font-black">Invoice</th>
+                                    <th scope="col" className="px-4 py-4 text-left text-[13px] font-black">Datetime</th>
+                                    <th scope="col" className="px-4 py-4 text-left text-[13px] font-black">Source</th>
+                                    <th scope="col" className="px-4 py-4 text-left text-[13px] font-black">Payment</th>
+                                    {!isTabletViewport && <th scope="col" className="px-4 py-4 text-left text-[13px] font-black">Cashier</th>}
+                                    {!isTabletViewport && <th scope="col" className="px-4 py-4 text-left text-[13px] font-black">Discount</th>}
+                                    {!isTabletViewport && <th scope="col" className="w-[1px] px-2 py-4 text-right text-[13px] font-black whitespace-nowrap">Fee</th>}
+                                    {!isTabletViewport && <th scope="col" className="px-4 py-4 text-right text-[13px] font-black">Restaurant Charge</th>}
+                                    {!isTabletViewport && <th scope="col" className="px-4 py-4 text-right text-[13px] font-black">Vatable</th>}
+                                    {!isTabletViewport && <th scope="col" className="px-4 py-4 text-right text-[13px] font-black">VAT</th>}
+                                    <th scope="col" className="px-4 py-4 text-right text-[13px] font-black text-[#1A4E8D]">Total</th>
+                                    <th scope="col" className="px-6 py-4 text-right text-[13px] font-black">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {historyLoading ? (
+                                    <tr>
+                                        <td colSpan={isTabletViewport ? 6 : 12} className="px-6 py-10 text-center text-slate-500" aria-live="polite">
+                                            Loading transactions...
                                         </td>
                                     </tr>
-                                ))}
-                                {historyRows.length === 0 && (
+                                ) : historyRows.length > 0 ? historyRows.map((row) => {
+                                    const dateTime = formatDateTime(row.created_at);
+                                    const sourceKey = row.order_source === 'online_store' ? 'online_store' : 'in_store';
+                                    const expanded = expandedRowId === row.pos_transaction_id;
+                                    return (
+                                        <React.Fragment key={row.pos_transaction_id}>
+                                            <tr className="border-b border-slate-100 text-slate-700 transition hover:bg-slate-50/70">
+                                                <td className="px-6 py-4 text-[13px] font-black text-[#0F172A]">{row.invoice_number}</td>
+                                                <td className="px-4 py-4 text-[#334155]">
+                                                    <div>{dateTime.date}</div>
+                                                    <div className="mt-0.5">{dateTime.time}</div>
+                                                </td>
+                                                <td className="px-4 py-4">
+                                                    <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[13px] font-semibold ${SOURCE_BADGE_CLASSNAMES[sourceKey]}`}>
+                                                        {sourceKey === 'online_store' ? <Globe className="h-4 w-4" /> : <Store className="h-4 w-4" />}
+                                                        {ORDER_SOURCE_LABELS[sourceKey]}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-4 text-[#334155] capitalize">{row.payment_type}</td>
+                                                {!isTabletViewport && <td className="px-4 py-4 text-[#334155]">{row.cashier?.username || row.acceptedByUser?.username || '-'}</td>}
+                                                {!isTabletViewport && (
+                                                    <td className="px-4 py-4 text-[#334155]">
+                                                        {row.discount_label_snapshot
+                                                            ? `${row.discount_label_snapshot}${row.discount_rate_snapshot != null ? ` (${money(row.discount_rate_snapshot)}%)` : ''}`
+                                                            : '–'}
+                                                    </td>
+                                                )}
+                                                {!isTabletViewport && <td className="w-[1px] px-2 py-4 text-right text-[#334155] whitespace-nowrap">PHP {money(row.service_fee_amount)}</td>}
+                                                {!isTabletViewport && <td className="px-4 py-4 text-right text-[#334155]">PHP {money(row.restaurant_service_charge_amount)}</td>}
+                                                {!isTabletViewport && <td className="px-4 py-4 text-right text-[#334155]">PHP {money(row.vatable_sales)}</td>}
+                                                {!isTabletViewport && <td className="px-4 py-4 text-right text-[#334155]">PHP {money(row.vat_amount)}</td>}
+                                                <td className="px-4 py-4 text-right font-black text-[#1A4E8D]">PHP {money(row.total_amount)}</td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <div className="relative flex justify-end">
+                                <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-10 w-10 rounded-xl border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                                    aria-label={`View POS history transaction ${row.invoice_number || row.pos_transaction_id}`}
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        setOpenActionMenuId((current) => (
+                                            current === row.pos_transaction_id ? null : row.pos_transaction_id
+                                        ));
+                                                            }}
+                                                        >
+                                                            <MoreVertical className="h-5 w-5" />
+                                                        </Button>
+                                                        {openActionMenuId === row.pos_transaction_id && (
+                                                            <div className="absolute right-0 top-[calc(100%-0.15rem)] z-10 w-36 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg shadow-slate-900/10">
+                                                        <button
+                                                            type="button"
+                                                            className="block w-full border-b border-slate-100 px-3 py-2.5 text-left text-[12px] font-semibold text-[#334155] transition hover:bg-slate-50"
+                                                            data-testid={`pos-history-row-open-sales-report-${row.pos_transaction_id}`}
+                                                            aria-label={`Open ${row.invoice_number || row.pos_transaction_id} in sales report`}
+                                                            onClick={(event) => {
+                                                                event.stopPropagation();
+                                                                setOpenActionMenuId(null);
+                                                                openInSalesReport(row);
+                                                            }}
+                                                                >
+                                                                    Sales
+                                                                </button>
+                                                        {isTabletViewport && (
+                                                            <button
+                                                                type="button"
+                                                                className="block w-full border-b border-slate-100 px-3 py-2.5 text-left text-[12px] font-semibold text-[#334155] transition hover:bg-slate-50"
+                                                                aria-label={`View row details for ${row.invoice_number || row.pos_transaction_id}`}
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation();
+                                                                    setOpenActionMenuId(null);
+                                                                    setExpandedRowId((current) => current === row.pos_transaction_id ? null : row.pos_transaction_id);
+                                                                }}
+                                                                    >
+                                                                        View Row
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    type="button"
+                                                                    className="block w-full px-3 py-2.5 text-left text-[12px] font-semibold text-[#334155] transition hover:bg-slate-50"
+                                                                    disabled={historyDetailLoading}
+                                                                    onClick={(event) => {
+                                                                        event.stopPropagation();
+                                                                        setOpenActionMenuId(null);
+                                                                        openHistoryDetail(row.pos_transaction_id);
+                                                                    }}
+                                                                >
+                                                                    View Receipt
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {isTabletViewport && expanded && (
+                                                <tr className="border-b border-slate-100 bg-slate-50/70">
+                                                    <td colSpan={6} className="px-6 py-4">
+                                                        <div className="grid grid-cols-2 gap-3 text-[12px] text-[#334155]">
+                                                            <div>
+                                                                <span className="font-semibold text-[#0F172A]">Cashier</span>
+                                                                <p className="mt-1">{row.cashier?.username || row.acceptedByUser?.username || '-'}</p>
+                                                            </div>
+                                                            <div>
+                                                                <span className="font-semibold text-[#0F172A]">Discount</span>
+                                                                <p className="mt-1">
+                                                                    {row.discount_label_snapshot
+                                                                        ? `${row.discount_label_snapshot}${row.discount_rate_snapshot != null ? ` (${money(row.discount_rate_snapshot)}%)` : ''}`
+                                                                        : '–'}
+                                                                </p>
+                                                            </div>
+                                                            <div>
+                                                                <span className="font-semibold text-[#0F172A]">Fee</span>
+                                                                <p className="mt-1">PHP {money(row.service_fee_amount)}</p>
+                                                            </div>
+                                                            <div>
+                                                                <span className="font-semibold text-[#0F172A]">Restaurant Charge</span>
+                                                                <p className="mt-1">PHP {money(row.restaurant_service_charge_amount)}</p>
+                                                            </div>
+                                                            <div>
+                                                                <span className="font-semibold text-[#0F172A]">Vatable</span>
+                                                                <p className="mt-1">PHP {money(row.vatable_sales)}</p>
+                                                            </div>
+                                                            <div>
+                                                                <span className="font-semibold text-[#0F172A]">VAT</span>
+                                                                <p className="mt-1">PHP {money(row.vat_amount)}</p>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
+                                    );
+                                }) : (
                                     <tr>
-                                        <td colSpan={12} className="py-6 text-center text-slate-500">No transactions found.</td>
+                                        <td colSpan={isTabletViewport ? 6 : 12} className="px-6 py-12 text-center text-slate-500">No transactions found.</td>
                                     </tr>
                                 )}
-                            </>
-                        )}
-                    </tbody>
-                </table>
-            </div>
-            <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => loadHistory(Math.max(1, historyPage - 1))} disabled={historyLoading || historyPage <= 1}>
-                    Previous
-                </Button>
-                <Button type="button" variant="outline" onClick={() => loadHistory(historyPage + 1)} disabled={historyLoading || !historyPagination || historyPage >= (historyPagination.totalPages || 1)}>
-                    Next
-                </Button>
-            </div>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div className="flex flex-col gap-4 border-t border-slate-200 px-6 py-4 text-[13px] text-[#334155] lg:flex-row lg:items-center lg:justify-between">
+                        <p>
+                            Showing {pageStart} to {pageEnd || 0} of {totalEntries || historyRows.length} entries
+                        </p>
+                        <div className="flex flex-wrap items-center justify-end gap-3">
+                            <div className="flex items-center gap-2">
+                                <span>Rows per page</span>
+                                <div className="relative">
+                                    <select
+                                        value={pageSize}
+                                        disabled
+                                    className="h-10 appearance-none rounded-xl border border-slate-200 bg-white px-4 pr-9 text-[13px] font-medium text-[#334155] shadow-sm shadow-slate-100"
+                                    >
+                                        <option value={pageSize}>{pageSize}</option>
+                                    </select>
+                                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                                </div>
+                            </div>
+
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="h-10 w-10 rounded-xl border-slate-200 bg-white px-0 text-base font-bold text-slate-600 hover:bg-slate-50"
+                                onClick={() => loadHistory(1)}
+                                disabled={historyLoading || historyPage <= 1}
+                            >
+                                «
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="h-10 w-10 rounded-xl border-slate-200 bg-white px-0 text-base font-bold text-slate-600 hover:bg-slate-50"
+                                onClick={() => loadHistory(Math.max(1, historyPage - 1))}
+                                disabled={historyLoading || historyPage <= 1}
+                            >
+                                ‹
+                            </Button>
+                            <div className="grid h-10 min-w-[2.75rem] place-items-center rounded-xl bg-[#1A4E8D] px-4 text-[13px] font-bold text-white shadow-lg shadow-blue-900/20">
+                                {historyPage}
+                            </div>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="h-10 w-10 rounded-xl border-slate-200 bg-white px-0 text-base font-bold text-slate-600 hover:bg-slate-50"
+                                onClick={() => loadHistory(Math.min(totalPages, historyPage + 1))}
+                                disabled={historyLoading || historyPage >= totalPages}
+                            >
+                                ›
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="h-10 w-10 rounded-xl border-slate-200 bg-white px-0 text-base font-bold text-slate-600 hover:bg-slate-50"
+                                onClick={() => loadHistory(totalPages)}
+                                disabled={historyLoading || historyPage >= totalPages}
+                            >
+                                »
+                            </Button>
+                        </div>
+                    </div>
+                </div>
         </section>
     );
 }

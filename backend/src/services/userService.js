@@ -18,6 +18,7 @@ import {
 import * as emailService from './emailService.js';
 import { buildVisibleWhere, notFoundError } from '../utils/softDeletePolicy.js';
 import { onboardingRepository } from '../modules/onboarding/repositories/onboardingRepository.js';
+import { dgfyAccountRepository } from '../modules/dgfy/index.js';
 import logger from '../config/logger.js';
 import { isValidPhoneNumber, normalizePhoneNumber, PHONE_NUMBER_VALIDATION_MESSAGE } from '../utils/phoneNumber.js';
 import { verifyEmailOtp, EMAIL_OTP_PURPOSES } from './emailOtpService.js';
@@ -162,6 +163,34 @@ const parsePositiveInt = (value) => {
   const normalized = Number.parseInt(value, 10);
   if (!Number.isInteger(normalized) || normalized <= 0) return null;
   return normalized;
+};
+
+const mirrorInvitationToDgfyAccount = async ({
+  email,
+  tenantId,
+  tenantUserId,
+  role
+}) => {
+  if (!tenantId || tenantId === 'default') return null;
+  const account = await dgfyAccountRepository.findByEmail(email).catch(() => null);
+  if (!account) return null;
+
+  try {
+    return await dgfyAccountRepository.upsertInvitationMembership({
+      dgfyAccountId: account.id,
+      tenantId,
+      tenantUserId,
+      role
+    });
+  } catch (error) {
+    logger.warn('[UserService] Failed to mirror user invitation to DGFY account membership', {
+      tenantId,
+      tenantUserId,
+      email,
+      error: error.message
+    });
+    return null;
+  }
 };
 
 /**
@@ -1224,6 +1253,13 @@ export const createUserInvitation = async (adminUserId, invitationData) => {
     });
   }
 
+  const dgfyMembership = await mirrorInvitationToDgfyAccount({
+    email,
+    tenantId,
+    tenantUserId: newUser.user_id,
+    role: newUser.role
+  });
+
   return {
     user_id: newUser.user_id,
     email: newUser.email,
@@ -1235,6 +1271,7 @@ export const createUserInvitation = async (adminUserId, invitationData) => {
     email_sent: delivery.emailSent,
     delivery_status: delivery.deliveryStatus,
     delivery_error: delivery.deliveryError,
+    dgfy_invitation_status: dgfyMembership ? 'pending' : 'not_linked',
     invitation_url: !delivery.emailSent ? buildInviteAcceptanceUrl({ token: invitationToken }) : undefined,
     invitation_token: !delivery.emailSent ? invitationToken : undefined
   };

@@ -26,13 +26,18 @@ const assertComplianceTransition = ({ previousState, nextState }) => {
 };
 
 export const tenantAdminRepository = {
+    transaction(callback) {
+        const Tenant = getTenantModel();
+        return Tenant.sequelize.transaction(callback);
+    },
+
     findTenantByName(name) {
         const Tenant = getTenantModel();
         return Tenant.findOne({ where: { name } });
     },
-    createTenant(payload) {
+    createTenant(payload, options = {}) {
         const Tenant = getTenantModel();
-        return Tenant.create(payload);
+        return Tenant.create(payload, options);
     },
     findTenantById(tenantId) {
         const Tenant = getTenantModel();

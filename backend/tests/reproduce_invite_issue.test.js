@@ -79,6 +79,7 @@ describe('inviteUser Validation & Controller', () => {
         expect(userService.createUserInvitation).toHaveBeenCalledWith(1, {
             email: 'test@example.com',
             role: 'staff',
+            role_preset_key: null,
             location_ids: [],
             delivery_mode: 'email'
         });

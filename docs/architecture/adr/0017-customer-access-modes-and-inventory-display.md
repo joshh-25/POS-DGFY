@@ -46,6 +46,7 @@ Inventory display modes:
 - Public Storefront catalog and checkout eligibility must read item-level storefront overrides when available. During additive rollout, a missing `storefront_catalog_overrides` table may fall back to the prior POS-derived policy with warning logging instead of returning `500`.
 - POS catalog responses and terminal eligibility must remain sourced from POS overrides only. Image upload/removal must not silently enable either POS or Storefront visibility.
 - Quote, checkout, and service booking public mutations must fail closed when the effective mode is not `transaction`.
+- Storefront product quotes/checkouts and public service booking/hold/batch mutations must also fail closed outside configured `storefront_hours` business hours. The same weekly setting drives the public hours label, public open/closed status, immediate/scheduled product checkout availability, and service booking schedule acceptance.
 - When the effective mode is `transaction`, Storefront checkout/booking must allow repeated customer orders and quantity `1+` lines/drafts whenever POS-equivalent readiness passes. Customer Access Mode controls whether the action is allowed; it must not impose a one-active-order or one-active-booking limit.
 - Onboarding remains a soft reminder per ADR 0013, but its business classification step should become the first capture point for Customer Access Mode and Inventory Display preferences.
 - Settings > Storefront becomes the long-term source-of-truth surface for changing these controls after onboarding.
