@@ -14,7 +14,9 @@ const discoveryQuerySchema = Joi.object({
 
 const mapPinsQuerySchema = discoveryQuerySchema.keys({
     limit: Joi.number().integer().min(1).max(100).default(100),
-    include_match_meta: Joi.boolean().truthy('true', '1').falsy('false', '0').default(false)
+    include_match_meta: Joi.boolean().truthy('true', '1').falsy('false', '0').default(false),
+    include_items: Joi.boolean().truthy('true', '1').falsy('false', '0').default(false),
+    item_limit: Joi.number().integer().min(1).max(10).default(5)
 });
 
 const storefrontSlugParamSchema = Joi.object({

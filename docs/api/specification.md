@@ -2900,6 +2900,15 @@ List publicly discoverable storefront locations in a flat JSON shape for third-p
 
 Supported query parameters match `GET /storefront/discovery`. The backend forces `include_match_meta=false` and defaults `limit=100` when no limit is provided.
 
+Additional map-pins parameters:
+
+| Name | Type | Description |
+|------|------|-------------|
+| `include_items` | boolean | Optional, defaults `false`; when `true`, each pin includes public available item summary fields from the indexed discovery snapshot |
+| `item_limit` | number | Optional, defaults `5`, max `10`; caps `available_items` and the flat `available_item_names` string |
+
+When `include_items=true`, item fields are public availability summaries only. They are scoped to the pin `location_id`, built from the existing Storefront discovery item snapshot, and do not expose exact stock quantities, unit cost, supplier data, company tokens, or unpublished catalog rows.
+
 Response:
 
 ```json
@@ -2923,7 +2932,21 @@ Response:
         "supports_delivery": true,
         "supports_pickup": true,
         "supports_dine_in": false,
-        "catalog_count": 12
+        "catalog_count": 12,
+        "available_item_count": 2,
+        "available_item_names": "A/C Cleaning, A/C Repair",
+        "available_items": [
+          {
+            "name": "A/C Cleaning",
+            "category": "service",
+            "availability_status": "available"
+          },
+          {
+            "name": "A/C Repair",
+            "category": "service",
+            "availability_status": "available"
+          }
+        ]
       }
     ],
     "pagination": {

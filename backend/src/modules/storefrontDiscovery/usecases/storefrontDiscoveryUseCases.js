@@ -59,6 +59,70 @@ export const toMapPinSourceRow = (store = {}) => ({
     catalog_count: Number(store.catalog_count || 0)
 });
 
+const normalizeMapPinItemLimit = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isInteger(parsed)) return 5;
+    return Math.max(1, Math.min(10, parsed));
+};
+
+const toPositiveInteger = (value) => {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const getLocationScopedAvailableItems = (store = {}, itemLimit = 5) => {
+    const targetLocationId = toPositiveInteger(store.location_id);
+    const seen = new Set();
+    const available = [];
+
+    const snapshotRows = Array.isArray(store.item_search_snapshot) ? store.item_search_snapshot : [];
+    snapshotRows.forEach((item) => {
+        const name = String(item?.item_name || '').trim();
+        if (!name) return;
+
+        const inStockLocationIds = Array.isArray(item?.in_stock_location_ids)
+            ? item.in_stock_location_ids.map(toPositiveInteger).filter(Boolean)
+            : [];
+        const isAvailableAtPin = targetLocationId
+            ? inStockLocationIds.includes(targetLocationId)
+            : inStockLocationIds.length > 0;
+        if (!isAvailableAtPin) return;
+
+        const itemId = toPositiveInteger(item?.item_id);
+        const dedupeKey = itemId ? `id:${itemId}` : `name:${name.toLowerCase()}`;
+        if (seen.has(dedupeKey)) return;
+        seen.add(dedupeKey);
+
+        available.push({
+            name,
+            category: String(item?.category || '').trim(),
+            availability_status: 'available'
+        });
+    });
+
+    return {
+        available_item_count: available.length,
+        available_items: available.slice(0, itemLimit)
+    };
+};
+
+const toMapPinSourceRowWithItems = (store = {}, { includeItems = false, itemLimit = 5 } = {}) => {
+    const pin = toMapPinSourceRow(store);
+    if (!includeItems) return pin;
+
+    const { available_item_count, available_items } = getLocationScopedAvailableItems(
+        store,
+        normalizeMapPinItemLimit(itemLimit)
+    );
+
+    return {
+        ...pin,
+        available_item_count,
+        available_item_names: available_items.map((item) => item.name).join(', '),
+        available_items
+    };
+};
+
 export const buildListStorefrontMapPinsUseCase = ({ storefrontDiscoveryRepository }) => {
     return async ({ query = {} } = {}) => {
         if (query && (typeof query !== 'object' || Array.isArray(query))) {
@@ -70,14 +134,22 @@ export const buildListStorefrontMapPinsUseCase = ({ storefrontDiscoveryRepositor
         }
 
         try {
+            const {
+                include_items: includeItems = false,
+                item_limit: itemLimit = 5,
+                ...discoveryQuery
+            } = query || {};
             const result = await storefrontDiscoveryRepository.listDiscovery({
-                ...query,
-                limit: query.limit || 100,
+                ...discoveryQuery,
+                limit: discoveryQuery.limit || 100,
                 include_match_meta: false
             });
             const rows = (result.rows || [])
                 .filter((store) => Number.isFinite(Number(store.latitude)) && Number.isFinite(Number(store.longitude)))
-                .map(toMapPinSourceRow);
+                .map((store) => toMapPinSourceRowWithItems(store, {
+                    includeItems: includeItems === true,
+                    itemLimit
+                }));
 
             return ok({
                 pins: rows,

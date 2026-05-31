@@ -559,6 +559,7 @@ const buildTenantSnapshot = async (tenant) => {
             return {
                 item_id: itemId,
                 item_name: row.name || null,
+                category: row.category || null,
                 text,
                 matching_location_ids: matchingLocationIds,
                 in_stock_location_ids: inStockLocationIds
