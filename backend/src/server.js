@@ -176,7 +176,10 @@ const corsOptionsDelegate = (req, callback) => {
       path: req.originalUrl || req.url || '',
       request_id: correlationId
     });
-    callback(new Error('Not allowed by CORS'));
+    const corsError = new Error('Not allowed by CORS');
+    corsError.statusCode = 403;
+    corsError.code = 'CORS_NOT_ALLOWED';
+    callback(corsError);
     return;
   }
 

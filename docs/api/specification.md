@@ -2897,6 +2897,7 @@ List publicly discoverable storefront locations in a flat JSON shape for third-p
 **Tenant Context**: Not required
 **Caching Contract**: `Cache-Control: public, max-age=20, s-maxage=20, stale-while-revalidate=40, stale-if-error=90`
 **CORS Contract**: Third-party callers such as MapViu must be listed in `PUBLIC_API_CORS_ORIGIN`. This public allowlist applies only to `GET`/`HEAD`/`OPTIONS` reads for public storefront discovery endpoints and does not open authenticated backend APIs.
+Unsupported public API CORS methods are rejected as `403` client errors with `CORS_NOT_ALLOWED`.
 
 Supported query parameters match `GET /storefront/discovery`. The backend forces `include_match_meta=false` and defaults `limit=100` when no limit is provided.
 

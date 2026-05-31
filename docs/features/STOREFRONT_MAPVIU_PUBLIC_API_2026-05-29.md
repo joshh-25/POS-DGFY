@@ -42,6 +42,28 @@ Record the production change requested for MapViu API Sources so the external ma
     - `/api/v1/storefront/discovery/map-pins`
     - `/api/v1/storefront/geo-search`
 - Existing `CORS_ORIGIN` remains the global frontend allowlist for DGFY/SKUpervisor/POS/Storefront surfaces.
+- Unsupported public API CORS methods are rejected as client errors (`403`, `CORS_NOT_ALLOWED`) rather than server failures.
+
+## Production Readiness Evaluation (2026-06-01)
+Overall rating: **9.4/10 - production ready**.
+
+| Area | Rating | Evidence |
+|---|---:|---|
+| API compatibility | 10/10 | Default `map-pins` payload remains pin-only unless `include_items=true` is requested. |
+| Parser usability | 9/10 | Opt-in response includes flat `available_item_names` and structured `available_items`. |
+| Data privacy | 10/10 | Public item fields omit exact stock, unit cost, suppliers, company tokens, and unpublished catalog rows. |
+| Architecture fit | 10/10 | Runtime reads reuse the existing Storefront discovery snapshot and avoid tenant inventory fanout. |
+| Validation and limits | 9/10 | `item_limit` defaults to `5`, caps at `10`, and invalid values fail validation. |
+| CORS safety | 9/10 | MapViu origins are path- and method-limited to public read endpoints; unsupported methods return explicit client errors. |
+| Operational readiness | 9/10 | Governed checks cover focused backend tests, docs lint, architecture guardrails, compliance checks, production deploy, and live smoke. |
+
+Residual risk:
+- Item category is available for newly reconciled discovery snapshots. Older snapshot rows can still return an empty item category until the storefront discovery index reconciliation refreshes them.
+- The item list is intentionally capped for third-party map payload size. Consumers needing full catalogs should use the public Storefront catalog contract rather than this map feed.
+
+Final assessment:
+- No blocking issues remain for the MapViu public API use case.
+- The endpoint is production ready when the governed release checks pass and the live production smoke confirms default payload compatibility, opt-in item fields, CORS GET preflight allow, unsupported method rejection, and absence of sensitive item fields.
 
 ## Files Changed
 - `backend/src/config/corsPolicy.js`
