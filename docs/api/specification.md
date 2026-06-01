@@ -2407,6 +2407,8 @@ Checkout is evaluated by the compliance policy engine:
    - incomplete profile/settings (`COMPLIANCE_PROFILE_INCOMPLETE`)
    - unverified/missing artifacts (`COMPLIANCE_ARTIFACTS_INCOMPLETE`)
    - missing terminal-qualified accredited peripherals (`TERMINAL_DEVICE_MISMATCH` or `ACCREDITED_PERIPHERAL_REQUIRED`)
+   - incomplete RMO 24-2023 filing evidence (`RMO_FILING_EVIDENCE_REQUIRED`)
+   - no verified fiscal terminal registration (`FISCAL_TERMINAL_REGISTRATION_REQUIRED`)
 
 Compliance checklist contract (used by Settings > Compliance and Admin review):
 - `GET /api/v1/compliance/checklist` includes legacy missing arrays plus guided UX fields:
@@ -2419,6 +2421,9 @@ Compliance checklist contract (used by Settings > Compliance and Admin review):
   - `evidence.encryption_policy_prerequisites_ready`
   - `evidence.encryption_policy_checks`
   - `evidence.encryption_policy_issues[]`
+  - `evidence.rmo_filing_readiness` (`ready`, `complete`, `total`, `missing`, `items[]`)
+    - RMO items include `rmo.control_matrix`, `rmo.filing_authority_decision`, `rmo.receipt_sample_pack`, `rmo.fiscal_integrity_evidence`, and `rmo.esales_reporting_plan`
+  - `evidence.fiscal_terminal_registration` (`ready`, `verified_count`, `total_count`)
 - `POST /api/v1/compliance/activate` requires body payload:
   - `{ "confirmation_text": "ACTIVATE COMPLIANT" }`
 - `POST /api/v1/compliance/mode/revert-to-non-compliant` requires:
@@ -3323,18 +3328,63 @@ Track online-store order status for public users.
    - `pos_transactions.vat_exempt_sales`
    - `pos_transactions.zero_rated_sales`
 4. Tenant POS receipt/business metadata is stored in `system_settings`:
+   - `pos_registered_name`
    - `pos_business_name`
+   - `pos_business_style`
+   - `pos_taxpayer_type`
    - `pos_tin_branch`
    - `pos_address`
    - `pos_ptu_number`
    - `pos_min_number`
    - `pos_accreditation_number`
+   - `pos_software_name`
+   - `pos_software_version`
+   - `pos_software_serial_number`
    - `pos_receipt_footer_message`
    - `pos_discount_profiles` (JSON array of `{name, percentage, active}`)
    - `pos_order_method_fees` (deprecated; retained for historical read compatibility only)
    - `pos_petty_cash_symbol`
    - `pos_petty_cash_amount`
-5. Compliance lifecycle/profile is tenant-level (`tenants` + compliance module tables), not controlled by a strict-toggle setting.
+5. Fiscal invoice checkout can carry buyer fiscal details:
+   - `buyer_name`
+   - `buyer_tin`
+   - `buyer_business_style`
+   - `buyer_address`
+6. Fiscal invoice persistence stores a server-owned immutable preparation snapshot:
+   - `pos_transactions.buyer_tin`
+   - `pos_transactions.buyer_business_style`
+   - `pos_transactions.buyer_address`
+   - `pos_transactions.fiscal_document_template_version`
+   - `pos_transactions.fiscal_document_hash`
+   - `pos_transactions.fiscal_document_snapshot`
+7. Fiscal lifecycle persistence adds:
+   - `pos_transactions.fiscal_lifecycle_state`
+   - `pos_transactions.fiscal_reprint_count`
+   - `pos_transactions.fiscal_void_event_hash`
+   - `pos_transactions.void_reason`
+8. Fiscal terminal registration and event tables:
+   - `pos_fiscal_terminal_registrations`
+   - `pos_fiscal_events`
+   - `pos_fiscal_print_events`
+   - `pos_esales_reports`
+9. Compliance lifecycle/profile is tenant-level (`tenants` + compliance module tables), not controlled by a strict-toggle setting.
+
+### POS Fiscal Lifecycle Endpoints
+
+Authenticated premium POS routes:
+
+| Method | Path | Permission | Purpose |
+| --- | --- | --- | --- |
+| `POST` | `/api/v1/pos/transactions/:id/print-events` | `pos:reprint` | Records operator-confirmed fiscal original print or reprint evidence after the browser print dialog is opened; reprints require a reason. |
+| `POST` | `/api/v1/pos/transactions/:id/void` | `pos:void` | Voids a transaction, writes fiscal void evidence for fiscal invoices, and creates POS stock-return movements for original POS stock issues. |
+| `GET` | `/api/v1/pos/fiscal-terminal-registrations` | `pos:view` | Lists fiscal terminal registration records. |
+| `PUT` | `/api/v1/pos/fiscal-terminal-registrations` | `pos:fiscal_terminals:manage` | Creates or updates a terminal fiscal registration. Verified status requires MIN, machine serial, software serial, and PTU. |
+| `GET` | `/api/v1/pos/esales-reports` | `pos:view` | Lists generated eSales packages, payload hashes, lifecycle status, and submission evidence references. |
+| `GET` | `/api/v1/pos/fiscal-ledger/integrity` | `pos:view` | Recomputes fiscal event hashes and verifies event sequence continuity and previous-hash linkage. |
+| `POST` | `/api/v1/pos/esales-reports/generate` | `pos:esales:manage` | Generates a monthly Asia/Manila eSales package, stores a payload hash, and separates gross, voided, and net totals. |
+| `PATCH` | `/api/v1/pos/esales-reports/:id/status` | `pos:esales:manage` | Marks an eSales package as submitted, accepted, or rejected with an evidence reference and fiscal event. |
+
+Fiscal activation also requires at least one verified fiscal terminal registration. Fiscal event rows include a monotonic `event_sequence` and hash-chain fields so issuance, print/reprint, void, Z-reading, reset, terminal registration, and eSales lifecycle events can be audited in order. Settings > POS exposes a fiscal ledger integrity panel backed by `/api/v1/pos/fiscal-ledger/integrity`.
 
 ---
 

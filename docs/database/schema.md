@@ -294,6 +294,36 @@ F&B reservation scheduling stores `duration_minutes` and `buffer_minutes` on `fn
 
 ---
 
+## RMO 24-2023 Fiscal Runtime Addendum (2026-06-01)
+
+The tenant-local POS schema now carries internal RMO 24-2023 fiscal preparation controls. These records support compliant-mode activation evidence and fiscal runtime auditability; they do not replace external BIR accreditation, PTU/ATG approval, legal/tax sign-off, or official filing acknowledgement.
+
+Primary migration:
+
+1. `20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs`
+
+`pos_transactions` fiscal snapshot additions:
+
+1. `buyer_tin`
+2. `buyer_business_style`
+3. `buyer_address`
+4. `fiscal_document_template_version`
+5. `fiscal_document_hash`
+6. `fiscal_document_snapshot`
+7. `fiscal_lifecycle_state`
+8. `fiscal_reprint_count`
+9. `fiscal_void_event_hash`
+10. `void_reason`
+
+Fiscal runtime tables:
+
+1. `pos_fiscal_terminal_registrations` stores terminal-specific MIN, machine serial, software serial, software version, PTU, binding, evidence reference, status, and verification metadata. Fiscal checkout and compliant activation require at least one verified terminal registration.
+2. `pos_fiscal_events` stores append-only fiscal events with `event_sequence`, `previous_event_hash`, `event_hash`, payload, actor, terminal, invoice, and timestamp fields. `/pos/fiscal-ledger/integrity` recomputes the hash chain and reports sequence or linkage issues.
+3. `pos_fiscal_print_events` stores original print and reprint evidence. Reprints require a reason; browser print completion remains operator-attested.
+4. `pos_esales_reports` stores monthly Asia/Manila eSales package payloads, payload hashes, generation evidence, and submitted/accepted/rejected lifecycle evidence references.
+
+---
+
 ## Item Financial Readiness Addendum (2026-05-07)
 
 The shared `items` table stores both internal cost and customer selling price, but they are separate contracts:
