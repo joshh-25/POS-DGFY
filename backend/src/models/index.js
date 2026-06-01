@@ -38,6 +38,10 @@ import PosInvoiceCounter from './PosInvoiceCounter.js';
 import PosZReadingSnapshot from './PosZReadingSnapshot.js';
 import PosOperationReplay from './PosOperationReplay.js';
 import PosCatalogOverride from './PosCatalogOverride.js';
+import PosFiscalTerminalRegistration from './PosFiscalTerminalRegistration.js';
+import PosFiscalEvent from './PosFiscalEvent.js';
+import PosFiscalPrintEvent from './PosFiscalPrintEvent.js';
+import PosESalesReport from './PosESalesReport.js';
 import StorefrontCatalogOverride from './StorefrontCatalogOverride.js';
 import PosTerminalShift from './PosTerminalShift.js';
 import PosCashDrawerEvent from './PosCashDrawerEvent.js';
@@ -332,8 +336,13 @@ PosTransaction.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'locat
 PosTransaction.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
 PosTransaction.belongsTo(User, { foreignKey: 'fnb_server_id', as: 'fnbServer' });
 PosTransaction.hasMany(PosTransactionLine, { foreignKey: 'pos_transaction_id', as: 'lines' });
+PosTransaction.hasMany(PosFiscalEvent, { foreignKey: 'pos_transaction_id', as: 'fiscalEvents' });
+PosTransaction.hasMany(PosFiscalPrintEvent, { foreignKey: 'pos_transaction_id', as: 'fiscalPrintEvents' });
 PosTransactionLine.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
 PosTransactionLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+PosFiscalEvent.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
+PosFiscalPrintEvent.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
+PosFiscalTerminalRegistration.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 User.hasMany(PosTransaction, { foreignKey: 'cashier_id', as: 'posTransactions' });
 User.hasMany(PosTransaction, { foreignKey: 'accepted_by', as: 'acceptedPosTransactions' });
 Item.hasMany(PosTransactionLine, { foreignKey: 'item_id', as: 'posTransactionLines' });
@@ -594,6 +603,10 @@ const db = {
   PosZReadingSnapshot,
   PosOperationReplay,
   PosCatalogOverride,
+  PosFiscalTerminalRegistration,
+  PosFiscalEvent,
+  PosFiscalPrintEvent,
+  PosESalesReport,
   StorefrontCatalogOverride,
   PosTerminalShift,
   PosCashDrawerEvent,
@@ -717,6 +730,10 @@ export {
   PosZReadingSnapshot,
   PosOperationReplay,
   PosCatalogOverride,
+  PosFiscalTerminalRegistration,
+  PosFiscalEvent,
+  PosFiscalPrintEvent,
+  PosESalesReport,
   StorefrontCatalogOverride,
   PosTerminalShift,
   PosCashDrawerEvent,

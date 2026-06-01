@@ -38,7 +38,9 @@ export const COMPLIANCE_REASON_CODE = Object.freeze({
     IMPACT_DECLARATION_REQUIRED: 'IMPACT_DECLARATION_REQUIRED',
     VERIFICATION_REQUIRED: 'VERIFICATION_REQUIRED',
     TERMINAL_DEVICE_MISMATCH: 'TERMINAL_DEVICE_MISMATCH',
-    MASTER_ADMIN_REQUIRED: 'MASTER_ADMIN_REQUIRED'
+    MASTER_ADMIN_REQUIRED: 'MASTER_ADMIN_REQUIRED',
+    RMO_FILING_EVIDENCE_REQUIRED: 'RMO_FILING_EVIDENCE_REQUIRED',
+    FISCAL_TERMINAL_REGISTRATION_REQUIRED: 'FISCAL_TERMINAL_REGISTRATION_REQUIRED'
 });
 
 export const COMPLIANCE_VERIFICATION_STATUS = Object.freeze({
@@ -60,7 +62,12 @@ export const COMPLIANCE_PROFILE_DEFAULT = Object.freeze({
         ptu_certificate_number: '',
         tax_classification_controls_confirmed: false,
         non_resettable_grand_total_enabled: false,
-        mandatory_receipt_fields_confirmed: false
+        mandatory_receipt_fields_confirmed: false,
+        rmo_24_2023_filing_verified: false,
+        fiscal_document_content_reviewed: false,
+        terminal_registration_controls_confirmed: false,
+        ejournal_integrity_controls_confirmed: false,
+        esales_reporting_controls_confirmed: false
     },
     npc: {
         dpo_name: '',

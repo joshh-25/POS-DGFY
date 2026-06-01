@@ -13,6 +13,31 @@ const writeJson = (filePath, payload) => {
     writeFile(filePath, JSON.stringify(payload, null, 2));
 };
 
+const writeRmoDocs = ({ submissionRoot, evidenceRoot, nowIso }) => {
+    writeFile(
+        path.join(submissionRoot, 'rmo-24-2023-control-matrix.md'),
+        '# RMO 24-2023 Control Matrix\n## Requirement Map\n## Evidence Owners\n'
+    );
+    writeFile(
+        path.join(submissionRoot, 'rmo-24-2023-filing-authority-decision.md'),
+        '# RMO Filing Authority Decision\n## Provider Responsibility\n## Tenant Responsibility\n'
+    );
+    writeFile(
+        path.join(submissionRoot, 'rmo-24-2023-receipt-sample-pack.md'),
+        '# RMO Receipt Sample Pack\n## Fiscal Invoice Sample\n## Non-Fiscal Slip Sample\n'
+    );
+    writeJson(path.join(evidenceRoot, 'latest-rmo-fiscal-integrity.json'), {
+        verification_id: 'rmo-integrity-001',
+        verified_at: nowIso,
+        result: 'passed'
+    });
+    writeJson(path.join(evidenceRoot, 'latest-rmo-esales-rehearsal.json'), {
+        rehearsal_id: 'rmo-esales-001',
+        verified_at: nowIso,
+        result: 'passed'
+    });
+};
+
 describe('complianceRepository documentary and encryption readiness', () => {
     const previousEnv = { ...process.env };
     let tempRoot;
@@ -59,6 +84,7 @@ describe('complianceRepository documentary and encryption readiness', () => {
             transport: { tls_min_version: '1.2' },
             at_rest: { algorithm: 'AES-256' }
         });
+        writeRmoDocs({ submissionRoot, evidenceRoot, nowIso });
 
         process.env.COMPLIANCE_SUBMISSION_DOCS_ROOT = submissionRoot;
         process.env.COMPLIANCE_EVIDENCE_DOCS_ROOT = evidenceRoot;
@@ -102,6 +128,7 @@ describe('complianceRepository documentary and encryption readiness', () => {
             transport: { tls_min_version: '1.2' },
             at_rest: { algorithm: 'AES-256' }
         });
+        writeRmoDocs({ submissionRoot, evidenceRoot, nowIso: staleIso });
 
         process.env.COMPLIANCE_SUBMISSION_DOCS_ROOT = submissionRoot;
         process.env.COMPLIANCE_EVIDENCE_DOCS_ROOT = evidenceRoot;
@@ -146,6 +173,7 @@ describe('complianceRepository documentary and encryption readiness', () => {
             transport: { tls_min_version: '1.2' },
             at_rest: { algorithm: 'AES-256' }
         });
+        writeRmoDocs({ submissionRoot, evidenceRoot, nowIso });
 
         process.env.COMPLIANCE_SUBMISSION_DOCS_ROOT = submissionRoot;
         process.env.COMPLIANCE_EVIDENCE_DOCS_ROOT = evidenceRoot;

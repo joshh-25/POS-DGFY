@@ -212,8 +212,49 @@ const COMPLIANCE_DOCUMENT_REQUIREMENTS = Object.freeze([
         label: 'Latest encryption verification evidence',
         source_category: 'evidence',
         requires_freshness: true
+    },
+    {
+        requirement_code: 'rmo_24_2023_control_matrix',
+        code: 'rmo.control_matrix',
+        label: 'RMO 24-2023 control matrix',
+        source_category: 'rmo',
+        requires_freshness: false
+    },
+    {
+        requirement_code: 'rmo_24_2023_filing_authority_decision',
+        code: 'rmo.filing_authority_decision',
+        label: 'RMO filing authority and responsibility decision',
+        source_category: 'rmo',
+        requires_freshness: false
+    },
+    {
+        requirement_code: 'rmo_24_2023_receipt_sample_pack',
+        code: 'rmo.receipt_sample_pack',
+        label: 'RMO fiscal receipt/invoice sample pack',
+        source_category: 'rmo',
+        requires_freshness: false
+    },
+    {
+        requirement_code: 'rmo_24_2023_fiscal_integrity_evidence',
+        code: 'rmo.fiscal_integrity_evidence',
+        label: 'RMO fiscal event integrity evidence',
+        source_category: 'rmo',
+        requires_freshness: true
+    },
+    {
+        requirement_code: 'rmo_24_2023_esales_reporting_plan',
+        code: 'rmo.esales_reporting_plan',
+        label: 'RMO eSales reporting plan and rehearsal evidence',
+        source_category: 'rmo',
+        requires_freshness: true
     }
 ]);
+
+const RMO_24_2023_REQUIREMENT_CODES = Object.freeze(
+    COMPLIANCE_DOCUMENT_REQUIREMENTS
+        .filter((requirement) => requirement.source_category === 'rmo')
+        .map((requirement) => requirement.code)
+);
 
 const normalizeComplianceDocumentarySource = (value) => {
     const normalized = String(value || '').trim().toLowerCase();
@@ -763,6 +804,55 @@ export const complianceRepository = {
                     freshnessDateKey: 'verified_at',
                     maxAgeDays: evidenceMaxAgeDays
                 })
+            },
+            {
+                code: 'rmo.control_matrix',
+                label: 'RMO 24-2023 control matrix',
+                absolute_path: path.resolve(submissionRoot, 'rmo-24-2023-control-matrix.md'),
+                evaluateQuality: (entry) => evaluateSubmissionMarkdownQuality({
+                    absolutePath: entry.absolute_path,
+                    requiredTokens: ['# RMO 24-2023 Control Matrix']
+                })
+            },
+            {
+                code: 'rmo.filing_authority_decision',
+                label: 'RMO filing authority and responsibility decision',
+                absolute_path: path.resolve(submissionRoot, 'rmo-24-2023-filing-authority-decision.md'),
+                evaluateQuality: (entry) => evaluateSubmissionMarkdownQuality({
+                    absolutePath: entry.absolute_path,
+                    requiredTokens: ['# RMO Filing Authority Decision']
+                })
+            },
+            {
+                code: 'rmo.receipt_sample_pack',
+                label: 'RMO fiscal receipt/invoice sample pack',
+                absolute_path: path.resolve(submissionRoot, 'rmo-24-2023-receipt-sample-pack.md'),
+                evaluateQuality: (entry) => evaluateSubmissionMarkdownQuality({
+                    absolutePath: entry.absolute_path,
+                    requiredTokens: ['# RMO Receipt Sample Pack']
+                })
+            },
+            {
+                code: 'rmo.fiscal_integrity_evidence',
+                label: 'RMO fiscal event integrity evidence',
+                absolute_path: path.resolve(evidenceRoot, 'latest-rmo-fiscal-integrity.json'),
+                evaluateQuality: (entry) => evaluateJsonEvidenceQuality({
+                    absolutePath: entry.absolute_path,
+                    requiredRootKeys: ['verification_id', 'verified_at', 'result'],
+                    freshnessDateKey: 'verified_at',
+                    maxAgeDays: evidenceMaxAgeDays
+                })
+            },
+            {
+                code: 'rmo.esales_reporting_plan',
+                label: 'RMO eSales reporting plan and rehearsal evidence',
+                absolute_path: path.resolve(evidenceRoot, 'latest-rmo-esales-rehearsal.json'),
+                evaluateQuality: (entry) => evaluateJsonEvidenceQuality({
+                    absolutePath: entry.absolute_path,
+                    requiredRootKeys: ['rehearsal_id', 'verified_at', 'result'],
+                    freshnessDateKey: 'verified_at',
+                    maxAgeDays: evidenceMaxAgeDays
+                })
             }
         ];
 
@@ -824,6 +914,55 @@ export const complianceRepository = {
         }
 
         return tenantReadiness;
+    },
+
+    async getRmoFilingReadiness(tenantId = null) {
+        const readiness = await this.getSubmissionArtifactReadiness(tenantId);
+        const allItems = Array.isArray(readiness?.items) ? readiness.items : [];
+        const rmoItems = allItems
+            .filter((item) => RMO_24_2023_REQUIREMENT_CODES.includes(item?.code))
+            .map((item) => ({
+                ...item,
+                action_target: `/settings?tab=compliance#final-review-doc-${String(item.code || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`
+            }));
+        const complete = rmoItems.filter((entry) => entry.ready === true).length;
+
+        return {
+            source: readiness?.source || null,
+            complete,
+            total: RMO_24_2023_REQUIREMENT_CODES.length,
+            missing: Math.max(0, RMO_24_2023_REQUIREMENT_CODES.length - complete),
+            ready: rmoItems.length === RMO_24_2023_REQUIREMENT_CODES.length
+                && complete === RMO_24_2023_REQUIREMENT_CODES.length,
+            items: rmoItems
+        };
+    },
+
+    async getFiscalTerminalRegistrationReadiness() {
+        let PosFiscalTerminalRegistration = null;
+        try {
+            PosFiscalTerminalRegistration = dbStore.get('PosFiscalTerminalRegistration');
+        } catch {
+            PosFiscalTerminalRegistration = null;
+        }
+        if (!PosFiscalTerminalRegistration) {
+            return {
+                ready: false,
+                verified_count: 0,
+                total_count: 0,
+                action_target: '/settings?tab=pos#fiscal-terminal-registration'
+            };
+        }
+        const [verifiedCount, totalCount] = await Promise.all([
+            PosFiscalTerminalRegistration.count({ where: { accreditation_status: 'verified' } }),
+            PosFiscalTerminalRegistration.count()
+        ]);
+        return {
+            ready: verifiedCount > 0,
+            verified_count: verifiedCount,
+            total_count: totalCount,
+            action_target: '/settings?tab=pos#fiscal-terminal-registration'
+        };
     },
 
     async getEncryptionPolicyPrerequisitesState() {

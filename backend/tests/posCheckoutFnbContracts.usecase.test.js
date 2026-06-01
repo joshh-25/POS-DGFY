@@ -50,9 +50,25 @@ jest.unstable_mockModule('../src/services/locationInventoryService.js', () => ({
 }));
 
 let buildCheckoutPosUseCase;
+let buildRecordFiscalPrintEventUseCase;
+let buildVoidPosTransactionUseCase;
+let buildGenerateESalesReportUseCase;
+let buildListESalesReportsUseCase;
+let buildVerifyFiscalEventLedgerUseCase;
+let buildUpdateESalesReportStatusUseCase;
+let buildUpsertFiscalTerminalRegistrationUseCase;
 
 beforeAll(async () => {
-    ({ buildCheckoutPosUseCase } = await import('../src/modules/pos/usecases/posUseCases.js'));
+    ({
+        buildCheckoutPosUseCase,
+        buildRecordFiscalPrintEventUseCase,
+        buildVoidPosTransactionUseCase,
+        buildGenerateESalesReportUseCase,
+        buildListESalesReportsUseCase,
+        buildVerifyFiscalEventLedgerUseCase,
+        buildUpdateESalesReportStatusUseCase,
+        buildUpsertFiscalTerminalRegistrationUseCase
+    } = await import('../src/modules/pos/usecases/posUseCases.js'));
 });
 
 const createTransaction = () => {
@@ -86,6 +102,148 @@ const runInTenantContext = async (callback) => {
 describe('POS checkout F&B contracts', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+    });
+
+    it('persists fiscal buyer fields and a server-owned fiscal document snapshot for fiscal invoices', async () => {
+        mockGetAllSettingsUseCase.mockResolvedValueOnce({
+            success: true,
+            data: {
+                pos_registered_name: { value: 'DGFY Retail Corp.' },
+                pos_business_name: { value: 'DGFY Store' },
+                pos_business_style: { value: 'Retail' },
+                pos_taxpayer_type: { value: 'VAT' },
+                pos_tin_branch: { value: '123-456-789-00000' },
+                pos_address: { value: 'Makati City' },
+                pos_ptu_number: { value: 'PTU-2026-001' },
+                pos_min_number: { value: 'MIN-001' },
+                pos_accreditation_number: { value: 'ACC-001' },
+                pos_software_name: { value: 'SKU Inventory Manager' },
+                pos_software_version: { value: '2026.06' },
+                pos_software_serial_number: { value: 'SKU-SN-001' }
+            }
+        });
+        mockAssertComplianceOperationAllowed.mockResolvedValueOnce({
+            success: true,
+            data: {
+                decision: {
+                    allowed: true,
+                    receipt_contract: {
+                        document_type: 'fiscal_invoice',
+                        label: 'FISCAL INVOICE',
+                        document_context: 'fiscal'
+                    }
+                }
+            }
+        });
+        let createdTransaction = null;
+        const posRepository = {
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({ mode: 'warn', active_registry: [] }),
+            findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 1,
+                name: 'Taxable Item',
+                category: 'product',
+                unit_of_measure: 'pc',
+                current_stock: 5,
+                cost_per_unit: 50,
+                default_sale_price: 100,
+                vat_type: 'vatable'
+            }]),
+            listProductCompositionsForItems: jest.fn().mockResolvedValue([]),
+            getVerifiedFiscalTerminalRegistration: jest.fn().mockResolvedValue({
+                pos_fiscal_terminal_registration_id: 44,
+                terminal_id: 'TERM-01',
+                min_number: 'MIN-001',
+                machine_serial_number: 'MSN-001',
+                ptu_number: 'PTU-2026-001',
+                receipt_printer_binding: 'PRN-01',
+                cash_drawer_binding: 'CD-01'
+            }),
+            createFiscalEvent: jest.fn().mockResolvedValue({ event_hash: 'fiscal-event-hash' }),
+            getTerminalShiftById: jest.fn(),
+            nextInvoiceNumber: jest.fn().mockResolvedValue('INV-000001'),
+            getFnbTableById: jest.fn(),
+            createTransactionWithLines: jest.fn(async ({ header, lines }) => {
+                createdTransaction = {
+                    pos_transaction_id: 177,
+                    ...header,
+                    lines
+                };
+                return 177;
+            }),
+            createFnbServiceChargeSnapshot: jest.fn(),
+            settleFnbCheck: jest.fn(),
+            incrementPersistentCounter: jest.fn().mockResolvedValue(1),
+            getTransactionById: jest.fn(async () => createdTransaction)
+        };
+        const stockMovementService = {
+            createStockMovement: jest.fn().mockResolvedValue({ movement_id: 1 })
+        };
+        const useCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'fiscal-checkout-rmo-snapshot',
+                terminal_id: 'term-01',
+                location_id: 3,
+                document_context: 'fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                buyer_name: 'Acme Buyer Inc.',
+                buyer_tin: '987-654-321-00000',
+                buyer_business_style: 'Wholesale',
+                buyer_address: 'Quezon City',
+                lines: [{ item_id: 1, quantity: 1 }]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(createdTransaction).toEqual(expect.objectContaining({
+            document_type: 'fiscal_invoice',
+            document_context: 'fiscal',
+            buyer_tin: '987-654-321-00000',
+            buyer_business_style: 'Wholesale',
+            buyer_address: 'Quezon City',
+            fiscal_document_template_version: 'rmo-24-2023-prep-v1',
+            fiscal_document_hash: expect.stringMatching(/^[a-f0-9]{64}$/)
+        }));
+        expect(createdTransaction.fiscal_document_snapshot).toEqual(expect.objectContaining({
+            template_version: 'rmo-24-2023-prep-v1',
+            document: expect.objectContaining({
+                invoice_number: 'INV-000001',
+                document_type: 'fiscal_invoice',
+                document_context: 'fiscal'
+            }),
+            seller: expect.objectContaining({
+                registered_name: 'DGFY Retail Corp.',
+                tin_branch: '123-456-789-00000',
+                ptu_number: 'PTU-2026-001',
+                min_number: 'MIN-001',
+                software_name: 'SKU Inventory Manager'
+            }),
+            buyer: expect.objectContaining({
+                name: 'Acme Buyer Inc.',
+                tin: '987-654-321-00000',
+                business_style: 'Wholesale',
+                address: 'Quezon City'
+            }),
+            totals: expect.objectContaining({
+                total_amount: 101,
+                payment_type: 'cash'
+            }),
+            lines: [expect.objectContaining({
+                item_name: 'Taxable Item',
+                quantity: 1,
+                vat_type: 'vatable'
+            })]
+        }));
+        expect(posRepository.createFiscalEvent).toHaveBeenCalledWith(expect.objectContaining({
+            event_type: 'checkout_issued',
+            invoice_number: 'INV-000001',
+            terminal_id: 'TERM-01'
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
     });
 
     it('validates modifiers from configured groups, taxes taxable restaurant service charge, and deducts recipe ingredients', async () => {
@@ -584,5 +742,257 @@ describe('POS checkout F&B contracts', () => {
             reason_code: 'FNB_KITCHEN_ORDER_UNAVAILABLE'
         }));
         expect(stockMovementService.createStockMovement).not.toHaveBeenCalled();
+    });
+
+    it('records original and reprint fiscal print events with chained fiscal events', async () => {
+        const fiscalTransaction = {
+            pos_transaction_id: 177,
+            invoice_number: 'INV-000001',
+            document_type: 'fiscal_invoice',
+            document_context: 'fiscal',
+            status: 'completed',
+            terminal_id: 'TERM-01',
+            fiscal_document_hash: 'a'.repeat(64),
+            fiscal_lifecycle_state: 'original',
+            fiscal_reprint_count: 0
+        };
+        const posRepository = {
+            getTransactionById: jest.fn().mockResolvedValue(fiscalTransaction),
+            countFiscalPrintEvents: jest.fn()
+                .mockResolvedValueOnce(0)
+                .mockResolvedValueOnce(1),
+            createFiscalPrintEvent: jest.fn(async (payload) => payload),
+            createFiscalEvent: jest.fn(async (payload) => ({ ...payload, event_hash: `${payload.event_type}-hash` })),
+            updateTransactionLifecycle: jest.fn(async (id, payload) => ({ ...fiscalTransaction, ...payload }))
+        };
+        const useCase = buildRecordFiscalPrintEventUseCase({ posRepository });
+
+        const first = await runInTenantContext(() => useCase({
+            posTransactionId: 177,
+            payload: {},
+            user: { user_id: 12 }
+        }));
+        const second = await runInTenantContext(() => useCase({
+            posTransactionId: 177,
+            payload: { reason: 'Customer requested copy' },
+            user: { user_id: 12 }
+        }));
+
+        expect(first.success).toBe(true);
+        expect(first.data.print_type).toBe('original');
+        expect(second.success).toBe(true);
+        expect(second.data.print_type).toBe('reprint');
+        expect(posRepository.createFiscalEvent).toHaveBeenCalledWith(expect.objectContaining({
+            event_type: 'print_reprint',
+            invoice_number: 'INV-000001'
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
+    });
+
+    it('voids a fiscal transaction through lifecycle state and fiscal event evidence', async () => {
+        const fiscalTransaction = {
+            pos_transaction_id: 177,
+            invoice_number: 'INV-000001',
+            document_type: 'fiscal_invoice',
+            document_context: 'fiscal',
+            status: 'completed',
+            terminal_id: 'TERM-01',
+            fiscal_document_hash: 'a'.repeat(64),
+            fiscal_lifecycle_state: 'original'
+        };
+        const posRepository = {
+            getTransactionById: jest.fn().mockResolvedValue(fiscalTransaction),
+            listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([{
+                movement_id: 901,
+                item_id: 1,
+                quantity: -2,
+                location_id: 3
+            }]),
+            createFiscalEvent: jest.fn().mockResolvedValue({ event_hash: 'void-event-hash' }),
+            updateTransactionLifecycle: jest.fn(async (id, payload) => ({ ...fiscalTransaction, ...payload }))
+        };
+        const stockMovementService = {
+            createStockMovement: jest.fn().mockResolvedValue({ movement_id: 902 })
+        };
+        const useCase = buildVoidPosTransactionUseCase({ posRepository, stockMovementService });
+
+        const result = await runInTenantContext(() => useCase({
+            posTransactionId: 177,
+            payload: { reason: 'Customer returned all items' },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.transaction).toEqual(expect.objectContaining({
+            status: 'voided',
+            fiscal_lifecycle_state: 'voided',
+            fiscal_void_event_hash: 'void-event-hash'
+        }));
+        expect(stockMovementService.createStockMovement).toHaveBeenCalledWith(expect.objectContaining({
+            item_id: 1,
+            quantity: 2,
+            movement_type: 'return',
+            location_id: 3,
+            reference_type: 'POS',
+            reference_id: '177'
+        }), 12, expect.any(Object));
+        expect(result.data.stock_reversals).toEqual([expect.objectContaining({
+            original_movement_id: 901,
+            reversal_movement_id: 902
+        })]);
+        expect(posRepository.createFiscalEvent).toHaveBeenCalledWith(expect.objectContaining({
+            event_type: 'void',
+            invoice_number: 'INV-000001'
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
+    });
+
+    it('generates an eSales report package with hash and fiscal ledger event', async () => {
+        const posRepository = {
+            listFiscalTransactionsForMonth: jest.fn().mockResolvedValue([{
+                pos_transaction_id: 177,
+                invoice_number: 'INV-000001',
+                created_at: '2026-06-01T00:00:00.000Z',
+                terminal_id: 'TERM-01',
+                buyer_tin: '987-654-321-00000',
+                vatable_sales: 89.2857,
+                vat_amount: 10.7143,
+                vat_exempt_sales: 0,
+                zero_rated_sales: 0,
+                total_amount: 101,
+                status: 'completed',
+                fiscal_document_hash: 'a'.repeat(64),
+                fiscal_document_snapshot: { terminal: { min_number: 'MIN-001' } }
+            }]),
+            upsertESalesReport: jest.fn(async (payload) => ({ pos_esales_report_id: 1, ...payload })),
+            createFiscalEvent: jest.fn(async (payload) => ({ ...payload, event_hash: 'esales-event-hash' }))
+        };
+        const useCase = buildGenerateESalesReportUseCase({ posRepository });
+
+        const result = await runInTenantContext(() => useCase({
+            payload: { report_month: '2026-06' },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.report.payload_hash).toMatch(/^[a-f0-9]{64}$/);
+        expect(result.data.report.payload.summary.transaction_count).toBe(1);
+        expect(result.data.report.payload.summary.net_total_amount).toBe(101);
+        expect(result.data.report.payload.summary.voided_transaction_count).toBe(0);
+        expect(posRepository.createFiscalEvent).toHaveBeenCalledWith(expect.objectContaining({
+            event_type: 'esales_export'
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
+    });
+
+    it('lists and updates eSales acknowledgement status with fiscal event evidence', async () => {
+        const posRepository = {
+            listESalesReports: jest.fn().mockResolvedValue([{ pos_esales_report_id: 1, report_month: '2026-06' }]),
+            findESalesReportById: jest.fn().mockResolvedValue({
+                pos_esales_report_id: 1,
+                report_month: '2026-06',
+                payload_hash: 'b'.repeat(64),
+                submitted_by: null,
+                submitted_at: null
+            }),
+            updateESalesReportStatus: jest.fn(async (id, payload) => ({
+                pos_esales_report_id: id,
+                report_month: '2026-06',
+                payload_hash: 'b'.repeat(64),
+                ...payload
+            })),
+            createFiscalEvent: jest.fn(async (payload) => ({ ...payload, event_hash: 'status-event-hash' }))
+        };
+        const listUseCase = buildListESalesReportsUseCase({ posRepository });
+        const updateUseCase = buildUpdateESalesReportStatusUseCase({ posRepository });
+
+        const listed = await listUseCase();
+        const updated = await runInTenantContext(() => updateUseCase({
+            reportId: 1,
+            payload: {
+                status: 'submitted',
+                status_evidence_ref: 'ACK-001',
+                status_note: 'Submitted through eSales portal'
+            },
+            user: { user_id: 12 }
+        }));
+
+        expect(listed.success).toBe(true);
+        expect(listed.data.reports).toHaveLength(1);
+        expect(updated.success).toBe(true);
+        expect(updated.data.report).toEqual(expect.objectContaining({
+            status: 'submitted',
+            status_evidence_ref: 'ACK-001',
+            submitted_by: 12
+        }));
+        expect(posRepository.createFiscalEvent).toHaveBeenCalledWith(expect.objectContaining({
+            event_type: 'esales_export',
+            payload: expect.objectContaining({
+                status: 'submitted',
+                status_evidence_ref: 'ACK-001'
+            })
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
+    });
+
+    it('requires fiscal terminal identity before marking a terminal verified', async () => {
+        const posRepository = {
+            upsertFiscalTerminalRegistration: jest.fn(),
+            createFiscalEvent: jest.fn()
+        };
+        const useCase = buildUpsertFiscalTerminalRegistrationUseCase({ posRepository });
+
+        const result = await runInTenantContext(() => useCase({
+            payload: {
+                terminal_id: 'TERM-01',
+                accreditation_status: 'verified'
+            },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details.reason_code).toBe('FISCAL_TERMINAL_VERIFICATION_INCOMPLETE');
+        expect(posRepository.upsertFiscalTerminalRegistration).not.toHaveBeenCalled();
+    });
+
+    it('verifies fiscal event ledger sequence and hash continuity', async () => {
+        const eventOnePayload = { invoice_number: 'INV-1' };
+        const eventOneHash = '3a0b431e485464a7b77bc7a33a5bc5ecf9e8a0b7f28b5542ee2fdfd8a796a4b8';
+        const posRepository = {
+            listFiscalEvents: jest.fn().mockResolvedValue([
+                {
+                    pos_fiscal_event_id: 1,
+                    event_sequence: 1,
+                    event_type: 'checkout_issued',
+                    pos_transaction_id: 10,
+                    invoice_number: 'INV-1',
+                    terminal_id: 'TERM-01',
+                    previous_event_hash: null,
+                    event_hash: eventOneHash,
+                    payload: eventOnePayload,
+                    occurred_at: '2026-06-01T00:00:00.000Z'
+                },
+                {
+                    pos_fiscal_event_id: 2,
+                    event_sequence: 3,
+                    event_type: 'print_original',
+                    pos_transaction_id: 10,
+                    invoice_number: 'INV-1',
+                    terminal_id: 'TERM-01',
+                    previous_event_hash: 'wrong-hash',
+                    event_hash: 'wrong-event-hash',
+                    payload: { print_sequence: 1 },
+                    occurred_at: '2026-06-01T00:01:00.000Z'
+                }
+            ])
+        };
+        const useCase = buildVerifyFiscalEventLedgerUseCase({ posRepository });
+
+        const result = await useCase();
+
+        expect(result.success).toBe(true);
+        expect(result.data.ready).toBe(false);
+        expect(result.data.checked_event_count).toBe(2);
+        expect(result.data.issues.map((issue) => issue.code)).toEqual(expect.arrayContaining([
+            'FISCAL_EVENT_SEQUENCE_GAP',
+            'FISCAL_EVENT_PREVIOUS_HASH_MISMATCH',
+            'FISCAL_EVENT_HASH_MISMATCH'
+        ]));
     });
 });

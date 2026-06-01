@@ -16,7 +16,12 @@ const buildTenantProfile = () => ({
         ptu_certificate_number: 'PTU-001',
         tax_classification_controls_confirmed: true,
         non_resettable_grand_total_enabled: true,
-        mandatory_receipt_fields_confirmed: true
+        mandatory_receipt_fields_confirmed: true,
+        rmo_24_2023_filing_verified: true,
+        fiscal_document_content_reviewed: true,
+        terminal_registration_controls_confirmed: true,
+        ejournal_integrity_controls_confirmed: true,
+        esales_reporting_controls_confirmed: true
     },
     npc: {
         dpo_name: 'Jane DPO',
@@ -65,6 +70,27 @@ const buildArtifacts = () => ([
         valid_until: '2030-12-31'
     }
 ]);
+
+const buildRmoEvidence = () => ({
+    rmo_filing_readiness: {
+        ready: true,
+        complete: 5,
+        total: 5,
+        missing: 0,
+        items: [
+            { code: 'rmo.control_matrix', ready: true },
+            { code: 'rmo.filing_authority_decision', ready: true },
+            { code: 'rmo.receipt_sample_pack', ready: true },
+            { code: 'rmo.fiscal_integrity_evidence', ready: true },
+            { code: 'rmo.esales_reporting_plan', ready: true }
+        ]
+    },
+    fiscal_terminal_registration: {
+        ready: true,
+        verified_count: 1,
+        total_count: 1
+    }
+});
 
 describe('compliancePolicyEngine', () => {
     it('denies fiscal receipt render in non-compliant mode', () => {
@@ -138,7 +164,8 @@ describe('compliancePolicyEngine', () => {
                     accreditation_valid_until: '2030-12-31'
                 }
             ],
-            settings: buildSettings()
+            settings: buildSettings(),
+            evidence: buildRmoEvidence()
         });
 
         expect(decision.decision).toBe(COMPLIANCE_DECISION.DENY);
@@ -174,7 +201,8 @@ describe('compliancePolicyEngine', () => {
                     accreditation_valid_until: '2030-12-31'
                 }
             ],
-            settings: buildSettings()
+            settings: buildSettings(),
+            evidence: buildRmoEvidence()
         });
 
         expect(decision.decision).toBe(COMPLIANCE_DECISION.DENY);
@@ -210,7 +238,8 @@ describe('compliancePolicyEngine', () => {
                     accreditation_valid_until: '2030-12-31'
                 }
             ],
-            settings: buildSettings()
+            settings: buildSettings(),
+            evidence: buildRmoEvidence()
         });
 
         expect(decision.decision).toBe(COMPLIANCE_DECISION.ALLOW);
@@ -246,7 +275,8 @@ describe('compliancePolicyEngine', () => {
                     accreditation_valid_until: '2030-12-31'
                 }
             ],
-            settings: buildSettings()
+            settings: buildSettings(),
+            evidence: buildRmoEvidence()
         });
 
         expect(decision.decision).toBe(COMPLIANCE_DECISION.ALLOW);
@@ -367,6 +397,120 @@ describe('compliancePolicyEngine', () => {
         ]));
     });
 
+    it('blocks compliant activation when RMO 24-2023 filing evidence is missing', () => {
+        const checklist = evaluateComplianceChecklist({
+            tenant: {
+                id: 'tenant-5c',
+                compliance_mode_state: COMPLIANCE_MODE_STATE.COMPLIANT_PENDING,
+                compliance_profile: buildTenantProfile()
+            },
+            complianceProfile: buildTenantProfile(),
+            artifacts: buildArtifacts(),
+            peripherals: [
+                {
+                    device_class: 'receipt_printer',
+                    terminal_id: null,
+                    is_shared: true,
+                    status: 'accredited',
+                    verification_status: 'verified',
+                    accreditation_valid_until: '2030-12-31'
+                },
+                {
+                    device_class: 'cash_drawer',
+                    terminal_id: null,
+                    is_shared: true,
+                    status: 'accredited',
+                    verification_status: 'verified',
+                    accreditation_valid_until: '2030-12-31'
+                }
+            ],
+            settings: buildSettings(),
+            evidence: {
+                rmo_filing_readiness: {
+                    ready: false,
+                    complete: 2,
+                    total: 5,
+                    missing: 3,
+                    items: [
+                        { code: 'rmo.control_matrix', label: 'RMO control matrix', ready: true },
+                        { code: 'rmo.receipt_sample_pack', label: 'Receipt sample pack', ready: false }
+                    ]
+                }
+            }
+        });
+
+        expect(checklist.ready_for_compliant_activation).toBe(false);
+        expect(checklist.activation_blockers).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                section: 'final_review',
+                code: COMPLIANCE_REASON_CODE.RMO_FILING_EVIDENCE_REQUIRED
+            })
+        ]));
+        expect(checklist.requirements).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                code: 'control.rmo_filing_readiness',
+                status: 'missing',
+                section: 'final_review'
+            })
+        ]));
+    });
+
+    it('blocks compliant activation when no fiscal terminal registration is verified', () => {
+        const checklist = evaluateComplianceChecklist({
+            tenant: {
+                id: 'tenant-5d',
+                compliance_mode_state: COMPLIANCE_MODE_STATE.COMPLIANT_PENDING,
+                compliance_profile: buildTenantProfile()
+            },
+            complianceProfile: buildTenantProfile(),
+            artifacts: buildArtifacts(),
+            peripherals: [
+                {
+                    device_class: 'receipt_printer',
+                    terminal_id: null,
+                    is_shared: true,
+                    status: 'accredited',
+                    verification_status: 'verified',
+                    accreditation_valid_until: '2030-12-31'
+                },
+                {
+                    device_class: 'cash_drawer',
+                    terminal_id: null,
+                    is_shared: true,
+                    status: 'accredited',
+                    verification_status: 'verified',
+                    accreditation_valid_until: '2030-12-31'
+                }
+            ],
+            settings: buildSettings(),
+            evidence: {
+                ...buildRmoEvidence(),
+                fiscal_terminal_registration: {
+                    ready: false,
+                    verified_count: 0,
+                    total_count: 1,
+                    action_target: '/settings?tab=pos#fiscal-terminal-registration'
+                }
+            }
+        });
+
+        expect(checklist.ready_for_compliant_activation).toBe(false);
+        expect(checklist.activation_blockers).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                section: 'settings',
+                code: COMPLIANCE_REASON_CODE.FISCAL_TERMINAL_REGISTRATION_REQUIRED,
+                action_target: '/settings?tab=pos#fiscal-terminal-registration'
+            })
+        ]));
+        expect(checklist.requirements).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                code: 'control.fiscal_terminal_registration',
+                status: 'missing',
+                section: 'settings'
+            })
+        ]));
+    });
+
     it('produces equivalent checklist readiness for object and stringified compliance_profile inputs', () => {
         const profileObject = buildTenantProfile();
         const basePayload = {
@@ -393,7 +537,8 @@ describe('compliancePolicyEngine', () => {
                     accreditation_valid_until: '2030-12-31'
                 }
             ],
-            settings: buildSettings()
+            settings: buildSettings(),
+            evidence: buildRmoEvidence()
         };
 
         const checklistFromObject = evaluateComplianceChecklist({

@@ -23,6 +23,7 @@ import { isStockExemptServiceItem } from '../../shared/utils/stockBearingPolicy.
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const toDateStart = (value) => new Date(`${String(value).slice(0, 10)}T00:00:00.000Z`);
 const toDateEnd = (value) => new Date(`${String(value).slice(0, 10)}T23:59:59.999Z`);
+const MANILA_UTC_OFFSET_HOURS = 8;
 const toPositiveInt = (value) => {
     const normalized = Number.parseInt(value, 10);
     return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
@@ -48,6 +49,25 @@ const parseJsonLoosely = (value) => {
     } catch {
         return null;
     }
+};
+const stableStringify = (value) => {
+    if (Array.isArray(value)) {
+        return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+    }
+    if (value && typeof value === 'object') {
+        const keys = Object.keys(value).sort();
+        return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+    }
+    return JSON.stringify(value);
+};
+const hashPayload = (payload) => crypto.createHash('sha256').update(stableStringify(payload)).digest('hex');
+const buildManilaMonthRange = (reportMonth) => {
+    const [year, month] = String(reportMonth || '').split('-').map((part) => Number.parseInt(part, 10));
+    if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) return null;
+    return {
+        startAt: new Date(Date.UTC(year, month - 1, 1, -MANILA_UTC_OFFSET_HOURS, 0, 0, 0)),
+        endAt: new Date(Date.UTC(year, month, 1, -MANILA_UTC_OFFSET_HOURS, 0, 0, 0))
+    };
 };
 const normalizeTerminalRegistry = (rawValue) => {
     const parsed = parseJsonLoosely(rawValue);
@@ -409,6 +429,16 @@ const buildTransactionInclude = () => ([
             'opened_at',
             'closed_at'
         ]
+    },
+    {
+        model: dbStore.get('PosFiscalPrintEvent'),
+        as: 'fiscalPrintEvents',
+        required: false
+    },
+    {
+        model: dbStore.get('PosFiscalEvent'),
+        as: 'fiscalEvents',
+        required: false
     }
 ]);
 
@@ -605,6 +635,216 @@ export const posRepository = {
         await PosTransactionLine.bulkCreate(lineRows, { transaction });
 
         return created.pos_transaction_id;
+    },
+
+    async getVerifiedFiscalTerminalRegistration(terminalId, options = {}) {
+        const PosFiscalTerminalRegistration = safeGetModel('PosFiscalTerminalRegistration');
+        if (!PosFiscalTerminalRegistration) return null;
+        const normalizedTerminalId = String(terminalId || '').trim().toUpperCase();
+        if (!normalizedTerminalId) return null;
+        return toPlain(await PosFiscalTerminalRegistration.findOne({
+            where: {
+                terminal_id: normalizedTerminalId,
+                accreditation_status: 'verified'
+            },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        }));
+    },
+
+    async upsertFiscalTerminalRegistration(payload = {}, options = {}) {
+        const PosFiscalTerminalRegistration = dbStore.get('PosFiscalTerminalRegistration');
+        const terminalId = String(payload.terminal_id || '').trim().toUpperCase();
+        const existing = await PosFiscalTerminalRegistration.findOne({
+            where: { terminal_id: terminalId },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        const nextPayload = {
+            ...payload,
+            terminal_id: terminalId
+        };
+        if (existing) {
+            await existing.update(nextPayload, { transaction: options.transaction });
+            return toPlain(existing);
+        }
+        return toPlain(await PosFiscalTerminalRegistration.create(nextPayload, {
+            transaction: options.transaction
+        }));
+    },
+
+    async listFiscalTerminalRegistrations(options = {}) {
+        const PosFiscalTerminalRegistration = dbStore.get('PosFiscalTerminalRegistration');
+        const rows = await PosFiscalTerminalRegistration.findAll({
+            order: [['terminal_id', 'ASC']],
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
+    async getLatestFiscalEvent(options = {}) {
+        const PosFiscalEvent = safeGetModel('PosFiscalEvent');
+        if (!PosFiscalEvent) return null;
+        return toPlain(await PosFiscalEvent.findOne({
+            order: [['event_sequence', 'DESC'], ['pos_fiscal_event_id', 'DESC']],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        }));
+    },
+
+    async listFiscalEvents(options = {}) {
+        const PosFiscalEvent = safeGetModel('PosFiscalEvent');
+        if (!PosFiscalEvent) return [];
+        const limit = toPositiveInt(options.limit) || 5000;
+        const rows = await PosFiscalEvent.findAll({
+            order: [['event_sequence', 'ASC'], ['pos_fiscal_event_id', 'ASC']],
+            limit,
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
+    async createFiscalEvent(payload = {}, options = {}) {
+        const PosFiscalEvent = dbStore.get('PosFiscalEvent');
+        const previous = await this.getLatestFiscalEvent({
+            transaction: options.transaction,
+            lock: true
+        });
+        const occurredAt = payload.occurred_at || new Date();
+        const eventPayload = payload.payload && typeof payload.payload === 'object'
+            ? payload.payload
+            : {};
+        const eventSequence = Number.isInteger(Number(payload.event_sequence)) && Number(payload.event_sequence) > 0
+            ? Number(payload.event_sequence)
+            : Number(previous?.event_sequence || 0) + 1;
+        const eventHash = payload.event_hash || hashPayload({
+            event_sequence: eventSequence,
+            event_type: payload.event_type,
+            pos_transaction_id: payload.pos_transaction_id || null,
+            invoice_number: payload.invoice_number || null,
+            terminal_id: payload.terminal_id || null,
+            previous_event_hash: previous?.event_hash || null,
+            payload: eventPayload,
+            occurred_at: occurredAt instanceof Date ? occurredAt.toISOString() : String(occurredAt)
+        });
+        return toPlain(await PosFiscalEvent.create({
+            ...payload,
+            event_sequence: eventSequence,
+            payload: eventPayload,
+            previous_event_hash: previous?.event_hash || null,
+            event_hash: eventHash,
+            occurred_at: occurredAt
+        }, { transaction: options.transaction }));
+    },
+
+    async countFiscalPrintEvents(posTransactionId, options = {}) {
+        const PosFiscalPrintEvent = dbStore.get('PosFiscalPrintEvent');
+        return PosFiscalPrintEvent.count({
+            where: { pos_transaction_id: posTransactionId },
+            transaction: options.transaction
+        });
+    },
+
+    async createFiscalPrintEvent(payload = {}, options = {}) {
+        const PosFiscalPrintEvent = dbStore.get('PosFiscalPrintEvent');
+        return toPlain(await PosFiscalPrintEvent.create(payload, {
+            transaction: options.transaction
+        }));
+    },
+
+    async updateTransactionLifecycle(posTransactionId, payload = {}, options = {}) {
+        const PosTransaction = dbStore.get('PosTransaction');
+        const row = await PosTransaction.findByPk(posTransactionId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+        await row.update(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    async listStockMovementsForPosTransaction(posTransactionId, options = {}) {
+        const StockMovement = safeGetModel('StockMovement');
+        if (!StockMovement) return [];
+        const normalizedId = toPositiveInt(posTransactionId);
+        if (!normalizedId) return [];
+        const rows = await StockMovement.findAll({
+            where: {
+                reference_type: 'POS',
+                reference_id: String(normalizedId)
+            },
+            order: [['movement_id', 'ASC']],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return rows.map(toPlain);
+    },
+
+    async listFiscalTransactionsForMonth(reportMonth, options = {}) {
+        const PosTransaction = dbStore.get('PosTransaction');
+        const range = buildManilaMonthRange(reportMonth);
+        if (!range) return [];
+        const { startAt, endAt } = range;
+        const rows = await PosTransaction.findAll({
+            where: {
+                document_type: 'fiscal_invoice',
+                created_at: {
+                    [Op.gte]: startAt,
+                    [Op.lt]: endAt
+                }
+            },
+            include: buildTransactionInclude(),
+            order: [['created_at', 'ASC']],
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
+    async upsertESalesReport(payload = {}, options = {}) {
+        const PosESalesReport = dbStore.get('PosESalesReport');
+        const reportMonth = String(payload.report_month || '').trim();
+        const existing = await PosESalesReport.findOne({
+            where: { report_month: reportMonth },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (existing) {
+            await existing.update(payload, { transaction: options.transaction });
+            return toPlain(existing);
+        }
+        return toPlain(await PosESalesReport.create(payload, { transaction: options.transaction }));
+    },
+
+    async listESalesReports(options = {}) {
+        const PosESalesReport = dbStore.get('PosESalesReport');
+        const rows = await PosESalesReport.findAll({
+            order: [['report_month', 'DESC']],
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
+    async findESalesReportById(reportId, options = {}) {
+        const PosESalesReport = dbStore.get('PosESalesReport');
+        const normalizedId = toPositiveInt(reportId);
+        if (!normalizedId) return null;
+        return toPlain(await PosESalesReport.findByPk(normalizedId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        }));
+    },
+
+    async updateESalesReportStatus(reportId, payload = {}, options = {}) {
+        const PosESalesReport = dbStore.get('PosESalesReport');
+        const normalizedId = toPositiveInt(reportId);
+        if (!normalizedId) return null;
+        const row = await PosESalesReport.findByPk(normalizedId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+        await row.update(payload, { transaction: options.transaction });
+        return toPlain(row);
     },
 
     async listProductCompositionsForItems(itemIds = [], options = {}) {

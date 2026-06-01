@@ -66,6 +66,9 @@ export const PERMISSIONS = {
             ADJUST_CASH_DRAWER: "pos:cash_drawer_adjust", // Record cash in/out and shift cash adjustments
             CLOSE_DAY_POS: "pos:close_day", // Close active terminal shift and generate day-end reconciliation
             REPRINT_POS_RECEIPT: "pos:reprint", // Reprint historical POS receipts
+            VOID_POS_TRANSACTION: "pos:void", // Void completed POS transactions with governed fiscal evidence
+            MANAGE_FISCAL_TERMINALS: "pos:fiscal_terminals:manage", // Register and verify fiscal terminals
+            MANAGE_ESALES_REPORTS: "pos:esales:manage", // Generate and update eSales reporting packages
             SWITCH_LOCATION_POS: "pos:switch_location" // Switch terminal shift location using governed flow
         }
     },
@@ -228,6 +231,8 @@ export const DEFAULT_ROLE_PERMISSIONS = {
         PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER,
         PERMISSIONS.POS.actions.CLOSE_DAY_POS,
         PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT,
+        PERMISSIONS.POS.actions.VOID_POS_TRANSACTION,
+        PERMISSIONS.POS.actions.MANAGE_ESALES_REPORTS,
         PERMISSIONS.STOCK.actions.VIEW_MOVEMENTS,
         PERMISSIONS.REPORTS.actions.VIEW_REPORTS
     ],
