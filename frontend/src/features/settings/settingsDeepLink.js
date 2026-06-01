@@ -32,7 +32,11 @@ export const SETTINGS_HASH_TO_TAB = Object.freeze({
   '#section-profile': 'compliance',
   '#section-artifacts': 'compliance',
   '#section-peripherals': 'compliance',
-  '#section-final-review': 'compliance'
+  '#section-final-review': 'compliance',
+  '#section-rmo-filing-readiness': 'compliance',
+  '#fiscal-terminal-registration': 'pos',
+  '#fiscal-ledger-integrity': 'pos',
+  '#esales-reporting': 'pos'
 });
 
 const TAB_SET = new Set(SETTINGS_TABS);

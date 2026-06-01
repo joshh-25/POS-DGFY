@@ -30,6 +30,12 @@ describe('checkout surface contract', () => {
         restaurant_service_charge: 15,
         default_course: 'main'
       },
+      buyerFiscal: {
+        buyer_name: ' Acme Buyer ',
+        buyer_tin: ' 987-654-321-00000 ',
+        buyer_business_style: ' Wholesale ',
+        buyer_address: ' Quezon City '
+      },
       cart: [
         {
           item_id: 99,
@@ -61,6 +67,10 @@ describe('checkout surface contract', () => {
       fnb_guest_count: 3,
       fnb_server_id: 5,
       restaurant_service_charge: 15,
+      buyer_name: 'Acme Buyer',
+      buyer_tin: '987-654-321-00000',
+      buyer_business_style: 'Wholesale',
+      buyer_address: 'Quezon City',
       lines: [
         {
           item_id: 99,
@@ -89,6 +99,10 @@ describe('checkout surface contract', () => {
     expect(payload.location_id).toBeUndefined();
     expect(payload.discount_profile_name).toBeNull();
     expect(payload.discount_rate).toBeNull();
+    expect(payload.buyer_name).toBeUndefined();
+    expect(payload.buyer_tin).toBeUndefined();
+    expect(payload.buyer_business_style).toBeUndefined();
+    expect(payload.buyer_address).toBeUndefined();
     expect(payload.lines[0]).toEqual({
       item_id: 10,
       quantity: 1,

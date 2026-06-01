@@ -11,9 +11,11 @@ export const buildPosCheckoutPayload = ({
   selectedDiscount = null,
   activeShiftId = null,
   fnbContext = null,
+  buyerFiscal = null,
   cart = []
 } = {}) => {
   const normalizedFnbContext = fnbContext && typeof fnbContext === 'object' ? fnbContext : {};
+  const normalizedBuyerFiscal = buyerFiscal && typeof buyerFiscal === 'object' ? buyerFiscal : {};
 
   return {
     idempotency_key: idempotencyKey,
@@ -32,6 +34,10 @@ export const buildPosCheckoutPayload = ({
     fnb_guest_count: normalizedFnbContext?.fnb_guest_count || undefined,
     fnb_server_id: normalizedFnbContext?.fnb_server_id || undefined,
     restaurant_service_charge: normalizedFnbContext?.restaurant_service_charge || undefined,
+    buyer_name: String(normalizedBuyerFiscal?.buyer_name || '').trim() || undefined,
+    buyer_tin: String(normalizedBuyerFiscal?.buyer_tin || '').trim() || undefined,
+    buyer_business_style: String(normalizedBuyerFiscal?.buyer_business_style || '').trim() || undefined,
+    buyer_address: String(normalizedBuyerFiscal?.buyer_address || '').trim() || undefined,
     lines: (Array.isArray(cart) ? cart : []).map((line) => ({
       item_id: line.item_id,
       quantity: Number(line.quantity),

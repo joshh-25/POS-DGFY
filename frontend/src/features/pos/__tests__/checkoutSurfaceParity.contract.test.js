@@ -52,6 +52,16 @@ describe('POS checkout surface parity', () => {
     }
   });
 
+  it('uses the governed fiscal print confirmation dialog on both checkout surfaces', () => {
+    for (const source of [posSource, skupervisorSource]) {
+      expect(source).not.toContain('window.prompt');
+      expect(source).toContain('Record Fiscal Print Evidence');
+      expect(source).toContain('Open Print Dialog');
+      expect(source).toContain('Confirm Printed');
+      expect(source).toContain('recordFiscalPrintEvent(lastReceipt.pos_transaction_id');
+    }
+  });
+
   it('documents intentional UI differences while preserving shared business payload behavior', () => {
     expect(posSource).toContain('IS_DGFY_POS_SURFACE');
     expect(posSource).toContain('Total Payment');

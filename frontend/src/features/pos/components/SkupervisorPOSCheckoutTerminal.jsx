@@ -9,7 +9,8 @@ import {
     createPosCheckout,
     closePosDay,
     fetchPosTransactions,
-    fetchPosTransactionById
+    fetchPosTransactionById,
+    recordFiscalPrintEvent
 } from '../services/posService';
 import {
     TERMINAL_QUEUE_STATUS,
@@ -332,6 +333,10 @@ export default function POSCheckoutTerminal({
     const [search, setSearch] = useState('');
     const [orderMethod, setOrderMethod] = useState('dine_in');
     const [paymentType, setPaymentType] = useState('cash');
+    const [buyerFiscalName, setBuyerFiscalName] = useState('');
+    const [buyerFiscalTin, setBuyerFiscalTin] = useState('');
+    const [buyerFiscalBusinessStyle, setBuyerFiscalBusinessStyle] = useState('');
+    const [buyerFiscalAddress, setBuyerFiscalAddress] = useState('');
     const [discountProfiles, setDiscountProfiles] = useState([]);
     const [selectedDiscountProfile, setSelectedDiscountProfile] = useState('');
     const [manualDiscountAmountInput, setManualDiscountAmountInput] = useState('');
@@ -343,6 +348,12 @@ export default function POSCheckoutTerminal({
     const [closingDay, setClosingDay] = useState(false);
     const [lastReceipt, setLastReceipt] = useState(null);
     const [lastReceiptContract, setLastReceiptContract] = useState(null);
+    const [fiscalPrintDialogOpen, setFiscalPrintDialogOpen] = useState(false);
+    const [fiscalPrintDraft, setFiscalPrintDraft] = useState({
+        reason: '',
+        printed: false,
+        priorPrintCount: 0
+    });
     const [historyRows, setHistoryRows] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyPage, setHistoryPage] = useState(1);
@@ -512,6 +523,65 @@ export default function POSCheckoutTerminal({
         await syncQueuedCheckoutsState();
         return entry;
     }, [syncQueuedCheckoutsState]);
+
+    const handlePrintReceipt = useCallback(async () => {
+        if (!lastReceipt) return;
+        if (lastReceipt.document_type === 'fiscal_invoice') {
+            const priorPrintCount = Array.isArray(lastReceipt.fiscalPrintEvents)
+                ? lastReceipt.fiscalPrintEvents.length
+                : Number(lastReceipt.fiscal_reprint_count || 0);
+            setFiscalPrintDraft({
+                reason: '',
+                printed: false,
+                priorPrintCount
+            });
+            setFiscalPrintDialogOpen(true);
+            return;
+        }
+        window.print();
+    }, [lastReceipt]);
+
+    const openFiscalPrintDialog = useCallback(() => {
+        window.print();
+        setFiscalPrintDraft((current) => ({
+            ...current,
+            printed: true
+        }));
+    }, []);
+
+    const confirmFiscalPrintRecorded = useCallback(async () => {
+        if (!lastReceipt) return;
+        const reason = String(fiscalPrintDraft.reason || '').trim();
+        if (fiscalPrintDraft.priorPrintCount > 0 && reason.length < 3) {
+            toast.error('Fiscal reprint reason is required.');
+            return;
+        }
+        if (!fiscalPrintDraft.printed) {
+            toast.error('Open the print dialog before recording fiscal print evidence.');
+            return;
+        }
+        try {
+            const result = await recordFiscalPrintEvent(lastReceipt.pos_transaction_id, { reason });
+            if (result?.print_event) {
+                setLastReceipt((current) => current
+                    ? {
+                        ...current,
+                        fiscal_reprint_count: result.print_type === 'reprint'
+                            ? Number(result.print_sequence || 1) - 1
+                            : Number(current.fiscal_reprint_count || 0),
+                        fiscalPrintEvents: [
+                            ...(Array.isArray(current.fiscalPrintEvents) ? current.fiscalPrintEvents : []),
+                            result.print_event
+                        ]
+                    }
+                    : current);
+            }
+            setFiscalPrintDialogOpen(false);
+            toast.success('Fiscal print evidence recorded.');
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Unable to record fiscal print event.');
+        }
+    }, [fiscalPrintDraft.priorPrintCount, fiscalPrintDraft.printed, fiscalPrintDraft.reason, lastReceipt]);
 
     const loadCatalog = useCallback(async () => {
         if (sessionLocked) {
@@ -684,12 +754,18 @@ export default function POSCheckoutTerminal({
         try {
             const allSettings = await getAllSettings();
             setReceiptSettings({
+                pos_registered_name: allSettings?.pos_registered_name?.value || '',
                 pos_business_name: allSettings?.pos_business_name?.value || '',
+                pos_business_style: allSettings?.pos_business_style?.value || '',
+                pos_taxpayer_type: allSettings?.pos_taxpayer_type?.value || '',
                 pos_tin_branch: allSettings?.pos_tin_branch?.value || '',
                 pos_address: allSettings?.pos_address?.value || '',
                 pos_ptu_number: allSettings?.pos_ptu_number?.value || '',
                 pos_min_number: allSettings?.pos_min_number?.value || '',
                 pos_accreditation_number: allSettings?.pos_accreditation_number?.value || '',
+                pos_software_name: allSettings?.pos_software_name?.value || '',
+                pos_software_version: allSettings?.pos_software_version?.value || '',
+                pos_software_serial_number: allSettings?.pos_software_serial_number?.value || '',
                 pos_receipt_footer_message: allSettings?.pos_receipt_footer_message?.value || ''
             });
             setDiscountProfiles(normalizeDiscountProfiles(allSettings?.pos_discount_profiles?.value));
@@ -1257,6 +1333,12 @@ export default function POSCheckoutTerminal({
             selectedDiscount,
             activeShiftId,
             fnbContext: normalizedFnbContext,
+            buyerFiscal: {
+                buyer_name: buyerFiscalName,
+                buyer_tin: buyerFiscalTin,
+                buyer_business_style: buyerFiscalBusinessStyle,
+                buyer_address: buyerFiscalAddress
+            },
             cart
         });
 
@@ -1265,6 +1347,10 @@ export default function POSCheckoutTerminal({
             setCart([]);
             setSelectedDiscountProfile('');
             setManualDiscountAmountInput('');
+            setBuyerFiscalName('');
+            setBuyerFiscalTin('');
+            setBuyerFiscalBusinessStyle('');
+            setBuyerFiscalAddress('');
             const refreshedQueue = await listTerminalOperationQueueEntries({
                 includeResolved: false,
                 statuses: [
@@ -1294,6 +1380,10 @@ export default function POSCheckoutTerminal({
             setCart([]);
             setSelectedDiscountProfile('');
             setManualDiscountAmountInput('');
+            setBuyerFiscalName('');
+            setBuyerFiscalTin('');
+            setBuyerFiscalBusinessStyle('');
+            setBuyerFiscalAddress('');
             if (typeof onCheckoutCompleted === 'function') {
                 onCheckoutCompleted(data?.transaction || null);
             }
@@ -1752,6 +1842,36 @@ export default function POSCheckoutTerminal({
                         )}
                     </label>
 
+                    <div className="rounded-lg border border-slate-200 bg-white p-3">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Buyer Fiscal Details</p>
+                        <div className="mt-2 grid grid-cols-1 gap-2">
+                            <Input
+                                value={buyerFiscalName}
+                                onChange={(event) => setBuyerFiscalName(event.target.value)}
+                                placeholder="Buyer name"
+                                className="h-9 text-[13px]"
+                            />
+                            <Input
+                                value={buyerFiscalTin}
+                                onChange={(event) => setBuyerFiscalTin(event.target.value)}
+                                placeholder="Buyer TIN"
+                                className="h-9 text-[13px]"
+                            />
+                            <Input
+                                value={buyerFiscalBusinessStyle}
+                                onChange={(event) => setBuyerFiscalBusinessStyle(event.target.value)}
+                                placeholder="Business style"
+                                className="h-9 text-[13px]"
+                            />
+                            <Input
+                                value={buyerFiscalAddress}
+                                onChange={(event) => setBuyerFiscalAddress(event.target.value)}
+                                placeholder="Buyer address"
+                                className="h-9 text-[13px]"
+                            />
+                        </div>
+                    </div>
+
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
                         <p className="font-semibold text-slate-700">{DGFY_CONVENIENCE_FEE_LABEL} (1%)</p>
                         <p className="mt-1">
@@ -2105,7 +2225,7 @@ export default function POSCheckoutTerminal({
                     <Button
                         type="button"
                         variant="outline"
-                        onClick={() => window.print()}
+                        onClick={handlePrintReceipt}
                         disabled={!lastReceipt}
                     >
                         Print Last Receipt
@@ -2175,6 +2295,43 @@ export default function POSCheckoutTerminal({
                         </div>
                     )}
                 </section>
+            )}
+
+            {fiscalPrintDialogOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
+                    <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-2xl">
+                        <div className="mb-3">
+                            <h3 className="text-base font-semibold text-slate-900">Record Fiscal Print Evidence</h3>
+                            <p className="mt-1 text-sm text-slate-500">
+                                Open the print dialog first. Record fiscal evidence only after the physical or PDF print was completed.
+                            </p>
+                        </div>
+                        {fiscalPrintDraft.priorPrintCount > 0 && (
+                            <label className="mb-3 block space-y-1">
+                                <span className="text-xs font-semibold text-slate-600">Reprint Reason</span>
+                                <Input
+                                    value={fiscalPrintDraft.reason}
+                                    onChange={(event) => setFiscalPrintDraft((current) => ({ ...current, reason: event.target.value }))}
+                                    placeholder="Required for fiscal reprints"
+                                />
+                            </label>
+                        )}
+                        <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                            Current sequence: {fiscalPrintDraft.priorPrintCount > 0 ? `Reprint #${fiscalPrintDraft.priorPrintCount}` : 'Original print'}
+                        </div>
+                        <div className="mt-4 flex flex-wrap justify-end gap-2">
+                            <Button type="button" variant="outline" onClick={() => setFiscalPrintDialogOpen(false)}>
+                                Cancel
+                            </Button>
+                            <Button type="button" variant="outline" onClick={openFiscalPrintDialog}>
+                                Open Print Dialog
+                            </Button>
+                            <Button type="button" onClick={confirmFiscalPrintRecorded} disabled={!fiscalPrintDraft.printed}>
+                                Confirm Printed
+                            </Button>
+                        </div>
+                    </div>
+                </div>
             )}
 
             {imagePreview && (
