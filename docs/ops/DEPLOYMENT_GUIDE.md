@@ -580,6 +580,10 @@ Without this rewrite, tenant-store asset URLs (for example `/tenant-store/assets
 ## Manual Fallback (Last Resort)
 Use only if deploy script itself is broken:
 
+The `--no-audit` install flags below are deterministic install controls only. They are acceptable for fallback deployment only after explicit dependency audit evidence has passed for the release target:
+1. `npm run audit:dependencies:prod`
+2. `npm run audit:dependencies`
+
 ```bash
 cd /var/www/skupervisor
 git pull --ff-only origin master

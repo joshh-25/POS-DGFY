@@ -17,6 +17,19 @@ Use this table to avoid over-claiming what a green test run proves.
 | Live sandbox tests (legacy/opt-in) | PayPal sandbox canary E2E suites | Real provider verification flow + backend transition contracts when payments are explicitly re-enabled | Production traffic behavior, customer engagement depth |
 | Production evidence | reconciliation dashboards, longitudinal audits | Real-world behavior over time in deployed environment | Causal impact without controlled experiments |
 
+## Dependency Audit Gates
+
+Dependency vulnerability audits are mandatory release evidence.
+
+Required commands:
+1. `npm run audit:dependencies:prod`
+2. `npm run audit:dependencies`
+
+Evidence semantics:
+1. The production audit blocks production packaging when root, backend, or frontend shipped dependency trees contain known npm advisory vulnerabilities.
+2. The full audit blocks release readiness when dev/test tooling contains known npm advisory vulnerabilities, because the toolchain is part of release evidence generation.
+3. A green audit proves the locked dependency trees have no known npm advisories at execution time. It does not prove packages are vulnerability-free outside the npm advisory database.
+
 ## Frontend Bundle Guard
 
 Current bundle-gate expectations:
@@ -65,6 +78,7 @@ Targeted DGFY POS split-surface contract checks:
    - standalone POS and SKUpervisor POS use the shared checkout payload builder
    - terminal ID, payment handoff, discount, F&B metadata, modifiers, kitchen station, and scan metadata stay aligned
    - DGFY fee label/rate and receipt fallback behavior stay centralized
+   - receipt fiscal/non-fiscal rendering is driven only by explicit server `document_type` and `document_context`; `INV-`/`NFS-` invoice prefixes are not fiscal-status signals
    - intentional UI differences remain documented by contract assertions
 
 Current price/cost readiness checks:

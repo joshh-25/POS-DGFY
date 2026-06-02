@@ -27,6 +27,25 @@ jobs:
       - name: Validate release verdict contract when present
         run: node scripts/verify-release-verdict.js --file .tmp/release-gates/release_verdict.json --sha "${GITHUB_SHA}" --allow-missing true
 
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Install root dependencies
+        run: npm ci
+      - name: Install backend dependencies
+        run: npm --prefix backend ci
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+      - name: Audit production dependency trees
+        run: npm run audit:dependencies:prod
+      - name: Audit full dependency trees
+        run: npm run audit:dependencies
+
   test-backend:
     runs-on: ubuntu-latest
     defaults:
@@ -170,7 +189,7 @@ jobs:
   journey-e2e-release-gate:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/'))
-    needs: [lint-docs, test-backend, test-frontend]
+    needs: [lint-docs, dependency-audit, test-backend, test-frontend]
     services:
       mysql:
         image: mysql:8.0
@@ -291,7 +310,7 @@ jobs:
 
   preflight-namecheap-shared:
     runs-on: ubuntu-latest
-    needs: [lint-docs, test-backend]
+    needs: [lint-docs, dependency-audit, test-backend]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v6
@@ -332,7 +351,7 @@ jobs:
 
   package-namecheap-backend:
     runs-on: ubuntu-latest
-    needs: [test-backend, preflight-namecheap-shared]
+    needs: [dependency-audit, test-backend, preflight-namecheap-shared]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v6
@@ -366,7 +385,7 @@ jobs:
 
   package-namecheap-frontends:
     runs-on: ubuntu-latest
-    needs: [test-frontend]
+    needs: [dependency-audit, test-frontend]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v6
@@ -453,7 +472,7 @@ jobs:
           retention-days: 14
 
   build:
-    needs: [lint-docs, release-verdict-contract, test-backend, test-frontend, journey-e2e-release-gate]
+    needs: [lint-docs, release-verdict-contract, dependency-audit, test-backend, test-frontend, journey-e2e-release-gate]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     
