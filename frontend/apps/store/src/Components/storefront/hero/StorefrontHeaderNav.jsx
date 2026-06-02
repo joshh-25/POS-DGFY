@@ -1,5 +1,5 @@
-import React from 'react';
-import { ArrowLeft, User } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ArrowLeft, Menu, User, X } from 'lucide-react';
 
 const HERO_CANVAS_MAX_WIDTH = 1320;
 const DGFY_HEADER_LOGO_URL = '/dgfy-logo.png';
@@ -14,6 +14,27 @@ export function StorefrontHeaderNav({
   branchSelector = null,
   activeOrderCount = 0
 }) {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const mobileMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) return undefined;
+    const handlePointerDown = (event) => {
+      if (!mobileMenuRef.current?.contains(event.target)) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') setIsMobileMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isMobileMenuOpen]);
+
   const textStyle = {
     border: 'none',
     background: 'transparent',
@@ -27,6 +48,21 @@ export function StorefrontHeaderNav({
     fontFamily: bodyFont || '"Inter", sans-serif',
     padding: '8px 0',
     lineHeight: 1
+  };
+
+  const mobileMenuButtonStyle = {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    border: '1px solid #e2e8f0',
+    background: '#ffffff',
+    color: '#0f172a',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxShadow: '0 8px 18px rgba(15,23,42,.06)',
+    flexShrink: 0
   };
 
   return (
@@ -85,96 +121,205 @@ export function StorefrontHeaderNav({
           </div>
         </div>
 
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            alignItems: 'center',
-            gap: isMobileViewport ? 16 : 34,
-            flexWrap: 'nowrap',
-            minWidth: 0,
-            whiteSpace: 'nowrap',
-            marginLeft: 'auto',
-            flex: '0 1 auto',
-            overflowX: isMobileViewport ? 'auto' : 'visible',
-            scrollbarWidth: 'none'
-          }}
-        >
-          {branchSelector}
-          {branchSelector && !isMobileViewport && (
-            <span style={{ width: 1, height: 26, background: '#d9e2ef', flexShrink: 0 }} />
-          )}
-          <button
-            type="button"
-            onClick={onShop}
-            style={{ ...textStyle, fontFamily: '"Inter", sans-serif' }}
-          >
-            Shop
-          </button>
-          {onTrack && (
-            <button
-              type="button"
-              onClick={onTrack}
-              style={{ ...textStyle, fontFamily: '"Inter", sans-serif' }}
-            >
-              Track Order
-            </button>
-          )}
-          <div style={{ position: 'relative', display: 'inline-flex', flexShrink: 0, marginLeft: isMobileViewport ? 0 : 4 }}>
-            <button
-              type="button"
-              aria-label="Profile"
-              title="Profile"
-              onClick={onAccount || undefined}
-              style={{
-                width: isMobileViewport ? 40 : 48,
-                height: isMobileViewport ? 40 : 48,
-                borderRadius: '50%',
-                border: '6px solid #eaf2ff',
-                background: '#0b74ff',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: typeof onAccount === 'function' ? 'pointer' : 'default',
-                color: '#ffffff',
-                flexShrink: 0,
-                boxShadow: '0 8px 18px rgba(11, 116, 255, 0.28)',
-                transition: 'background 0.2s, box-shadow 0.2s, transform 0.2s'
-              }}
-              onMouseOver={(e) => { e.currentTarget.style.background = '#075fd6'; e.currentTarget.style.boxShadow = '0 10px 22px rgba(11, 116, 255, 0.34)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-              onMouseOut={(e) => { e.currentTarget.style.background = '#0b74ff'; e.currentTarget.style.boxShadow = '0 8px 18px rgba(11, 116, 255, 0.28)'; e.currentTarget.style.transform = 'translateY(0)'; }}
-            >
-              <User size={isMobileViewport ? 17 : 20} strokeWidth={2.5} />
-            </button>
-            {activeOrderCount > 0 && (
-              <span
-                aria-label={`${activeOrderCount} active order${activeOrderCount === 1 ? '' : 's'}`}
+        {isMobileViewport ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto', flexShrink: 0, position: 'relative' }} ref={mobileMenuRef}>
+            <div style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
+              <button
+                type="button"
+                aria-label="Profile"
+                title="Profile"
+                onClick={onAccount || undefined}
                 style={{
-                  position: 'absolute',
-                  top: -2,
-                  right: -1,
-                  minWidth: 20,
-                  height: 20,
-                  borderRadius: 999,
-                  padding: '0 6px',
-                  background: '#f97316',
-                  color: '#ffffff',
-                  border: '2px solid #ffffff',
+                  width: 40,
+                  height: 40,
+                  borderRadius: '50%',
+                  border: '6px solid #eaf2ff',
+                  background: '#0b74ff',
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: 11,
-                  fontWeight: 800,
-                  lineHeight: 1,
-                  boxShadow: '0 8px 18px rgba(249, 115, 22, 0.28)',
-                  pointerEvents: 'none'
+                  cursor: typeof onAccount === 'function' ? 'pointer' : 'default',
+                  color: '#ffffff',
+                  flexShrink: 0,
+                  boxShadow: '0 8px 18px rgba(11, 116, 255, 0.28)'
                 }}
               >
-                {activeOrderCount > 9 ? '9+' : activeOrderCount}
-              </span>
+                <User size={17} strokeWidth={2.5} />
+              </button>
+              {activeOrderCount > 0 && (
+                <span
+                  aria-label={`${activeOrderCount} active order${activeOrderCount === 1 ? '' : 's'}`}
+                  style={{
+                    position: 'absolute',
+                    top: -2,
+                    right: -1,
+                    minWidth: 20,
+                    height: 20,
+                    borderRadius: 999,
+                    padding: '0 6px',
+                    background: '#f97316',
+                    color: '#ffffff',
+                    border: '2px solid #ffffff',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 11,
+                    fontWeight: 800,
+                    lineHeight: 1,
+                    boxShadow: '0 8px 18px rgba(249, 115, 22, 0.28)',
+                    pointerEvents: 'none'
+                  }}
+                >
+                  {activeOrderCount > 9 ? '9+' : activeOrderCount}
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              aria-label={isMobileMenuOpen ? 'Close menu' : 'Open menu'}
+              onClick={() => setIsMobileMenuOpen((previous) => !previous)}
+              style={mobileMenuButtonStyle}
+            >
+              {isMobileMenuOpen ? <X size={18} strokeWidth={2.4} /> : <Menu size={18} strokeWidth={2.4} />}
+            </button>
+            {isMobileMenuOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 10px)',
+                  right: 0,
+                  minWidth: 220,
+                  maxWidth: 'calc(100vw - 32px)',
+                  borderRadius: 18,
+                  border: '1px solid #e2e8f0',
+                  background: '#ffffff',
+                  boxShadow: '0 18px 36px rgba(15,23,42,.16)',
+                  padding: 12,
+                  display: 'grid',
+                  gap: 8,
+                  zIndex: 40
+                }}
+              >
+                {branchSelector && (
+                  <div style={{ padding: '4px 2px 10px', borderBottom: '1px solid #eef2f6' }}>
+                    {branchSelector}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    onShop?.();
+                  }}
+                  style={{ ...textStyle, justifyContent: 'flex-start', width: '100%', padding: '10px 8px' }}
+                >
+                  Shop
+                </button>
+                {onTrack && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      onTrack();
+                    }}
+                    style={{ ...textStyle, justifyContent: 'flex-start', width: '100%', padding: '10px 8px' }}
+                  >
+                    Track Order
+                  </button>
+                )}
+              </div>
             )}
           </div>
-        </div>
+        ) : (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              alignItems: 'center',
+              gap: 34,
+              flexWrap: 'nowrap',
+              minWidth: 0,
+              whiteSpace: 'nowrap',
+              marginLeft: 'auto',
+              flex: '0 1 auto'
+            }}
+          >
+            {branchSelector}
+            {branchSelector && (
+              <span style={{ width: 1, height: 26, background: '#d9e2ef', flexShrink: 0 }} />
+            )}
+            <button
+              type="button"
+              onClick={onShop}
+              style={{ ...textStyle, fontFamily: '"Inter", sans-serif' }}
+            >
+              Shop
+            </button>
+            {onTrack && (
+              <button
+                type="button"
+                onClick={onTrack}
+                style={{ ...textStyle, fontFamily: '"Inter", sans-serif' }}
+              >
+                Track Order
+              </button>
+            )}
+            <div style={{ position: 'relative', display: 'inline-flex', flexShrink: 0, marginLeft: 4 }}>
+              <button
+                type="button"
+                aria-label="Profile"
+                title="Profile"
+                onClick={onAccount || undefined}
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: '50%',
+                  border: '6px solid #eaf2ff',
+                  background: '#0b74ff',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: typeof onAccount === 'function' ? 'pointer' : 'default',
+                  color: '#ffffff',
+                  flexShrink: 0,
+                  boxShadow: '0 8px 18px rgba(11, 116, 255, 0.28)',
+                  transition: 'background 0.2s, box-shadow 0.2s, transform 0.2s'
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.background = '#075fd6'; e.currentTarget.style.boxShadow = '0 10px 22px rgba(11, 116, 255, 0.34)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                onMouseOut={(e) => { e.currentTarget.style.background = '#0b74ff'; e.currentTarget.style.boxShadow = '0 8px 18px rgba(11, 116, 255, 0.28)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+              >
+                <User size={20} strokeWidth={2.5} />
+              </button>
+              {activeOrderCount > 0 && (
+                <span
+                  aria-label={`${activeOrderCount} active order${activeOrderCount === 1 ? '' : 's'}`}
+                  style={{
+                    position: 'absolute',
+                    top: -2,
+                    right: -1,
+                    minWidth: 20,
+                    height: 20,
+                    borderRadius: 999,
+                    padding: '0 6px',
+                    background: '#f97316',
+                    color: '#ffffff',
+                    border: '2px solid #ffffff',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 11,
+                    fontWeight: 800,
+                    lineHeight: 1,
+                    boxShadow: '0 8px 18px rgba(249, 115, 22, 0.28)',
+                    pointerEvents: 'none'
+                  }}
+                >
+                  {activeOrderCount > 9 ? '9+' : activeOrderCount}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

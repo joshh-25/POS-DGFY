@@ -38,6 +38,33 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain('review_invites');
   });
 
+  it('keeps the mobile F&B metadata row data-driven from storefront and follow state', () => {
+    const source = appSource();
+
+    expect(source).toContain('followersLabel');
+    expect(source).toContain('heroSectionModel.modeLabel');
+    expect(source).toContain('heroSectionModel.locationLabel');
+    expect(source).not.toContain("heroSectionModel.modeLabel || 'Food and beverages'");
+    expect(source).toContain('mobileHeroMetaItems');
+    expect(source).toContain("flexWrap: 'nowrap'");
+    expect(source).toContain("overflowX: 'auto'");
+    expect(source).not.toContain("heroSectionModel.ratingLabel || 'Fresh menu'");
+    expect(source).not.toContain("aboutText || 'This menu storefront is connected to live SKUpervisor product data and the food and beverage backend.'");
+    expect(source).not.toContain("heroSectionModel.hours || 'Mon-Sat 9:00 AM - 6:00 PM'");
+  });
+
+  it('keeps the new mobile F&B CTAs and category controls functional without reverting the layout', () => {
+    const source = appSource();
+
+    expect(source).toContain('heroSectionModel.actions?.canMessage');
+    expect(source).toContain('heroSectionModel.actions.messageHref');
+    expect(source).toContain('heroSectionModel.actions?.canCall');
+    expect(source).toContain('heroSectionModel.actions.callHref');
+    expect(source).toContain("section.items?.length || 0");
+    expect(source).toContain("onClick={() => setActiveServiceTab('')}");
+    expect(source).toContain("placeholder=\"Search meals, drinks, desserts...\"");
+  });
+
   it('exposes the public reservation request tab for F&B storefronts', () => {
     const source = appSource();
     const panel = panelSource();

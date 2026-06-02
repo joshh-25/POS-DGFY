@@ -2445,11 +2445,15 @@ const FnbHero = ({
   handleShareAction
 }) => {
   const [isExpandedMapOpen, setIsExpandedMapOpen] = useState(false);
+  const [expandedMobileCard, setExpandedMobileCard] = useState(null);
   const heroTheme = modeAdapter.heroTheme || {};
   const followersLabel = formatFollowersLabel(followState?.followersCount);
   const addressText = String(heroSectionModel.addressLine || heroSectionModel.locationLabel || '').trim();
+  const selectedBranchLabel = String(selectedLocation?.name || heroSectionModel.locationLabel || '').trim();
   const galleryImages = Array.isArray(heroSectionModel.galleryPreview) ? heroSectionModel.galleryPreview.filter(Boolean) : [];
   const aboutText = String(heroSectionModel.aboutText || '').trim();
+  const storefrontCityLabel = String(fnbViewModel?.storefront_location?.city || '').trim();
+  const displayHours = String(heroSectionModel.hours || '').trim();
   const hasAboutToggle = aboutText.length > 180;
   const hasAddress = Boolean(addressText);
   const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
@@ -2461,6 +2465,37 @@ const FnbHero = ({
         categories: [heroSectionModel.primaryCategoryLabel, heroSectionModel.locationSummary]
       });
   const visibleWhyChooseUs = whyChooseUs.slice(0, MAX_STOREFRONT_WHY_CHOOSE_US);
+  const desktopHeroMetaItems = [
+    heroSectionModel.ratingLabel ? (
+      <span key="rating" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, whiteSpace: 'nowrap' }}>
+        <Star size={16} fill="#fbbf24" color="#fbbf24" />
+        {heroSectionModel.ratingLabel}
+      </span>
+    ) : null,
+    followEnabled ? <span key="followers" style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>{followersLabel}</span> : null,
+    heroSectionModel.modeLabel ? <span key="mode" style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>{heroSectionModel.modeLabel}</span> : null,
+    selectedBranchLabel ? (
+      <span key="location" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, whiteSpace: 'nowrap' }}>
+        <MapPin size={16} />
+        {selectedBranchLabel}
+      </span>
+    ) : null
+  ].filter(Boolean);
+  const mobileHeroMetaItems = [
+    heroSectionModel.ratingLabel ? (
+      <span key="rating" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, whiteSpace: 'nowrap' }}>
+        <Star size={14} fill="#fbbf24" color="#fbbf24" />
+        {heroSectionModel.ratingLabel}
+      </span>
+    ) : null,
+    followEnabled ? <span key="followers" style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>{followersLabel}</span> : null,
+    heroSectionModel.modeLabel ? (
+      <span key="mode" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, whiteSpace: 'nowrap' }}>
+        <UtensilsCrossed size={14} />
+        {heroSectionModel.modeLabel}
+      </span>
+    ) : null
+  ].filter(Boolean);
   const visibleContactRows = useMemo(() => buildVisibleStorefrontContactRows({
     contactRows: heroSectionModel.contactRows,
     hours: heroSectionModel.hours,
@@ -2532,7 +2567,7 @@ const FnbHero = ({
       <StorefrontHeroShell
         fullBleed
         sectionStyle={{
-          minHeight: isMobileViewport ? 290 : 316,
+          minHeight: isMobileViewport ? 190 : 316,
           borderRadius: 0,
           overflow: 'visible',
           background: heroSectionModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`)
@@ -2561,90 +2596,100 @@ const FnbHero = ({
           accentColor={heroTheme.accent || '#f97316'}
           shareEnabled={shareEnabled}
         />
-        <div style={{
-          position: 'absolute',
-          left: isMobileViewport ? 20 : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
-          right: isMobileViewport ? 20 : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
-          bottom: isMobileViewport ? -45 : -25,
-          zIndex: 10,
-          display: 'flex',
-          alignItems: 'center',
-          gap: isMobileViewport ? 16 : 28,
-          paddingLeft: isMobileViewport ? 126 : 218
-        }}>
-          <div style={{ display: 'grid', gap: 12, maxWidth: 700, minWidth: 0, flex: 1, marginBottom: isMobileViewport ? 8 : 35 }}>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-              <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff" style={{ fontFamily: heroTheme.bodyFont }}>{heroSectionModel.statusLabel}</Badge>
-              {Number.isFinite(Number(fnbViewModel.startingPrice)) && (
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#fde68a', fontFamily: heroTheme.bodyFont }}>
-                  Starts at {money(fnbViewModel.startingPrice)}
-                </span>
-              )}
-              {heroSectionModel.hours && (
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.82)', fontFamily: heroTheme.bodyFont }}>{heroSectionModel.hours}</span>
-              )}
-            </div>
-            <div style={{ display: 'grid', gap: 8, maxWidth: 760 }}>
-              <SharedStorefrontHeroNameCluster
-                name={heroSectionModel.name}
-                textColor="#fff"
-                fontSize={isMobileViewport ? 38 : 50}
-                fontFamily={heroTheme.displayFont}
-                followEnabled={followEnabled}
-                followState={followState}
-                handleFollowAction={handleFollowAction}
-              />
-              {heroSectionModel.tagline ? (
-                <p style={{ margin: 0, color: '#fb923c', fontSize: isMobileViewport ? 18 : 20, fontWeight: 700, lineHeight: 1.3, fontFamily: heroTheme.bodyFont }}>{heroSectionModel.tagline}</p>
-              ) : (
-                <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: 16, maxWidth: 620, lineHeight: 1.6, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
-              )}
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, color: '#fff', fontSize: 14, fontWeight: 600, opacity: 0.95, marginBottom: 6, fontFamily: heroTheme.bodyFont }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Star size={16} fill="#fbbf24" color="#fbbf24" />{heroSectionModel.ratingLabel || 'Fresh menu'}</span>
-              <span style={{ opacity: 0.5 }}>|</span>
-              {followEnabled && (
-                <>
-                  <span>{followersLabel}</span>
-                  <span style={{ opacity: 0.5 }}>|</span>
-                </>
-              )}
-              <span>{heroSectionModel.modeLabel}</span>
-              <span style={{ opacity: 0.5 }}>|</span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><MapPin size={16} />{heroSectionModel.locationLabel}</span>
-            </div>
+        {isMobileViewport && (
+          <div style={{ position: 'absolute', top: 16, left: 16, zIndex: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff" style={{ fontFamily: heroTheme.bodyFont, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>{heroSectionModel.statusLabel}</Badge>
+            {Number.isFinite(Number(fnbViewModel.startingPrice)) && (
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#fde68a', fontFamily: heroTheme.bodyFont, textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>
+                Starts at {money(fnbViewModel.startingPrice)}
+              </span>
+            )}
           </div>
-
-          <div style={{
+        )}
+                {!isMobileViewport && (
+  <div style={{
+            position: 'absolute',
+            left: isMobileViewport ? 20 : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
+            right: isMobileViewport ? 20 : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
+            bottom: isMobileViewport ? -45 : -25,
+            zIndex: 10,
             display: 'flex',
-            alignItems: isMobileViewport ? 'stretch' : 'flex-end',
-            gap: 12,
-            flexDirection: 'column',
-            flexShrink: 0,
-            marginLeft: 'auto',
-            marginBottom: isMobileViewport ? 8 : 35
+            alignItems: 'center',
+            gap: isMobileViewport ? 16 : 28,
+            paddingLeft: isMobileViewport ? 126 : 218
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexDirection: isMobileViewport ? 'column' : 'row', width: isMobileViewport ? '100%' : 'auto' }}>
-              {heroSectionModel.actions?.canCall && (
-                <GhostButton onClick={() => openStorefrontActionLink(heroSectionModel.actions.callHref)} style={{ minWidth: isMobileViewport ? '100%' : 110, background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(12px)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, fontFamily: heroTheme.bodyFont, fontWeight: 800 }}>
-                  <Phone size={18} />
-                  Call
-                </GhostButton>
+            <div style={{ display: 'grid', gap: 12, maxWidth: 700, minWidth: 0, flex: 1, marginBottom: isMobileViewport ? 8 : 35 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff" style={{ fontFamily: heroTheme.bodyFont }}>{heroSectionModel.statusLabel}</Badge>
+                {Number.isFinite(Number(fnbViewModel.startingPrice)) && (
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#fde68a', fontFamily: heroTheme.bodyFont }}>
+                    Starts at {money(fnbViewModel.startingPrice)}
+                  </span>
+                )}
+                {heroSectionModel.hours && (
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.82)', fontFamily: heroTheme.bodyFont }}>{heroSectionModel.hours}</span>
+                )}
+              </div>
+              <div style={{ display: 'grid', gap: 8, maxWidth: 760 }}>
+                <SharedStorefrontHeroNameCluster
+                  name={heroSectionModel.name}
+                  textColor="#fff"
+                  fontSize={isMobileViewport ? 38 : 50}
+                  fontFamily={heroTheme.displayFont}
+                  followEnabled={followEnabled}
+                  followState={followState}
+                  handleFollowAction={handleFollowAction}
+                />
+                {heroSectionModel.tagline ? (
+                  <p style={{ margin: 0, color: '#fb923c', fontSize: isMobileViewport ? 18 : 20, fontWeight: 700, lineHeight: 1.3, fontFamily: heroTheme.bodyFont }}>{heroSectionModel.tagline}</p>
+                ) : (
+                  <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: 16, maxWidth: 620, lineHeight: 1.6, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
+                )}
+              </div>
+              {desktopHeroMetaItems.length > 0 && (
+                <div className="no-scrollbar" style={{ display: 'flex', flexWrap: 'nowrap', gap: 12, color: '#fff', fontSize: isMobileViewport ? 12 : 14, fontWeight: 400, opacity: 0.95, marginBottom: 6, fontFamily: heroTheme.bodyFont, overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
+                  {desktopHeroMetaItems.map((item, index) => (
+                    <React.Fragment key={`desktop-hero-meta-${index}`}>
+                      {index > 0 ? <span style={{ opacity: 0.5, flexShrink: 0 }}>|</span> : null}
+                      {item}
+                    </React.Fragment>
+                  ))}
+                </div>
               )}
-              <PrimaryButton onClick={() => {
-                if (cartCount > 0) {
-                  setIsCheckoutOpen(true);
-                  return;
-                }
-                document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              }} style={{ minWidth: isMobileViewport ? '100%' : 150, background: heroTheme.accent || '#f97316', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: '0 10px 25px rgba(249,115,22,0.3)', border: 'none', fontWeight: 800, fontFamily: heroTheme.bodyFont }}>
-                <MousePointer2 size={18} />
-                {orderLabel}
-              </PrimaryButton>
+            </div>
+  
+            <div style={{
+              display: 'flex',
+              alignItems: isMobileViewport ? 'stretch' : 'flex-end',
+              gap: 12,
+              flexDirection: 'column',
+              flexShrink: 0,
+              marginLeft: 'auto',
+              marginBottom: isMobileViewport ? 8 : 35
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexDirection: isMobileViewport ? 'column' : 'row', width: isMobileViewport ? '100%' : 'auto' }}>
+                {heroSectionModel.actions?.canCall && (
+                  <GhostButton onClick={() => openStorefrontActionLink(heroSectionModel.actions.callHref)} style={{ minWidth: isMobileViewport ? '100%' : 110, background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(12px)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, fontFamily: heroTheme.bodyFont, fontWeight: 800 }}>
+                    <Phone size={18} />
+                    Call
+                  </GhostButton>
+                )}
+                <PrimaryButton onClick={() => {
+                  if (cartCount > 0) {
+                    setIsCheckoutOpen(true);
+                    return;
+                  }
+                  document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }} style={{ minWidth: isMobileViewport ? '100%' : 150, background: heroTheme.accent || '#f97316', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: '0 10px 25px rgba(249,115,22,0.3)', border: 'none', fontWeight: 800, fontFamily: heroTheme.bodyFont }}>
+                  <MousePointer2 size={18} />
+                  {orderLabel}
+                </PrimaryButton>
+              </div>
             </div>
           </div>
-        </div>
-
+  
+          
+        )}
         <div style={{
           position: 'absolute',
           left: isMobileViewport ? '20px' : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
@@ -2673,164 +2718,388 @@ const FnbHero = ({
           )}
         </div>
       </StorefrontHeroShell>
+      {isMobileViewport ? (
+        <div style={{ background: '#fff' }}>
+          <div style={{ padding: '12px 16px 20px' }}>
 
-      <div style={{
-        maxWidth: STOREFRONT_INFO_PANEL_MAX_WIDTH,
-        margin: isMobileViewport ? '40px 16px 32px' : '70px auto 40px',
-        padding: isMobileViewport ? 18 : 26,
-        background: '#ffffff',
-        border: '1px solid #e8edf3',
-        borderRadius: 24,
-        boxShadow: '0 18px 42px rgba(15, 23, 42, 0.07)',
-        display: 'grid',
-        gridTemplateColumns: isMobileViewport ? '1fr' : desktopColumns,
-        gap: isMobileViewport ? 24 : 26
-      }}>
-        <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: heroTheme.bodyFont }}>Overview</div>
-          <div style={{ display: 'grid', gap: 12 }}>
-            <p style={{
-              fontSize: 13,
-              lineHeight: 1.7,
-              color: '#475569',
-              margin: 0,
-              display: '-webkit-box',
-              WebkitLineClamp: hasAboutToggle ? 3 : 'unset',
-              WebkitBoxOrient: 'vertical',
-              overflow: hasAboutToggle ? 'hidden' : 'visible',
-              fontFamily: heroTheme.bodyFont
-            }}>
-              {aboutText || 'This menu storefront is connected to live SKUpervisor product data and the food and beverage backend.'}
-            </p>
+          <div style={{ display: 'flex', marginLeft: 120, gap: 8, marginBottom: 16 }}>
+            {heroSectionModel.actions?.canMessage && (
+              <GhostButton onClick={() => openStorefrontActionLink(heroSectionModel.actions.messageHref)} style={{ flex: 1, background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 8, fontFamily: heroTheme.bodyFont, fontWeight: 600, fontSize: 13 }}>
+                <MessageSquare size={16} />
+                Message
+              </GhostButton>
+            )}
+            {heroSectionModel.actions?.canCall && (
+              <PrimaryButton onClick={() => openStorefrontActionLink(heroSectionModel.actions.callHref)} style={{ flex: 1, background: '#f97316', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 8, border: 'none', fontWeight: 600, fontSize: 13, fontFamily: heroTheme.bodyFont }}>
+              <Phone size={16} />
+              Call
+              </PrimaryButton>
+            )}
+          </div>
+          
+          <div style={{ display: 'grid', gap: 6 }}>
+            <SharedStorefrontHeroNameCluster
+              name={heroSectionModel.name}
+              textColor="#0f172a"
+              fontSize={24}
+              fontFamily={heroTheme.displayFont}
+              followEnabled={followEnabled}
+              followState={followState}
+              handleFollowAction={handleFollowAction}
+            />
+            
+            {heroSectionModel.tagline ? (
+              <p style={{ margin: 0, color: '#f97316', fontSize: 14, fontWeight: 600, fontStyle: 'italic', fontFamily: heroTheme.bodyFont }}>{heroSectionModel.tagline}</p>
+            ) : (
+              <p style={{ margin: 0, color: '#475569', fontSize: 13, lineHeight: 1.5, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
+            )}
+
+            {mobileHeroMetaItems.length > 0 && (
+              <div className="no-scrollbar" style={{ display: 'flex', flexWrap: 'nowrap', gap: 12, color: '#475569', fontSize: 12, fontWeight: 600, marginTop: 4, fontFamily: heroTheme.bodyFont, overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
+                {mobileHeroMetaItems.map((item, index) => (
+                  <React.Fragment key={`mobile-hero-meta-${index}`}>
+                    {index > 0 ? <span style={{ opacity: 0.3, flexShrink: 0 }}>|</span> : null}
+                    {item}
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
+            </div>
+          </div>
+          
+          <div className="no-scrollbar" style={{ padding: '0 0 24px', display: 'flex', flexDirection: 'row', gap: 12, overflowX: 'auto', scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', margin: '8px 0 0', alignItems: 'stretch' }}>
+            {/* About Card */}
+            <div style={{ minWidth: '85vw', marginLeft: 16, scrollSnapAlign: 'start', background: '#fff', border: '1px solid #ffedd5', borderRadius: 16, padding: 16, boxShadow: '0 8px 24px rgba(249, 115, 22, 0.08)' }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', marginBottom: 12, fontFamily: heroTheme.bodyFont }}>
+                About {heroSectionModel.name}
+              </div>
+              <div style={{ display: 'flex', gap: 16 }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  {aboutText ? (
+                    <p style={{ 
+                       margin: 0, fontSize: 13, lineHeight: 1.6, color: '#475569', fontFamily: heroTheme.bodyFont,
+                       display: '-webkit-box', WebkitLineClamp: expandedMobileCard === 'about' ? 'unset' : 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' 
+                    }}>
+                      {aboutText}
+                    </p>
+                  ) : null}
+                  {hasAboutToggle && expandedMobileCard !== 'about' && (
+                    <button type="button" onClick={() => setExpandedMobileCard('about')} style={{ background: 'none', border: 'none', padding: 0, color: '#f97316', fontSize: 13, fontWeight: 700, marginTop: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
+                      See more <ChevronDown size={14} />
+                    </button>
+                  )}
+                  {hasAboutToggle && expandedMobileCard === 'about' && (
+                    <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: 'none', border: 'none', padding: 0, color: '#f97316', fontSize: 13, fontWeight: 700, marginTop: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
+                      Show less <ChevronUp size={14} />
+                    </button>
+                  )}
+                </div>
+                {galleryImages.length > 0 && (
+                  <div style={{ width: 100, height: 80, borderRadius: 12, overflow: 'hidden', flexShrink: 0 }}>
+                    <img src={galleryImages[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                )}
+              </div>
+              
+              {(displayHours || deliveryPlatformLinks.length > 0) ? <div style={{ height: 1, background: '#f1f5f9', margin: '16px 0' }} /> : null}
+
+              <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                 {displayHours ? (
+                   <div style={{ flex: 1, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                   <Clock size={16} color="#64748b" style={{ marginTop: 2, flexShrink: 0 }} />
+                   <div style={{ display: 'grid', gap: 2 }}>
+                       <div style={{ fontSize: 12, color: '#0f172a', fontWeight: 600, lineHeight: 1.3, fontFamily: heroTheme.bodyFont }}>
+                         {displayHours}
+                       </div>
+                     <div style={{ fontSize: 12, color: '#22c55e', fontWeight: 700, fontFamily: heroTheme.bodyFont }}>Daily</div>
+                    </div>
+                   </div>
+                 ) : null}
+                 {deliveryPlatformLinks.length > 0 && (
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b', fontWeight: 600, fontFamily: heroTheme.bodyFont }}>
+                        <Bike size={14} /> We deliver via
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                         {deliveryPlatformLinks.map(platform => {
+                            const content = platform.logoUrl ? (
+                              <img src={platform.logoUrl} alt={platform.label} style={{ height: 16, objectFit: 'contain' }} />
+                            ) : <span style={{ fontSize: 12, fontWeight: 700, color: '#f97316' }}>{platform.label}</span>;
+                            return platform.href ? (
+                              <button
+                                key={platform.partner}
+                                type="button"
+                                onClick={() => window.open(platform.href, '_blank', 'noopener,noreferrer')}
+                                style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', display: 'flex' }}
+                              >
+                                {content}
+                              </button>
+                            ) : (
+                              <span key={platform.partner}>{content}</span>
+                            );
+                         })}
+                      </div>
+                    </div>
+                 )}
+              </div>
+            </div>
+
+            {/* Contact & Location Card */}
+            {(hasContactRows || hasMapData) && (
+              <div style={{ minWidth: '85vw', scrollSnapAlign: 'start', background: '#fff', border: '1px solid #ffedd5', borderRadius: 16, padding: 16, boxShadow: '0 8px 24px rgba(249, 115, 22, 0.08)' }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 16, fontFamily: heroTheme.bodyFont }}>Contact & Location</div>
+                <div style={{ display: 'grid', gap: 14 }}>
+                  {visibleContactRows.filter(row => row.label !== 'Address' && row.label !== 'Hours').slice(0, expandedMobileCard === 'contact' ? 99 : 1).map((row) => {
+                     const icon = getStorefrontContactIcon(row.label);
+                     const content = (
+                       <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#0f172a', fontFamily: heroTheme.bodyFont, fontWeight: 600 }}>
+                         <div style={{ color: row.label === 'Messenger' ? '#2563eb' : '#475569', display: 'flex' }}>{icon}</div>
+                         <div>{row.value}</div>
+                         <ChevronRight size={16} color="#94a3b8" style={{ marginLeft: 'auto' }} />
+                       </div>
+                     );
+                     return row.href ? (
+                       <button key={row.label} type="button" onClick={() => openStorefrontActionLink(row.href)} style={{ padding: 0, border: 'none', background: 'transparent', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{content}</button>
+                     ) : <div key={row.label}>{content}</div>;
+                  })}
+                  
+                  {selectedBranchLabel ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#0f172a', fontFamily: heroTheme.bodyFont, fontWeight: 600 }}>
+                     <div style={{ color: '#475569', display: 'flex' }}><MapPin size={16} /></div>
+                     <div>{selectedBranchLabel}</div>
+                    </div>
+                  ) : null}
+                </div>
+
+                {hasMapData && expandedMobileCard === 'contact' && (
+                  <>
+                    <div style={{ height: 1, background: '#f1f5f9', margin: '16px 0' }} />
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
+                       <MapPin size={18} color="#475569" style={{ marginTop: 2 }} />
+                       <div style={{ flex: 1, display: 'grid', gap: 2 }}>
+                          {addressText ? <div style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, fontFamily: heroTheme.bodyFont }}>{addressText}</div> : null}
+                          {storefrontCityLabel ? <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, fontFamily: heroTheme.bodyFont }}>{storefrontCityLabel}</div> : null}
+                       </div>
+                       <button type="button" onClick={() => setIsExpandedMapOpen(true)} style={{ padding: 0, border: 'none', background: 'transparent', color: '#f97316', fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: heroTheme.bodyFont }}>
+                         Get directions
+                       </button>
+                    </div>
+                    <div style={{ position: 'relative', width: '100%', height: 110, borderRadius: 12, overflow: 'hidden', border: '1px solid #edf2f7', background: '#f8fafc' }}>
+                      <StoresMap stores={mapStores} selectedKey={mapSelectedKey} onSelectStore={() => { }} />
+                      <button
+                        type="button"
+                        onClick={() => setIsExpandedMapOpen(true)}
+                        style={{ position: 'absolute', top: 8, right: 8, width: 32, height: 32, borderRadius: 8, background: '#fff', border: '1px solid #cbd5e1', boxShadow: '0 4px 12px rgba(15,23,42,0.1)', display: 'grid', placeItems: 'center', cursor: 'pointer', color: '#334155', zIndex: 10 }}
+                      >
+                        <Maximize size={16} />
+                      </button>
+                    </div>
+                  </>
+                )}
+                
+                {(hasMapData || visibleContactRows.length > 1) && expandedMobileCard !== 'contact' && (
+                   <button type="button" onClick={() => setExpandedMobileCard('contact')} style={{ background: 'none', border: 'none', padding: 0, color: '#f97316', fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
+                      See details & map <ChevronDown size={14} />
+                   </button>
+                )}
+                {expandedMobileCard === 'contact' && (
+                   <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: 'none', border: 'none', padding: 0, color: '#f97316', fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
+                      Hide details <ChevronUp size={14} />
+                   </button>
+                )}
+              </div>
+            )}
+
+            {/* Why Choose Us Card */}
+            {hasWhyChooseUs && (
+            <div style={{ minWidth: '85vw', marginRight: 16, scrollSnapAlign: 'start', background: '#fff', border: '1px solid #ffedd5', borderRadius: 16, padding: 16, boxShadow: '0 8px 24px rgba(249, 115, 22, 0.08)' }}>
+              <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 16, fontFamily: heroTheme.bodyFont }}>Why Choose Us?</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {visibleWhyChooseUs.slice(0, expandedMobileCard === 'why' ? 99 : 2).map((item, index) => (
+                  <div key={`${item}-${index}`} style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#fff7ed', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                       <Sparkles size={16} color="#f97316" />
+                    </div>
+                    <div style={{ color: '#0f172a', fontSize: 13, fontWeight: 600, lineHeight: 1.4 }}>{item}</div>
+                  </div>
+                ))}
+              </div>
+              {visibleWhyChooseUs.length > 2 && expandedMobileCard !== 'why' && (
+                 <button type="button" onClick={() => setExpandedMobileCard('why')} style={{ background: 'none', border: 'none', padding: 0, color: '#f97316', fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
+                    See all <ChevronDown size={14} />
+                 </button>
+              )}
+              {expandedMobileCard === 'why' && (
+                 <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: 'none', border: 'none', padding: 0, color: '#f97316', fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
+                    Show less <ChevronUp size={14} />
+                 </button>
+              )}
+            </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div style={{
+          maxWidth: STOREFRONT_INFO_PANEL_MAX_WIDTH,
+          margin: '70px auto 40px',
+          padding: 26,
+          background: '#ffffff',
+          border: '1px solid #e8edf3',
+          borderRadius: 24,
+          boxShadow: '0 18px 42px rgba(15, 23, 42, 0.07)',
+          display: 'grid',
+          gridTemplateColumns: desktopColumns,
+          gap: 26
+        }}>
+          <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: heroTheme.bodyFont }}>Overview</div>
+            {aboutText ? (
+              <div style={{ display: 'grid', gap: 12 }}>
+                <p style={{
+                  fontSize: 13,
+                  lineHeight: 1.7,
+                  color: '#475569',
+                  margin: 0,
+                  display: '-webkit-box',
+                  WebkitLineClamp: hasAboutToggle ? 3 : 'unset',
+                  WebkitBoxOrient: 'vertical',
+                  overflow: hasAboutToggle ? 'hidden' : 'visible',
+                  fontFamily: heroTheme.bodyFont
+                }}>
+                  {aboutText}
+                </p>
+              </div>
+            ) : null}
+
+            {galleryImages.length > 0 && (
+              <div style={{ display: 'grid', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginTop: 2, overflowX: 'visible', paddingBottom: 0 }}>
+                  {galleryImages.slice(0, 4).map((url, index) => (
+                    <div key={`${url}-${index}`} style={{ width: '100%', minWidth: 0, height: 72, borderRadius: 10, overflow: 'hidden', position: 'relative', background: '#e2e8f0', flexShrink: 0 }}>
+                      <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
-          {galleryImages.length > 0 && (
-            <div style={{ display: 'grid', gap: 12 }}>
-              <div style={{ display: isMobileViewport ? 'flex' : 'grid', gridTemplateColumns: isMobileViewport ? undefined : 'repeat(4, 1fr)', gap: 10, marginTop: 2, overflowX: isMobileViewport ? 'auto' : 'visible', paddingBottom: isMobileViewport ? 4 : 0 }}>
-                {galleryImages.slice(0, 4).map((url, index) => (
-                  <div key={`${url}-${index}`} style={{ width: isMobileViewport ? 84 : '100%', minWidth: isMobileViewport ? 84 : 0, height: 72, borderRadius: 10, overflow: 'hidden', position: 'relative', background: '#e2e8f0', flexShrink: 0 }}>
-                    <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <div style={{ display: 'grid', gap: 14, paddingLeft: 26, borderLeft: '1px solid #eef2f6', alignContent: 'start' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: heroTheme.bodyFont }}>Contact & Location</div>
+            <div style={{ display: 'grid', gridTemplateColumns: hasMapData ? STOREFRONT_CONTACT_INFO_COLUMNS : '1fr', gap: 20, alignItems: 'start' }}>
+              {hasContactRows && (
+                <div style={{ display: 'grid', gap: 16, alignContent: 'start', paddingTop: 4 }}>
+                  {visibleContactRows.map((row) => {
+                    const icon = getStorefrontContactIcon(row.label);
+                    const isCompactSingleLine = ['call', 'phone', 'facebook', 'messenger', 'message', 'hours'].includes(String(row.label || '').trim().toLowerCase());
+                    const content = (
+                      <div style={{ display: 'grid', gridTemplateColumns: `${STOREFRONT_INFO_ICON_COLUMN}px minmax(0, 1fr)`, alignItems: 'start', columnGap: STOREFRONT_INFO_ROW_GAP, fontSize: 13, color: '#111827', fontFamily: heroTheme.bodyFont }}>
+                        <div style={{ width: STOREFRONT_INFO_ICON_COLUMN, minWidth: STOREFRONT_INFO_ICON_COLUMN, color: row.label === 'Messenger' ? '#7c3aed' : row.label === 'Facebook' ? '#2563eb' : row.label === 'Address' ? '#64748b' : '#64748b', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{icon}</div>
+                        <div style={{ minWidth: 0, display: 'grid', gap: row.actionHref ? 4 : 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', whiteSpace: isCompactSingleLine ? 'nowrap' : 'normal', wordBreak: isCompactSingleLine ? 'normal' : 'break-word', lineHeight: 1.35 }}>{row.value}</div>
+                          {row.actionHref ? (
+                            <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openStorefrontActionLink(row.actionHref); }} style={{ padding: 0, border: 'none', background: 'transparent', color: '#f97316', fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start', fontFamily: heroTheme.bodyFont }}>
+                              {row.actionLabel || 'Get directions'}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                    return row.href ? (
+                      <button key={row.label} type="button" onClick={() => openStorefrontActionLink(row.href)} style={{ padding: 0, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer' }}>
+                        {content}
+                      </button>
+                    ) : (
+                      <div key={row.label}>{content}</div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {hasMapData && (
+                <div style={{ display: 'grid', gap: 10, alignContent: 'start', marginTop: -30 }}>
+                  <div style={{ position: 'relative', width: '100%', height: 156, borderRadius: 14, overflow: 'hidden', border: '1px solid #edf2f7', background: '#f8fafc' }}>
+                    <StoresMap stores={mapStores} selectedKey={mapSelectedKey} onSelectStore={() => { }} />
+                    <button
+                      type="button"
+                      onClick={() => setIsExpandedMapOpen(true)}
+                      aria-label="Open large map"
+                      title="Open large map"
+                      style={{
+                        position: 'absolute',
+                        top: 12,
+                        right: 12,
+                        width: 36,
+                        height: 36,
+                        borderRadius: 10,
+                        background: '#fff',
+                        border: '1px solid #cbd5e1',
+                        boxShadow: '0 4px 12px rgba(15,23,42,0.1)',
+                        display: 'grid',
+                        placeItems: 'center',
+                        cursor: 'pointer',
+                        color: '#334155',
+                        zIndex: 10
+                      }}
+                    >
+                      <Maximize size={18} />
+                    </button>
+                  </div>
+                  {deliveryPlatformLinks.length > 0 ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'nowrap', minWidth: 0 }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 800, color: '#334155', whiteSpace: 'nowrap', fontFamily: heroTheme.bodyFont }}>
+                        <Bike size={14} /> We deliver via
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'nowrap', minWidth: 0 }}>
+                        {deliveryPlatformLinks.map((platform) => {
+                          const badge = (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 20, flexShrink: 0 }}>
+                              {platform.logoUrl ? (
+                                <img src={platform.logoUrl} alt={platform.label} style={{ maxHeight: 14, width: 'auto', display: 'block', objectFit: 'contain' }} />
+                              ) : (
+                                <span style={{ fontSize: 12, fontWeight: 800, color: '#475569', whiteSpace: 'nowrap' }}>{platform.label}</span>
+                              )}
+                            </span>
+                          );
+                          return platform.href ? (
+                            <button
+                              key={`delivery-platform-${platform.partner}`}
+                              type="button"
+                              onClick={() => openStorefrontActionLink(platform.href)}
+                              style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                            >
+                              {badge}
+                            </button>
+                          ) : (
+                            <div key={`delivery-platform-${platform.partner}`}>{badge}</div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {hasWhyChooseUs && (
+            <div style={{ display: 'grid', gap: 14, alignContent: 'start', alignItems: 'start', paddingLeft: 26, borderLeft: '1px solid #eef2f6' }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: heroTheme.bodyFont }}>Why Choose Us?</div>
+              <div style={{ display: 'grid', gap: 16, alignContent: 'start', paddingTop: 4 }}>
+                {visibleWhyChooseUs.map((item, index) => (
+                  <div key={`${item}-${index}`} style={{ display: 'grid', gridTemplateColumns: `30px minmax(0, 1fr)`, alignItems: 'center', columnGap: 12, fontSize: 13, color: '#111827', lineHeight: 1.4, fontFamily: heroTheme.bodyFont }}>
+                    <div style={{ width: 30, height: 30, borderRadius: 999, background: '#fff4ec', color: '#f97316', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Sparkles size={14} />
+                    </div>
+                    <div style={{ color: '#334155', fontWeight: 600 }}>{item}</div>
                   </div>
                 ))}
               </div>
             </div>
           )}
         </div>
+      )}
 
-        <div style={{ display: 'grid', gap: 14, paddingLeft: isMobileViewport ? 0 : 26, borderLeft: isMobileViewport ? 'none' : '1px solid #eef2f6', alignContent: 'start' }}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: heroTheme.bodyFont }}>Contact & Location</div>
-          <div style={{ display: 'grid', gridTemplateColumns: hasMapData && !isMobileViewport ? STOREFRONT_CONTACT_INFO_COLUMNS : '1fr', gap: 20, alignItems: 'start' }}>
-            {hasContactRows && (
-              <div style={{ display: 'grid', gap: 16, alignContent: 'start', paddingTop: 4 }}>
-                {visibleContactRows.map((row) => {
-                  const icon = getStorefrontContactIcon(row.label);
-                  const isCompactSingleLine = !isMobileViewport && ['call', 'phone', 'facebook', 'messenger', 'message', 'hours'].includes(String(row.label || '').trim().toLowerCase());
-                  const content = (
-                    <div style={{ display: 'grid', gridTemplateColumns: `${STOREFRONT_INFO_ICON_COLUMN}px minmax(0, 1fr)`, alignItems: 'start', columnGap: STOREFRONT_INFO_ROW_GAP, fontSize: 13, color: '#111827', fontFamily: heroTheme.bodyFont }}>
-                      <div style={{ width: STOREFRONT_INFO_ICON_COLUMN, minWidth: STOREFRONT_INFO_ICON_COLUMN, color: row.label === 'Messenger' ? '#7c3aed' : row.label === 'Facebook' ? '#2563eb' : row.label === 'Address' ? '#64748b' : '#64748b', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{icon}</div>
-                      <div style={{ minWidth: 0, display: 'grid', gap: row.actionHref ? 4 : 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', whiteSpace: isCompactSingleLine ? 'nowrap' : 'normal', wordBreak: isCompactSingleLine ? 'normal' : 'break-word', lineHeight: 1.35 }}>{row.value}</div>
-                        {row.actionHref ? (
-                          <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openStorefrontActionLink(row.actionHref); }} style={{ padding: 0, border: 'none', background: 'transparent', color: '#f97316', fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start', fontFamily: heroTheme.bodyFont }}>
-                            {row.actionLabel || 'Get directions'}
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                  return row.href ? (
-                    <button key={row.label} type="button" onClick={() => openStorefrontActionLink(row.href)} style={{ padding: 0, border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer' }}>
-                      {content}
-                    </button>
-                  ) : (
-                    <div key={row.label}>{content}</div>
-                  );
-                })}
-              </div>
-            )}
-
-            {hasMapData && (
-              <div style={{ display: 'grid', gap: 10, alignContent: 'start', marginTop: isMobileViewport ? 0 : -30 }}>
-                <div style={{ position: 'relative', width: '100%', height: 156, borderRadius: 14, overflow: 'hidden', border: '1px solid #edf2f7', background: '#f8fafc' }}>
-                  <StoresMap stores={mapStores} selectedKey={mapSelectedKey} onSelectStore={() => { }} />
-                  <button
-                    type="button"
-                    onClick={() => setIsExpandedMapOpen(true)}
-                    aria-label="Open large map"
-                    title="Open large map"
-                    style={{
-                      position: 'absolute',
-                      top: 12,
-                      right: 12,
-                      width: 36,
-                      height: 36,
-                      borderRadius: 10,
-                      background: '#fff',
-                      border: '1px solid #cbd5e1',
-                      boxShadow: '0 4px 12px rgba(15,23,42,0.1)',
-                      display: 'grid',
-                      placeItems: 'center',
-                      cursor: 'pointer',
-                      color: '#334155',
-                      zIndex: 10
-                    }}
-                  >
-                    <Maximize size={18} />
-                  </button>
-                </div>
-                {deliveryPlatformLinks.length > 0 ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'nowrap', minWidth: 0 }}>
-                    <span style={{ fontSize: 12, fontWeight: 800, color: '#334155', whiteSpace: 'nowrap', fontFamily: heroTheme.bodyFont }}>
-                      We deliver via
-                    </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'nowrap', minWidth: 0 }}>
-                      {deliveryPlatformLinks.map((platform) => {
-                        const badge = (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 20, flexShrink: 0 }}>
-                            {platform.logoUrl ? (
-                              <img src={platform.logoUrl} alt={platform.label} style={{ maxHeight: 14, width: 'auto', display: 'block', objectFit: 'contain' }} />
-                            ) : (
-                              <span style={{ fontSize: 12, fontWeight: 800, color: '#475569', whiteSpace: 'nowrap' }}>{platform.label}</span>
-                            )}
-                          </span>
-                        );
-                        return platform.href ? (
-                          <button
-                            key={`delivery-platform-${platform.partner}`}
-                            type="button"
-                            onClick={() => openStorefrontActionLink(platform.href)}
-                            style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
-                          >
-                            {badge}
-                          </button>
-                        ) : (
-                          <div key={`delivery-platform-${platform.partner}`}>{badge}</div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {hasWhyChooseUs && (
-          <div style={{ display: 'grid', gap: 14, alignContent: 'start', alignItems: 'start', paddingLeft: isMobileViewport ? 0 : 26, borderLeft: isMobileViewport ? 'none' : '1px solid #eef2f6' }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: heroTheme.bodyFont }}>Why Choose Us?</div>
-            <div style={{ display: 'grid', gap: 16, alignContent: 'start', paddingTop: 4 }}>
-              {visibleWhyChooseUs.map((item, index) => (
-                <div key={`${item}-${index}`} style={{ display: 'grid', gridTemplateColumns: `30px minmax(0, 1fr)`, alignItems: 'center', columnGap: 12, fontSize: 13, color: '#111827', lineHeight: 1.4, fontFamily: heroTheme.bodyFont }}>
-                  <div style={{ width: 30, height: 30, borderRadius: 999, background: '#fff4ec', color: '#f97316', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Sparkles size={14} />
-                  </div>
-                  <div style={{ color: '#334155', fontWeight: 600 }}>{item}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
       <StorefrontExpandedMapModal
         open={isExpandedMapOpen}
         onClose={() => setIsExpandedMapOpen(false)}
@@ -2850,6 +3119,7 @@ const FnbProductCard = ({
   modeAdapter,
   addToCart,
   isMobileViewport,
+  fnbViewMode,
   onViewDetails
 }) => {
   const heroTheme = modeAdapter.heroTheme || {};
@@ -2858,31 +3128,141 @@ const FnbProductCard = ({
   const accentSoft = sectionVisualMeta.accentSoft || heroTheme.accentSoft || '#fff7ed';
   const accentDeep = heroTheme.accentDark || '#7c2d12';
   const cardSurface = '#ffffff';
-  const cardSurfaceInset = heroTheme.surfaceMuted || '#fff8f0';
   const cardBorder = heroTheme.borderSoft || '#edd4bc';
   const cardTextPrimary = heroTheme.textPrimary || '#2f1f16';
-  const cardTextMuted = heroTheme.textMuted || '#7c6757';
   const buttonTextOnAccent = heroTheme.buttonTextOnAccent || '#fffdf9';
   const CategoryIcon = FNB_CATEGORY_ICON_MAP[sectionVisualMeta.iconToken] || Sparkles;
+  
   const [isHovered, setIsHovered] = useState(false);
   const [isDetailsHovered, setIsDetailsHovered] = useState(false);
   const [isCartHovered, setIsCartHovered] = useState(false);
   const detailsCopy = item.descriptionPreview || 'Menu item available in this storefront.';
   const cardUiFont = heroTheme.bodyFont || "'Trebuchet MS', 'Segoe UI', sans-serif";
   const cardTitleFont = heroTheme.menuTitleFont || heroTheme.displayFont || "'Palatino Linotype', 'Book Antiqua', Palatino, serif";
-  const cardTitleFontSize = isMobileViewport ? 19 : 22;
-  const imageHeight = isMobileViewport ? 190 : 214;
-  const actionHeight = isMobileViewport ? 44 : 46;
-  const cartButtonWidth = isMobileViewport ? 62 : 70;
+  
   const availabilityTone = item.availabilityMeta?.tone || (available ? 'ready' : 'sold_out');
   const availabilityColor = availabilityTone === 'sold_out' ? '#be123c' : availabilityTone === 'limited' ? '#b45309' : '#047857';
-  const descriptionLineClamp = 2;
+
+  if (isMobileViewport && fnbViewMode === 'list') {
+    return (
+      <article
+        style={{
+          background: '#fff',
+          borderRadius: 20,
+          padding: 12,
+          boxShadow: '0 4px 16px rgba(15,23,42,0.04)',
+          border: '1px solid #f1f5f9',
+          display: 'flex',
+          flexDirection: 'row',
+          gap: 14,
+          alignItems: 'center',
+          height: 155,
+          minHeight: 155,
+          maxHeight: 155
+        }}
+      >
+        <div style={{ width: 130, height: 130, flexShrink: 0, borderRadius: 14, overflow: 'hidden', background: '#f8fafc', position: 'relative' }}>
+          {imageUrl ? (
+            <img src={imageUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          ) : (
+            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1' }}>
+              <CategoryIcon size={32} />
+            </div>
+          )}
+          
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(35,23,18,0.0) 40%, rgba(32,20,15,0.2) 100%)', pointerEvents: 'none' }} />
+          <div style={{
+            position: 'absolute',
+            right: 6,
+            bottom: 6,
+            background: accent,
+            color: buttonTextOnAccent,
+            padding: '6px 10px',
+            borderRadius: 999,
+            fontSize: 13,
+            fontWeight: 900,
+            boxShadow: '0 4px 12px rgba(217,119,6,0.3)',
+            fontFamily: cardUiFont,
+            lineHeight: 1
+          }}>
+            {money(item.default_sale_price ?? 0)}
+          </div>
+        </div>
+        
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', padding: '2px 0' }}>
+          <div style={{ display: 'grid', gap: 4 }}>
+            <h4 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0f172a', lineHeight: 1.15, display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+              {item.name}
+            </h4>
+            <p style={{ margin: 0, fontSize: 13, color: '#64748b', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+              {detailsCopy}
+            </p>
+          </div>
+          
+          <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%' }}>
+              <button
+                type="button"
+                onClick={() => onViewDetails?.(item)}
+                style={{
+                  height: 38,
+                  padding: '0 12px',
+                  borderRadius: 18,
+                  border: '1px solid #22c55e',
+                  background: 'transparent',
+                  color: '#15803d',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  flex: 1
+                }}
+              >
+                View Details
+              </button>
+              <button
+                type="button"
+                onClick={() => addToCart(item)}
+                disabled={!available}
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 12,
+                  background: available ? '#16a34a' : '#e2e8f0',
+                  color: '#fff',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: available ? 'pointer' : 'not-allowed',
+                  flexShrink: 0
+                }}
+              >
+                <span style={{ position: 'relative', display: 'flex' }}>
+                  <ShoppingCart size={18} strokeWidth={2.2} />
+                  <span style={{ position: 'absolute', top: -4, right: -4, background: '#fff', color: '#16a34a', borderRadius: '50%', width: 12, height: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Plus size={8} strokeWidth={4} />
+                  </span>
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </article>
+    );
+  }
+
+  // DESKTOP / TABLET / MOBILE GRID FALLBACK
+  const cardTitleFontSize = isMobileViewport ? 15 : 22;
+  const imageHeight = isMobileViewport ? 140 : 214;
+  const actionHeight = isMobileViewport ? 36 : 46;
+  const cartButtonWidth = isMobileViewport ? 42 : 70;
+  const descriptionLineClamp = isMobileViewport ? 2 : 2;
 
   return (
     <article
       style={{
         background: cardSurface,
-        borderRadius: 28,
+        borderRadius: isMobileViewport ? 20 : 28,
         padding: 0,
         boxShadow: isHovered ? '0 22px 44px rgba(73, 38, 20, 0.14)' : '0 14px 32px rgba(73, 38, 20, 0.09)',
         border: `1px solid ${cardBorder}`,
@@ -2891,12 +3271,13 @@ const FnbProductCard = ({
         display: 'flex',
         flexDirection: 'column',
         transform: isHovered ? 'translateY(-3px)' : 'translateY(0)',
-        transition: 'all 0.2s ease'
+        transition: 'all 0.2s ease',
+        height: '100%'
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div style={{ position: 'relative', width: '100%', height: imageHeight, overflow: 'hidden', borderRadius: '0 0 22px 22px' }}>
+      <div style={{ position: 'relative', width: '100%', height: imageHeight, overflow: 'hidden', borderRadius: isMobileViewport ? '0 0 16px 16px' : '0 0 22px 22px' }}>
         {imageUrl ? (
           <img src={imageUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
         ) : (
@@ -2912,8 +3293,8 @@ const FnbProductCard = ({
           }}>
             <div style={{ display: 'grid', gap: 10, justifyItems: 'center' }}>
               <div style={{
-                width: 64,
-                height: 64,
+                width: isMobileViewport ? 48 : 64,
+                height: isMobileViewport ? 48 : 64,
                 borderRadius: 20,
                 background: '#ffffffd9',
                 color: accent,
@@ -2922,23 +3303,23 @@ const FnbProductCard = ({
                 justifyContent: 'center',
                 boxShadow: '0 12px 24px rgba(73,38,20,0.08)'
               }}>
-                <CategoryIcon size={28} />
+                <CategoryIcon size={isMobileViewport ? 24 : 28} />
               </div>
-              <div style={{ fontSize: 14, letterSpacing: '-0.01em' }}>{item.sectionLabel || item.productKind || 'Menu Item'}</div>
+              <div style={{ fontSize: 14, letterSpacing: '-0.01em', display: isMobileViewport ? 'none' : 'block' }}>{item.sectionLabel || item.productKind || 'Menu Item'}</div>
             </div>
           </div>
         )}
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(35,23,18,0.02) 0%, rgba(35,23,18,0.08) 100%)', pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(255,255,255,0) 44%, rgba(32,20,15,0.18) 100%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(255,255,255,0) 44%, rgba(32,20,15,0.22) 100%)', pointerEvents: 'none' }} />
         <div style={{
           position: 'absolute',
-          right: 16,
-          bottom: 16,
+          right: isMobileViewport ? 10 : 16,
+          bottom: isMobileViewport ? 10 : 16,
           background: accent,
           color: buttonTextOnAccent,
-          padding: isMobileViewport ? '8px 14px' : '9px 16px',
+          padding: isMobileViewport ? '6px 10px' : '9px 16px',
           borderRadius: 999,
-          fontSize: isMobileViewport ? 14 : 15,
+          fontSize: isMobileViewport ? 13 : 15,
           fontWeight: 900,
           boxShadow: isHovered ? '0 12px 26px rgba(217,119,6,0.32)' : '0 10px 22px rgba(217,119,6,0.24)',
           transform: isHovered ? 'translateY(-2px)' : 'translateY(0)',
@@ -2949,14 +3330,14 @@ const FnbProductCard = ({
           {money(item.default_sale_price ?? 0)}
         </div>
       </div>
-      <div style={{ padding: isMobileViewport ? '15px 14px 14px' : '18px 18px 16px', flex: 1, display: 'grid', gap: 14 }}>
-        <div style={{ display: 'grid', gap: 8 }}>
-          <h4 style={{ margin: 0, fontSize: cardTitleFontSize, fontWeight: 800, lineHeight: 1.1, color: cardTextPrimary, fontFamily: cardTitleFont, letterSpacing: '-0.025em' }}>{item.name}</h4>
+      <div style={{ padding: isMobileViewport ? '12px 12px 12px' : '18px 18px 16px', flex: 1, display: 'grid', gap: isMobileViewport ? 8 : 14 }}>
+        <div style={{ display: 'grid', gap: isMobileViewport ? 4 : 8 }}>
+          <h4 style={{ margin: 0, fontSize: cardTitleFontSize, fontWeight: 800, lineHeight: 1.15, color: cardTextPrimary, fontFamily: cardTitleFont, letterSpacing: '-0.025em', display: '-webkit-box', WebkitLineClamp: isMobileViewport ? 1 : 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.name}</h4>
           <p style={{
             margin: 0,
-            fontSize: isMobileViewport ? 13 : 14,
-            lineHeight: 1.5,
-            color: '#111827',
+            fontSize: isMobileViewport ? 12 : 14,
+            lineHeight: 1.4,
+            color: '#475569',
             fontFamily: cardUiFont,
             display: '-webkit-box',
             WebkitLineClamp: descriptionLineClamp,
@@ -2969,9 +3350,10 @@ const FnbProductCard = ({
         <div style={{
           marginTop: 'auto',
           display: 'grid',
-          gridTemplateColumns: '1fr auto',
-          gap: 12,
-          alignItems: 'center'
+          gridTemplateColumns: isMobileViewport ? '1fr auto' : '1fr auto',
+          gap: 8,
+          alignItems: 'center',
+          paddingTop: 8
         }}>
           <button
             type="button"
@@ -2981,21 +3363,22 @@ const FnbProductCard = ({
             style={{
               minHeight: actionHeight,
               height: actionHeight,
-              borderRadius: 18,
+              borderRadius: isMobileViewport ? 12 : 18,
               border: '1px solid #22C55E',
               background: '#ffffff',
-              fontSize: isMobileViewport ? 14 : 15,
+              fontSize: isMobileViewport ? 12 : 15,
               fontWeight: 700,
               color: '#15803d',
               cursor: 'pointer',
               fontFamily: cardUiFont,
               transform: isDetailsHovered ? 'translateY(-2px)' : 'translateY(0)',
               transition: 'all 0.2s ease',
-              padding: '0 18px',
-              boxShadow: 'none'
+              padding: isMobileViewport ? '0 8px' : '0 18px',
+              boxShadow: 'none',
+              width: '100%'
             }}
           >
-            View Details
+            {isMobileViewport ? 'Details' : 'View Details'}
           </button>
           <button
             type="button"
@@ -3007,7 +3390,7 @@ const FnbProductCard = ({
               width: cartButtonWidth,
               minHeight: actionHeight,
               height: actionHeight,
-              borderRadius: 18,
+              borderRadius: isMobileViewport ? 12 : 18,
               border: 'none',
               background: available ? '#16a34a' : '#e5e7eb',
               color: buttonTextOnAccent,
@@ -3019,20 +3402,20 @@ const FnbProductCard = ({
               boxShadow: 'none',
               transform: available && isCartHovered ? 'translateY(-2px)' : 'translateY(0)',
               transition: 'all 0.2s ease',
-              padding: '0 14px',
+              padding: isMobileViewport ? '0' : '0 14px',
               fontFamily: cardUiFont,
               fontSize: 14,
               fontWeight: 800
             }}
           >
-            <span style={{ position: 'relative', width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-              <ShoppingCart size={20} strokeWidth={2.2} />
+            <span style={{ position: 'relative', width: isMobileViewport ? 18 : 24, height: isMobileViewport ? 18 : 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+              <ShoppingCart size={isMobileViewport ? 16 : 20} strokeWidth={2.2} />
               <span style={{
                 position: 'absolute',
                 top: -3,
                 right: -4,
-                width: 14,
-                height: 14,
+                width: isMobileViewport ? 10 : 14,
+                height: isMobileViewport ? 10 : 14,
                 borderRadius: 999,
                 background: '#ffffff',
                 color: available ? '#22C55E' : '#94a3b8',
@@ -3041,14 +3424,25 @@ const FnbProductCard = ({
                 justifyContent: 'center',
                 boxShadow: 'none'
               }}>
-                <Plus size={10} strokeWidth={3} />
+                <Plus size={isMobileViewport ? 8 : 10} strokeWidth={3} />
               </span>
             </span>
           </button>
         </div>
         {!available && (
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#be123c', fontFamily: cardUiFont }}>
-            {item.availabilityMeta?.label || 'Currently unavailable'}
+          <div style={{
+            marginTop: 4,
+            background: availabilityColor,
+            color: '#fff',
+            fontSize: 11,
+            fontWeight: 800,
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+            padding: '4px 8px',
+            borderRadius: 8,
+            textAlign: 'center'
+          }}>
+            {item.availabilityMeta?.reason || 'Sold Out'}
           </div>
         )}
       </div>
@@ -4262,6 +4656,7 @@ export default function StorefrontApp() {
   const [fnbPage, setFnbPage] = useState(1);
   const [fnbPageSize, setFnbPageSize] = useState(8);
   const [fnbSortOption, setFnbSortOption] = useState('name_asc');
+  const [fnbViewMode, setFnbViewMode] = useState('list');
   const [fnbOrderStep, setFnbOrderStep] = useState(2);
   const [simpleOrderStep, setSimpleOrderStep] = useState(1);
   const [fnbPaymentType, setFnbPaymentType] = useState('cash');
@@ -9156,7 +9551,7 @@ export default function StorefrontApp() {
   };
 
   return (
-    <main style={{ fontFamily: isFnbMode ? "'Trebuchet MS', 'Segoe UI', sans-serif" : (isServicesMode ? servicesBodyFont : STYLES.fonts.body), background: isStorePage ? 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)' : '#ffffff', minHeight: '100vh', color: '#0f172a', overflowX: 'clip' }}>
+    <main style={{ fontFamily: isFnbMode ? "'Trebuchet MS', 'Segoe UI', sans-serif" : (isServicesMode ? servicesBodyFont : STYLES.fonts.body), background: isStorePage ? (isFnbMode ? '#fff' : 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)') : '#ffffff', minHeight: '100vh', color: '#0f172a', overflowX: 'clip' }}>
       <div style={{
         maxWidth: 1320,
         width: '100%',
@@ -13248,7 +13643,7 @@ return (
         display: 'grid',
         gap: isFnbMode ? (isMobileViewport ? 18 : 24) : (isSimpleMode ? 22 : undefined),
         marginTop: isFnbMode
-          ? (isMobileViewport ? 20 : 34)
+          ? (isMobileViewport ? 0 : 34)
           : (isSimpleMode ? (isMobileViewport ? 28 : 36) : undefined),
         background: isSimpleMode ? 'transparent' : '#fff',
         border: isFnbMode ? 'none' : (isSimpleMode ? 'none' : `1px solid ${STYLES.colors.border}`),
@@ -13257,25 +13652,234 @@ return (
           ? (isMobileViewport ? '24px 0 56px' : '34px 0 64px')
           : (isSimpleMode ? 0 : (isMobileViewport ? 16 : 32)),
         boxShadow: isFnbMode ? 'none' : (isSimpleMode ? 'none' : STYLES.shadow.sm),
-        marginLeft: isFnbMode ? 'calc(50% - 50vw)' : undefined,
-        width: isFnbMode ? '100vw' : undefined
+        marginLeft: isFnbMode && !isMobileViewport ? 'calc(50% - 50vw)' : undefined,
+        width: isFnbMode ? (isMobileViewport ? '100%' : '100vw') : undefined
       }}>
-        {isFnbMode && (
+        
+        {isFnbMode && isMobileViewport && (
+          <div style={{ width: '100%', boxSizing: 'border-box', padding: '0 16px', display: 'grid', gap: 24, marginTop: 16 }}>
+            {/* Header Section */}
+            <div style={{ display: 'grid', gap: 6 }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 800, color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <span style={{ width: 24, height: 1.5, background: '#f97316' }} />
+                CURATED MENU
+              </div>
+              <h2 style={{ margin: 0, fontSize: 28, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>
+                Menu Highlights
+              </h2>
+              <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: 14, lineHeight: 1.5 }}>
+                Browse food and beverage sections, compare serving options, and add ready-to-order menu items to the cart.
+              </p>
+            </div>
+
+            {/* Search Bar */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              background: '#fff',
+              border: '1px solid #e2e8f0',
+              borderRadius: 24,
+              padding: '6px 6px 6px 16px',
+              boxShadow: '0 4px 12px rgba(15,23,42,0.03)',
+              height: 54
+            }}>
+              <Search size={20} color="#94a3b8" style={{ flexShrink: 0 }} />
+              <input
+                value={catalogSearch}
+                onChange={(event) => setCatalogSearch(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }
+                }}
+                placeholder="Search meals, drinks, desserts..."
+                style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', fontSize: 15, color: '#0f172a', padding: '0 12px' }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                style={{
+                  background: '#f97316',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 18,
+                  padding: '0 20px',
+                  height: '100%',
+                  fontWeight: 800,
+                  fontSize: 14,
+                  cursor: 'pointer'
+                }}
+              >
+                Search
+              </button>
+            </div>
+
+            {/* Category Section */}
+            {(() => {
+                const fnbSections = Array.isArray(filteredFnbViewModel.menuSections) ? filteredFnbViewModel.menuSections : [];
+                const categoryOptions = [
+                  {
+                    key: '',
+                    label: 'All',
+                    count: filteredFnbViewModel.menuItems.length,
+                    iconToken: 'menu',
+                  },
+                  ...fnbSections.map((section) => ({
+                    key: section.sectionKey,
+                    label: section.sectionLabel,
+                    count: section.items?.length || 0,
+                    iconToken: section.visualMeta?.iconToken || 'menu',
+                  }))
+                ];
+                
+                return (
+                  <div style={{ display: 'grid', gap: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontSize: 17, fontWeight: 800, color: '#0f172a' }}>Browse by Category</div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveServiceTab('')}
+                        style={{ padding: 0, border: 'none', background: 'transparent', fontSize: 14, fontWeight: 700, color: '#3b82f6', cursor: 'pointer' }}
+                      >
+                        View all
+                      </button>
+                    </div>
+                    <div className="no-scrollbar" style={{ display: 'flex', gap: 12, overflowX: 'auto', scrollSnapType: 'x mandatory', paddingBottom: 4 }}>
+                      {categoryOptions.map(option => {
+                        const isActive = option.key === (resolvedFnbSection || '');
+                        const OptionIcon = FNB_CATEGORY_ICON_MAP[option.iconToken] || Sparkles;
+                        return (
+                          <button
+                            key={option.key || 'all'}
+                            type="button"
+                            onClick={() => setActiveServiceTab(option.key)}
+                            style={{
+                              scrollSnapAlign: 'start',
+                              flexShrink: 0,
+                              width: 96,
+                              height: 104,
+                              borderRadius: 16,
+                              background: isActive ? '#fff7ed' : '#fff',
+                              border: isActive ? '1px solid #fed7aa' : '1px solid #f1f5f9',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              padding: '12px 8px',
+                              cursor: 'pointer',
+                              boxShadow: isActive ? 'none' : '0 4px 12px rgba(15,23,42,0.03)',
+                              transition: 'all 0.2s ease'
+                            }}
+                          >
+                            <div style={{ width: 48, height: 48, borderRadius: 12, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, color: isActive ? '#f97316' : '#64748b', boxShadow: isActive ? '0 4px 12px rgba(249,115,22,0.1)' : '0 2px 8px rgba(15,23,42,0.04)' }}>
+                              <OptionIcon size={24} />
+                            </div>
+                            <div style={{ fontSize: 13, fontWeight: isActive ? 800 : 700, color: isActive ? '#0f172a' : '#475569', textAlign: 'center', lineHeight: 1.2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                              {option.label}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+            })()}
+
+            {/* Items Count and Filter Row */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>
+                {isFnbMode ? (resolvedFnbSection ? (filteredFnbViewModel.menuSections.find(s => s.sectionKey === resolvedFnbSection)?.items?.length || 0) : filteredFnbViewModel.menuItems.length) : 0} items available
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <StorefrontDropdown
+                  value={fnbSortOption}
+                  onChange={(nextValue) => setFnbSortOption(String(nextValue))}
+                  options={[
+                    { value: 'name_asc', label: 'All Prices' },
+                    { value: 'price_asc', label: 'Low to High' },
+                    { value: 'price_desc', label: 'High to Low' }
+                  ]}
+                  leading={(
+                    <span style={{ display: 'inline-flex', alignItems: 'center', color: '#f97316' }}>
+                      <SlidersHorizontal size={16} />
+                    </span>
+                  )}
+                  containerStyle={{ minWidth: 120 }}
+                  triggerStyle={{
+                    minHeight: 36,
+                    borderRadius: 18,
+                    border: '1px solid #e2e8f0',
+                    background: '#fff',
+                    boxShadow: '0 2px 8px rgba(15,23,42,0.04)',
+                    padding: '0 32px 0 12px'
+                  }}
+                  selectedLabelStyle={{ color: '#0f172a', fontSize: 13, fontWeight: 800 }}
+                />
+                <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 18, padding: 2, alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => setFnbViewMode('list')}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      border: 'none',
+                      background: fnbViewMode === 'list' ? '#fff' : 'transparent',
+                      color: fnbViewMode === 'list' ? '#f97316' : '#64748b',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      boxShadow: fnbViewMode === 'list' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <List size={16} strokeWidth={fnbViewMode === 'list' ? 3 : 2} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFnbViewMode('grid')}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      border: 'none',
+                      background: fnbViewMode === 'grid' ? '#fff' : 'transparent',
+                      color: fnbViewMode === 'grid' ? '#f97316' : '#64748b',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      boxShadow: fnbViewMode === 'grid' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <LayoutGrid size={16} strokeWidth={fnbViewMode === 'grid' ? 2.5 : 2} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {isFnbMode && !isMobileViewport && (
           <>
-            <div style={{ maxWidth: 1320, margin: '0 auto', width: '100%', padding: isMobileViewport ? '0 16px' : '0 24px', display: 'grid', gap: isMobileViewport ? 18 : 22 }}>
+            <div style={{ maxWidth: 1320, margin: '0 auto', width: '100%', padding: '0 24px', display: 'grid', gap: 22 }}>
               <div style={{
                 display: 'flex',
-                alignItems: isMobileViewport ? 'flex-start' : 'flex-end',
+                alignItems: 'flex-end',
                 justifyContent: 'space-between',
                 gap: 14,
-                flexDirection: isMobileViewport ? 'column' : 'row'
+                flexDirection: 'row'
               }}>
                 <div style={{ display: 'grid', gap: 8 }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 800, color: modeAdapter.heroTheme?.accentDark || '#6f3415', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                     <span style={{ width: 30, height: 1, background: modeAdapter.heroTheme?.accent || '#c96a2b' }} />
                     Curated Menu
                   </div>
-                  <h2 style={{ margin: 0, fontSize: isMobileViewport ? 26 : 36, fontWeight: 900, color: modeAdapter.heroTheme?.textPrimary || STYLES.colors.dark, letterSpacing: '-0.03em', fontFamily: modeAdapter.heroTheme?.displayFont }}>{modeAdapter.catalogHeading}</h2>
+                  <h2 style={{ margin: 0, fontSize: 36, fontWeight: 900, color: modeAdapter.heroTheme?.textPrimary || STYLES.colors.dark, letterSpacing: '-0.03em', fontFamily: modeAdapter.heroTheme?.displayFont }}>{modeAdapter.catalogHeading}</h2>
                   <p style={{ margin: 0, color: modeAdapter.heroTheme?.textMuted || STYLES.colors.muted, fontSize: 15, maxWidth: 720 }}>{modeAdapter.catalogSubtitle}</p>
                 </div>
                 <div style={{
@@ -13305,6 +13909,7 @@ return (
                 const toolbarBorder = fnbTheme.borderSoft || '#edd4bc';
                 const toolbarTextPrimary = fnbTheme.textPrimary || '#2f1f16';
                 const toolbarTextMuted = fnbTheme.textMuted || '#7c6757';
+                const fnbSections = isFnbMode && Array.isArray(filteredFnbViewModel.menuSections) ? filteredFnbViewModel.menuSections : [];
                 const categoryOptions = [
                   {
                     key: '',
@@ -13318,7 +13923,7 @@ return (
                   ...fnbSections.map((section) => ({
                     key: section.sectionKey,
                     label: section.sectionLabel,
-                    count: section.items.length,
+                    count: section.items?.length || 0,
                     iconToken: section.visualMeta?.iconToken || 'menu',
                     glyph: section.visualMeta?.glyph || String(section.sectionLabel || '').charAt(0).toUpperCase(),
                     accent: section.visualMeta?.accent || '#475569',
@@ -13327,15 +13932,15 @@ return (
                 ];
                 const activeCategoryOption = categoryOptions.find((option) => option.key === (resolvedFnbSection || '')) || categoryOptions[0];
                 const ActiveCategoryIcon = FNB_CATEGORY_ICON_MAP[activeCategoryOption.iconToken] || Sparkles;
-                const controlHeight = isMobileViewport ? 54 : 56;
+                const controlHeight = 56;
                 const controlRadius = 18;
 
                 return (
                   <div style={{ display: 'grid', gap: 14 }}>
                     <div style={{
                       display: 'flex',
-                      flexDirection: isMobileViewport ? 'column' : 'row',
-                      alignItems: isMobileViewport ? 'stretch' : 'center',
+                      flexDirection: 'row',
+                      alignItems: 'center',
                       gap: 12,
                       flexWrap: 'wrap'
                     }}>
@@ -13401,8 +14006,8 @@ return (
                           </span>
                         )}
                         containerStyle={{
-                          minWidth: isMobileViewport ? '100%' : 240,
-                          flex: isMobileViewport ? '1 1 100%' : '0 0 240px'
+                          minWidth: 240,
+                          flex: '0 0 240px'
                         }}
                         triggerStyle={{
                           minHeight: controlHeight,
@@ -13417,7 +14022,7 @@ return (
 
                       <div
                         ref={fnbCategoryDropdownRef}
-                        style={{ position: 'relative', width: isMobileViewport ? '100%' : 290, flex: isMobileViewport ? '1 1 100%' : '0 0 290px' }}
+                        style={{ position: 'relative', width: 290, flex: '0 0 290px' }}
                       >
                         <button
                           type="button"
@@ -13749,9 +14354,10 @@ return (
             maxWidth: 1320,
             margin: `${isMobileViewport ? 18 : 24}px auto 0`,
             width: '100%',
+            boxSizing: 'border-box',
             padding: isMobileViewport ? '0 16px' : '0 24px'
           } : undefined}>
-            <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : viewportWidth < 1200 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: 24 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : viewportWidth < 1200 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: isMobileViewport ? 12 : 24 }}>
               {catalogItemsToRender.map((item) => {
                 const imageUrl = withAssetOrigin(item.image_url);
                 const available = isItemAvailable(item);
@@ -13759,13 +14365,14 @@ return (
                 return (
                   isFnbMode ? (
                     <FnbProductCard
-                      key={item.item_id}
+                      key={item.item_id + '-' + fnbViewMode}
                       item={item}
                       imageUrl={imageUrl}
                       available={available}
                       modeAdapter={modeAdapter}
                       addToCart={addToCart}
                       isMobileViewport={isMobileViewport}
+                      fnbViewMode={fnbViewMode}
                       onViewDetails={openFnbDetail}
                     />
                   ) : isSimpleMode ? (
@@ -13829,14 +14436,16 @@ return (
               <div style={{
                 marginTop: isMobileViewport ? 24 : 32,
                 display: 'flex',
+                flexDirection: isMobileViewport ? 'column' : 'row',
                 alignItems: 'center',
                 justifyContent: isMobileViewport ? 'center' : 'space-between',
                 gap: 14,
-                flexWrap: 'wrap'
+                flexWrap: 'wrap',
+                paddingBottom: isMobileViewport ? 100 : 0 // Safe space for floating cart
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: isMobileViewport ? '100%' : 'auto', gap: 12, flexWrap: 'wrap' }}>
                   <div style={{ fontSize: 13, color: STYLES.colors.muted }}>
-                    Showing {fnbPageStart}-{fnbPageEnd} of {itemsToRender.length} menu items
+                    Showing {fnbPageStart}-{fnbPageEnd} of {itemsToRender.length} {isMobileViewport ? '' : 'menu items'}
                   </div>
                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
                     Per page
@@ -13844,45 +14453,74 @@ return (
                       value={fnbPageSize}
                       onChange={(nextValue) => setFnbPageSize(Number(nextValue) || 8)}
                       options={[4, 8, 12, 16].map((size) => ({ value: size, label: String(size) }))}
-                      containerStyle={{ minWidth: 88 }}
-                      triggerStyle={{ minHeight: 38, borderRadius: 12, minWidth: 88, padding: '8px 42px 8px 12px' }}
+                      containerStyle={{ minWidth: 70 }}
+                      triggerStyle={{ minHeight: 34, borderRadius: 12, minWidth: 70, padding: '6px 36px 6px 12px' }}
                       menuStyle={{ borderRadius: 14 }}
                       selectedLabelStyle={{ fontSize: 13 }}
                     />
                   </label>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: isMobileViewport ? 6 : 8, width: isMobileViewport ? '100%' : 'auto', justifyContent: 'center', overflowX: 'auto', paddingBottom: isMobileViewport ? 4 : 0 }}>
                   <GhostButton
-                    style={{ minHeight: 38, padding: '0 14px', opacity: resolvedFnbPage === 1 ? 0.5 : 1 }}
+                    style={{ minHeight: 36, padding: '0 12px', fontSize: 13, opacity: resolvedFnbPage === 1 ? 0.5 : 1, flexShrink: 0 }}
                     onClick={() => setFnbPage((previous) => Math.max(1, previous - 1))}
                     disabled={resolvedFnbPage === 1}
                   >
                     Previous
                   </GhostButton>
+                  
                   {Array.from({ length: totalFnbPages }, (_, index) => index + 1)
-                    .slice(Math.max(0, resolvedFnbPage - 3), Math.max(0, resolvedFnbPage - 3) + 5)
+                    .slice(Math.max(0, resolvedFnbPage - (isMobileViewport ? 2 : 3)), Math.max(0, resolvedFnbPage - (isMobileViewport ? 2 : 3)) + (isMobileViewport ? 4 : 5))
                     .map((pageNumber) => (
                       <button
                         key={`fnb-page-${pageNumber}`}
                         type="button"
                         onClick={() => setFnbPage(pageNumber)}
                         style={{
-                          minWidth: 38,
-                          minHeight: 38,
+                          minWidth: 36,
+                          minHeight: 36,
                           borderRadius: 12,
-                          border: `1px solid ${pageNumber === resolvedFnbPage ? '#f59e0b' : '#e5e7eb'}`,
-                          background: pageNumber === resolvedFnbPage ? '#f59e0b' : '#fff',
+                          border: `1px solid ${pageNumber === resolvedFnbPage ? '#f97316' : '#e5e7eb'}`,
+                          background: pageNumber === resolvedFnbPage ? '#f97316' : '#fff',
                           color: pageNumber === resolvedFnbPage ? '#fff' : STYLES.colors.dark,
                           fontWeight: 800,
+                          fontSize: 14,
                           cursor: 'pointer',
-                          boxShadow: pageNumber === resolvedFnbPage ? '0 8px 18px rgba(245,158,11,0.22)' : 'none'
+                          flexShrink: 0,
+                          boxShadow: pageNumber === resolvedFnbPage ? '0 8px 18px rgba(249,115,22,0.22)' : 'none'
                         }}
                       >
                         {pageNumber}
                       </button>
                     ))}
+                    
+                  {totalFnbPages > (resolvedFnbPage + (isMobileViewport ? 2 : 3)) && (
+                    <div style={{ padding: '0 4px', color: '#94a3b8', fontWeight: 800 }}>...</div>
+                  )}
+                  {totalFnbPages > (resolvedFnbPage + (isMobileViewport ? 1 : 2)) && (
+                     <button
+                        type="button"
+                        onClick={() => setFnbPage(totalFnbPages)}
+                        style={{
+                          minWidth: 36,
+                          minHeight: 36,
+                          borderRadius: 12,
+                          border: '1px solid #e5e7eb',
+                          background: '#fff',
+                          color: STYLES.colors.dark,
+                          fontWeight: 800,
+                          fontSize: 14,
+                          cursor: 'pointer',
+                          flexShrink: 0
+                        }}
+                      >
+                        {totalFnbPages}
+                      </button>
+                  )}
+                  
                   <GhostButton
-                    style={{ minHeight: 38, padding: '0 14px', opacity: resolvedFnbPage === totalFnbPages ? 0.5 : 1 }}
+                    style={{ minHeight: 36, padding: '0 12px', fontSize: 13, opacity: resolvedFnbPage === totalFnbPages ? 0.5 : 1, flexShrink: 0 }}
                     onClick={() => setFnbPage((previous) => Math.min(totalFnbPages, previous + 1))}
                     disabled={resolvedFnbPage === totalFnbPages}
                   >
