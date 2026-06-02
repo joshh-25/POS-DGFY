@@ -19,8 +19,11 @@ describe('POS checkout surface parity', () => {
       expect(source).toContain('buildPosCheckoutPayload');
       expect(source).toContain('DGFY_CONVENIENCE_FEE_LABEL');
       expect(source).toContain('DGFY_CONVENIENCE_FEE_RATE');
+      expect(source).toContain('resolveReceiptDocumentContract');
       expect(source).toContain('createPosCheckout(payload)');
       expect(source).toContain('markTerminalOperationReplayed(payload.idempotency_key');
+      expect(source).not.toContain("startsWith('INV-')");
+      expect(source).not.toContain('startsWith("INV-")');
     }
   });
 

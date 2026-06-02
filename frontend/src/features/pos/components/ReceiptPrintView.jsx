@@ -1,5 +1,8 @@
 import React from 'react';
-import { DGFY_CONVENIENCE_FEE_LABEL } from '../utils/checkoutSurfaceContract.js';
+import {
+    DGFY_CONVENIENCE_FEE_LABEL,
+    resolveReceiptDocumentContract
+} from '../utils/checkoutSurfaceContract.js';
 
 const money = (value) => `PHP ${Number(value || 0).toFixed(2)}`;
 const DGFY_BRAND_NAME = 'DGFY';
@@ -31,36 +34,6 @@ const parseArrayMetadata = (value) => {
     }
 };
 
-const resolveDocumentType = ({ transaction, receiptContract }) => {
-    const contractType = String(receiptContract?.document_type || '').toLowerCase();
-    if (contractType === 'fiscal_invoice' || contractType === 'non_fiscal_slip') {
-        return contractType;
-    }
-
-    const stored = String(transaction?.document_type || '').toLowerCase();
-    if (stored === 'fiscal_invoice' || stored === 'non_fiscal_slip') {
-        return stored;
-    }
-
-    const invoiceNumber = String(transaction?.invoice_number || '').toUpperCase();
-    if (invoiceNumber.startsWith('INV-')) return 'fiscal_invoice';
-    return 'non_fiscal_slip';
-};
-
-const resolveDocumentContext = ({ transaction, receiptContract, documentType }) => {
-    const contractContext = String(receiptContract?.document_context || '').trim().toLowerCase();
-    if (['fiscal', 'non_fiscal', 'training_test'].includes(contractContext)) {
-        return contractContext;
-    }
-
-    const persistedContext = String(transaction?.document_context || '').trim().toLowerCase();
-    if (['fiscal', 'non_fiscal', 'training_test'].includes(persistedContext)) {
-        return persistedContext;
-    }
-
-    return documentType === 'fiscal_invoice' ? 'fiscal' : 'non_fiscal';
-};
-
 export default function ReceiptPrintView({ transaction, businessSettings = {}, receiptContract = null }) {
     if (!transaction) return null;
 
@@ -68,8 +41,9 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
         ? new Date(transaction.created_at).toLocaleString()
         : '-';
     const lines = Array.isArray(transaction.lines) ? transaction.lines : [];
-    const documentType = resolveDocumentType({ transaction, receiptContract });
-    const documentContext = resolveDocumentContext({ transaction, receiptContract, documentType });
+    const resolvedReceiptContract = resolveReceiptDocumentContract(transaction, receiptContract);
+    const documentType = resolvedReceiptContract.document_type;
+    const documentContext = resolvedReceiptContract.document_context;
     const transactionMetadata = parseTransactionMetadata(transaction?.special_instructions);
     const fiscalSnapshot = parseTransactionMetadata(transaction?.fiscal_document_snapshot);
     const fiscalSeller = fiscalSnapshot?.seller && typeof fiscalSnapshot.seller === 'object'

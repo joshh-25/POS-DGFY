@@ -1,6 +1,54 @@
 export const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
 export const DGFY_CONVENIENCE_FEE_RATE = 0.01;
 
+const RECEIPT_DOCUMENT_LABELS = Object.freeze({
+  fiscal_invoice: 'FISCAL INVOICE',
+  non_fiscal_slip: 'NON-FISCAL SLIP'
+});
+
+const RECEIPT_DOCUMENT_CONTEXTS = new Set(['fiscal', 'non_fiscal', 'training_test']);
+
+const normalizeReceiptDocumentType = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(RECEIPT_DOCUMENT_LABELS, normalized)
+    ? normalized
+    : null;
+};
+
+const normalizeReceiptDocumentContext = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return RECEIPT_DOCUMENT_CONTEXTS.has(normalized) ? normalized : null;
+};
+
+export const resolveReceiptDocumentContract = (transaction = null, receiptContract = null) => {
+  const contractType = normalizeReceiptDocumentType(receiptContract?.document_type);
+  const contractContext = normalizeReceiptDocumentContext(receiptContract?.document_context);
+  if (contractType && contractContext) {
+    return {
+      ...receiptContract,
+      document_type: contractType,
+      document_context: contractContext,
+      label: receiptContract?.label || RECEIPT_DOCUMENT_LABELS[contractType]
+    };
+  }
+
+  const transactionType = normalizeReceiptDocumentType(transaction?.document_type);
+  const transactionContext = normalizeReceiptDocumentContext(transaction?.document_context);
+  if (transactionType && transactionContext) {
+    return {
+      document_type: transactionType,
+      document_context: transactionContext,
+      label: RECEIPT_DOCUMENT_LABELS[transactionType]
+    };
+  }
+
+  return {
+    document_type: 'non_fiscal_slip',
+    document_context: 'non_fiscal',
+    label: RECEIPT_DOCUMENT_LABELS.non_fiscal_slip
+  };
+};
+
 export const buildPosCheckoutPayload = ({
   idempotencyKey,
   terminalId = '',

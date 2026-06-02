@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   DGFY_CONVENIENCE_FEE_LABEL,
   DGFY_CONVENIENCE_FEE_RATE,
-  buildPosCheckoutPayload
+  buildPosCheckoutPayload,
+  resolveReceiptDocumentContract
 } from '../checkoutSurfaceContract.js';
 
 describe('checkout surface contract', () => {
@@ -113,6 +114,43 @@ describe('checkout surface contract', () => {
       special_instructions: undefined,
       kitchen_station_id: undefined,
       scan_metadata: undefined
+    });
+  });
+
+  it('resolves receipt status only from explicit document_type and document_context fields', () => {
+    expect(resolveReceiptDocumentContract(
+      { invoice_number: 'INV-LEGACY-001' },
+      null
+    )).toEqual({
+      document_type: 'non_fiscal_slip',
+      document_context: 'non_fiscal',
+      label: 'NON-FISCAL SLIP'
+    });
+
+    expect(resolveReceiptDocumentContract(
+      {
+        invoice_number: 'INV-EXPLICIT-NON-FISCAL',
+        document_type: 'non_fiscal_slip',
+        document_context: 'training_test'
+      },
+      null
+    )).toEqual({
+      document_type: 'non_fiscal_slip',
+      document_context: 'training_test',
+      label: 'NON-FISCAL SLIP'
+    });
+
+    expect(resolveReceiptDocumentContract(
+      { invoice_number: 'NFS-EXPLICIT-FISCAL' },
+      {
+        document_type: 'fiscal_invoice',
+        document_context: 'fiscal',
+        label: 'FISCAL INVOICE'
+      }
+    )).toEqual({
+      document_type: 'fiscal_invoice',
+      document_context: 'fiscal',
+      label: 'FISCAL INVOICE'
     });
   });
 });

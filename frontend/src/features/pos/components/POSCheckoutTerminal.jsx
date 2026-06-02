@@ -43,7 +43,8 @@ import { openSkupervisorPath } from '../utils/skupervisorHandoff.js';
 import {
     DGFY_CONVENIENCE_FEE_LABEL,
     DGFY_CONVENIENCE_FEE_RATE,
-    buildPosCheckoutPayload
+    buildPosCheckoutPayload,
+    resolveReceiptDocumentContract
 } from '../utils/checkoutSurfaceContract.js';
 
 const ReceiptPrintView = lazy(() => import('./ReceiptPrintView'));
@@ -275,42 +276,6 @@ const resolveMappedPosItemImage = (item = {}) => {
         Array.isArray(entry.match) && entry.match.some((token) => itemName.includes(String(token).toLowerCase()))
     ));
     return mapped?.src || '';
-};
-
-const inferReceiptContract = (transaction, fallbackContract = null) => {
-    if (fallbackContract?.document_type) {
-        return fallbackContract;
-    }
-
-    const documentType = String(transaction?.document_type || '').toLowerCase();
-    if (documentType === 'non_fiscal_slip') {
-        return {
-            document_type: 'non_fiscal_slip',
-            label: 'NON-FISCAL SLIP'
-        };
-    }
-    if (documentType === 'fiscal_invoice') {
-        return {
-            document_type: 'fiscal_invoice',
-            label: 'FISCAL INVOICE'
-        };
-    }
-
-    const invoiceNumber = String(transaction?.invoice_number || '').toUpperCase();
-    if (invoiceNumber.startsWith('NFS-')) {
-        return {
-            document_type: 'non_fiscal_slip',
-            label: 'NON-FISCAL SLIP'
-        };
-    }
-    if (invoiceNumber.startsWith('INV-')) {
-        return {
-            document_type: 'fiscal_invoice',
-            label: 'FISCAL INVOICE'
-        };
-    }
-
-    return null;
 };
 
 export default function POSCheckoutTerminal({
@@ -647,7 +612,7 @@ export default function POSCheckoutTerminal({
                     const data = await createPosCheckout(payload);
                     replayedCount += 1;
                     setLastReceipt(data?.transaction || null);
-                    setLastReceiptContract(inferReceiptContract(data?.transaction, data?.receipt_contract));
+                    setLastReceiptContract(resolveReceiptDocumentContract(data?.transaction, data?.receipt_contract));
                     if (typeof onCheckoutCompleted === 'function') {
                         onCheckoutCompleted(data?.transaction || null);
                     }
@@ -812,7 +777,7 @@ export default function POSCheckoutTerminal({
         try {
             const detail = await fetchPosTransactionById(posTransactionId);
             setLastReceipt(detail || null);
-            setLastReceiptContract(inferReceiptContract(detail));
+            setLastReceiptContract(resolveReceiptDocumentContract(detail));
             if (switchToReceipt) {
                 setCurrentViewMode('receipt');
                 setReceiptPreviewModalOpen(false);
@@ -864,7 +829,7 @@ export default function POSCheckoutTerminal({
                 const detail = await fetchPosTransactionById(id);
                 if (cancelled) return;
                 setLastReceipt(detail || null);
-                setLastReceiptContract(inferReceiptContract(detail));
+                setLastReceiptContract(resolveReceiptDocumentContract(detail));
                 setCurrentViewMode('receipt');
             } catch (error) {
                 if (!cancelled) {
@@ -1477,7 +1442,7 @@ export default function POSCheckoutTerminal({
         try {
             const data = await createPosCheckout(payload);
             setLastReceipt(data?.transaction || null);
-            setLastReceiptContract(inferReceiptContract(data?.transaction, data?.receipt_contract));
+            setLastReceiptContract(resolveReceiptDocumentContract(data?.transaction, data?.receipt_contract));
             setCart([]);
             setSelectedDiscountProfile('');
             setManualDiscountAmountInput('');
@@ -1492,8 +1457,8 @@ export default function POSCheckoutTerminal({
             }
             toast.success(
                 data?.idempotent_replay
-                    ? `Replayed (${inferReceiptContract(data?.transaction, data?.receipt_contract)?.label || 'receipt loaded'})`
-                    : `Done (${inferReceiptContract(data?.transaction, data?.receipt_contract)?.label || 'receipt ready'})`
+                    ? `Replayed (${resolveReceiptDocumentContract(data?.transaction, data?.receipt_contract).label || 'receipt loaded'})`
+                    : `Done (${resolveReceiptDocumentContract(data?.transaction, data?.receipt_contract).label || 'receipt ready'})`
             );
             if (data?.terminal_identity_policy?.warning?.message) {
                 toast.message(`Terminal policy warning: ${data.terminal_identity_policy.warning.message}`);

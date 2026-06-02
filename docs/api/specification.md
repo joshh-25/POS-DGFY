@@ -2401,7 +2401,7 @@ Payment handoff policy (current contract):
 **Compliance Gate (dual-mode, fail-closed for compliant mode)**
 Checkout is evaluated by the compliance policy engine:
 1. `compliance_mode_choice_required=true` blocks checkout and terminal operations (`LEGACY_MODE_SELECTION_REQUIRED`).
-2. `non_compliant_active` allows checkout with non-fiscal receipt contract only (`document_type=non_fiscal_slip`).
+2. `non_compliant_active` allows checkout with non-fiscal receipt contract only (`document_type=non_fiscal_slip`, `document_context=non_fiscal`).
 3. `compliant_pending` allows operations, but fiscal output remains blocked until activation checklist is complete.
 4. `compliant_active` fails closed when checklist controls are unmet:
    - incomplete profile/settings (`COMPLIANCE_PROFILE_INCOMPLETE`)
@@ -2454,6 +2454,13 @@ Final Review documentary (tenant self-serve):
 **VAT Rule**
 - VAT buckets are computed from discounted item lines only.
 - `service_fee_amount` is treated as non-VAT for POS VAT buckets.
+
+**Receipt Document Contract**
+- Checkout responses include `receipt_contract` with explicit `document_type` and `document_context`.
+- Persisted POS transaction headers include the same explicit fields; `GET /pos/transactions` and `GET /pos/transactions/:id` expose them with the transaction rows.
+- Print and preview clients must classify fiscal status only from `receipt_contract.document_type`/`receipt_contract.document_context` or the persisted transaction `document_type`/`document_context`.
+- Invoice number prefixes such as `INV-` and `NFS-` are sequence identifiers only. They must not be used by clients to infer fiscal status, choose fiscal headers, or decide whether fiscal print/reprint evidence is required.
+- Idempotent checkout replay returns the persisted transaction receipt contract, not a newly inferred contract from the caller payload, invoice prefix, or current compliance policy state.
 
 ### GET /pos/transactions
 List POS transactions with cashier metadata and pagination.

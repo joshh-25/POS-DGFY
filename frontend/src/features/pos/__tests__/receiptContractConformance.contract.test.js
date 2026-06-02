@@ -90,6 +90,44 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     expect(screen.getByText('Document context: training_test')).toBeTruthy();
   });
 
+  it('does not infer fiscal status from INV invoice prefixes without explicit server contract fields', () => {
+    renderReceipt({
+      transaction: buildTransaction({
+        invoice_number: 'INV-LEGACY-001',
+        document_type: null,
+        document_context: null
+      }),
+      businessSettings: {
+        pos_business_name: 'Compliance Test Store',
+        pos_tin_branch: '123-456-789-000'
+      }
+    });
+
+    expect(screen.getByText('NON-FISCAL SLIP')).toBeTruthy();
+    expect(screen.getByText('NOT A FISCAL RECEIPT')).toBeTruthy();
+    expect(screen.getByText('Document context: non_fiscal')).toBeTruthy();
+    expect(screen.queryByText('FISCAL INVOICE')).toBeNull();
+    expect(screen.queryByText(/TIN\/Branch:/i)).toBeNull();
+  });
+
+  it('does not infer fiscal status when document_type is present without document_context', () => {
+    renderReceipt({
+      transaction: buildTransaction({
+        invoice_number: 'INV-MISSING-CONTEXT',
+        document_type: 'fiscal_invoice',
+        document_context: null
+      }),
+      businessSettings: {
+        pos_business_name: 'Compliance Test Store',
+        pos_tin_branch: '123-456-789-000'
+      }
+    });
+
+    expect(screen.getByText('NON-FISCAL SLIP')).toBeTruthy();
+    expect(screen.getByText('Document context: non_fiscal')).toBeTruthy();
+    expect(screen.queryByText('FISCAL INVOICE')).toBeNull();
+  });
+
   it('renders fiscal header fields only for fiscal document context', () => {
     renderReceipt({
       transaction: buildTransaction({

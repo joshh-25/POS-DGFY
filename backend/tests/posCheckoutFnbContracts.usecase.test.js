@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import crypto from 'crypto';
 import dbStore from '../src/utils/dbStore.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
 
@@ -98,6 +99,19 @@ const runInTenantContext = async (callback) => {
         sequelize
     }, async () => callback({ sequelize, transaction }));
 };
+
+const stableStringify = (value) => {
+    if (Array.isArray(value)) {
+        return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+    }
+    if (value && typeof value === 'object') {
+        const keys = Object.keys(value).sort();
+        return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+    }
+    return JSON.stringify(value);
+};
+
+const hashPayload = (payload) => crypto.createHash('sha256').update(stableStringify(payload)).digest('hex');
 
 describe('POS checkout F&B contracts', () => {
     beforeEach(() => {
@@ -244,6 +258,119 @@ describe('POS checkout F&B contracts', () => {
             invoice_number: 'INV-000001',
             terminal_id: 'TERM-01'
         }), expect.objectContaining({ transaction: expect.any(Object) }));
+    });
+
+    it('returns the persisted receipt contract on idempotent replay instead of inferring from invoice prefix or current policy', async () => {
+        mockAssertComplianceOperationAllowed.mockResolvedValueOnce({
+            success: true,
+            data: {
+                decision: {
+                    allowed: true,
+                    receipt_contract: {
+                        document_type: 'fiscal_invoice',
+                        label: 'FISCAL INVOICE',
+                        document_context: 'fiscal'
+                    }
+                }
+            }
+        });
+        const existingTransaction = {
+            pos_transaction_id: 188,
+            invoice_number: 'INV-LEGACY-NON-FISCAL',
+            document_type: 'non_fiscal_slip',
+            document_context: 'non_fiscal',
+            idempotency_key: 'replay-explicit-contract',
+            request_hash: hashPayload({
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                order_method: 'pickup',
+                payment_type: 'cash',
+                service_fee_amount: null,
+                fnb_check_id: null,
+                fnb_table_id: null,
+                fnb_table_label_snapshot: null,
+                fnb_guest_count: null,
+                fnb_server_id: null,
+                restaurant_service_charge: {
+                    enabled: false,
+                    amount: null,
+                    label: 'Restaurant service charge',
+                    rate: 0,
+                    taxable: false,
+                    source: 'settings'
+                },
+                discount_profile_name: null,
+                discount_rate: null,
+                discount_amount: 0,
+                customer_name: null,
+                customer_email: null,
+                customer_phone: null,
+                buyer_name: null,
+                buyer_tin: null,
+                buyer_business_style: null,
+                buyer_address: null,
+                special_instructions: null,
+                discount_beneficiary: null,
+                lines: [{
+                    sequence: 0,
+                    item_id: 1,
+                    quantity: 1,
+                    sale_price: null,
+                    price_override_reason: null,
+                    course: null,
+                    line_modifiers: [],
+                    special_instructions: null,
+                    kitchen_station_id: null,
+                    scan_metadata: null
+                }]
+            }),
+            status: 'completed',
+            lines: []
+        };
+        const posRepository = {
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({ mode: 'warn', active_registry: [] }),
+            getVerifiedFiscalTerminalRegistration: jest.fn().mockResolvedValue({
+                pos_fiscal_terminal_registration_id: 44,
+                terminal_id: 'TERM-01',
+                min_number: 'MIN-001',
+                machine_serial_number: 'MSN-001',
+                ptu_number: 'PTU-2026-001'
+            }),
+            findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(existingTransaction)
+        };
+        const stockMovementService = {
+            createStockMovement: jest.fn()
+        };
+        const useCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'replay-explicit-contract',
+                terminal_id: 'term-01',
+                location_id: 3,
+                document_context: 'fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                lines: [{ item_id: 1, quantity: 1 }]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.idempotent_replay).toBe(true);
+        expect(result.data.receipt_contract).toEqual({
+            version: '2026.04.08',
+            document_type: 'non_fiscal_slip',
+            document_context: 'non_fiscal',
+            label: 'NON-FISCAL SLIP'
+        });
+        expect(result.data.transaction).toEqual(expect.objectContaining({
+            invoice_number: 'INV-LEGACY-NON-FISCAL',
+            document_type: 'non_fiscal_slip',
+            document_context: 'non_fiscal'
+        }));
+        expect(stockMovementService.createStockMovement).not.toHaveBeenCalled();
     });
 
     it('validates modifiers from configured groups, taxes taxable restaurant service charge, and deducts recipe ingredients', async () => {

@@ -77,6 +77,10 @@ const RESET_COUNTER_CONFIRMATION_TEXT = 'INCREMENT RESET COUNTER';
 const SPECIAL_DISCOUNT_BENEFICIARY_TYPES = new Set(['senior', 'pwd', 'national_athlete']);
 const RECEIPT_CONTRACT_VERSION = '2026.04.08';
 const FISCAL_DOCUMENT_TEMPLATE_VERSION = 'rmo-24-2023-prep-v1';
+const RECEIPT_DOCUMENT_LABELS = Object.freeze({
+    fiscal_invoice: 'FISCAL INVOICE',
+    non_fiscal_slip: 'NON-FISCAL SLIP'
+});
 const OPERATION_REPLAY_STATUS = Object.freeze({
     PROCESSED: 'processed',
     BLOCKED: 'blocked'
@@ -339,6 +343,23 @@ const toSerializable = (value) => (
         ? value.toJSON()
         : value
 );
+
+const buildReceiptContractFromPersistedTransaction = (transaction) => {
+    const documentType = String(transaction?.document_type || '').trim().toLowerCase();
+    const documentContext = String(transaction?.document_context || '').trim().toLowerCase();
+    if (!Object.prototype.hasOwnProperty.call(RECEIPT_DOCUMENT_LABELS, documentType)) {
+        return null;
+    }
+    if (!['fiscal', 'non_fiscal', 'training_test'].includes(documentContext)) {
+        return null;
+    }
+    return {
+        version: RECEIPT_CONTRACT_VERSION,
+        document_type: documentType,
+        document_context: documentContext,
+        label: RECEIPT_DOCUMENT_LABELS[documentType]
+    };
+};
 
 const buildZReadingIdentifier = ({ businessDate, zCounterValue }) => (
     `ZR-${String(businessDate || '').replace(/-/g, '')}-${String(zCounterValue || 0).padStart(8, '0')}`
@@ -1710,14 +1731,12 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 }
 
                 await transaction.commit();
+                const existingReceiptContract = buildReceiptContractFromPersistedTransaction(existing);
                 return ok({
                     idempotent_replay: true,
                     compliance_decision: complianceDecision,
                     terminal_identity_policy: terminalPolicyContext,
-                    receipt_contract: {
-                        ...resolvedReceiptContract,
-                        document_context: String(existing.document_context || resolvedReceiptContract.document_context || '').trim().toLowerCase() || 'non_fiscal'
-                    },
+                    receipt_contract: existingReceiptContract,
                     transaction: toSerializable(existing)
                 });
             }
