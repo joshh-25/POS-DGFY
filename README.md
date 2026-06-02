@@ -68,6 +68,8 @@ npm run build:skupervisor
 npm run build:pos
 npm run build:store
 npm run test
+npm run audit:dependencies:prod
+npm run audit:dependencies
 npm run lint:docs
 npm run doctor:runtime
 npm run smoke:pos-local
@@ -106,9 +108,11 @@ High-value docs:
 - [docs/database/schema.md](docs/database/schema.md)
 - [docs/development/environment-setup.md](docs/development/environment-setup.md)
 - [docs/testing/README.md](docs/testing/README.md)
+- [System_Audit/README.md](System_Audit/README.md)
 
 ## Notes
 
 - Frontend build outputs are generated into `dist-apps/` and should not be treated as source.
+- `System_Audit/` contains the current strict audit package; prior audit material is archived under `docs/archive/`.
 - Historical implementation planning artifacts are archived under `docs/archive/reference/`.
 - Governed/active documentation lives under `docs/`.

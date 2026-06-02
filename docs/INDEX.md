@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-05-24
+last_reviewed: 2026-06-02
 applies_to: docs_navigation
 topic: docs_index
 ---
@@ -35,6 +35,8 @@ Canonical planning entry:
 ## Current Focus Areas
 - Storefront and tenant-location rollout docs are primarily under `docs/api`, `docs/testing`, and `docs/reference`.
 - POS hardening and terminal operations evidence are primarily under `docs/testing`.
+- Current strict system audit findings live under root `System_Audit/`; the prior March audit package is archived at `docs/archive/system-audit-2026-03/` and is historical only.
+- Dependency audit gates are current release evidence: `npm run audit:dependencies:prod` and `npm run audit:dependencies` cover root, backend, and frontend package scopes, run in CI, and are included in `npm run gate:release:local`.
 - The DGFY POS surface split is tracked in `docs/testing/pos-readiness-status.md` and `docs/compliance/impact-declarations/2026-05-30-dgfy-pos-surface-split.md`. Standalone POS owns cashier terminal routing, while SKUpervisor `/pos` owns admin/mode panels and reporting handoff; local release gates, production deploy, production POS smoke, exact deployed-head verification, `npm run smoke:pos-terminal-ui`, and shared checkout payload/fee contract tests now pass. Human cashier/admin UAT remains the final readiness gate.
 - POS/storefront source separation contract is maintained in `docs/features/POS_STOREFRONT_SOURCE_SEPARATION_CONTRACT.md` with validation evidence in `docs/testing/pos-readiness-status.md`.
 - Expanded workflow-mode template behavior and backward-compatible family semantics are governed by ADR 0008 + ADR 0014 and current feature/testing docs.
@@ -68,6 +70,7 @@ Canonical planning entry:
 - Public company registration abuse limits are tracked in the same tenant/API docs and configured through `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` plus `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`.
 - Compliance governance, classification floors, and PH regulatory mapping are under `docs/compliance`.
 - Compliance-sensitive changes are branch-gated by `npm run check:compliance`; declaration files must satisfy computed classification floors, and `major|regulatory` declarations require preflight metadata.
+- POS receipt fiscal status is explicit server contract data. Frontend receipt surfaces rely on `receipt_contract` or persisted transaction `document_type`/`document_context` and must not infer fiscal status from invoice number prefixes.
 - Compliance evidence and submission packet are under `docs/compliance/evidence/` and `docs/compliance/submission/`.
 - Compliance Final Review documentary requirements are tenant self-serve in Settings > Compliance (backend stores tenant records; submission docs remain internal reference).
 - Compliance activation readiness browser E2E and startup regression guardrails are under `docs/testing/README.md`.

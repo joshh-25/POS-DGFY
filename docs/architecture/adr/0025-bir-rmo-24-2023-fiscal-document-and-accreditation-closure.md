@@ -3,6 +3,8 @@
 ## Status
 Accepted (2026-06-01)
 
+Update note (2026-06-02): Receipt print contract hardening clarified that fiscal document status is explicit server-owned metadata. Print surfaces must require `document_type=fiscal_invoice` and `document_context=fiscal`; invoice number prefixes must not be used to infer fiscal status.
+
 ## Context
 ADR 0007 established the dual-mode POS compliance lifecycle:
 
@@ -45,6 +47,7 @@ This ADR covers the compliance-activation gate, filing evidence model, and inter
 
 1. Fiscal buyer capture and persisted transaction snapshots.
 2. Server-owned fiscal document payloads and SHA-256 hashes.
+   - Fiscal/non-fiscal print classification is also server-owned through persisted `document_type` and `document_context` contract fields.
 3. Verified fiscal terminal registration records.
 4. Append-only fiscal event ledger records with monotonic `event_sequence` and hash-chain fields for issuance, print/reprint, void, Z-reading, governed reset, terminal registration, and eSales export/status changes, plus a read-only integrity verifier that recomputes hashes and previous-hash linkage.
 5. Fiscal print/reprint event records created after the browser print dialog is opened and the operator confirms print evidence; reprints require reasons.
