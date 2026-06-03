@@ -504,7 +504,7 @@ export const buildHandleWebhookUseCase = ({
 
             if (!isValid) {
                 logger.error(`Invalid webhook signature for ID: ${webhookId}`);
-                await emitWebhookEvent('paypal_webhook_invalid_signature', {
+                await emitWebhookEvent(isPayMongoEvent ? 'paymongo_webhook_invalid_signature' : 'paypal_webhook_invalid_signature', {
                     requestId: transmissionId || webhookId,
                     correlationId: webhookId,
                     providerEventId: paypalEventId,
