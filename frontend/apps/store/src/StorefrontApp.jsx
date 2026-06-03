@@ -50,20 +50,16 @@ import {
   UtensilsCrossed,
   ChefHat,
   Copy,
-  User,
   ChevronUp,
   ChevronDown,
-  Share2,
   Trash2,
   X,
   Navigation,
-  Map,
   MoreHorizontal,
   Store,
   ShieldCheck,
   Zap,
   Heart,
-  LogOut,
   ChevronLeft,
   ChevronRight,
   Info,
@@ -76,7 +72,6 @@ import { canCheckout, getCheckoutBlockReason } from './checkoutRules.js';
 import { filterCatalogItems } from './catalogSearch.js';
 import {
   getDiscoveryEmptyStateMessage,
-  getDiscoveryMatchBadges,
   getPreferredDiscoveryLocationId,
   selectDiscoveryPinLocations
 } from './discoveryPresentation.js';
@@ -89,8 +84,7 @@ import {
   canUseCheckout,
   canUseProductCart,
   canViewCatalog,
-  getAccessCapabilities,
-  getInventoryDisplayLabel
+  getAccessCapabilities
 } from './customerAccess.js';
 import { getFoodBeverageStorefrontViewModel } from './fnbStorefrontViewModel.js';
 import { getBusinessModePinMeta, renderBusinessModePinSvg } from './businessModePins.js';
@@ -224,13 +218,6 @@ const DGFY_BRAND_NAME = 'DGFY';
 const DGFY_ACRONYM = 'Discover Goods For You';
 const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
 const DGFY_CONVENIENCE_FEE_RATE = 0.01;
-const DISCOVERY_BADGE_TONE_STYLES = {
-  teal: { color: '#0f766e', background: '#ecfeff', borderColor: '#99f6e4' },
-  blue: { color: '#1a4e8d', background: '#eff6ff', borderColor: '#bfdbfe' },
-  slate: { color: '#334155', background: '#f8fafc', borderColor: '#cbd5e1' },
-  emerald: { color: '#047857', background: '#ecfdf5', borderColor: '#a7f3d0' },
-  amber: { color: '#92400e', background: '#fff7ed', borderColor: '#fed7aa' }
-};
 function buildPinnedDeliveryAddress(pin) {
   const latitude = Number(pin?.latitude);
   const longitude = Number(pin?.longitude);
@@ -370,30 +357,6 @@ function StoreFollowGlyph({
   );
 }
 
-const POPULAR_DISCOVERY_CATEGORIES = Object.freeze([
-  { label: 'Food', query: 'Food' },
-  { label: 'Grocery', query: 'Grocery' },
-  { label: 'Laundry', query: 'Laundry' },
-  { label: 'Salon', query: 'Salon' },
-  { label: 'Hardware', query: 'Hardware' },
-  { label: 'More', query: 'Services' }
-]);
-const DISCOVERY_CATEGORY_FILTER_OPTIONS = Object.freeze([
-  ['all', 'All'],
-  ['food', 'Food'],
-  ['grocery', 'Grocery'],
-  ['laundry', 'Laundry'],
-  ['salon', 'Salon'],
-  ['hardware', 'Hardware'],
-  ['services', 'Services'],
-  ['pharmacy', 'Pharmacy'],
-  ['electronics', 'Electronics'],
-  ['bakery', 'Bakery'],
-  ['clothing', 'Clothing'],
-  ['drinks', 'Drinks'],
-  ['food stall', 'Food Stall'],
-  ['frozen', 'Frozen']
-]);
 const DISCOVERY_CATEGORY_MATCHERS = Object.freeze({
   food: ['food', 'cafe', 'coffee', 'bakery', 'drinks', 'food stall', 'frozen', 'f&b'],
   grocery: ['grocery', 'supermarket', 'mart'],
@@ -909,21 +872,6 @@ const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return earthRadiusKm * c;
 };
-const getSpreadMarkerCoordinate = (lat, lng, index, total) => {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isInteger(index) || total <= 1) {
-    return { latitude: lat, longitude: lng };
-  }
-  const ringPosition = index + 1;
-  const angle = ((Math.PI * 2) / total) * ringPosition;
-  const radiusDegrees = 0.00016 + Math.floor(index / 6) * 0.00005;
-  const lngAdjustment = radiusDegrees * Math.cos(angle) / Math.max(Math.cos((lat * Math.PI) / 180), 0.35);
-  const latAdjustment = radiusDegrees * Math.sin(angle);
-  return {
-    latitude: lat + latAdjustment,
-    longitude: lng + lngAdjustment
-  };
-};
-
 const readRouteSlug = () => {
   if (typeof window === 'undefined') return null;
   const path = window.location.pathname || '';
@@ -1025,7 +973,6 @@ const configuredAssetOrigin = resolveConfiguredOrigin(import.meta.env.VITE_ASSET
 const assetOrigin = configuredAssetOrigin || apiOrigin;
 const configuredPublicStorefrontOrigin = resolveConfiguredOrigin(import.meta.env.VITE_PUBLIC_STOREFRONT_ORIGIN);
 const publicStorefrontOrigin = configuredPublicStorefrontOrigin || 'https://dgfy.ph';
-const buildStamp = String(import.meta.env.VITE_BUILD_STAMP || '').trim();
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/';
 const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`;
 const withApiOrigin = (url) => {
@@ -1130,43 +1077,6 @@ const resolveDiscoveryCategoryFilterValue = (label) => {
   return normalized;
 };
 
-const normalizeStorefrontGallery = (value) => parseOptionalArray(value)
-  .map((entry, index) => {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
-    const url = String(entry.url || '').trim();
-    const path = String(entry.path || '').trim();
-    if (!url && !path) return null;
-    return {
-      url: withAssetOrigin(url) || '',
-      path: withAssetOrigin(path) || '',
-      caption: String(entry.caption || '').trim(),
-      alt: String(entry.alt || '').trim(),
-      sort_order: Number.isInteger(Number(entry.sort_order)) ? Number(entry.sort_order) : index
-    };
-  })
-  .filter(Boolean)
-  .sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0))
-  .slice(0, 24);
-
-const normalizeStorefrontDeliveryPartners = (value) => parseOptionalArray(value)
-  .map((entry) => {
-    if (typeof entry === 'string') {
-      const partner = String(entry || '').trim().toLowerCase();
-      if (!partner) return null;
-      return { partner, label: partner, url: '' };
-    }
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
-    const partner = String(entry.partner || '').trim().toLowerCase();
-    if (!partner) return null;
-    return {
-      partner,
-      label: String(entry.label || '').trim() || partner,
-      url: sanitizeExternalLink(entry.url)
-    };
-  })
-  .filter(Boolean)
-  .slice(0, 8);
-
 const normalizeStorefrontReviewSummary = (value) => {
   const raw = parseOptionalObject(value);
   if (!raw) return null;
@@ -1193,44 +1103,6 @@ const sanitizeExternalLink = (value) => {
   } catch {
     return '';
   }
-};
-
-const createStorePopupNode = (store = {}) => {
-  const container = document.createElement('div');
-  container.style.display = 'grid';
-  container.style.gap = '4px';
-
-  const row = document.createElement('div');
-  row.style.display = 'flex';
-  row.style.alignItems = 'center';
-  row.style.gap = '8px';
-
-  const profileImageUrl = withAssetOrigin(store?.storefront_profile_image_url);
-  if (profileImageUrl) {
-    const img = document.createElement('img');
-    img.setAttribute('src', profileImageUrl);
-    img.setAttribute('alt', '');
-    img.style.width = '28px';
-    img.style.height = '28px';
-    img.style.borderRadius = '999px';
-    img.style.objectFit = 'cover';
-    img.style.border = '1px solid #d1d5db';
-    img.onerror = () => {
-      img.remove();
-    };
-    row.appendChild(img);
-  }
-
-  const title = document.createElement('strong');
-  title.textContent = String(store?.location_name || store?.tenant_name || 'Store');
-  row.appendChild(title);
-  container.appendChild(row);
-
-  const address = document.createElement('div');
-  address.textContent = String(store?.address_line || '');
-  container.appendChild(address);
-
-  return container;
 };
 
 const normalizeProfileLocations = (profile = {}) => (
@@ -1264,8 +1136,8 @@ const locationsMatchProfileSnapshot = (locations = [], profile = {}) => {
 
 const STOREFRONT_AUTH_TOKEN_KEYS = ['dgfy_store_customer_token', 'store_customer_token', 'store_token'];
 const DGFY_CUSTOMER_AUTH_TOKEN_KEYS = ['dgfy_customer_account_token', 'dgfy_account_token', 'dgfyAccountToken'];
-const STOREFRONT_RECENT_STORES_STORAGE_KEY = 'dgfy_store_recent_stores';
-const STOREFRONT_LAST_STORE_STORAGE_KEY = 'dgfy_store_last_store_slug';
+let storefrontAuthTokenMemory = '';
+let dgfyCustomerAuthTokenMemory = '';
 const STOREFRONT_SAVED_DETAILS_STORAGE_KEY = 'dgfy_store_saved_customer_details_v1';
 const STOREFRONT_LAST_TRACKING_PIN_KEY_PREFIX = 'dgfy_store_last_tracking_pin_v1';
 const STOREFRONT_TRACKED_ORDERS_KEY_PREFIX = 'dgfy_store_tracked_orders_v1';
@@ -1282,46 +1154,33 @@ const EMPTY_ACCOUNT_PANEL = Object.freeze({
 });
 
 const readStoreAuthToken = () => {
-  if (typeof window === 'undefined') return '';
-  for (const key of STOREFRONT_AUTH_TOKEN_KEYS) {
-    const token = String(window.localStorage.getItem(key) || '').trim();
-    if (token) return token;
-  }
-  return '';
+  return storefrontAuthTokenMemory || (typeof window !== 'undefined' ? String(window.__SKU_STOREFRONT_AUTH_TOKEN__ || '') : '');
 };
 
 const readDgfyAuthToken = () => {
-  if (typeof window === 'undefined') return '';
-  for (const key of DGFY_CUSTOMER_AUTH_TOKEN_KEYS) {
-    const token = String(window.localStorage.getItem(key) || '').trim();
-    if (token) return token;
-  }
-  return '';
-};
-
-const writeStoreAuthToken = (token) => {
-  if (typeof window === 'undefined') return;
-  const normalizedToken = String(token || '').trim();
-  if (!normalizedToken) return;
-  window.localStorage.setItem(STOREFRONT_AUTH_TOKEN_KEYS[0], normalizedToken);
-  STOREFRONT_AUTH_TOKEN_KEYS.slice(1).forEach((key) => window.localStorage.removeItem(key));
+  return dgfyCustomerAuthTokenMemory || (typeof window !== 'undefined' ? String(window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ || '') : '');
 };
 
 const writeDgfyAuthToken = (token) => {
   if (typeof window === 'undefined') return;
   const normalizedToken = String(token || '').trim();
   if (!normalizedToken) return;
-  window.localStorage.setItem(DGFY_CUSTOMER_AUTH_TOKEN_KEYS[0], normalizedToken);
+  dgfyCustomerAuthTokenMemory = normalizedToken;
+  window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = normalizedToken;
   DGFY_CUSTOMER_AUTH_TOKEN_KEYS.slice(1).forEach((key) => window.localStorage.removeItem(key));
 };
 
 const clearStoreAuthToken = () => {
   if (typeof window === 'undefined') return;
+  storefrontAuthTokenMemory = '';
+  window.__SKU_STOREFRONT_AUTH_TOKEN__ = '';
   STOREFRONT_AUTH_TOKEN_KEYS.forEach((key) => window.localStorage.removeItem(key));
 };
 
 const clearDgfyAuthToken = () => {
   if (typeof window === 'undefined') return;
+  dgfyCustomerAuthTokenMemory = '';
+  window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
   DGFY_CUSTOMER_AUTH_TOKEN_KEYS.forEach((key) => window.localStorage.removeItem(key));
 };
 
@@ -1442,58 +1301,27 @@ const maskValue = (value = '', keepPrefix = 2, keepSuffix = 1) => {
   return `${raw.slice(0, keepPrefix)}${'*'.repeat(Math.max(2, raw.length - keepPrefix - keepSuffix))}${raw.slice(-keepSuffix)}`;
 };
 
-const normalizeRecentStoreEntry = (entry) => {
-  if (!entry || typeof entry !== 'object') return null;
-  const slug = toSlug(entry.slug);
-  if (!slug) return null;
-  return {
-    slug,
-    tenant_name: String(entry.tenant_name || entry.name || slug).trim() || slug,
-    address_line: String(entry.address_line || '').trim(),
-    business_mode: String(entry.business_mode || entry.workflow_mode || '').trim().toLowerCase(),
-    storefront_open: entry.storefront_open !== false
-  };
-};
-
-const readRecentStores = () => {
-  if (typeof window === 'undefined') return [];
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(STOREFRONT_RECENT_STORES_STORAGE_KEY) || '[]');
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map(normalizeRecentStoreEntry).filter(Boolean).slice(0, 8);
-  } catch {
-    return [];
-  }
-};
-
-const readLastStoreSlug = () => {
-  if (typeof window === 'undefined') return '';
-  return toSlug(window.localStorage.getItem(STOREFRONT_LAST_STORE_STORAGE_KEY) || '');
-};
-
-const persistRecentStore = (entry) => {
-  const normalizedEntry = normalizeRecentStoreEntry(entry);
-  if (typeof window === 'undefined' || !normalizedEntry) return readRecentStores();
-  const next = [
-    normalizedEntry,
-    ...readRecentStores().filter((store) => toSlug(store.slug) !== normalizedEntry.slug)
-  ].slice(0, 8);
-  window.localStorage.setItem(STOREFRONT_RECENT_STORES_STORAGE_KEY, JSON.stringify(next));
-  window.localStorage.setItem(STOREFRONT_LAST_STORE_STORAGE_KEY, normalizedEntry.slug);
-  return next;
-};
-
 const requestJson = async (url, { method = 'GET', body, storeSlug, authToken = '', cache = 'default' } = {}) => {
   let response;
   try {
     const token = String(authToken || '').trim();
+    const normalizedMethod = String(method || 'GET').toUpperCase();
+    const csrfToken = typeof document === 'undefined'
+      ? ''
+      : decodeURIComponent(String(document.cookie || '')
+        .split(';')
+        .map((entry) => entry.trim())
+        .find((entry) => entry.startsWith('sku_csrf_token='))
+        ?.slice('sku_csrf_token='.length) || '');
     response = await fetch(withApiOrigin(url), {
       method,
       cache,
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         ...(storeSlug ? { 'x-store-slug': storeSlug } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(!['GET', 'HEAD', 'OPTIONS'].includes(normalizedMethod) && csrfToken ? { 'x-csrf-token': csrfToken } : {})
       },
       body: body ? JSON.stringify(body) : undefined
     });
@@ -1708,8 +1536,7 @@ function StoresMap({
   userLocation = null,
   height = 360,
   autoOpenPopups = false,
-  openPopupOnHover = false,
-  pinGlow = false
+  openPopupOnHover = false
 }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
@@ -2388,8 +2215,6 @@ const STOREFRONT_INFO_ROW_GAP = 12;
 const STOREFRONT_INFO_ICON_COLUMN = 20;
 const MAX_STOREFRONT_CONTACT_ROWS = 4;
 const MAX_STOREFRONT_WHY_CHOOSE_US = 4;
-const DGFY_HEADER_LOGO_URL = dgfyHeaderLogo;
-const DGFY_LOGO_ICON_URL = dgfySymbolLogo;
 
 const StorefrontHeroShell = ({
   fullBleed = false,
@@ -2490,8 +2315,6 @@ const FnbHero = ({
   selectedLocationId,
   handleBranchMenuSelection,
   storeLocations,
-  catalogSearch,
-  setCatalogSearch,
   isBrandingImageBlocked,
   markBrandingImageError,
   selectedLocation,
@@ -2503,8 +2326,7 @@ const FnbHero = ({
   followEnabled,
   shareEnabled,
   followState,
-  handleFollowAction,
-  handleShareAction
+  handleFollowAction
 }) => {
   const [isExpandedMapOpen, setIsExpandedMapOpen] = useState(false);
   const heroTheme = modeAdapter.heroTheme || {};
@@ -2513,7 +2335,6 @@ const FnbHero = ({
   const galleryImages = Array.isArray(heroSectionModel.galleryPreview) ? heroSectionModel.galleryPreview.filter(Boolean) : [];
   const aboutText = String(heroSectionModel.aboutText || '').trim();
   const hasAboutToggle = aboutText.length > 180;
-  const hasAddress = Boolean(addressText);
   const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
     && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
   const whyChooseUs = Array.isArray(heroSectionModel.whyChooseUs) && heroSectionModel.whyChooseUs.length > 0
@@ -2914,13 +2735,10 @@ const FnbProductCard = ({
   const heroTheme = modeAdapter.heroTheme || {};
   const sectionVisualMeta = item.sectionVisualMeta || {};
   const accent = heroTheme.accent || '#c96a2b';
-  const accentSoft = sectionVisualMeta.accentSoft || heroTheme.accentSoft || '#fff7ed';
   const accentDeep = heroTheme.accentDark || '#7c2d12';
   const cardSurface = '#ffffff';
-  const cardSurfaceInset = heroTheme.surfaceMuted || '#fff8f0';
   const cardBorder = heroTheme.borderSoft || '#edd4bc';
   const cardTextPrimary = heroTheme.textPrimary || '#2f1f16';
-  const cardTextMuted = heroTheme.textMuted || '#7c6757';
   const buttonTextOnAccent = heroTheme.buttonTextOnAccent || '#fffdf9';
   const CategoryIcon = FNB_CATEGORY_ICON_MAP[sectionVisualMeta.iconToken] || Sparkles;
   const [isHovered, setIsHovered] = useState(false);
@@ -2933,8 +2751,6 @@ const FnbProductCard = ({
   const imageHeight = isMobileViewport ? 190 : 214;
   const actionHeight = isMobileViewport ? 44 : 46;
   const cartButtonWidth = isMobileViewport ? 62 : 70;
-  const availabilityTone = item.availabilityMeta?.tone || (available ? 'ready' : 'sold_out');
-  const availabilityColor = availabilityTone === 'sold_out' ? '#be123c' : availabilityTone === 'limited' ? '#b45309' : '#047857';
   const descriptionLineClamp = 2;
 
   return (
@@ -3198,12 +3014,9 @@ const ServicesHero = ({
   selectedLocationId,
   handleBranchMenuSelection,
   storeLocations,
-  catalogSearch,
-  setCatalogSearch,
   goDiscovery,
   hasServiceCart,
   goStoreBookingPage,
-  cartCount,
   modeAdapter,
   isBrandingImageBlocked,
   markBrandingImageError,
@@ -3228,7 +3041,6 @@ const ServicesHero = ({
   const previewImages = isServiceGalleryExpanded ? galleryImages : galleryImages.slice(0, 4);
   const aboutText = String(serviceHeroModel.aboutText || '').trim();
   const hasAboutToggle = aboutText.length > 180;
-  const hasAddress = Boolean(addressText);
   const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
     && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
   const visibleWhyChooseUs = Array.isArray(serviceHeroModel.whyChooseUs) ? serviceHeroModel.whyChooseUs.slice(0, MAX_STOREFRONT_WHY_CHOOSE_US) : [];
@@ -3828,8 +3640,6 @@ const SimpleHero = ({
   selectedLocationId,
   handleBranchMenuSelection,
   storeLocations,
-  catalogSearch,
-  setCatalogSearch,
   goDiscovery,
   cartCount,
   setIsCheckoutOpen,
@@ -3842,7 +3652,6 @@ const SimpleHero = ({
   openAccountPanel,
   isStorefrontAccountAuthenticated,
   activeCustomerOrderCount,
-  followEnabled = false,
   shareEnabled = true
 }) => {
   const [isExpandedMapOpen, setIsExpandedMapOpen] = useState(false);
@@ -3850,7 +3659,6 @@ const SimpleHero = ({
   const addressText = String(simpleHeroModel.addressLine || simpleHeroModel.locationLabel || '').trim();
   const aboutText = String(simpleHeroModel.aboutText || '').trim();
   const hasAboutToggle = aboutText.length > 180;
-  const hasAddress = Boolean(addressText);
   const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
     && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
   const visibleWhyChooseUs = Array.isArray(simpleHeroModel.whyChooseUs) ? simpleHeroModel.whyChooseUs.slice(0, MAX_STOREFRONT_WHY_CHOOSE_US) : [];
@@ -4175,11 +3983,11 @@ export default function StorefrontApp() {
   const featuredCategoryRailRef = useRef(null);
   const featuredSectionRef = useRef(null);
   const discoveryFilterToolbarRef = useRef(null);
-  const [discoveryResultMode, setDiscoveryResultMode] = useState('union');
-  const [discoveryStockFilter, setDiscoveryStockFilter] = useState('include_out_of_stock');
+  const [discoveryResultMode] = useState('union');
+  const [discoveryStockFilter] = useState('include_out_of_stock');
   const [discoveryPinScope, setDiscoveryPinScope] = useState('tenant_primary');
-  const [discoveryIncludeMatchMeta, setDiscoveryIncludeMatchMeta] = useState(true);
-  const [discoveryAppliedFilters, setDiscoveryAppliedFilters] = useState(null);
+  const [discoveryIncludeMatchMeta] = useState(true);
+  const [, setDiscoveryAppliedFilters] = useState(null);
   const [isDiscoverySearchFocused, setIsDiscoverySearchFocused] = useState(false);
   const [hasDiscoveryExplorationStarted, setHasDiscoveryExplorationStarted] = useState(false);
   const [isDiscoveryNoMatchToastActive, setIsDiscoveryNoMatchToastActive] = useState(false);
@@ -4189,7 +3997,7 @@ export default function StorefrontApp() {
   const [hasDesktopCategoryOverflow, setHasDesktopCategoryOverflow] = useState(false);
   const [showDesktopCategoryOverflowCue, setShowDesktopCategoryOverflowCue] = useState(false);
   const [mobileCategoryGroupIndex, setMobileCategoryGroupIndex] = useState(0);
-  const [selectedMapPin, setSelectedMapPin] = useState(null);
+  const [, setSelectedMapPin] = useState(null);
   const [isStoreListVisible, setIsStoreListVisible] = useState(false);
   const [isMobileResultsCollapsed, setIsMobileResultsCollapsed] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
@@ -4271,7 +4079,7 @@ export default function StorefrontApp() {
     setRouteServiceItemId(null);
     goStoreCatalogPage();
   };
-  const openFnbDetail = (item, options = {}) => {
+  const openFnbDetail = useCallback((item, options = {}) => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     const itemId = String(item?.item_id || '').trim();
     if (!normalized || !itemId || typeof window === 'undefined') return;
@@ -4294,7 +4102,7 @@ export default function StorefrontApp() {
     setRouteItemId(itemId);
     setRouteReviewToken(reviewToken);
     setIsCheckoutOpen(false);
-  };
+  }, [routeSlug, selectedStore?.slug]);
   const closeFnbDetail = () => {
     setSelectedFnbDetail(null);
     setSelectedFnbDetailQuantity(1);
@@ -4328,7 +4136,7 @@ export default function StorefrontApp() {
   const [discoveryCoords, setDiscoveryCoords] = useState(null);
   const discoveryCoordsRef = useRef(discoveryCoords);
   const [discoveryLocationMap, setDiscoveryLocationMap] = useState({});
-  const [loadingDiscoveryLocations, setLoadingDiscoveryLocations] = useState(false);
+  const [, setLoadingDiscoveryLocations] = useState(false);
   const [highlightedDiscoveryMarkerKey, setHighlightedDiscoveryMarkerKey] = useState('');
   const [storeLocations, setStoreLocations] = useState([]);
   const [primaryLocationId, setPrimaryLocationId] = useState(null);
@@ -4339,11 +4147,11 @@ export default function StorefrontApp() {
   const [catalog, setCatalog] = useState([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [catalogError, setCatalogError] = useState('');
-  const [catalogErrorGuidance, setCatalogErrorGuidance] = useState('');
+  const [, setCatalogErrorGuidance] = useState('');
 
   const [orderMethod, setOrderMethod] = useState('delivery');
   const [cart, setCart] = useState([]);
-  const [catalogImageErrors, setCatalogImageErrors] = useState(() => new Set());
+  const [, setCatalogImageErrors] = useState(() => new Set());
   const [cartImageErrors, setCartImageErrors] = useState(() => new Set());
   const [brandingImageErrors, setBrandingImageErrors] = useState(() => new Set());
   const [customerName, setCustomerName] = useState('');
@@ -4387,7 +4195,7 @@ export default function StorefrontApp() {
   const [trackingPinInput, setTrackingPinInput] = useState('');
   const [trackingResult, setTrackingResult] = useState(null);
   const [trackingError, setTrackingError] = useState('');
-  const [isTrackingRefreshing, setIsTrackingRefreshing] = useState(false);
+  const [, setIsTrackingRefreshing] = useState(false);
   const [guestTrackedOrders, setGuestTrackedOrders] = useState([]);
   const [expandedGuestDrawerPin, setExpandedGuestDrawerPin] = useState(null);
   const [selectedTrackingPin, setSelectedTrackingPin] = useState('');
@@ -4439,8 +4247,7 @@ export default function StorefrontApp() {
   const {
     viewportMode: discoveryViewportMode,
     isMobileViewport: isDiscoveryMobileViewport,
-    isTabletViewport: isDiscoveryTabletViewport,
-    isDesktopViewport: isDiscoveryDesktopViewport
+    isTabletViewport: isDiscoveryTabletViewport
   } = discoveryViewport;
   const discoveryLayout = useMemo(() => getDiscoveryLayoutTokens(discoveryViewportMode), [discoveryViewportMode]);
   useEffect(() => {
@@ -4553,8 +4360,6 @@ export default function StorefrontApp() {
   const servicesPrimaryBorder = `${servicesPrimary}33`;
   const servicesPrimaryShadow = 'rgba(15,118,110,0.24)';
   const servicesPrimaryShadowStrong = 'rgba(15,118,110,0.32)';
-  const servicesHighlight = '#f59e0b';
-  const servicesHighlightSoft = '#fffbeb';
   const maskedSavedCustomerPreview = useMemo(() => {
     if (!savedCustomerDetails) return '';
     const previewParts = [];
@@ -4608,11 +4413,6 @@ export default function StorefrontApp() {
     return initials || 'GU';
   }, [accountDisplayName]);
   const isGuestAccountDrawerState = !isStorefrontAccountAuthenticated;
-  const accountDrawerTitle = isGuestAccountDrawerState ? 'DGFY Account' : 'My Account';
-  const accountDrawerSubtitle = isGuestAccountDrawerState
-    ? 'Orders, tracking, profile, addresses, loyalty, and company invitations.'
-    : 'Manage your bookings, orders, tickets and more.';
-  const accountPrimaryDescription = 'View and manage your saved bookings, orders, tickets, receipts, and the latest linked transaction.';
   const activeCustomerOrders = useMemo(() => {
     const activeStatuses = new Set(['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery']);
     return (Array.isArray(accountPanel.orders) ? accountPanel.orders : []).filter((order) => (
@@ -4649,6 +4449,62 @@ export default function StorefrontApp() {
       setDgfyLegalTermsLoading(false);
     }
   }, [dgfyLegalTerms, dgfyLegalTermsLoading]);
+
+  const handleLoadAccountPanel = useCallback(async () => {
+    const dgfyToken = readDgfyAuthToken();
+    const storeToken = readStoreAuthToken();
+    if (!dgfyToken && !storeToken) {
+      setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: '' });
+      return;
+    }
+    setAccountPanel((prev) => ({ ...prev, loading: true, error: '' }));
+    try {
+      if (dgfyToken) {
+        const [meData, dashboardData, activitiesData, loyaltyData] = await Promise.all([
+          requestJson('/api/v1/dgfy/auth/me', { authToken: dgfyToken, cache: 'no-store' }),
+          requestJson('/api/v1/dgfy/customer/dashboard', { authToken: dgfyToken, cache: 'no-store' }),
+          requestJson('/api/v1/dgfy/customer/activities?limit=25', { authToken: dgfyToken, cache: 'no-store' }).catch(() => ({ activities: [] })),
+          requestJson('/api/v1/dgfy/customer/loyalty', { authToken: dgfyToken, cache: 'no-store' }).catch(() => null)
+        ]);
+        setAccountPanel({
+          loading: false,
+          error: '',
+          me: meData?.account || dashboardData?.account || meData || null,
+          activities: Array.isArray(activitiesData?.activities) && activitiesData.activities.length
+            ? activitiesData.activities
+            : (Array.isArray(dashboardData?.activities) ? dashboardData.activities : []),
+          orders: Array.isArray(dashboardData?.orders) ? dashboardData.orders : [],
+          bookings: Array.isArray(dashboardData?.bookings) ? dashboardData.bookings : [],
+          addresses: Array.isArray(dashboardData?.addresses) ? dashboardData.addresses : [],
+          loyalty: loyaltyData?.loyalty || dashboardData?.loyalty || null
+        });
+        return;
+      }
+
+      if (!selectedStore?.slug) {
+        setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: 'Select a storefront to view tenant-specific account activity.' });
+        return;
+      }
+
+      const [me, ordersData, bookingsData] = await Promise.all([
+        requestJson('/api/v1/store/auth/me', { storeSlug: selectedStore.slug, authToken: storeToken }),
+        requestJson('/api/v1/store/orders?limit=25', { storeSlug: selectedStore.slug, authToken: storeToken }),
+        requestJson('/api/v1/store/services/bookings?limit=25', { storeSlug: selectedStore.slug, authToken: storeToken }).catch(() => ({ bookings: [] }))
+      ]);
+      setAccountPanel({
+        loading: false,
+        error: '',
+        me: me?.customer || me || null,
+        activities: [],
+        orders: Array.isArray(ordersData?.orders) ? ordersData.orders : [],
+        bookings: Array.isArray(bookingsData?.bookings) ? bookingsData.bookings : [],
+        addresses: [],
+        loyalty: null
+      });
+    } catch (error) {
+      setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: normalizeStorefrontErrorMessage(error, 'Unable to load account.') });
+    }
+  }, [selectedStore?.slug]);
 
   const handleCustomerSignInFieldChange = useCallback((field, value) => {
     setCustomerSignInForm((previous) => ({ ...previous, [field]: value }));
@@ -4867,7 +4723,7 @@ export default function StorefrontApp() {
         setLoadingCatalog(false);
       }
     }
-  }, [preferredStoreLocationSelection, routeServiceItemId, routeSubpage]);
+  }, [preferredStoreLocationSelection, routeItemId, routeServiceItemId, routeSubpage]);
 
   const refreshStorePageForTenantSetup = useCallback(() => {
     if (!routeSlug) return;
@@ -5114,7 +4970,7 @@ export default function StorefrontApp() {
     );
     if (hasLoadedAccountData) return;
     handleLoadAccountPanel();
-  }, [accountPanel.addresses, accountPanel.bookings, accountPanel.error, accountPanel.loading, accountPanel.loyalty, accountPanel.me, accountPanel.orders, dgfyAuthToken]);
+  }, [accountPanel.addresses, accountPanel.bookings, accountPanel.error, accountPanel.loading, accountPanel.loyalty, accountPanel.me, accountPanel.orders, dgfyAuthToken, handleLoadAccountPanel]);
 
   useEffect(() => {
     if (!isAccountDrawerOpen) {
@@ -5677,7 +5533,7 @@ export default function StorefrontApp() {
         if (pin?.location_name) score += 1;
         return score;
       };
-      pins.forEach((pin, index) => {
+      pins.forEach((pin) => {
         if (!pin) return;
         const numericLocationId = Number(pin.location_id);
         const dedupeKey = Number.isInteger(numericLocationId) && numericLocationId > 0
@@ -5856,31 +5712,6 @@ export default function StorefrontApp() {
       .join('|');
     return `discovery-results-map:${searchKey}:${filteredDiscoveryStores.length}:${pinKey}`;
   }, [searchedDiscoveryMapPins, filteredDiscoveryStores.length, search]);
-  const discoverySummary = useMemo(() => {
-    const totalStores = filteredDiscoveryStores.length;
-    const openStores = filteredDiscoveryStores.filter((store) => store.storefront_open).length;
-    const totalCatalogItems = filteredDiscoveryStores.reduce((sum, store) => sum + Number(store.catalog_count || 0), 0);
-    const waitTotals = filteredDiscoveryStores.reduce((sum, store) => sum + Number(store.estimated_wait_minutes || 0), 0);
-    const avgWait = totalStores > 0 ? Math.round(waitTotals / totalStores) : 0;
-    return {
-      totalStores,
-      openStores,
-      totalCatalogItems,
-      avgWait
-    };
-  }, [filteredDiscoveryStores]);
-  const nearestDistanceKm = useMemo(() => {
-    const withDistance = filteredDiscoveryStores
-      .map((store) => Number(store?.nearest_distance_km))
-      .filter((distance) => Number.isFinite(distance));
-    if (withDistance.length === 0) return null;
-    return Math.min(...withDistance);
-  }, [filteredDiscoveryStores]);
-  const highlightedStore = useMemo(() => {
-    if (!filteredDiscoveryStores.length) return null;
-    if (!highlightedStoreSlug) return filteredDiscoveryStores[0];
-    return filteredDiscoveryStores.find((store) => store.slug === highlightedStoreSlug) || filteredDiscoveryStores[0];
-  }, [filteredDiscoveryStores, highlightedStoreSlug]);
   useEffect(() => {
     return () => {
       if (discoveryNoMatchToastTimerRef.current) {
@@ -6574,13 +6405,6 @@ export default function StorefrontApp() {
     if (checkoutAllowed) return 'Ready to checkout';
     return 'Review order';
   }, [cartCount, storefrontClosedByHours, hasStockViolation, quoteResult, quoteNeedsRefresh, checkoutAllowed]);
-  const fnbCartActionLabel = useMemo(() => {
-    if (cartCount === 0) return 'Browse menu';
-    if (isCheckoutOpen) return 'Close cart';
-    if (hasStockViolation) return 'Review cart';
-    if (!quoteResult || quoteNeedsRefresh) return 'Review and quote';
-    return isMobileViewport ? 'Checkout' : 'View cart and checkout';
-  }, [cartCount, hasStockViolation, isCheckoutOpen, isMobileViewport, quoteResult, quoteNeedsRefresh]);
   const fnbDrawerSupportLabel = useMemo(() => {
     if (cartCount === 0) return 'Add menu items to start an order.';
     if (storefrontClosedByHours) {
@@ -6775,7 +6599,7 @@ export default function StorefrontApp() {
     if (activeBookingService) {
       setServiceBookingStep(1);
     }
-  }, [isBookingSubpage, hasServiceCart, activeBookingService?.item_id]);
+  }, [isBookingSubpage, activeBookingService]);
   useEffect(() => {
     if (bookingFieldPlan.customerNameField?.id) {
       setServiceIntakeResponses((previous) => (
@@ -7085,18 +6909,6 @@ export default function StorefrontApp() {
     setIsAccountDrawerOpen(true);
     handleLoadAccountPanel();
   };
-  const beginServiceBooking = (serviceItem) => {
-    if (!serviceItem) return;
-    setSelectedServiceDetail(serviceItem);
-    setCheckoutError('');
-    setQuoteError('');
-    setCheckoutResult(null);
-    if (isServicesMode) {
-      goStoreBookingPage({ preserveSelectedService: true });
-      return;
-    }
-    openServiceBookingPanel('review');
-  };
   const saveServiceBookingDraft = (serviceItem = selectedServiceDetail, nextTab = 'review') => {
     if (!serviceItem) return;
     if (!bookingPermitted || accessCapabilities.booking === false) {
@@ -7254,9 +7066,6 @@ export default function StorefrontApp() {
   ]), [savedPinnedLocations]);
 
   const activePinnedDeliveryAddress = String(resolvedDeliveryAddress || customerAddress || buildPinnedDeliveryAddress(customerPin) || '').trim();
-  const activeSavedDeliveryLocation = useMemo(() => (
-    deliverySavedLocations.find((location) => String(location.id) === String(selectedSavedLocationId)) || null
-  ), [deliverySavedLocations, selectedSavedLocationId]);
   const hasPinnedDeliveryLocation = Number.isFinite(Number(customerPin?.latitude)) && Number.isFinite(Number(customerPin?.longitude));
   const canAddPinnedLocation = isDeliveryOrder
     && hasPinnedDeliveryLocation
@@ -7297,7 +7106,7 @@ export default function StorefrontApp() {
       });
     }
     toast.success('Saved address applied to checkout.');
-  }, [toast]);
+  }, []);
 
   const handleAddPinnedLocation = useCallback(() => {
     if (!canAddPinnedLocation || !hasPinnedDeliveryLocation) return;
@@ -7313,7 +7122,7 @@ export default function StorefrontApp() {
     setSelectedSavedLocationId(newLocation.id);
     setDeliveryLocationAction('saved');
     toast.success('Saved location added.');
-  }, [activePinnedDeliveryAddress, canAddPinnedLocation, customerPin, hasPinnedDeliveryLocation, toast]);
+  }, [activePinnedDeliveryAddress, canAddPinnedLocation, customerPin, hasPinnedDeliveryLocation]);
 
   useEffect(() => {
     if (!isFnbMode || !isDeliveryOrder) return;
@@ -7913,7 +7722,7 @@ export default function StorefrontApp() {
     if (!selectedTrackingPin && firstPin) {
       setSelectedTrackingPin(firstPin);
     }
-  }, [routeSlug, selectedStore?.slug]);
+  }, [routeSlug, selectedStore?.slug, selectedTrackingPin, trackingPinInput]);
 
   useEffect(() => {
     if (!(checkoutTab === 'track' && isFnbOrderSubpage) || !selectedStore?.slug) return;
@@ -7971,63 +7780,8 @@ export default function StorefrontApp() {
       if (selectedTimerId) window.clearInterval(selectedTimerId);
       if (backgroundTimerId) window.clearInterval(backgroundTimerId);
     };
-  }, [checkoutTab, fetchTrackingPayload, guestTrackedOrders, isFnbOrderSubpage, selectedTrackingPin, syncTrackedOrderSnapshot, toTrackingViewState, trackingPinInput]);
+  }, [checkoutTab, fetchTrackingPayload, guestTrackedOrders, isFnbOrderSubpage, selectedStore?.slug, selectedTrackingPin, syncTrackedOrderSnapshot, toTrackingViewState, trackingPinInput]);
 
-  const handleLoadAccountPanel = async () => {
-    const dgfyToken = readDgfyAuthToken();
-    const storeToken = readStoreAuthToken();
-    if (!dgfyToken && !storeToken) {
-      setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: '' });
-      return;
-    }
-    setAccountPanel((prev) => ({ ...prev, loading: true, error: '' }));
-    try {
-      if (dgfyToken) {
-        const [meData, dashboardData, activitiesData, loyaltyData] = await Promise.all([
-          requestJson('/api/v1/dgfy/auth/me', { authToken: dgfyToken, cache: 'no-store' }),
-          requestJson('/api/v1/dgfy/customer/dashboard', { authToken: dgfyToken, cache: 'no-store' }),
-          requestJson('/api/v1/dgfy/customer/activities?limit=25', { authToken: dgfyToken, cache: 'no-store' }).catch(() => ({ activities: [] })),
-          requestJson('/api/v1/dgfy/customer/loyalty', { authToken: dgfyToken, cache: 'no-store' }).catch(() => null)
-        ]);
-        setAccountPanel({
-          loading: false,
-          error: '',
-          me: meData?.account || dashboardData?.account || meData || null,
-          activities: Array.isArray(activitiesData?.activities) && activitiesData.activities.length
-            ? activitiesData.activities
-            : (Array.isArray(dashboardData?.activities) ? dashboardData.activities : []),
-          orders: Array.isArray(dashboardData?.orders) ? dashboardData.orders : [],
-          bookings: Array.isArray(dashboardData?.bookings) ? dashboardData.bookings : [],
-          addresses: Array.isArray(dashboardData?.addresses) ? dashboardData.addresses : [],
-          loyalty: loyaltyData?.loyalty || dashboardData?.loyalty || null
-        });
-        return;
-      }
-
-      if (!selectedStore?.slug) {
-        setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: 'Select a storefront to view tenant-specific account activity.' });
-        return;
-      }
-
-      const [me, ordersData, bookingsData] = await Promise.all([
-        requestJson('/api/v1/store/auth/me', { storeSlug: selectedStore.slug, authToken: storeToken }),
-        requestJson('/api/v1/store/orders?limit=25', { storeSlug: selectedStore.slug, authToken: storeToken }),
-        requestJson('/api/v1/store/services/bookings?limit=25', { storeSlug: selectedStore.slug, authToken: storeToken }).catch(() => ({ bookings: [] }))
-      ]);
-      setAccountPanel({
-        loading: false,
-        error: '',
-        me: me?.customer || me || null,
-        activities: [],
-        orders: Array.isArray(ordersData?.orders) ? ordersData.orders : [],
-        bookings: Array.isArray(bookingsData?.bookings) ? bookingsData.bookings : [],
-        addresses: [],
-        loyalty: null
-      });
-    } catch (error) {
-      setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: normalizeStorefrontErrorMessage(error, 'Unable to load account.') });
-    }
-  };
   const handleTrackCustomerReference = useCallback(async (reference) => {
     const normalizedReference = String(reference || '').trim().toUpperCase();
     if (!normalizedReference) return;
@@ -8133,7 +7887,7 @@ export default function StorefrontApp() {
     } finally {
       setCustomerAuthSubmitting(false);
     }
-  }, [customerAuthMode, customerAuthSubmitting, customerRegisterForm, customerSignInForm, dgfyLegalTerms, loadDgfyLegalTerms]);
+  }, [customerAuthMode, customerAuthSubmitting, customerRegisterForm, customerSignInForm, dgfyLegalTerms, handleLoadAccountPanel, loadDgfyLegalTerms]);
 
   const handleNearMe = () => {
     const currentSearch = String(searchRef.current || search || '').trim();
@@ -11598,13 +11352,10 @@ export default function StorefrontApp() {
                 const reviewHighlights = Array.isArray(serviceHeroModel?.reviewHighlights) ? serviceHeroModel.reviewHighlights.filter(Boolean) : [];
                 const reviewSummary = serviceHeroModel?.reviewSummary || null;
                 const reviewScore = Number(reviewSummary?.score);
-                const reviewCount = Number(reviewSummary?.total_count ?? reviewSummary?.totalCount ?? reviewHighlights.length);
                 const hasReviewSummary = Number.isFinite(reviewScore) && reviewScore > 0;
-                const reviewGridColumns = isMobileViewport ? '1fr' : viewportWidth < 1024 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))';
                 const resolvedServicesLayoutMode = String(serviceHeroModel?.servicesLayoutMode || servicesLayoutMode || 'directory').trim().toLowerCase();
                 const isLeadGenLayout = resolvedServicesLayoutMode === 'lead_gen';
                 const isBookingHeavyLayout = resolvedServicesLayoutMode === 'booking_heavy';
-                const isDirectoryLayout = !isLeadGenLayout && !isBookingHeavyLayout;
                 const controlRadius = 18;
                 const serviceCategoryOptions = [
                   {
@@ -11622,7 +11373,6 @@ export default function StorefrontApp() {
                 ];
                 const detailPageServiceItem = selectedServiceDetail || (routeServiceItemId ? catalog.find((item) => String(item?.item_id) === String(routeServiceItemId)) || null : null);
                 const detailPagePaymentOptions = buildServicePaymentOptions(detailPageServiceItem?.service_detail?.payment_policy || 'customer_choice');
-                const detailPageIntakeFields = normalizeServiceFormFields(detailPageServiceItem?.service_detail?.intake_form_schema);
                 const servicesSectionTitle = isLeadGenLayout
                   ? 'Service Highlights'
                   : isBookingHeavyLayout
@@ -11803,7 +11553,6 @@ export default function StorefrontApp() {
                   );
                 }
                 if (isBookingSubpage) {
-                  const currentStep = serviceBookingStep;
                   const supportHref = String(serviceHeroModel?.actions?.messageHref || serviceHeroModel?.actions?.callHref || '').trim();
                   const bookingConfirmation = checkoutResult?.booking || null;
                   const confirmationLine = Array.isArray(checkoutResult?.cart_lines) ? checkoutResult.cart_lines[0] || null : null;
@@ -13426,7 +13175,6 @@ return (
                 const toolbarAccentDark = fnbTheme.accentDark || '#6f3415';
                 const toolbarAccentSoft = fnbTheme.accentSoft || '#fff0e2';
                 const toolbarSurface = '#ffffff';
-                const toolbarSurfaceInset = fnbTheme.surfaceInset || '#fff3e8';
                 const toolbarBorder = fnbTheme.borderSoft || '#edd4bc';
                 const toolbarTextPrimary = fnbTheme.textPrimary || '#2f1f16';
                 const toolbarTextMuted = fnbTheme.textMuted || '#7c6757';
@@ -17151,12 +16899,6 @@ return (
                     || selectedStore?.locationLabel
                     || ''
                   ).trim();
-                  const completionItems = Array.isArray(trackingResult.items) ? trackingResult.items : [];
-                  const completionPreviewItems = completionItems
-                    .filter((item) => String(item?.name || '').trim())
-                    .slice(0, 3)
-                    .map((item) => `${item.name} x ${Math.max(1, Number(item.qty || 1))}`)
-                    .join(', ');
                   if (activeStatus === 'completed' && showCompletedTrackingCard) {
                     const storeLogoUrl = withAssetOrigin(selectedStore?.storefront_profile_image_url);
                     const storeDisplayName = selectedStore?.tenant_name || 'Storefront';
@@ -17896,14 +17638,9 @@ return (
               {guestTrackedOrders.map((entry) => {
                 const entryPin = String(entry.tracking_pin || '').trim().toUpperCase();
                 const statusLabel = String(entry.status_label || entry.status || 'In progress').trim() || 'In progress';
-                const itemName = String(entry.item_name || 'Order item').trim() || 'Order item';
-
                 const entryMethod = String(entry.order_method || 'delivery').trim().toLowerCase();
                 const isPickup = entryMethod === 'pickup';
                 const badgeText = isPickup ? 'Pickup' : 'Delivery';
-                const badgeBg = '#EEF6FD'; // DGFY Light Blue
-                const badgeBorder = '#8CB4D9';
-                const badgeColor = '#1A4E8D'; // DGFY Ocean Blue
 
                 const isExpanded = expandedGuestDrawerPin === entryPin;
                 const trackingSteps = getTrackingFlowForOrderMethod(entryMethod);
@@ -17967,7 +17704,6 @@ return (
                              const isCompleted = idx < activeStepIndex;
                              const isActive = idx === activeStepIndex || (entry.status === 'completed' && idx === trackingSteps.length - 1);
                              const isFuture = !isCompleted && !isActive;
-                             const circleColor = isActive ? '#1A4E8D' : (isCompleted ? '#16a34a' : '#cbd5e1');
                              const circleBg = isActive ? '#1A4E8D' : (isCompleted ? '#16a34a' : '#fff');
                              const circleBorder = isActive ? '#1A4E8D' : (isCompleted ? '#16a34a' : '#94a3b8');
                              const textColor = isFuture ? '#64748b' : '#0f172a';

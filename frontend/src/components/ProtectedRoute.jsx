@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { clearClientSession } from '../services/sessionCleanup.js';
+import { getAccessToken, refreshBrowserSession } from '../services/browserSession.js';
 
 /**
  * Protected Route Component
@@ -8,13 +8,24 @@ import { clearClientSession } from '../services/sessionCleanup.js';
  * Redirects to login page if no valid auth token exists
  */
 export default function ProtectedRoute({ children }) {
-  const authToken = localStorage.getItem('authToken');
-  const refreshToken = localStorage.getItem('refreshToken');
-  const companyToken = localStorage.getItem('companyToken');
+  const [status, setStatus] = useState(() => (getAccessToken() ? 'authenticated' : 'checking'));
 
-  // If no tokens exist, redirect to login
-  // If no tokens exist, redirect to login
-  if (!authToken && !refreshToken) {
+  useEffect(() => {
+    if (status !== 'checking') return undefined;
+    let cancelled = false;
+    refreshBrowserSession()
+      .then((token) => {
+        if (!cancelled) setStatus(token ? 'authenticated' : 'anonymous');
+      })
+      .catch(() => {
+        if (!cancelled) setStatus('anonymous');
+      });
+    return () => { cancelled = true; };
+  }, [status]);
+
+  if (status === 'checking') return null;
+
+  if (status !== 'authenticated') {
     // Store the attempted URL to redirect back after login
     const currentPath = window.location.pathname + window.location.search;
     if (currentPath !== '/login') {
@@ -22,18 +33,6 @@ export default function ProtectedRoute({ children }) {
     }
 
     return <Navigate to="/login" replace />;
-  }
-  
-  // Guard tenant context before mounting protected pages.
-  // Missing company token causes repeated 401s on tenant routes.
-  if (!companyToken) {
-    clearClientSession({
-      reason: 'tenant_context_missing',
-      broadcast: true,
-      emitAuthEvents: true,
-      redirectTo: '/login?reason=tenant_context_missing'
-    });
-    return null;
   }
 
   // User is authenticated, render the protected content

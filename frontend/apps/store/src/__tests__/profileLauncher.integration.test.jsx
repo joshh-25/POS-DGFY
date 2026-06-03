@@ -70,6 +70,7 @@ describe('storefront profile launcher', () => {
   beforeEach(() => {
     window.history.pushState({}, '', '/');
     window.localStorage.clear();
+    window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
     fetchMock = vi.fn(async (url) => {
       const normalized = String(url);
       if (normalized.includes('/api/v1/storefront/discovery?')) {
@@ -159,6 +160,7 @@ describe('storefront profile launcher', () => {
     vi.clearAllMocks();
     vi.unstubAllGlobals();
     window.localStorage.clear();
+    window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
   });
 
   it('does not show the profile launcher entry on the main discovery page', async () => {
@@ -171,7 +173,6 @@ describe('storefront profile launcher', () => {
     ]));
     window.localStorage.setItem('dgfy_store_last_store_slug', 'alpha');
 
-    const user = userEvent.setup();
     render(<App />);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
@@ -200,7 +201,7 @@ describe('storefront profile launcher', () => {
   });
 
   it('shows an active order badge on storefront headers for signed-in customers with in-progress orders', async () => {
-    window.localStorage.setItem('dgfy_customer_account_token', 'dgfy-test-token');
+    window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = 'dgfy-test-token';
     window.history.pushState({}, '', '/tenant-store/alpha');
     render(<App />);
 

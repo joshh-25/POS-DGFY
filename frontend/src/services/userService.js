@@ -1,4 +1,5 @@
 import api from './api.js';
+import { setBrowserSession } from './browserSession.js';
 
 /**
  * Get current authenticated user's profile
@@ -20,7 +21,7 @@ export const updateProfile = async (profileData) => {
   // If username or email changed, backend returns new token
   const result = response.data.data;
   if (result.token) {
-    localStorage.setItem('authToken', result.token);
+    setBrowserSession({ token: result.token });
   }
 
   return result;

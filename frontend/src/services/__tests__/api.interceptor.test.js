@@ -94,15 +94,14 @@ describe('api.js — Token Refresh Mutex (Interceptor Unit Tests)', () => {
 
   beforeEach(async () => {
     localStorage.clear();
-    localStorage.setItem('authToken', 'expired-token');
-    localStorage.setItem('refreshToken', 'valid-refresh-token');
-    localStorage.setItem('companyToken', 'test-company-token');
     window.location.href = '';
 
     refreshCallCount = 0;
 
     // Fresh module — resets isRefreshing and failedQueue to their initial values
     api = await freshApi();
+    const session = await import('../browserSession.js');
+    session.setBrowserSession({ token: 'expired-token', companyToken: 'test-company-token' });
 
     // Mock the global axios instance.
     // The refresh call in api.js uses the BARE global axios (not the api instance).
@@ -117,6 +116,7 @@ describe('api.js — Token Refresh Mutex (Interceptor Unit Tests)', () => {
     mockApi?.restore();
     mockAxios?.restore();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     vi.useRealTimers();
   });
 
@@ -379,9 +379,12 @@ describe('api.js — Token Refresh Mutex (Interceptor Unit Tests)', () => {
     mockApi.onGet('/queued').reply(200, { data: 'queued-ok' });
 
     // Hang the local refresh so both requests stay pending
-    mockAxios.onPost(/auth\/refresh-token/).reply(
-      () => new Promise(() => {}) // never resolves on its own
-    );
+    let refreshAttempts = 0;
+    mockAxios.onPost(/auth\/refresh-token/).reply(() => {
+      refreshAttempts += 1;
+      if (refreshAttempts === 1) return new Promise(() => {});
+      return [200, { data: { token: 'cross-tab-token' } }];
+    });
 
     // Fire both concurrently; attach .catch so unhandled rejections don't fail the suite
     api.get('/trigger').catch(e => e);
@@ -392,20 +395,22 @@ describe('api.js — Token Refresh Mutex (Interceptor Unit Tests)', () => {
     // Give the event loop time to push /queued into failedQueue
     await new Promise(r => setTimeout(r, 20));
 
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { token: 'cross-tab-token' } })
+    }));
+
     // Simulate another tab broadcasting a successful refresh
     globalThis.__bcInstance.onmessage({ data: {
       type: 'token-refresh-success',
-      token: 'cross-tab-token',
-      refreshToken: 'cross-tab-refresh',
     }});
 
     // The queued request (/queued) must have been drained and retried with the cross-tab token
     const queuedResult = await queuedCall;
     expect(queuedResult?.data).toEqual({ data: 'queued-ok' });
 
-    // localStorage must be updated with the token from the other tab
-    expect(localStorage.getItem('authToken')).toBe('cross-tab-token');
-    expect(localStorage.getItem('refreshToken')).toBe('cross-tab-refresh');
+    expect(localStorage.getItem('authToken')).toBeNull();
+    expect(localStorage.getItem('refreshToken')).toBeNull();
   });
 
   // -------------------------------------------------------------------------

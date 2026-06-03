@@ -17,6 +17,7 @@ import { listTenantLocations } from '@/services/tenantLocationService.js';
 import { getComplianceProfile } from '@/services/complianceService.js';
 import api from '@/services/api.js';
 import { clearClientSession } from '@/services/sessionCleanup.js';
+import { getAccessToken, getCompanyToken, refreshBrowserSession } from '@/services/browserSession.js';
 import { useWorkflowMode } from '../../settings/WorkflowModeContext.jsx';
 import { getWorkflowModeLabel, isMsmeWorkflowMode } from '../../settings/workflowMode.js';
 import { resolveBusinessModePosDefaults } from '../../settings/businessModeTemplates.js';
@@ -269,8 +270,8 @@ export default function TerminalPage() {
     const stored = localStorage.getItem('posTerminalSidebarCollapsed');
     return stored === '1';
   });
-  const [locked, setLocked] = useState(() => !localStorage.getItem('authToken'));
-  const [drawerOpen, setDrawerOpen] = useState(() => !localStorage.getItem('authToken'));
+  const [locked, setLocked] = useState(() => !getAccessToken());
+  const [drawerOpen, setDrawerOpen] = useState(() => !getAccessToken());
   const [loadingUser, setLoadingUser] = useState(false);
   const [terminalUser, setTerminalUser] = useState(null);
   const [onboardingSetupOpen, setOnboardingSetupOpen] = useState(false);
@@ -924,7 +925,10 @@ export default function TerminalPage() {
   }, [refreshTerminalOperationQueue]);
 
   const hydrateUser = useCallback(async () => {
-    const token = localStorage.getItem('authToken');
+    let token = getAccessToken();
+    if (!token) {
+      token = await refreshBrowserSession().catch(() => '');
+    }
     if (!token) {
       setTerminalUser(null);
       setLocked(true);
@@ -1160,7 +1164,7 @@ export default function TerminalPage() {
     setSubmitting(true);
     try {
       let resolvedCompanyToken = String(
-        (typeof window !== 'undefined' ? window.localStorage.getItem('companyToken') : '') || ''
+        getCompanyToken() || ''
       ).trim();
       if (!resolvedCompanyToken) {
         resolvedCompanyToken = String(await lookupCompanyToken(email) || '').trim();

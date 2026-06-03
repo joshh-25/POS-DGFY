@@ -89,9 +89,9 @@ describe('AcceptInvite', () => {
       password: 'abcdefgh',
       email_otp_code: '123456'
     }, {});
-    expect(window.localStorage.getItem('authToken')).toBe('access-token');
-    expect(window.localStorage.getItem('refreshToken')).toBe('refresh-token');
-    expect(window.localStorage.getItem('companyToken')).toBe('tenant-token');
+    expect(window.localStorage.getItem('authToken')).toBeNull();
+    expect(window.localStorage.getItem('refreshToken')).toBeNull();
+    expect(window.localStorage.getItem('companyToken')).toBeNull();
   });
 
   it('generates a matching 16-character password for invitation setup', async () => {

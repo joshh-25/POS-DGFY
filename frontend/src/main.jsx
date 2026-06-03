@@ -8,8 +8,7 @@ import { PermissionProvider } from './store/PermissionContext.jsx'
 import { WorkflowModeProvider } from './features/settings/WorkflowModeContext.jsx'
 import WorkflowModeRouteGate from './features/settings/components/WorkflowModeRouteGate.jsx'
 import { getPageNameFromPath } from '../utils.js'
-import api from './services/api.js'
-import { clearClientSession } from './services/sessionCleanup.js'
+import { refreshBrowserSession, setBrowserSession } from './services/browserSession.js'
 import ErrorBoundary from './components/common/ErrorBoundary.jsx' // Fix 10.3
 import GlobalApiErrorListener from './components/common/GlobalApiErrorListener.jsx'
 import { Toaster } from '@/components/ui/sonner'
@@ -79,38 +78,7 @@ function App() {
    * Global auth check can be added here if needed in future.
    */
   useEffect(() => {
-    const validateCompanyToken = async () => {
-      const authToken = localStorage.getItem('authToken');
-      const refreshToken = localStorage.getItem('refreshToken');
-      const companyToken = localStorage.getItem('companyToken');
-
-      if ((authToken || refreshToken) && !companyToken) {
-        clearClientSession({
-          reason: 'tenant_context_missing',
-          broadcast: true,
-          emitAuthEvents: true,
-          redirectTo: '/login?reason=tenant_context_missing'
-        });
-        return;
-      }
-
-      if (!companyToken) return;
-
-      try {
-        await api.get(`/auth/validate-token/${companyToken}`);
-      } catch (error) {
-        if (error.response?.status === 404 || error.response?.status === 400) {
-          clearClientSession({
-            reason: 'tenant_context_invalid',
-            broadcast: true,
-            emitAuthEvents: true,
-            redirectTo: '/login?reason=tenant_context_invalid'
-          });
-        }
-      }
-    };
-
-    validateCompanyToken();
+    refreshBrowserSession().catch(() => {});
   }, []);
 
   return (
@@ -319,9 +287,7 @@ if (import.meta.env.DEV) {
       const body = await resp.json().catch(() => null);
       if (resp.ok && body?.success && body?.data?.token) {
         try {
-          localStorage.setItem('companyToken', COMPANY_TOKEN);
-          localStorage.setItem('authToken', body.data.token);
-          if (body.data.refreshToken) localStorage.setItem('refreshToken', body.data.refreshToken);
+          setBrowserSession({ token: body.data.token, companyToken: COMPANY_TOKEN });
           localStorage.setItem('pos_terminal_identity_v1', TERMINAL_ID);
           // dispatch auth event so PermissionContext picks up new session
           window.dispatchEvent(new CustomEvent('auth:login'))

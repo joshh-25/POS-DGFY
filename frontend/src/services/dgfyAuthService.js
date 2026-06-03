@@ -1,32 +1,24 @@
 import api from './api.js';
 
-const DGFY_TOKEN_KEY = 'dgfyAccountToken';
-const DGFY_ACCOUNT_KEY = 'dgfyAccount';
+let dgfyToken = '';
+let dgfyAccount = null;
 
 export const getStoredDgfyToken = () => {
-  if (typeof localStorage === 'undefined') return '';
-  return localStorage.getItem(DGFY_TOKEN_KEY) || '';
+  return dgfyToken;
 };
 
 export const getStoredDgfyAccount = () => {
-  if (typeof localStorage === 'undefined') return null;
-  try {
-    return JSON.parse(localStorage.getItem(DGFY_ACCOUNT_KEY) || 'null');
-  } catch {
-    return null;
-  }
+  return dgfyAccount;
 };
 
 export const storeDgfySession = ({ token, account }) => {
-  if (typeof localStorage === 'undefined') return;
-  if (token) localStorage.setItem(DGFY_TOKEN_KEY, token);
-  if (account) localStorage.setItem(DGFY_ACCOUNT_KEY, JSON.stringify(account));
+  if (token) dgfyToken = String(token || '').trim();
+  if (account) dgfyAccount = account;
 };
 
 export const clearDgfySession = () => {
-  if (typeof localStorage === 'undefined') return;
-  localStorage.removeItem(DGFY_TOKEN_KEY);
-  localStorage.removeItem(DGFY_ACCOUNT_KEY);
+  dgfyToken = '';
+  dgfyAccount = null;
 };
 
 export const registerDgfyAccount = async (payload) => {

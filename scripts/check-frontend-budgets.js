@@ -40,14 +40,14 @@ const jsFiles = existingAssetsDirs.flatMap(({ app, dir: assetsDir }) => fs.readd
 
 const routeBudgets = [
   { app: 'skupervisor', prefix: 'Login-', limitKb: 20 },
-  // Rebased 2026-05-30 after PR #11 split the POS surfaces and the shared checkout
-  // terminal settled at 62.2KiB in the SKUpervisor production build.
-  { app: 'skupervisor', prefix: 'POSCheckoutTerminal-', limitKb: 64 },
-  // Standalone POS owns the cashier terminal route after PR #11. Keep it separately
-  // budgeted so the split app cannot drift behind the admin-only surface.
-  { app: 'pos', prefix: 'POSCheckoutTerminal-', limitKb: 67 },
+  // Rebased 2026-06-02 after ADR 0026 added cookie/CSRF browser session
+  // plumbing to POS-authenticated surfaces.
+  { app: 'skupervisor', prefix: 'POSCheckoutTerminal-', limitKb: 66 },
+  // Standalone POS owns the cashier terminal route. Keep it separately budgeted
+  // so the split app cannot drift behind the admin-only surface.
+  { app: 'pos', prefix: 'POSCheckoutTerminal-', limitKb: 68 },
   // PR #11 renamed the admin POS route chunk from POSPage-* to SkupervisorPOSPage-*.
-  { app: 'skupervisor', prefix: 'SkupervisorPOSPage-', limitKb: 58 },
+  { app: 'skupervisor', prefix: 'SkupervisorPOSPage-', limitKb: 59 },
   // Rebased 2026-05-05 after barcode scan metadata was added to terminal flows.
   { app: 'skupervisor', prefix: 'TerminalPage-', limitKb: 35 },
   { app: 'skupervisor', prefix: 'SalesPage-', limitKb: 20 }

@@ -1,12 +1,14 @@
 import axios from 'axios';
 import { emitGlobalApiError } from '../utils/errorHandler.js';
+import { getCsrfToken } from './browserSession.js';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
-const ADMIN_TOKEN_KEY = 'admin_token';
+let adminToken = '';
 
 // Create a dedicated axios instance for admin requests
 const adminApi = axios.create({
-    baseURL: API_BASE_URL
+    baseURL: API_BASE_URL,
+    withCredentials: true
 });
 
 // Callback to notify the UI of authentication failures
@@ -19,13 +21,26 @@ export const setAuthFailureCallback = (callback) => {
     authFailureCallback = callback;
 };
 
+adminApi.interceptors.request.use((config) => {
+    const method = String(config.method || 'get').toLowerCase();
+    if (!['get', 'head', 'options'].includes(method)) {
+        const csrfToken = getCsrfToken();
+        if (csrfToken && !config.headers?.['x-csrf-token']) {
+            config.headers = { ...(config.headers || {}), 'x-csrf-token': csrfToken };
+        }
+    }
+    if (adminToken && !config.headers?.Authorization) {
+        config.headers = { ...(config.headers || {}), Authorization: `Bearer ${adminToken}` };
+    }
+    return config;
+});
+
 // Add response interceptor to handle 401 errors
 adminApi.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response && error.response.status === 401) {
-            // Clear the invalid token
-            sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+            adminToken = '';
 
             // Notify the UI to show login form
             if (authFailureCallback) {
@@ -53,8 +68,7 @@ export const login = async (username, password) => {
     });
 
     if (response.data.success && response.data.token) {
-        // Store token in sessionStorage (cleared on browser close)
-        sessionStorage.setItem(ADMIN_TOKEN_KEY, response.data.token);
+        adminToken = response.data.token;
     }
 
     return response.data;
@@ -79,21 +93,21 @@ export const logout = () => {
             // Best-effort revoke; always clear local token.
         });
     }
-    sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+    adminToken = '';
 };
 
 /**
  * Check if admin is authenticated
  */
 export const isAuthenticated = () => {
-    return !!sessionStorage.getItem(ADMIN_TOKEN_KEY);
+    return !!adminToken;
 };
 
 /**
  * Get admin token
  */
 export const getToken = () => {
-    return sessionStorage.getItem(ADMIN_TOKEN_KEY);
+    return adminToken;
 };
 
 /**

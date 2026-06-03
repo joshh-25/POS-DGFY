@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getCurrentUser } from '../services/authService';
+import { getAccessToken, refreshBrowserSession } from '../services/browserSession.js';
 
 const PermissionContext = createContext(null);
 
@@ -13,7 +14,10 @@ export const PermissionProvider = ({ children }) => {
     // ... ensureCompanyToken ...
 
     const loadPermissions = async () => {
-        const token = localStorage.getItem('authToken');
+        let token = getAccessToken();
+        if (!token) {
+            token = await refreshBrowserSession().catch(() => '');
+        }
         if (!token) {
             setPermissions([]);
             setIsMasterAdmin(false);

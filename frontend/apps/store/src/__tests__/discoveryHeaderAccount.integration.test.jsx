@@ -70,6 +70,7 @@ describe('discovery header customer account actions', () => {
   beforeEach(() => {
     window.history.pushState({}, '', '/');
     window.localStorage.clear();
+    window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
     fetchMock = vi.fn(async (url) => {
       const normalized = String(url);
       if (normalized.includes('/api/v1/storefront/discovery?')) {
@@ -133,6 +134,7 @@ describe('discovery header customer account actions', () => {
     vi.clearAllMocks();
     vi.unstubAllGlobals();
     window.localStorage.clear();
+    window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
   });
 
   it('shows separate customer auth and business registration actions on discovery header', async () => {
@@ -158,7 +160,7 @@ describe('discovery header customer account actions', () => {
   });
 
   it('switches discovery header to My Account when a DGFY customer session exists', async () => {
-    window.localStorage.setItem('dgfy_customer_account_token', 'dgfy-test-token');
+    window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = 'dgfy-test-token';
     render(<App />);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());

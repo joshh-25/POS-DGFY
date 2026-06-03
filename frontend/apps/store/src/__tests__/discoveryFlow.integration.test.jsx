@@ -178,6 +178,7 @@ describe('storefront discovery integration flow', () => {
   afterEach(() => {
     cleanup();
     window.localStorage.clear();
+    window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
     document.body.querySelectorAll('.store-marker-preview-card').forEach((node) => node.remove());
     vi.clearAllMocks();
     vi.unstubAllGlobals();
@@ -352,7 +353,7 @@ describe('storefront discovery integration flow', () => {
 
   it('auto-loads signed-in DGFY customer context and exposes saved address checkout actions', async () => {
     window.history.pushState({}, '', '/tenant-store/alpha');
-    window.localStorage.setItem('dgfyAccountToken', 'dgfy-token');
+    window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = 'dgfy-token';
     const defaultFetch = fetchMock.getMockImplementation();
     fetchMock.mockImplementation(async (url, options = {}) => {
       const normalized = String(url);

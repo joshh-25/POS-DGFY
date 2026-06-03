@@ -29,12 +29,7 @@ const createIdempotencyKey = () => `hospitality-${Date.now()}-${Math.random().to
 
 const readStoreAuthToken = () => {
   if (typeof window === 'undefined') return '';
-  const keys = ['dgfy_store_customer_token', 'store_customer_token', 'store_token'];
-  for (const key of keys) {
-    const token = String(window.localStorage.getItem(key) || '').trim();
-    if (token) return token;
-  }
-  return '';
+  return String(window.__SKU_STOREFRONT_AUTH_TOKEN__ || '').trim();
 };
 
 const parseList = (payload, key) => {
@@ -62,9 +57,18 @@ const requestJson = async (path, {
   if (selectedStore?.tenant_id) headers['x-tenant-id'] = String(selectedStore.tenant_id);
   if (selectedLocationId) headers['x-location-id'] = String(selectedLocationId);
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(String(method || 'GET').toUpperCase()) && typeof document !== 'undefined') {
+    const csrfToken = decodeURIComponent(String(document.cookie || '')
+      .split(';')
+      .map((entry) => entry.trim())
+      .find((entry) => entry.startsWith('sku_csrf_token='))
+      ?.slice('sku_csrf_token='.length) || '');
+    if (csrfToken) headers['x-csrf-token'] = csrfToken;
+  }
 
   const response = await fetch(withApiOrigin(`${API_BASE}${path}`), {
     method,
+    credentials: 'include',
     headers,
     body: body ? JSON.stringify(body) : null
   });

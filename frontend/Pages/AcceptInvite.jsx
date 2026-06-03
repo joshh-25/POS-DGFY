@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import api from '../src/services/api.js';
+import { setBrowserSession } from '../src/services/browserSession.js';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -150,10 +151,8 @@ export default function AcceptInvite() {
       }, buildTenantConfig());
 
       const data = response.data?.data || {};
-      if (data.token) localStorage.setItem('authToken', data.token);
-      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
       const resolvedCompanyToken = data.company?.token || companyTokenFromUrl;
-      if (resolvedCompanyToken) localStorage.setItem('companyToken', resolvedCompanyToken);
+      setBrowserSession({ token: data.token, companyToken: resolvedCompanyToken });
       window.dispatchEvent(new CustomEvent('auth:login'));
       navigate('/');
     } catch (err) {
