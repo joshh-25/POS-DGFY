@@ -25,11 +25,11 @@ The archived March 2026 audit files show that the earlier audit was mostly issue
 The prior audit did not appear to fully cover these broader production-readiness surfaces as first-class audit categories:
 
 - Supply-chain posture across all package scopes: root, backend, and frontend dependency advisories, outdated direct dependencies, and patched-version tracking.
-- Release gate integrity: exact local release verdict, failed backend lint, missing frontend budget artifacts, and release artifact evidence.
+- Release gate integrity: exact local release verdict, backend/frontend lint, frontend budget artifacts, and release artifact evidence.
 - Test-suite health as a release blocker: current frontend contract failures and lack of current complete backend green evidence.
 - Production fail-closed configuration: default admin credential fallback and production env validation that logs without stopping.
 - Browser session storage model: long-lived auth and refresh authority stored in browser-readable `localStorage`.
-- Governed invitation migration: legacy company-token invite links still exposed despite the invitation registry direction.
+- Governed invitation migration: legacy company-token invite-link exposure was under-covered and is now remediated with token-only generated invitation links.
 - Frontend maintainability and build performance: `StorefrontApp.jsx` exceeding Babel's 500KB deoptimization threshold.
 - High-volume data access patterns: high-limit query paths that should be paginated, streamed, or proven bounded.
 - File upload rejection timing: arbitrary MIME acceptance at the transport layer before deeper validation.
@@ -39,7 +39,7 @@ The prior audit did not appear to fully cover these broader production-readiness
 - Regulatory proof boundary: RMO 24-2023 internal checks versus external BIR filing/accreditation evidence.
 - Payment operations proof: live/sandbox canary, webhook replay rejection, refund/failure handling, and settlement reconciliation evidence.
 - Observability and SLOs: current dashboard, alert, escalation, and incident-drill evidence.
-- Release evidence drift: stale or bypassable QA deployed-head evidence paths.
+- Release evidence drift: stale or bypassable QA deployed-head evidence paths. The local release gate now has a current passing artifact for SHA `1e3a741049c81f6c366a9fee8a42ac2569c398e7`, but production SHA and deployed asset parity remain separate evidence requirements.
 
 ## Current Broad Audit Areas
 

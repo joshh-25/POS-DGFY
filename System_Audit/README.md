@@ -102,10 +102,10 @@ Hygiene, documentation, or follow-through item that should be tracked but does n
 - `1.4-PayMongo_webhook_signature_verification_can_fail_open.md` — remediated 2026-06-03 with fail-closed PayMongo signature verification and replay proof
 - `1.5-Legacy_company_token_invite_links_still_exposed.md` — remediated 2026-06-03 with token-only invitation links and no company-token invite URL generation
 - `1.6-Production_env_validation_logs_without_fail_stop.md`
-- `2.1-Local_release_gate_fails.md`
+- `2.1-Local_release_gate_fails.md` — remediated 2026-06-03 with `npm run gate:release:local` passing for target SHA `1e3a741049c81f6c366a9fee8a42ac2569c398e7`
 - `2.2-Frontend_contract_suite_fails.md`
 - `2.3-Backend_full_test_gate_has_no_current_green_evidence.md`
-- `2.4-Frontend_budget_gate_is_not_self_contained.md`
+- `2.4-Frontend_budget_gate_is_not_self_contained.md` — partially remediated 2026-06-03; current budget gate passes, but clean-checkout/fresh-artifact proof remains open
 - `3.1-StorefrontApp_monolith_exceeds_codegen_threshold.md`
 - `3.2-High_limit_queries_risk_slow_paths.md`
 - `3.3-Bulk_image_upload_accepts_any_mime_at_transport_layer.md`
