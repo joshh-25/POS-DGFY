@@ -15,6 +15,7 @@ import {
   updateStorefrontCatalogOverrideUseCase,
   updateBulkStorefrontCatalogOverridesUseCase,
   uploadStorefrontCatalogImageUseCase,
+  uploadStorefrontCatalogGalleryImagesUseCase,
   uploadBulkStorefrontCatalogImagesUseCase,
   deleteStorefrontCatalogImageUseCase,
   listItemBarcodesUseCase,
@@ -703,6 +704,32 @@ export const uploadStorefrontCatalogImage = async (req, res, next) => {
   }
 };
 
+export const uploadStorefrontCatalogGalleryImages = async (req, res, next) => {
+  try {
+    const result = await runInventoryUseCase(
+      () => uploadStorefrontCatalogGalleryImagesUseCase({
+        itemId: req.validatedParams?.item_id || req.params.item_id,
+        files: req.files,
+        user: req.user
+      }),
+      'Failed to upload storefront catalog image gallery'
+    );
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'Storefront catalog image gallery uploaded successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const uploadBulkStorefrontCatalogImages = async (req, res, next) => {
   try {
     const result = await runInventoryUseCase(
@@ -915,6 +942,7 @@ export default {
   updateStorefrontCatalogOverride,
   updateBulkStorefrontCatalogOverrides,
   uploadStorefrontCatalogImage,
+  uploadStorefrontCatalogGalleryImages,
   uploadBulkStorefrontCatalogImages,
   deleteStorefrontCatalogImage,
   getFolders,

@@ -20,6 +20,7 @@ import {
   buildUpdateStorefrontCatalogOverrideUseCase,
   buildUpdateBulkStorefrontCatalogOverridesUseCase,
   buildUploadStorefrontCatalogImageUseCase,
+  buildUploadStorefrontCatalogGalleryImagesUseCase,
   buildUploadBulkStorefrontCatalogImagesUseCase,
   buildDeleteStorefrontCatalogImageUseCase
 } from './usecases/storefrontCatalogUseCases.js';
@@ -70,6 +71,10 @@ export const listStorefrontCatalogOverridesUseCase = buildListStorefrontCatalogO
 export const updateStorefrontCatalogOverrideUseCase = buildUpdateStorefrontCatalogOverrideUseCase({ itemRepository });
 export const updateBulkStorefrontCatalogOverridesUseCase = buildUpdateBulkStorefrontCatalogOverridesUseCase({ itemRepository });
 export const uploadStorefrontCatalogImageUseCase = buildUploadStorefrontCatalogImageUseCase({
+  itemRepository,
+  imageStorage: storefrontCatalogImageStorage
+});
+export const uploadStorefrontCatalogGalleryImagesUseCase = buildUploadStorefrontCatalogGalleryImagesUseCase({
   itemRepository,
   imageStorage: storefrontCatalogImageStorage
 });

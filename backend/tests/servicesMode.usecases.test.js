@@ -42,6 +42,16 @@ const serviceItem = {
     }
 };
 
+const nextDateForWeekday = (targetWeekday) => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    const daysUntilTarget = (targetWeekday - date.getDay() + 7) % 7;
+    date.setDate(date.getDate() + daysUntilTarget + 7);
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${date.getFullYear()}-${month}-${day}`;
+};
+
 const registeredTransactionSettings = () => [
     { setting_key: 'customer_access_mode', setting_value: 'transaction' },
     {
@@ -486,6 +496,7 @@ describe('Services Mode use cases', () => {
     });
 
     it('returns public service availability only when resource capacity can satisfy quantity', async () => {
+        const monday = nextDateForWeekday(1);
         const useCase = buildGetServiceAvailabilityUseCase({
             serviceRepository: {
                 findServiceItemById: jest.fn(async () => serviceItem),
@@ -503,8 +514,8 @@ describe('Services Mode use cases', () => {
                     booking_id: 44,
                     resource_id: 7,
                     quantity: 1,
-                    start_at: new Date('2026-06-01T09:00:00'),
-                    end_at: new Date('2026-06-01T10:00:00'),
+                    start_at: new Date(`${monday}T09:00:00`),
+                    end_at: new Date(`${monday}T10:00:00`),
                     status: 'confirmed'
                 }])
             }
@@ -513,7 +524,7 @@ describe('Services Mode use cases', () => {
         const result = await useCase({
             query: {
                 service_item_id: 10,
-                date: '2026-06-01',
+                date: monday,
                 location_id: 1,
                 quantity: 2,
                 slot_interval_minutes: 60
@@ -534,6 +545,7 @@ describe('Services Mode use cases', () => {
     });
 
     it('returns no public service availability when quantity exceeds location-only capacity', async () => {
+        const monday = nextDateForWeekday(1);
         const useCase = buildGetServiceAvailabilityUseCase({
             serviceRepository: {
                 findServiceItemById: jest.fn(async () => serviceItem),
@@ -545,7 +557,7 @@ describe('Services Mode use cases', () => {
         const result = await useCase({
             query: {
                 service_item_id: 10,
-                date: '2026-06-01',
+                date: monday,
                 location_id: 1,
                 quantity: 2,
                 slot_interval_minutes: 60
@@ -562,6 +574,7 @@ describe('Services Mode use cases', () => {
     });
 
     it('builds public service availability from resource weekly windows, not only fallback hours', async () => {
+        const monday = nextDateForWeekday(1);
         const useCase = buildGetServiceAvailabilityUseCase({
             serviceRepository: {
                 findServiceItemById: jest.fn(async () => serviceItem),
@@ -582,7 +595,7 @@ describe('Services Mode use cases', () => {
         const result = await useCase({
             query: {
                 service_item_id: 10,
-                date: '2026-06-01',
+                date: monday,
                 location_id: 1,
                 quantity: 1,
                 slot_interval_minutes: 60
@@ -597,6 +610,7 @@ describe('Services Mode use cases', () => {
     });
 
     it('returns availability diagnostics for fully booked generated slots', async () => {
+        const monday = nextDateForWeekday(1);
         const useCase = buildGetServiceAvailabilityUseCase({
             serviceRepository: {
                 findServiceItemById: jest.fn(async () => serviceItem),
@@ -614,8 +628,8 @@ describe('Services Mode use cases', () => {
                     booking_id: 44,
                     resource_id: 7,
                     quantity: 1,
-                    start_at: new Date('2026-06-01T09:00:00'),
-                    end_at: new Date('2026-06-01T11:00:00'),
+                    start_at: new Date(`${monday}T09:00:00`),
+                    end_at: new Date(`${monday}T11:00:00`),
                     status: 'confirmed'
                 }])
             }
@@ -624,7 +638,7 @@ describe('Services Mode use cases', () => {
         const result = await useCase({
             query: {
                 service_item_id: 10,
-                date: '2026-06-01',
+                date: monday,
                 location_id: 1,
                 quantity: 1,
                 slot_interval_minutes: 60

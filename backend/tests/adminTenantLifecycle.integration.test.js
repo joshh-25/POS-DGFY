@@ -65,9 +65,11 @@ const {
     Tenant,
     SystemSetting,
     DgfyAccount,
-    DgfyAccountTenantMembership
+    DgfyAccountTenantMembership,
+    DgfyLegalAcknowledgement
 } = await import('../src/models/index.js');
 const { generateDgfyToken } = await import('../src/modules/dgfy/usecases/dgfyAuthUseCases.js');
+const { DGFY_LEGAL_TERM_VERSIONS } = await import('../src/modules/shared/utils/dgfyLegalTerms.js');
 const { DataTypes, Op } = await import('sequelize');
 
 describe('Admin Tenant Lifecycle Integration - Parity', () => {
@@ -110,6 +112,7 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
         );
         await DgfyAccount.sync();
         await DgfyAccountTenantMembership.sync();
+        await DgfyLegalAcknowledgement.sync();
         const queryInterface = sequelize.getQueryInterface();
         const dgfyAccountColumns = await queryInterface.describeTable('dgfy_accounts');
         if (!dgfyAccountColumns.email_verified_at) {
@@ -227,14 +230,20 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
         process.env.TENANT_REGISTRATION_APPROVAL_MODE = 'auto_standard';
 
         try {
+            const csrfToken = `csrf-admin-lifecycle-${testSuffix}`;
             const response = await request(app)
                 .post('/api/v1/admin/tenants/register')
                 .set('Authorization', `Bearer ${dgfyToken}`)
+                .set('Cookie', `sku_dgfy_session=${dgfyToken}; sku_csrf_token=${csrfToken}`)
+                .set('x-csrf-token', csrfToken)
                 .send({
                     name: `${ADMIN_TEST_TENANT_PREFIX} Auto Register`,
                     plan: 'premium',
                     complianceMode: 'non_compliant',
-                    workflowMode: 'food_manufacturing'
+                    workflowMode: 'food_manufacturing',
+                    accepted_company_terms: true,
+                    company_terms_version: DGFY_LEGAL_TERM_VERSIONS.companyTerms,
+                    marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
                 });
 
             expect(response.status).toBe(201);

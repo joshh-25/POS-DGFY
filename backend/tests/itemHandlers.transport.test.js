@@ -16,6 +16,7 @@ const mockListStorefrontCatalogOverridesUseCase = jest.fn();
 const mockUpdateStorefrontCatalogOverrideUseCase = jest.fn();
 const mockUpdateBulkStorefrontCatalogOverridesUseCase = jest.fn();
 const mockUploadStorefrontCatalogImageUseCase = jest.fn();
+const mockUploadStorefrontCatalogGalleryImagesUseCase = jest.fn();
 const mockUploadBulkStorefrontCatalogImagesUseCase = jest.fn();
 const mockDeleteStorefrontCatalogImageUseCase = jest.fn();
 const mockListItemBarcodesUseCase = jest.fn();
@@ -50,6 +51,7 @@ jest.unstable_mockModule('../src/modules/inventory/index.js', () => ({
   updateStorefrontCatalogOverrideUseCase: mockUpdateStorefrontCatalogOverrideUseCase,
   updateBulkStorefrontCatalogOverridesUseCase: mockUpdateBulkStorefrontCatalogOverridesUseCase,
   uploadStorefrontCatalogImageUseCase: mockUploadStorefrontCatalogImageUseCase,
+  uploadStorefrontCatalogGalleryImagesUseCase: mockUploadStorefrontCatalogGalleryImagesUseCase,
   uploadBulkStorefrontCatalogImagesUseCase: mockUploadBulkStorefrontCatalogImagesUseCase,
   deleteStorefrontCatalogImageUseCase: mockDeleteStorefrontCatalogImageUseCase,
   listItemBarcodesUseCase: mockListItemBarcodesUseCase,

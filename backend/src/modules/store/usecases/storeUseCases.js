@@ -837,6 +837,7 @@ const serializeStoreCatalogItem = (item = {}, accessPolicy = {}) => {
         default_sale_price: item.default_sale_price,
         vat_type: item.vat_type || 'vatable',
         image_url: item.image_url || null,
+        image_gallery: Array.isArray(item.image_gallery) ? item.image_gallery : [],
         service_detail: serviceDetail,
         allergens: serializeStorefrontAllergens(item.allergens),
         nutrition: serializeStorefrontNutrition(item.nutrition),

@@ -10,6 +10,7 @@ import {
     getDgfyMeUseCase,
     requestDgfyPasswordResetUseCase,
     requestDgfyEmailVerificationUseCase,
+    startDgfyTenantSessionUseCase,
     updateDgfyProfileUseCase,
     verifyDgfyEmailUseCase
 } from '../index.js';
@@ -19,6 +20,7 @@ import {
     clearSessionCookie,
     getCookie,
     SESSION_COOKIE_NAMES,
+    setTenantSessionCookies,
     setBearerSessionCookie
 } from '../../../utils/browserSessionCookies.js';
 
@@ -164,5 +166,32 @@ export const acceptDgfyInvitation = async (req, res) => {
     });
     return sendUseCaseResult(res, result, {
         fallbackErrorMessage: 'DGFY invitation acceptance failed'
+    });
+};
+
+export const startDgfyTenantSession = async (req, res) => {
+    const result = await startDgfyTenantSessionUseCase({
+        account: req.dgfyAccount,
+        body: req.body
+    });
+
+    if (result?.success) {
+        setTenantSessionCookies(res, {
+            refreshToken: result.data?.payload?.data?.refreshToken,
+            tenantToken: result.data?.payload?.data?.company?.token || req.body?.company_token || null
+        });
+    }
+
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'DGFY tenant session handoff failed',
+        successPayloadResolver: () => {
+            const session = { ...(result.data?.payload?.data || {}) };
+            delete session.refreshToken;
+            return {
+                success: true,
+                data: session,
+                message: result.data?.payload?.message || 'SKUpervisor session started.'
+            };
+        }
     });
 };

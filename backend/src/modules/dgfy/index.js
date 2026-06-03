@@ -2,6 +2,13 @@ import bcrypt from 'bcryptjs';
 import { dgfyAccountRepository } from './repositories/dgfyAccountRepository.js';
 import { buildGetDgfyLegalTermsUseCase } from './usecases/dgfyLegalUseCases.js';
 import {
+    buildGetAdminDgfyAccountUseCase,
+    buildListAdminDgfyAccountsUseCase,
+    buildReactivateAdminDgfyAccountUseCase,
+    buildSuspendAdminDgfyAccountUseCase,
+    buildUpdateAdminDgfyAccountProfileUseCase
+} from './usecases/dgfyAdminAccountUseCases.js';
+import {
     buildAcceptDgfyInvitationUseCase,
     buildChangeDgfyPasswordUseCase,
     buildCompleteDgfyPasswordResetUseCase,
@@ -11,6 +18,7 @@ import {
     buildLoginDgfyAccountUseCase,
     buildRequestDgfyPasswordResetUseCase,
     buildRequestDgfyEmailVerificationUseCase,
+    buildStartDgfyTenantSessionUseCase,
     buildUpdateDgfyProfileUseCase,
     buildVerifyDgfyEmailUseCase,
     buildRegisterDgfyAccountUseCase
@@ -34,6 +42,7 @@ import {
     buildVerifyDgfyTrackingRecoveryUseCase
 } from './usecases/dgfyCustomerUseCases.js';
 import { requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
+import { createTenantSessionForDgfyAccount } from '../../services/dgfyTenantSessionService.js';
 
 export const registerDgfyAccountUseCase = buildRegisterDgfyAccountUseCase({
     repository: dgfyAccountRepository,
@@ -102,6 +111,30 @@ export const exchangeDgfyHandoffUseCase = buildExchangeDgfyHandoffUseCase({
 });
 
 export const acceptDgfyInvitationUseCase = buildAcceptDgfyInvitationUseCase({
+    repository: dgfyAccountRepository
+});
+
+export const startDgfyTenantSessionUseCase = buildStartDgfyTenantSessionUseCase({
+    createTenantSessionForDgfyAccount
+});
+
+export const listAdminDgfyAccountsUseCase = buildListAdminDgfyAccountsUseCase({
+    repository: dgfyAccountRepository
+});
+
+export const getAdminDgfyAccountUseCase = buildGetAdminDgfyAccountUseCase({
+    repository: dgfyAccountRepository
+});
+
+export const updateAdminDgfyAccountProfileUseCase = buildUpdateAdminDgfyAccountProfileUseCase({
+    repository: dgfyAccountRepository
+});
+
+export const suspendAdminDgfyAccountUseCase = buildSuspendAdminDgfyAccountUseCase({
+    repository: dgfyAccountRepository
+});
+
+export const reactivateAdminDgfyAccountUseCase = buildReactivateAdminDgfyAccountUseCase({
     repository: dgfyAccountRepository
 });
 

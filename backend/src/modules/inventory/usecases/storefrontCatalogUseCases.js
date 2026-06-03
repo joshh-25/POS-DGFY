@@ -58,6 +58,15 @@ const createBulkImageSummary = () => ({
   blocked_readiness: 0
 });
 
+const normalizeStoredGalleryEntries = (entries = []) => (Array.isArray(entries) ? entries : [])
+  .map((entry, index) => ({
+    path: entry?.path || null,
+    url: entry?.url || null,
+    is_primary: index === 0,
+    sort_order: index
+  }))
+  .filter((entry) => entry.path || entry.url);
+
 const storefrontReadinessError = ({ item, itemId, cause = null }) => new DomainError(
   DomainErrorCode.VALIDATION_FAILED,
   'Cannot enable Storefront visibility until readiness requirements are completed.',
@@ -291,6 +300,116 @@ export const buildUploadStorefrontCatalogImageUseCase = ({ itemRepository, image
   };
 };
 
+export const buildUploadStorefrontCatalogGalleryImagesUseCase = ({ itemRepository, imageStorage }) => {
+  return async ({ itemId, files = [], user }) => {
+    const normalizedItemId = parsePositiveInt(itemId);
+    const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+    const storedImages = [];
+    let storedCommitted = false;
+
+    if (!normalizedItemId) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'itemId must be a positive integer', { statusCode: 400 });
+    }
+    if (normalizedFiles.length === 0) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'images must contain at least one file', { statusCode: 400 });
+    }
+    if (normalizedFiles.length > 10) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'images cannot exceed 10 files per item', { statusCode: 400 });
+    }
+
+    try {
+      assertCanEditItems(user, 'upload images for');
+
+      const item = await itemRepository.getItemById(normalizedItemId);
+      if (!item) {
+        throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, `Item ${normalizedItemId} was not found`, { statusCode: 404 });
+      }
+
+      const existing = await itemRepository.findStorefrontCatalogOverrideByItemId(normalizedItemId);
+      const effective = existing
+        ? { storefront_visible: existing.storefront_visible !== false }
+        : await itemRepository.getStorefrontCatalogReadinessByItemId(normalizedItemId);
+
+      if (effective?.storefront_visible !== false) {
+        assertStorefrontPriceReady(item, normalizedItemId, 'Storefront image visibility');
+      }
+
+      for (const file of normalizedFiles) {
+        const fileValidation = await validateImageUploadFile({
+          file,
+          allowedMimeTypes: SAFE_IMAGE_MIME_TYPES,
+          maxBytes: STOREFRONT_CATALOG_IMAGE_MAX_BYTES
+        });
+        if (!fileValidation.ok) {
+          logger.warn('[StorefrontCatalogUseCases] Rejected storefront catalog gallery upload due to file validation failure', {
+            event_type: 'security_signal',
+            signal_code: 'storefront_catalog_gallery_upload_rejected',
+            reason: fileValidation.reason,
+            reported_mime: String(file?.mimetype || '').trim().toLowerCase() || null,
+            original_name: String(file?.originalname || '').slice(0, 180) || null
+          });
+          throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'Only image files are allowed for storefront catalog uploads.',
+            { statusCode: 422 }
+          );
+        }
+
+        const stored = await imageStorage.store({
+          itemId: normalizedItemId,
+          originalName: file.originalname,
+          tempPath: file.path
+        });
+        storedImages.push(stored);
+      }
+
+      const gallery = normalizeStoredGalleryEntries(storedImages);
+      const primary = gallery[0] || null;
+      const data = await itemRepository.updateStorefrontCatalogImage(normalizedItemId, {
+        path: primary?.path || null,
+        url: primary?.url || null,
+        gallery
+      }, {
+        keepVisible: effective?.storefront_visible !== false
+      });
+      storedCommitted = true;
+
+      const existingGallery = normalizeStoredGalleryEntries(existing?.storefront_image_gallery || []);
+      const existingPaths = [
+        existing?.storefront_image_path,
+        ...existingGallery.map((entry) => entry.path)
+      ].filter(Boolean);
+      await Promise.all([...new Set(existingPaths)]
+        .filter((path) => !storedImages.some((entry) => entry.path === path))
+        .map(async (path) => {
+          try {
+            await imageStorage.remove({ path });
+          } catch (cleanupError) {
+            logger.warn('[StorefrontCatalogUseCases] Failed to remove previous storefront catalog gallery image after replacement', {
+              event_type: 'storefront_catalog_gallery_cleanup_failed',
+              item_id: normalizedItemId,
+              reason: cleanupError?.message || 'unknown'
+            });
+          }
+        }));
+
+      return toSerializable(data);
+    } catch (error) {
+      if (!storedCommitted) {
+        await Promise.all(storedImages.map(async (stored) => {
+          try {
+            await imageStorage.remove({ path: stored.path });
+          } catch {
+            // Ignore stored upload cleanup errors.
+          }
+        }));
+      }
+      await Promise.all(normalizedFiles.map((file) => cleanupTempFile(file)));
+      throw error;
+    }
+  };
+};
+
 export const buildUploadBulkStorefrontCatalogImagesUseCase = ({ itemRepository, imageStorage }) => {
   return async ({ files = [], user }) => {
     assertCanEditItems(user, 'upload images for');
@@ -478,9 +597,12 @@ export const buildDeleteStorefrontCatalogImageUseCase = ({ itemRepository, image
     }
 
     const existing = await itemRepository.findStorefrontCatalogOverrideByItemId(normalizedItemId);
-    if (existing?.storefront_image_path) {
-      await imageStorage.remove({ path: existing.storefront_image_path });
-    }
+    const existingGallery = normalizeStoredGalleryEntries(existing?.storefront_image_gallery || []);
+    const paths = [
+      existing?.storefront_image_path,
+      ...existingGallery.map((entry) => entry.path)
+    ].filter(Boolean);
+    await Promise.all([...new Set(paths)].map((path) => imageStorage.remove({ path })));
 
     const data = await itemRepository.clearStorefrontCatalogImage(normalizedItemId);
     return toSerializable(data);

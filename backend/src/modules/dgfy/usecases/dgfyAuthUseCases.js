@@ -666,3 +666,39 @@ export const buildAcceptDgfyInvitationUseCase = ({ repository }) => async ({ acc
         ));
     }
 };
+
+export const buildStartDgfyTenantSessionUseCase = ({
+    createTenantSessionForDgfyAccount
+}) => async ({ account, body }) => {
+    const tenantId = String(body?.tenant_id || body?.tenantId || '').trim();
+    const companyToken = String(body?.company_token || body?.companyToken || '').trim();
+
+    if (!tenantId && !companyToken) {
+        return fail(new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'Company identity is required to start a SKUpervisor session.',
+            { statusCode: 400 }
+        ));
+    }
+
+    try {
+        const session = await createTenantSessionForDgfyAccount({
+            account,
+            tenantId,
+            companyToken
+        });
+        return ok({
+            payload: {
+                success: true,
+                data: session,
+                message: 'SKUpervisor session started.'
+            }
+        });
+    } catch (error) {
+        return fail(new DomainError(
+            error?.statusCode === 401 ? DomainErrorCode.AUTHENTICATION_FAILED : DomainErrorCode.AUTHORIZATION_FAILED,
+            error.message || 'Unable to start a SKUpervisor session for this DGFY account.',
+            { statusCode: error?.statusCode || 403, cause: error }
+        ));
+    }
+};

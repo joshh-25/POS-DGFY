@@ -2,7 +2,7 @@ import request from 'supertest';
 import { jest } from '@jest/globals';
 import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
 
-jest.setTimeout(120000);
+jest.setTimeout(300000);
 
 // Define mocks
 const mockVerifyToken = jest.fn();

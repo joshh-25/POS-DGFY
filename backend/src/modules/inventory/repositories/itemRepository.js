@@ -75,6 +75,55 @@ const toPlain = (value) => (
         : value
 );
 
+const normalizeStorefrontImageGallery = (value) => {
+    const source = typeof value === 'string'
+        ? (() => {
+            try {
+                return JSON.parse(value);
+            } catch {
+                return [];
+            }
+        })()
+        : value;
+    return (Array.isArray(source) ? source : [])
+        .map((entry, index) => ({
+            path: String(entry?.path || '').trim() || null,
+            url: String(entry?.url || '').trim() || null,
+            is_primary: entry?.is_primary === true,
+            sort_order: Number.isFinite(Number(entry?.sort_order)) ? Number(entry.sort_order) : index
+        }))
+        .filter((entry) => entry.url || entry.path)
+        .sort((a, b) => {
+            if (a.is_primary !== b.is_primary) return a.is_primary ? -1 : 1;
+            return a.sort_order - b.sort_order;
+        })
+        .map((entry, index) => ({
+            ...entry,
+            is_primary: index === 0,
+            sort_order: index
+        }));
+};
+
+const buildStorefrontImageGallery = ({ primaryPath = null, primaryUrl = null, gallery = [] } = {}) => {
+    const normalized = normalizeStorefrontImageGallery(gallery);
+    const primary = {
+        path: primaryPath || normalized[0]?.path || null,
+        url: primaryUrl || normalized[0]?.url || null,
+        is_primary: true,
+        sort_order: 0
+    };
+    const dedupeKey = `${primary.path || ''}|${primary.url || ''}`;
+    const rest = normalized
+        .filter((entry) => `${entry.path || ''}|${entry.url || ''}` !== dedupeKey)
+        .map((entry, index) => ({
+            path: entry.path || null,
+            url: entry.url || null,
+            is_primary: false,
+            sort_order: index + 1
+        }));
+    return (primary.path || primary.url) ? [primary, ...rest] : rest;
+};
+
 const getCachedSettingsForTenant = async () => {
     const store = dbStore.getStore();
     const tenantKey = store?.tenantId ?? 'default';
@@ -1832,7 +1881,7 @@ export const itemRepository = {
                 StorefrontCatalogOverride ? {
                     model: StorefrontCatalogOverride,
                     as: 'storefrontCatalogOverride',
-                    attributes: ['storefront_visible', 'storefront_image_path', 'storefront_image_url'],
+                    attributes: ['storefront_visible', 'storefront_image_path', 'storefront_image_url', 'storefront_image_gallery'],
                     required: false
                 } : null
             ].filter(Boolean),
@@ -1854,6 +1903,13 @@ export const itemRepository = {
                 workflowMode,
                 storefrontReadiness: readiness
             });
+            const storefrontImagePath = override?.storefront_image_path || legacyPosOverride?.pos_image_path || null;
+            const storefrontImageUrl = override?.storefront_image_url || legacyPosOverride?.pos_image_url || null;
+            const storefrontImageGallery = buildStorefrontImageGallery({
+                primaryPath: storefrontImagePath,
+                primaryUrl: storefrontImageUrl,
+                gallery: override?.storefront_image_gallery || null
+            });
             return {
                 item_id: payload.item_id,
                 name: payload.name,
@@ -1867,8 +1923,9 @@ export const itemRepository = {
                     override,
                     legacyPosOverride
                 }),
-                storefront_image_path: override?.storefront_image_path || legacyPosOverride?.pos_image_path || null,
-                storefront_image_url: override?.storefront_image_url || legacyPosOverride?.pos_image_url || null,
+                storefront_image_path: storefrontImagePath,
+                storefront_image_url: storefrontImageUrl,
+                storefront_image_gallery: storefrontImageGallery,
                 has_storefront_override: Boolean(override),
                 storefront_readiness: readiness,
                 catalog_setup_recommendation: recommendation
@@ -1962,6 +2019,11 @@ export const itemRepository = {
             }),
             storefront_image_path: effectiveOverride?.storefront_image_path || null,
             storefront_image_url: effectiveOverride?.storefront_image_url || null,
+            storefront_image_gallery: buildStorefrontImageGallery({
+                primaryPath: effectiveOverride?.storefront_image_path || null,
+                primaryUrl: effectiveOverride?.storefront_image_url || null,
+                gallery: effectiveOverride?.storefront_image_gallery || null
+            }),
             storefront_readiness: readiness,
             catalog_setup_recommendation: recommendation
         };
@@ -2003,7 +2065,18 @@ export const itemRepository = {
                 ? payload.storefront_visible !== false
                 : (existing?.storefront_visible ?? defaultEnvelope?.storefront_visible ?? true),
             storefront_image_path: payload.storefront_image_path ?? (existing?.storefront_image_path ?? null),
-            storefront_image_url: payload.storefront_image_url ?? (existing?.storefront_image_url ?? null)
+            storefront_image_url: payload.storefront_image_url ?? (existing?.storefront_image_url ?? null),
+            storefront_image_gallery: hasOwn(payload, 'storefront_image_gallery')
+                ? buildStorefrontImageGallery({
+                    primaryPath: payload.storefront_image_path ?? existing?.storefront_image_path ?? null,
+                    primaryUrl: payload.storefront_image_url ?? existing?.storefront_image_url ?? null,
+                    gallery: payload.storefront_image_gallery
+                })
+                : buildStorefrontImageGallery({
+                    primaryPath: payload.storefront_image_path ?? existing?.storefront_image_path ?? null,
+                    primaryUrl: payload.storefront_image_url ?? existing?.storefront_image_url ?? null,
+                    gallery: existing?.storefront_image_gallery || null
+                })
         };
 
         if (existing) {
@@ -2016,7 +2089,12 @@ export const itemRepository = {
     async updateStorefrontCatalogImage(itemId, imageData = {}, options = {}) {
         const payload = {
             storefront_image_path: imageData.path || null,
-            storefront_image_url: imageData.url || null
+            storefront_image_url: imageData.url || null,
+            storefront_image_gallery: buildStorefrontImageGallery({
+                primaryPath: imageData.path || null,
+                primaryUrl: imageData.url || null,
+                gallery: imageData.gallery || []
+            })
         };
         if (typeof options.keepVisible === 'boolean') {
             payload.storefront_visible = options.keepVisible;
@@ -2028,7 +2106,8 @@ export const itemRepository = {
         if (!existing) return null;
         await existing.update({
             storefront_image_path: null,
-            storefront_image_url: null
+            storefront_image_url: null,
+            storefront_image_gallery: null
         }, { transaction: options.transaction });
         return existing;
     },

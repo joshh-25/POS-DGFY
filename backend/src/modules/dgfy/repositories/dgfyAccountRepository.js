@@ -1,5 +1,13 @@
 import { Op } from 'sequelize';
-import { DgfyAccount, DgfyAccountHandoff, DgfyAccountTenantMembership, DgfyLegalAcknowledgement, Tenant, UserInvitation } from '../../../models/index.js';
+import {
+    DgfyAccount,
+    DgfyAccountAdminAuditLog,
+    DgfyAccountHandoff,
+    DgfyAccountTenantMembership,
+    DgfyLegalAcknowledgement,
+    Tenant,
+    UserInvitation
+} from '../../../models/index.js';
 import dbStore from '../../../utils/dbStore.js';
 import tenantConnector from '../../../utils/TenantConnector.js';
 import { getTenantModels } from '../../../utils/tenantModelFactory.js';
@@ -77,6 +85,126 @@ export const dgfyAccountRepository = {
     updatePassword(account, passwordHash) {
         if (!account) return null;
         return account.update({ password_hash: passwordHash });
+    },
+
+    async listAdminAccounts({
+        status = 'all',
+        verification = 'all',
+        membership = 'all',
+        search = '',
+        page = 1,
+        limit = 25
+    } = {}) {
+        const where = {};
+        const normalizedStatus = String(status || 'all').trim().toLowerCase();
+        const normalizedVerification = String(verification || 'all').trim().toLowerCase();
+        const normalizedMembership = String(membership || 'all').trim().toLowerCase();
+        const normalizedSearch = String(search || '').trim();
+
+        if (normalizedStatus === 'active') where.is_active = true;
+        if (normalizedStatus === 'suspended') where.is_active = false;
+        if (normalizedVerification === 'verified') where.email_verified_at = { [Op.ne]: null };
+        if (normalizedVerification === 'unverified') where.email_verified_at = null;
+        if (normalizedSearch) {
+            where[Op.or] = [
+                { first_name: { [Op.like]: `%${normalizedSearch}%` } },
+                { middle_name: { [Op.like]: `%${normalizedSearch}%` } },
+                { last_name: { [Op.like]: `%${normalizedSearch}%` } },
+                { username: { [Op.like]: `%${normalizedSearch}%` } },
+                { email: { [Op.like]: `%${normalizedSearch.toLowerCase()}%` } },
+                { phone: { [Op.like]: `%${normalizedSearch}%` } }
+            ];
+        }
+
+        const include = [{
+            model: DgfyAccountTenantMembership,
+            as: 'tenantMemberships',
+            required: normalizedMembership === 'has_membership',
+            attributes: ['id', 'tenant_id', 'tenant_user_id', 'role', 'status', 'source', 'accepted_at', 'created_at'],
+            include: [{
+                model: Tenant,
+                as: 'tenant',
+                attributes: ['id', 'name', 'company_token', 'status', 'plan']
+            }]
+        }];
+
+        if (normalizedMembership === 'no_membership') {
+            where['$tenantMemberships.id$'] = null;
+        }
+
+        const resolvedPage = Math.max(Number.parseInt(page, 10) || 1, 1);
+        const resolvedLimit = Math.min(Math.max(Number.parseInt(limit, 10) || 25, 1), 100);
+        const result = await DgfyAccount.findAndCountAll({
+            where,
+            include,
+            distinct: true,
+            subQuery: false,
+            limit: resolvedLimit,
+            offset: (resolvedPage - 1) * resolvedLimit,
+            order: [['created_at', 'DESC']]
+        });
+
+        return {
+            rows: result.rows,
+            count: result.count,
+            page: resolvedPage,
+            limit: resolvedLimit
+        };
+    },
+
+    async getAdminAccountSummary() {
+        const [total, active, suspended, verifiedEmail] = await Promise.all([
+            DgfyAccount.count(),
+            DgfyAccount.count({ where: { is_active: true } }),
+            DgfyAccount.count({ where: { is_active: false } }),
+            DgfyAccount.count({ where: { email_verified_at: { [Op.ne]: null } } })
+        ]);
+
+        return {
+            total,
+            active,
+            suspended,
+            verified_email: verifiedEmail,
+            unverified_email: Math.max(total - verifiedEmail, 0)
+        };
+    },
+
+    findAccountForAdmin(id, options = {}) {
+        return DgfyAccount.findByPk(id, {
+            include: [{
+                model: DgfyAccountTenantMembership,
+                as: 'tenantMemberships',
+                attributes: ['id', 'tenant_id', 'tenant_user_id', 'role', 'status', 'source', 'accepted_at', 'created_at', 'updated_at'],
+                include: [{
+                    model: Tenant,
+                    as: 'tenant',
+                    attributes: ['id', 'name', 'company_token', 'status', 'plan']
+                }]
+            }],
+            ...options
+        });
+    },
+
+    listAdminAuditLogs(dgfyAccountId, { limit = 20 } = {}) {
+        return DgfyAccountAdminAuditLog.findAll({
+            where: { dgfy_account_id: dgfyAccountId },
+            order: [['created_at', 'DESC']],
+            limit: Math.min(Math.max(Number.parseInt(limit, 10) || 20, 1), 100)
+        });
+    },
+
+    updateAdminProfile(account, data = {}, options = {}) {
+        if (!account) return null;
+        return account.update(data, options);
+    },
+
+    updateAdminLifecycle(account, isActive, options = {}) {
+        if (!account) return null;
+        return account.update({ is_active: Boolean(isActive) }, options);
+    },
+
+    createAdminAuditLog(payload, options = {}) {
+        return DgfyAccountAdminAuditLog.create(payload, options);
     },
 
     createHandoff({ jti, dgfyAccountId, expiresAt }) {

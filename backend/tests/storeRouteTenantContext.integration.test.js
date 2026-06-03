@@ -16,6 +16,8 @@ const mockHandlers = {
     setDefaultStoreCustomerAddress: jest.fn((req, res) => res.status(200).json({ success: true })),
     deleteStoreCustomerAddress: jest.fn((req, res) => res.status(204).send()),
     cartQuote: jest.fn((req, res) => res.status(200).json({ success: true })),
+    createCheckoutPaymentSession: jest.fn((req, res) => res.status(201).json({ success: true })),
+    getCheckoutPaymentSession: jest.fn((req, res) => res.status(200).json({ success: true })),
     checkout: jest.fn((req, res) => res.status(200).json({ success: true })),
     trackOrder: jest.fn((req, res) => res.status(200).json({
         success: true,

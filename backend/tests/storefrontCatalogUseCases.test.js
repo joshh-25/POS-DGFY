@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import {
     buildUploadStorefrontCatalogImageUseCase,
+    buildUploadStorefrontCatalogGalleryImagesUseCase,
     buildUploadBulkStorefrontCatalogImagesUseCase,
     buildDeleteStorefrontCatalogImageUseCase,
     buildUpdateStorefrontCatalogOverrideUseCase,
@@ -308,6 +309,90 @@ describe('storefront catalog use cases', () => {
         await fs.rm(tempPath, { force: true });
     });
 
+    it('uploadStorefrontCatalogGalleryImages stores an ordered gallery and mirrors the first image as primary', async () => {
+        const firstTempPath = path.join(os.tmpdir(), `storefront-gallery-a-${Date.now()}.png`);
+        const secondTempPath = path.join(os.tmpdir(), `storefront-gallery-b-${Date.now()}.png`);
+        const pngHeader = Buffer.from([
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            0x00, 0x00, 0x00, 0x0D
+        ]);
+        await fs.writeFile(firstTempPath, pngHeader);
+        await fs.writeFile(secondTempPath, pngHeader);
+
+        const updateStorefrontCatalogImage = jest.fn().mockResolvedValue({
+            item_id: 90,
+            storefront_visible: true,
+            storefront_image_url: '/uploads/storefront-catalog/tenant/first.png',
+            storefront_image_gallery: [
+                { url: '/uploads/storefront-catalog/tenant/first.png', is_primary: true, sort_order: 0 },
+                { url: '/uploads/storefront-catalog/tenant/second.png', is_primary: false, sort_order: 1 }
+            ]
+        });
+        const store = jest.fn()
+            .mockResolvedValueOnce({ path: 'storefront-catalog/tenant/first.png', url: '/uploads/storefront-catalog/tenant/first.png' })
+            .mockResolvedValueOnce({ path: 'storefront-catalog/tenant/second.png', url: '/uploads/storefront-catalog/tenant/second.png' });
+        const remove = jest.fn().mockResolvedValue(undefined);
+        const useCase = buildUploadStorefrontCatalogGalleryImagesUseCase({
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({
+                    item_id: 90,
+                    name: 'Gallery item',
+                    default_sale_price: 125
+                }),
+                findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue({
+                    item_id: 90,
+                    storefront_visible: true,
+                    storefront_image_path: 'storefront-catalog/tenant/old-primary.png',
+                    storefront_image_gallery: [
+                        { path: 'storefront-catalog/tenant/old-primary.png', url: '/uploads/old-primary.png', is_primary: true, sort_order: 0 },
+                        { path: 'storefront-catalog/tenant/old-second.png', url: '/uploads/old-second.png', is_primary: false, sort_order: 1 }
+                    ]
+                }),
+                updateStorefrontCatalogImage
+            },
+            imageStorage: { store, remove }
+        });
+
+        const result = await useCase({
+            itemId: 90,
+            files: [
+                { path: firstTempPath, mimetype: 'image/png', originalname: 'first.png', size: 12 },
+                { path: secondTempPath, mimetype: 'image/png', originalname: 'second.png', size: 12 }
+            ],
+            user: editableUser
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            item_id: 90,
+            storefront_image_url: '/uploads/storefront-catalog/tenant/first.png'
+        }));
+        expect(updateStorefrontCatalogImage).toHaveBeenCalledWith(90, {
+            path: 'storefront-catalog/tenant/first.png',
+            url: '/uploads/storefront-catalog/tenant/first.png',
+            gallery: [
+                {
+                    path: 'storefront-catalog/tenant/first.png',
+                    url: '/uploads/storefront-catalog/tenant/first.png',
+                    is_primary: true,
+                    sort_order: 0
+                },
+                {
+                    path: 'storefront-catalog/tenant/second.png',
+                    url: '/uploads/storefront-catalog/tenant/second.png',
+                    is_primary: false,
+                    sort_order: 1
+                }
+            ]
+        }, {
+            keepVisible: true
+        });
+        expect(remove).toHaveBeenCalledWith({ path: 'storefront-catalog/tenant/old-primary.png' });
+        expect(remove).toHaveBeenCalledWith({ path: 'storefront-catalog/tenant/old-second.png' });
+
+        await fs.rm(firstTempPath, { force: true });
+        await fs.rm(secondTempPath, { force: true });
+    });
+
     it('uploadBulkStorefrontCatalogImages blocks visible price-less rows per file', async () => {
         const tempPath = path.join(os.tmpdir(), `bulk-storefront-price-${Date.now()}.png`);
         await fs.writeFile(tempPath, Buffer.from([
@@ -367,7 +452,8 @@ describe('storefront catalog use cases', () => {
         expect(updateStorefrontCatalogImage).not.toHaveBeenCalled();
     });
 
-    it('deleteStorefrontCatalogImage clears only storefront image fields', async () => {
+    it('deleteStorefrontCatalogImage removes primary and gallery files before clearing only storefront image fields', async () => {
+        const remove = jest.fn().mockResolvedValue(undefined);
         const clearStorefrontCatalogImage = jest.fn().mockResolvedValue({
             item_id: 99,
             storefront_visible: false,
@@ -378,12 +464,16 @@ describe('storefront catalog use cases', () => {
                 findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue({
                     item_id: 99,
                     storefront_visible: false,
-                    storefront_image_path: 'uploads/storefront/old.png'
+                    storefront_image_path: 'uploads/storefront/old.png',
+                    storefront_image_gallery: [
+                        { path: 'uploads/storefront/old.png', url: '/uploads/storefront/old.png', is_primary: true, sort_order: 0 },
+                        { path: 'uploads/storefront/second.png', url: '/uploads/storefront/second.png', is_primary: false, sort_order: 1 }
+                    ]
                 }),
                 clearStorefrontCatalogImage
             },
             imageStorage: {
-                remove: jest.fn().mockResolvedValue(undefined)
+                remove
             }
         });
 
@@ -395,5 +485,8 @@ describe('storefront catalog use cases', () => {
             storefront_image_url: null
         }));
         expect(clearStorefrontCatalogImage).toHaveBeenCalledWith(99);
+        expect(remove).toHaveBeenCalledWith({ path: 'uploads/storefront/old.png' });
+        expect(remove).toHaveBeenCalledWith({ path: 'uploads/storefront/second.png' });
+        expect(remove).toHaveBeenCalledTimes(2);
     });
 });

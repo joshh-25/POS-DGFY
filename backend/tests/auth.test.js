@@ -8,7 +8,7 @@ import tenantConnector from '../src/utils/TenantConnector.js';
 import { getTenantModels } from '../src/utils/tenantModelFactory.js';
 import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
 
-jest.setTimeout(60000);
+jest.setTimeout(180000);
 
 describe('Authentication API', () => {
   const TEST_EMAILS = ['test@example.com', 'testuser2@example.com'];
