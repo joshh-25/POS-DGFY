@@ -14,7 +14,7 @@
     "build:store": "vite build --config apps/store/vite.config.js",
     "preview": "vite preview",
     "lint": "eslint src apps --ext .js,.jsx",
-    "test": "vitest run"
+    "test": "vitest run --maxWorkers=1"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

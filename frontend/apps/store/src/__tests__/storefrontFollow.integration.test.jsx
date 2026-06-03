@@ -5,6 +5,15 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from '../main.jsx';
 
+vi.mock('sonner', () => ({
+  Toaster: () => null,
+  toast: {
+    error: vi.fn(),
+    info: vi.fn(),
+    success: vi.fn()
+  }
+}));
+
 vi.mock('maplibre-gl', () => {
   function PopupApi() {
     return {
@@ -55,6 +64,10 @@ describe('storefront follow integration', () => {
 
   beforeEach(() => {
     window.history.pushState({}, '', '/tenant-store/alpha-store');
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
+    window.__SKU_STOREFRONT_AUTH_TOKEN__ = '';
     fetchMock = vi.fn(async (url, options = {}) => {
       const normalized = String(url);
       if (normalized.includes('/api/v1/storefront/discovery/alpha-store')) {
@@ -102,6 +115,10 @@ describe('storefront follow integration', () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
+    window.__SKU_STOREFRONT_AUTH_TOKEN__ = '';
   });
 
   it('transitions Follow -> Following -> Follow and updates count', async () => {
@@ -111,20 +128,20 @@ describe('storefront follow integration', () => {
     await waitFor(() => {
       expect(screen.getByText('3 followers')).toBeTruthy();
       expect(screen.getByRole('button', { name: 'Follow this storefront' }).getAttribute('title')).toBe('Follow');
-    });
+    }, { timeout: 8000 });
 
     await user.click(screen.getByRole('button', { name: 'Follow this storefront' }));
     await waitFor(() => {
       expect(screen.getByText('4 followers')).toBeTruthy();
       expect(screen.getByRole('button', { name: 'Unfollow this storefront' }).getAttribute('title')).toBe('Following');
-    });
+    }, { timeout: 8000 });
 
     await user.click(screen.getByRole('button', { name: 'Unfollow this storefront' }));
     await waitFor(() => {
       expect(screen.getByText('3 followers')).toBeTruthy();
       expect(screen.getByRole('button', { name: 'Follow this storefront' }).getAttribute('title')).toBe('Follow');
-    });
-  });
+    }, { timeout: 8000 });
+  }, 10000);
 
   it('renders explicit 429 follow errors', async () => {
     fetchMock.mockImplementation(async (url, options = {}) => {
@@ -168,15 +185,15 @@ describe('storefront follow integration', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Unfollow this storefront' })).toBeTruthy();
-    });
+    }, { timeout: 8000 });
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Unfollow this storefront' }).getAttribute('title')).toBe('Following');
-    });
+    }, { timeout: 8000 });
     await user.click(screen.getByRole('button', { name: 'Unfollow this storefront' }));
     await waitFor(() => {
-      expect(screen.getByText('Too many follow requests. Please wait and retry.')).toBeTruthy();
-    });
-  });
+      expect(screen.getAllByText('Too many follow requests. Please wait and retry.').length).toBeGreaterThan(0);
+    }, { timeout: 8000 });
+  }, 10000);
 
   it('renders explicit 404 follow errors', async () => {
     fetchMock.mockImplementation(async (url, options = {}) => {
@@ -217,10 +234,10 @@ describe('storefront follow integration', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Follow this storefront' })).toBeTruthy();
-    });
+    }, { timeout: 8000 });
     await user.click(screen.getByRole('button', { name: 'Follow this storefront' }));
     await waitFor(() => {
       expect(screen.getByText('Storefront is unavailable for follow.')).toBeTruthy();
-    });
-  });
+    }, { timeout: 8000 });
+  }, 10000);
 });

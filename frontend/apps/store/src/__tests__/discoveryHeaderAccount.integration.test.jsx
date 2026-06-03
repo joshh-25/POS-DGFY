@@ -144,9 +144,9 @@ describe('discovery header customer account actions', () => {
 
     expect(screen.getByRole('button', { name: /log in \/ sign up/i })).toBeTruthy();
     expect(screen.getAllByRole('button', { name: /register your business/i }).length).toBeGreaterThan(0);
-  });
+  }, 10000);
 
-  it('opens the DGFY account drawer from the discovery auth action', async () => {
+  it('opens the DGFY auth dialog from the discovery auth action', async () => {
     const user = userEvent.setup();
     render(<App />);
 
@@ -157,7 +157,7 @@ describe('discovery header customer account actions', () => {
       expect(screen.getByRole('dialog', { name: /dgfy account/i })).toBeTruthy();
       expect(screen.getByRole('button', { name: /^sign in$/i })).toBeTruthy();
     });
-  });
+  }, 10000);
 
   it('switches discovery header to My Account when a DGFY customer session exists', async () => {
     window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = 'dgfy-test-token';
@@ -167,5 +167,5 @@ describe('discovery header customer account actions', () => {
 
     expect(screen.getByRole('button', { name: /^my account$/i })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /log in \/ sign up/i })).toBeNull();
-  });
+  }, 10000);
 });

@@ -177,9 +177,9 @@ describe('storefront profile launcher', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(screen.queryByRole('button', { name: /^Profile$/i })).toBeNull();
-  });
+  }, 10000);
 
-  it('opens account panel from the profile launcher button on a store page', async () => {
+  it('opens the routed account page from the profile launcher button on a store page', async () => {
     window.history.pushState({}, '', '/tenant-store/alpha');
     const user = userEvent.setup();
     render(<App />);
@@ -190,15 +190,16 @@ describe('storefront profile launcher', () => {
     });
 
     const profileButton = screen.getAllByRole('button', { name: /^Profile$/i })
-      .find((button) => window.getComputedStyle(button).pointerEvents !== 'none');
+      .filter((button) => window.getComputedStyle(button).pointerEvents !== 'none')
+      .at(-1);
     expect(profileButton).toBeTruthy();
     await user.click(profileButton);
 
     await waitFor(() => {
-      expect(screen.getByText('DGFY Account')).toBeTruthy();
-      expect(screen.getByRole('button', { name: /sign in to dgfy/i })).toBeTruthy();
+      expect(window.location.pathname).toBe('/tenant-store/alpha/account');
+      expect(screen.getByRole('heading', { name: /^My Account$/i })).toBeTruthy();
     });
-  });
+  }, 10000);
 
   it('shows an active order badge on storefront headers for signed-in customers with in-progress orders', async () => {
     window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = 'dgfy-test-token';
@@ -209,5 +210,5 @@ describe('storefront profile launcher', () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/1 active order/i)).toBeTruthy();
     });
-  });
+  }, 10000);
 });

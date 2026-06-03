@@ -1,4 +1,5 @@
 import api from './api.js';
+import { setBrowserSession } from './browserSession.js';
 
 let dgfyToken = '';
 let dgfyAccount = null;
@@ -141,6 +142,26 @@ export const acceptDgfyInvitation = async (membershipId, token = getStoredDgfyTo
     }
   });
   return response.data.data;
+};
+
+export const startDgfyTenantSession = async ({
+  tenantId,
+  companyToken
+} = {}, token = getStoredDgfyToken()) => {
+  const response = await api.post('/dgfy/auth/tenant-session', {
+    tenant_id: tenantId,
+    company_token: companyToken
+  }, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  const data = response.data.data;
+  setBrowserSession({
+    token: data?.token,
+    companyToken: data?.company?.token || companyToken
+  });
+  return data;
 };
 
 export const dgfyAuthHeader = () => {

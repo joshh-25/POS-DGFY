@@ -64,6 +64,7 @@ import {
   updateStorefrontCatalogOverride,
   updateBulkStorefrontCatalogOverrides,
   uploadStorefrontCatalogImage,
+  uploadStorefrontCatalogImages,
   uploadBulkStorefrontCatalogImages,
   deleteStorefrontCatalogImage
 } from '@/services/storefrontCatalogService.js';
@@ -433,17 +434,20 @@ export default function Items() {
     }
   };
 
-  const handleUploadStorefrontImage = async (item, file) => {
+  const handleUploadStorefrontImage = async (item, files) => {
     const itemId = item?.item_id || item?.id;
-    if (!itemId || !file || !canConfigureStorefrontCatalog) return;
+    const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : (files ? [files] : []);
+    if (!itemId || normalizedFiles.length === 0 || !canConfigureStorefrontCatalog) return;
 
     try {
-      const updated = await uploadStorefrontCatalogImage(itemId, file);
+      const updated = normalizedFiles.length > 1
+        ? await uploadStorefrontCatalogImages(itemId, normalizedFiles)
+        : await uploadStorefrontCatalogImage(itemId, normalizedFiles[0]);
       setStorefrontCatalogOverrides((prev) => ({
         ...prev,
         [itemId]: { ...(prev[itemId] || {}), ...updated }
       }));
-      toast.success(`Item image updated for ${item.name}`);
+      toast.success(normalizedFiles.length > 1 ? `Item gallery updated for ${item.name}` : `Item image updated for ${item.name}`);
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to upload item image');
     }
@@ -2232,6 +2236,9 @@ export default function Items() {
                       const storefrontConfigResolved = resolveStorefrontConfig(item);
                       const storefrontVisible = storefrontConfigResolved.storefront_visible !== false;
                       const storefrontImageUrl = storefrontConfigResolved.storefront_image_url || null;
+                      const storefrontImageGallery = Array.isArray(storefrontConfigResolved.storefront_image_gallery)
+                        ? storefrontConfigResolved.storefront_image_gallery
+                        : [];
                       const checked = posChecklistSelectedIds.has(itemId);
                       const readiness = posReadinessByItemId[itemId] || buildFallbackPosReadiness(item);
                       const recommendation = getCatalogRecommendationForItem(item);
@@ -2350,11 +2357,18 @@ export default function Items() {
                               <td className="p-3">
                                 <div className="space-y-2">
                                   {storefrontImageUrl ? (
-                                    <img
-                                      src={storefrontImageUrl}
-                                      alt={`${item.name} storefront catalog`}
-                                      className="h-16 w-20 rounded-md border border-slate-200 object-cover"
-                                    />
+                                    <div className="flex items-center gap-2">
+                                      <img
+                                        src={storefrontImageUrl}
+                                        alt={`${item.name} storefront catalog`}
+                                        className="h-16 w-20 rounded-md border border-slate-200 object-cover"
+                                      />
+                                      {storefrontImageGallery.length > 1 && (
+                                        <Badge variant="outline" className="bg-slate-50 text-slate-600">
+                                          {storefrontImageGallery.length} photos
+                                        </Badge>
+                                      )}
+                                    </div>
                                   ) : (
                                     <span className="text-xs text-slate-500">No image</span>
                                   )}
@@ -2364,11 +2378,12 @@ export default function Items() {
                                       <input
                                         type="file"
                                         accept="image/*"
+                                        multiple
                                         className="hidden"
                                         onChange={(event) => {
-                                          const file = event.target.files?.[0];
-                                          if (file) {
-                                            handleUploadStorefrontImage(item, file);
+                                          const files = Array.from(event.target.files || []);
+                                          if (files.length) {
+                                            handleUploadStorefrontImage(item, files);
                                           }
                                           event.target.value = '';
                                         }}

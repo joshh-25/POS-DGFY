@@ -75,6 +75,32 @@ const withAssetOrigin = (url) => {
   }
 };
 
+const normalizeProductImageGallery = (item = {}) => {
+  const gallery = Array.isArray(item?.image_gallery)
+    ? item.image_gallery
+    : (Array.isArray(item?.storefront_image_gallery) ? item.storefront_image_gallery : []);
+  const entries = gallery
+    .map((entry, index) => ({
+      url: withAssetOrigin(entry?.url || entry?.image_url || entry),
+      is_primary: entry?.is_primary === true,
+      sort_order: Number.isFinite(Number(entry?.sort_order)) ? Number(entry.sort_order) : index
+    }))
+    .filter((entry) => entry.url)
+    .sort((a, b) => {
+      if (a.is_primary !== b.is_primary) return a.is_primary ? -1 : 1;
+      return a.sort_order - b.sort_order;
+    });
+  const primaryUrl = withAssetOrigin(item?.image_url);
+  const withPrimary = primaryUrl && !entries.some((entry) => entry.url === primaryUrl)
+    ? [{ url: primaryUrl, is_primary: true, sort_order: -1 }, ...entries]
+    : entries;
+  return withPrimary.map((entry, index) => ({
+    ...entry,
+    is_primary: index === 0,
+    sort_order: index
+  }));
+};
+
 const asTitle = (value = '') => String(value || '')
   .split(/[_\s]+/)
   .filter(Boolean)
@@ -191,8 +217,12 @@ export function FnbProductDetailsPage({
   const [isDescExpanded, setIsDescExpanded] = React.useState(false);
   const descRef = React.useRef(null);
   const [showReadMore, setShowReadMore] = React.useState(false);
+  const [activeImageIndex, setActiveImageIndex] = React.useState(0);
 
   const descriptionText = String(item?.descriptionPreview || item?.description || '').trim();
+  const imageGallery = React.useMemo(() => normalizeProductImageGallery(item), [item]);
+  const selectedImageUrl = imageGallery[activeImageIndex]?.url || imageGallery[0]?.url || '';
+  const hasMultipleImages = imageGallery.length > 1;
 
   React.useEffect(() => {
     if (descRef.current && !isDescExpanded) {
@@ -200,6 +230,11 @@ export function FnbProductDetailsPage({
       setShowReadMore(isOverflowing);
     }
   }, [descriptionText, isDescExpanded]);
+
+  React.useEffect(() => {
+    setActiveImageIndex(0);
+  }, [item?.item_id, imageGallery.length]);
+
   const [expandedGroups, setExpandedGroups] = React.useState(() => {
     const initial = {};
     if (Array.isArray(modifierGroups) && modifierGroups.length > 0) {
@@ -259,7 +294,7 @@ export function FnbProductDetailsPage({
   }
 
   /* --- Derived display values --- */
-  const imageUrl = withAssetOrigin(item.image_url);
+  const imageUrl = selectedImageUrl;
   const description = String(item.descriptionPreview || item.description || '').trim();
   const sectionLabel = String(item.sectionLabel || item.folder_name || item.category || 'Menu').trim();
   const availabilityLabel = String(item.inventory_display?.label || (available ? 'Available' : 'Availability not provided')).trim();
@@ -562,11 +597,12 @@ export function FnbProductDetailsPage({
               </button>
 
               {/* Slide Navigation Arrows */}
-              {imageUrl && (
+              {imageUrl && hasMultipleImages && (
                 <>
                   <button
                     type="button"
                     aria-label="Previous slide"
+                    onClick={() => setActiveImageIndex((index) => (index === 0 ? imageGallery.length - 1 : index - 1))}
                     style={{
                       position: 'absolute',
                       left: 16,
@@ -591,6 +627,7 @@ export function FnbProductDetailsPage({
                   <button
                     type="button"
                     aria-label="Next slide"
+                    onClick={() => setActiveImageIndex((index) => (index + 1) % imageGallery.length)}
                     style={{
                       position: 'absolute',
                       right: 16,
@@ -646,7 +683,7 @@ export function FnbProductDetailsPage({
               </div>
 
               {/* Custom dynamic thumbnails gallery representation */}
-              {imageUrl && (
+              {imageUrl && imageGallery.length > 0 && (
                 <div style={{
                   position: 'absolute',
                   bottom: 16,
@@ -655,19 +692,28 @@ export function FnbProductDetailsPage({
                   gap: 8,
                   zIndex: 10
                 }}>
-                  {/* Primary Thumbnail active */}
-                  <div style={{
-                    width: 48,
-                    height: 48,
-                    borderRadius: 10,
-                    border: '2px solid #22C55E',
-                    overflow: 'hidden',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                    background: '#fff',
-                    cursor: 'pointer'
-                  }}>
-                    <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  </div>
+                  {imageGallery.map((entry, index) => (
+                    <button
+                      key={`${entry.url}-${index}`}
+                      type="button"
+                      aria-label={`Show product image ${index + 1}`}
+                      onClick={() => setActiveImageIndex(index)}
+                      style={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: 10,
+                        border: index === activeImageIndex ? '2px solid #22C55E' : '1px solid rgba(255,255,255,0.7)',
+                        overflow: 'hidden',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                        background: '#fff',
+                        cursor: 'pointer',
+                        padding: 0,
+                        opacity: index === activeImageIndex ? 1 : 0.82
+                      }}
+                    >
+                      <img src={entry.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </button>
+                  ))}
                 </div>
               )}
             </div>

@@ -12,7 +12,7 @@ import {
   listTenantLocations,
   updateTenantLocation
 } from '../../../services/tenantLocationService.js';
-import { uploadStorefrontCatalogImage } from '../../../services/storefrontCatalogService.js';
+import { uploadStorefrontCatalogImage, uploadStorefrontCatalogImages } from '../../../services/storefrontCatalogService.js';
 import {
   DEFAULT_WORKFLOW_MODE,
   getWorkflowModeLabel,
@@ -93,6 +93,7 @@ const buildEmptyItemRow = (workflowMode) => {
     cost_per_unit: '',
     current_stock: '',
     image_file: null,
+    image_files: [],
     status: 'idle',
     errors: [],
     created_item: null
@@ -360,10 +361,14 @@ export default function OnboardingSetupModal({
   };
 
   const handleLocationPinChange = ({ latitude, longitude }) => {
+    const formatCoordinate = (value) => {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric.toFixed(6) : String(value || '');
+    };
     setLocationForm((prev) => ({
       ...prev,
-      latitude: String(latitude),
-      longitude: String(longitude)
+      latitude: formatCoordinate(latitude),
+      longitude: formatCoordinate(longitude)
     }));
   };
 
@@ -535,9 +540,16 @@ export default function OnboardingSetupModal({
           errors: [],
           created_item: createdItem
         };
-        if (itemId && row.image_file) {
+        const imageFiles = Array.isArray(row.image_files) && row.image_files.length > 0
+          ? row.image_files
+          : (row.image_file ? [row.image_file] : []);
+        if (itemId && imageFiles.length > 0) {
           try {
-            await uploadStorefrontCatalogImage(itemId, row.image_file);
+            if (imageFiles.length > 1) {
+              await uploadStorefrontCatalogImages(itemId, imageFiles);
+            } else {
+              await uploadStorefrontCatalogImage(itemId, imageFiles[0]);
+            }
           } catch (error) {
             return {
               ...nextRow,
@@ -580,20 +592,27 @@ export default function OnboardingSetupModal({
   const handleRetryImageUpload = async (clientRowId) => {
     const row = itemRows.find((entry) => entry.client_row_id === clientRowId);
     const itemId = getCreatedItemId(row);
-    if (!row?.image_file || !itemId) {
-      toast.error('Choose an image before retrying upload.');
+    const imageFiles = Array.isArray(row?.image_files) && row.image_files.length > 0
+      ? row.image_files
+      : (row?.image_file ? [row.image_file] : []);
+    if (imageFiles.length === 0 || !itemId) {
+      toast.error('Choose one or more images before retrying upload.');
       return;
     }
 
     setSaving(true);
     try {
-      await uploadStorefrontCatalogImage(itemId, row.image_file);
+      if (imageFiles.length > 1) {
+        await uploadStorefrontCatalogImages(itemId, imageFiles);
+      } else {
+        await uploadStorefrontCatalogImage(itemId, imageFiles[0]);
+      }
       setItemRows((rows) => rows.map((entry) => (
         entry.client_row_id === clientRowId
           ? { ...entry, status: 'created', errors: [] }
           : entry
       )));
-      toast.success('Item image uploaded.');
+      toast.success(imageFiles.length > 1 ? 'Item gallery uploaded.' : 'Item image uploaded.');
     } catch (error) {
       setItemRows((rows) => rows.map((entry) => (
         entry.client_row_id === clientRowId
@@ -797,7 +816,20 @@ export default function OnboardingSetupModal({
                       </label>
                       <label className="text-xs text-slate-700 md:col-span-3">
                         Item image
-                        <input type="file" accept="image/*" className="mt-1 block w-full text-xs" onChange={(event) => updateItemRow(row.client_row_id, { image_file: event.target.files?.[0] || null })} disabled={isCreatedRow(row) || saving} />
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="mt-1 block w-full text-xs"
+                          onChange={(event) => {
+                            const files = Array.from(event.target.files || []);
+                            updateItemRow(row.client_row_id, {
+                              image_file: files[0] || null,
+                              image_files: files
+                            });
+                          }}
+                          disabled={isCreatedRow(row) || saving}
+                        />
                       </label>
                       <div className="flex items-end text-xs text-slate-500">Row {index + 1}</div>
                     </div>
@@ -805,7 +837,7 @@ export default function OnboardingSetupModal({
                     {row.status === 'created_with_image_error' && (
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <p className="text-xs font-semibold text-amber-700">{row.errors.join(' ')}</p>
-                        <button type="button" onClick={() => handleRetryImageUpload(row.client_row_id)} disabled={saving || !row.image_file} className="rounded-md border border-amber-300 px-2 py-1 text-xs font-semibold text-amber-800 disabled:opacity-50">
+                        <button type="button" onClick={() => handleRetryImageUpload(row.client_row_id)} disabled={saving || !(row.image_file || row.image_files?.length)} className="rounded-md border border-amber-300 px-2 py-1 text-xs font-semibold text-amber-800 disabled:opacity-50">
                           Retry Image Upload
                         </button>
                       </div>

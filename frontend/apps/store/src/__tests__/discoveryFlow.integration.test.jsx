@@ -713,7 +713,7 @@ describe('storefront discovery integration flow', () => {
 
     await user.click(alphaMarkerElement);
     await waitFor(() => expect(screen.getAllByText('Main').length).toBeGreaterThan(0));
-    expect(screen.getAllByText('Main Road').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Iloilo City').length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole('button', { name: 'Open storefront' }));
     await waitFor(() => {

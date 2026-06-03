@@ -2,11 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../src/services/api.js';
 import {
-    acceptDgfyInvitation,
-    changeDgfyPassword,
     clearDgfySession,
     completeDgfyPasswordReset,
     dgfyAuthHeader,
+    exchangeDgfyHandoff,
     fetchDgfyLegalTerms,
     fetchDgfyMe,
     getStoredDgfyAccount,
@@ -16,7 +15,7 @@ import {
     requestDgfyEmailVerification,
     requestDgfyPasswordReset,
     registerDgfyAccount,
-    updateDgfyProfile,
+    startDgfyTenantSession,
     verifyDgfyEmail
 } from '../src/services/dgfyAuthService.js';
 import { Button } from "@/components/ui/button";
@@ -182,13 +181,12 @@ const LegalAcknowledgementBox = ({
 export default function RegisterCompany() {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const profileSectionRef = useRef(null);
+    const businessSectionRef = useRef(null);
     const initialAuthMode = searchParams.get('auth') === 'login' || searchParams.get('source') === 'dgfy'
         ? 'login'
         : 'register';
     const [dgfyToken, setDgfyToken] = useState(() => getStoredDgfyToken());
     const [dgfyAccount, setDgfyAccount] = useState(() => getStoredDgfyAccount());
-    const [dgfyMemberships, setDgfyMemberships] = useState([]);
     const [legalTerms, setLegalTerms] = useState(null);
     const [legalTermsError, setLegalTermsError] = useState('');
     const [authMode, setAuthMode] = useState(initialAuthMode);
@@ -205,8 +203,6 @@ export default function RegisterCompany() {
     const [loginForm, setLoginForm] = useState({ email: '', password: '' });
     const [resetForm, setResetForm] = useState({ email: '', code: '', password: '', confirmPassword: '' });
     const [resetStep, setResetStep] = useState('request');
-    const [profileForm, setProfileForm] = useState({ firstName: '', middleName: '', lastName: '', phone: '' });
-    const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
     const [companyForm, setCompanyForm] = useState({
         companyName: '',
         workflowMode: 'food_manufacturing',
@@ -219,6 +215,7 @@ export default function RegisterCompany() {
     const [notice, setNotice] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isSendingOtp, setIsSendingOtp] = useState(false);
+    const handoffExchangeStartedRef = useRef(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -249,14 +246,12 @@ export default function RegisterCompany() {
                 if (cancelled) return;
                 setDgfyToken(token);
                 setDgfyAccount(data?.account || null);
-                setDgfyMemberships(Array.isArray(data?.memberships) ? data.memberships : []);
             })
             .catch(() => {
                 if (cancelled) return;
                 clearDgfySession();
                 setDgfyToken('');
                 setDgfyAccount(null);
-                setDgfyMemberships([]);
             });
 
         return () => {
@@ -266,33 +261,23 @@ export default function RegisterCompany() {
 
     useEffect(() => {
         if (!dgfyAccount) return;
-        setProfileForm({
-            firstName: dgfyAccount.first_name || '',
-            middleName: dgfyAccount.middle_name || '',
-            lastName: dgfyAccount.last_name || '',
-            phone: dgfyAccount.phone || ''
-        });
-    }, [dgfyAccount]);
+        const shouldFocusBusinessRegistration = searchParams.get('source') === 'dgfy'
+            || (typeof window !== 'undefined' && window.location.hash === '#business-registration');
+        if (!shouldFocusBusinessRegistration) return;
 
-    useEffect(() => {
-        if (!dgfyAccount) return;
-        const shouldFocusProfile = searchParams.get('source') === 'dgfy'
-            || (typeof window !== 'undefined' && window.location.hash === '#dgfy-profile');
-        if (!shouldFocusProfile) return;
-
-        const focusProfile = () => {
-            const profileSection = profileSectionRef.current;
-            if (typeof profileSection?.scrollIntoView === 'function') {
-                profileSection.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        const focusBusinessRegistration = () => {
+            const businessSection = businessSectionRef.current;
+            if (typeof businessSection?.scrollIntoView === 'function') {
+                businessSection.scrollIntoView({ block: 'start', behavior: 'smooth' });
             }
-            if (typeof profileSection?.focus === 'function') {
-                profileSection.focus({ preventScroll: true });
+            if (typeof businessSection?.focus === 'function') {
+                businessSection.focus({ preventScroll: true });
             }
         };
         if (typeof window.requestAnimationFrame === 'function') {
-            window.requestAnimationFrame(focusProfile);
+            window.requestAnimationFrame(focusBusinessRegistration);
         } else {
-            focusProfile();
+            focusBusinessRegistration();
         }
     }, [dgfyAccount, searchParams]);
 
@@ -316,17 +301,36 @@ export default function RegisterCompany() {
     const setDgfySessionState = (session) => {
         setDgfyToken(session?.token || getStoredDgfyToken());
         setDgfyAccount(session?.account || null);
-        setDgfyMemberships([]);
         setError('');
         setNotice('');
         fetchDgfyMe(session?.token || getStoredDgfyToken()).then((data) => {
-            setDgfyMemberships(Array.isArray(data?.memberships) ? data.memberships : []);
+            if (data?.account) setDgfyAccount(data.account);
         }).catch(() => {});
     };
 
-    const pendingInvitations = dgfyMemberships.filter((membership) => (
-        membership?.source === 'invite' && membership?.status === 'pending'
-    ));
+    useEffect(() => {
+        const handoffToken = String(searchParams.get('handoff_token') || '').trim();
+        if (!handoffToken || handoffExchangeStartedRef.current) return undefined;
+
+        handoffExchangeStartedRef.current = true;
+        setAuthMode('login');
+        setIsLoading(true);
+        exchangeDgfyHandoff(handoffToken)
+            .then((session) => {
+                setDgfySessionState(session);
+                setNotice('DGFY account connected. Register your business below.');
+            })
+            .catch(() => {
+                clearDgfySession();
+                setDgfyToken('');
+                setDgfyAccount(null);
+                setError('Your DGFY handoff expired. Sign in again to register your business.');
+            })
+            .finally(() => setIsLoading(false));
+
+        return undefined;
+    }, [searchParams]);
+
     const isDgfyEmailVerified = Boolean(dgfyAccount?.is_email_verified || dgfyAccount?.email_verified_at);
 
     const handleRegisterDgfyAccount = async (event) => {
@@ -447,55 +451,6 @@ export default function RegisterCompany() {
         }
     };
 
-    const handleUpdateDgfyProfile = async (event) => {
-        event.preventDefault();
-        setError('');
-        setNotice('');
-        setIsLoading(true);
-        try {
-            const result = await updateDgfyProfile({
-                first_name: profileForm.firstName,
-                middle_name: profileForm.middleName,
-                last_name: profileForm.lastName,
-                phone: profileForm.phone
-            }, dgfyToken);
-            setDgfyAccount(result?.account || getStoredDgfyAccount());
-            setNotice('DGFY profile updated.');
-        } catch (err) {
-            setError(err.response?.data?.message || 'Could not update DGFY profile.');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const handleChangeDgfyPassword = async (event) => {
-        event.preventDefault();
-        setError('');
-        setNotice('');
-        if (passwordForm.newPassword.length < 8) {
-            setError('New password must be at least 8 characters.');
-            return;
-        }
-        if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-            setError('Passwords do not match.');
-            return;
-        }
-        setIsLoading(true);
-        try {
-            await changeDgfyPassword({
-                current_password: passwordForm.currentPassword,
-                new_password: passwordForm.newPassword,
-                confirm_password: passwordForm.confirmPassword
-            }, dgfyToken);
-            setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-            setNotice('DGFY password changed.');
-        } catch (err) {
-            setError(err.response?.data?.message || 'Could not change DGFY password.');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
     const handleRequestDgfyVerification = async () => {
         setError('');
         setIsSendingOtp(true);
@@ -568,9 +523,23 @@ export default function RegisterCompany() {
                 throw new Error(response.data?.message || 'Registration failed');
             }
 
+            const registrationData = response.data.data || {};
+            if (registrationData.status === 'active' && registrationData.company_token) {
+                try {
+                    await startDgfyTenantSession({
+                        tenantId: registrationData.id,
+                        companyToken: registrationData.company_token
+                    }, dgfyToken);
+                    navigate('/', { replace: true });
+                    return;
+                } catch (sessionError) {
+                    setNotice(sessionError.response?.data?.message || 'Company created. Sign in to SKUpervisor to continue.');
+                }
+            }
+
             setSuccess({
                 message: response.data.message,
-                data: response.data.data
+                data: registrationData
             });
             setCompanyForm((current) => ({ ...current, acceptedCompanyTerms: false }));
         } catch (err) {
@@ -584,24 +553,9 @@ export default function RegisterCompany() {
         await logoutDgfyAccount(dgfyToken).catch(() => clearDgfySession());
         setDgfyToken('');
         setDgfyAccount(null);
-        setDgfyMemberships([]);
         setSuccess(null);
         setDgfyVerificationCode('');
         setDgfyVerificationSentTo('');
-    };
-
-    const handleAcceptDgfyInvitation = async (membershipId) => {
-        setError('');
-        setIsLoading(true);
-        try {
-            await acceptDgfyInvitation(membershipId, dgfyToken);
-            const data = await fetchDgfyMe(dgfyToken);
-            setDgfyMemberships(Array.isArray(data?.memberships) ? data.memberships : []);
-        } catch (err) {
-            setError(err.response?.data?.message || 'Could not accept this company invitation.');
-        } finally {
-            setIsLoading(false);
-        }
     };
 
     if (success) {
@@ -787,7 +741,7 @@ export default function RegisterCompany() {
                             )}
                         </section>
                     ) : (
-                        <div id="dgfy-profile" ref={profileSectionRef} tabIndex={-1} className="space-y-5 scroll-mt-6 outline-none focus-visible:ring-2 focus-visible:ring-[#1f5f9f]">
+                        <div id="business-registration" ref={businessSectionRef} tabIndex={-1} className="space-y-5 scroll-mt-6 outline-none focus-visible:ring-2 focus-visible:ring-[#1f5f9f]">
                             <div className="flex items-center justify-between gap-4 rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">
                                 <div className="flex items-center gap-3">
                                     <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#e8f4ff] text-[#1f5f9f]">
@@ -801,57 +755,6 @@ export default function RegisterCompany() {
                                 <button type="button" onClick={handleSignOutDgfy} className="text-slate-500 hover:text-slate-800" aria-label="Sign out of DGFY">
                                     <LogOut className="h-4 w-4" />
                                 </button>
-                            </div>
-
-                            <div className="grid gap-4 lg:grid-cols-2">
-                                <form onSubmit={handleUpdateDgfyProfile} className="rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">
-                                    <p className="text-sm font-semibold text-[#132033]">DGFY Profile</p>
-                                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                                        <div>
-                                            <Label htmlFor="profileLastName">Last Name</Label>
-                                            <Input id="profileLastName" value={profileForm.lastName} onChange={(e) => setProfileForm({ ...profileForm, lastName: e.target.value })} disabled={isLoading} className="mt-1 bg-white" />
-                                        </div>
-                                        <div>
-                                            <Label htmlFor="profileFirstName">First Name</Label>
-                                            <Input id="profileFirstName" value={profileForm.firstName} onChange={(e) => setProfileForm({ ...profileForm, firstName: e.target.value })} disabled={isLoading} className="mt-1 bg-white" />
-                                        </div>
-                                    </div>
-                                    <div className="mt-3">
-                                        <Label htmlFor="profileMiddleName">Optional Middle Name</Label>
-                                        <Input id="profileMiddleName" value={profileForm.middleName} onChange={(e) => setProfileForm({ ...profileForm, middleName: e.target.value })} disabled={isLoading} className="mt-1 bg-white" />
-                                    </div>
-                                    <div className="mt-3">
-                                        <Label htmlFor="profilePhone">Contact Number</Label>
-                                        <Input id="profilePhone" value={profileForm.phone} onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })} disabled={isLoading} className="mt-1 bg-white" />
-                                        <p className="mt-2 text-xs text-slate-500">Phone verification is reserved for a future OTP rollout.</p>
-                                    </div>
-                                    <Button type="submit" variant="outline" disabled={isLoading} className="mt-3">
-                                        Save Profile
-                                    </Button>
-                                </form>
-
-                                <form onSubmit={handleChangeDgfyPassword} className="rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">
-                                    <p className="text-sm font-semibold text-[#132033]">Password</p>
-                                    <div className="mt-3 space-y-3">
-                                        <div>
-                                            <Label htmlFor="currentDgfyPassword">Current Password</Label>
-                                            <PasswordInput id="currentDgfyPassword" autoComplete="current-password" placeholder="Current password" value={passwordForm.currentPassword} onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })} disabled={isLoading} />
-                                        </div>
-                                        <div className="grid gap-3 sm:grid-cols-2">
-                                            <div>
-                                                <Label htmlFor="newDgfyPassword">New Password</Label>
-                                                <PasswordInput id="newDgfyPassword" autoComplete="new-password" placeholder="At least 8 characters" value={passwordForm.newPassword} onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })} disabled={isLoading} />
-                                            </div>
-                                            <div>
-                                                <Label htmlFor="confirmNewDgfyPassword">Confirm New Password</Label>
-                                                <PasswordInput id="confirmNewDgfyPassword" autoComplete="new-password" placeholder="Re-enter password" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })} disabled={isLoading} />
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <Button type="submit" variant="outline" disabled={isLoading} className="mt-3">
-                                        Change Password
-                                    </Button>
-                                </form>
                             </div>
 
                             {!isDgfyEmailVerified && (
@@ -883,25 +786,6 @@ export default function RegisterCompany() {
                                     {dgfyVerificationSentTo && (
                                         <p className="mt-2 text-xs text-amber-800">Code sent to {dgfyVerificationSentTo}.</p>
                                     )}
-                                </div>
-                            )}
-
-                            {pendingInvitations.length > 0 && (
-                                <div className="rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">
-                                    <p className="text-sm font-semibold text-[#132033]">Company Invitations</p>
-                                    <div className="mt-3 space-y-3">
-                                        {pendingInvitations.map((membership) => (
-                                            <div key={membership.id} className="flex flex-col gap-3 rounded-xl border border-[#d8e8e3] bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
-                                                <div>
-                                                    <p className="text-sm font-semibold text-[#132033]">{membership.company?.name || 'Company'}</p>
-                                                    <p className="text-xs text-slate-600">Role: {membership.role || 'staff'}</p>
-                                                </div>
-                                                <Button type="button" variant="outline" disabled={isLoading} onClick={() => handleAcceptDgfyInvitation(membership.id)}>
-                                                    Accept Invitation
-                                                </Button>
-                                            </div>
-                                        ))}
-                                    </div>
                                 </div>
                             )}
 

@@ -190,6 +190,42 @@ export const listTenantPaymentAccounts = async (filters = {}) => {
     return response.data;
 };
 
+export const listDgfyAccounts = async (filters = {}) => {
+    const response = await adminApi.get('/dgfy/admin/accounts', {
+        headers: requireAdminHeaders(),
+        params: filters
+    });
+    return response.data;
+};
+
+export const getDgfyAccount = async (accountId) => {
+    const response = await adminApi.get(`/dgfy/admin/accounts/${accountId}`, {
+        headers: requireAdminHeaders()
+    });
+    return response.data;
+};
+
+export const updateDgfyAccountProfile = async (accountId, payload) => {
+    const response = await adminApi.patch(`/dgfy/admin/accounts/${accountId}/profile`, payload, {
+        headers: requireAdminHeaders()
+    });
+    return response.data;
+};
+
+export const suspendDgfyAccount = async (accountId, payload) => {
+    const response = await adminApi.post(`/dgfy/admin/accounts/${accountId}/suspend`, payload, {
+        headers: requireAdminHeaders()
+    });
+    return response.data;
+};
+
+export const reactivateDgfyAccount = async (accountId, payload) => {
+    const response = await adminApi.post(`/dgfy/admin/accounts/${accountId}/reactivate`, payload, {
+        headers: requireAdminHeaders()
+    });
+    return response.data;
+};
+
 export const upsertTenantPaymentAccount = async (tenantId, payload) => {
     const response = await adminApi.put(`/commerce-payments/admin/tenants/${tenantId}/payment-account`, payload, {
         headers: requireAdminHeaders()

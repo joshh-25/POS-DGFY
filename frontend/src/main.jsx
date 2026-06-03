@@ -65,6 +65,7 @@ const SalesPage = lazy(() => import('./features/sales/pages/SalesPage.jsx'))
 const FeedbackViewer = lazy(() => import('../Pages/FeedbackViewer.jsx'))
 const FeedbackDashboard = lazy(() => import('../Pages/admin/FeedbackDashboard.jsx'))
 const TenantManager = lazy(() => import('../Pages/admin/TenantManager.jsx'))
+const DgfyAccountManager = lazy(() => import('../Pages/admin/DgfyAccountManager.jsx'))
 const PaymentOperations = lazy(() => import('../Pages/admin/PaymentOperations.jsx'))
 const AdminPricing = lazy(() => import('../Pages/admin/AdminPricing.jsx'))
 const HostingStatus = lazy(() => import('../Pages/admin/HostingStatus.jsx'))
@@ -226,6 +227,7 @@ function App() {
           <Route index element={<Navigate to="/admin/tenants" replace />} />
           <Route path="feedback" element={<FeedbackDashboard />} />
           <Route path="tenants" element={<TenantManager />} />
+          <Route path="dgfy-accounts" element={<DgfyAccountManager />} />
           <Route path="payments" element={<PaymentOperations />} />
           <Route path="pricing" element={<AdminPricing />} />
           <Route path="hosting" element={<HostingStatus />} />

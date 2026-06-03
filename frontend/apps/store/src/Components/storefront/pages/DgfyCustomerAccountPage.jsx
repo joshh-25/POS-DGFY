@@ -64,9 +64,12 @@ const buildTrackSummaryLines = (activity = {}) => {
 
 export function DgfyCustomerAccountPage({
   isMobileViewport,
+  presentation = 'dialog',
   onClose,
   onRefresh,
   onTrackReference,
+  onCancelOrder,
+  onReorderOrder,
   onSignOut,
   onHelp,
   onRegisterBusiness,
@@ -82,8 +85,10 @@ export function DgfyCustomerAccountPage({
   activeOrderCount,
   trackedCustomerActivity,
   customerTrackLoadingReference,
-  customerTrackError
+  customerTrackError,
+  accountOrderActionReference = ''
 }) {
+  const isPage = presentation === 'page';
   const allOrders = Array.isArray(accountPanel?.orders) ? accountPanel.orders : [];
   const allBookings = Array.isArray(accountPanel?.bookings) ? accountPanel.bookings : [];
   const allAddresses = Array.isArray(accountPanel?.addresses) ? accountPanel.addresses : [];
@@ -92,35 +97,38 @@ export function DgfyCustomerAccountPage({
 
   return (
     <>
-      <button
-        type="button"
-        aria-label="Close customer account page"
-        onClick={onClose}
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 2498,
-          border: 'none',
-          background: 'rgba(15,23,42,0.42)',
-          backdropFilter: 'blur(12px)',
-          cursor: 'pointer'
-        }}
-      />
+      {!isPage && (
+        <button
+          type="button"
+          aria-label="Close customer account page"
+          onClick={onClose}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 2498,
+            border: 'none',
+            background: 'rgba(15,23,42,0.42)',
+            backdropFilter: 'blur(12px)',
+            cursor: 'pointer'
+          }}
+        />
+      )}
       <section
-        role="dialog"
-        aria-modal="true"
+        role={isPage ? undefined : 'dialog'}
+        aria-modal={isPage ? undefined : true}
         aria-label="My Account"
         style={{
-          position: 'fixed',
-          inset: isMobileViewport ? 0 : 16,
-          zIndex: 2499,
+          position: isPage ? 'relative' : 'fixed',
+          inset: isPage ? 'auto' : (isMobileViewport ? 0 : 16),
+          zIndex: isPage ? 1 : 2499,
           background: SURFACE,
-          borderRadius: isMobileViewport ? 0 : 28,
-          border: isMobileViewport ? 'none' : `1px solid ${BORDER}`,
-          boxShadow: '0 32px 72px rgba(15,23,42,0.16)',
+          borderRadius: isPage ? 0 : (isMobileViewport ? 0 : 28),
+          border: isPage || isMobileViewport ? 'none' : `1px solid ${BORDER}`,
+          boxShadow: isPage ? 'none' : '0 32px 72px rgba(15,23,42,0.16)',
           display: 'grid',
           gridTemplateRows: 'auto 1fr',
-          overflow: 'hidden'
+          overflow: isPage ? 'visible' : 'hidden',
+          minHeight: isPage ? '100vh' : undefined
         }}
       >
         <header
@@ -155,9 +163,9 @@ export function DgfyCustomerAccountPage({
               <User size={isMobileViewport ? 24 : 28} strokeWidth={2.2} />
             </div>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: isMobileViewport ? 30 : 32, fontWeight: 700, lineHeight: 1.04, color: TEXT, letterSpacing: '-0.03em' }}>
+              <h1 style={{ margin: 0, fontSize: isMobileViewport ? 30 : 32, fontWeight: 700, lineHeight: 1.04, color: TEXT, letterSpacing: '-0.03em' }}>
                 My Account
-              </div>
+              </h1>
               <div style={{ marginTop: 10, fontSize: isMobileViewport ? 15 : 16, lineHeight: 1.6, color: MUTED, maxWidth: 720 }}>
                 View your orders, bookings, tracking references, saved addresses, and loyalty activity across DGFY stores.
               </div>
@@ -166,7 +174,7 @@ export function DgfyCustomerAccountPage({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close customer account page"
+            aria-label={isPage ? 'Back to storefront' : 'Close customer account page'}
             style={{
               width: isMobileViewport ? 48 : 54,
               height: isMobileViewport ? 48 : 54,
@@ -181,7 +189,7 @@ export function DgfyCustomerAccountPage({
               flexShrink: 0
             }}
           >
-            <X size={isMobileViewport ? 22 : 24} strokeWidth={2.3} />
+            {isPage ? <ChevronRight size={isMobileViewport ? 22 : 24} strokeWidth={2.3} style={{ transform: 'rotate(180deg)' }} /> : <X size={isMobileViewport ? 22 : 24} strokeWidth={2.3} />}
           </button>
         </header>
 
@@ -326,6 +334,11 @@ export function DgfyCustomerAccountPage({
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
                       <div style={{ fontSize: 14, color: MUTED }}>Placed on {formatDate(order.occurred_at)}</div>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {(() => {
+                          const allowedActions = order.allowed_actions || {};
+                          const actionBusy = accountOrderActionReference === order.reference;
+                          return (
+                            <>
                         <button
                           type="button"
                           onClick={() => onTrackReference(order.reference)}
@@ -336,16 +349,23 @@ export function DgfyCustomerAccountPage({
                         </button>
                         <button
                           type="button"
-                          style={{ minHeight: 42, borderRadius: 14, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: TEXT, padding: '0 14px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
+                          onClick={() => onCancelOrder?.(order)}
+                          disabled={!allowedActions.cancel || actionBusy}
+                          style={{ minHeight: 42, borderRadius: 14, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: TEXT, padding: '0 14px', fontSize: 14, fontWeight: 700, cursor: !allowedActions.cancel || actionBusy ? 'not-allowed' : 'pointer', opacity: !allowedActions.cancel || actionBusy ? 0.55 : 1 }}
                         >
-                          Cancel
+                          {actionBusy ? 'Working...' : 'Cancel'}
                         </button>
                         <button
                           type="button"
-                          style={{ minHeight: 42, borderRadius: 14, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: TEXT, padding: '0 14px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
+                          onClick={() => onReorderOrder?.(order)}
+                          disabled={!allowedActions.reorder || actionBusy}
+                          style={{ minHeight: 42, borderRadius: 14, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: TEXT, padding: '0 14px', fontSize: 14, fontWeight: 700, cursor: !allowedActions.reorder || actionBusy ? 'not-allowed' : 'pointer', opacity: !allowedActions.reorder || actionBusy ? 0.55 : 1 }}
                         >
-                          Reorder
+                          {actionBusy ? 'Working...' : 'Reorder'}
                         </button>
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>

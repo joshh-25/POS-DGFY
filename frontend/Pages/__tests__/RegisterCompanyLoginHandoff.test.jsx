@@ -15,6 +15,7 @@ const dgfyAuthMock = vi.hoisted(() => ({
   clearDgfySession: vi.fn(),
   completeDgfyPasswordReset: vi.fn(),
   dgfyAuthHeader: vi.fn(() => ({ Authorization: 'Bearer dgfy-token' })),
+  exchangeDgfyHandoff: vi.fn(),
   fetchDgfyLegalTerms: vi.fn(),
   fetchDgfyMe: vi.fn(),
   getStoredDgfyAccount: vi.fn(() => null),
@@ -23,6 +24,7 @@ const dgfyAuthMock = vi.hoisted(() => ({
   logoutDgfyAccount: vi.fn(),
   requestDgfyEmailVerification: vi.fn(),
   requestDgfyPasswordReset: vi.fn(),
+  startDgfyTenantSession: vi.fn(),
   verifyDgfyEmail: vi.fn(),
   registerDgfyAccount: vi.fn(),
   updateDgfyProfile: vi.fn()
@@ -119,6 +121,7 @@ describe('RegisterCompany DGFY handoff', () => {
     dgfyAuthMock.clearDgfySession.mockReset();
     dgfyAuthMock.completeDgfyPasswordReset.mockReset();
     dgfyAuthMock.fetchDgfyMe.mockReset();
+    dgfyAuthMock.fetchDgfyMe.mockResolvedValue({ account: dgfyAccount });
     dgfyAuthMock.fetchDgfyLegalTerms.mockReset();
     dgfyAuthMock.fetchDgfyLegalTerms.mockResolvedValue(dgfyLegalTerms);
     dgfyAuthMock.getStoredDgfyAccount.mockReset();
@@ -134,6 +137,12 @@ describe('RegisterCompany DGFY handoff', () => {
     dgfyAuthMock.updateDgfyProfile.mockReset();
     dgfyAuthMock.dgfyAuthHeader.mockReset();
     dgfyAuthMock.dgfyAuthHeader.mockReturnValue({ Authorization: 'Bearer dgfy-token' });
+    dgfyAuthMock.exchangeDgfyHandoff.mockReset();
+    dgfyAuthMock.startDgfyTenantSession.mockReset();
+    dgfyAuthMock.startDgfyTenantSession.mockResolvedValue({
+      token: 'tenant-token',
+      company: { token: 'token-autofoods-12345678' }
+    });
     clearClientSessionMock.mockReset();
     window.localStorage.clear();
   });
@@ -157,14 +166,27 @@ describe('RegisterCompany DGFY handoff', () => {
     expect(screen.queryByLabelText('Last Name')).toBeNull();
   });
 
-  it('lands storefront business-registration handoff on the signed-in DGFY profile area', async () => {
-    renderRegistrationFlow(['/register-company?source=dgfy&auth=login#dgfy-profile']);
+  it('lands storefront business-registration handoff on the signed-in business registration area', async () => {
+    renderRegistrationFlow(['/register-company?source=dgfy&auth=login#business-registration']);
 
     await signInDgfy();
 
-    expect(document.querySelector('#dgfy-profile')).toBeTruthy();
-    expect(screen.getByText('DGFY Profile')).toBeTruthy();
+    expect(document.querySelector('#business-registration')).toBeTruthy();
+    expect(screen.getByLabelText('Company Name')).toBeTruthy();
     expect(screen.getByRole('button', { name: /create company/i })).toBeTruthy();
+  });
+
+  it('exchanges storefront DGFY handoff tokens before business registration', async () => {
+    dgfyAuthMock.exchangeDgfyHandoff.mockResolvedValue({
+      token: 'dgfy-token',
+      account: dgfyAccount
+    });
+
+    renderRegistrationFlow(['/register-company?source=dgfy&auth=login&handoff_token=handoff-123#business-registration']);
+
+    await waitFor(() => expect(dgfyAuthMock.exchangeDgfyHandoff).toHaveBeenCalledWith('handoff-123'));
+    expect(await screen.findByLabelText('Company Name')).toBeTruthy();
+    expect(screen.getByText(/DGFY account connected/i)).toBeTruthy();
   });
 
   it('signs out of DGFY without touching removed company OTP state', async () => {
@@ -303,7 +325,11 @@ describe('RegisterCompany DGFY handoff', () => {
     }, {
       headers: { Authorization: 'Bearer dgfy-token' }
     }));
-    expect(await screen.findByText('Company Created')).toBeTruthy();
+    await waitFor(() => expect(dgfyAuthMock.startDgfyTenantSession).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      companyToken: 'token-autofoods-12345678'
+    }, 'dgfy-token'));
+    expect(await screen.findByText('Dashboard screen')).toBeTruthy();
   });
 
   it('requires marketplace acknowledgement before company registration can be submitted', async () => {
@@ -337,44 +363,16 @@ describe('RegisterCompany DGFY handoff', () => {
     expect(options.some((option) => option.value === 'food_manufacturing')).toBe(true);
   });
 
-  it('updates DGFY profile settings without submitting company registration', async () => {
-    dgfyAuthMock.updateDgfyProfile.mockResolvedValue({
-      account: {
-        ...dgfyAccount,
-        first_name: 'Grace',
-        middle_name: 'Brewster',
-        last_name: 'Hopper',
-        username: 'Grace',
-        phone: '+639987654321'
-      }
-    });
-
+  it('keeps the signed-in business registration page focused on company fields', async () => {
     renderRegistrationFlow();
     await screen.findByRole('button', { name: /view terms/i });
     await signInDgfy();
 
-    fireEvent.change(screen.getByLabelText('First Name'), {
-      target: { value: 'Grace' }
-    });
-    fireEvent.change(screen.getByLabelText('Optional Middle Name'), {
-      target: { value: 'Brewster' }
-    });
-    fireEvent.change(screen.getByLabelText('Last Name'), {
-      target: { value: 'Hopper' }
-    });
-    fireEvent.change(screen.getByLabelText('Contact Number'), {
-      target: { value: '+639987654321' }
-    });
-    fireEvent.click(screen.getByRole('button', { name: /save profile/i }));
-
-    await waitFor(() => expect(dgfyAuthMock.updateDgfyProfile).toHaveBeenCalledWith({
-      first_name: 'Grace',
-      middle_name: 'Brewster',
-      last_name: 'Hopper',
-      phone: '+639987654321'
-    }, 'dgfy-token'));
+    expect(screen.getByLabelText('Company Name')).toBeTruthy();
+    expect(screen.getByLabelText('Business Industry')).toBeTruthy();
+    expect(screen.queryByText('DGFY Profile')).toBeNull();
+    expect(screen.queryByText('Password')).toBeNull();
     expect(apiMock.post).not.toHaveBeenCalledWith('/admin/tenants/register', expect.anything(), expect.anything());
-    expect(await screen.findByText('DGFY profile updated.')).toBeTruthy();
   });
 
   it('requests and completes a DGFY password reset from the registration screen', async () => {

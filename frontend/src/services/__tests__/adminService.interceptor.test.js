@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import MockAdapter from 'axios-mock-adapter';
-import { adminApi, getFeedback } from '../adminService.js';
+import { adminApi, getFeedback, login, logout } from '../adminService.js';
 
 const listeners = {};
 
@@ -42,14 +42,16 @@ Object.defineProperty(globalThis, 'sessionStorage', { value: sessionStorageMock,
 describe('adminService interceptor global error behavior', () => {
   let mockAdminApi;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     Object.keys(listeners).forEach((k) => delete listeners[k]);
     sessionStorage.clear();
-    sessionStorage.setItem('admin_token', 'valid-admin-token');
     mockAdminApi = new MockAdapter(adminApi, { onNoMatch: 'passthrough' });
+    mockAdminApi.onPost('/admin/login').reply(200, { success: true, token: 'valid-admin-token' });
+    await login('admin', 'password');
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await logout();
     mockAdminApi?.restore();
     vi.restoreAllMocks();
   });
