@@ -173,7 +173,7 @@ Overall status: in_progress
    - `scripts/check-frontend-budgets.js` is now surface-aware and tracks the renamed `skupervisor:SkupervisorPOSPage-*` chunk instead of the removed `POSPage-*` prefix.
    - Full frontend lint errors were cleared, including the Storefront unescaped JSX text errors, empty catch blocks, undefined fallback key, and mixed indentation in `StorefrontApp.jsx`.
    - Backend lint is warning-free after removing stale DGFY customer activity code; one Storefront hook dependency warning in `SolutionsPage.jsx` was also removed.
-   - `npm run gate:release:local` -> PASS for target SHA `1e3a741049c81f6c366a9fee8a42ac2569c398e7`; readiness artifact: `.tmp/release-gates/1e3a741049c81f6c366a9fee8a42ac2569c398e7/local_readiness.json`.
+   - `npm run gate:release:local` -> PASS for target SHA `9e778e3a631bada235e188d5cc0a4180af491259`; readiness artifact: `.tmp/release-gates/9e778e3a631bada235e188d5cc0a4180af491259/local_readiness.json`.
    - `npm run check:frontend-budgets` -> PASS with current route chunks: SKUpervisor `Login-*` `9.69KB / 20KB`, SKUpervisor `POSCheckoutTerminal-*` `65.14KB / 66KB`, standalone POS `POSCheckoutTerminal-*` `67.2KB / 68KB`, `SkupervisorPOSPage-*` `58.05KB / 59KB`, `TerminalPage-*` `32.86KB / 35KB`, `SalesPage-*` `18.93KB / 20KB`.
    - `npm --prefix frontend run build:skupervisor`, `npm --prefix frontend run build:pos`, and `npm --prefix frontend run build:store` -> PASS under Vite 8.
    - In-app browser smoke for `http://localhost:5174/terminal` rendered `DGFY Terminal Workspace`, POS catalog, current sale panel, and terminal login drawer; clicking `Filter` opened the catalog filter affordance with no console errors. Console warnings were limited to React Router v7 future-flag notices.

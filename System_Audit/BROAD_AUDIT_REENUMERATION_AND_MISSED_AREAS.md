@@ -39,7 +39,7 @@ The prior audit did not appear to fully cover these broader production-readiness
 - Regulatory proof boundary: RMO 24-2023 internal checks versus external BIR filing/accreditation evidence.
 - Payment operations proof: live/sandbox canary, webhook replay rejection, refund/failure handling, and settlement reconciliation evidence.
 - Observability and SLOs: current dashboard, alert, escalation, and incident-drill evidence.
-- Release evidence drift: stale or bypassable QA deployed-head evidence paths. The local release gate now has a current passing artifact for SHA `1e3a741049c81f6c366a9fee8a42ac2569c398e7`, but production SHA and deployed asset parity remain separate evidence requirements.
+- Release evidence drift: stale or bypassable QA deployed-head evidence paths. The local release gate now has a current passing artifact for SHA `9e778e3a631bada235e188d5cc0a4180af491259`, but production SHA and deployed asset parity remain separate evidence requirements.
 
 ## Current Broad Audit Areas
 

@@ -80,6 +80,11 @@ Commands executed during this audit:
 - `npm --prefix frontend test -- --run Pages/__tests__/AcceptInvite.test.jsx Components/users/__tests__/UserManagementModal.rbacContract.test.js` - passed 2 files / 6 tests on 2026-06-03 after invitation acceptance stopped forwarding URL company tokens.
 - `npm --prefix backend test -- --runTestsByPath tests/productionEnvValidation.test.js tests/productionEnvGuard.test.js tests/hostingProfilePreflight.test.js` - passed 3 suites / 17 tests on 2026-06-03 after production env validation became fail-stop.
 - `npm run check:production-env` - passed on 2026-06-03 with shared, VPS, and payment-enabled PayMongo fixture coverage.
+- `npm --prefix backend test -- --runTestsByPath tests/commercePaymentValidator.test.js tests/commercePaymentReadiness.usecases.test.js tests/commercePaymentRefunds.usecases.test.js tests/commercePaymentSettlement.usecases.test.js tests/paymongoWebhookSignature.test.js tests/productionEnvValidation.test.js` - passed 6 suites / 31 tests on 2026-06-03 after applying the PayMongo QR Ph commerce-payment rollout and commerce production-env coverage.
+- `npm --prefix backend run verify:commerce-payment-migration` - passed on 2026-06-03 after applying the commerce-payment migration contract verifier.
+- `npm --prefix frontend test -- --run apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/profileLauncher.integration.test.jsx apps/store/src/__tests__/discoveryHeaderAccount.integration.test.jsx` - passed 3 files / 27 tests on 2026-06-03 after PayMongo QR Ph Storefront integration.
+- `npm --prefix frontend run build:all` - passed on 2026-06-03 after PayMongo QR Ph commerce-payment UI integration.
+- `npm run gate:release:local` - passed on 2026-06-03 after applying PayMongo QR Ph commerce-payment work and rerunning release gates.
 - `npm --prefix backend test` - timed out after 10 minutes during follow-up validation without current full-suite green evidence.
 
 ## Severity Model
@@ -104,7 +109,7 @@ Hygiene, documentation, or follow-through item that should be tracked but does n
 - `1.4-PayMongo_webhook_signature_verification_can_fail_open.md` — remediated 2026-06-03 with fail-closed PayMongo signature verification and replay proof
 - `1.5-Legacy_company_token_invite_links_still_exposed.md` — remediated 2026-06-03 with token-only invitation links and no company-token invite URL generation
 - `1.6-Production_env_validation_logs_without_fail_stop.md` — remediated 2026-06-03 with centralized fail-stop production env validation and release/deploy gates
-- `2.1-Local_release_gate_fails.md` — remediated 2026-06-03 with `npm run gate:release:local` passing for target SHA `1e3a741049c81f6c366a9fee8a42ac2569c398e7`
+- `2.1-Local_release_gate_fails.md` — remediated 2026-06-03 with `npm run gate:release:local` passing for target SHA `9e778e3a631bada235e188d5cc0a4180af491259`
 - `2.2-Frontend_contract_suite_fails.md`
 - `2.3-Backend_full_test_gate_has_no_current_green_evidence.md`
 - `2.4-Frontend_budget_gate_is_not_self_contained.md` — partially remediated 2026-06-03; current budget gate passes, but clean-checkout/fresh-artifact proof remains open
@@ -116,7 +121,7 @@ Hygiene, documentation, or follow-through item that should be tracked but does n
 - `5.1-AI_tool_registry_has_orphan_handler.md`
 - `5.2-AI_red_team_and_cost_abuse_gate_missing_current_evidence.md`
 - `6.1-RMO_24_2023_fiscal_activation_needs_external_evidence.md`
-- `6.2-Payment_live_canary_and_settlement_governance_missing.md`
+- `6.2-Payment_live_canary_and_settlement_governance_missing.md` — still open after local PayMongo QR Ph commerce-payment integration; live provider canary, child-merchant webhook, payout/fee, and settlement evidence remain required
 - `7.1-Observability_and_SLO_evidence_incomplete.md`
 - `7.2-Release_evidence_depends_on_stale_or_bypassable_QA_paths.md`
 
