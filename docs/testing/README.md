@@ -58,6 +58,20 @@ Evidence semantics:
 3. Replay tests prove already processed PayMongo events return an idempotent response without repeating payment mutation.
 4. These gates do not prove live PayMongo delivery, provider dashboard configuration, child-account webhook registration, or settlement correctness.
 
+## Production Env Security Gates
+
+Production env validation evidence is mandatory when authentication, payments, browser sessions, hosting profiles, deploy scripts, PM2 startup, or production configuration changes.
+
+Required commands:
+1. `npm run check:production-env`
+2. `npm --prefix backend test -- --runTestsByPath tests/productionEnvValidation.test.js tests/productionEnvGuard.test.js tests/hostingProfilePreflight.test.js`
+
+Evidence semantics:
+1. Production validation tests prove missing or invalid required values fail closed before the backend accepts traffic.
+2. Startup guard tests prove failing output names variables and validation reasons without logging secret values.
+3. Fixture validation proves shared, VPS, and payment-enabled PayMongo production env shapes stay valid without requiring real production secrets in CI.
+4. These gates do not prove the live server has correct secret values; deploy must still validate the real `backend/.env` on the target host.
+
 ## Tenant Invitation Link Security Gates
 
 Invitation link security evidence is mandatory for tenant onboarding, user-management invitation, Settings, and AI user-management changes.
@@ -296,6 +310,7 @@ Use these tests whenever changing hosting profile env, Redis/cache behavior, AI 
 
 Shared hosting degraded profile:
 ```bash
+npm run check:production-env
 npm run preflight:shared
 npm run test:hosting:shared
 ```
@@ -309,6 +324,7 @@ Expected shared-mode evidence:
 
 Redis-capable VPS profile:
 ```bash
+npm run check:production-env
 npm run preflight:vps
 npm run test:hosting:vps
 ```
@@ -321,7 +337,7 @@ Expected VPS-mode evidence:
 
 Targeted backend regression suites:
 ```bash
-npm --prefix backend test -- --runTestsByPath tests/hostingProfilePreflight.test.js tests/tempFileService.local.test.js tests/healthService.test.js tests/authFailClosed.test.js tests/rateLimiterStoreMode.test.js tests/ai_export_e2e.test.js tests/securityTransport.middleware.test.js
+npm --prefix backend test -- --runTestsByPath tests/productionEnvValidation.test.js tests/productionEnvGuard.test.js tests/hostingProfilePreflight.test.js tests/tempFileService.local.test.js tests/healthService.test.js tests/authFailClosed.test.js tests/rateLimiterStoreMode.test.js tests/ai_export_e2e.test.js tests/securityTransport.middleware.test.js
 ```
 
 Frontend/admin readiness check:

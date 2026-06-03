@@ -68,6 +68,9 @@ For Namecheap shared hosting, use the artifact-based GitHub Actions lane in `doc
 Before deploying to a new host type, validate the selected profile:
 
 ```bash
+# CI/local fixture guard for required production env shapes
+npm run check:production-env
+
 # Shared hosting without Redis
 npm run preflight:shared
 npm run test:hosting:shared
@@ -78,6 +81,8 @@ npm run test:hosting:vps
 ```
 
 Shared hosting uses `backend/.env.shared.example` and `frontend/.env.shared.example` as templates. VPS/Redis hosting uses `backend/.env.vps.example` and `frontend/.env.vps.example` as templates. Do not leave placeholder secrets or `DB_AUTO_SYNC=true` in production.
+
+Production runtime uses the same env validation policy as the hosting preflight scripts. Missing or invalid required values cause startup to exit non-zero before the backend accepts traffic. Failure output must name variables or validation reasons only and must not print secret values.
 
 Tenant registration rollout note:
 1. Keep `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` for the default public company registration flow.
@@ -435,6 +440,8 @@ DB_AUTO_SYNC=false
 ```
 
 Secrets and host-specific values still belong in `backend/.env`; do not put database passwords, JWT secrets, SMTP credentials, payment credentials, or Redis credentials in the ecosystem file. Generate dotenv-safe secrets without `#` or unquoted shell metacharacters, or quote them explicitly, because dotenv treats inline `#` as comment syntax.
+
+`SESSION_COOKIE_SECURE=true` is required for production browser session cookies. Set `SESSION_COOKIE_DOMAIN` only for an approved shared-session domain such as `.dgfy.ph`; omit it for host-only cookies.
 
 Use ecosystem reload flow (already handled by deploy script):
 

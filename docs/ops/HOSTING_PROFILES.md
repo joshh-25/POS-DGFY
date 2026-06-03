@@ -12,6 +12,8 @@ topic: hosting_profiles
 ## Purpose
 Use one codebase for both shared hosting and Redis-capable hosting. Do not create long-lived `shared` and `vps` branches. Hosting differences are selected by environment variables, checked by preflight scripts, and verified by profile-specific smoke tests.
 
+Production startup is fail-stop for missing or invalid required env values. The backend runtime, hosting preflight scripts, CI fixture gate, and deploy script all use the same production env validation policy so operators cannot accidentally pass deploy validation while starting a degraded production process.
+
 Authoritative planning inputs:
 - `docs/START_HERE.md` (`authoritative`, last reviewed `2026-03-06`)
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md` (`authoritative`, last reviewed `2026-03-06`)
@@ -59,6 +61,7 @@ For Namecheap shared hosting, the supported automated lane is `.github/workflows
 4. Run:
 
 ```bash
+npm run check:production-env
 npm run preflight:shared
 npm run test:hosting:shared
 ```
@@ -86,6 +89,7 @@ npm run test:hosting:shared
 4. Run:
 
 ```bash
+npm run check:production-env
 npm run preflight:vps
 npm run test:hosting:vps
 ```
@@ -108,6 +112,8 @@ Export downloads must be retrieved through the authenticated AI export route. Th
 Token blacklist runtime behavior must match the reported capability mode:
 - `fail_open`: Redis/cache check failures allow the request.
 - `fail_closed`: Redis/cache check failures deny the request with service-unavailable behavior.
+
+Production browser session cookies require `SESSION_COOKIE_SECURE=true`. Use `SESSION_COOKIE_DOMAIN` only when an approved production domain intentionally shares sessions across subdomains; otherwise keep cookies host-only.
 
 Tenant registration approval mode is security-sensitive operational config:
 - `auto_standard` immediately provisions non-subscription registrations and then the frontend performs a normal login call.
