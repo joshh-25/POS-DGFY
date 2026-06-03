@@ -14,8 +14,7 @@ import {
 import { storefrontAssetStorage } from './repositories/storefrontAssetStorage.js';
 
 export const getCompanyInfoUseCase = buildGetCompanyInfoUseCase({
-    tenantRepository,
-    frontendUrlProvider: () => process.env.FRONTEND_URL || 'http://localhost:5173'
+    tenantRepository
 });
 
 export const getAllSettingsUseCase = buildGetAllSettingsUseCase({ settingsRepository });

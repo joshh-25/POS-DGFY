@@ -5,7 +5,7 @@ last_reviewed: 2026-06-03
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md
 declaration_id: 2026-06-03-paymongo-webhook-fail-closed
 classification: regulatory
-surfaces: payments,subscriptions,webhooks,production-config
+surfaces: settings,payments,subscriptions,webhooks,production-config
 reason_codes_impacted: PAYMONGO_WEBHOOK_SIGNATURE_FAIL_CLOSED,PAYMENT_WEBHOOK_REPLAY_GUARD
 policy_version: 2026.06.03
 verification_evidence: npm --prefix backend test -- --runTestsByPath tests/paymongoWebhookSignature.test.js,npm run check:architecture,npm run check:compliance

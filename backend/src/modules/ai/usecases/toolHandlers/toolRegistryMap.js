@@ -162,7 +162,6 @@ export const TOOL_REGISTRY_BY_NAME = Object.freeze({
   remove_user_from_company: userManagementToolRegistry,
   update_user_permissions: userManagementToolRegistry,
   create_user_invitation: userManagementToolRegistry,
-  get_company_join_link: userManagementToolRegistry,
   export_users_csv: userManagementToolRegistry,
   import_users_csv: userManagementToolRegistry,
   get_available_permissions: userManagementToolRegistry,

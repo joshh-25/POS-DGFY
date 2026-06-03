@@ -13,7 +13,6 @@
  * @param {string} params.invitationToken - The unique token for the invitation
  * @param {string} params.appUrl - The base URL of the application
  * @param {string} params.tenantName - Company/tenant name
- * @param {string} [params.companyToken] - Company token for tenant-bound invite acceptance
  * @param {string} params.expiresIn - Human-readable expiry time (e.g., "7 days")
  * @returns {string} HTML email content
  */
@@ -32,10 +31,9 @@ const escapeHtml = (value) => String(value ?? '')
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#39;');
 
-export const getInvitationTemplate = ({ inviterName, role, invitationToken, tenantName, expiresIn, appUrl, companyToken }) => {
+export const getInvitationTemplate = ({ inviterName, role, invitationToken, tenantName, expiresIn, appUrl }) => {
   const inviteQuery = new URLSearchParams({
-    token: invitationToken,
-    ...(companyToken ? { company: companyToken } : {})
+    token: invitationToken
   });
   const inviteUrlRaw = `${appUrl}/accept-invite?${inviteQuery.toString()}`;
   const inviteUrl = appendUtm(inviteUrlRaw, 'user_invitation');

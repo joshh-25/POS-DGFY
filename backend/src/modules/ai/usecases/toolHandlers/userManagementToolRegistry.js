@@ -82,8 +82,7 @@ export const buildUserManagementToolRegistry = ({
     tempFileService,
     logger,
     permissions,
-    appUrlProvider = () => process.env.APP_URL || 'http://localhost:5173',
-    companyTokenProvider = () => null
+    appUrlProvider = () => process.env.APP_URL || 'http://localhost:5173'
 }) => {
     const resolveUser = buildResolveUser({ userService });
     const getAvailablePermissions = buildGetAvailablePermissions({ permissions });
@@ -255,23 +254,6 @@ export const buildUserManagementToolRegistry = ({
             }
 
             return response;
-        },
-
-        get_company_join_link: async () => {
-            const companyToken = companyTokenProvider();
-            const appUrl = appUrlProvider();
-            if (!companyToken) {
-                return {
-                    success: false,
-                    message: 'Unable to retrieve company token. Please copy it from Settings > Company tab.'
-                };
-            }
-            const joinLink = `${appUrl}/register?token=${companyToken}`;
-            return {
-                success: true,
-                message: `Here is the shareable registration link for your company:\n\n**${joinLink}**\n\nShare this link with new team members; it pre-fills the company token so they can register directly.`,
-                data: { join_link: joinLink, company_token: companyToken }
-            };
         },
 
         export_users_csv: async ({ args, user }) => {

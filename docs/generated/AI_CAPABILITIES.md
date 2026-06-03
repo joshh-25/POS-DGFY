@@ -46,7 +46,6 @@ These tools query data and do not require confirmation.
 | `generate_executive_summary` | Generate a high-level executive summary of the inventory status, including fi... | manager |
 | `get_advanced_analytics` | Get deep insights into Supplier Performance (on-time rate, quality) or Invent... | Any |
 | `get_available_permissions` | Get a list of all available permissions in the system, organized by category.... | admin |
-| `get_company_join_link` | Returns the shareable registration link for this company. Share this link wit... | admin |
 | `get_dashboard_stats` | Get overall inventory statistics including total items, low stock count, heal... | Any |
 | `get_dispatch_earnings` | Get a detailed earnings report for dispatch orders: revenue, COGS, and gross ... | Any |
 | `get_dispatch_order_details` | Get full details of a specific dispatch order including all line items, quant... | Any |
@@ -143,15 +142,6 @@ Get a list of all available permissions in the system, organized by category. Us
 
 ---
 
-#### `get_company_join_link`
-
-Returns the shareable registration link for this company. Share this link with new team members so they can register directly — the company token is pre-filled automatically. Use this when the user asks for a shareable link, invite link, or registration link.
-
-> 🔐 **Required role:** admin
-
-**Parameters:** None
-
----
 
 #### `get_dashboard_stats`
 

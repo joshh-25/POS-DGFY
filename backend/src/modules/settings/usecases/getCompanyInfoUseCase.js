@@ -1,7 +1,7 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 
-export const buildGetCompanyInfoUseCase = ({ tenantRepository, frontendUrlProvider }) => {
+export const buildGetCompanyInfoUseCase = ({ tenantRepository }) => {
     return async ({ tenantId }) => {
         if (!tenantId) {
             return fail(new DomainError(
@@ -18,12 +18,9 @@ export const buildGetCompanyInfoUseCase = ({ tenantRepository, frontendUrlProvid
             ));
         }
 
-        const frontendUrl = frontendUrlProvider?.() || 'http://localhost:5173';
-
         return ok({
             company_name: tenant.name,
-            company_token: tenant.company_token,
-            registration_link: `${frontendUrl}/register?token=${tenant.company_token}`
+            company_token: tenant.company_token
         });
     };
 };

@@ -1003,22 +1003,6 @@ export const AI_TOOLS = [
   {
     type: "function",
     function: {
-      name: "get_company_join_link",
-      description: "Returns the shareable registration link for this company. Share this link with new team members so they can register directly — the company token is pre-filled automatically. Use this when the user asks for a shareable link, invite link, or registration link.",
-      parameters: {
-        type: "object",
-        properties: {},
-        required: []
-      }
-    },
-    category: TOOL_CATEGORIES.READ,
-    requiresConfirmation: false,
-    requiredRole: "admin",
-    requiredPermission: "users:manage"
-  },
-  {
-    type: "function",
-    function: {
       name: "export_users_csv",
       description: "Export the user list to CSV format. Includes: username, email, role, active status, permission count, master admin flag, last login. Excludes pending invitations.",
       parameters: {

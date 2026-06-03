@@ -2432,24 +2432,6 @@ export default function Settings() {
                     </Button>
                   </div>
                 </div>
-                <div className="p-3 bg-teal-50 rounded-lg border border-teal-100">
-                  <Label className="text-xs uppercase text-teal-600">Company Join Link</Label>
-                  <p className="text-xs text-slate-500 mt-0.5 mb-2">Share this link with new team members — the company token is pre-filled.</p>
-                  <div className="flex items-center gap-2">
-                    <code className="bg-white px-2 py-1 rounded border flex-1 text-xs truncate">
-                      {`${window.location.origin}/register?token=${companyInfo.company_token}`}
-                    </code>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Copy company join link"
-                      onClick={() => copyToClipboard(`${window.location.origin}/register?token=${companyInfo.company_token}`, 'Invite link copied!')}
-                    >
-                      <Copy className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
               </CardContent>
             </Card>
           ) : (

@@ -30,6 +30,11 @@ describe('AI Tools Configuration', () => {
       expect(names.length).toBe(uniqueNames.size);
     });
 
+    test('company-token registration link tool is retired', () => {
+      const names = AI_TOOLS.map(t => t.function?.name).filter(Boolean);
+      expect(names).not.toContain('get_company_join_link');
+    });
+
     test('every tool should have required fields', () => {
       for (const tool of AI_TOOLS) {
         expect(tool).toHaveProperty('type', 'function');
