@@ -939,11 +939,11 @@ export const complianceRepository = {
     },
 
     async getFiscalTerminalRegistrationReadiness() {
-        let PosFiscalTerminalRegistration = null;
+        let PosFiscalTerminalRegistration;
         try {
             PosFiscalTerminalRegistration = dbStore.get('PosFiscalTerminalRegistration');
         } catch {
-            PosFiscalTerminalRegistration = null;
+            // Model is optional until fiscal terminal registration is enabled.
         }
         if (!PosFiscalTerminalRegistration) {
             return {

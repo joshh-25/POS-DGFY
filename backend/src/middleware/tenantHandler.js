@@ -5,6 +5,7 @@ import { findTenantByToken, resolveInvitationTenantTokenByToken } from '../servi
 import logger from '../config/logger.js';
 import { getTenantModels } from '../utils/tenantModelFactory.js';
 import { resolveTenantByStoreSlug } from '../services/storefrontTenantResolver.js';
+import { getTenantContextToken } from '../utils/browserSessionCookies.js';
 
 // Short-lived in-memory cache for tenant lookups.
 // Avoids a DB round-trip to the landlord database on every single API request.
@@ -95,6 +96,12 @@ export const tenantHandler = async (req, res, next) => {
         // 1. Identification Strategy:
         // Header (x-company-token) -> Store slug (x-store-slug for public store routes) -> Subdomain (Future) -> Auth User (Future)
         let companyToken = req.headers['x-company-token'];
+        if (!companyToken && isStrictAuthRoute) {
+            companyToken = getTenantContextToken(req);
+            if (companyToken) {
+                req.headers['x-company-token'] = companyToken;
+            }
+        }
         const storeSlug = String(req.headers['x-store-slug'] || '').trim().toLowerCase();
         const allowStoreSlugResolution = STOREFRONT_ROUTE_PATTERN.test(path);
         if (!companyToken && isStrictAuthRoute && /\/(validate-invite|accept-invite|email-otp\/request)\b/i.test(path)) {

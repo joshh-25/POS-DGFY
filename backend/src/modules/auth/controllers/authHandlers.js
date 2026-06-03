@@ -12,6 +12,12 @@ import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js'
 import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicationResultHelpers.js';
 import { complianceRepository } from '../../compliance/index.js';
 import { requestEmailOtp, EMAIL_OTP_PURPOSES } from '../../../services/emailOtpService.js';
+import {
+  clearTenantSessionCookies,
+  getTenantRefreshToken,
+  setTenantSessionCookies,
+  stripBrowserRefreshToken
+} from '../../../utils/browserSessionCookies.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
@@ -123,6 +129,13 @@ export const login = async (req, res, next) => {
     const result = await loginUseCase({ email, password });
 
     if (result?.success) {
+      setTenantSessionCookies(res, {
+        refreshToken: result.data?.refreshToken,
+        tenantToken: req.headers?.['x-company-token'] || req.tenant?.company_token || null
+      });
+    }
+
+    if (result?.success) {
       await persistSecurityAuditEvent(req, {
         eventType: 'security_login',
         operation: 'auth.login',
@@ -137,7 +150,7 @@ export const login = async (req, res, next) => {
       successStatusCodeResolver: () => 200,
       successPayloadResolver: () => ({
         success: true,
-        data: result.data,
+        data: stripBrowserRefreshToken(result.data),
         message: 'Login successful',
         timestamp: timestamp()
       }),
@@ -150,8 +163,15 @@ export const login = async (req, res, next) => {
 
 export const refreshToken = async (req, res, next) => {
   try {
-    const { refreshToken } = req.validatedData;
+    const refreshToken = getTenantRefreshToken(req);
     const result = await refreshTokenUseCase({ refreshToken });
+
+    if (result?.success) {
+      setTenantSessionCookies(res, {
+        refreshToken: result.data?.refreshToken,
+        tenantToken: req.headers?.['x-company-token'] || req.tenant?.company_token || null
+      });
+    }
 
     if (result?.success) {
       await persistSecurityAuditEvent(req, {
@@ -168,7 +188,7 @@ export const refreshToken = async (req, res, next) => {
       successStatusCodeResolver: () => 200,
       successPayloadResolver: () => ({
         success: true,
-        data: result.data,
+        data: stripBrowserRefreshToken(result.data),
         message: 'Token refreshed successfully',
         timestamp: timestamp()
       }),
@@ -188,6 +208,13 @@ export const logout = async (req, res, next) => {
       const result = await blacklistTokenUseCase({ token });
       unwrapApplicationResultOrThrow(result, 'Logout failed');
     }
+
+    const refreshToken = getTenantRefreshToken(req);
+    if (refreshToken) {
+      const result = await blacklistTokenUseCase({ token: refreshToken });
+      unwrapApplicationResultOrThrow(result, 'Refresh token logout failed');
+    }
+    clearTenantSessionCookies(res);
 
     await persistSecurityAuditEvent(req, {
       eventType: 'security_logout',
@@ -345,6 +372,13 @@ export const acceptInvitation = async (req, res, next) => {
     const { token, username, password, phone_number: phoneNumber, email_otp_code: emailOtpCode } = req.validatedData;
     const result = await acceptInvitationUseCase({ token, username, password, phoneNumber, emailOtpCode });
 
+    if (result?.success) {
+      setTenantSessionCookies(res, {
+        refreshToken: result.data?.refreshToken,
+        tenantToken: result.data?.company?.token || req.headers?.['x-company-token'] || null
+      });
+    }
+
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,
       successPayloadResolver: () => ({
@@ -360,7 +394,6 @@ export const acceptInvitation = async (req, res, next) => {
             is_master_admin: result.data.is_master_admin || false
           },
           token: result.data.token,
-          refreshToken: result.data.refreshToken,
           expiresIn: result.data.expiresIn,
           company: result.data.company || null
         },

@@ -15,6 +15,17 @@ import {
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { blacklistToken } from '../../../services/authService.js';
+import {
+    clearSessionCookie,
+    getCookie,
+    SESSION_COOKIE_NAMES,
+    setBearerSessionCookie
+} from '../../../utils/browserSessionCookies.js';
+
+const setDgfyCookieFromResult = (res, result) => {
+    const token = result?.data?.payload?.data?.token || result?.data?.token;
+    if (token) setBearerSessionCookie(res, SESSION_COOKIE_NAMES.dgfy, token);
+};
 
 export const getDgfyLegalTerms = async (req, res) => {
     const result = await getDgfyLegalTermsUseCase();
@@ -32,6 +43,7 @@ export const registerDgfyAccount = async (req, res) => {
             user_agent: req.get?.('user-agent') || req.headers['user-agent'] || null
         }
     });
+    setDgfyCookieFromResult(res, result);
     return sendUseCaseResult(res, result, {
         fallbackErrorMessage: 'DGFY account registration failed'
     });
@@ -39,6 +51,7 @@ export const registerDgfyAccount = async (req, res) => {
 
 export const loginDgfyAccount = async (req, res) => {
     const result = await loginDgfyAccountUseCase({ body: req.body });
+    setDgfyCookieFromResult(res, result);
     return sendUseCaseResult(res, result, {
         fallbackErrorMessage: 'DGFY login failed'
     });
@@ -121,6 +134,7 @@ export const createDgfyHandoff = async (req, res) => {
 
 export const exchangeDgfyHandoff = async (req, res) => {
     const result = await exchangeDgfyHandoffUseCase({ body: req.body });
+    setDgfyCookieFromResult(res, result);
     return sendUseCaseResult(res, result, {
         fallbackErrorMessage: 'DGFY handoff exchange failed'
     });
@@ -128,10 +142,13 @@ export const exchangeDgfyHandoff = async (req, res) => {
 
 export const logoutDgfyAccount = async (req, res) => {
     const authHeader = req.headers.authorization;
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+    const token = authHeader?.startsWith('Bearer ')
+        ? authHeader.substring(7)
+        : getCookie(req, SESSION_COOKIE_NAMES.dgfy);
     if (token) {
         await blacklistToken(token);
     }
+    clearSessionCookie(res, SESSION_COOKIE_NAMES.dgfy);
     return res.status(200).json({
         success: true,
         data: null,

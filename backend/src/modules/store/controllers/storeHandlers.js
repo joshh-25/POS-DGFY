@@ -21,6 +21,7 @@ import {
     unfollowStorefrontUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
+import { SESSION_COOKIE_NAMES, setBearerSessionCookie } from '../../../utils/browserSessionCookies.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
@@ -44,6 +45,10 @@ export const registerStoreCustomer = async (req, res, next) => {
             tenantId: resolveTenantId(req),
             payload: req.validatedData || req.body
         });
+
+        if (result?.success && result.data?.token) {
+            setBearerSessionCookie(res, SESSION_COOKIE_NAMES.storefront, result.data.token);
+        }
 
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 201,
@@ -124,6 +129,10 @@ export const loginStoreCustomer = async (req, res, next) => {
             tenantId: resolveTenantId(req),
             payload: req.validatedData || req.body
         });
+
+        if (result?.success && result.data?.token) {
+            setBearerSessionCookie(res, SESSION_COOKIE_NAMES.storefront, result.data.token);
+        }
 
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,

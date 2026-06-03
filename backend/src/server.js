@@ -32,6 +32,7 @@ import { initBillingScheduler } from './schedulers/billingScheduler.js';
 import sequelize from './config/database.js';
 import './models/index.js'; // Initialize model associations
 import { tenantHandler } from './middleware/tenantHandler.js';
+import csrfProtection from './middleware/csrfProtection.js';
 import tenantConnector from './utils/TenantConnector.js';
 import { auditRequiredIndexes } from './services/schemaIndexAuditService.js';
 import { auditBillingFunnelIntegrity } from './services/engagementIntegrityAuditService.js';
@@ -253,6 +254,7 @@ app.use(express.json({
   }
 }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(csrfProtection);
 
 // Capture basic HTTP metrics before route handlers mutate response status.
 app.use(metricsMiddleware);

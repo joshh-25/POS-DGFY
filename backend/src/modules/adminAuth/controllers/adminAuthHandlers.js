@@ -1,6 +1,12 @@
 import { adminLoginUseCase, adminLogoutUseCase } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import logger from '../../../config/logger.js';
+import {
+  clearSessionCookie,
+  getCookie,
+  SESSION_COOKIE_NAMES,
+  setBearerSessionCookie
+} from '../../../utils/browserSessionCookies.js';
 
 export const adminLogin = async (req, res) => {
   try {
@@ -20,6 +26,11 @@ export const adminLogin = async (req, res) => {
         reason: result.error?.code || 'AUTHENTICATION_FAILED'
       });
     } else {
+      if (result.data?.token) {
+        setBearerSessionCookie(res, SESSION_COOKIE_NAMES.admin, result.data.token, {
+          maxAgeMs: 8 * 60 * 60 * 1000
+        });
+      }
       logger.info('[AdminAuth] Login succeeded', {
         username,
         source_ip: sourceIp,
@@ -50,9 +61,12 @@ export const adminLogin = async (req, res) => {
 export const adminLogout = async (req, res) => {
   try {
     const authHeader = req.headers?.authorization || '';
-    const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : '';
+    const token = authHeader.startsWith('Bearer ')
+      ? authHeader.substring(7)
+      : getCookie(req, SESSION_COOKIE_NAMES.admin);
 
     const result = await adminLogoutUseCase({ token });
+    clearSessionCookie(res, SESSION_COOKIE_NAMES.admin);
 
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,

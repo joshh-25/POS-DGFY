@@ -1,10 +1,14 @@
 import { verifyToken, isTokenBlacklisted } from '../services/authService.js';
 import { dgfyAccountRepository } from '../modules/dgfy/index.js';
+import { getCookie, SESSION_COOKIE_NAMES } from '../utils/browserSessionCookies.js';
 
 export const authenticateDgfyAccount = async (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        const token = authHeader?.startsWith('Bearer ')
+            ? authHeader.substring(7)
+            : getCookie(req, SESSION_COOKIE_NAMES.dgfy);
+        if (!token) {
             return res.status(401).json({
                 success: false,
                 data: null,
@@ -12,7 +16,6 @@ export const authenticateDgfyAccount = async (req, res, next) => {
             });
         }
 
-        const token = authHeader.substring(7);
         if (await isTokenBlacklisted(token)) {
             return res.status(401).json({
                 success: false,
