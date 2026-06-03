@@ -58,6 +58,7 @@ export const normalizeStorefrontErrorMessage = (error, fallback = 'Request faile
 export const classifyStoreCatalogError = (error, fallback = 'Failed to load tenant catalog.') => {
   const baseMessage = String(error?.message || '').trim() || fallback;
   const errorCode = String(error?.errorCode || '').trim().toUpperCase();
+  const retryAfterSeconds = Number(error?.details?.retryAfterSeconds ?? error?.retryAfterSeconds ?? error?.retry_after_seconds);
 
   if (error?.isNetworkError) {
     return {
@@ -77,6 +78,20 @@ export const classifyStoreCatalogError = (error, fallback = 'Failed to load tena
     return {
       message: baseMessage,
       guidance: 'Selected fulfillment location is invalid for this tenant. Refresh the tenant page and reselect a valid branch.'
+    };
+  }
+
+  if (
+    Number(error?.status) === 429
+    || errorCode === 'RATE_LIMITED'
+    || baseMessage.toLowerCase().includes('too many requests')
+  ) {
+    const retryLabel = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+      ? ` Please wait about ${Math.ceil(retryAfterSeconds / 60)} minute(s) before retrying.`
+      : ' Please wait a moment before retrying.';
+    return {
+      message: 'This storefront is temporarily rate-limited for your current IP.',
+      guidance: `The storefront API blocked additional discovery requests.${retryLabel}`
     };
   }
 

@@ -23,13 +23,11 @@ export function AppRouter() {
   return (
     <Suspense fallback={<LoadingFallback />}>
       <Routes>
-        <Route path="/" element={<Navigate to="/tenant-store" replace />} />
-        <Route path="/tenant-store" element={<StorePage />} />
-        <Route path="/tenant-store/:slug" element={<StorePage />} />
+        <Route path="/" element={<Navigate to="/store-template" replace />} />
+        <Route path="/store-template" element={<StorePage />} />
+        <Route path="/storefront-template" element={<StorePage />} />
         <Route path="/tenant-store/:slug/orders" element={<OrdersPage />} />
         <Route path="/tenant-store/:slug/account" element={<AccountPage />} />
-        <Route path="/store" element={<StorePage />} />
-        <Route path="/store/:slug" element={<StorePage />} />
         <Route path="/store/:slug/orders" element={<OrdersPage />} />
         <Route path="/store/:slug/account" element={<AccountPage />} />
       </Routes>

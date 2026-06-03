@@ -69,7 +69,8 @@ describe('storefront follow integration', () => {
             catalog_count: 2,
             storefront_ui_v2_enabled: true,
             storefront_follow_enabled: true,
-            storefront_share_enabled: false
+            storefront_share_enabled: false,
+            workflow_mode: 'services'
           }
         });
       }
@@ -108,20 +109,20 @@ describe('storefront follow integration', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText('3 follower(s)')).toBeTruthy();
-      expect(screen.getByRole('button', { name: 'Follow this storefront' }).textContent).toBe('Follow');
+      expect(screen.getByText('3 followers')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Follow this storefront' }).getAttribute('title')).toBe('Follow');
     });
 
     await user.click(screen.getByRole('button', { name: 'Follow this storefront' }));
     await waitFor(() => {
-      expect(screen.getByText('4 follower(s)')).toBeTruthy();
-      expect(screen.getByRole('button', { name: 'Follow this storefront' }).textContent).toBe('Following');
+      expect(screen.getByText('4 followers')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Unfollow this storefront' }).getAttribute('title')).toBe('Following');
     });
 
-    await user.click(screen.getByRole('button', { name: 'Follow this storefront' }));
+    await user.click(screen.getByRole('button', { name: 'Unfollow this storefront' }));
     await waitFor(() => {
-      expect(screen.getByText('3 follower(s)')).toBeTruthy();
-      expect(screen.getByRole('button', { name: 'Follow this storefront' }).textContent).toBe('Follow');
+      expect(screen.getByText('3 followers')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Follow this storefront' }).getAttribute('title')).toBe('Follow');
     });
   });
 
@@ -139,7 +140,8 @@ describe('storefront follow integration', () => {
             catalog_count: 2,
             storefront_ui_v2_enabled: true,
             storefront_follow_enabled: true,
-            storefront_share_enabled: false
+            storefront_share_enabled: false,
+            workflow_mode: 'services'
           }
         });
       }
@@ -165,12 +167,12 @@ describe('storefront follow integration', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Follow this storefront' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Unfollow this storefront' })).toBeTruthy();
     });
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Follow this storefront' }).textContent).toBe('Following');
+      expect(screen.getByRole('button', { name: 'Unfollow this storefront' }).getAttribute('title')).toBe('Following');
     });
-    await user.click(screen.getByRole('button', { name: 'Follow this storefront' }));
+    await user.click(screen.getByRole('button', { name: 'Unfollow this storefront' }));
     await waitFor(() => {
       expect(screen.getByText('Too many follow requests. Please wait and retry.')).toBeTruthy();
     });
@@ -190,7 +192,8 @@ describe('storefront follow integration', () => {
             catalog_count: 2,
             storefront_ui_v2_enabled: true,
             storefront_follow_enabled: true,
-            storefront_share_enabled: false
+            storefront_share_enabled: false,
+            workflow_mode: 'services'
           }
         });
       }

@@ -1,80 +1,64 @@
 import React from 'react';
 
-const renderStars = (count, size = 14) => {
-  const stars = [];
-  for (let i = 1; i <= 5; i++) {
-    stars.push(
-      <span 
-        key={i} 
-        className={i <= count ? 'text-amber-500' : 'text-gray-200'}
-        style={{ fontSize: `${size}px` }}
-      >
-        ★
-      </span>
-    );
-  }
-  return stars;
+const getReviewRatingLabel = (rating) => {
+  const safeRating = Number(rating);
+  if (!Number.isFinite(safeRating)) return '';
+  return `${safeRating.toFixed(1)} / 5`;
 };
 
-const getInitials = (name) => name.charAt(0);
-
-export function ReviewsSidebar({ reviews }) {
-  const { average, total, breakdown, items } = reviews;
+export function ReviewsSidebar({ reviews = {}, theme = {} }) {
+  const items = Array.isArray(reviews.items) ? reviews.items : [];
 
   return (
-    <aside className="sticky top-20 bg-white rounded-2xl p-6 h-fit">
-      <div className="flex justify-between items-center mb-5 pb-3 border-b border-gray-200">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Customer Reviews</h3>
-        <span className="text-[13px] text-[#E8540A] cursor-pointer">View all ({total}) →</span>
-      </div>
-
-      {/* Summary Score */}
-      <div className="text-center mb-6 pb-5 border-b border-gray-200">
-        <div className="text-5xl font-bold text-[#1A1A1A] leading-none">{average}</div>
-        <div className="flex justify-center gap-0.5 my-2">
-          {renderStars(5, 20)}
+    <section className="sf-template__container">
+      <div className="sf-template__section sf-review-card sf-stack">
+        <div className="sf-section-heading">
+          {reviews.eyebrow ? <p className="sf-section-eyebrow" style={{ fontFamily: theme.bodyFont }}>{reviews.eyebrow}</p> : null}
+          <h2 className="sf-section-title" style={{ fontFamily: theme.displayFont }}>{reviews.title || 'Customer Reviews'}</h2>
+          {reviews.description ? (
+            <p className="sf-section-description" style={{ fontFamily: theme.bodyFont }}>{reviews.description}</p>
+          ) : null}
         </div>
-        <div className="text-sm text-gray-500">({total} reviews)</div>
-      </div>
 
-      {/* Rating Breakdown */}
-      <div className="mb-6 pb-5 border-b border-gray-200">
-        {breakdown.map((item) => (
-          <div key={item.stars} className="flex items-center gap-2 mb-2">
-            <span className="text-[13px] text-gray-700 w-8">{item.stars} ★</span>
-            <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-amber-500 rounded-full" 
-                style={{ width: `${item.percent}%` }} 
-              />
-            </div>
-            <span className="text-xs text-gray-500 w-9 text-right">{item.percent}%</span>
-          </div>
-        ))}
-      </div>
+        <div className="sf-card-grid sf-card-grid--reviews">
+          <aside className="sf-summary-card">
+            <p className="sf-summary-score" style={{ fontFamily: theme.displayFont }}>
+              {Number.isFinite(Number(reviews.summary?.score)) ? Number(reviews.summary.score).toFixed(1) : '0.0'}
+            </p>
+            <p className="sf-summary-label" style={{ fontFamily: theme.bodyFont }}>
+              {reviews.summary?.label || 'Summary data can describe trust, speed, or satisfaction.'}
+            </p>
+            {reviews.summary?.count ? (
+              <span className="sf-pill" style={{ width: 'fit-content', fontFamily: theme.bodyFont }}>
+                {reviews.summary.count} verified entries
+              </span>
+            ) : null}
+          </aside>
 
-      {/* Review List */}
-      <div className="flex flex-col">
-        {items.map((review, index) => (
-          <div key={index} className="py-4 border-b border-gray-100 last:border-0">
-            <div className="flex items-center gap-3 mb-2">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold ${
-                review.avatarGender === 'female' ? 'bg-pink-100 text-pink-600' : 'bg-gray-200 text-gray-600'
-              }`}>
-                {getInitials(review.name, review.avatarGender)}
-              </div>
-              <div className="flex-1">
-                <div className="text-sm font-semibold text-gray-900">{review.name}</div>
-                <div className="text-xs text-gray-400">{review.timeAgo}</div>
-              </div>
-              <div className="flex gap-0.5">
-                {renderStars(review.stars)}
-              </div>
-            </div>
-            <p className="text-sm text-gray-600 leading-relaxed">{review.text}</p>
+          <div className="sf-review-grid">
+            {items.length > 0 ? items.map((item) => (
+              <article key={`${item.name}-${item.role || ''}`} className="sf-mode-card sf-stack" style={{ gap: 14 }}>
+                <div className="sf-review-meta">
+                  <div>
+                    <p className="sf-review-name" style={{ fontFamily: theme.displayFont }}>{item.name}</p>
+                    {item.role ? <p className="sf-review-role" style={{ fontFamily: theme.bodyFont }}>{item.role}</p> : null}
+                  </div>
+                  {item.rating ? (
+                    <span className="sf-review-rating" style={{ fontFamily: theme.bodyFont }}>{getReviewRatingLabel(item.rating)}</span>
+                  ) : null}
+                </div>
+                <p className="sf-review-quote" style={{ fontFamily: theme.bodyFont }}>{item.quote}</p>
+              </article>
+            )) : (
+              <article className="sf-mode-card">
+                <p className="sf-section-description" style={{ fontFamily: theme.bodyFont }}>
+                  {reviews.emptyLabel || 'No review cards yet. Connect review data for this storefront later.'}
+                </p>
+              </article>
+            )}
           </div>
-        ))}
+        </div>
       </div>
-    </aside>
+    </section>
   );
 }

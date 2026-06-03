@@ -13,7 +13,7 @@ describe('selectDiscoveryPinLocations', () => {
     { location_id: 3, name: 'Branch B', is_primary_storefront: false }
   ];
 
-  it('returns all locations when no search query is active', () => {
+  it('keeps explicit all-branches scope when no search query is active', () => {
     expect(selectDiscoveryPinLocations({ activeLocations, hasSearchQuery: false, pinScope: 'all_matching_branches' }))
       .toEqual(activeLocations);
   });
@@ -49,6 +49,14 @@ describe('selectDiscoveryPinLocations', () => {
     expect(selectDiscoveryPinLocations({
       activeLocations,
       hasSearchQuery: true,
+      pinScope: 'tenant_primary'
+    })).toEqual([activeLocations[0]]);
+  });
+
+  it('returns primary branch for tenant_primary even before search is active', () => {
+    expect(selectDiscoveryPinLocations({
+      activeLocations,
+      hasSearchQuery: false,
       pinScope: 'tenant_primary'
     })).toEqual([activeLocations[0]]);
   });

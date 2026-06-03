@@ -82,7 +82,7 @@ describe('storefront marker preview helpers', () => {
     expect(formatMarkerDistance(null)).toBe('');
   });
 
-  it('spreads duplicate-coordinate markers without changing unique pins', () => {
+  it('keeps duplicate-coordinate marker offsets at the exact pinned coordinate', () => {
     const offsets = buildMarkerDisplayOffsets([
       { marker_key: 'main', latitude: 10.72, longitude: 122.56 },
       { marker_key: 'branch-a', latitude: 10.7200001, longitude: 122.5600001 },
@@ -91,9 +91,8 @@ describe('storefront marker preview helpers', () => {
     ]);
 
     expect(offsets.get('remote')).toEqual([0, 0]);
-    expect(offsets.get('main')).not.toEqual([0, 0]);
-    expect(offsets.get('branch-a')).not.toEqual([0, 0]);
-    expect(offsets.get('branch-b')).not.toEqual([0, 0]);
-    expect(new Set(['main', 'branch-a', 'branch-b'].map((key) => offsets.get(key).join(','))).size).toBe(3);
+    expect(offsets.get('main')).toEqual([0, 0]);
+    expect(offsets.get('branch-a')).toEqual([0, 0]);
+    expect(offsets.get('branch-b')).toEqual([0, 0]);
   });
 });
