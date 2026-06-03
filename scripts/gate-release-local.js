@@ -58,7 +58,9 @@ function main() {
   addGate(gates, 'production.env.fixtures', runCommand(npmCmd, ['run', 'check:production-env']), 'npm run check:production-env');
   addGate(gates, 'runtime.doctor', runCommand(npmCmd, ['run', 'doctor:runtime']), 'npm run doctor:runtime');
   addGate(gates, 'backend.lint', runCommand(npmCmd, ['--prefix', 'backend', 'run', 'lint']), 'npm --prefix backend run lint');
+  addGate(gates, 'backend.test_matrix', runCommand(npmCmd, ['run', 'test:backend:matrix']), 'npm run test:backend:matrix');
   addGate(gates, 'frontend.lint', runCommand(npmCmd, ['--prefix', 'frontend', 'run', 'lint']), 'npm --prefix frontend run lint');
+  addGate(gates, 'frontend.contracts', runCommand(npmCmd, ['run', 'test:frontend:contracts']), 'npm run test:frontend:contracts');
   addGate(gates, 'frontend.budgets', runCommand(npmCmd, ['run', 'check:frontend-budgets']), 'npm run check:frontend-budgets');
   addGate(
     gates,
