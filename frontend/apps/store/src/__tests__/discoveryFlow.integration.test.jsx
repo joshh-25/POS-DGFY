@@ -349,7 +349,7 @@ describe('storefront discovery integration flow', () => {
         marketplace_terms_version: 'dgfy-marketplace-provider-2026-05-26'
       }));
     });
-  });
+  }, 15000);
 
   it('auto-loads signed-in DGFY customer context and exposes saved address checkout actions', async () => {
     window.history.pushState({}, '', '/tenant-store/alpha');

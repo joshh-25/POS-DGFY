@@ -10,7 +10,8 @@ import {
     RefreshCw,
     AlertCircle,
     DollarSign,
-    Server
+    Server,
+    CreditCard
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,7 @@ import * as adminService from '@/services/adminService';
 const SIDEBAR_ITEMS = [
     { path: '/admin/feedback', label: 'Feedback', icon: MessageSquare },
     { path: '/admin/tenants', label: 'Tenants', icon: Building2 },
+    { path: '/admin/payments', label: 'Payments', icon: CreditCard },
     { path: '/admin/pricing', label: 'Plan Pricing', icon: DollarSign },
     { path: '/admin/hosting', label: 'Hosting', icon: Server },
 ];

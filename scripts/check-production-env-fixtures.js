@@ -62,6 +62,24 @@ const fixtures = [
       PAYMONGO_STANDARD_PLAN_ID: 'source_standard_fixture',
       PAYMONGO_PREMIUM_PLAN_ID: 'source_premium_fixture'
     }
+  },
+  {
+    name: 'commerce-payments-paymongo',
+    profile: 'vps',
+    env: {
+      ...baseEnv,
+      HOSTING_PROFILE: 'vps',
+      AUTH_BLACKLIST_FAILURE_MODE: 'fail_closed',
+      TEMP_FILE_STORAGE: 'auto',
+      REDIS_URL: 'redis://127.0.0.1:6379',
+      COMMERCE_PAYMENTS_ENABLED: 'true',
+      COMMERCE_QRPH_ENABLED: 'true',
+      PAYMONGO_MODE: 'test',
+      PAYMONGO_TEST_PUBLIC_KEY: 'pk_test_fixture',
+      PAYMONGO_TEST_SECRET_KEY: 'sk_test_fixture',
+      PAYMONGO_TEST_WEBHOOK_SECRET: 'whsec_test_fixture',
+      PAYMONGO_DGFY_MERCHANT_ID: 'org_dgfy_fixture'
+    }
   }
 ];
 

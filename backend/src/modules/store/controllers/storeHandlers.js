@@ -11,6 +11,8 @@ import {
     setDefaultStoreCustomerAddressUseCase,
     deleteStoreCustomerAddressUseCase,
     storeCartQuoteUseCase,
+    storeCheckoutPaymentSessionUseCase,
+    getStoreCheckoutPaymentSessionUseCase,
     storeCheckoutUseCase,
     trackStoreOrderUseCase,
     claimStoreOrderUseCase,
@@ -322,6 +324,52 @@ export const checkout = async (req, res, next) => {
     }
 };
 
+export const createCheckoutPaymentSession = async (req, res, next) => {
+    try {
+        const payload = {
+            ...(req.validatedData || req.body),
+            store_slug: req.headers['x-store-slug'] || req.body?.store_slug || req.validatedData?.store_slug || null
+        };
+        const result = await storeCheckoutPaymentSessionUseCase({
+            payload,
+            storeCustomer: resolveStoreCustomer(req)
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 201,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'QR Ph payment session created',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getCheckoutPaymentSession = async (req, res, next) => {
+    try {
+        const result = await getStoreCheckoutPaymentSessionUseCase({
+            paymentSessionId: req.validatedParams?.payment_session_id || req.params.payment_session_id
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const trackOrder = async (req, res, next) => {
     try {
         const result = await trackStoreOrderUseCase({
@@ -493,6 +541,8 @@ export default {
     setDefaultStoreCustomerAddress,
     deleteStoreCustomerAddress,
     cartQuote,
+    createCheckoutPaymentSession,
+    getCheckoutPaymentSession,
     checkout,
     trackOrder,
     claimOrder,

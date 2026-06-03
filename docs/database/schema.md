@@ -1246,6 +1246,21 @@ CREATE TABLE system_settings (
   - `service_fee_label_snapshot` (string, nullable)
   - `service_fee_method_snapshot` (enum `dine_in|takeout|pickup|delivery`, nullable; legacy `online` remains read-compatible for historical data)
   - `service_fee_overridden` (boolean, default false)
+  - `payment_status` (enum `unpaid|payment_pending|paid|failed|refund_pending|partial_refunded|refunded`, default `paid`)
+  - `payment_reference` (provider payment/reference ID, nullable)
+  - `payment_checkout_url` (provider checkout URL, nullable)
+  - `payment_provider` (provider key such as `paymongo`, nullable)
+  - `payment_session_reference` (commerce payment session public reference, nullable)
+  - `payment_status` supports `refund_pending`, `partial_refunded`, and `refunded` for PayMongo commerce refund reconciliation.
+
+## Commerce Payment Sessions Addendum (2026-05-19)
+
+Landlord-level payment routing tables support PayMongo QR Ph Storefront payments without coupling provider webhooks to tenant-local lookups:
+
+- `tenant_payment_accounts`: one row per UUID tenant/provider with PayMongo child merchant ID, wallet ID, wallet status (`unknown`, `closed_loop`, `enabled`, `restricted`), wallet verification timestamp, onboarding status, QR Ph readiness, split readiness, charge readiness, requirements snapshot, readiness evidence metadata, and last sync time.
+- `commerce_payment_sessions`: one row per Storefront online payment attempt with UUID `tenant_id`, immutable checkout payload, DGFY fee snapshot, total amount in pesos and centavos, PayMongo Payment Intent/Payment Method/Payment IDs, QR image URL, expiration, webhook state, split payload, final `pos_transaction_id`, and manual-resolution failure fields.
+- `commerce_payment_refunds`: one row per PayMongo refund attempt with UUID `tenant_id`, public refund reference, linked commerce session, provider payment/refund IDs, amount in centavos, reason, notes, refund strategy, split-refund payload, provider payload, status, failure fields, and requester.
+- Admin settlement reporting is derived from `commerce_payment_sessions` plus `commerce_payment_refunds`; it is a reconciliation view over stored local payment evidence, not a PayMongo payout ledger.
 
 ### 18. POS Catalog Overrides Table
 

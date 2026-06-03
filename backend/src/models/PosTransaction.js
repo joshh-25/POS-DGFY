@@ -143,9 +143,30 @@ const PosTransaction = sequelize.define('PosTransaction', {
         allowNull: true
     },
     payment_type: {
-        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer'),
+        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph'),
         allowNull: false,
         defaultValue: 'cash'
+    },
+    payment_status: {
+        type: DataTypes.ENUM('unpaid', 'payment_pending', 'paid', 'failed', 'refund_pending', 'partial_refunded', 'refunded'),
+        allowNull: false,
+        defaultValue: 'paid'
+    },
+    payment_reference: {
+        type: DataTypes.STRING(120),
+        allowNull: true
+    },
+    payment_checkout_url: {
+        type: DataTypes.STRING(1000),
+        allowNull: true
+    },
+    payment_provider: {
+        type: DataTypes.STRING(40),
+        allowNull: true
+    },
+    payment_session_reference: {
+        type: DataTypes.STRING(40),
+        allowNull: true
     },
     subtotal_amount: {
         type: DataTypes.DECIMAL(14, 4),
@@ -306,6 +327,8 @@ const PosTransaction = sequelize.define('PosTransaction', {
         { fields: ['tracking_pin'] },
         { fields: ['order_source'] },
         { fields: ['fulfillment_status'] },
+        { fields: ['payment_status'] },
+        { fields: ['payment_session_reference'] },
         { fields: ['location_id'] },
         { fields: ['store_customer_id'] },
         { fields: ['buyer_tin'] },

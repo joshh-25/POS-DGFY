@@ -122,6 +122,9 @@ import TenantComplianceAuditLogFactory from './Landlord/TenantComplianceAuditLog
 import TenantComplianceAuditFailureFactory from './Landlord/TenantComplianceAuditFailure.js';
 import TenantComplianceFinalReviewDocumentFactory from './Landlord/TenantComplianceFinalReviewDocument.js';
 import TenantComplianceFinalReviewSignoffFactory from './Landlord/TenantComplianceFinalReviewSignoff.js';
+import TenantPaymentAccountFactory from './Landlord/TenantPaymentAccount.js';
+import CommercePaymentSessionFactory from './Landlord/CommercePaymentSession.js';
+import CommercePaymentRefundFactory from './Landlord/CommercePaymentRefund.js';
 const Tenant = TenantFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const UserInvitation = UserInvitationFactory(sequelize);
@@ -147,6 +150,9 @@ const TenantComplianceAuditLog = TenantComplianceAuditLogFactory(sequelize);
 const TenantComplianceAuditFailure = TenantComplianceAuditFailureFactory(sequelize);
 const TenantComplianceFinalReviewDocument = TenantComplianceFinalReviewDocumentFactory(sequelize);
 const TenantComplianceFinalReviewSignoff = TenantComplianceFinalReviewSignoffFactory(sequelize);
+const TenantPaymentAccount = TenantPaymentAccountFactory(sequelize);
+const CommercePaymentSession = CommercePaymentSessionFactory(sequelize);
+const CommercePaymentRefund = CommercePaymentRefundFactory(sequelize);
 
 // Landlord Models
 import AiUsageLogFactory from './Landlord/AiUsageLog.js';
@@ -187,6 +193,14 @@ Tenant.hasMany(TenantComplianceFinalReviewDocument, { foreignKey: 'tenant_id', a
 TenantComplianceFinalReviewDocument.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasOne(TenantComplianceFinalReviewSignoff, { foreignKey: 'tenant_id', as: 'complianceFinalReviewSignoff' });
 TenantComplianceFinalReviewSignoff.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasOne(TenantPaymentAccount, { foreignKey: 'tenant_id', as: 'paymentAccount' });
+TenantPaymentAccount.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(CommercePaymentSession, { foreignKey: 'tenant_id', as: 'commercePaymentSessions' });
+CommercePaymentSession.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(CommercePaymentRefund, { foreignKey: 'tenant_id', as: 'commercePaymentRefunds' });
+CommercePaymentRefund.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+CommercePaymentSession.hasMany(CommercePaymentRefund, { foreignKey: 'payment_session_id', as: 'refunds' });
+CommercePaymentRefund.belongsTo(CommercePaymentSession, { foreignKey: 'payment_session_id', as: 'paymentSession' });
 
 // User associations
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
@@ -685,7 +699,10 @@ const db = {
   TenantComplianceAuditLog,
   TenantComplianceAuditFailure,
   TenantComplianceFinalReviewDocument,
-  TenantComplianceFinalReviewSignoff
+  TenantComplianceFinalReviewSignoff,
+  TenantPaymentAccount,
+  CommercePaymentSession,
+  CommercePaymentRefund
 };
 
 export default db;
@@ -813,6 +830,9 @@ export {
   TenantComplianceAuditFailure,
   TenantComplianceFinalReviewDocument,
   TenantComplianceFinalReviewSignoff,
+  TenantPaymentAccount,
+  CommercePaymentSession,
+  CommercePaymentRefund,
   GeoItem,
   GeoStoreItem,
   GeoItemAlias

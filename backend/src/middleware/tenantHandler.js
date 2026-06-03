@@ -90,7 +90,8 @@ export const invalidateTenantLookupCache = ({ companyToken = null, tenantId = nu
 export const tenantHandler = async (req, res, next) => {
     try {
         const path = req.path || '';
-        const isPublicWebhookRoute = path === '/api/v1/payments/webhook';
+        const isPublicWebhookRoute = path === '/api/v1/payments/webhook'
+            || path === '/api/v1/commerce-payments/paymongo/webhook';
         const isStrictAuthRoute = STRICT_AUTH_ROUTE_PATTERN.test(path);
 
         // 1. Identification Strategy:

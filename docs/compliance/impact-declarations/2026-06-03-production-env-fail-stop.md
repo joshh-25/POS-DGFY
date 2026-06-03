@@ -5,7 +5,7 @@ last_reviewed: 2026-06-03
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md
 declaration_id: 2026-06-03-production-env-fail-stop
 classification: regulatory
-surfaces: authentication,browser-sessions,payments,production-config,release-gates
+surfaces: authentication,browser-sessions,payments,production-config,release-gates,settings,compliance
 reason_codes_impacted: PRODUCTION_ENV_FAIL_STOP,HOSTING_PROFILE_PREFLIGHT
 policy_version: 2026.06.03
 verification_evidence: npm --prefix backend test -- --runTestsByPath tests/productionEnvValidation.test.js tests/productionEnvGuard.test.js tests/hostingProfilePreflight.test.js,npm run check:production-env,npm run check:architecture,npm run check:compliance
@@ -22,7 +22,7 @@ preflight_request_ref: PRODUCTION-ENV-FAIL-STOP-2026-06-03
 
 Regulatory.
 
-This declaration covers production startup and release-gate hardening for security-sensitive configuration. The change is compliance-sensitive because missing authentication, browser-session, hosting-profile, or payment-provider values can alter access control, session integrity, subscription access, or payment state handling.
+This declaration covers production startup and release-gate hardening for security-sensitive configuration. The change is compliance-sensitive because missing authentication, browser-session, hosting-profile, settings, compliance, or payment-provider values can alter access control, session integrity, tenant/admin operations, subscription access, or payment state handling.
 
 ## Affected Surfaces
 
@@ -31,6 +31,7 @@ This declaration covers production startup and release-gate hardening for securi
 - Local release and CI gates include production env fixture validation.
 - Deploy validation checks the real target `backend/.env` through the shared validator before proceeding.
 - Production env templates include explicit `SESSION_COOKIE_SECURE=true` for browser-session cookies.
+- Settings/admin/compliance-sensitive deployments share the same fail-stop preflight before production startup proceeds.
 
 ## Compliance Preconditions
 

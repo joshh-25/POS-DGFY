@@ -12,6 +12,7 @@ const __dirname = dirname(__filename);
 dotenv.config({ path: join(__dirname, '..', '.env') });
 
 import paymentRoutes from './routes/payments.js';
+import commercePaymentRoutes from './routes/commercePayments.js';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -624,6 +625,7 @@ app.use('/api/v1/storefront', storefrontDiscoveryRoutes);
 app.use('/api/v1/storefront', geoSearchRoutes);
 app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/feedback', feedbackRoutes);
+app.use('/api/v1/commerce-payments', commercePaymentRoutes);
 app.use('/api/v1/payments', paymentRoutes);
 // Mount specific admin routes first to avoid catching issues
 app.use('/api/v1/admin/tenants', adminTenantRoutes);

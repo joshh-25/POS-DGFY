@@ -104,6 +104,157 @@ export class PayMongoService {
         }
     }
 
+    async createPaymentIntent({
+        amount,
+        currency = 'PHP',
+        description,
+        paymentMethodAllowed = ['qrph'],
+        metadata = {},
+        splitPayment = null
+    }) {
+        try {
+            const attributes = {
+                amount,
+                currency,
+                description,
+                payment_method_allowed: paymentMethodAllowed,
+                metadata
+            };
+
+            if (splitPayment) {
+                attributes.split_payment = splitPayment;
+            }
+
+            const response = await axios.post(`${this.baseUrl}/payment_intents`, {
+                data: { attributes }
+            }, {
+                headers: this.getAuthHeader()
+            });
+
+            logger.info(`PayMongo payment intent created: ${response.data.data.id}`);
+            return response.data.data;
+        } catch (error) {
+            logger.error('PayMongo Create Payment Intent Error:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    async createPaymentMethod({ type = 'qrph', billing = {}, metadata = {} }) {
+        try {
+            const response = await axios.post(`${this.baseUrl}/payment_methods`, {
+                data: {
+                    attributes: {
+                        type,
+                        billing,
+                        metadata
+                    }
+                }
+            }, {
+                headers: this.getAuthHeader()
+            });
+
+            logger.info(`PayMongo payment method created: ${response.data.data.id}`);
+            return response.data.data;
+        } catch (error) {
+            logger.error('PayMongo Create Payment Method Error:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    async attachPaymentIntent({ paymentIntentId, paymentMethodId, returnUrl = null }) {
+        try {
+            const attributes = {
+                payment_method: paymentMethodId
+            };
+            if (returnUrl) attributes.return_url = returnUrl;
+
+            const response = await axios.post(`${this.baseUrl}/payment_intents/${paymentIntentId}/attach`, {
+                data: { attributes }
+            }, {
+                headers: this.getAuthHeader()
+            });
+
+            logger.info(`PayMongo payment intent attached: ${paymentIntentId}`);
+            return response.data.data;
+        } catch (error) {
+            logger.error('PayMongo Attach Payment Intent Error:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    async createQrphPaymentIntent({
+        amount,
+        currency = 'PHP',
+        description,
+        billing = {},
+        metadata = {},
+        splitPayment = null,
+        returnUrl = null
+    }) {
+        const paymentIntent = await this.createPaymentIntent({
+            amount,
+            currency,
+            description,
+            paymentMethodAllowed: ['qrph'],
+            metadata,
+            splitPayment
+        });
+        const paymentMethod = await this.createPaymentMethod({
+            type: 'qrph',
+            billing,
+            metadata
+        });
+        const attachedIntent = await this.attachPaymentIntent({
+            paymentIntentId: paymentIntent.id,
+            paymentMethodId: paymentMethod.id,
+            returnUrl
+        });
+
+        const nextAction = attachedIntent?.attributes?.next_action || {};
+        const code = nextAction?.code || {};
+        const expiresAt = code?.expires_at || nextAction?.expires_at || attachedIntent?.attributes?.expires_at || null;
+
+        return {
+            paymentIntent,
+            paymentMethod,
+            attachedIntent,
+            qrCodeImageUrl: code?.image_url || code?.imageUrl || null,
+            checkoutUrl: nextAction?.redirect?.url || nextAction?.redirect_url || null,
+            expiresAt
+        };
+    }
+
+    async createRefund({
+        amount,
+        paymentId,
+        reason = 'requested_by_customer',
+        notes = null,
+        splitRefund = null
+    }) {
+        try {
+            const attributes = {
+                amount,
+                payment_id: paymentId,
+                reason
+            };
+            if (notes) attributes.notes = String(notes).slice(0, 255);
+            if (splitRefund) attributes.split_refund = splitRefund;
+
+            const refundsBaseUrl = this.baseUrl.replace(/\/v1$/, '');
+            const response = await axios.post(`${refundsBaseUrl}/refunds`, {
+                data: { attributes }
+            }, {
+                headers: this.getAuthHeader()
+            });
+
+            logger.info(`PayMongo refund created: ${response.data.data.id}`);
+            return response.data.data;
+        } catch (error) {
+            logger.error('PayMongo Create Refund Error:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
     /**
      * Create a Payment Source for recurring charges
      * @param {Object} params - Source parameters
@@ -257,7 +408,6 @@ export class PayMongoService {
                 logger.warn('PayMongo webhook signature verification bypassed by PAYMONGO_ALLOW_UNSIGNED_WEBHOOKS (non-production only).');
                 return true;
             }
-
             logger.warn('PayMongo webhook secret is not configured; rejecting webhook.');
             return false;
         }

@@ -7477,6 +7477,9 @@ export default function StorefrontApp() {
     setCheckoutLoading(true);
     try {
       const authToken = readStoreAuthToken();
+      const shouldCreateQrphPaymentSession = !hasServiceCart
+        && !(isServicesMode && serviceBookingLine)
+        && fnbPaymentType === 'qrph';
       const data = (hasServiceCart || (isServicesMode && serviceBookingLine))
         ? await requestJson('/api/v1/store/services/bookings', {
           method: 'POST',
@@ -7500,14 +7503,14 @@ export default function StorefrontApp() {
             ].filter(Boolean).join('\n')
           }
         })
-        : await requestJson('/api/v1/store/checkout', {
+        : await requestJson(shouldCreateQrphPaymentSession ? '/api/v1/store/checkout/payment-sessions' : '/api/v1/store/checkout', {
           method: 'POST',
           storeSlug: selectedStore.slug,
           authToken,
           body: {
             ...checkoutPayload(),
             idempotency_key: window.crypto?.randomUUID?.() || `store-${Date.now()}`,
-            payment_type: fnbPaymentType
+            payment_type: shouldCreateQrphPaymentSession ? 'qrph' : fnbPaymentType
           }
         });
       setCheckoutResult({
@@ -7576,7 +7579,7 @@ export default function StorefrontApp() {
           orderSuccessAnimationTimerRef.current = null;
         }, 1200);
       }
-      toast.success(hasServiceCart ? 'Booking created.' : 'Checkout completed.');
+      toast.success(shouldCreateQrphPaymentSession ? 'QR Ph payment session created.' : (hasServiceCart ? 'Booking created.' : 'Checkout completed.'));
     } catch (error) {
       const violation = extractStockViolation(error);
       if (violation) {
@@ -12094,14 +12097,14 @@ export default function StorefrontApp() {
                                               {servicePaymentTiming === 'deposit' ? 'Deposit payment preview' : 'Pay now preview'}
                                             </div>
                                             <div style={{ fontSize: 13, lineHeight: 1.7, color: '#9a3412' }}>
-                                              This is a temporary storefront payment UI. The current services backend still completes the actual payment handoff after the booking is submitted and returns a secure checkout link.
+                                              This is a temporary storefront payment UI. PayMongo QR Ph for services remains disabled until hold-bound payment sessions are implemented, so the current services backend still completes any payment handoff after the booking is submitted.
                                             </div>
                                           </div>
 
                                           <div style={{ display: 'grid', gap: 14, padding: isMobileViewport ? 16 : 18, borderRadius: 22, border: '1px solid #dbe5ee', background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)', boxShadow: '0 14px 36px rgba(15, 23, 42, 0.06)' }}>
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                                               {[
-                                                { value: 'qr', label: 'QR Payment' },
+                                                { value: 'qr', label: 'Manual payment preview' },
                                                 { value: 'card', label: 'Card Details' }
                                               ].map((option) => {
                                                 const isActive = servicePaymentPreviewMethod === option.value;
@@ -12138,9 +12141,9 @@ export default function StorefrontApp() {
                                                     </div>
                                                   </div>
                                                   <div style={{ display: 'grid', gap: 10 }}>
-                                                    <div style={{ fontSize: 16, fontWeight: 900, color: STYLES.colors.dark }}>QR payment preview</div>
+                                                    <div style={{ fontSize: 16, fontWeight: 900, color: STYLES.colors.dark }}>Manual payment preview</div>
                                                     <div style={{ fontSize: 13, lineHeight: 1.7, color: '#475569' }}>
-                                                      Use this area later for bank transfer, e-wallet, or generated QR payment instructions. For now, the final payment link still appears only after the booking is submitted.
+                                                      Use this area later for bank transfer, e-wallet, or hold-bound generated QR payment instructions. For now, QR Ph checkout is available only for product/F&B cart orders.
                                                     </div>
                                                     <div style={{ display: 'grid', gap: 8 }}>
                                                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '12px 14px', borderRadius: 16, background: '#ffffff', border: '1px solid #e2e8f0' }}>
@@ -14059,9 +14062,19 @@ return (
           {simpleOrderStep === 4 && checkoutResult && (
             <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.45fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
               <section style={{ border: '1px solid #99f6e4', borderRadius: 16, background: '#ecfeff', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 12 }}>
-                <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Confirmed</div>
-                <div style={{ fontSize: isMobileViewport ? 24 : 30, fontWeight: 900, color: '#0f172a', lineHeight: 1.1, fontFamily: servicesDisplayFont }}>Your order is now in the storefront queue.</div>
-                <div style={{ fontSize: 14, color: '#475569' }}>Reference: <strong>{checkoutResult?.tracking_pin || 'Pending'}</strong></div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{checkoutResult?.payment_session ? 'Payment Pending' : 'Order Confirmed'}</div>
+                <div style={{ fontSize: isMobileViewport ? 24 : 30, fontWeight: 900, color: '#0f172a', lineHeight: 1.1, fontFamily: servicesDisplayFont }}>{checkoutResult?.payment_session ? 'Scan the QR Ph code to finish checkout.' : 'Your order is now in the storefront queue.'}</div>
+                <div style={{ fontSize: 14, color: '#475569' }}>Reference: <strong>{checkoutResult?.tracking_pin || checkoutResult?.payment_session?.public_reference || 'Pending'}</strong></div>
+                {checkoutResult?.payment_session?.qr_code_image_url && (
+                  <div style={{ display: 'grid', gap: 10, border: '1px solid #fed7aa', borderRadius: 14, background: '#fff7ed', padding: 14, maxWidth: 360 }}>
+                    <div style={{ fontSize: 14, fontWeight: 900, color: '#9a3412' }}>Scan to pay with QR Ph</div>
+                    <img src={checkoutResult.payment_session.qr_code_image_url} alt="QR Ph payment code" style={{ width: 220, maxWidth: '100%', borderRadius: 12, background: '#fff', padding: 8 }} />
+                    <div style={{ fontSize: 12, color: '#9a3412' }}>
+                      Amount: <strong>{money(checkoutResult.payment_session.total_amount)}</strong>
+                      {checkoutResult.payment_session.expires_at ? ` · Expires ${new Date(checkoutResult.payment_session.expires_at).toLocaleTimeString()}` : ''}
+                    </div>
+                  </div>
+                )}
                 <div style={{ display: 'grid', gap: 8 }}>
                   {(Array.isArray(checkoutResult?.cart_lines) ? checkoutResult.cart_lines : []).map((line) => (
                     <div key={`simple-confirm-line-${line.item_id}`} style={{ border: '1px solid #b6f2e9', borderRadius: 12, background: '#fff', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13 }}>
@@ -14071,8 +14084,8 @@ return (
                   ))}
                 </div>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  {checkoutResult?.payment?.checkout_url && (
-                    <a href={checkoutResult.payment.checkout_url} target="_blank" rel="noreferrer" style={{ minHeight: 42, borderRadius: 12, border: 'none', background: '#ea580c', color: '#fff', padding: '0 14px', fontWeight: 800, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                  {(checkoutResult?.payment?.checkout_url || checkoutResult?.payment_session?.checkout_url) && (
+                    <a href={checkoutResult?.payment?.checkout_url || checkoutResult?.payment_session?.checkout_url} target="_blank" rel="noreferrer" style={{ minHeight: 42, borderRadius: 12, border: 'none', background: '#ea580c', color: '#fff', padding: '0 14px', fontWeight: 800, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
                       Pay Now
                     </a>
                   )}
@@ -14088,7 +14101,7 @@ return (
                 <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Receipt Snapshot</div>
                 <div style={{ fontSize: 38, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{money(checkoutResult?.totals?.total_amount ?? totalsForDisplay.total_amount)}</div>
                 <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Tracking PIN</span><strong>{checkoutResult?.tracking_pin || 'Pending'}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Tracking PIN</span><strong>{checkoutResult?.tracking_pin || checkoutResult?.payment_session?.public_reference || 'Pending'}</strong></div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Payment</span><strong>{String(fnbPaymentType || 'cash').replace('_', ' ').toUpperCase()}</strong></div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Fulfillment</span><strong>{isDeliveryOrder ? 'Delivery' : 'Pickup'}</strong></div>
                 </div>
@@ -16052,7 +16065,7 @@ return (
                           onChange={(nextValue) => setFnbPaymentType(String(nextValue))}
                           options={[
                             { value: 'cash', label: 'Cash on delivery/pickup' },
-                            { value: 'online', label: 'Online payment' }
+                            { value: 'qrph', label: 'QR Ph online payment' }
                           ]}
                           triggerStyle={{ minHeight: 44, borderRadius: 12 }}
                         />
@@ -16132,8 +16145,9 @@ return (
 
                 {fnbOrderStep === 4 && checkoutResult && (
                   <section style={{ border: '1px solid #dbe5ee', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 12 }}>
-                      <div style={{ fontSize: 12, fontWeight: 800, color: fnbOrderBrand, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Confirmation</div>
-                    <div style={{ fontSize: 24, fontWeight: 900, color: '#1e293b' }}>Order submitted successfully</div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: fnbOrderBrand, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{checkoutResult?.payment_session ? 'Payment Pending' : 'Order Confirmation'}</div>
+                    <div style={{ fontSize: 24, fontWeight: 900, color: '#1e293b' }}>{checkoutResult?.payment_session ? 'Scan the QR Ph code to finish checkout' : 'Order submitted successfully'}</div>
+                    {!checkoutResult?.payment_session && (
                       <div style={{ display: 'grid', gap: 8, border: `1px solid ${fnbOrderBrandSoft}`, background: fnbOrderBrandTint, borderRadius: 14, padding: '12px 14px' }}>
                         <div style={{ fontSize: 13, fontWeight: 800, color: fnbOrderBrandDark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Fulfillment Handoff</div>
                         <div style={{ fontSize: 14, color: fnbOrderMutedBlueText, lineHeight: 1.6 }}>
@@ -16145,11 +16159,22 @@ return (
                         Next update: Confirmed by store
                       </div>
                     </div>
+                    )}
                     <div style={{ display: 'grid', gap: 6, fontSize: 14, color: '#334155' }}>
-                      <div>Reference: <strong>{checkoutResult?.tracking_pin || 'Pending'}</strong></div>
+                      <div>Reference: <strong>{checkoutResult?.tracking_pin || checkoutResult?.payment_session?.public_reference || 'Pending'}</strong></div>
                       <div>Payment: <strong>{String(fnbPaymentType || 'cash').toUpperCase()}</strong></div>
                       <div>Total: <strong>{money(checkoutResult?.totals?.total_amount ?? totalsForDisplay.total_amount)}</strong></div>
                     </div>
+                    {checkoutResult?.payment_session?.qr_code_image_url && (
+                      <div style={{ display: 'grid', gap: 10, border: '1px solid #fed7aa', borderRadius: 14, background: '#fff7ed', padding: 14, maxWidth: 360 }}>
+                        <div style={{ fontSize: 14, fontWeight: 900, color: '#9a3412' }}>Scan to pay with QR Ph</div>
+                        <img src={checkoutResult.payment_session.qr_code_image_url} alt="QR Ph payment code" style={{ width: 220, maxWidth: '100%', borderRadius: 12, background: '#fff', padding: 8 }} />
+                        <div style={{ fontSize: 12, color: '#9a3412' }}>
+                          Amount: <strong>{money(checkoutResult.payment_session.total_amount)}</strong>
+                          {checkoutResult.payment_session.expires_at ? ` · Expires ${new Date(checkoutResult.payment_session.expires_at).toLocaleTimeString()}` : ''}
+                        </div>
+                      </div>
+                    )}
                     <div style={{ display: 'grid', gap: 8, maxHeight: 220, overflowY: 'auto', paddingRight: 2 }}>
                       {(Array.isArray(checkoutResult?.cart_lines) ? checkoutResult.cart_lines : []).map((line) => (
                         <div key={`fnb-confirm-line-${line.item_id}`} style={{ border: '1px solid #e2e8f0', borderRadius: 12, background: '#fff', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13 }}>

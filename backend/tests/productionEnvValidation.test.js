@@ -121,7 +121,7 @@ describe('production environment validation', () => {
     });
 
     expect(missing.ok).toBe(false);
-    expect(missing.errors).toContain('PAYMENTS_ENABLED=true requires PayMongo or PayPal provider configuration');
+    expect(missing.errors).toContain('Payment-enabled production requires PayMongo or PayPal provider configuration');
 
     const configured = validateProductionEnv({
       env: {
@@ -156,5 +156,48 @@ describe('production environment validation', () => {
 
     expect(result.ok).toBe(false);
     expect(result.errors).toContain('PAYMONGO_ALLOW_UNSIGNED_WEBHOOKS must not be true in production, live mode, or payment-enabled deployments');
+  });
+
+  it('requires PayMongo and DGFY merchant config when commerce payments are enabled', () => {
+    const missing = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        COMMERCE_PAYMENTS_ENABLED: 'true',
+        COMMERCE_QRPH_ENABLED: 'true'
+      }
+    });
+
+    expect(missing.ok).toBe(false);
+    expect(missing.errors).toContain('Payment-enabled production requires PayMongo or PayPal provider configuration');
+
+    const missingMerchant = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        COMMERCE_PAYMENTS_ENABLED: 'true',
+        COMMERCE_QRPH_ENABLED: 'true',
+        PAYMONGO_MODE: 'test',
+        PAYMONGO_TEST_PUBLIC_KEY: 'pk_test_fixture',
+        PAYMONGO_TEST_SECRET_KEY: 'sk_test_fixture',
+        PAYMONGO_TEST_WEBHOOK_SECRET: 'whsec_test_fixture'
+      }
+    });
+
+    expect(missingMerchant.ok).toBe(false);
+    expect(missingMerchant.errors).toContain('Missing required environment value: PAYMONGO_DGFY_MERCHANT_ID');
+
+    const configured = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        COMMERCE_PAYMENTS_ENABLED: 'true',
+        COMMERCE_QRPH_ENABLED: 'true',
+        PAYMONGO_MODE: 'test',
+        PAYMONGO_TEST_PUBLIC_KEY: 'pk_test_fixture',
+        PAYMONGO_TEST_SECRET_KEY: 'sk_test_fixture',
+        PAYMONGO_TEST_WEBHOOK_SECRET: 'whsec_test_fixture',
+        PAYMONGO_DGFY_MERCHANT_ID: 'org_dgfy_fixture'
+      }
+    });
+
+    expect(configured.ok).toBe(true);
   });
 });

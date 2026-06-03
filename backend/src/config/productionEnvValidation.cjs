@@ -212,21 +212,28 @@ const detectPaymentProvider = (env) => {
 
 const validatePaymentConfig = (env, errors, warnings) => {
   const paymentsEnabled = isTruthy(env.PAYMENTS_ENABLED);
+  const commercePaymentsEnabled = isTruthy(env.COMMERCE_PAYMENTS_ENABLED)
+    || isTruthy(env.COMMERCE_QRPH_ENABLED)
+    || isTruthy(env.COMMERCE_PAYMONGO_SPLIT_ENABLED);
   const paymongoLiveMode = String(env.PAYMONGO_MODE || '').trim().toLowerCase() === 'live';
 
-  if (!paymentsEnabled && !paymongoLiveMode) return;
+  if (!paymentsEnabled && !commercePaymentsEnabled && !paymongoLiveMode) return;
 
   const provider = detectPaymentProvider(env);
   if (!provider) {
-    errors.push('PAYMENTS_ENABLED=true requires PayMongo or PayPal provider configuration');
+    errors.push('Payment-enabled production requires PayMongo or PayPal provider configuration');
     return;
   }
 
-  if (provider === 'paymongo' || provider === 'dual' || paymongoLiveMode) {
+  if (provider === 'paymongo' || provider === 'dual' || paymongoLiveMode || commercePaymentsEnabled) {
     validatePayMongoConfig(env, errors);
   }
   if (provider === 'paypal' || provider === 'dual') {
     validatePayPalConfig(env, errors);
+  }
+
+  if (commercePaymentsEnabled && !hasValue(env, 'PAYMONGO_DGFY_MERCHANT_ID')) {
+    addMissing(errors, 'PAYMONGO_DGFY_MERCHANT_ID');
   }
 
   if (isTruthy(env.PAYMONGO_ALLOW_UNSIGNED_WEBHOOKS)) {

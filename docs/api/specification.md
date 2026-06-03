@@ -3313,6 +3313,139 @@ Route mapping note:
   - `service_fee_label_snapshot` (`DGFY convenience fee`, deterministic even when amount is `0`)
   - `service_fee_method_snapshot` (order method for traceability)
   - `service_fee_overridden=false`
+- Direct `/store/checkout` requests cannot self-finalize `payment_type=qrph`; QR Ph orders are committed only by the PayMongo webhook after a matching payment session reaches `payment.paid`.
+- Services, F&B reservations, and Hospitality reservations do not use QR Ph commerce payment sessions yet. They remain blocked from QR Ph until hold-bound payment sessions are implemented.
+
+### POST /store/checkout/payment-sessions
+Create a PayMongo QR Ph payment session for Storefront online checkout. This is a payment handoff, not an order commit.
+
+**Auth**: Optional store customer (`Store JWT`)
+**Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
+**Caching Contract**: `Cache-Control: no-store, no-cache, max-age=0, must-revalidate`
+
+**Request**
+- Same payload as `/store/checkout`.
+- `payment_type` must be `qrph`.
+- `idempotency_key` is required and scoped to tenant + target type.
+
+**Response (201)**
+```json
+{
+  "payment_session": {
+    "public_reference": "CPS-ABC123DEF4",
+    "status": "awaiting_payment",
+    "provider": "paymongo",
+    "payment_method": "qrph",
+    "qr_code_image_url": "data:image/png;base64,...",
+    "expires_at": "2026-05-19T12:30:00.000Z",
+    "service_fee_amount": 10,
+    "service_fee_label": "DGFY convenience fee",
+    "total_amount": 1010
+  }
+}
+```
+
+**Settlement Contract**
+- The Storefront quote remains authoritative for totals.
+- The mandatory DGFY 1% is stored as `service_fee_amount` and sent to PayMongo as a fixed split amount in centavos.
+- The tenant PayMongo child merchant receives the remaining net settlement through `transfer_to`.
+- QR Ph sessions finalize the Storefront order only after PayMongo sends `payment.paid`.
+
+### GET /store/checkout/payment-sessions/:payment_session_id
+Read the current public payment-session state for polling after QR Ph creation.
+
+### Admin PayMongo Commerce Operations
+Platform-admin endpoints for testing and operating the full PayMongo QR Ph commerce method.
+
+`tenant_id` values in these endpoints are landlord tenant UUIDs. Integer tenant IDs are invalid because `tenants.id` is UUID-backed.
+
+Sandbox credential verification is repeatable with `npm --prefix backend run verify:paymongo:sandbox`; the script checks PayMongo QR Ph Payment Intent creation, Payment Method creation, and QR next-action attachment using redacted output.
+
+Webhook endpoint readiness is repeatable with `npm --prefix backend run verify:paymongo:webhook -- <https-webhook-url>`. The expected unsigned probe response is `401`; `404` means the route is not deployed/mounted, and any `2xx` unsigned response means signature enforcement is unsafe.
+
+**PayMongo Test Webhook Endpoint**
+
+For local sandbox runs through ngrok, configure PayMongo with:
+
+```text
+https://NGROK-FORWARDING-HOST/api/v1/commerce-payments/paymongo/webhook
+```
+
+Required events: `payment.paid`, `payment.failed`, `payment.refund.updated`, `payment.refunded`, and `qrph.expired`.
+
+Unsigned manual probes should return `401 Invalid PayMongo webhook signature`. That is expected and confirms the public URL reaches the webhook route while still rejecting forged payloads.
+
+After `PAYMONGO_TEST_WEBHOOK_SECRET` is configured, a locally signed fake payment event with a non-existent `commerce_payment_session` should return `200` with `handled=false` and `reason=session_not_found`. That proves signature verification and repository lookup execute without accepting a forged order finalization.
+
+**PayMongo Live Webhook Endpoint**
+
+Production live webhooks use the same route on the production backend:
+
+```text
+https://skupervisor.surebizcorp.com/api/v1/commerce-payments/paymongo/webhook
+```
+
+The production server must use `PAYMONGO_MODE=live` and `PAYMONGO_LIVE_WEBHOOK_SECRET`. If an unsigned probe returns `404`, the backend route is not deployed there yet and live PayMongo delivery will fail.
+
+**Auth**: Admin JWT (`/admin/login`)
+**Base Path**: `/api/v1/commerce-payments/admin`
+**Caching Contract**: `Cache-Control: no-store, no-cache, max-age=0, must-revalidate`
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/payment-sessions` | List PayMongo commerce payment sessions. Supports `tenant_id`, `status`, `target_type`, `limit`, and `offset`. |
+| `GET` | `/payment-sessions/:payment_session_id` | Inspect a payment session, provider IDs, order linkage, refundable balance, and refund attempts. |
+| `GET` | `/settlement-report` | Summarize/export QR Ph gross, fixed DGFY 1%, estimated tenant gross, refund exposure, provider IDs, and variance. Supports the same filter shape as payment-session listing. |
+| `GET` | `/certification/paymongo-sandbox` | Return app-verifiable PayMongo sandbox readiness checks and the remaining external evidence required before live money movement. |
+| `POST` | `/payment-sessions/:payment_session_id/retry-finalization` | Retry local order finalization for paid unresolved sessions without creating duplicate orders. |
+| `POST` | `/payment-sessions/:payment_session_id/refunds` | Submit a PayMongo refund for a paid/finalized session. |
+| `GET` | `/tenant-payment-accounts` | List tenant PayMongo child merchant readiness records. Supports `tenant_id`. |
+| `PUT` | `/tenants/:tenant_id/payment-account` | Create/update tenant PayMongo child merchant readiness. |
+
+**Tenant Payment Account Request**
+```json
+{
+  "provider_merchant_id": "org_child_merchant_id",
+  "provider_wallet_id": "wallet_optional",
+  "wallet_status": "enabled",
+  "wallet_verified_at": "2026-05-20T00:00:00.000Z",
+  "onboarding_status": "active",
+  "qrph_enabled": true,
+  "split_enabled": true,
+  "charges_enabled": true,
+  "verification_reference": "PAYMONGO-SANDBOX-TICKET-123",
+  "verified_at": "2026-05-20T00:00:00.000Z",
+  "verified_by": "platform-admin"
+}
+```
+
+`verification_reference` and `verified_at` are required when `onboarding_status=active` or any of `qrph_enabled`, `split_enabled`, or `charges_enabled` is enabled. `wallet_status=enabled` and `wallet_verified_at` are also required before `split_enabled` or `charges_enabled` can be enabled. This prevents QR Ph split checkout from being exposed from manual flags alone.
+
+**Refund Request**
+```json
+{
+  "amount": 100.00,
+  "refund_strategy": "proportional",
+  "reason": "requested_by_customer",
+  "notes": "Customer requested cancellation"
+}
+```
+
+**Refund Strategy Notes**
+- `proportional` lets PayMongo apply the default split-refund distribution.
+- `tenant` sends a fixed split-refund source against the tenant transfer merchant.
+- `dgfy` sends a fixed split-refund source against `PAYMONGO_DGFY_MERCHANT_ID`.
+- `custom` is supported by backend payload shape for provider testing, but the current admin UI exposes only proportional, tenant, and DGFY strategies.
+- Non-proportional `split_refund.refund_sources` must total exactly the requested refund amount in centavos before the provider API is called.
+- Refund submission records `pending` refunds without marking the order refunded until PayMongo reports terminal success.
+- The PayMongo webhook handler updates stored refund attempts for `payment.refunded` and `payment.refund.updated` events when the provider refund ID matches `commerce_payment_refunds`, then recomputes payment-session and tenant-order payment status.
+- Possible tenant order payment statuses for commerce QR Ph refunds are `refund_pending`, `partial_refunded`, and `refunded`.
+
+**Settlement Report Notes**
+- The settlement report is based on landlord `commerce_payment_sessions` and `commerce_payment_refunds`.
+- `platform_fee_centavos` is the stored fixed DGFY 1% split from ADR 0012/ADR 0027.
+- `estimated_tenant_gross_centavos` is `total_amount_centavos - platform_fee_centavos`; it is not PayMongo payout truth.
+- Provider fees, payout IDs, and final payout status require PayMongo reporting/payout data and must not be inferred from local records alone.
 
 ### GET /store/track/:tracking_pin
 Track online-store order status for public users.

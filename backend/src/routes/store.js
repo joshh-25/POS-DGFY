@@ -24,10 +24,12 @@ import {
     validateStoreCatalogQuery,
     validateStoreQuote,
     validateStoreCheckout,
+    validateStoreCheckoutPaymentSession,
     validateStoreCreateAddress,
     validateStoreUpdateAddress,
     validateStoreAddressIdParam,
     validateStoreTrackingPinParam,
+    validateStorePaymentSessionParam,
     validateStoreCancelOrder,
     validateStoreClaimOrder,
     validateStoreOrderHistoryQuery,
@@ -86,6 +88,8 @@ router.patch('/addresses/:id/default', setNoStoreCacheControl, authenticateStore
 router.delete('/addresses/:id', setNoStoreCacheControl, authenticateStoreCustomer, validateStoreAddressIdParam, storeController.deleteStoreCustomerAddress);
 
 router.post('/cart/quote', setNoStoreCacheControl, optionalStoreCustomer, validateStoreQuote, storeController.cartQuote);
+router.post('/checkout/payment-sessions', setNoStoreCacheControl, optionalStoreCustomer, validateStoreCheckoutPaymentSession, storeController.createCheckoutPaymentSession);
+router.get('/checkout/payment-sessions/:payment_session_id', setNoStoreCacheControl, optionalStoreCustomer, validateStorePaymentSessionParam, storeController.getCheckoutPaymentSession);
 router.post('/checkout', setNoStoreCacheControl, optionalStoreCustomer, validateStoreCheckout, storeController.checkout);
 router.get('/services/bookings', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, authenticateStoreCustomer, validateServiceBookingQuery, listPublicServiceBookings);
 router.post('/services/bookings', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, optionalStoreCustomer, validateCreateServiceBooking, createPublicServiceBooking);

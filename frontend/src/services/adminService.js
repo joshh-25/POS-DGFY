@@ -110,16 +110,20 @@ export const getToken = () => {
     return adminToken;
 };
 
+const requireAdminHeaders = () => {
+    const token = getToken();
+    if (!token) {
+        throw new Error('Admin authentication required');
+    }
+    return {
+        'Authorization': `Bearer ${token}`
+    };
+};
+
 /**
  * Get feedback with optional filters
  */
 export const getFeedback = async (filters = {}) => {
-    const token = getToken();
-
-    if (!token) {
-        throw new Error('Admin authentication required');
-    }
-
     const params = new URLSearchParams();
     if (filters.type && filters.type !== 'all') params.append('type', filters.type);
     if (filters.search) params.append('search', filters.search);
@@ -127,12 +131,69 @@ export const getFeedback = async (filters = {}) => {
     if (filters.endDate) params.append('endDate', filters.endDate);
 
     const response = await adminApi.get('/admin/feedback', {
-        headers: {
-            'Authorization': `Bearer ${token}`
-        },
+        headers: requireAdminHeaders(),
         params
     });
 
+    return response.data;
+};
+
+export const listCommercePaymentSessions = async (filters = {}) => {
+    const response = await adminApi.get('/commerce-payments/admin/payment-sessions', {
+        headers: requireAdminHeaders(),
+        params: filters
+    });
+    return response.data;
+};
+
+export const getCommercePaymentSession = async (paymentSessionId) => {
+    const response = await adminApi.get(`/commerce-payments/admin/payment-sessions/${paymentSessionId}`, {
+        headers: requireAdminHeaders()
+    });
+    return response.data;
+};
+
+export const getCommerceSettlementReport = async (filters = {}) => {
+    const response = await adminApi.get('/commerce-payments/admin/settlement-report', {
+        headers: requireAdminHeaders(),
+        params: filters
+    });
+    return response.data;
+};
+
+export const getPayMongoSandboxCertification = async () => {
+    const response = await adminApi.get('/commerce-payments/admin/certification/paymongo-sandbox', {
+        headers: requireAdminHeaders()
+    });
+    return response.data;
+};
+
+export const retryCommercePaymentFinalization = async (paymentSessionId) => {
+    const response = await adminApi.post(`/commerce-payments/admin/payment-sessions/${paymentSessionId}/retry-finalization`, {}, {
+        headers: requireAdminHeaders()
+    });
+    return response.data;
+};
+
+export const createCommercePaymentRefund = async (paymentSessionId, payload) => {
+    const response = await adminApi.post(`/commerce-payments/admin/payment-sessions/${paymentSessionId}/refunds`, payload, {
+        headers: requireAdminHeaders()
+    });
+    return response.data;
+};
+
+export const listTenantPaymentAccounts = async (filters = {}) => {
+    const response = await adminApi.get('/commerce-payments/admin/tenant-payment-accounts', {
+        headers: requireAdminHeaders(),
+        params: filters
+    });
+    return response.data;
+};
+
+export const upsertTenantPaymentAccount = async (tenantId, payload) => {
+    const response = await adminApi.put(`/commerce-payments/admin/tenants/${tenantId}/payment-account`, payload, {
+        headers: requireAdminHeaders()
+    });
     return response.data;
 };
 
