@@ -70,6 +70,11 @@ Commands executed during this audit:
 - `npm --prefix frontend run lint` - passed with zero warnings on 2026-06-03 after storefront lint cleanup.
 - `npm --prefix frontend test -- --run apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/profileLauncher.integration.test.jsx apps/store/src/__tests__/discoveryHeaderAccount.integration.test.jsx` - passed 3 files / 27 tests on 2026-06-03 after storefront lint cleanup.
 - `npm --prefix frontend run build:store` - passed on 2026-06-03 after storefront lint cleanup.
+- `npm --prefix backend test -- --runTestsByPath tests/paymongoWebhookSignature.test.js` - passed 1 suite / 9 tests on 2026-06-03 after PayMongo webhook fail-closed remediation.
+- `npm --prefix backend test -- --testPathIgnorePatterns=^$ --runTestsByPath tests/billingFunnelTelemetry.usecases.legacy.test.js` - passed 1 legacy suite / 11 tests on 2026-06-03 after aligning stale registration telemetry fixtures to the current DGFY registration contract.
+- `npm --prefix backend test -- --runTestsByPath tests/paymongoWebhookSignature.test.js tests/paymentHandlers.publicRoutes.transport.test.js tests/paymentHandlers.simulateWebhook.test.js tests/paymentsRoutes.disabled.transport.test.js tests/paypalWebhookVerification.test.js` - passed 5 suites / 24 tests on 2026-06-03 after PayMongo webhook fail-closed remediation.
+- `npm --prefix frontend run build:all` - passed on 2026-06-03 before rerunning the local release gate.
+- `npm run gate:release:local` - passed on 2026-06-03 after frontend build artifacts were refreshed.
 - `npm --prefix backend test` - timed out after 10 minutes during follow-up validation without current full-suite green evidence.
 
 ## Severity Model
@@ -91,7 +96,7 @@ Hygiene, documentation, or follow-through item that should be tracked but does n
 - `1.1-Dependency_vulnerabilities_block_production.md`
 - `1.2-Default_admin_credentials_remain_available.md`
 - `1.3-Browser_localStorage_tokens_expose_sessions_to_xss.md` — remediated 2026-06-02 with ADR 0026 cookie-session contract and storage guards
-- `1.4-PayMongo_webhook_signature_verification_can_fail_open.md`
+- `1.4-PayMongo_webhook_signature_verification_can_fail_open.md` — remediated 2026-06-03 with fail-closed PayMongo signature verification and replay proof
 - `1.5-Legacy_company_token_invite_links_still_exposed.md`
 - `1.6-Production_env_validation_logs_without_fail_stop.md`
 - `2.1-Local_release_gate_fails.md`

@@ -41,6 +41,7 @@ No-staging release policy reference:
   - `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`
   - `REDIS_URL` when `HOSTING_PROFILE=vps`
   - Payment-provider config only when `PAYMENTS_ENABLED=true`
+  - `PAYMONGO_WEBHOOK_SECRET` or the correct mode-specific PayMongo webhook secret when `PAYMENTS_ENABLED=true`; production and live-mode deployments must reject unsigned PayMongo webhooks
 - Current production `CORS_ORIGIN` must include every public IMS/POS/storefront domain that calls backend APIs directly:
   - `https://skupervisor.surebizcorp.com`
   - `https://surebizcorp.com`
@@ -378,6 +379,12 @@ npm run audit:billing-funnel
 Audit must return healthy (`exit 0`) before deploy can complete when billing checks are enabled.
 
 If your current business model has billing paused, keep `PAYMENTS_ENABLED=false` and leave `DEPLOY_RUN_BILLING_VERIFY=auto` (or set `0` explicitly) so billing hooks are skipped by policy.
+
+PayMongo webhook security rule:
+1. Production, live-mode, and `PAYMENTS_ENABLED=true` deployments must configure `PAYMONGO_WEBHOOK_SECRET`, `PAYMONGO_TEST_WEBHOOK_SECRET`, or `PAYMONGO_LIVE_WEBHOOK_SECRET` as appropriate for the selected mode.
+2. Runtime verification is fail-closed. Missing, unsigned, invalid, or stale PayMongo webhook signatures return `401` before payment or subscription mutation.
+3. `PAYMONGO_ALLOW_UNSIGNED_WEBHOOKS=true` is only for explicit non-production local testing while `PAYMENTS_ENABLED=false`; it must not be set for production, live mode, or payment-enabled deployments.
+4. Before re-enabling payment workflows, run `npm --prefix backend test -- --runTestsByPath tests/paymongoWebhookSignature.test.js` and confirm unsigned webhook probes are rejected.
 
 ## Tenant Schema Sync Regression Gate
 Deploy now fails only when tenant schema sync introduces a new failure signature or mutates an existing baseline signature.

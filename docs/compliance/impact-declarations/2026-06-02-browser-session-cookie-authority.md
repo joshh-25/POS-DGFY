@@ -5,7 +5,7 @@ last_reviewed: 2026-06-02
 related_adr: docs/architecture/adr/0026-browser-session-cookie-authority.md
 declaration_id: 2026-06-02-browser-session-cookie-authority
 classification: regulatory
-surfaces: pos,terminal,settings,admin,storefront,compliance
+surfaces: pos,terminal,settings,admin,storefront,payments,compliance
 reason_codes_impacted: SESSION_AUTHORITY_HARDENED,BROWSER_TOKEN_STORAGE_REMOVED
 policy_version: 2026.06.02
 verification_evidence: npm --prefix backend test -- --runTestsByPath tests/browserSessionCookies.test.js,npm --prefix frontend test -- --run src/services/__tests__/browserTokenStorage.guard.test.js,npm run check:architecture,npm run check:compliance
@@ -28,6 +28,7 @@ This declaration covers session authority hardening for tenant IMS, POS terminal
 
 - Tenant browser sessions now use HttpOnly refresh and tenant context cookies plus memory-only access tokens.
 - DGFY, storefront customer, and admin sessions support HttpOnly cookie-backed authentication.
+- Payment-related browser clients inherit the same cookie-backed session and CSRF contract when payment workflows are enabled.
 - Cookie-authenticated unsafe requests require `x-csrf-token`.
 - Frontend guarded application code no longer persists privileged session tokens in browser-readable storage.
 

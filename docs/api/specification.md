@@ -4139,6 +4139,22 @@ Applies to public and private payment routes, including but not limited to:
 - `GET /payments/history`
 - `GET /payments/pending-plan`
 
+### `POST /payments/webhook` PayMongo signature contract
+
+When payment workflows are intentionally enabled, PayMongo webhook requests must include the provider `Paymongo-Signature` header. The backend verifies the documented timestamped signature over the raw request body before creating webhook logs or mutating payment/subscription state.
+
+Required runtime configuration:
+- `PAYMONGO_WEBHOOK_SECRET`, or the mode-specific `PAYMONGO_TEST_WEBHOOK_SECRET` / `PAYMONGO_LIVE_WEBHOOK_SECRET`.
+- Production, live-mode, or `PAYMENTS_ENABLED=true` environments must not use unsigned webhook bypasses.
+
+Failure behavior:
+- Missing secret: `401 Invalid Signature`
+- Missing signature: `401 Invalid Signature`
+- Invalid or stale signature: `401 Invalid Signature`
+- Replayed processed event: `200 OK` with no repeated payment mutation
+
+Unsigned webhook bypass is limited to explicit non-production local testing while `PAYMENTS_ENABLED=false`.
+
 ---
 ### POST /admin/tenants/resubmit
 Re-submit a rejected registration for review. Resets status to `pending` and clears `rejection_reason`. **Public endpoint** — authenticated only by `x-company-token` header.

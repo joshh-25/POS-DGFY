@@ -45,6 +45,19 @@ Evidence semantics:
 3. Frontend storage guards prove privileged tenant, refresh, DGFY, storefront, and admin tokens are not persisted in browser-readable storage.
 4. These gates do not prove all XSS vectors are impossible; CSP and input/output encoding reviews remain required for UI changes.
 
+## PayMongo Webhook Security Gates
+
+PayMongo webhook integrity evidence is mandatory when subscription/payment workflows or payment-provider configuration change.
+
+Required command:
+1. `npm --prefix backend test -- --runTestsByPath tests/paymongoWebhookSignature.test.js`
+
+Evidence semantics:
+1. Service-level tests prove PayMongo webhook verification rejects missing secrets, missing signatures, invalid signatures, stale timestamps, and mode-mismatched signatures.
+2. Use-case tests prove invalid PayMongo signatures are rejected before webhook-log creation or payment/subscription mutation.
+3. Replay tests prove already processed PayMongo events return an idempotent response without repeating payment mutation.
+4. These gates do not prove live PayMongo delivery, provider dashboard configuration, child-account webhook registration, or settlement correctness.
+
 ## Frontend Bundle Guard
 
 Current bundle-gate expectations:
