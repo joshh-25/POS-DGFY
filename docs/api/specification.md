@@ -46,11 +46,12 @@ Production: https://api.sku-inventory.com/api/v1
 - Versioning Strategy: URL-based versioning (/api/v1, /api/v2, etc.)
 
 ### Authentication
-- **Method**: JWT (JSON Web Tokens) + Tenant Identification
-- **Auth Header**: `Authorization: Bearer <token>`
-- **Tenant Header**: `x-company-token: <company-token>` (REQUIRED)
-- **Token Expiry**: 24 hours
-- **Refresh Token**: 7 days
+- **Method**: short-lived JWT access token in memory + HttpOnly browser session cookies
+- **Auth Header**: `Authorization: Bearer <token>` for the in-memory access token
+- **Tenant Context**: browser sessions receive an HttpOnly tenant context cookie; public tenant-entry requests may still send `x-company-token`
+- **Token Expiry**: access tokens are short-lived bootstrap credentials; refresh/session authority is cookie-backed
+- **Refresh Token**: 7 days, rotated server-side and stored in an HttpOnly cookie for browser clients
+- **CSRF**: cookie-authenticated unsafe requests must send `x-csrf-token` matching the `sku_csrf_token` cookie
 
 ### Response Format
 All responses follow a consistent JSON structure:
@@ -140,9 +141,7 @@ Passwords only require a minimum length of 8 characters. The registration UI can
     "username": "john_doe",
     "email": "john@example.com",
     "phone_number": "+63 912 345 6789",
-    "role": "staff",
-    "token": "eyJhbGciOiJIUzI1NiIs...",
-    "refreshToken": "eyJhbGciOiJIUzI1NiIs..."
+    "role": "staff"
   },
   "message": "User registered successfully"
 }
@@ -192,7 +191,7 @@ Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 
 ```
 
 ### POST /auth/login
-Authenticate user and get JWT token
+Authenticate user and establish a browser session.
 
 **Request**
 ```json
@@ -213,21 +212,20 @@ Authenticate user and get JWT token
     "phone_number": "+63 912 345 6789",
     "role": "staff",
     "token": "eyJhbGciOiJIUzI1NiIs...",
-    "refreshToken": "eyJhbGciOiJIUzI1NiIs...",
     "expiresIn": 86400
   },
   "message": "Login successful"
 }
 ```
 
+Browser responses set HttpOnly `sku_refresh_token` and `sku_tenant_context` cookies plus the browser-readable `sku_csrf_token` cookie. The refresh token is not returned in JSON.
+
 ### POST /auth/refresh-token
-Refresh JWT token
+Refresh the in-memory access token using the HttpOnly browser session cookie.
 
 **Request**
 ```json
-{
-  "refreshToken": "eyJhbGciOiJIUzI1NiIs..."
-}
+{}
 ```
 
 **Response (200)**
@@ -270,7 +268,7 @@ Passwords only require a minimum length of 8 characters. The invitation-acceptan
 }
 ```
 
-Successful responses include the usable login shape: `user`, `token`, `refreshToken`, `expiresIn`, and `company`.
+Successful responses include the usable login shape: `user`, `token`, `expiresIn`, and `company`. Browser responses establish refresh authority through HttpOnly session cookies and do not return `refreshToken` in JSON.
 
 ---
 
@@ -3855,9 +3853,9 @@ Frontend                          Backend
    │                                │
    ├─── POST /auth/login ──────────>│
    │                                │
-   │<─── JWT Token + Refresh ───────┤
+   │<─── Access Token + HttpOnly Refresh Cookie ───────┤
    │                                │
-   ├─ Store in localStorage ─┐      │
+   ├─ Store access token in memory ─┐      │
    │                         │      │
    │ Add to headers ──────────────>│
    │ (Authorization: Bearer)       │

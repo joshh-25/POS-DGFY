@@ -30,6 +30,21 @@ Evidence semantics:
 2. The full audit blocks release readiness when dev/test tooling contains known npm advisory vulnerabilities, because the toolchain is part of release evidence generation.
 3. A green audit proves the locked dependency trees have no known npm advisories at execution time. It does not prove packages are vulnerability-free outside the npm advisory database.
 
+## Browser Session Security Gates
+
+Browser session security evidence is mandatory for auth, POS, DGFY, storefront, or admin changes.
+
+Required commands:
+1. `npm --prefix backend test -- --runTestsByPath tests/browserSessionCookies.test.js`
+2. `npm --prefix backend test -- --runTestsByPath tests/rtr_verification.test.js`
+3. `npm --prefix frontend test -- --run src/services/__tests__/browserTokenStorage.guard.test.js`
+
+Evidence semantics:
+1. Backend cookie tests prove refresh/session authority is issued and cleared with the ADR 0026 cookie attributes.
+2. RTR tests prove refresh authority is cookie-only, CSRF-protected, rotated on use, and replay-rejected.
+3. Frontend storage guards prove privileged tenant, refresh, DGFY, storefront, and admin tokens are not persisted in browser-readable storage.
+4. These gates do not prove all XSS vectors are impossible; CSP and input/output encoding reviews remain required for UI changes.
+
 ## Frontend Bundle Guard
 
 Current bundle-gate expectations:

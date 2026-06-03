@@ -32,6 +32,8 @@ No-staging release policy reference:
   - `JWT_SECRET`
   - `REFRESH_TOKEN_SECRET`
   - `CORS_ORIGIN`
+  - `SESSION_COOKIE_SECURE=true` for production browser session cookies
+  - `SESSION_COOKIE_DOMAIN=.dgfy.ph` only when the deployment intentionally shares sessions across approved `dgfy.ph` subdomains; otherwise omit it for host-only cookies
   - `AUTH_BLACKLIST_FAILURE_MODE`
   - `TEMP_FILE_STORAGE`
   - `TENANT_REGISTRATION_APPROVAL_MODE` (`auto_standard` by default; `manual` only for explicit admin-review rollback)

@@ -29,6 +29,12 @@
 
 This guide provides detailed instructions for integrating the React frontend with the Node.js/Express backend, including API client setup, state management, real-time updates, and error handling.
 
+Current browser authentication contract:
+- Refresh/session authority is held by HttpOnly cookies issued by the backend.
+- Frontend code may keep the access token in module memory through `frontend/src/services/browserSession.js`.
+- Frontend code must not persist `authToken`, `refreshToken`, tenant context, DGFY customer tokens, storefront customer tokens, or admin tokens in `localStorage` or `sessionStorage`.
+- Cookie-authenticated unsafe requests must include `x-csrf-token` from the browser-readable `sku_csrf_token` cookie.
+
 ---
 
 ## Part 1: API Client Setup
@@ -41,69 +47,34 @@ The API service layer acts as a bridge between the frontend and backend, handlin
 
 ```javascript
 import axios from 'axios';
-
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api/v1';
+import { getAuthHeaders, refreshBrowserSession } from './browserSession.js';
 
 const api = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 10000,
+  baseURL: import.meta.env.VITE_API_URL || '/api/v1',
+  timeout: 60000,
+  withCredentials: true,
   headers: {
-    'Content-Type': 'application/json',
-  },
+    'Content-Type': 'application/json'
+  }
 });
 
-// Request interceptor - Add JWT token and Company Token to headers
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('authToken');
-    const companyToken = localStorage.getItem('companyToken');
-    
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    
-    if (companyToken) {
-      config.headers['x-company-token'] = companyToken;
-    }
-    
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+api.interceptors.request.use((config) => {
+  const method = String(config.method || 'get').toLowerCase();
+  Object.assign(config.headers, getAuthHeaders({
+    includeCsrf: !['get', 'head', 'options'].includes(method)
+  }));
+  return config;
+});
 
-// Response interceptor - Handle token refresh and errors
-api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
-
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-
-      try {
-        const refreshToken = localStorage.getItem('refreshToken');
-        const response = await axios.post(`${API_BASE_URL}/auth/refresh-token`, {
-          refreshToken,
-        });
-
-        const { token } = response.data.data;
-        localStorage.setItem('authToken', token);
-
-        api.defaults.headers.common.Authorization = `Bearer ${token}`;
-        originalRequest.headers.Authorization = `Bearer ${token}`;
-
-        return api(originalRequest);
-      } catch (refreshError) {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('refreshToken');
-        window.location.href = '/login';
-        return Promise.reject(refreshError);
-      }
-    }
-
-    return Promise.reject(error);
+api.interceptors.response.use(undefined, async (error) => {
+  const originalRequest = error.config || {};
+  if (error.response?.status === 401 && !originalRequest._retry) {
+    originalRequest._retry = true;
+    await refreshBrowserSession();
+    return api(originalRequest);
   }
-);
+  throw error;
+});
 
 export default api;
 ```
@@ -115,64 +86,40 @@ export default api;
 The authentication service handles login, logout, and registration. It also dispatches custom events that allow other parts of the application (like PermissionContext) to react to authentication state changes.
 
 ```javascript
-import api from './api';
+import api from './api.js';
+import { clearClientSession } from './sessionCleanup.js';
+import { refreshBrowserSession, setBrowserSession } from './browserSession.js';
 
-export const register = async (userData, companyToken) => {
-  const config = companyToken ? {
-    headers: { 'x-company-token': companyToken }
-  } : {};
-
-  const response = await api.post('/auth/register', userData, config);
-  const { token, refreshToken } = response.data.data;
-  localStorage.setItem('authToken', token);
-  localStorage.setItem('refreshToken', refreshToken);
-  if (companyToken) {
-    localStorage.setItem('companyToken', companyToken);
-  }
-
-  // Dispatch custom event to notify PermissionContext to reload
-  window.dispatchEvent(new CustomEvent('auth:login'));
-
-  return response.data.data;
-};
-
-export const login = async (credentials) => {
-  const config = {
-    headers: { 'x-company-token': credentials.companyToken }
-  };
-
+export const login = async ({ email, password, companyToken }) => {
   const response = await api.post('/auth/login', {
-    email: credentials.email,
-    password: credentials.password
-  }, config);
+    email,
+    password
+  }, {
+    headers: { 'x-company-token': companyToken }
+  });
 
-  const { token, refreshToken } = response.data.data;
-  localStorage.setItem('authToken', token);
-  localStorage.setItem('refreshToken', refreshToken);
-  if (credentials.companyToken) {
-    localStorage.setItem('companyToken', credentials.companyToken);
-  }
-
-  // Dispatch custom event to notify PermissionContext to reload
+  setBrowserSession({
+    token: response.data.data.token,
+    companyToken
+  });
   window.dispatchEvent(new CustomEvent('auth:login'));
-
   return response.data.data;
 };
 
 export const logout = async () => {
-  await api.post('/auth/logout');
-  localStorage.removeItem('authToken');
-  localStorage.removeItem('refreshToken');
-  localStorage.removeItem('companyToken');
-
-  // Dispatch custom event to notify PermissionContext to clear permissions
-  window.dispatchEvent(new CustomEvent('auth:logout'));
+  try {
+    await api.post('/auth/logout');
+  } finally {
+    clearClientSession({
+      reason: 'logout',
+      broadcast: true,
+      emitAuthEvents: true,
+      redirectTo: '/login'
+    });
+  }
 };
 
-export const getCurrentUser = async () => {
-  const response = await api.get('/users/me');
-  return response.data.data;
-};
+export const refreshToken = async () => refreshBrowserSession();
 ```
 
 ### Authentication Events
@@ -1230,4 +1177,3 @@ export const useCache = (ttl = 5 * 60 * 1000) => {
 - [ ] Real-time updates working
 - [ ] Offline support implemented
 - [ ] Error messages display correctly
-

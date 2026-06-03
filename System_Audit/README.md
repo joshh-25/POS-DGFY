@@ -65,6 +65,11 @@ Commands executed during this audit:
 - `npm run test:frontend` - failed multiple contract/integration suites.
 - `npm --prefix backend test -- --runTestsByPath tests/emailService.deliveryProvider.test.js tests/paypalWebhookVerification.test.js tests/paymentHandlers.publicRoutes.transport.test.js tests/paymentHandlers.simulateWebhook.test.js tests/paymentsRoutes.disabled.transport.test.js tests/tempFileService.local.test.js tests/tenantProvisioning.test.js` - passed 7 suites / 38 tests during dependency remediation verification.
 - `npm --prefix frontend test -- --run src/services/__tests__/api.interceptor.test.js src/services/__tests__/adminService.interceptor.test.js src/services/__tests__/paymentService.disabled.test.js src/pages/__tests__/Settings.subscriptionVisibility.test.js src/pages/__tests__/Settings.subscriptionVisibility.component.test.jsx` - passed 5 files / 20 tests during dependency remediation verification.
+- `npm --prefix backend test -- --runTestsByPath tests/rtr_verification.test.js` - passed 4 tests on 2026-06-03 after enforcing cookie-only refresh authority.
+- `npm --prefix backend test -- --runTestsByPath tests/auth.test.js tests/token_refresh_race.test.js` - passed 16 tests on 2026-06-03 after updating refresh-token tests to the cookie/CSRF contract.
+- `npm --prefix frontend run lint` - passed with zero warnings on 2026-06-03 after storefront lint cleanup.
+- `npm --prefix frontend test -- --run apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/profileLauncher.integration.test.jsx apps/store/src/__tests__/discoveryHeaderAccount.integration.test.jsx` - passed 3 files / 27 tests on 2026-06-03 after storefront lint cleanup.
+- `npm --prefix frontend run build:store` - passed on 2026-06-03 after storefront lint cleanup.
 - `npm --prefix backend test` - timed out after 10 minutes during follow-up validation without current full-suite green evidence.
 
 ## Severity Model
@@ -85,7 +90,7 @@ Hygiene, documentation, or follow-through item that should be tracked but does n
 
 - `1.1-Dependency_vulnerabilities_block_production.md`
 - `1.2-Default_admin_credentials_remain_available.md`
-- `1.3-Browser_localStorage_tokens_expose_sessions_to_xss.md`
+- `1.3-Browser_localStorage_tokens_expose_sessions_to_xss.md` — remediated 2026-06-02 with ADR 0026 cookie-session contract and storage guards
 - `1.4-PayMongo_webhook_signature_verification_can_fail_open.md`
 - `1.5-Legacy_company_token_invite_links_still_exposed.md`
 - `1.6-Production_env_validation_logs_without_fail_stop.md`

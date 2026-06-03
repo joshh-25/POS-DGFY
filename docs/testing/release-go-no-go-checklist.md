@@ -18,15 +18,17 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 
 1. `npm run audit:dependencies:prod`
 2. `npm run audit:dependencies`
-3. `npm run gate:release:local`
-4. `npm run gate:release:no-staging:qa-env` or the dot-sourced `.env.qa.local` / `.env.qa.secrets.local` wrapper documented in `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
-5. `node scripts/verify-release-verdict.js --file ".tmp/release-gates/<sha>/release_verdict.json" --sha "<sha>"`
-6. `npm run gate:release:prod-contracts:env` or an equivalent exported production contract environment
-7. `npm run audit:location-stock-parity`
-8. `npm run audit:fifo-drift`
-9. `npm run audit:tenant-index-headroom -- --redundant-groups-threshold=0`
+3. `npm --prefix backend test -- --runTestsByPath tests/browserSessionCookies.test.js`
+4. `npm --prefix frontend test -- --run src/services/__tests__/browserTokenStorage.guard.test.js`
+5. `npm run gate:release:local`
+6. `npm run gate:release:no-staging:qa-env` or the dot-sourced `.env.qa.local` / `.env.qa.secrets.local` wrapper documented in `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
+7. `node scripts/verify-release-verdict.js --file ".tmp/release-gates/<sha>/release_verdict.json" --sha "<sha>"`
+8. `npm run gate:release:prod-contracts:env` or an equivalent exported production contract environment
+9. `npm run audit:location-stock-parity`
+10. `npm run audit:fifo-drift`
+11. `npm run audit:tenant-index-headroom -- --redundant-groups-threshold=0`
 
-## Latest Technical Evidence (2026-06-02)
+## Latest Technical Evidence (2026-06-03)
 
 1. `npm run audit:dependencies:prod` -> PASS with zero current npm advisories.
 2. `npm run audit:dependencies` -> PASS with zero current npm advisories.
@@ -34,7 +36,12 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 4. `npm run check:architecture` -> PASS during the June docs/audit refresh.
 5. `npm run check:compliance` -> PASS during the June docs/audit refresh.
 6. `System_Audit/README.md` records the remaining open audit findings and remediation order.
-7. Previous production deploy, no-staging parity, and public smoke evidence remain historical May release evidence; refresh them before claiming a new deployable release target.
+7. `npm --prefix backend test -- --runTestsByPath tests/rtr_verification.test.js` -> PASS for cookie-only refresh authority, CSRF enforcement, cookie rotation, and replay rejection.
+8. `npm --prefix backend test -- --runTestsByPath tests/auth.test.js tests/token_refresh_race.test.js` -> PASS for adjacent auth refresh contracts.
+9. `npm --prefix frontend run lint` -> PASS with zero warnings after storefront cleanup.
+10. `npm --prefix frontend test -- --run apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/profileLauncher.integration.test.jsx apps/store/src/__tests__/discoveryHeaderAccount.integration.test.jsx` -> PASS.
+11. `npm --prefix frontend run build:store` -> PASS.
+12. Previous production deploy, no-staging parity, and public smoke evidence remain historical May release evidence; refresh them before claiming a new deployable release target.
 
 ## Remaining Non-Technical Blockers (Go/No-Go)
 
