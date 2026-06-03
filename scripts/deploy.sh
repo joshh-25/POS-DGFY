@@ -681,6 +681,13 @@ log "Target branch: $TARGET_BRANCH"
 ENV_FILE="$BACKEND_DIR/.env"
 [[ -f "$ENV_FILE" ]] || fatal "Missing backend env file: $ENV_FILE"
 
+HOSTING_PROFILE_RAW="$(env_value "$ENV_FILE" "HOSTING_PROFILE")"
+[[ -n "${HOSTING_PROFILE_RAW:-}" ]] || fatal "Missing required env variable HOSTING_PROFILE in backend/.env"
+if ! node "$PROJECT_ROOT/scripts/check-hosting-profile.js" --profile "$HOSTING_PROFILE_RAW" --env-file "$ENV_FILE"; then
+    fatal "Production environment validation failed for HOSTING_PROFILE=$HOSTING_PROFILE_RAW"
+fi
+log "Production environment validation passed (profile=$HOSTING_PROFILE_RAW)."
+
 REQUIRED_ENV_VARS=("DB_HOST" "DB_USER" "DB_NAME" "JWT_SECRET")
 for var in "${REQUIRED_ENV_VARS[@]}"; do
     value="$(env_value "$ENV_FILE" "$var")"

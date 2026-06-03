@@ -40,6 +40,7 @@ import { buildHealthResponse } from './services/healthService.js';
 import { metricsEnabled, renderPrometheusMetrics } from './services/metricsService.js';
 import { auditRuntimeSchemaReadiness } from './services/runtimeSchemaAuditService.js';
 import { buildCorsPolicy } from './config/corsPolicy.js';
+import productionEnvValidation from './config/productionEnvValidation.cjs';
 import {
   startStorefrontDiscoveryIndexReconciliationScheduler,
   stopStorefrontDiscoveryIndexReconciliationScheduler
@@ -51,6 +52,7 @@ import {
 import * as aiController from './controllers/aiController.js';
 import { paymentsEnabled } from './config/paymentsFeature.js';
 
+const { formatValidationFailure, validateProductionEnv } = productionEnvValidation;
 const app = express();
 
 // Fix 7.3: Use Node's built-in querystring parser instead of qs.
@@ -147,14 +149,14 @@ if (isProduction || trustProxyRequested) {
   app.set('trust proxy', false);
 }
 
-// Environment validation for Production
-if (isProduction) {
-  const requiredEnv = ['DB_HOST', 'DB_USER', 'DB_NAME', 'JWT_SECRET'];
-  const missing = requiredEnv.filter(env => !process.env[env]);
-  if (missing.length > 0) {
-    logger.error(`❌ CRITICAL: Missing required production environment variables: ${missing.join(', ')}`);
-    // We don't exit immediately here to allow the server to potentially show a health check failure
-  }
+// Production config must fail before the app can accept traffic.
+const productionEnvValidationResult = validateProductionEnv({ env: process.env });
+for (const warning of productionEnvValidationResult.warnings) {
+  logger.warn(`[production-env] ${warning}`);
+}
+if (productionEnvValidationResult.shouldFail) {
+  logger.error(`CRITICAL: ${formatValidationFailure(productionEnvValidationResult)}. Server will not start.`);
+  process.exit(1);
 }
 
 // CORS configuration - must be applied before helmet

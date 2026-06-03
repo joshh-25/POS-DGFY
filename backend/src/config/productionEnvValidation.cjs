@@ -1,0 +1,312 @@
+const VALID_PROFILES = new Set(['shared', 'vps']);
+const SECRET_KEYS = ['JWT_SECRET', 'REFRESH_TOKEN_SECRET'];
+const PLACEHOLDER_PATTERN = /(change[_-]?this|change[_-]?me|replace[_-]?with|placeholder|your[_-]?|example\.com|xxxx|dummy|sample)/i;
+
+const BASE_REQUIRED_KEYS = [
+  'NODE_ENV',
+  'HOSTING_PROFILE',
+  'DB_HOST',
+  'DB_USER',
+  'DB_NAME',
+  'DB_PASSWORD',
+  'JWT_SECRET',
+  'REFRESH_TOKEN_SECRET',
+  'CORS_ORIGIN',
+  'SESSION_COOKIE_SECURE',
+  'AUTH_BLACKLIST_FAILURE_MODE',
+  'TEMP_FILE_STORAGE',
+  'RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS',
+  'RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS'
+];
+
+const hasValue = (env, key) => String(env?.[key] || '').trim().length > 0;
+
+const normalizeBoolean = (value) => String(value || '').trim().toLowerCase();
+
+const isTruthy = (value) => ['1', 'true', 'yes', 'on'].includes(normalizeBoolean(value));
+
+const normalizeMode = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'fail-closed') return 'fail_closed';
+  if (normalized === 'fail-open') return 'fail_open';
+  return normalized;
+};
+
+const normalizeProfile = (profile, env = {}) => {
+  const normalized = String(profile || env.HOSTING_PROFILE || '').trim().toLowerCase();
+  if (VALID_PROFILES.has(normalized)) return normalized;
+  return normalized;
+};
+
+const addMissing = (errors, key) => {
+  errors.push(`Missing required environment value: ${key}`);
+};
+
+const requireAny = (env, keys, errors, label) => {
+  if (keys.some((key) => hasValue(env, key))) return;
+  errors.push(`Missing required environment value: ${label || keys.join(' or ')}`);
+};
+
+const validateRequiredKeys = (env, errors, keys = BASE_REQUIRED_KEYS) => {
+  for (const key of keys) {
+    if (!hasValue(env, key)) addMissing(errors, key);
+  }
+};
+
+const validateSecrets = (env, errors, keys = SECRET_KEYS) => {
+  for (const key of keys) {
+    const value = String(env?.[key] || '').trim();
+    if (!value) continue;
+
+    if (value.length < 32) {
+      errors.push(`${key} must be at least 32 characters long`);
+    }
+    if (PLACEHOLDER_PATTERN.test(value)) {
+      errors.push(`${key} must not use a placeholder value`);
+    }
+  }
+};
+
+const validateCors = (env, errors) => {
+  const origin = String(env.CORS_ORIGIN || '').trim();
+  if (!origin) return;
+  const origins = origin.split(',').map((entry) => entry.trim()).filter(Boolean);
+  if (origins.length === 0) {
+    errors.push('CORS_ORIGIN must include at least one explicit origin');
+  }
+  if (origins.some((entry) => entry === '*')) {
+    errors.push('CORS_ORIGIN must not use wildcard origins in production');
+  }
+};
+
+const validateSessionCookies = (env, errors) => {
+  if (normalizeBoolean(env.SESSION_COOKIE_SECURE) !== 'true') {
+    errors.push('SESSION_COOKIE_SECURE must be true in production');
+  }
+};
+
+const validateDatabaseSafety = (env, errors) => {
+  if (isTruthy(env.DB_AUTO_SYNC)) {
+    errors.push('DB_AUTO_SYNC must not be true in hosted production profiles');
+  }
+};
+
+const validateRateLimits = (env, errors) => {
+  for (const key of ['RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS', 'RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS']) {
+    const raw = String(env[key] || '').trim();
+    if (!raw) continue;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      errors.push(`${key} must be a positive number`);
+    }
+  }
+};
+
+const validateProfilePolicy = ({ profile, env, errors }) => {
+  if (!VALID_PROFILES.has(profile)) {
+    errors.push('Profile must be one of: shared, vps');
+    return;
+  }
+
+  const envProfile = String(env.HOSTING_PROFILE || '').trim().toLowerCase();
+  if (envProfile && envProfile !== profile) {
+    errors.push(`HOSTING_PROFILE must be ${profile} for this preflight`);
+  }
+
+  const blacklistMode = normalizeMode(env.AUTH_BLACKLIST_FAILURE_MODE);
+  const redisConfigured = hasValue(env, 'REDIS_URL');
+
+  if (profile === 'shared') {
+    if (redisConfigured) {
+      errors.push('Shared profile must not set REDIS_URL');
+    }
+    if (blacklistMode !== 'fail_open') {
+      errors.push('Shared profile requires AUTH_BLACKLIST_FAILURE_MODE=fail_open');
+    }
+    if (String(env.TEMP_FILE_STORAGE || '').trim().toLowerCase() !== 'local') {
+      errors.push('Shared profile requires TEMP_FILE_STORAGE=local');
+    }
+    if (hasValue(env, 'HOSTING_INSTANCE_COUNT') && String(env.HOSTING_INSTANCE_COUNT).trim() !== '1') {
+      errors.push('Shared profile requires HOSTING_INSTANCE_COUNT=1 when set');
+    }
+  }
+
+  if (profile === 'vps') {
+    if (!redisConfigured) {
+      errors.push('VPS profile requires REDIS_URL');
+    }
+    if (blacklistMode !== 'fail_closed') {
+      errors.push('VPS profile requires AUTH_BLACKLIST_FAILURE_MODE=fail_closed');
+    }
+  }
+};
+
+const validatePayMongoConfig = (env, errors) => {
+  const mode = String(env.PAYMONGO_MODE || 'test').trim().toLowerCase();
+  if (mode !== 'test' && mode !== 'live') {
+    errors.push("PAYMONGO_MODE must be either 'test' or 'live'");
+    return;
+  }
+
+  requireAny(
+    env,
+    mode === 'live'
+      ? ['PAYMONGO_LIVE_PUBLIC_KEY', 'PAYMONGO_PUBLIC_KEY']
+      : ['PAYMONGO_TEST_PUBLIC_KEY', 'PAYMONGO_PUBLIC_KEY'],
+    errors,
+    `PayMongo public key for ${mode} mode`
+  );
+  requireAny(
+    env,
+    mode === 'live'
+      ? ['PAYMONGO_LIVE_SECRET_KEY', 'PAYMONGO_SECRET_KEY']
+      : ['PAYMONGO_TEST_SECRET_KEY', 'PAYMONGO_SECRET_KEY'],
+    errors,
+    `PayMongo secret key for ${mode} mode`
+  );
+  requireAny(
+    env,
+    mode === 'live'
+      ? ['PAYMONGO_LIVE_WEBHOOK_SECRET', 'PAYMONGO_WEBHOOK_SECRET']
+      : ['PAYMONGO_TEST_WEBHOOK_SECRET', 'PAYMONGO_WEBHOOK_SECRET'],
+    errors,
+    `PayMongo webhook secret for ${mode} mode`
+  );
+};
+
+const validatePayPalConfig = (env, errors) => {
+  for (const key of ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'PAYPAL_WEBHOOK_ID', 'PAYPAL_STANDARD_PLAN_ID']) {
+    if (!hasValue(env, key)) addMissing(errors, key);
+  }
+  if (!hasValue(env, 'PAYPAL_PREMIUM_PLAN_ID') && !hasValue(env, 'PAYPAL_PLAN_ID')) {
+    errors.push('Missing required environment value: PAYPAL_PREMIUM_PLAN_ID (or legacy PAYPAL_PLAN_ID)');
+  }
+};
+
+const detectPaymentProvider = (env) => {
+  const configured = String(env.PAYMENT_PROVIDER || env.DEPLOY_PAYMENT_PROVIDER || '').trim().toLowerCase();
+  if (['paymongo', 'paypal', 'dual'].includes(configured)) return configured;
+
+  const hasPayMongo = [
+    'PAYMONGO_PUBLIC_KEY',
+    'PAYMONGO_SECRET_KEY',
+    'PAYMONGO_TEST_PUBLIC_KEY',
+    'PAYMONGO_TEST_SECRET_KEY',
+    'PAYMONGO_LIVE_PUBLIC_KEY',
+    'PAYMONGO_LIVE_SECRET_KEY',
+    'PAYMONGO_STANDARD_PLAN_ID'
+  ].some((key) => hasValue(env, key));
+
+  const hasPayPal = [
+    'PAYPAL_CLIENT_ID',
+    'PAYPAL_CLIENT_SECRET',
+    'PAYPAL_WEBHOOK_ID',
+    'PAYPAL_STANDARD_PLAN_ID'
+  ].some((key) => hasValue(env, key));
+
+  if (hasPayMongo && hasPayPal) return 'dual';
+  if (hasPayMongo) return 'paymongo';
+  if (hasPayPal) return 'paypal';
+  return '';
+};
+
+const validatePaymentConfig = (env, errors, warnings) => {
+  const paymentsEnabled = isTruthy(env.PAYMENTS_ENABLED);
+  const paymongoLiveMode = String(env.PAYMONGO_MODE || '').trim().toLowerCase() === 'live';
+
+  if (!paymentsEnabled && !paymongoLiveMode) return;
+
+  const provider = detectPaymentProvider(env);
+  if (!provider) {
+    errors.push('PAYMENTS_ENABLED=true requires PayMongo or PayPal provider configuration');
+    return;
+  }
+
+  if (provider === 'paymongo' || provider === 'dual' || paymongoLiveMode) {
+    validatePayMongoConfig(env, errors);
+  }
+  if (provider === 'paypal' || provider === 'dual') {
+    validatePayPalConfig(env, errors);
+  }
+
+  if (isTruthy(env.PAYMONGO_ALLOW_UNSIGNED_WEBHOOKS)) {
+    errors.push('PAYMONGO_ALLOW_UNSIGNED_WEBHOOKS must not be true in production, live mode, or payment-enabled deployments');
+  }
+
+  if (paymentsEnabled && normalizeProfile(env.HOSTING_PROFILE, env) === 'shared') {
+    warnings.push('PAYMENTS_ENABLED=true on shared hosting relies on single-process scheduler assumptions');
+  }
+};
+
+const validateProductionEnv = ({ env = process.env, profile = null, strictProduction = false } = {}) => {
+  const errors = [];
+  const warnings = [];
+  const normalizedNodeEnv = String(env.NODE_ENV || '').trim().toLowerCase();
+  const isProduction = normalizedNodeEnv === 'production';
+  const normalizedProfile = normalizeProfile(profile, env);
+
+  if (!isProduction && !strictProduction) {
+    validateSecrets(env, warnings);
+    if (BASE_REQUIRED_KEYS.some((key) => !hasValue(env, key))) {
+      warnings.push('Production environment validation is warning-only outside NODE_ENV=production');
+    }
+    return {
+      ok: true,
+      shouldFail: false,
+      errors: [],
+      warnings,
+      profile: normalizedProfile,
+      isProduction
+    };
+  }
+
+  validateRequiredKeys(env, errors);
+  validateSecrets(env, errors);
+  validateCors(env, errors);
+  validateSessionCookies(env, errors);
+  validateDatabaseSafety(env, errors);
+  validateRateLimits(env, errors);
+  validateProfilePolicy({ profile: normalizedProfile, env, errors });
+  validatePaymentConfig(env, errors, warnings);
+
+  if (normalizedNodeEnv && normalizedNodeEnv !== 'production') {
+    errors.push('NODE_ENV must be production for hosting preflight');
+  }
+
+  return {
+    ok: errors.length === 0,
+    shouldFail: errors.length > 0,
+    errors,
+    warnings,
+    profile: normalizedProfile,
+    isProduction: true
+  };
+};
+
+const validateHostingProfile = ({ profile, env, envFile = null }) => {
+  const result = validateProductionEnv({ env, profile, strictProduction: true });
+  return {
+    ok: result.ok,
+    errors: result.errors,
+    warnings: result.warnings,
+    profile: result.profile,
+    envFile
+  };
+};
+
+const formatValidationFailure = (result) => {
+  const errors = Array.isArray(result?.errors) ? result.errors : [];
+  return `Missing or invalid production environment configuration: ${errors.join('; ')}`;
+};
+
+module.exports = {
+  BASE_REQUIRED_KEYS,
+  PLACEHOLDER_PATTERN,
+  detectPaymentProvider,
+  formatValidationFailure,
+  hasValue,
+  isTruthy,
+  normalizeMode,
+  validateHostingProfile,
+  validateProductionEnv
+};

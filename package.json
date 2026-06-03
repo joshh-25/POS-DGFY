@@ -27,6 +27,7 @@
     "lint:docs": "node scripts/lint-docs.js",
     "preflight:shared": "node scripts/check-hosting-profile.js --profile shared",
     "preflight:vps": "node scripts/check-hosting-profile.js --profile vps",
+    "check:production-env": "node scripts/check-production-env-fixtures.js",
     "test:hosting:shared": "cd backend && npm run test:hosting:shared",
     "test:hosting:vps": "cd backend && npm run test:hosting:vps",
     "check:frontend-budgets": "node scripts/check-frontend-budgets.js",

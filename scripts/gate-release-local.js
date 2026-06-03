@@ -55,6 +55,7 @@ function main() {
   addGate(gates, 'docs.lint', runCommand(npmCmd, ['run', 'lint:docs']), 'npm run lint:docs');
   addGate(gates, 'architecture.guardrails', runCommand(npmCmd, ['run', 'check:architecture']), 'npm run check:architecture');
   addGate(gates, 'compliance.contracts', runCommand(npmCmd, ['run', 'check:compliance']), 'npm run check:compliance');
+  addGate(gates, 'production.env.fixtures', runCommand(npmCmd, ['run', 'check:production-env']), 'npm run check:production-env');
   addGate(gates, 'runtime.doctor', runCommand(npmCmd, ['run', 'doctor:runtime']), 'npm run doctor:runtime');
   addGate(gates, 'backend.lint', runCommand(npmCmd, ['--prefix', 'backend', 'run', 'lint']), 'npm --prefix backend run lint');
   addGate(gates, 'frontend.lint', runCommand(npmCmd, ['--prefix', 'frontend', 'run', 'lint']), 'npm --prefix frontend run lint');

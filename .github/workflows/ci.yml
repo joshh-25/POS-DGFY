@@ -41,6 +41,8 @@ jobs:
         run: npm --prefix backend ci
       - name: Install frontend dependencies
         run: npm --prefix frontend ci
+      - name: Validate production env fixtures
+        run: npm run check:production-env
       - name: Audit production dependency trees
         run: npm run audit:dependencies:prod
       - name: Audit full dependency trees
@@ -338,8 +340,11 @@ jobs:
           JWT_SECRET=ci_shared_jwt_secret_value_12345678901234567890
           REFRESH_TOKEN_SECRET=ci_shared_refresh_secret_value_12345678901234
           CORS_ORIGIN=https://skupervisor.dgfy.ph,https://pos.dgfy.ph,https://dgfy.ph,https://store.dgfy.ph
+          SESSION_COOKIE_SECURE=true
           AUTH_BLACKLIST_FAILURE_MODE=fail_open
           TEMP_FILE_STORAGE=local
+          RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS=3600000
+          RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS=5
           DB_AUTO_SYNC=false
           STOREFRONT_CACHE_ENABLED=false
           ENV
