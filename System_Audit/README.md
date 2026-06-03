@@ -86,6 +86,11 @@ Commands executed during this audit:
 - `npm --prefix frontend run build:all` - passed on 2026-06-03 after PayMongo QR Ph commerce-payment UI integration.
 - `npm run gate:release:local` - passed on 2026-06-03 after applying PayMongo QR Ph commerce-payment work and rerunning release gates.
 - `npm --prefix backend test` - timed out after 10 minutes during follow-up validation without current full-suite green evidence.
+- `npm run test:frontend:contracts` - passed 10 files / 33 tests on 2026-06-03 after frontend contract remediation.
+- `npm run test:frontend` - passed 92 files / 412 tests on 2026-06-03 after frontend contract remediation and deterministic one-worker runner configuration.
+- `npm --prefix frontend run lint` - passed on 2026-06-03 after frontend contract remediation.
+- `npm --prefix frontend run build:all` - passed on 2026-06-03 after frontend contract remediation.
+- `npm run gate:release:local` - passed on 2026-06-03 for target SHA `bd968a74973f60a5ace83481d8813d8f68bd8818` after adding the frontend contract gate.
 
 ## Severity Model
 
@@ -110,7 +115,7 @@ Hygiene, documentation, or follow-through item that should be tracked but does n
 - `1.5-Legacy_company_token_invite_links_still_exposed.md` — remediated 2026-06-03 with token-only invitation links and no company-token invite URL generation
 - `1.6-Production_env_validation_logs_without_fail_stop.md` — remediated 2026-06-03 with centralized fail-stop production env validation and release/deploy gates
 - `2.1-Local_release_gate_fails.md` — remediated 2026-06-03 with `npm run gate:release:local` passing for target SHA `9e778e3a631bada235e188d5cc0a4180af491259`
-- `2.2-Frontend_contract_suite_fails.md`
+- `2.2-Frontend_contract_suite_fails.md` - remediated 2026-06-03 with `npm run test:frontend` and `npm run test:frontend:contracts` passing
 - `2.3-Backend_full_test_gate_has_no_current_green_evidence.md`
 - `2.4-Frontend_budget_gate_is_not_self_contained.md` — partially remediated 2026-06-03; current budget gate passes, but clean-checkout/fresh-artifact proof remains open
 - `3.1-StorefrontApp_monolith_exceeds_codegen_threshold.md`
@@ -128,7 +133,7 @@ Hygiene, documentation, or follow-through item that should be tracked but does n
 ## Remediation Order
 
 1. Close remaining critical and high security findings: default admin credential path, token storage, webhook fail-open, invite token leakage, and production env fail-stop. Dependency vulnerabilities are resolved as of 2026-06-02.
-2. Restore release gate integrity: backend lint, frontend budget artifacts, frontend contract failures, backend test evidence.
+2. Restore release gate integrity: backend lint, frontend budget artifacts, backend test evidence. Frontend contract failures are remediated as of 2026-06-03.
 3. Reduce production performance risk: StorefrontApp decomposition, high-limit query review, upload transport validation.
 4. Close governance debt: RBAC fallback removal, architecture allowlist removal plan, fiscal/payment evidence.
 5. Add operational proof: SLO dashboards, alert evidence, AI adversarial/cost tests, release evidence that no longer depends on stale QA bypasses.

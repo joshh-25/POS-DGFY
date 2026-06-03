@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-05-29
+last_reviewed: 2026-06-03
 applies_to: dgfy_customer_account, storefront_account, customer_tracking
 topic: dgfy_customer_account
 ---
@@ -16,7 +16,7 @@ The public DGFY surface has two account-related entry points:
 1. **Log in / Sign up** opens the front-facing DGFY customer account experience.
 2. **Register Your Business** routes to company registration and must not be used as the general customer login path.
 
-Tenant storefront headers expose **Log in / Sign up** directly so customers can authenticate or create an account without waiting until checkout.
+Tenant storefront headers expose **Log in / Sign up** directly so customers can authenticate or create an account without waiting until checkout. On a tenant storefront, **My Account** / profile actions route to the standalone `/tenant-store/:slug/account` page instead of opening the account dashboard as a modal. Discovery-level **Log in / Sign up** remains an authentication dialog because there is no tenant storefront slug to scope account actions.
 
 DGFY accounts are landlord-scoped. Tenant-local `store_customers` remain tenant-isolated compatibility rows and can be lazily linked to a DGFY account with `dgfy_account_id`.
 
@@ -46,11 +46,14 @@ Signed-in DGFY users can:
 - Request reorder cart lines for an eligible prior order. Checkout still revalidates current price, stock, visibility, Customer Access Mode, and fulfillment rules.
 - Submit typed reviews only for eligible paid or completed account activity. Supported targets are `product`, `service`, `hospitality_booking`, `fnb_order`, and `fnb_item`; reviews start as pending approval and duplicate account/activity/target reviews are rejected.
 - Manage global saved addresses, including create, update, delete, and set default.
-- Storefront pages with an existing DGFY customer token auto-load the signed-in customer context. Before tenant context is available, the aggregate `/api/v1/dgfy/customer/dashboard` can supply account/profile/address context; once a tenant store context is active, the account panel refresh uses store-scoped account endpoints plus global DGFY address/loyalty reads. Empty checkout contact fields are prefilled from the signed-in profile, and an empty delivery address is prefilled from the default saved address when the customer is on a delivery checkout/booking path.
+- Storefront pages with an existing DGFY customer token auto-load the signed-in customer context. Before tenant context is available, the aggregate `/api/v1/dgfy/customer/dashboard` can supply account/profile/address context; once a tenant store context is active, Storefront quote, checkout, booking, follow/status, and authenticated Store routes use the DGFY-capable Store auth bridge before falling back to tenant-local Store JWTs. Empty checkout contact fields are prefilled from the signed-in profile, and an empty delivery address is prefilled from the default saved address when the customer is on a delivery checkout/booking path.
+- Account page loading validates `/api/v1/dgfy/auth/me` before loading dashboard, activity, or loyalty data. A `401` clears the stale browser token/session state and shows a sign-in-required account page instead of repeatedly calling account dashboard endpoints with an invalid session.
+- Successful authenticated checkout or booking refreshes the DGFY account panel so active orders, order history, bookings, saved addresses, loyalty, and current tracking can reflect the latest POS/storefront transaction without requiring a full page reload.
+- The routed account page wires account order actions to `/api/v1/dgfy/customer/orders/:reference/cancel` and `/api/v1/dgfy/customer/orders/:reference/reorder`. Buttons are enabled only when the activity `allowed_actions` contract permits the action. Reorder repopulates the Storefront cart from reusable backend line data, then checkout revalidates current catalog visibility, price, stock, and access-mode rules.
 - Use saved addresses from checkout/booking forms or the account panel. Saving the current checkout address writes a global DGFY saved address and includes the current delivery pin coordinates when the map pin is available.
 - View read-only loyalty balance and recent transactions. The balance is calculated from all DGFY loyalty transactions, not only the visible recent row limit.
 - See company memberships and invitations through the existing DGFY account contract.
-- Launch **Register Your Business** from the DGFY surface. Storefront-originated business registration routes to `/register-company?source=dgfy&auth=login#dgfy-profile`, shows DGFY login first, then focuses the authenticated personal profile/company-creation area.
+- Launch **Register Your Business** from the DGFY account surface. Storefront-originated business registration creates a short-lived DGFY handoff token, routes to `/register-company?source=dgfy&auth=login&handoff_token=<token>#business-registration`, exchanges the token on SKUpervisor, and focuses the company-registration form. The business form collects only company name and Business Industry as business data; after active tenant provisioning, the DGFY membership handoff starts the normal IMS session.
 
 ## Checkout And Booking Account Actions
 
@@ -118,4 +121,5 @@ Current validation must include:
 - `npm run backfill:dgfy-customer-activity -- --all-transactions --require-activity-types=order,service_booking,hospitality_booking,fnb_order` when production release evidence must prove all customer-facing modes are present.
 - DGFY auth and Storefront checkout/order regression tests.
 - `npm --prefix frontend run build:store`
-- Rendered desktop and mobile storefront smoke checks for the discovery account drawer, recovery panel, address controls, loyalty summary, order actions, and company-registration separation.
+- Rendered desktop and mobile storefront smoke checks for the discovery auth dialog, routed account page, recovery panel, address controls, loyalty summary, order actions, and company-registration separation.
+- Native account-page edit forms for creating/updating saved addresses, per-order cancel confirmation modals, and richer reorder conflict resolution remain deferred UI hardening items. The current routed page displays backend-provided saved addresses, can apply an address to checkout, and calls the existing account order action endpoints.

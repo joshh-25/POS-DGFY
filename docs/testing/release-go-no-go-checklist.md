@@ -1,15 +1,15 @@
 # Release Go/No-Go Checklist (Current)
 
 Status: reference  
-Last updated: 2026-06-02
+Last updated: 2026-06-03
 
 ## Current Release State
 
 1. Last deployed release evidence remains the May 2026 production release tracked in `docs/testing/pos-readiness-status.md`.
 2. June 2, 2026 audit state: dependency vulnerabilities are resolved and the dependency audit commands below return zero current npm advisories for locked root/backend/frontend trees.
-3. The local release gate now includes dependency audits before docs, architecture, compliance, backend, frontend, and budget gates.
+3. The local release gate now includes dependency audits and a focused frontend contract gate before docs, architecture, compliance, backend, frontend, and budget gates.
 4. Current open audit package: `System_Audit/README.md`.
-5. Current release blockers from the June 2 audit remain open until remediated: local release gate failures, frontend contract suite failures, missing current green backend full-test evidence, and frontend budget artifact self-containment.
+5. Current release blockers from the June 2 audit remain open until remediated: missing current green backend full-test evidence, frontend budget artifact self-containment, and the other open findings listed in `System_Audit/README.md`. Local release gate and frontend contract suite failures are remediated as of June 3, 2026.
 6. Production deployment status must not be advanced from this checklist alone; refresh no-staging parity, local release gate, production contract smoke, and human UAT evidence before the next production promotion.
 
 Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for readiness status and blockers.
@@ -22,13 +22,15 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 4. `npm --prefix backend test -- --runTestsByPath tests/productionEnvValidation.test.js tests/productionEnvGuard.test.js tests/hostingProfilePreflight.test.js`
 5. `npm --prefix backend test -- --runTestsByPath tests/browserSessionCookies.test.js`
 6. `npm --prefix frontend test -- --run src/services/__tests__/browserTokenStorage.guard.test.js`
-7. `npm run gate:release:local`
-8. `npm run gate:release:no-staging:qa-env` or the dot-sourced `.env.qa.local` / `.env.qa.secrets.local` wrapper documented in `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
-9. `node scripts/verify-release-verdict.js --file ".tmp/release-gates/<sha>/release_verdict.json" --sha "<sha>"`
-10. `npm run gate:release:prod-contracts:env` or an equivalent exported production contract environment
-11. `npm run audit:location-stock-parity`
-12. `npm run audit:fifo-drift`
-13. `npm run audit:tenant-index-headroom -- --redundant-groups-threshold=0`
+7. `npm run test:frontend:contracts`
+8. `npm run test:frontend`
+9. `npm run gate:release:local`
+10. `npm run gate:release:no-staging:qa-env` or the dot-sourced `.env.qa.local` / `.env.qa.secrets.local` wrapper documented in `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
+11. `node scripts/verify-release-verdict.js --file ".tmp/release-gates/<sha>/release_verdict.json" --sha "<sha>"`
+12. `npm run gate:release:prod-contracts:env` or an equivalent exported production contract environment
+13. `npm run audit:location-stock-parity`
+14. `npm run audit:fifo-drift`
+15. `npm run audit:tenant-index-headroom -- --redundant-groups-threshold=0`
 
 ## Latest Technical Evidence (2026-06-03)
 
@@ -45,7 +47,11 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 11. `npm --prefix frontend run build:store` -> PASS.
 12. `npm run check:production-env` -> PASS on June 3, 2026 with shared, VPS, and payment-enabled PayMongo fixture coverage.
 13. `npm --prefix backend test -- --runTestsByPath tests/productionEnvValidation.test.js tests/productionEnvGuard.test.js tests/hostingProfilePreflight.test.js` -> PASS on June 3, 2026.
-14. Previous production deploy, no-staging parity, and public smoke evidence remain historical May release evidence; refresh them before claiming a new deployable release target.
+14. `npm run test:frontend:contracts` -> PASS on June 3, 2026 with 10 files / 33 tests after frontend contract remediation.
+15. `npm run test:frontend` -> PASS on June 3, 2026 with 92 files / 412 tests after frontend contract remediation and deterministic one-worker runner configuration.
+16. `npm --prefix frontend run build:all` -> PASS on June 3, 2026 after frontend contract remediation.
+17. `npm run gate:release:local` -> PASS on June 3, 2026 for target SHA `bd968a74973f60a5ace83481d8813d8f68bd8818`, including the new `frontend.contracts` gate.
+18. Previous production deploy, no-staging parity, and public smoke evidence remain historical May release evidence; refresh them before claiming a new deployable release target.
 
 ## Remaining Non-Technical Blockers (Go/No-Go)
 

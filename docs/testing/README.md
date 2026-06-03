@@ -88,6 +88,20 @@ Evidence semantics:
 4. Frontend invitation tests prove legacy `company` and `companyToken` URL parameters are ignored for registry-backed validation, OTP request, and acceptance.
 5. These gates do not prove that all historically issued links have expired; ADR 0015 still governs already-issued tenant-local compatibility until expiry.
 
+## Frontend Contract Gates
+
+Frontend contract evidence is mandatory for release readiness and for changes touching Storefront discovery, DGFY account surfaces, admin auth, hospitality mode, F&B POS/storefront behavior, purchase-order receipt valuation, marker rendering, or follow controls.
+
+Required commands:
+1. `npm run test:frontend:contracts`
+2. `npm run test:frontend`
+
+Evidence semantics:
+1. The focused contract gate covers the admin interceptor, hospitality storefront integration, marker preview coordinates/fallbacks, F&B checkout/storefront contracts, discovery endpoint/abort behavior, follow/profile/discovery-header interactions, and PO receipt valuation.
+2. The full frontend suite proves the focused contract gate does not pass only in isolation and that adjacent frontend suites still execute together.
+3. The local release gate runs `npm run test:frontend:contracts` through `scripts/gate-release-local.js`.
+4. These gates do not prove browser visual parity, live map-provider behavior, or production account-provider behavior; manual/browser QA remains required where visual placement or live provider interaction matters.
+
 ## Frontend Bundle Guard
 
 Current bundle-gate expectations:

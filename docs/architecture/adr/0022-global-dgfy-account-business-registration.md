@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-05-28
+last_reviewed: 2026-06-03
 applies_to: dgfy_accounts, tenant_registration, storefront_account, tenant_user_invitations
 topic: global_dgfy_account_business_registration
 ---
@@ -35,7 +35,13 @@ Introduce a landlord-scoped DGFY account identity.
 16. DGFY account registration and DGFY company registration both require explicit, versioned ToS/T&C acknowledgement before the mutation can proceed. Registration clients load current versions and acknowledgement copy from `GET /api/v1/dgfy/legal-terms/current`; duplicated client-owned term versions are not authoritative. Clients must fail closed when the account flow lacks `terms_version`, `privacy_version`, or `marketplace_terms_version`, or when the company flow lacks `company_terms_version` or `marketplace_terms_version`. Acknowledgement evidence is landlord-scoped in `dgfy_legal_acknowledgements` with account, optional tenant, flow, version, accepted timestamp, request metadata, and immutable text/hash snapshots.
 17. Registration copy must preserve the marketplace/platform framing: DGFY is an e-marketplace/platform service provider; the seller owns the product, sets the price, fulfills the order, and remains seller of record; payment is processed through a licensed payment partner; DGFY deducts disclosed fees and remits the seller's net settlement. DGFY must not present the flow as wallet balance, points conversion, cash-out credit, or DGFY reselling merchant goods.
 18. Legal acknowledgement persistence is fail-closed. DGFY account creation, invitation membership mirroring, and account acknowledgement persistence run in one landlord transaction. Company registration checks legal-persistence availability before tenant creation; after confirming the authenticated DGFY email is verified, the landlord tenant row, pending-founder membership when applicable, and acknowledgement persistence run in one landlord transaction before tenant provisioning.
-19. Storefront business-registration handoff must start on DGFY login when launched from `dgfy.ph`, then land the authenticated user on the personal DGFY profile/company-creation area of `/register-company` instead of bypassing profile context.
+19. Storefront business-registration handoff must start from a signed-in DGFY account when launched from `dgfy.ph`, create a short-lived one-time `dgfy_handoff` token, then land the authenticated user on the focused business-registration area of `/register-company`. The company form collects only company name and Business Industry as business data; founder contact and credentials remain server-derived from the DGFY account.
+20. After active auto-standard tenant provisioning, the registration UI may exchange the signed-in DGFY account plus accepted founder membership for a normal SKUpervisor tenant session through `POST /api/v1/dgfy/auth/tenant-session`, then redirect the founder to IMS. The endpoint must only issue a session for an active accepted membership linked to the authenticated DGFY account and an active tenant user.
+21. Platform admin may manage global DGFY accounts through `/api/v1/dgfy/admin/accounts`. V1 scope is all landlord-scoped DGFY accounts, with name/phone profile edits plus suspend/reactivate lifecycle actions only.
+22. Platform-admin DGFY profile edits may update first name, optional middle name, last name, and phone. Phone updates clear `phone_verified_at`; phone verification remains deferred. Email changes remain deferred and must not be exposed through platform-admin edit until a dedicated verified email-change or approved admin override design exists.
+23. Platform-admin suspend/reactivate uses `dgfy_accounts.is_active` as the lifecycle source of truth. Suspended accounts cannot log in and existing DGFY sessions fail on the next authenticated DGFY request because account auth reloads the landlord account and checks `is_active`.
+24. Platform-admin DGFY account delete is intentionally out of scope. Legal acknowledgements, tenant memberships, customer activity, reviews, loyalty, and order/history records must remain preserved.
+25. Every platform-admin DGFY account mutation writes a landlord-scoped `dgfy_account_admin_audit_logs` record with safe before/after snapshots, actor username, reason when applicable, request metadata, and no secrets such as password hashes, tokens, or OTPs.
 
 ## Consequences
 
@@ -48,6 +54,7 @@ Introduce a landlord-scoped DGFY account identity.
 7. The implementation hardening contract in `docs/architecture/ARCHITECTURE_GOVERNANCE.md` applies to all future DGFY account, registration, invitation, and storefront account changes.
 8. Seller-of-record and payment-partner wording is part of the registration contract. Future payment work must keep ADR 0012 pricing separate from provider settlement mechanics and must not imply that DGFY operates a stored-value wallet unless a separate regulated-wallet design is approved.
 9. Registration acknowledgement hardening improves evidence capture but does not itself implement PayMongo Platform/sub-merchant split settlement. Payment-provider onboarding, payout routing, withholding, and settlement reports remain separate governed payment work.
+10. Platform support can suspend compromised or abusive global DGFY identities without deleting legal and transaction evidence. Reactivation remains explicit and reason-audited.
 
 ## Hardening Contract For This Flow
 
@@ -55,11 +62,11 @@ This ADR requires the following final-phase hardening practices for DGFY account
 
 1. Handoff tokens must be persisted and atomically consumed by `jti`; successful exchange and replay rejection are both required test cases.
 2. Email OTP purposes must be purpose-scoped and single-use. New purposes such as `dgfy_password_reset` must be added to the service enum, model enum, migration, and tests together.
-3. DGFY account lifecycle must include profile update, authenticated password change, and email-OTP password reset before the business-registration surface is treated as user-ready.
+3. DGFY account lifecycle must include profile update, authenticated password change, and email-OTP password reset before the account-management surface is treated as user-ready. The company-registration surface remains focused on company creation after DGFY authentication.
 4. Phone verification remains explicitly deferred. Changing a phone number clears `phone_verified_at`, and no UI or backend flow may present the phone as verified until a future phone OTP rollout exists.
 5. DGFY email changes remain explicitly deferred and must not be implemented through the profile form until a dedicated verified email-change flow is designed.
-6. The registration surface must keep account-management forms separate from the company-registration form so account updates cannot submit tenant creation.
-7. Frontend tests must prove the DGFY-gated registration state, verified-account gate, required legal acknowledgements, backend-owned legal terms loading/fail-closed behavior including incomplete legal-version payloads, Last Name > First Name > Optional Middle Name registration order, Business Industry label, password visibility controls, storefront-to-profile handoff, reset flow, and non-submission of tenant registration from profile/password actions.
+6. The registration surface must not nest account-management forms inside the company-registration form so account updates cannot submit tenant creation.
+7. Frontend tests must prove the DGFY-gated registration state, verified-account gate, required legal acknowledgements, backend-owned legal terms loading/fail-closed behavior including incomplete legal-version payloads, Last Name > First Name > Optional Middle Name registration order, Business Industry label, password visibility controls, storefront-to-business-registration handoff, reset flow, and non-submission of tenant registration from non-company account actions.
 8. Rendered QA must exercise `/register-company` with desktop and mobile viewports, verify nonblank content, verify the Reset interaction, check for framework overlays, and review console output for errors on the target route.
 9. Build proof must include the root frontend app and the owned SKUpervisor build. Storefront and POS builds are required when shared frontend code, shared services, or shared UI components are touched.
 10. Final implementation reporting must include an honest residual-risk statement and an updated readiness rating after hardening.
@@ -72,8 +79,10 @@ Implementations must prove:
 2. `npm run lint:docs`
 3. DGFY auth tests for register/login/me/email verification/handoff.
 4. Company registration tests proving DGFY account requirement, verified-account gate without a second same-address company OTP, terms acknowledgement enforcement before tenant creation, non-compliant default, and no client override of founder or compliance fields.
-5. Frontend tests proving DGFY-gated registration, verified-account gating, terms acknowledgement gating including malformed legal-version payloads, Business Industry labeling, storefront-to-profile handoff, and password visibility controls.
+5. Frontend tests proving DGFY-gated registration, verified-account gating, terms acknowledgement gating including malformed legal-version payloads, Business Industry labeling, storefront-to-business-registration handoff, and password visibility controls.
 6. DGFY lifecycle tests proving handoff replay rejection, profile phone uniqueness, phone-verification clearing on phone change, authenticated password change, and email-OTP password reset.
-7. Frontend tests proving DGFY profile/password reset actions do not submit the company-registration form.
+7. Frontend tests proving non-company DGFY account actions do not submit the company-registration form.
 8. Rendered route QA for `/register-company`, including Reset interaction and mobile/desktop visual checks.
 9. Root frontend build plus SKUpervisor build; Storefront/POS builds when shared surfaces are touched.
+10. Platform-admin DGFY account lifecycle tests proving list/detail, profile validation, duplicate/invalid phone rejection, email-edit rejection, suspend/reactivate reason enforcement, audit persistence, and suspended-account login/auth rejection.
+11. Rendered admin-route QA for `/admin/dgfy-accounts`, including nonblank content, console health, filters, detail drawer, and one profile or lifecycle interaction.

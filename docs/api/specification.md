@@ -1063,6 +1063,9 @@ List item-level Storefront catalog overrides for authenticated inventory setup s
     "product_type": "finished_goods",
     "storefront_visible": true,
     "storefront_image_url": "/uploads/storefront-catalog/default/item-1.png",
+    "storefront_image_gallery": [
+      { "url": "/uploads/storefront-catalog/default/item-1.png", "is_primary": true, "sort_order": 0 }
+    ],
     "has_storefront_override": true
   }
 ]
@@ -1091,7 +1094,7 @@ Create/update item-level Storefront catalog visibility.
 - Does not upload, remove, or infer an image.
 
 ### POST /items/:item_id/storefront-image
-Upload/replace the Storefront catalog image override.
+Upload/replace the Storefront catalog primary image override. This endpoint remains backward compatible for single-image clients and writes a one-item gallery where the uploaded image is primary.
 
 **Permission**: `items:edit`
 **Request**: `multipart/form-data` with `image` file field.
@@ -1111,13 +1114,25 @@ Upload/replace the Storefront catalog image override.
 - Upload preserves existing `storefront_visible`; it must not silently show a hidden Storefront item.
 - Replacement is failure-aware: the backend stores the new file, commits the Storefront image override, then best-effort removes the previous Storefront image. If the override update fails after storage succeeds, the newly stored file is removed and the old image path remains intact.
 
+### POST /items/:item_id/storefront-images
+Upload/replace the ordered Storefront catalog image gallery for one item.
+
+**Permission**: `items:edit`
+**Request**: `multipart/form-data` with up to 10 `images` file fields.
+
+**Notes**
+- The first accepted image becomes the primary `storefront_image_url`.
+- The response includes `storefront_image_gallery` ordered by `sort_order`.
+- Upload validation uses the same 5 MB per-image and safe MIME/signature checks as the single-image endpoint.
+- Replacing the gallery preserves `storefront_visible` and does not mutate POS menu images.
+
 ### DELETE /items/:item_id/storefront-image
-Remove the Storefront catalog image override.
+Remove the Storefront catalog image override and any ordered Storefront gallery entries.
 
 **Permission**: `items:edit`
 
 **Notes**
-- Clears only `storefront_image_path` and `storefront_image_url`.
+- Clears `storefront_image_path`, `storefront_image_url`, and `storefront_image_gallery`.
 - Preserves `storefront_visible`.
 - Does not mutate POS menu image fields.
 
@@ -3020,6 +3035,7 @@ Catalog rows include:
 - `image_url` (from Storefront catalog override when available; POS image is table-missing rollout fallback only)
   - may be an absolute URL or backend-relative `/uploads/...` path
   - storefront/POS clients should gracefully show a placeholder when image load fails
+- `image_gallery`, an ordered array of public Storefront item images. The first entry is the primary image and matches `image_url` when a Storefront image is configured.
 - `service_detail` for Services Mode service rows, including duration, payment policy, bookable/storefront visibility, and normalized `intake_form_schema` fields when configured
 - `allergens` for F&B menu rows, sourced from `item_allergens`
 - `nutrition` for F&B menu rows, sourced from `item_nutrition`
@@ -4555,6 +4571,23 @@ Exchange a valid DGFY handoff token for a normal DGFY account JWT.
 }
 ```
 
+### POST /dgfy/auth/tenant-session
+
+Requires `Authorization: Bearer <dgfy-account-token>`.
+
+Start a normal SKUpervisor tenant session from an authenticated DGFY account and an accepted active company membership. This endpoint is used after active auto-standard company registration so the founder can enter IMS directly without re-entering the DGFY password.
+
+**Request**
+
+```json
+{
+  "tenant_id": "tenant-uuid",
+  "company_token": "token-acme-123"
+}
+```
+
+At least one of `tenant_id` or `company_token` is required. The authenticated DGFY account must have an accepted membership for the active tenant, and the linked tenant user must be active. The response sets the normal SKUpervisor refresh/company cookies and returns the standard tenant access session payload without exposing the refresh token.
+
 ### GET /dgfy/auth/me
 
 Return the authenticated DGFY account and linked company memberships. Memberships include pending company invitations when the invited email matches an existing DGFY account.
@@ -4684,6 +4717,94 @@ Accept a pending company invitation from the DGFY account notification surface. 
 }
 ```
 
+### DGFY Platform Admin Account Endpoints
+
+Platform-admin DGFY account endpoints live under `/api/v1/dgfy/admin/accounts` and require the admin JWT/cookie accepted by `authenticateAdmin`. These endpoints are landlord-scoped and are not tenant-isolated.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/dgfy/admin/accounts` | List all DGFY accounts with filters for status, email verification, company membership, search, page, and limit |
+| `GET` | `/dgfy/admin/accounts/:account_id` | Return one DGFY account with tenant memberships and recent admin audit rows |
+| `PATCH` | `/dgfy/admin/accounts/:account_id/profile` | Update first name, optional middle name, last name, and phone |
+| `POST` | `/dgfy/admin/accounts/:account_id/suspend` | Suspend a DGFY account and require a reason |
+| `POST` | `/dgfy/admin/accounts/:account_id/reactivate` | Reactivate a suspended DGFY account and require a reason |
+
+List query parameters:
+
+| Name | Values | Description |
+| --- | --- | --- |
+| `status` | `all`, `active`, `suspended` | Filters by `dgfy_accounts.is_active` |
+| `verification` | `all`, `verified`, `unverified` | Filters by `email_verified_at` presence |
+| `membership` | `all`, `has_membership`, `no_membership` | Filters by landlord DGFY tenant membership rows |
+| `search` | string | Searches first/middle/last name, username, email, or phone |
+| `page` | number | Defaults to `1` |
+| `limit` | number | Defaults to `25`, max `100` |
+
+**List Response (200)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "accounts": [
+      {
+        "id": "dgfy-account-uuid",
+        "first_name": "Ada",
+        "middle_name": null,
+        "last_name": "Lovelace",
+        "username": "Ada",
+        "email": "ada@example.com",
+        "phone": "+639123456789",
+        "is_active": true,
+        "lifecycle_status": "active",
+        "is_email_verified": true,
+        "email_verified_at": "2026-05-21T00:00:00.000Z",
+        "phone_verified_at": null,
+        "membership_count": 1,
+        "last_login_at": "2026-06-01T00:00:00.000Z",
+        "created_at": "2026-05-21T00:00:00.000Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 25,
+      "total": 1,
+      "total_pages": 1
+    },
+    "summary": {
+      "total": 1,
+      "active": 1,
+      "suspended": 0,
+      "verified_email": 1,
+      "unverified_email": 0
+    }
+  }
+}
+```
+
+**Profile Update Request**
+
+```json
+{
+  "first_name": "Ada",
+  "middle_name": "Byron",
+  "last_name": "Lovelace",
+  "phone": "+639123456789"
+}
+```
+
+Email changes are rejected from this endpoint. DGFY email changes remain deferred until a dedicated verified email-change or approved admin override design exists. Phone changes clear `phone_verified_at`; phone verification remains deferred and must not be presented as verified identity.
+
+**Suspend/Reactivate Request**
+
+```json
+{
+  "reason": "Risk review completed"
+}
+```
+
+Suspend/reactivate uses `dgfy_accounts.is_active` as the lifecycle source of truth. Suspended accounts cannot log in, and existing DGFY sessions fail on the next authenticated DGFY request because the account is reloaded and checked. Every profile/lifecycle mutation writes `dgfy_account_admin_audit_logs` with safe before/after snapshots and no secrets.
+
 ### DGFY Customer Account Endpoints
 
 Front-facing customer account endpoints live under `/api/v1/dgfy/customer`. Except for tracking recovery request/verify, they require `Authorization: Bearer <dgfy-account-token>`.
@@ -4753,16 +4874,16 @@ Submit a public company registration request.
 
 **Current policy**
 - All new registrations persist `plan: "premium"` by default so mode-specific premium-gated surfaces are available after activation.
-- `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` (default): public company registrations are provisioned immediately and return `status: "active"` with a `company_token`; the registration UI then signs the founder in through the normal login API.
+- `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` (default): public company registrations are provisioned immediately and return `status: "active"` with a `company_token`; the registration UI then starts a normal SKUpervisor tenant session through the authenticated DGFY account membership handoff.
 - `TENANT_REGISTRATION_APPROVAL_MODE=manual`: registrations return `status: "pending"` and require platform admin approval before login. Use this as an explicit rollback/admin-review mode.
 - Provider subscription registration remains disabled while `PAYMENTS_ENABLED=false`; payloads with `subscriptionId` return `503` with `PAYMENTS_DISABLED`.
 - Auto-standard and manual premium-capable registrations keep `subscription_status: "inactive"` while payments are paused. In that mode, premium route access is plan-driven and does not require an active subscription row.
 - Approval email delivery is non-blocking after provisioning; active responses include `email_sent`.
-- Active registration responses do not include tenant auth tokens. The frontend routes to SKUpervisor login with the DGFY email and returned `company_token`; the founder can sign in through the tenant login path because provisioning seeded the master admin from the DGFY account.
-- Storefront-originated business registration starts at DGFY login and uses `/register-company?source=dgfy&auth=login#dgfy-profile` so the authenticated user lands in the personal DGFY profile/company-creation area before creating a company.
+- Active registration responses do not include tenant auth tokens. For active auto-standard responses, the frontend calls `POST /api/v1/dgfy/auth/tenant-session` with the returned tenant identity while authenticated as the DGFY account; that endpoint sets the standard SKUpervisor session cookies and returns the normal tenant access token payload. If that exchange fails, the frontend keeps the company-created fallback and routes the founder to manual sign-in with email/company token prefilled.
+- Storefront-originated business registration starts from the signed-in DGFY account surface. The storefront creates a short-lived one-time DGFY handoff token and routes to `/register-company?source=dgfy&auth=login&handoff_token=<token>#business-registration`; after exchange, the page focuses the business registration section.
 - Manual pending registrations create founder email lookup mappings during registration. Default auto-standard registrations rely on the provisioning path to create the mapping after successful activation.
 - Abuse control: public company registration is IP rate-limited by `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS` (production default: 5 requests per hour). Keep this strict because each accepted registration provisions an isolated tenant database by default.
-- Auto-login fallback: if the follow-up login call fails after an active response, the frontend keeps the company created state and routes the founder to manual sign-in with email/company token prefilled.
+- Tenant-session fallback: if the DGFY tenant-session exchange fails after an active response, the frontend keeps the company-created state and routes the founder to manual sign-in with email/company token prefilled.
 - Founder contact and credentials: public company registration no longer accepts `adminEmail`, `adminPhone`, or `adminPassword`; the server derives them from the authenticated DGFY account.
 - Email ownership: public company registration requires the authenticated DGFY account email to already be verified. If the user registers a company with that same verified DGFY email, clients do not send `email_otp_code` and the backend does not consume a second same-address company OTP. If the DGFY account email changes, it must be verified again before registration can proceed.
 - Legal acknowledgement: public company registration requires the current company terms and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current` before tenant creation. The backend fails closed before tenant creation if legal acknowledgement persistence is unavailable. After confirming the authenticated DGFY email is verified, the landlord tenant row, pending-founder membership when applicable, and acknowledgement evidence are written in one landlord transaction. The acknowledgement states that DGFY is an e-marketplace/platform service provider, the seller owns the product, sets the price, fulfills the order, remains seller of record, payment is processed by a licensed payment partner, and DGFY deducts disclosed fees before remitting the seller's net settlement. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.

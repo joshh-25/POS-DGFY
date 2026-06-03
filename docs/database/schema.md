@@ -215,6 +215,7 @@ Landlord tables:
 4. `dgfy_loyalty_transactions` stores read-only DGFY loyalty ledger rows. Balance is an aggregate of all transactions, not only recent visible rows.
 5. `dgfy_tracking_recovery_codes` stores hashed tracking-recovery codes with generic production responses, attempt limits, expiry, and single-use consumption.
 6. `dgfy_customer_backfill_runs` stores historical backfill audit rows, including dry-run/apply status, tenant/activity counters, mode-specific `order_count`, `service_booking_count`, `hospitality_booking_count`, `fnb_order_count`, matched-account/upsert counters, failures, timestamps, and JSON summary.
+7. `dgfy_account_admin_audit_logs` stores platform-admin DGFY account lifecycle evidence. Rows include `audit_log_id`, `dgfy_account_id`, action (`profile_update`, `suspend`, `reactivate`), actor username, optional reason, request ID, IP address, user agent, safe `before_snapshot`/`after_snapshot` JSON, and timestamps. Snapshots must not include password hashes, tokens, OTP values, or other secrets.
 
 Operational contract:
 
@@ -223,6 +224,7 @@ Operational contract:
 - Historical backfill scans POS customer orders, F&B checks linked through POS transactions, Services bookings, and Hospitality reservations.
 - Production dry-runs can require mode evidence with `--require-activity-types=order,service_booking,hospitality_booking,fnb_order` before apply.
 - Phone verification remains deferred for the customer account rollout. Phone values are matching/contact data only and must not be treated as verified identity.
+- Platform-admin DGFY account management uses `dgfy_accounts.is_active` as `active`/`suspended`. Suspended accounts cannot log in, and existing DGFY sessions fail on the next authenticated DGFY request when the account is reloaded.
 
 ### 2. Tenant Databases (Isolated Contexts)
 **Database Name Pattern**: `sku_tenant_[id]` or as specified in `tenants.db_name`
@@ -898,7 +900,7 @@ CREATE TABLE item_nutrition (
 );
 ```
 
-### 5. Item Allergens Table
+### 6. Item Allergens Table
 
 ```sql
 CREATE TABLE item_allergens (
@@ -914,7 +916,7 @@ CREATE TABLE item_allergens (
 );
 ```
 
-### 6. Product Composition Table
+### 7. Product Composition Table
 
 ```sql
 CREATE TABLE product_composition (
@@ -933,7 +935,7 @@ CREATE TABLE product_composition (
 );
 ```
 
-### 7. Suppliers Table
+### 8. Suppliers Table
 
 ```sql
 CREATE TABLE suppliers (
@@ -965,7 +967,7 @@ CREATE TABLE suppliers (
 - Soft delete writes `status = 'inactive'`, `deleted_at`, and `deleted_by`.
 - Default list/detail/mutation behavior excludes soft-deleted suppliers.
 
-### 8. Supplier Items Table
+### 9. Supplier Items Table
 
 ```sql
 CREATE TABLE supplier_items (
@@ -986,7 +988,7 @@ CREATE TABLE supplier_items (
 );
 ```
 
-### 9. Bulk Discounts Table
+### 10. Bulk Discounts Table
 
 ```sql
 CREATE TABLE bulk_discounts (
@@ -1002,7 +1004,7 @@ CREATE TABLE bulk_discounts (
 );
 ```
 
-### 10. Purchase Orders Table
+### 11. Purchase Orders Table
 
 ```sql
 CREATE TABLE purchase_orders (
@@ -1031,7 +1033,7 @@ CREATE TABLE purchase_orders (
 );
 ```
 
-### 11. PO Line Items Table
+### 12. PO Line Items Table
 
 ```sql
 CREATE TABLE po_line_items (
@@ -1054,7 +1056,7 @@ CREATE TABLE po_line_items (
 );
 ```
 
-### 12. Job Orders Table
+### 13. Job Orders Table
 
 ```sql
 CREATE TABLE job_orders (
@@ -1099,7 +1101,7 @@ CREATE TABLE job_orders (
 **Alignment Note (2026-04-07):**
 - `20260407000004-align-job-orders-schema-with-model.cjs` adds missing `quality_check` and aligns `quantity_produced` precision with the runtime model contract.
 
-### 13. JO Ingredients Table
+### 14. JO Ingredients Table
 
 ```sql
 CREATE TABLE jo_ingredients (
@@ -1122,7 +1124,7 @@ CREATE TABLE jo_ingredients (
 );
 ```
 
-### 14. Stock Movements Table
+### 15. Stock Movements Table
 
 ```sql
 CREATE TABLE stock_movements (
@@ -1169,7 +1171,7 @@ CREATE TABLE stock_movements (
 - Non-transfer movements use `location_id` for location-scoped stock and FIFO handling.
 - Pure service rows (`items.category = service` or `items.mode_item_preset = service`) are stock-exempt and must not create manual stock movement, transfer, FIFO, weighted-cost, or inventory-valuation rows. Physical service add-ons/products and supplies remain normal stock-bearing inventory rows.
 
-### 15. Batch Transactions Table
+### 16. Batch Transactions Table
 
 ```sql
 CREATE TABLE batch_transactions (
@@ -1188,7 +1190,7 @@ CREATE TABLE batch_transactions (
 );
 ```
 
-### 16. Audit Logs Table
+### 17. Audit Logs Table
 
 ```sql
 CREATE TABLE audit_logs (
@@ -1209,7 +1211,7 @@ CREATE TABLE audit_logs (
 );
 ```
 
-### 17. System Settings Table
+### 18. System Settings Table
 
 ```sql
 CREATE TABLE system_settings (
@@ -1262,7 +1264,7 @@ Landlord-level payment routing tables support PayMongo QR Ph Storefront payments
 - `commerce_payment_refunds`: one row per PayMongo refund attempt with UUID `tenant_id`, public refund reference, linked commerce session, provider payment/refund IDs, amount in centavos, reason, notes, refund strategy, split-refund payload, provider payload, status, failure fields, and requester.
 - Admin settlement reporting is derived from `commerce_payment_sessions` plus `commerce_payment_refunds`; it is a reconciliation view over stored local payment evidence, not a PayMongo payout ledger.
 
-### 18. POS Catalog Overrides Table
+### 19. POS Catalog Overrides Table
 
 ```sql
 CREATE TABLE pos_catalog_overrides (
@@ -1290,7 +1292,32 @@ CREATE TABLE pos_catalog_overrides (
   - `product + finished_goods` => visible
   - other categories/types => hidden until explicitly enabled
 
-### 19. POS Terminal Shifts Table
+### 20. Storefront Catalog Overrides Table
+
+```sql
+CREATE TABLE storefront_catalog_overrides (
+    storefront_catalog_override_id INT PRIMARY KEY AUTO_INCREMENT,
+    item_id INT NOT NULL UNIQUE,
+    storefront_visible BOOLEAN NOT NULL DEFAULT TRUE,
+    storefront_image_path VARCHAR(500) NULL,
+    storefront_image_url VARCHAR(500) NULL,
+    storefront_image_gallery JSON NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (item_id) REFERENCES items(item_id) ON DELETE CASCADE ON UPDATE CASCADE,
+    INDEX idx_item_id (item_id)
+);
+```
+
+**Current Implementation Note (2026-06):**
+- This table is tenant-local and optional per item.
+- `storefront_visible` controls customer-facing Storefront catalog membership independently from POS visibility.
+- `storefront_image_url` is the backward-compatible primary item image.
+- `storefront_image_gallery` stores the ordered customer-facing gallery; the first entry is primary and is mirrored to `storefront_image_url`.
+- POS-derived image data is a rollout fallback only when this table is unavailable.
+
+### 21. POS Terminal Shifts Table
 
 ```sql
 CREATE TABLE pos_terminal_shifts (
@@ -1323,7 +1350,7 @@ CREATE TABLE pos_terminal_shifts (
 - Tracks cashier/session accountability for isolated terminal workflows.
 - Checkout flow can require an active open shift before allowing POS transactions.
 
-### 20. POS Cash Drawer Events Table
+### 22. POS Cash Drawer Events Table
 
 ```sql
 CREATE TABLE pos_cash_drawer_events (
