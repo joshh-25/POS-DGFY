@@ -58,6 +58,22 @@ Evidence semantics:
 3. Replay tests prove already processed PayMongo events return an idempotent response without repeating payment mutation.
 4. These gates do not prove live PayMongo delivery, provider dashboard configuration, child-account webhook registration, or settlement correctness.
 
+## Tenant Invitation Link Security Gates
+
+Invitation link security evidence is mandatory for tenant onboarding, user-management invitation, Settings, and AI user-management changes.
+
+Required commands:
+1. `npm --prefix backend test -- --runTestsByPath tests/settingsCompanyInfo.usecase.test.js tests/settingsHandlers.companyInfo.test.js tests/userManagementToolRegistry.test.js tests/aiTools.test.js tests/emailTemplates.invitation.test.js`
+2. `npm --prefix backend test -- --runTestsByPath tests/authTenantIsolation.hardening.test.js tests/authUsecases.applicationResult.test.js tests/tenantHandler.emailOtp.test.js tests/emailOtpService.test.js`
+3. `npm --prefix frontend test -- --run Pages/__tests__/AcceptInvite.test.jsx Components/users/__tests__/UserManagementModal.rbacContract.test.js`
+
+Evidence semantics:
+1. Settings company-info tests prove the API no longer returns `registration_link`.
+2. AI tests prove the retired `get_company_join_link` tool cannot generate company-token registration URLs.
+3. Email-template and user-management tests prove generated invitation links are `/accept-invite?token=<invitation_token>` only.
+4. Frontend invitation tests prove legacy `company` and `companyToken` URL parameters are ignored for registry-backed validation, OTP request, and acceptance.
+5. These gates do not prove that all historically issued links have expired; ADR 0015 still governs already-issued tenant-local compatibility until expiry.
+
 ## Frontend Bundle Guard
 
 Current bundle-gate expectations:

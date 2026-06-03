@@ -75,6 +75,9 @@ Commands executed during this audit:
 - `npm --prefix backend test -- --runTestsByPath tests/paymongoWebhookSignature.test.js tests/paymentHandlers.publicRoutes.transport.test.js tests/paymentHandlers.simulateWebhook.test.js tests/paymentsRoutes.disabled.transport.test.js tests/paypalWebhookVerification.test.js` - passed 5 suites / 24 tests on 2026-06-03 after PayMongo webhook fail-closed remediation.
 - `npm --prefix frontend run build:all` - passed on 2026-06-03 before rerunning the local release gate.
 - `npm run gate:release:local` - passed on 2026-06-03 after frontend build artifacts were refreshed.
+- `npm --prefix backend test -- --runTestsByPath tests/settingsCompanyInfo.usecase.test.js tests/settingsHandlers.companyInfo.test.js tests/userManagementToolRegistry.test.js tests/aiTools.test.js tests/emailTemplates.invitation.test.js` - passed 5 suites / 33 tests on 2026-06-03 after legacy company-token invite-link removal.
+- `npm --prefix backend test -- --runTestsByPath tests/authTenantIsolation.hardening.test.js tests/authUsecases.applicationResult.test.js tests/tenantHandler.emailOtp.test.js tests/emailOtpService.test.js` - passed 4 suites / 19 tests on 2026-06-03 after invitation token-only enforcement.
+- `npm --prefix frontend test -- --run Pages/__tests__/AcceptInvite.test.jsx Components/users/__tests__/UserManagementModal.rbacContract.test.js` - passed 2 files / 6 tests on 2026-06-03 after invitation acceptance stopped forwarding URL company tokens.
 - `npm --prefix backend test` - timed out after 10 minutes during follow-up validation without current full-suite green evidence.
 
 ## Severity Model
@@ -97,7 +100,7 @@ Hygiene, documentation, or follow-through item that should be tracked but does n
 - `1.2-Default_admin_credentials_remain_available.md`
 - `1.3-Browser_localStorage_tokens_expose_sessions_to_xss.md` — remediated 2026-06-02 with ADR 0026 cookie-session contract and storage guards
 - `1.4-PayMongo_webhook_signature_verification_can_fail_open.md` — remediated 2026-06-03 with fail-closed PayMongo signature verification and replay proof
-- `1.5-Legacy_company_token_invite_links_still_exposed.md`
+- `1.5-Legacy_company_token_invite_links_still_exposed.md` — remediated 2026-06-03 with token-only invitation links and no company-token invite URL generation
 - `1.6-Production_env_validation_logs_without_fail_stop.md`
 - `2.1-Local_release_gate_fails.md`
 - `2.2-Frontend_contract_suite_fails.md`
