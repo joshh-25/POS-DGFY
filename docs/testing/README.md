@@ -102,6 +102,21 @@ Evidence semantics:
 3. The local release gate runs `npm run test:frontend:contracts` through `scripts/gate-release-local.js`.
 4. These gates do not prove browser visual parity, live map-provider behavior, or production account-provider behavior; manual/browser QA remains required where visual placement or live provider interaction matters.
 
+## Backend Test Matrix Gate
+
+Backend matrix evidence is mandatory for release readiness and for changes touching backend auth, payment, compliance, POS/fiscal, tenant provisioning, storefront, inventory, reporting, AI tools, database integration, or platform services.
+
+Required command:
+1. `npm run test:backend:matrix`
+
+Evidence semantics:
+1. The matrix discovers active backend Jest test files from the backend Jest config, then runs them in bounded groups with one file per chunk by default.
+2. The matrix writes `.tmp/release-gates/<sha>/backend-test-matrix/backend_test_matrix.json` with target SHA, active test count, group count, schema preflight result, per-chunk duration, status, timeout, and log path.
+3. Schema preflight must pass before test execution; it verifies the matrix is pointed at a test database and repairs only known test-schema drift needed for current suites.
+4. The local release gate runs `npm run test:backend:matrix` through `scripts/gate-release-local.js`.
+5. CI runs `node ../scripts/run-backend-test-matrix.js` from the backend job and uploads `.tmp/release-gates/<sha>/backend-test-matrix/**` as the backend matrix artifact.
+6. A green matrix proves the backend Jest inventory completes under the configured chunk timeout in the local or CI test environment. It does not prove production database parity, live provider behavior, browser E2E assertions behind opt-in flags, or external compliance approval.
+
 ## Frontend Bundle Guard
 
 Current bundle-gate expectations:
