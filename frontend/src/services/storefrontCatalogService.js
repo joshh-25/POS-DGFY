@@ -36,6 +36,16 @@ export const uploadStorefrontCatalogImages = async (itemId, files = []) => {
   return response.data.data;
 };
 
+export const updateStorefrontCatalogGallery = async (itemId, gallery = []) => {
+  const response = await api.patch(`/items/${itemId}/storefront-images/gallery`, { gallery });
+  return response.data.data;
+};
+
+export const deleteStorefrontCatalogGalleryImage = async (itemId, imageIndex) => {
+  const response = await api.delete(`/items/${itemId}/storefront-images/${imageIndex}`);
+  return response.data.data;
+};
+
 export const uploadBulkStorefrontCatalogImages = async (files = []) => {
   const formData = new FormData();
   files.forEach((file) => formData.append('images', file));

@@ -37,6 +37,7 @@ import {
 
 const WIZARD_STEPS = Object.freeze(['brand_assets', 'primary_location', 'bulk_items']);
 const HOSPITALITY_WIZARD_STEPS = Object.freeze(['brand_assets', 'primary_location', 'hospitality_rooms']);
+const MAX_ITEM_IMAGE_FILES = 10;
 const MapPinPicker = React.lazy(() => import('../../../components/maps/MapPinPicker.jsx'));
 
 const getProgress = (onboarding) => {
@@ -122,6 +123,22 @@ const normalizeLocationForm = (currentUser) => ({
 const isCreatedRow = (row) => ['created', 'created_with_image_error'].includes(row?.status);
 
 const getCreatedItemId = (row) => row?.created_item?.item_id || row?.created_item?.id || null;
+
+const getItemImageFiles = (row) => {
+  if (Array.isArray(row?.image_files) && row.image_files.length > 0) {
+    return row.image_files.filter(Boolean).slice(0, MAX_ITEM_IMAGE_FILES);
+  }
+  return row?.image_file ? [row.image_file] : [];
+};
+
+const uploadItemImages = async (itemId, imageFiles) => {
+  if (!itemId || imageFiles.length === 0) return;
+  if (imageFiles.length > 1) {
+    await uploadStorefrontCatalogImages(itemId, imageFiles);
+    return;
+  }
+  await uploadStorefrontCatalogImage(itemId, imageFiles[0]);
+};
 
 export function OnboardingReminderBanner({ onboarding, onOpenWizard }) {
   const progress = getProgress(onboarding);
@@ -520,16 +537,21 @@ export default function OnboardingSetupModal({
       const result = await bulkCreateOnboardingItems({ rows: rowsForApi });
       const resultByRow = new Map((result?.results || []).map((row) => [row.client_row_id, row]));
 
-      const nextRows = await Promise.all(itemRows.map(async (row) => {
-        if (isCreatedRow(row)) return row;
+      const nextRows = [];
+      for (const row of itemRows) {
+        if (isCreatedRow(row)) {
+          nextRows.push(row);
+          continue;
+        }
         const rowResult = resultByRow.get(row.client_row_id);
         if (!rowResult || rowResult.status !== 'created') {
-          return {
+          nextRows.push({
             ...row,
             status: 'failed',
             errors: rowResult?.errors || ['Unable to create this row.'],
             created_item: null
-          };
+          });
+          continue;
         }
 
         const createdItem = rowResult.item || null;
@@ -540,26 +562,21 @@ export default function OnboardingSetupModal({
           errors: [],
           created_item: createdItem
         };
-        const imageFiles = Array.isArray(row.image_files) && row.image_files.length > 0
-          ? row.image_files
-          : (row.image_file ? [row.image_file] : []);
+        const imageFiles = getItemImageFiles(row);
         if (itemId && imageFiles.length > 0) {
           try {
-            if (imageFiles.length > 1) {
-              await uploadStorefrontCatalogImages(itemId, imageFiles);
-            } else {
-              await uploadStorefrontCatalogImage(itemId, imageFiles[0]);
-            }
+            await uploadItemImages(itemId, imageFiles);
           } catch (error) {
-            return {
+            nextRows.push({
               ...nextRow,
               status: 'created_with_image_error',
               errors: [error?.response?.data?.message || 'Item created, but image upload failed.']
-            };
+            });
+            continue;
           }
         }
-        return nextRow;
-      }));
+        nextRows.push(nextRow);
+      }
 
       setItemRows(nextRows);
       await saveOnboardingStep({
@@ -592,9 +609,7 @@ export default function OnboardingSetupModal({
   const handleRetryImageUpload = async (clientRowId) => {
     const row = itemRows.find((entry) => entry.client_row_id === clientRowId);
     const itemId = getCreatedItemId(row);
-    const imageFiles = Array.isArray(row?.image_files) && row.image_files.length > 0
-      ? row.image_files
-      : (row?.image_file ? [row.image_file] : []);
+    const imageFiles = getItemImageFiles(row);
     if (imageFiles.length === 0 || !itemId) {
       toast.error('Choose one or more images before retrying upload.');
       return;
@@ -602,11 +617,7 @@ export default function OnboardingSetupModal({
 
     setSaving(true);
     try {
-      if (imageFiles.length > 1) {
-        await uploadStorefrontCatalogImages(itemId, imageFiles);
-      } else {
-        await uploadStorefrontCatalogImage(itemId, imageFiles[0]);
-      }
+      await uploadItemImages(itemId, imageFiles);
       setItemRows((rows) => rows.map((entry) => (
         entry.client_row_id === clientRowId
           ? { ...entry, status: 'created', errors: [] }
@@ -822,7 +833,11 @@ export default function OnboardingSetupModal({
                           multiple
                           className="mt-1 block w-full text-xs"
                           onChange={(event) => {
-                            const files = Array.from(event.target.files || []);
+                            const selectedFiles = Array.from(event.target.files || []);
+                            const files = selectedFiles.slice(0, MAX_ITEM_IMAGE_FILES);
+                            if (selectedFiles.length > MAX_ITEM_IMAGE_FILES) {
+                              toast.error(`Only the first ${MAX_ITEM_IMAGE_FILES} item images will be uploaded.`);
+                            }
                             updateItemRow(row.client_row_id, {
                               image_file: files[0] || null,
                               image_files: files
@@ -830,6 +845,7 @@ export default function OnboardingSetupModal({
                           }}
                           disabled={isCreatedRow(row) || saving}
                         />
+                        <span className="mt-1 block text-[11px] text-slate-500">Up to {MAX_ITEM_IMAGE_FILES} images per item.</span>
                       </label>
                       <div className="flex items-end text-xs text-slate-500">Row {index + 1}</div>
                     </div>

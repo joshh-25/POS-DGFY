@@ -22,6 +22,8 @@ import {
   buildUploadStorefrontCatalogImageUseCase,
   buildUploadStorefrontCatalogGalleryImagesUseCase,
   buildUploadBulkStorefrontCatalogImagesUseCase,
+  buildUpdateStorefrontCatalogGalleryUseCase,
+  buildDeleteStorefrontCatalogGalleryImageUseCase,
   buildDeleteStorefrontCatalogImageUseCase
 } from './usecases/storefrontCatalogUseCases.js';
 import {
@@ -79,6 +81,14 @@ export const uploadStorefrontCatalogGalleryImagesUseCase = buildUploadStorefront
   imageStorage: storefrontCatalogImageStorage
 });
 export const uploadBulkStorefrontCatalogImagesUseCase = buildUploadBulkStorefrontCatalogImagesUseCase({
+  itemRepository,
+  imageStorage: storefrontCatalogImageStorage
+});
+export const updateStorefrontCatalogGalleryUseCase = buildUpdateStorefrontCatalogGalleryUseCase({
+  itemRepository,
+  imageStorage: storefrontCatalogImageStorage
+});
+export const deleteStorefrontCatalogGalleryImageUseCase = buildDeleteStorefrontCatalogGalleryImageUseCase({
   itemRepository,
   imageStorage: storefrontCatalogImageStorage
 });

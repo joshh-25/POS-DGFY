@@ -142,19 +142,23 @@ describe('Item/Product wizard contracts', () => {
     const productPosSetupSource = readFrontendFile('Components/products/wizard/POSSetupStep.jsx');
     const itemsPageSource = readFrontendFile('src/features/inventory/pages/ItemsPage.jsx');
 
-    expect(itemFormSource).toContain('Upload Item Image');
-    expect(itemFormSource).toContain('Remove Item Image');
+    expect(itemFormSource).toContain('Add Item Images');
+    expect(itemFormSource).toContain('Remove All Item Images');
+    expect(itemFormSource).toContain('Set first');
     expect(itemFormSource).toContain('No item image uploaded yet.');
     expect(itemFormSource).toContain('Enable in Storefront');
     expect(itemFormSource).toContain('Disable in Storefront');
 
-    expect(productPosSetupSource).toContain('Upload Item Image');
-    expect(productPosSetupSource).toContain('Remove Item Image');
+    expect(productPosSetupSource).toContain('Add Item Images');
+    expect(productPosSetupSource).toContain('Remove All Item Images');
+    expect(productPosSetupSource).toContain('Set first');
     expect(productPosSetupSource).toContain('No item image uploaded yet.');
     expect(productPosSetupSource).toContain('Enable in Storefront');
     expect(productPosSetupSource).toContain('Disable in Storefront');
 
     expect(itemsPageSource).toContain('Item image updated for');
+    expect(itemsPageSource).toContain('Primary storefront image updated for');
+    expect(itemsPageSource).toContain('deleteStorefrontCatalogGalleryImage');
     expect(itemsPageSource).toContain('Failed to upload item image');
   });
 

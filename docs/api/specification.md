@@ -1115,16 +1115,49 @@ Upload/replace the Storefront catalog primary image override. This endpoint rema
 - Replacement is failure-aware: the backend stores the new file, commits the Storefront image override, then best-effort removes the previous Storefront image. If the override update fails after storage succeeds, the newly stored file is removed and the old image path remains intact.
 
 ### POST /items/:item_id/storefront-images
-Upload/replace the ordered Storefront catalog image gallery for one item.
+Append images to the ordered Storefront catalog image gallery for one item.
 
 **Permission**: `items:edit`
 **Request**: `multipart/form-data` with up to 10 `images` file fields.
 
 **Notes**
-- The first accepted image becomes the primary `storefront_image_url`.
+- If no gallery exists, the first accepted image becomes the primary `storefront_image_url`.
+- If a gallery already exists, accepted images are appended after the existing ordered entries and the existing first image remains primary.
 - The response includes `storefront_image_gallery` ordered by `sort_order`.
 - Upload validation uses the same 5 MB per-image and safe MIME/signature checks as the single-image endpoint.
-- Replacing the gallery preserves `storefront_visible` and does not mutate POS menu images.
+- Appending to the gallery preserves `storefront_visible` and does not mutate POS menu images.
+
+### PATCH /items/:item_id/storefront-images/gallery
+Reorder or prune the existing Storefront catalog gallery for one item.
+
+**Permission**: `items:edit`
+
+**Request**
+```json
+{
+  "gallery": [
+    { "path": "storefront-catalog/tenant/item-second.png", "url": "/uploads/storefront-catalog/tenant/item-second.png" },
+    { "path": "storefront-catalog/tenant/item-first.png", "url": "/uploads/storefront-catalog/tenant/item-first.png" }
+  ]
+}
+```
+
+**Notes**
+- The first supplied existing gallery entry becomes primary and is mirrored to `storefront_image_url`.
+- Entries must already belong to the item's current Storefront gallery; this endpoint cannot inject arbitrary URLs.
+- Omitted existing entries are removed from the gallery and their stored files are removed best-effort.
+- An empty gallery clears the Storefront image fields.
+- Preserves `storefront_visible` and does not mutate POS menu image fields.
+
+### DELETE /items/:item_id/storefront-images/:image_index
+Remove one image from the Storefront catalog gallery by its current zero-based order.
+
+**Permission**: `items:edit`
+
+**Notes**
+- Removing index `0` promotes the next image to primary when one exists.
+- Removing the last remaining image clears the Storefront image fields.
+- Preserves `storefront_visible` and does not mutate POS menu image fields.
 
 ### DELETE /items/:item_id/storefront-image
 Remove the Storefront catalog image override and any ordered Storefront gallery entries.

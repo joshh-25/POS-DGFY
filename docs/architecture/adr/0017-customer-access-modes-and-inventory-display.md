@@ -77,7 +77,7 @@ Image replacement is also sequenced for deploy safety: POS and Storefront upload
 
 Storefront item media now supports an ordered gallery. The first uploaded image remains the primary `storefront_image_url` for backward compatibility, and the full customer-facing order is stored in `storefront_image_gallery`. Public catalog responses expose both `image_url` and `image_gallery`; older clients can continue rendering `image_url`, while F&B item details use `image_gallery` for carousel thumbnails and slide navigation.
 
-Inventory onboarding and item setup can upload multiple item images. Replacing the gallery is atomic at the API contract level: files are validated, stored, committed to the Storefront override, and prior gallery files are removed best-effort after the new override is saved. Upload/removal still preserves `storefront_visible` and must not mutate POS menu image fields.
+Inventory onboarding and item setup can upload multiple item images. Multi-image upload appends to the ordered gallery and preserves the existing first image as primary; if no gallery exists, the first accepted upload becomes primary. Item/product setup surfaces can promote any existing gallery image to the first/primary position and can remove one gallery image without clearing the whole gallery. Single-image upload remains backward-compatible replacement for older clients. Upload/removal still preserves `storefront_visible` and must not mutate POS menu image fields.
 
 ## Addendum: Production Hardening And Default Enforcement (2026-05-04, updated 2026-05-15)
 
