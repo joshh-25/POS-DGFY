@@ -120,11 +120,15 @@ Evidence semantics:
 ## Frontend Bundle Guard
 
 Current bundle-gate expectations:
-1. `npm run check:frontend-budgets` enforces route-chunk ceilings for login, POS, terminal, and sales surfaces.
-2. The shared MapLibre dependency is intentionally isolated as `vendor-maplibre-*`; it is large but lazy-loaded by map-picker surfaces and is checked against the dedicated build cap instead of being treated as a generic vendor regression.
-3. Other vendor growth still remains actionable through the largest-chunk report.
-4. After the PR #11 DGFY POS surface split, the budget gate enforces the renamed SKUpervisor POS route chunk and the standalone POS checkout chunk separately. Do not treat a missing or renamed route chunk as harmless without updating the budget script and recording new evidence in `docs/testing/pos-readiness-status.md`.
-5. The merged frontend toolchain targets Vite 8 / `@vitejs/plugin-react` 6. Deterministic installs for frontend builds require a Node version accepted by that toolchain (`^20.19.0 || ^22.12.0 || >=24.0.0`), even though backend runtime support can remain broader.
+1. `npm run check:frontend-budgets` owns a fresh `npm --prefix frontend run build:all` execution by default, then enforces route-chunk ceilings for login, POS, terminal, and sales surfaces.
+2. The gate requires all three current app artifact directories: `dist-apps/skupervisor/assets`, `dist-apps/pos/assets`, and `dist-apps/store/assets`. Falling back to a partial or legacy artifact set is not release evidence.
+3. Freshness is checked against the build start time for every budgeted route chunk. A missing, renamed, or stale route chunk fails the gate before it can be treated as a passing budget verdict.
+4. Prebuilt artifacts are allowed only through the explicit contract `npm run check:frontend-budgets -- --skip-build --built-after <ISO timestamp or epoch ms>`. This mode is for CI jobs that have already run the same multi-app build and need a timestamped freshness proof.
+5. The default standalone report is `.tmp/frontend-budgets/frontend_budget_report.json`. The local release gate writes the release-owned report to `.tmp/release-gates/<sha>/frontend-budgets/frontend_budget_report.json`.
+6. The shared MapLibre dependency is intentionally isolated as `vendor-maplibre-*`; it is large but lazy-loaded by map-picker surfaces and is checked against the dedicated build cap instead of being treated as a generic vendor regression.
+7. Other vendor growth still remains actionable through the largest-chunk report.
+8. After the PR #11 DGFY POS surface split, the budget gate enforces the renamed SKUpervisor POS route chunk and the standalone POS checkout chunk separately. Do not treat a missing or renamed route chunk as harmless without updating the budget script and recording new evidence in `docs/testing/pos-readiness-status.md`.
+9. The merged frontend toolchain targets Vite 8 / `@vitejs/plugin-react` 6. Deterministic installs for frontend builds require a Node version accepted by that toolchain (`^20.19.0 || ^22.12.0 || >=24.0.0`), even though backend runtime support can remain broader.
 
 ## Claim Guardrail
 

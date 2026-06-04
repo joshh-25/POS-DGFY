@@ -61,7 +61,13 @@ function main() {
   addGate(gates, 'backend.test_matrix', runCommand(npmCmd, ['run', 'test:backend:matrix']), 'npm run test:backend:matrix');
   addGate(gates, 'frontend.lint', runCommand(npmCmd, ['--prefix', 'frontend', 'run', 'lint']), 'npm --prefix frontend run lint');
   addGate(gates, 'frontend.contracts', runCommand(npmCmd, ['run', 'test:frontend:contracts']), 'npm run test:frontend:contracts');
-  addGate(gates, 'frontend.budgets', runCommand(npmCmd, ['run', 'check:frontend-budgets']), 'npm run check:frontend-budgets');
+  const frontendBudgetReportFile = path.join(evidenceDir, 'frontend-budgets', 'frontend_budget_report.json');
+  addGate(
+    gates,
+    'frontend.budgets',
+    runCommand(npmCmd, ['run', 'check:frontend-budgets', '--', '--report', frontendBudgetReportFile]),
+    `npm run check:frontend-budgets -- --report ${frontendBudgetReportFile}`
+  );
   addGate(
     gates,
     'scroll.contracts',
@@ -100,6 +106,7 @@ function main() {
     artifact_paths: {
       local_readiness_file: outputFile,
       release_verdict_file: verdictFile,
+      frontend_budget_report_file: frontendBudgetReportFile,
     },
   };
   fs.writeFileSync(outputFile, JSON.stringify(payload, null, 2));
