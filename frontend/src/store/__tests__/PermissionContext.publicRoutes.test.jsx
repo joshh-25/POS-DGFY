@@ -3,6 +3,7 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, waitFor } from '@testing-library/react';
+import { PermissionProvider } from '../PermissionContext.jsx';
 
 const browserSessionMock = vi.hoisted(() => ({
   getAccessToken: vi.fn(() => ''),
@@ -15,8 +16,6 @@ const authServiceMock = vi.hoisted(() => ({
 
 vi.mock('../../services/browserSession.js', () => browserSessionMock);
 vi.mock('../../services/authService', () => authServiceMock);
-
-const { PermissionProvider } = await import('../PermissionContext.jsx');
 
 describe('PermissionProvider public routes', () => {
   beforeEach(() => {

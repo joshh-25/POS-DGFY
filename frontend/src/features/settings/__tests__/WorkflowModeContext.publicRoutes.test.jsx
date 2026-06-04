@@ -3,6 +3,7 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, waitFor } from '@testing-library/react';
+import { WorkflowModeProvider } from '../WorkflowModeContext.jsx';
 
 const browserSessionMock = vi.hoisted(() => ({
   getAccessToken: vi.fn(() => ''),
@@ -15,8 +16,6 @@ const settingsServiceMock = vi.hoisted(() => ({
 
 vi.mock('@/services/browserSession.js', () => browserSessionMock);
 vi.mock('@/services/settingsService.js', () => settingsServiceMock);
-
-const { WorkflowModeProvider } = await import('../WorkflowModeContext.jsx');
 
 describe('WorkflowModeProvider public routes', () => {
   beforeEach(() => {
