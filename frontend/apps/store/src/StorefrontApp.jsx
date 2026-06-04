@@ -859,6 +859,7 @@ const STORE_TRACK_SUBPAGE = 'track';
 const STORE_ACCOUNT_SUBPAGE = 'account';
 const STORE_SERVICE_SUBPAGE = 'service';
 const STORE_ITEM_SUBPAGE = 'item';
+const DISCOVERY_ACCOUNT_PATH = `${TENANT_STORE_BASE_PATH}/${STORE_ACCOUNT_SUBPAGE}`;
 const storePath = (slug, subpage = null, query = '') => `${TENANT_STORE_BASE_PATH}/${encodeURIComponent(toSlug(slug))}${subpage ? `/${subpage}` : ''}${query || ''}`;
 const toNumberOrNull = (value) => {
   const parsed = Number(value);
@@ -878,6 +879,7 @@ const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
 const readRouteSlug = () => {
   if (typeof window === 'undefined') return null;
   const path = window.location.pathname || '';
+  if (path.toLowerCase() === DISCOVERY_ACCOUNT_PATH) return null;
   const patterns = [
     /^\/tenant-store\/([^/]+)(?:\/[^/]+)?$/i,
     /^\/store\/([^/]+)(?:\/[^/]+)?$/i
@@ -899,6 +901,7 @@ const readRouteSlug = () => {
 const readStoreSubpage = () => {
   if (typeof window === 'undefined') return null;
   const path = window.location.pathname || '';
+  if (path.toLowerCase() === DISCOVERY_ACCOUNT_PATH) return STORE_ACCOUNT_SUBPAGE;
   const patterns = [
     /^\/tenant-store\/[^/]+\/([^/]+)$/i,
     /^\/store\/[^/]+\/([^/]+)$/i
@@ -5273,6 +5276,23 @@ export default function StorefrontApp() {
     setIsAccountDrawerOpen(false);
     handleLoadAccountPanel();
   }, [handleLoadAccountPanel, routeSlug, selectedStore?.slug]);
+  const goDiscoveryAccountPage = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    if (`${window.location.pathname}${window.location.search}` !== DISCOVERY_ACCOUNT_PATH) {
+      window.history.pushState({ storeSlug: null, storeSubpage: STORE_ACCOUNT_SUBPAGE }, '', DISCOVERY_ACCOUNT_PATH);
+    }
+    setRouteSlug(null);
+    setRouteSubpage(STORE_ACCOUNT_SUBPAGE);
+    setRouteServiceItemId(null);
+    setRouteItemId(null);
+    setSelectedStore(null);
+    setIsCheckoutOpen(false);
+    setIsGuestTrackingDrawerOpen(false);
+    setIsAccountDrawerOpen(false);
+    setIsDiscoveryNavMenuOpen(false);
+    setActiveDiscoveryNavItem('Explore');
+    handleLoadAccountPanel();
+  }, [handleLoadAccountPanel]);
   const goStoreCatalogPage = () => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     if (!normalized || typeof window === 'undefined') return;
@@ -9376,13 +9396,13 @@ export default function StorefrontApp() {
     );
   };
 
-  if (isStorePage && isAccountSubpage) {
+  if (isAccountSubpage && (isStorePage || !routeSlug)) {
     return (
       <main style={{ fontFamily: STYLES.fonts.body, background: '#ffffff', minHeight: '100vh', color: '#0f172a', overflowX: 'clip' }}>
         <DgfyCustomerAccountPage
           presentation="page"
           isMobileViewport={isMobileViewport}
-          onClose={goStoreCatalogPage}
+          onClose={isStorePage ? goStoreCatalogPage : goDiscovery}
           onRefresh={handleLoadAccountPanel}
           onTrackReference={handleTrackCustomerReference}
           onCancelOrder={handleCancelAccountOrder}
@@ -9442,6 +9462,10 @@ export default function StorefrontApp() {
               onItemClick={handleDiscoveryNavItemClick}
               onAuthClick={() => {
                 setIsDiscoveryNavMenuOpen(false);
+                if (isDgfyCustomerSignedIn) {
+                  goDiscoveryAccountPage();
+                  return;
+                }
                 setCustomerAuthError('');
                 setCustomerAuthMode('sign_in');
                 openCustomerAuthDrawer();

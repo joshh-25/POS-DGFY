@@ -168,4 +168,19 @@ describe('discovery header customer account actions', () => {
     expect(screen.getByRole('button', { name: /^my account$/i })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /log in \/ sign up/i })).toBeNull();
   }, 10000);
+
+  it('routes signed-in discovery My Account clicks to the account page', async () => {
+    window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = 'dgfy-test-token';
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: /^my account$/i }));
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/tenant-store/account');
+      expect(screen.getByRole('heading', { name: /^My Account$/i })).toBeTruthy();
+    });
+    expect(screen.queryByRole('dialog', { name: /dgfy account/i })).toBeNull();
+  }, 10000);
 });
