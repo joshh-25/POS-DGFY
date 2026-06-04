@@ -35,7 +35,11 @@ const collectTerminalEvidence = async (browser, viewport) => {
     }
   });
 
-  await page.goto(`${baseUrl}/terminal`, { waitUntil: 'networkidle', timeout: 15000 });
+  await page.goto(`${baseUrl}/terminal`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+  await page.getByText('DGFY Terminal Workspace').waitFor({ timeout: 15000 });
+  await page.getByRole('heading', { name: 'POS Catalog' }).waitFor({ timeout: 15000 });
+  await page.getByRole('heading', { name: 'Current Sale' }).waitFor({ timeout: 15000 });
+  await page.getByText('Login and Unlock').waitFor({ timeout: 15000 });
   const bodyText = await page.locator('body').innerText({ timeout: 10000 });
   await page.getByPlaceholder('cashier@company.com').fill(`cashier-${viewport.name}@example.test`);
   await page.getByPlaceholder('COUNTER-01').fill(`COUNTER-${viewport.name.toUpperCase()}`);
