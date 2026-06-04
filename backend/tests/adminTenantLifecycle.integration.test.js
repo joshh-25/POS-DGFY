@@ -68,7 +68,6 @@ const {
     DgfyAccountTenantMembership
 } = await import('../src/models/index.js');
 const { generateDgfyToken } = await import('../src/modules/dgfy/usecases/dgfyAuthUseCases.js');
-const { DGFY_LEGAL_TERM_VERSIONS } = await import('../src/modules/shared/utils/dgfyLegalTerms.js');
 const { DataTypes, Op } = await import('sequelize');
 
 describe('Admin Tenant Lifecycle Integration - Parity', () => {
@@ -235,10 +234,7 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
                     name: `${ADMIN_TEST_TENANT_PREFIX} Auto Register`,
                     plan: 'premium',
                     complianceMode: 'non_compliant',
-                    workflowMode: 'food_manufacturing',
-                    accepted_company_terms: true,
-                    company_terms_version: DGFY_LEGAL_TERM_VERSIONS.companyTerms,
-                    marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
+                    workflowMode: 'food_manufacturing'
                 });
 
             expect(response.status).toBe(201);

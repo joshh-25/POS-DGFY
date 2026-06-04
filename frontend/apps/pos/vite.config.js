@@ -11,7 +11,7 @@ const allowedHosts = ['pos.surebizcorp.com', 'pos.dgfy.ph', 'localhost', '127.0.
 
 export default defineConfig({
   root: __dirname,
-  plugins: [react()],
+  plugins: [react({ fastRefresh: false })],
   define: {
     'import.meta.env.VITE_APP_SURFACE': JSON.stringify('pos')
   },
@@ -47,7 +47,19 @@ export default defineConfig({
   preview: {
     port: 5174,
     host: true,
-    allowedHosts
+    allowedHosts,
+    proxy: {
+      '/api': {
+        target: apiProxyTarget,
+        changeOrigin: true,
+        secure: false
+      },
+      '/uploads': {
+        target: apiProxyTarget,
+        changeOrigin: true,
+        secure: false
+      }
+    }
   },
   build: {
     outDir: path.resolve(__dirname, '../../../dist-apps/pos'),

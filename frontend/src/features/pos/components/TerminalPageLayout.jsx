@@ -1,12 +1,11 @@
-import React, { Suspense, lazy, useMemo, useState } from 'react';
+import React, { Suspense, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Bell, Menu, UserRound, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-
-const POSCheckoutTerminal = lazy(() => import('./POSCheckoutTerminal'));
-const TerminalLockDrawer = lazy(() => import('./TerminalLockDrawer'));
-const TerminalWorkspaceSidebar = lazy(() => import('./TerminalWorkspaceSidebar'));
-const TerminalOperationsWorkspace = lazy(() => import('./TerminalOperationsWorkspace'));
+import POSCheckoutTerminal from './POSCheckoutTerminal.jsx';
+import TerminalLockDrawer from './TerminalLockDrawer.jsx';
+import TerminalWorkspaceSidebar from './TerminalWorkspaceSidebar.jsx';
+import TerminalOperationsWorkspace from './TerminalOperationsWorkspace.jsx';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 
 export default function TerminalPageLayout({
