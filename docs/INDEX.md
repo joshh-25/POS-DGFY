@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-06-02
+last_reviewed: 2026-06-04
 applies_to: docs_navigation
 topic: docs_index
 ---
@@ -45,7 +45,7 @@ Canonical planning entry:
 - POS offline replay hardening (durable queue statuses + Sync Queue operations console) is tracked in POS feature/testing docs and ADR 0014.
 - Storefront discovery/catalog cache-header contracts and route-level no-store behavior are tracked in API/testing docs and ADR 0014.
 - Third-party Storefront map integrations such as MapViu use `GET /api/v1/storefront/discovery/map-pins` plus the path-limited `PUBLIC_API_CORS_ORIGIN` allowlist; the implementation/deploy note is `docs/features/STOREFRONT_MAPVIU_PUBLIC_API_2026-05-29.md`.
-- Tenant first-login onboarding is tracked in ADR 0013 and `docs/api/specification.md`. The current wizard uses optional brand assets, primary storefront location, and mode-aware bulk starter items; merchant-facing starter uploads are labeled `Item image`; future mode work must define onboarding item presets before production readiness.
+- Tenant first-login onboarding is tracked in ADR 0013 and `docs/api/specification.md`. The current wizard uses optional brand assets, primary storefront location, and mode-aware bulk starter items; merchant-facing starter uploads are labeled `Item image`, upload only after item creation succeeds, and are capped at 10 images per item; future mode work must define onboarding item presets before production readiness.
 - Customer Access Modes and Inventory Display are default-on public Storefront contracts. `CUSTOMER_ACCESS_MODES_ENABLED=false` is rollback-only, `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` supports tenant re-enablement during rollback, and `GET /settings` exposes read-only runtime key `customer_access_modes_enabled` for IMS Settings status. The feature contract is tracked in `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md` and governed by ADR 0017.
 - Inventory item/product create-edit flows are covered by `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md` where they intersect POS/Storefront catalog setup. They expose a guarded `Save and exit` action across create/edit modes, keep draft save separate from finalization, and retain internal Storefront catalog image field names while using `Item image` in merchant-facing copy.
 - Storefront location pin management, including inactive-pin permanent delete, reference-count blockers, fail-closed tenant-reference inspection, and discovery refresh behavior, is tracked in `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md`, `docs/api/specification.md`, and ADR 0017.
@@ -65,7 +65,7 @@ Canonical planning entry:
 - PM2 production runtime uses root `ecosystem.config.cjs` as the canonical ecosystem file for backend, IMS, POS, and Storefront. Current production readiness steps and exact gate caveats are tracked in `docs/ops/DEPLOYMENT_GUIDE.md`, `docs/ops/PRODUCTION_CHECKLIST.md`, `docs/ops/NO_STAGING_RELEASE_STANDARD.md`, and `docs/testing/release-go-no-go-checklist.md`.
 - Storefront cover/profile upload ingress is tracked in `docs/ops/DEPLOYMENT_GUIDE.md` and `docs/features/STOREFRONT_SERVICE_MODE_CURRENT_STATE.md`. VPS deploys install an Nginx `client_max_body_size 8m;` guard so IMS Settings photo uploads reach backend validation instead of failing at the proxy with `413`.
 - Namecheap shared-hosting artifact deploys are tracked in `docs/ops/NAMECHEAP_SHARED_CICD.md`, with CI artifacts and `.github/workflows/deploy-namecheap-shared.yml`.
-- Tenant registration approval policy is tracked in `docs/features/TENANT_MANAGEMENT.md` and `docs/api/specification.md`. `auto_standard` is the default, new registrations are premium-capable by plan metadata, public registration provisions the tenant immediately before the frontend follows with a normal login call, and `manual` remains an explicit rollback/admin-review mode.
+- Tenant registration approval policy is tracked in `docs/features/TENANT_MANAGEMENT.md` and `docs/api/specification.md`. `auto_standard` is the default, new registrations are premium-capable by plan metadata, and public business registration now starts from a signed-in DGFY account: the company form collects company name plus Business Industry, founder identity is server-derived from the verified DGFY account, active auto-standard provisioning can issue a tenant session through the accepted founder membership, and `manual` remains an explicit rollback/admin-review mode.
 - Account-phone rollout state is tracked in `docs/features/TENANT_MANAGEMENT.md`, `docs/api/specification.md`, `docs/database/schema.md`, and `docs/reference/QUICK_REFERENCE.md`. The current production-safe contract is staged enforcement: `observe` by default, `tenant_allowlist` for verified clean tenants, and global `all` only after the phone-rollout closure gate passes.
 - Account password policy is tracked in `docs/features/TENANT_MANAGEMENT.md`, `docs/api/specification.md`, and `docs/features/SETTINGS_INFORMATION_ARCHITECTURE.md`. Current registration, invitation acceptance, company founder registration, and Settings > Profile password-change flows enforce only a minimum of 8 characters and expose an optional readable 16-character generator.
 - Public company registration abuse limits are tracked in the same tenant/API docs and configured through `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` plus `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`.
@@ -75,7 +75,7 @@ Canonical planning entry:
 - Compliance evidence and submission packet are under `docs/compliance/evidence/` and `docs/compliance/submission/`.
 - Compliance Final Review documentary requirements are tenant self-serve in Settings > Compliance (backend stores tenant records; submission docs remain internal reference).
 - Compliance activation readiness browser E2E and startup regression guardrails are under `docs/testing/README.md`.
-- Frontend release-hardening budgets are documented in `docs/testing/README.md`; `npm run check:frontend-budgets` governs route chunks and keeps lazy MapLibre isolated under its dedicated ceiling.
+- Frontend release-hardening budgets are documented in `docs/testing/README.md`; `npm run check:frontend-budgets` owns the multi-app build by default, requires fresh SKUpervisor/POS/Store artifacts or explicit timestamped prebuilt proof, writes budget reports, governs route chunks, and keeps lazy MapLibre isolated under its dedicated ceiling.
 - No-staging release promotion requires exact QA deploy parity. `docs/ops/NO_STAGING_RELEASE_STANDARD.md` defines the hard gate that rejects stale `qa_deploy_summary.txt` evidence when `deployed_head` does not match `RELEASE_TARGET_SHA`.
 - Historical compliance remediation packets are archived under `docs/archive/compliance/2026-04-07`.
 - Historical exploratory testing packets are archived under `docs/archive/testing/`.

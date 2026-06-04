@@ -93,6 +93,11 @@ Commands executed during this audit:
 - `npm run gate:release:local` - passed on 2026-06-03 for target SHA `bd968a74973f60a5ace83481d8813d8f68bd8818` after adding the frontend contract gate.
 - `npm run test:backend:matrix` - passed on 2026-06-03 for target SHA `3ee0890f8a765a552546f9977c6197a2db9e5980`; artifact `.tmp/release-gates/3ee0890f8a765a552546f9977c6197a2db9e5980/backend-test-matrix/backend_test_matrix.json` records 274 active backend test files, 9 groups, schema preflight pass, per-chunk durations, statuses, and log paths.
 - `npm run gate:release:local` - passed on 2026-06-04 Asia/Manila for target SHA `3ee0890f8a765a552546f9977c6197a2db9e5980`; artifact `.tmp/release-gates/3ee0890f8a765a552546f9977c6197a2db9e5980/local_readiness.json` records 15 gates passing, including `backend.test_matrix`, dependency audits, docs lint, architecture, compliance, production env, runtime doctor, backend lint, frontend lint, frontend contracts, frontend budgets, and scroll contracts.
+- `node --test scripts/check-frontend-budgets.test.js` - passed 4 tests on 2026-06-04 after hardening the frontend budget gate artifact contract.
+- `npm run check:frontend-budgets` - passed on 2026-06-04 after the gate executed `npm --prefix frontend run build:all`, validated fresh multi-app chunks, and wrote `.tmp/frontend-budgets/frontend_budget_report.json`.
+- `npm run gate:release:local` - attempted again on 2026-06-04 after frontend budget hardening, but the tool run timed out after 20 minutes during `backend.test_matrix`; no current-SHA `local_readiness.json` was produced by that attempt.
+- `npm --prefix backend test -- --runTestsByPath tests/itemHandlers.transport.test.js` - passed 7 tests on 2026-06-04 after updating stale inventory transport mocks for the storefront gallery use-case exports.
+- `npm run gate:release:local` - passed on 2026-06-04 for target SHA `be59a6b55f4d6367acd124729b43fa4ee579d09b`; artifact `.tmp/release-gates/be59a6b55f4d6367acd124729b43fa4ee579d09b/local_readiness.json` records 15 gates passing, including `backend.test_matrix` with 275 active backend test files and the release-owned frontend budget report.
 
 ## Severity Model
 
@@ -119,7 +124,7 @@ Hygiene, documentation, or follow-through item that should be tracked but does n
 - `2.1-Local_release_gate_fails.md` — remediated 2026-06-03 with `npm run gate:release:local` passing for target SHA `9e778e3a631bada235e188d5cc0a4180af491259`
 - `2.2-Frontend_contract_suite_fails.md` - remediated 2026-06-03 with `npm run test:frontend` and `npm run test:frontend:contracts` passing
 - `2.3-Backend_full_test_gate_has_no_current_green_evidence.md` - remediated 2026-06-04 with `npm run test:backend:matrix` and `npm run gate:release:local` passing for target SHA `3ee0890f8a765a552546f9977c6197a2db9e5980`
-- `2.4-Frontend_budget_gate_is_not_self_contained.md` — partially remediated 2026-06-03; current budget gate passes, but clean-checkout/fresh-artifact proof remains open
+- `2.4-Frontend_budget_gate_is_not_self_contained.md` - remediated 2026-06-04 with budget-owned builds, required multi-app artifact checks, freshness enforcement, report persistence, focused tests, and a current passing aggregate local release gate for target SHA `be59a6b55f4d6367acd124729b43fa4ee579d09b`
 - `3.1-StorefrontApp_monolith_exceeds_codegen_threshold.md`
 - `3.2-High_limit_queries_risk_slow_paths.md`
 - `3.3-Bulk_image_upload_accepts_any_mime_at_transport_layer.md`
@@ -135,7 +140,7 @@ Hygiene, documentation, or follow-through item that should be tracked but does n
 ## Remediation Order
 
 1. Close remaining critical and high security findings: default admin credential path, token storage, webhook fail-open, invite token leakage, and production env fail-stop. Dependency vulnerabilities are resolved as of 2026-06-02.
-2. Restore release gate integrity: backend lint and backend test evidence are remediated as of 2026-06-03; frontend budget artifact self-containment remains open. Frontend contract failures are remediated as of 2026-06-03.
+2. Restore release gate integrity: backend lint, backend test evidence, frontend contract failures, frontend budget artifact self-containment, and the aggregate local release gate are remediated as of 2026-06-04 for target SHA `be59a6b55f4d6367acd124729b43fa4ee579d09b`.
 3. Reduce production performance risk: StorefrontApp decomposition, high-limit query review, upload transport validation.
 4. Close governance debt: RBAC fallback removal, architecture allowlist removal plan, fiscal/payment evidence.
 5. Add operational proof: SLO dashboards, alert evidence, AI adversarial/cost tests, release evidence that no longer depends on stale QA bypasses.

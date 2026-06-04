@@ -1,7 +1,7 @@
 # Release Go/No-Go Checklist (Current)
 
 Status: reference  
-Last updated: 2026-06-03
+Last updated: 2026-06-04
 
 ## Current Release State
 
@@ -9,7 +9,7 @@ Last updated: 2026-06-03
 2. June 2, 2026 audit state: dependency vulnerabilities are resolved and the dependency audit commands below return zero current npm advisories for locked root/backend/frontend trees.
 3. The local release gate now includes dependency audits and a focused frontend contract gate before docs, architecture, compliance, backend, frontend, and budget gates.
 4. Current open audit package: `System_Audit/README.md`.
-5. Current release blockers from the June 2 audit remain open until remediated: frontend budget artifact self-containment and the other open findings listed in `System_Audit/README.md`. Local release gate, frontend contract suite failures, and missing current green backend full-test evidence are remediated as of June 3, 2026.
+5. Current release blockers from the June 2 audit remain open until remediated. Local release gate, frontend contract suite failures, missing current green backend full-test evidence, and frontend budget artifact self-containment are remediated as of June 4, 2026 for target SHA `be59a6b55f4d6367acd124729b43fa4ee579d09b`.
 6. Production deployment status must not be advanced from this checklist alone; refresh no-staging parity, local release gate, production contract smoke, and human UAT evidence before the next production promotion.
 
 Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for readiness status and blockers.
@@ -33,7 +33,7 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 15. `npm run audit:fifo-drift`
 16. `npm run audit:tenant-index-headroom -- --redundant-groups-threshold=0`
 
-## Latest Technical Evidence (2026-06-03)
+## Latest Technical Evidence (2026-06-04)
 
 1. `npm run audit:dependencies:prod` -> PASS with zero current npm advisories.
 2. `npm run audit:dependencies` -> PASS with zero current npm advisories.
@@ -53,7 +53,12 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 16. `npm --prefix frontend run build:all` -> PASS on June 3, 2026 after frontend contract remediation.
 17. `npm run test:backend:matrix` -> PASS on June 4, 2026 Asia/Manila for target SHA `3ee0890f8a765a552546f9977c6197a2db9e5980`; artifact `.tmp/release-gates/3ee0890f8a765a552546f9977c6197a2db9e5980/backend-test-matrix/backend_test_matrix.json` records 274 active backend test files, 9 groups, and schema preflight pass.
 18. `npm run gate:release:local` -> PASS on June 4, 2026 Asia/Manila for target SHA `3ee0890f8a765a552546f9977c6197a2db9e5980`; artifact `.tmp/release-gates/3ee0890f8a765a552546f9977c6197a2db9e5980/local_readiness.json` records 15 gates passing, including `backend.test_matrix`, frontend contracts, and frontend budgets.
-19. Previous production deploy, no-staging parity, and public smoke evidence remain historical May release evidence; refresh them before claiming a new deployable release target.
+19. `node --test scripts/check-frontend-budgets.test.js` -> PASS on June 4, 2026 with 4 tests for prebuilt freshness, missing multi-app assets, stale route chunks, and report persistence.
+20. `npm run check:frontend-budgets` -> PASS on June 4, 2026 after the gate executed `npm --prefix frontend run build:all`, validated fresh multi-app chunks, and wrote `.tmp/frontend-budgets/frontend_budget_report.json`.
+21. `npm run gate:release:local` -> attempted on June 4, 2026 after frontend budget hardening, but the tool run timed out after 20 minutes during `backend.test_matrix`; no current-SHA `local_readiness.json` was produced by that attempt.
+22. `npm --prefix backend test -- --runTestsByPath tests/itemHandlers.transport.test.js` -> PASS on June 4, 2026 with 7 tests after updating stale inventory transport mocks for storefront gallery use-case exports.
+23. `npm run gate:release:local` -> PASS on June 4, 2026 for target SHA `be59a6b55f4d6367acd124729b43fa4ee579d09b`; artifact `.tmp/release-gates/be59a6b55f4d6367acd124729b43fa4ee579d09b/local_readiness.json` records 15 passing gates and the release-owned budget report path `.tmp/release-gates/be59a6b55f4d6367acd124729b43fa4ee579d09b/frontend-budgets/frontend_budget_report.json`.
+24. Previous production deploy, no-staging parity, and public smoke evidence remain historical May release evidence; refresh them before claiming a new deployable release target.
 
 ## Remaining Non-Technical Blockers (Go/No-Go)
 

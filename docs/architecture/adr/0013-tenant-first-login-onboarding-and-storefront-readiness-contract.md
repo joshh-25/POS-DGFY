@@ -98,14 +98,14 @@ Adopt a tenant-scoped onboarding lifecycle with soft-reminder UX:
 
 ## Addendum (2026-05-18): Default Auto-Activation Registration
 1. Public company registration now defaults to `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`.
-2. The tenant is provisioned and activated during registration before the frontend performs the normal login call for the founder.
+2. The tenant is provisioned and activated during registration before the frontend exchanges the signed-in DGFY founder membership for a normal tenant session, with manual login fallback if tenant-session exchange fails.
 3. `TENANT_REGISTRATION_APPROVAL_MODE=manual` remains available as an explicit rollback/admin-review mode for operators who need pending platform-admin approval before provisioning.
 4. Tenant onboarding initialization still occurs during provisioning and remains a soft-reminder flow after first login.
 
 ## Addendum (2026-05-18): Mode-Aware Three-Step Onboarding
 1. The previous business-profile, business-classification, and readiness-only wizard contract is replaced by three merchant setup steps: optional brand assets, primary storefront location, and mode-aware bulk starter items.
 2. Completion readiness now checks `store_name_ready`, `has_primary_storefront_location`, and `has_priced_starter_item`.
-3. Stock quantity and item image uploads are optional onboarding data. A zero-stock active item can complete onboarding when it has a positive customer selling price and, for corrected modes, a valid onboarding preset. Merchant-facing onboarding copy uses `Item image`; the existing Storefront catalog image storage/API contract remains unchanged.
+3. Stock quantity and item image uploads are optional onboarding data. A zero-stock active item can complete onboarding when it has a positive customer selling price and, for corrected modes, a valid onboarding preset. Merchant-facing onboarding copy uses `Item image`; images upload only after item creation succeeds and are capped at 10 images per item. The existing Storefront catalog image storage/API contract remains unchanged.
 4. Future workflow modes must define onboarding item choices, default hidden fields, financial rules, stock behavior, and backend/frontend tests before being considered production-ready.
 
 ## Addendum (2026-05-28): Business Hours Capture

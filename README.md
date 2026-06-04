@@ -86,7 +86,7 @@ npm run check:compliance
 - POS checkout, discounts, service fees, terminal shifts, and Z-reading
 - Unified sales read model
 - Tenant locations and storefront discovery
-- Default auto-activation company registration plus first-login onboarding for brand assets, primary location, and starter items
+- DGFY account-led company registration with auto-activation, tenant-session handoff, and first-login onboarding for brand assets, primary location, and starter items
 - Public store catalog, quote, checkout, booking, waitlist, and order tracking
 - Customer Access Mode and Inventory Display controls for storefront rollout-gated public behavior
 - Services Mode with item-backed service catalog rows, bookings, resources/providers, reminders, intake forms, and stock-exempt POS service sales
