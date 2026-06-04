@@ -1,6 +1,7 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { normalizePhoneNumber, isValidPhoneNumber } from '../../../utils/phoneNumber.js';
+import { createHash } from 'crypto';
 
 const normalizeName = (value) => String(value || '').trim().replace(/\s+/g, ' ');
 const normalizeReason = (value) => String(value || '').trim().replace(/\s+/g, ' ');
@@ -21,6 +22,49 @@ const requireReason = (reason) => {
         throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Reason is required and must be at least 3 characters.', { statusCode: 400 });
     }
     return value.slice(0, 500);
+};
+
+const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+
+const requireConfirmEmail = (providedEmail, accountEmail) => {
+    const provided = normalizeEmail(providedEmail);
+    const expected = normalizeEmail(accountEmail);
+    if (!provided || provided !== expected) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Confirm the current DGFY account email before deleting.', { statusCode: 400 });
+    }
+};
+
+const isDeletedAccount = (account) => Boolean(account?.deleted_at);
+
+const assertNotDeleted = (account) => {
+    if (isDeletedAccount(account)) {
+        throw new DomainError(DomainErrorCode.CONFLICT, 'DGFY account is already deleted.', { statusCode: 409 });
+    }
+};
+
+const buildNumericSuffix = (value, length) => {
+    const hash = createHash('sha256').update(String(value || 'dgfy-account')).digest('hex');
+    return hash
+        .split('')
+        .map((char) => (Number.parseInt(char, 16) % 10).toString())
+        .join('')
+        .slice(0, length)
+        .padEnd(length, '0');
+};
+
+const buildDeletionPlaceholder = (accountId, now = new Date()) => {
+    const stableId = String(accountId || 'dgfy-account').replace(/[^a-zA-Z0-9]/g, '').slice(0, 18) || buildNumericSuffix(accountId, 12);
+    const timeToken = now.getTime().toString(36);
+    const suffix = `${stableId}-${timeToken}`.toLowerCase();
+    return {
+        first_name: 'Deleted',
+        middle_name: null,
+        last_name: 'Account',
+        username: `deleted_${suffix}`.slice(0, 80),
+        email: `deleted+${suffix}@deleted.dgfy.local`.slice(0, 255),
+        phone: `+639${buildNumericSuffix(`${accountId}:${timeToken}`, 9)}`,
+        password_hash: `deleted-account-${suffix}`.slice(0, 255)
+    };
 };
 
 const serializeTenantMembership = (membership) => ({
@@ -54,7 +98,10 @@ export const sanitizeAdminDgfyAccount = (account) => {
         email: account.email,
         phone: account.phone,
         is_active: account.is_active,
-        lifecycle_status: account.is_active ? 'active' : 'suspended',
+        lifecycle_status: isDeletedAccount(account) ? 'deleted' : account.is_active ? 'active' : 'suspended',
+        deleted_at: account.deleted_at || null,
+        deleted_by: account.deleted_by || null,
+        deletion_reason: account.deletion_reason || null,
         email_verified_at: account.email_verified_at || null,
         phone_verified_at: account.phone_verified_at || null,
         is_email_verified: Boolean(account.email_verified_at),
@@ -93,6 +140,8 @@ const buildSafeSnapshot = (account) => {
         phone: safe.phone,
         is_active: safe.is_active,
         lifecycle_status: safe.lifecycle_status,
+        deleted_at: safe.deleted_at,
+        deleted_by: safe.deleted_by,
         email_verified_at: safe.email_verified_at,
         phone_verified_at: safe.phone_verified_at,
         membership_count: safe.membership_count
@@ -175,6 +224,7 @@ export const buildUpdateAdminDgfyAccountProfileUseCase = ({ repository }) => asy
         }
 
         const account = await getAccountOrFail(repository, id);
+        assertNotDeleted(account);
         const firstName = normalizeName(body.first_name ?? account.first_name);
         const middleName = normalizeName(body.middle_name ?? account.middle_name ?? '');
         const lastName = normalizeName(body.last_name ?? account.last_name);
@@ -239,6 +289,7 @@ const buildLifecycleUseCase = ({ repository, action, isActive, message }) => asy
         const id = requireAccountId(accountId);
         const reason = requireReason(body.reason);
         const account = await getAccountOrFail(repository, id);
+        assertNotDeleted(account);
         const beforeSnapshot = buildSafeSnapshot(account);
 
         if (Boolean(account.is_active) === Boolean(isActive)) {
@@ -286,3 +337,58 @@ export const buildReactivateAdminDgfyAccountUseCase = ({ repository }) => buildL
     isActive: true,
     message: 'DGFY account reactivated.'
 });
+
+export const buildDeleteAdminDgfyAccountUseCase = ({ repository }) => async ({
+    accountId,
+    body = {},
+    actor = {},
+    metadata = {}
+} = {}) => {
+    try {
+        const id = requireAccountId(accountId);
+        const reason = requireReason(body.reason);
+        const account = await getAccountOrFail(repository, id);
+        assertNotDeleted(account);
+        requireConfirmEmail(body.confirm_email, account.email);
+
+        const beforeSnapshot = buildSafeSnapshot(account);
+        const deletedAt = new Date();
+        const actorUsername = String(actor?.username || 'platform_admin').trim() || 'platform_admin';
+        const placeholder = buildDeletionPlaceholder(id, deletedAt);
+        const updates = {
+            ...placeholder,
+            is_active: false,
+            email_verified_at: null,
+            phone_verified_at: null,
+            last_login_at: null,
+            deleted_at: deletedAt,
+            deleted_by: actorUsername,
+            deletion_reason: reason
+        };
+
+        const updated = await repository.transaction(async (transaction) => {
+            const saved = await repository.deleteAdminAccount(account, updates, { transaction });
+            await repository.createAdminAuditLog(buildAuditPayload({
+                accountId: id,
+                action: 'delete',
+                actor,
+                reason,
+                metadata,
+                beforeSnapshot,
+                afterSnapshot: buildSafeSnapshot(saved || { ...account, ...updates })
+            }), { transaction });
+            return saved;
+        });
+
+        const reloaded = await repository.findAccountForAdmin(id);
+        return ok({
+            payload: {
+                success: true,
+                data: { account: sanitizeAdminDgfyAccount(reloaded || updated || { ...account, ...updates }) },
+                message: 'DGFY account deleted and credentials released.'
+            }
+        });
+    } catch (error) {
+        return fail(error instanceof DomainError ? error : new DomainError(DomainErrorCode.INTERNAL_ERROR, 'Failed to delete DGFY account.', { cause: error }));
+    }
+};

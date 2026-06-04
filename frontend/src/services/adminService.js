@@ -226,6 +226,14 @@ export const reactivateDgfyAccount = async (accountId, payload) => {
     return response.data;
 };
 
+export const deleteDgfyAccount = async (accountId, payload) => {
+    const response = await adminApi.delete(`/dgfy/admin/accounts/${accountId}`, {
+        headers: requireAdminHeaders(),
+        data: payload
+    });
+    return response.data;
+};
+
 export const upsertTenantPaymentAccount = async (tenantId, payload) => {
     const response = await adminApi.put(`/commerce-payments/admin/tenants/${tenantId}/payment-account`, payload, {
         headers: requireAdminHeaders()

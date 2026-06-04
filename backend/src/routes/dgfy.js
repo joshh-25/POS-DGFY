@@ -21,6 +21,7 @@ import {
 } from '../modules/dgfy/controllers/dgfyAuthHandlers.js';
 import {
     getAdminDgfyAccount,
+    deleteAdminDgfyAccount,
     listAdminDgfyAccounts,
     reactivateAdminDgfyAccount,
     suspendAdminDgfyAccount,
@@ -73,6 +74,7 @@ router.get('/admin/accounts/:account_id', authenticateAdmin, getAdminDgfyAccount
 router.patch('/admin/accounts/:account_id/profile', authenticateAdmin, updateAdminDgfyAccountProfile);
 router.post('/admin/accounts/:account_id/suspend', authenticateAdmin, suspendAdminDgfyAccount);
 router.post('/admin/accounts/:account_id/reactivate', authenticateAdmin, reactivateAdminDgfyAccount);
+router.delete('/admin/accounts/:account_id', authenticateAdmin, deleteAdminDgfyAccount);
 
 router.get('/customer/dashboard', authenticateDgfyAccount, getDgfyCustomerDashboard);
 router.get('/customer/activities', authenticateDgfyAccount, listDgfyCustomerActivities);

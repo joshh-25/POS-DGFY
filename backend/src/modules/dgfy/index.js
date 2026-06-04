@@ -3,6 +3,7 @@ import { dgfyAccountRepository } from './repositories/dgfyAccountRepository.js';
 import { buildGetDgfyLegalTermsUseCase } from './usecases/dgfyLegalUseCases.js';
 import {
     buildGetAdminDgfyAccountUseCase,
+    buildDeleteAdminDgfyAccountUseCase,
     buildListAdminDgfyAccountsUseCase,
     buildReactivateAdminDgfyAccountUseCase,
     buildSuspendAdminDgfyAccountUseCase,
@@ -135,6 +136,10 @@ export const suspendAdminDgfyAccountUseCase = buildSuspendAdminDgfyAccountUseCas
 });
 
 export const reactivateAdminDgfyAccountUseCase = buildReactivateAdminDgfyAccountUseCase({
+    repository: dgfyAccountRepository
+});
+
+export const deleteAdminDgfyAccountUseCase = buildDeleteAdminDgfyAccountUseCase({
     repository: dgfyAccountRepository
 });
 

@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import {
     buildGetAdminDgfyAccountUseCase,
+    buildDeleteAdminDgfyAccountUseCase,
     buildListAdminDgfyAccountsUseCase,
     buildReactivateAdminDgfyAccountUseCase,
     buildSuspendAdminDgfyAccountUseCase,
@@ -21,6 +22,9 @@ const createAccount = (overrides = {}) => ({
     email_verified_at: new Date('2026-05-21T00:00:00.000Z'),
     phone_verified_at: new Date('2026-05-21T00:00:00.000Z'),
     last_login_at: null,
+    deleted_at: null,
+    deleted_by: null,
+    deletion_reason: null,
     created_at: new Date('2026-05-21T00:00:00.000Z'),
     updated_at: new Date('2026-05-21T00:00:00.000Z'),
     tenantMemberships: [],
@@ -38,6 +42,7 @@ const createRepository = (account = createAccount()) => ({
         total: 1,
         active: account.is_active ? 1 : 0,
         suspended: account.is_active ? 0 : 1,
+        deleted: account.deleted_at ? 1 : 0,
         verified_email: account.email_verified_at ? 1 : 0,
         unverified_email: account.email_verified_at ? 0 : 1
     }),
@@ -46,6 +51,7 @@ const createRepository = (account = createAccount()) => ({
     findByPhone: jest.fn().mockResolvedValue(null),
     updateAdminProfile: jest.fn().mockImplementation(async (_account, payload) => createAccount({ ...account, ...payload })),
     updateAdminLifecycle: jest.fn().mockImplementation(async (_account, isActive) => createAccount({ ...account, is_active: isActive })),
+    deleteAdminAccount: jest.fn().mockImplementation(async (_account, payload) => createAccount({ ...account, ...payload })),
     createAdminAuditLog: jest.fn().mockResolvedValue({ audit_log_id: 1 }),
     transaction: jest.fn(async (callback) => callback('tx'))
 });
@@ -204,6 +210,85 @@ describe('dgfyAdminAccountUseCases', () => {
         });
         expect(reactivated.success).toBe(true);
         expect(repository.updateAdminLifecycle).toHaveBeenLastCalledWith(expect.objectContaining({ is_active: false }), true, { transaction: 'tx' });
+    });
+
+    it('deletes by deidentifying credentials, requiring reason and email confirmation, and writing audit', async () => {
+        const account = createAccount();
+        const repository = createRepository(account);
+        let reloadedAccount = account;
+        repository.findAccountForAdmin.mockImplementation(async () => reloadedAccount);
+        repository.deleteAdminAccount.mockImplementation(async (_account, payload) => {
+            reloadedAccount = createAccount({ ...account, ...payload });
+            return reloadedAccount;
+        });
+        const useCase = buildDeleteAdminDgfyAccountUseCase({ repository });
+
+        const missingConfirmation = await useCase({
+            accountId: account.id,
+            body: { reason: 'Requested account reset', confirm_email: 'wrong@example.test' }
+        });
+        expect(missingConfirmation.success).toBe(false);
+        expect(missingConfirmation.error.statusCode).toBe(400);
+
+        const result = await useCase({
+            accountId: account.id,
+            body: { reason: 'Requested account reset', confirm_email: account.email },
+            actor: { username: 'privacy-admin' },
+            metadata: { request_id: 'req-delete' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.deleteAdminAccount).toHaveBeenCalledWith(account, expect.objectContaining({
+            first_name: 'Deleted',
+            last_name: 'Account',
+            is_active: false,
+            email_verified_at: null,
+            phone_verified_at: null,
+            last_login_at: null,
+            deleted_by: 'privacy-admin',
+            deletion_reason: 'Requested account reset'
+        }), { transaction: 'tx' });
+        const deletePayload = repository.deleteAdminAccount.mock.calls[0][1];
+        expect(deletePayload.email).not.toBe(account.email);
+        expect(deletePayload.email).toMatch(/^deleted\+/);
+        expect(deletePayload.phone).not.toBe(account.phone);
+        expect(deletePayload.username).not.toBe(account.username);
+        expect(deletePayload.password_hash).not.toBe(account.password_hash);
+        expect(repository.createAdminAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            dgfy_account_id: account.id,
+            action: 'delete',
+            reason: 'Requested account reset',
+            actor_username: 'privacy-admin',
+            request_id: 'req-delete',
+            before_snapshot: expect.objectContaining({ email: account.email, phone: account.phone }),
+            after_snapshot: expect.objectContaining({
+                lifecycle_status: 'deleted',
+                deleted_by: 'privacy-admin'
+            })
+        }), { transaction: 'tx' });
+        expect(result.data.payload.data.account).toEqual(expect.objectContaining({
+            lifecycle_status: 'deleted',
+            is_active: false
+        }));
+    });
+
+    it('rejects profile and lifecycle mutations after account deletion', async () => {
+        const account = createAccount({ deleted_at: new Date('2026-06-05T00:00:00.000Z'), is_active: false });
+        const repository = createRepository(account);
+
+        const profileResult = await buildUpdateAdminDgfyAccountProfileUseCase({ repository })({
+            accountId: account.id,
+            body: { first_name: 'Ada', last_name: 'Lovelace', phone: account.phone }
+        });
+        expect(profileResult.success).toBe(false);
+        expect(profileResult.error.statusCode).toBe(409);
+
+        const reactivateResult = await buildReactivateAdminDgfyAccountUseCase({ repository })({
+            accountId: account.id,
+            body: { reason: 'Restore account' }
+        });
+        expect(reactivateResult.success).toBe(false);
+        expect(reactivateResult.error.statusCode).toBe(409);
     });
 
     it('suspended accounts are rejected by DGFY login use case', async () => {

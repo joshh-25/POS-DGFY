@@ -18,7 +18,7 @@ export default (sequelize) => {
             }
         },
         action: {
-            type: DataTypes.ENUM('profile_update', 'suspend', 'reactivate'),
+            type: DataTypes.ENUM('profile_update', 'suspend', 'reactivate', 'delete'),
             allowNull: false
         },
         actor_username: {

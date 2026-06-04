@@ -11,6 +11,7 @@ import {
     RotateCcw,
     Search,
     ShieldAlert,
+    Trash2,
     UserRound,
     X
 } from 'lucide-react';
@@ -23,7 +24,8 @@ import { toast } from 'sonner';
 const STATUS_FILTERS = [
     { value: 'all', label: 'All statuses' },
     { value: 'active', label: 'Active' },
-    { value: 'suspended', label: 'Suspended' }
+    { value: 'suspended', label: 'Suspended' },
+    { value: 'deleted', label: 'Deleted' }
 ];
 
 const VERIFICATION_FILTERS = [
@@ -42,6 +44,7 @@ const EMPTY_SUMMARY = {
     total: 0,
     active: 0,
     suspended: 0,
+    deleted: 0,
     verified_email: 0,
     unverified_email: 0
 };
@@ -63,11 +66,18 @@ const getDisplayName = (account = {}) => (
     || 'DGFY Account'
 );
 
-const statusBadgeClass = (account) => (
-    account?.is_active
-        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-        : 'border-rose-200 bg-rose-50 text-rose-700'
+const isDeletedAccount = (account) => account?.lifecycle_status === 'deleted' || Boolean(account?.deleted_at);
+
+const statusLabel = (account) => (
+    isDeletedAccount(account) ? 'Deleted' : account?.is_active ? 'Active' : 'Suspended'
 );
+
+const statusBadgeClass = (account) => {
+    if (isDeletedAccount(account)) return 'border-slate-300 bg-slate-100 text-slate-700';
+    return account?.is_active
+        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+        : 'border-rose-200 bg-rose-50 text-rose-700';
+};
 
 const verificationBadgeClass = (account) => (
     account?.is_email_verified
@@ -129,6 +139,10 @@ export default function DgfyAccountManager() {
     const [lifecycleAction, setLifecycleAction] = useState('');
     const [lifecycleReason, setLifecycleReason] = useState('');
     const [lifecycleLoading, setLifecycleLoading] = useState(false);
+    const [deleteAccount, setDeleteAccount] = useState(null);
+    const [deleteReason, setDeleteReason] = useState('');
+    const [deleteConfirmation, setDeleteConfirmation] = useState('');
+    const [deleteLoading, setDeleteLoading] = useState(false);
 
     const query = useMemo(() => ({
         ...filters,
@@ -181,6 +195,7 @@ export default function DgfyAccountManager() {
     };
 
     const openEdit = (account) => {
+        if (isDeletedAccount(account)) return;
         setEditAccount(account);
         setEditForm({
             first_name: account.first_name || '',
@@ -212,6 +227,7 @@ export default function DgfyAccountManager() {
     };
 
     const openLifecycleModal = (account, action) => {
+        if (isDeletedAccount(account)) return;
         setLifecycleAccount(account);
         setLifecycleAction(action);
         setLifecycleReason('');
@@ -242,6 +258,37 @@ export default function DgfyAccountManager() {
         }
     };
 
+    const openDeleteModal = (account) => {
+        if (isDeletedAccount(account)) return;
+        setDeleteAccount(account);
+        setDeleteReason('');
+        setDeleteConfirmation('');
+    };
+
+    const submitDelete = async (event) => {
+        event.preventDefault();
+        if (!deleteAccount?.id) return;
+        setDeleteLoading(true);
+        try {
+            const response = await adminService.deleteDgfyAccount(deleteAccount.id, {
+                reason: deleteReason.trim(),
+                confirm_email: deleteConfirmation.trim()
+            });
+            const updatedAccount = response.data?.account;
+            setDeleteAccount(null);
+            await loadAccounts();
+            if (showDetail && updatedAccount?.id) {
+                await openDetail(updatedAccount);
+            }
+            toast.success('DGFY account deleted and credentials released');
+        } catch (err) {
+            const normalized = normalizeApiError(err);
+            toast.error(`Failed to delete account: ${normalized.message}`);
+        } finally {
+            setDeleteLoading(false);
+        }
+    };
+
     const activeDetailAccount = selectedDetail?.account;
     const lifecycleTitle = lifecycleAction === 'suspend' ? 'Suspend DGFY Account' : 'Reactivate DGFY Account';
 
@@ -258,10 +305,11 @@ export default function DgfyAccountManager() {
                 </Button>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
                 <StatTile label="Total" value={summary.total || 0} icon={UserRound} />
                 <StatTile label="Active" value={summary.active || 0} icon={CheckCircle} />
                 <StatTile label="Suspended" value={summary.suspended || 0} icon={Ban} />
+                <StatTile label="Deleted" value={summary.deleted || 0} icon={Trash2} />
                 <StatTile label="Verified Email" value={summary.verified_email || 0} icon={MailCheck} />
                 <StatTile label="Unverified Email" value={summary.unverified_email || 0} icon={ShieldAlert} />
             </div>
@@ -355,7 +403,7 @@ export default function DgfyAccountManager() {
                                     <td className="px-4 py-3 text-slate-700">{account.phone || 'Missing'}</td>
                                     <td className="px-4 py-3">
                                         <span className={cn('inline-flex rounded-full border px-2 py-1 text-xs font-semibold', statusBadgeClass(account))}>
-                                            {account.is_active ? 'Active' : 'Suspended'}
+                                            {statusLabel(account)}
                                         </span>
                                     </td>
                                     <td className="px-4 py-3">
@@ -370,17 +418,24 @@ export default function DgfyAccountManager() {
                                             <Button size="sm" variant="outline" onClick={() => openDetail(account)} aria-label={`View ${getDisplayName(account)}`} title="View account">
                                                 <Eye className="h-4 w-4" />
                                             </Button>
-                                            <Button size="sm" variant="outline" onClick={() => openEdit(account)} aria-label={`Edit ${getDisplayName(account)}`} title="Edit profile">
-                                                <Edit2 className="h-4 w-4" />
-                                            </Button>
-                                            {account.is_active ? (
-                                                <Button size="sm" variant="outline" className="text-rose-700" onClick={() => openLifecycleModal(account, 'suspend')} aria-label={`Suspend ${getDisplayName(account)}`} title="Suspend account">
-                                                    <Ban className="h-4 w-4" />
-                                                </Button>
-                                            ) : (
-                                                <Button size="sm" variant="outline" className="text-emerald-700" onClick={() => openLifecycleModal(account, 'reactivate')} aria-label={`Reactivate ${getDisplayName(account)}`} title="Reactivate account">
-                                                    <RotateCcw className="h-4 w-4" />
-                                                </Button>
+                                            {!isDeletedAccount(account) && (
+                                                <>
+                                                    <Button size="sm" variant="outline" onClick={() => openEdit(account)} aria-label={`Edit ${getDisplayName(account)}`} title="Edit profile">
+                                                        <Edit2 className="h-4 w-4" />
+                                                    </Button>
+                                                    {account.is_active ? (
+                                                        <Button size="sm" variant="outline" className="text-rose-700" onClick={() => openLifecycleModal(account, 'suspend')} aria-label={`Suspend ${getDisplayName(account)}`} title="Suspend account">
+                                                            <Ban className="h-4 w-4" />
+                                                        </Button>
+                                                    ) : (
+                                                        <Button size="sm" variant="outline" className="text-emerald-700" onClick={() => openLifecycleModal(account, 'reactivate')} aria-label={`Reactivate ${getDisplayName(account)}`} title="Reactivate account">
+                                                            <RotateCcw className="h-4 w-4" />
+                                                        </Button>
+                                                    )}
+                                                    <Button size="sm" variant="outline" className="text-rose-700" onClick={() => openDeleteModal(account)} aria-label={`Delete ${getDisplayName(account)}`} title="Delete account and release credentials">
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </>
                                             )}
                                         </div>
                                     </td>
@@ -409,12 +464,18 @@ export default function DgfyAccountManager() {
                                 <section>
                                     <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Profile</h3>
                                     <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                        <div><dt className="text-xs text-slate-500">Status</dt><dd className="font-medium text-slate-900">{activeDetailAccount.is_active ? 'Active' : 'Suspended'}</dd></div>
+                                        <div><dt className="text-xs text-slate-500">Status</dt><dd className="font-medium text-slate-900">{statusLabel(activeDetailAccount)}</dd></div>
                                         <div><dt className="text-xs text-slate-500">Phone</dt><dd className="font-medium text-slate-900">{activeDetailAccount.phone || 'Missing'}</dd></div>
                                         <div><dt className="text-xs text-slate-500">Email verification</dt><dd className="font-medium text-slate-900">{activeDetailAccount.is_email_verified ? 'Verified' : 'Unverified'}</dd></div>
                                         <div><dt className="text-xs text-slate-500">Phone verification</dt><dd className="font-medium text-slate-900">{activeDetailAccount.is_phone_verified ? 'Verified' : 'Deferred'}</dd></div>
                                         <div><dt className="text-xs text-slate-500">Created</dt><dd className="font-medium text-slate-900">{formatDate(activeDetailAccount.created_at)}</dd></div>
                                         <div><dt className="text-xs text-slate-500">Updated</dt><dd className="font-medium text-slate-900">{formatDate(activeDetailAccount.updated_at)}</dd></div>
+                                        {isDeletedAccount(activeDetailAccount) && (
+                                            <>
+                                                <div><dt className="text-xs text-slate-500">Deleted</dt><dd className="font-medium text-slate-900">{formatDate(activeDetailAccount.deleted_at)}</dd></div>
+                                                <div><dt className="text-xs text-slate-500">Deleted by</dt><dd className="font-medium text-slate-900">{activeDetailAccount.deleted_by || 'Unknown'}</dd></div>
+                                            </>
+                                        )}
                                     </dl>
                                 </section>
 
@@ -520,6 +581,50 @@ export default function DgfyAccountManager() {
                                 className={lifecycleAction === 'suspend' ? 'bg-rose-600 text-white hover:bg-rose-700' : 'bg-emerald-700 text-white hover:bg-emerald-800'}
                             >
                                 {lifecycleLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : lifecycleAction === 'suspend' ? 'Suspend Account' : 'Reactivate Account'}
+                            </Button>
+                        </div>
+                    </form>
+                </ModalShell>
+            )}
+
+            {deleteAccount && (
+                <ModalShell title="Delete DGFY Account" tone="danger" onClose={() => setDeleteAccount(null)}>
+                    <form onSubmit={submitDelete} className="space-y-4 p-6">
+                        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3">
+                            <div className="text-sm font-medium text-rose-950">{getDisplayName(deleteAccount)}</div>
+                            <div className="text-xs text-rose-700">{deleteAccount.email}</div>
+                        </div>
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                            This removes login access, redacts account profile credentials, and releases the email, phone, and username for registration. Legal, company, customer, and admin audit history stays preserved.
+                        </div>
+                        <label className="space-y-1">
+                            <span className="text-sm font-medium text-slate-700">Reason</span>
+                            <textarea
+                                className="min-h-24 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                                value={deleteReason}
+                                onChange={(event) => setDeleteReason(event.target.value)}
+                                required
+                                minLength={3}
+                            />
+                        </label>
+                        <label className="space-y-1">
+                            <span className="text-sm font-medium text-slate-700">Confirm current email</span>
+                            <input
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                                value={deleteConfirmation}
+                                onChange={(event) => setDeleteConfirmation(event.target.value)}
+                                placeholder={deleteAccount.email}
+                                required
+                            />
+                        </label>
+                        <div className="flex justify-end gap-3 pt-2">
+                            <Button type="button" variant="outline" onClick={() => setDeleteAccount(null)}>Cancel</Button>
+                            <Button
+                                type="submit"
+                                disabled={deleteLoading || deleteReason.trim().length < 3 || deleteConfirmation.trim().toLowerCase() !== String(deleteAccount.email || '').toLowerCase()}
+                                className="bg-rose-600 text-white hover:bg-rose-700"
+                            >
+                                {deleteLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Delete Account'}
                             </Button>
                         </div>
                     </form>

@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-06-03
+last_reviewed: 2026-06-05
 applies_to: dgfy_accounts, tenant_registration, storefront_account, tenant_user_invitations
 topic: global_dgfy_account_business_registration
 ---
@@ -37,11 +37,12 @@ Introduce a landlord-scoped DGFY account identity.
 18. Legal acknowledgement persistence is fail-closed. DGFY account creation, invitation membership mirroring, and account acknowledgement persistence run in one landlord transaction. Company registration checks legal-persistence availability before tenant creation; after confirming the authenticated DGFY email is verified, the landlord tenant row, pending-founder membership when applicable, and acknowledgement persistence run in one landlord transaction before tenant provisioning.
 19. Storefront business-registration handoff must start from a signed-in DGFY account when launched from `dgfy.ph`, create a short-lived one-time `dgfy_handoff` token, then land the authenticated user on the focused business-registration area of `/register-company`. The company form collects only company name and Business Industry as business data; founder contact and credentials remain server-derived from the DGFY account.
 20. After active auto-standard tenant provisioning, the registration UI may exchange the signed-in DGFY account plus accepted founder membership for a normal SKUpervisor tenant session through `POST /api/v1/dgfy/auth/tenant-session`, then redirect the founder to IMS. The endpoint must only issue a session for an active accepted membership linked to the authenticated DGFY account and an active tenant user.
-21. Platform admin may manage global DGFY accounts through `/api/v1/dgfy/admin/accounts`. V1 scope is all landlord-scoped DGFY accounts, with name/phone profile edits plus suspend/reactivate lifecycle actions only.
+21. Platform admin may manage global DGFY accounts through `/api/v1/dgfy/admin/accounts`. V1 scope is all landlord-scoped DGFY accounts, with name/phone profile edits, suspend/reactivate lifecycle actions, and credential-releasing delete/deidentify.
 22. Platform-admin DGFY profile edits may update first name, optional middle name, last name, and phone. Phone updates clear `phone_verified_at`; phone verification remains deferred. Email changes remain deferred and must not be exposed through platform-admin edit until a dedicated verified email-change or approved admin override design exists.
 23. Platform-admin suspend/reactivate uses `dgfy_accounts.is_active` as the lifecycle source of truth. Suspended accounts cannot log in and existing DGFY sessions fail on the next authenticated DGFY request because account auth reloads the landlord account and checks `is_active`.
-24. Platform-admin DGFY account delete is intentionally out of scope. Legal acknowledgements, tenant memberships, customer activity, reviews, loyalty, and order/history records must remain preserved.
-25. Every platform-admin DGFY account mutation writes a landlord-scoped `dgfy_account_admin_audit_logs` record with safe before/after snapshots, actor username, reason when applicable, request metadata, and no secrets such as password hashes, tokens, or OTPs.
+24. Platform-admin DGFY account delete is a deidentify action, not a physical row purge. It requires a reason and current-email confirmation, sets `deleted_at`, deactivates the account, clears verification/login timestamps, overwrites password hash with an inert placeholder, and replaces email, phone, username, and display names with non-user placeholders so the original credentials can register again.
+25. Delete/deidentify must preserve legal acknowledgements, tenant memberships, customer activity, reviews, loyalty, order/history records, and admin audit evidence. Deleted accounts are excluded from normal credential lookup and default platform-admin lists; the `deleted` status filter may show redacted deleted identities for support audit.
+26. Every platform-admin DGFY account mutation writes a landlord-scoped `dgfy_account_admin_audit_logs` record with safe before/after snapshots, actor username, reason when applicable, request metadata, and no secrets such as password hashes, tokens, or OTPs.
 
 ## Consequences
 
@@ -55,6 +56,7 @@ Introduce a landlord-scoped DGFY account identity.
 8. Seller-of-record and payment-partner wording is part of the registration contract. Future payment work must keep ADR 0012 pricing separate from provider settlement mechanics and must not imply that DGFY operates a stored-value wallet unless a separate regulated-wallet design is approved.
 9. Registration acknowledgement hardening improves evidence capture but does not itself implement PayMongo Platform/sub-merchant split settlement. Payment-provider onboarding, payout routing, withholding, and settlement reports remain separate governed payment work.
 10. Platform support can suspend compromised or abusive global DGFY identities without deleting legal and transaction evidence. Reactivation remains explicit and reason-audited.
+11. Platform support can release a DGFY account's credentials for re-registration without erasing legal, customer, tenant, or admin audit records by using the delete/deidentify action.
 
 ## Hardening Contract For This Flow
 
@@ -84,5 +86,5 @@ Implementations must prove:
 7. Frontend tests proving non-company DGFY account actions do not submit the company-registration form.
 8. Rendered route QA for `/register-company`, including Reset interaction and mobile/desktop visual checks.
 9. Root frontend build plus SKUpervisor build; Storefront/POS builds when shared surfaces are touched.
-10. Platform-admin DGFY account lifecycle tests proving list/detail, profile validation, duplicate/invalid phone rejection, email-edit rejection, suspend/reactivate reason enforcement, audit persistence, and suspended-account login/auth rejection.
+10. Platform-admin DGFY account lifecycle tests proving list/detail, profile validation, duplicate/invalid phone rejection, email-edit rejection, suspend/reactivate reason enforcement, delete/deidentify confirmation and credential release, audit persistence, and suspended/deleted-account login/auth rejection.
 11. Rendered admin-route QA for `/admin/dgfy-accounts`, including nonblank content, console health, filters, detail drawer, and one profile or lifecycle interaction.

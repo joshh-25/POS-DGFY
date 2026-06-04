@@ -11,7 +11,8 @@ const mocks = vi.hoisted(() => ({
     getDgfyAccount: vi.fn(),
     updateDgfyAccountProfile: vi.fn(),
     suspendDgfyAccount: vi.fn(),
-    reactivateDgfyAccount: vi.fn()
+    reactivateDgfyAccount: vi.fn(),
+    deleteDgfyAccount: vi.fn()
   },
   toastMock: {
     success: vi.fn(),
@@ -32,6 +33,8 @@ const activeAccount = {
   phone: '+639123456789',
   is_active: true,
   lifecycle_status: 'active',
+  deleted_at: null,
+  deleted_by: null,
   is_email_verified: true,
   is_phone_verified: false,
   membership_count: 1,
@@ -69,6 +72,7 @@ const listPayload = {
       total: 2,
       active: 1,
       suspended: 1,
+      deleted: 0,
       verified_email: 1,
       unverified_email: 1
     }
@@ -94,6 +98,21 @@ describe('DgfyAccountManager', () => {
     mocks.adminServiceMock.updateDgfyAccountProfile.mockResolvedValue({ data: { account: activeAccount } });
     mocks.adminServiceMock.suspendDgfyAccount.mockResolvedValue({ data: { account: { ...activeAccount, is_active: false } } });
     mocks.adminServiceMock.reactivateDgfyAccount.mockResolvedValue({ data: { account: { ...suspendedAccount, is_active: true } } });
+    mocks.adminServiceMock.deleteDgfyAccount.mockResolvedValue({
+      data: {
+        account: {
+          ...activeAccount,
+          first_name: 'Deleted',
+          last_name: 'Account',
+          email: 'deleted+dgfy-active@deleted.dgfy.local',
+          phone: '+639000000001',
+          is_active: false,
+          lifecycle_status: 'deleted',
+          deleted_at: '2026-06-05T00:00:00.000Z',
+          deleted_by: 'platform'
+        }
+      }
+    });
   });
 
   afterEach(() => {
@@ -178,6 +197,31 @@ describe('DgfyAccountManager', () => {
 
     await waitFor(() => {
       expect(mocks.adminServiceMock.reactivateDgfyAccount).toHaveBeenCalledWith('dgfy-suspended', { reason: 'Support verified identity' });
+    });
+  });
+
+  it('requires email confirmation before deleting and releases credentials through the service', async () => {
+    const user = userEvent.setup();
+    render(<DgfyAccountManager />);
+
+    await screen.findByText('Ada Lovelace');
+    const adaRow = screen.getByText('Ada Lovelace').closest('tr');
+    await user.click(within(adaRow).getAllByRole('button')[3]);
+
+    const deleteButton = await screen.findByRole('button', { name: 'Delete Account' });
+    expect(deleteButton.hasAttribute('disabled')).toBe(true);
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Requested account reset' } });
+    fireEvent.change(screen.getByLabelText('Confirm current email'), { target: { value: 'wrong@example.test' } });
+    expect(deleteButton.hasAttribute('disabled')).toBe(true);
+    fireEvent.change(screen.getByLabelText('Confirm current email'), { target: { value: activeAccount.email } });
+    expect(deleteButton.hasAttribute('disabled')).toBe(false);
+    await user.click(deleteButton);
+
+    await waitFor(() => {
+      expect(mocks.adminServiceMock.deleteDgfyAccount).toHaveBeenCalledWith('dgfy-active', {
+        reason: 'Requested account reset',
+        confirm_email: activeAccount.email
+      });
     });
   });
 });

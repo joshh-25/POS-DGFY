@@ -58,6 +58,18 @@ export default (sequelize) => {
         last_login_at: {
             type: DataTypes.DATE,
             allowNull: true
+        },
+        deleted_at: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+        deleted_by: {
+            type: DataTypes.STRING(120),
+            allowNull: true
+        },
+        deletion_reason: {
+            type: DataTypes.STRING(500),
+            allowNull: true
         }
     }, {
         sequelize,
@@ -68,7 +80,8 @@ export default (sequelize) => {
         indexes: [
             { unique: true, fields: ['email'], name: 'unique_dgfy_accounts_email' },
             { unique: true, fields: ['phone'], name: 'unique_dgfy_accounts_phone' },
-            { fields: ['username'], name: 'idx_dgfy_accounts_username' }
+            { fields: ['username'], name: 'idx_dgfy_accounts_username' },
+            { fields: ['deleted_at'], name: 'idx_dgfy_accounts_deleted_at' }
         ]
     });
 

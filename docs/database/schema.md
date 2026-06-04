@@ -215,7 +215,7 @@ Landlord tables:
 4. `dgfy_loyalty_transactions` stores read-only DGFY loyalty ledger rows. Balance is an aggregate of all transactions, not only recent visible rows.
 5. `dgfy_tracking_recovery_codes` stores hashed tracking-recovery codes with generic production responses, attempt limits, expiry, and single-use consumption.
 6. `dgfy_customer_backfill_runs` stores historical backfill audit rows, including dry-run/apply status, tenant/activity counters, mode-specific `order_count`, `service_booking_count`, `hospitality_booking_count`, `fnb_order_count`, matched-account/upsert counters, failures, timestamps, and JSON summary.
-7. `dgfy_account_admin_audit_logs` stores platform-admin DGFY account lifecycle evidence. Rows include `audit_log_id`, `dgfy_account_id`, action (`profile_update`, `suspend`, `reactivate`), actor username, optional reason, request ID, IP address, user agent, safe `before_snapshot`/`after_snapshot` JSON, and timestamps. Snapshots must not include password hashes, tokens, OTP values, or other secrets.
+7. `dgfy_account_admin_audit_logs` stores platform-admin DGFY account lifecycle evidence. Rows include `audit_log_id`, `dgfy_account_id`, action (`profile_update`, `suspend`, `reactivate`, `delete`), actor username, optional reason, request ID, IP address, user agent, safe `before_snapshot`/`after_snapshot` JSON, and timestamps. Snapshots must not include password hashes, tokens, OTP values, or other secrets.
 
 Operational contract:
 
@@ -224,7 +224,8 @@ Operational contract:
 - Historical backfill scans POS customer orders, F&B checks linked through POS transactions, Services bookings, and Hospitality reservations.
 - Production dry-runs can require mode evidence with `--require-activity-types=order,service_booking,hospitality_booking,fnb_order` before apply.
 - Phone verification remains deferred for the customer account rollout. Phone values are matching/contact data only and must not be treated as verified identity.
-- Platform-admin DGFY account management uses `dgfy_accounts.is_active` as `active`/`suspended`. Suspended accounts cannot log in, and existing DGFY sessions fail on the next authenticated DGFY request when the account is reloaded.
+- Platform-admin DGFY account management uses `dgfy_accounts.is_active` as `active`/`suspended`; `dgfy_accounts.deleted_at` marks a deleted/deidentified account. Suspended or deleted accounts cannot log in, and existing DGFY sessions fail on the next authenticated DGFY request when the account is reloaded.
+- Platform-admin DGFY delete/deidentify preserves the account row and evidence-bearing related rows while overwriting email, phone, username, names, and password hash with non-user placeholders. This releases the original credentials for re-registration without physically deleting legal acknowledgements, memberships, customer activity, reviews, loyalty, order/history, or admin audit evidence.
 
 ### 2. Tenant Databases (Isolated Contexts)
 **Database Name Pattern**: `sku_tenant_[id]` or as specified in `tenants.db_name`

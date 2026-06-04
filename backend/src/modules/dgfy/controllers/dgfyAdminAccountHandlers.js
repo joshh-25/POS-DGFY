@@ -1,4 +1,5 @@
 import {
+    deleteAdminDgfyAccountUseCase,
     getAdminDgfyAccountUseCase,
     listAdminDgfyAccountsUseCase,
     reactivateAdminDgfyAccountUseCase,
@@ -137,10 +138,34 @@ export const reactivateAdminDgfyAccount = async (req, res) => {
     });
 };
 
+export const deleteAdminDgfyAccount = async (req, res) => {
+    const result = await deleteAdminDgfyAccountUseCase({
+        accountId: req.params?.account_id,
+        body: req.body || {},
+        actor: buildPlatformAdminActor(req),
+        metadata: buildRequestMetadata(req)
+    });
+    await trackAdminDgfyAccountUsage({
+        req,
+        result,
+        eventType: 'admin_dgfy_account_deleted',
+        action: 'delete_dgfy_account',
+        successMetadataResolver: () => ({ dgfy_account_id: req.params?.account_id || null }),
+        failureMetadataResolver: (error) => ({
+            dgfy_account_id: req.params?.account_id || null,
+            error_code: error?.code || null
+        })
+    });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to delete DGFY account'
+    });
+};
+
 export default {
     listAdminDgfyAccounts,
     getAdminDgfyAccount,
     updateAdminDgfyAccountProfile,
     suspendAdminDgfyAccount,
-    reactivateAdminDgfyAccount
+    reactivateAdminDgfyAccount,
+    deleteAdminDgfyAccount
 };

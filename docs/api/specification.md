@@ -4763,12 +4763,13 @@ Platform-admin DGFY account endpoints live under `/api/v1/dgfy/admin/accounts` a
 | `PATCH` | `/dgfy/admin/accounts/:account_id/profile` | Update first name, optional middle name, last name, and phone |
 | `POST` | `/dgfy/admin/accounts/:account_id/suspend` | Suspend a DGFY account and require a reason |
 | `POST` | `/dgfy/admin/accounts/:account_id/reactivate` | Reactivate a suspended DGFY account and require a reason |
+| `DELETE` | `/dgfy/admin/accounts/:account_id` | Deidentify a DGFY account, release original credentials for registration, and require reason plus current-email confirmation |
 
 List query parameters:
 
 | Name | Values | Description |
 | --- | --- | --- |
-| `status` | `all`, `active`, `suspended` | Filters by `dgfy_accounts.is_active` |
+| `status` | `all`, `active`, `suspended`, `deleted` | Filters by lifecycle status. `all`, `active`, and `suspended` exclude deleted rows; `deleted` returns redacted deleted rows. |
 | `verification` | `all`, `verified`, `unverified` | Filters by `email_verified_at` presence |
 | `membership` | `all`, `has_membership`, `no_membership` | Filters by landlord DGFY tenant membership rows |
 | `search` | string | Searches first/middle/last name, username, email, or phone |
@@ -4792,6 +4793,9 @@ List query parameters:
         "phone": "+639123456789",
         "is_active": true,
         "lifecycle_status": "active",
+        "deleted_at": null,
+        "deleted_by": null,
+        "deletion_reason": null,
         "is_email_verified": true,
         "email_verified_at": "2026-05-21T00:00:00.000Z",
         "phone_verified_at": null,
@@ -4810,6 +4814,7 @@ List query parameters:
       "total": 1,
       "active": 1,
       "suspended": 0,
+      "deleted": 0,
       "verified_email": 1,
       "unverified_email": 0
     }
@@ -4839,6 +4844,17 @@ Email changes are rejected from this endpoint. DGFY email changes remain deferre
 ```
 
 Suspend/reactivate uses `dgfy_accounts.is_active` as the lifecycle source of truth. Suspended accounts cannot log in, and existing DGFY sessions fail on the next authenticated DGFY request because the account is reloaded and checked. Every profile/lifecycle mutation writes `dgfy_account_admin_audit_logs` with safe before/after snapshots and no secrets.
+
+**Delete Request**
+
+```json
+{
+  "reason": "Account owner requested credential reset",
+  "confirm_email": "ada@example.com"
+}
+```
+
+Delete is a landlord-scoped deidentify action, not physical erasure. It requires the current account email in `confirm_email`, sets `deleted_at`, deactivates the account, clears verification/login timestamps, replaces the account email, phone, username, display names, and password hash with non-user placeholders, and writes a `delete` audit row. The original email, phone, and username are then available for a new DGFY registration. Legal acknowledgements, tenant memberships, customer activity, reviews, loyalty, order/history records, and admin audit evidence remain preserved.
 
 ### DGFY Customer Account Endpoints
 

@@ -5,7 +5,7 @@ last_reviewed: 2026-06-05
 related_adr: docs/architecture/adr/0026-browser-session-cookie-authority.md
 declaration_id: 2026-06-05-platform-admin-login-session-recovery
 classification: regulatory
-surfaces: authentication,browser-sessions,admin,compliance
+surfaces: authentication,browser-sessions,admin,settings,compliance
 reason_codes_impacted: PLATFORM_ADMIN_LOGIN_RECOVERY,CSRF_SESSION_ESTABLISHMENT,TENANT_REFRESH_ROUTE_POLICY
 policy_version: 2026.06.05
 verification_evidence: npm --prefix backend test -- --runTestsByPath tests/csrfProtection.test.js tests/rtr_verification.test.js tests/adminAuthHandlers.test.js tests/adminAuthUsecase.test.js,npm --prefix frontend test -- --run src/services/__tests__/publicRoutePolicy.test.js,npm --prefix frontend run build:skupervisor,npm run check:architecture,npm run check:compliance,npm run lint:docs,git diff --check
@@ -22,7 +22,7 @@ preflight_request_ref: PLATFORM-ADMIN-LOGIN-SESSION-RECOVERY-2026-06-05
 
 Regulatory.
 
-This declaration covers the platform-admin login recovery fix for browser sessions that still carry stale SKUpervisor session cookies. The change affects authentication and admin access but does not alter tenant authorization, payment workflows, fiscal document classification, tax calculation, receipt numbering, or compliance activation decisions.
+This declaration covers the platform-admin login recovery fix for browser sessions that still carry stale SKUpervisor session cookies. The change affects authentication, admin access, and the shared admin service path that the compliance gate classifies as settings-sensitive, but does not alter tenant authorization, payment workflows, fiscal document classification, tax calculation, receipt numbering, or compliance activation decisions.
 
 ## Affected Surfaces
 

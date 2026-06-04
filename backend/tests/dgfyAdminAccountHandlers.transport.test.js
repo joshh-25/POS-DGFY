@@ -5,6 +5,7 @@ const mockGetAdminDgfyAccountUseCase = jest.fn();
 const mockUpdateAdminDgfyAccountProfileUseCase = jest.fn();
 const mockSuspendAdminDgfyAccountUseCase = jest.fn();
 const mockReactivateAdminDgfyAccountUseCase = jest.fn();
+const mockDeleteAdminDgfyAccountUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
 
 jest.unstable_mockModule('../src/modules/dgfy/index.js', () => ({
@@ -12,7 +13,8 @@ jest.unstable_mockModule('../src/modules/dgfy/index.js', () => ({
   getAdminDgfyAccountUseCase: mockGetAdminDgfyAccountUseCase,
   updateAdminDgfyAccountProfileUseCase: mockUpdateAdminDgfyAccountProfileUseCase,
   suspendAdminDgfyAccountUseCase: mockSuspendAdminDgfyAccountUseCase,
-  reactivateAdminDgfyAccountUseCase: mockReactivateAdminDgfyAccountUseCase
+  reactivateAdminDgfyAccountUseCase: mockReactivateAdminDgfyAccountUseCase,
+  deleteAdminDgfyAccountUseCase: mockDeleteAdminDgfyAccountUseCase
 }));
 
 jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () => ({
@@ -24,6 +26,7 @@ let getAdminDgfyAccount;
 let updateAdminDgfyAccountProfile;
 let suspendAdminDgfyAccount;
 let reactivateAdminDgfyAccount;
+let deleteAdminDgfyAccount;
 
 beforeAll(async () => {
   const mod = await import('../src/modules/dgfy/controllers/dgfyAdminAccountHandlers.js');
@@ -32,6 +35,7 @@ beforeAll(async () => {
   updateAdminDgfyAccountProfile = mod.updateAdminDgfyAccountProfile;
   suspendAdminDgfyAccount = mod.suspendAdminDgfyAccount;
   reactivateAdminDgfyAccount = mod.reactivateAdminDgfyAccount;
+  deleteAdminDgfyAccount = mod.deleteAdminDgfyAccount;
 });
 
 const createRes = () => {
@@ -153,6 +157,38 @@ describe('dgfyAdminAccountHandlers transport contracts', () => {
     expect(mockReactivateAdminDgfyAccountUseCase).toHaveBeenCalledWith(expect.objectContaining({
       accountId: 'dgfy-1',
       body: { reason: 'Cleared' }
+    }));
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('deletes through the matching use case with actor and request metadata', async () => {
+    mockDeleteAdminDgfyAccountUseCase.mockResolvedValue({
+      success: true,
+      data: { payload: { success: true, data: { account: { id: 'dgfy-1', lifecycle_status: 'deleted' } } } }
+    });
+    const req = {
+      params: { account_id: 'dgfy-1' },
+      body: { reason: 'Requested reset', confirm_email: 'ada@example.test' },
+      admin: { username: 'platform' },
+      requestId: 'req-delete',
+      ip: '127.0.0.1',
+      headers: { 'user-agent': 'jest' },
+      get: jest.fn().mockReturnValue('jest')
+    };
+    const res = createRes();
+
+    await deleteAdminDgfyAccount(req, res);
+
+    expect(mockDeleteAdminDgfyAccountUseCase).toHaveBeenCalledWith(expect.objectContaining({
+      accountId: 'dgfy-1',
+      body: { reason: 'Requested reset', confirm_email: 'ada@example.test' },
+      actor: expect.objectContaining({ username: 'platform', is_platform_admin: true }),
+      metadata: expect.objectContaining({ request_id: 'req-delete', ip_address: '127.0.0.1', user_agent: 'jest' })
+    }));
+    expect(mockTrackProductUsageFromResult).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'admin_dgfy_account_deleted',
+      surface: 'admin_dgfy_accounts',
+      action: 'delete_dgfy_account'
     }));
     expect(res.status).toHaveBeenCalledWith(200);
   });

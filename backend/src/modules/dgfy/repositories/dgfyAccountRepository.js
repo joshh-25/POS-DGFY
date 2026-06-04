@@ -45,13 +45,19 @@ export const dgfyAccountRepository = {
 
     findByEmail(email) {
         return DgfyAccount.findOne({
-            where: { email: String(email || '').trim().toLowerCase() }
+            where: {
+                email: String(email || '').trim().toLowerCase(),
+                deleted_at: null
+            }
         });
     },
 
     findByPhone(phone) {
         return DgfyAccount.findOne({
-            where: { phone: String(phone || '').trim() }
+            where: {
+                phone: String(phone || '').trim(),
+                deleted_at: null
+            }
         });
     },
 
@@ -101,6 +107,11 @@ export const dgfyAccountRepository = {
         const normalizedMembership = String(membership || 'all').trim().toLowerCase();
         const normalizedSearch = String(search || '').trim();
 
+        if (normalizedStatus === 'deleted') {
+            where.deleted_at = { [Op.ne]: null };
+        } else {
+            where.deleted_at = null;
+        }
         if (normalizedStatus === 'active') where.is_active = true;
         if (normalizedStatus === 'suspended') where.is_active = false;
         if (normalizedVerification === 'verified') where.email_verified_at = { [Op.ne]: null };
@@ -153,17 +164,20 @@ export const dgfyAccountRepository = {
     },
 
     async getAdminAccountSummary() {
-        const [total, active, suspended, verifiedEmail] = await Promise.all([
-            DgfyAccount.count(),
-            DgfyAccount.count({ where: { is_active: true } }),
-            DgfyAccount.count({ where: { is_active: false } }),
-            DgfyAccount.count({ where: { email_verified_at: { [Op.ne]: null } } })
+        const activeWhere = { deleted_at: null };
+        const [total, active, suspended, deleted, verifiedEmail] = await Promise.all([
+            DgfyAccount.count({ where: activeWhere }),
+            DgfyAccount.count({ where: { ...activeWhere, is_active: true } }),
+            DgfyAccount.count({ where: { ...activeWhere, is_active: false } }),
+            DgfyAccount.count({ where: { deleted_at: { [Op.ne]: null } } }),
+            DgfyAccount.count({ where: { ...activeWhere, email_verified_at: { [Op.ne]: null } } })
         ]);
 
         return {
             total,
             active,
             suspended,
+            deleted,
             verified_email: verifiedEmail,
             unverified_email: Math.max(total - verifiedEmail, 0)
         };
@@ -201,6 +215,11 @@ export const dgfyAccountRepository = {
     updateAdminLifecycle(account, isActive, options = {}) {
         if (!account) return null;
         return account.update({ is_active: Boolean(isActive) }, options);
+    },
+
+    deleteAdminAccount(account, payload = {}, options = {}) {
+        if (!account) return null;
+        return account.update(payload, options);
     },
 
     createAdminAuditLog(payload, options = {}) {
