@@ -9,6 +9,7 @@ import { WorkflowModeProvider } from './features/settings/WorkflowModeContext.js
 import WorkflowModeRouteGate from './features/settings/components/WorkflowModeRouteGate.jsx'
 import { getPageNameFromPath } from '../utils.js'
 import { refreshBrowserSession, setBrowserSession } from './services/browserSession.js'
+import { shouldRefreshBrowserSessionForPath } from './services/publicRoutePolicy.js'
 import ErrorBoundary from './components/common/ErrorBoundary.jsx' // Fix 10.3
 import GlobalApiErrorListener from './components/common/GlobalApiErrorListener.jsx'
 import { Toaster } from '@/components/ui/sonner'
@@ -74,14 +75,14 @@ function App() {
   const location = useLocation()
   const currentPageName = getPageNameFromPath(location.pathname)
 
-
   /* 
    * Authentication is handled by ProtectedRoute components. 
    * Global auth check can be added here if needed in future.
    */
   useEffect(() => {
+    if (!shouldRefreshBrowserSessionForPath(location.pathname)) return;
     refreshBrowserSession().catch(() => {});
-  }, []);
+  }, [location.pathname]);
 
   return (
     <Suspense fallback={<div className="flex items-center justify-center h-screen text-gray-400">Loading...</div>}>

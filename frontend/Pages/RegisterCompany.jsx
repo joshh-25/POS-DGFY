@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../src/services/api.js';
 import {
@@ -217,6 +217,18 @@ export default function RegisterCompany() {
     const [isSendingOtp, setIsSendingOtp] = useState(false);
     const handoffExchangeStartedRef = useRef(false);
 
+    const clearHandoffTokenFromUrl = useCallback(() => {
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.delete('handoff_token');
+        if (!nextParams.get('source')) nextParams.set('source', 'dgfy');
+        if (!nextParams.get('auth')) nextParams.set('auth', 'login');
+        navigate({
+            pathname: '/register-company',
+            search: `?${nextParams.toString()}`,
+            hash: 'business-registration'
+        }, { replace: true });
+    }, [navigate, searchParams]);
+
     useEffect(() => {
         let cancelled = false;
         fetchDgfyLegalTerms()
@@ -319,17 +331,19 @@ export default function RegisterCompany() {
             .then((session) => {
                 setDgfySessionState(session);
                 setNotice('DGFY account connected. Register your business below.');
+                clearHandoffTokenFromUrl();
             })
             .catch(() => {
                 clearDgfySession();
                 setDgfyToken('');
                 setDgfyAccount(null);
                 setError('Your DGFY handoff expired. Sign in again to register your business.');
+                clearHandoffTokenFromUrl();
             })
             .finally(() => setIsLoading(false));
 
         return undefined;
-    }, [searchParams]);
+    }, [clearHandoffTokenFromUrl, searchParams]);
 
     const isDgfyEmailVerified = Boolean(dgfyAccount?.is_email_verified || dgfyAccount?.email_verified_at);
 

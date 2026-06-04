@@ -192,6 +192,24 @@ describe('api.js — Token Refresh Mutex (Interceptor Unit Tests)', () => {
     expect(failures).toHaveLength(3);
   });
 
+  it('does not attempt tenant refresh for DGFY auth failures', async () => {
+    mockApi.onPost('/dgfy/auth/handoff/exchange').replyOnce(401, {
+      success: false,
+      message: 'DGFY handoff token is invalid or expired.'
+    });
+    mockAxios.onPost(/auth\/refresh-token/).reply(() => {
+      refreshCallCount++;
+      return [200, { data: { token: 'new-access-token' } }];
+    });
+
+    const result = await api.post('/dgfy/auth/handoff/exchange', {
+      handoff_token: 'expired-token'
+    }).catch((error) => error);
+
+    expect(result.response.status).toBe(401);
+    expect(refreshCallCount).toBe(0);
+  });
+
   // -------------------------------------------------------------------------
   // Test 2.4 — Double-refresh prevention: queued retry that gets 401
   //            does NOT trigger a second refresh cycle

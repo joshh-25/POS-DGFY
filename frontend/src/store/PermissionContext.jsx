@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getCurrentUser } from '../services/authService';
 import { getAccessToken, refreshBrowserSession } from '../services/browserSession.js';
+import { shouldRefreshBrowserSessionForPath } from '../services/publicRoutePolicy.js';
 
 const PermissionContext = createContext(null);
 
@@ -14,6 +15,15 @@ export const PermissionProvider = ({ children }) => {
     // ... ensureCompanyToken ...
 
     const loadPermissions = async () => {
+        if (!shouldRefreshBrowserSessionForPath(window.location.pathname)) {
+            setPermissions([]);
+            setIsMasterAdmin(false);
+            setUserRole(null);
+            setTenantPlan('free');
+            setLoading(false);
+            return;
+        }
+
         let token = getAccessToken();
         if (!token) {
             token = await refreshBrowserSession().catch(() => '');

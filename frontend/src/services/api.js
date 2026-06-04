@@ -70,6 +70,13 @@ const isAlreadyOnPhoneCompletionRoute = () => {
   return pathname === '/settings' && new URLSearchParams(search).get('tab') === 'profile';
 };
 
+const shouldAttemptTenantRefresh = (requestConfig = {}) => {
+  const requestUrl = String(requestConfig?.url || '');
+  if (/\/dgfy(\/|$)/i.test(requestUrl)) return false;
+  if (/\/auth\/(login|register|refresh-token|logout|email-otp|validate-invite|accept-invite)\b/i.test(requestUrl)) return false;
+  return true;
+};
+
 const dispatchSessionExpiredEvent = () => {
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
     return;
@@ -199,7 +206,7 @@ api.interceptors.response.use(
     const originalRequest = error.config;
 
     // Handle 401 errors (unauthorized)
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest._retry && shouldAttemptTenantRefresh(originalRequest)) {
       // A refresh is already in-flight (either started by this tab or by another tab
       // that broadcast 'token-refresh-started') — queue this request so it retries
       // with the new token once the single refresh completes.

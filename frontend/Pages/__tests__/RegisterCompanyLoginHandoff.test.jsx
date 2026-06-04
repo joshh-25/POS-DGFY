@@ -2,7 +2,7 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
 const apiMock = vi.hoisted(() => ({
   post: vi.fn(),
@@ -85,8 +85,17 @@ const dgfyLegalTerms = {
   }
 };
 
-const renderRegistrationFlow = (initialEntries = ['/register-company']) => render(
+const LocationProbe = ({ onChange }) => {
+  const location = useLocation();
+  React.useEffect(() => {
+    onChange?.(location);
+  }, [location, onChange]);
+  return null;
+};
+
+const renderRegistrationFlow = (initialEntries = ['/register-company'], { onLocationChange } = {}) => render(
   <MemoryRouter initialEntries={initialEntries}>
+    <LocationProbe onChange={onLocationChange} />
     <Routes>
       <Route path="/register-company" element={<RegisterCompany />} />
       <Route path="/login" element={<Login />} />
@@ -177,16 +186,46 @@ describe('RegisterCompany DGFY handoff', () => {
   });
 
   it('exchanges storefront DGFY handoff tokens before business registration', async () => {
+    const locations = [];
     dgfyAuthMock.exchangeDgfyHandoff.mockResolvedValue({
       token: 'dgfy-token',
       account: dgfyAccount
     });
 
-    renderRegistrationFlow(['/register-company?source=dgfy&auth=login&handoff_token=handoff-123#business-registration']);
+    renderRegistrationFlow(
+      ['/register-company?source=dgfy&auth=login&handoff_token=handoff-123#business-registration'],
+      { onLocationChange: (location) => locations.push(location) }
+    );
 
     await waitFor(() => expect(dgfyAuthMock.exchangeDgfyHandoff).toHaveBeenCalledWith('handoff-123'));
     expect(await screen.findByLabelText('Company Name')).toBeTruthy();
     expect(screen.getByText(/DGFY account connected/i)).toBeTruthy();
+    await waitFor(() => expect(locations.at(-1).search).not.toContain('handoff_token'));
+    expect(locations.at(-1).hash).toBe('#business-registration');
+  });
+
+  it('recovers from an expired storefront handoff through normal DGFY sign in', async () => {
+    const locations = [];
+    dgfyAuthMock.exchangeDgfyHandoff.mockRejectedValue({
+      response: { status: 403, data: { message: 'DGFY handoff token is invalid or expired.' } }
+    });
+
+    renderRegistrationFlow(
+      ['/register-company?source=dgfy&auth=login&handoff_token=expired-token#business-registration'],
+      { onLocationChange: (location) => locations.push(location) }
+    );
+
+    await waitFor(() => expect(dgfyAuthMock.exchangeDgfyHandoff).toHaveBeenCalledWith('expired-token'));
+    expect(await screen.findByText(/Your DGFY handoff expired/i)).toBeTruthy();
+    await waitFor(() => expect(locations.at(-1).search).not.toContain('handoff_token'));
+
+    await signInDgfy();
+
+    expect(document.querySelector('#business-registration')).toBeTruthy();
+    expect(screen.getByLabelText('Company Name')).toBeTruthy();
+    expect(screen.getByLabelText('Business Industry')).toBeTruthy();
+    expect(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /create company/i }).disabled).toBe(true);
   });
 
   it('signs out of DGFY without touching removed company OTP state', async () => {
