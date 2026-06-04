@@ -110,10 +110,29 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
             process.env.JWT_SECRET,
             { expiresIn: '1h' }
         );
+        const queryInterface = sequelize.getQueryInterface();
+        const dgfyAccountColumnsBeforeSync = await queryInterface.describeTable('dgfy_accounts');
+        if (!dgfyAccountColumnsBeforeSync.deleted_at) {
+            await queryInterface.addColumn('dgfy_accounts', 'deleted_at', {
+                type: DataTypes.DATE,
+                allowNull: true
+            });
+        }
+        if (!dgfyAccountColumnsBeforeSync.deleted_by) {
+            await queryInterface.addColumn('dgfy_accounts', 'deleted_by', {
+                type: DataTypes.STRING(120),
+                allowNull: true
+            });
+        }
+        if (!dgfyAccountColumnsBeforeSync.deletion_reason) {
+            await queryInterface.addColumn('dgfy_accounts', 'deletion_reason', {
+                type: DataTypes.STRING(500),
+                allowNull: true
+            });
+        }
         await DgfyAccount.sync();
         await DgfyAccountTenantMembership.sync();
         await DgfyLegalAcknowledgement.sync();
-        const queryInterface = sequelize.getQueryInterface();
         const dgfyAccountColumns = await queryInterface.describeTable('dgfy_accounts');
         if (!dgfyAccountColumns.email_verified_at) {
             await queryInterface.addColumn('dgfy_accounts', 'email_verified_at', {
