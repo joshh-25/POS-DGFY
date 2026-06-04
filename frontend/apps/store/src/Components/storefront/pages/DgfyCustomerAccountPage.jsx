@@ -1,4 +1,5 @@
 import React from 'react';
+import { useState } from 'react';
 import {
   CalendarDays,
   ChevronRight,
@@ -75,6 +76,9 @@ export function DgfyCustomerAccountPage({
   onRegisterBusiness,
   onClearSavedDetails,
   onUseAddressForCheckout,
+  onSaveAddress,
+  onDeleteAddress,
+  onSetDefaultAddress,
   accountIdentityInitials,
   accountIdentityName,
   accountIdentityContact,
@@ -86,7 +90,8 @@ export function DgfyCustomerAccountPage({
   trackedCustomerActivity,
   customerTrackLoadingReference,
   customerTrackError,
-  accountOrderActionReference = ''
+  accountOrderActionReference = '',
+  accountAddressActionId = ''
 }) {
   const isPage = presentation === 'page';
   const allOrders = Array.isArray(accountPanel?.orders) ? accountPanel.orders : [];
@@ -94,6 +99,23 @@ export function DgfyCustomerAccountPage({
   const allAddresses = Array.isArray(accountPanel?.addresses) ? accountPanel.addresses : [];
   const loyalty = accountPanel?.loyalty || { balance: 0, transactions: [] };
   const loyaltyTransactions = Array.isArray(loyalty?.transactions) ? loyalty.transactions.slice(0, 3) : [];
+  const [addressDraft, setAddressDraft] = useState({ label: 'Home', address_line: '', is_default: false });
+  const [editingAddressId, setEditingAddressId] = useState(null);
+  const [editingAddressDraft, setEditingAddressDraft] = useState({ label: '', address_line: '', is_default: false });
+  const [pendingCancelOrder, setPendingCancelOrder] = useState(null);
+  const resetAddressDraft = () => setAddressDraft({ label: 'Home', address_line: '', is_default: allAddresses.length === 0 });
+  const startEditAddress = (address = {}) => {
+    setEditingAddressId(address.address_id);
+    setEditingAddressDraft({
+      label: String(address.label || 'Address').trim() || 'Address',
+      address_line: String(address.address_line || '').trim(),
+      is_default: address.is_default === true
+    });
+  };
+  const cancelEditAddress = () => {
+    setEditingAddressId(null);
+    setEditingAddressDraft({ label: '', address_line: '', is_default: false });
+  };
 
   return (
     <>
@@ -349,7 +371,7 @@ export function DgfyCustomerAccountPage({
                         </button>
                         <button
                           type="button"
-                          onClick={() => onCancelOrder?.(order)}
+                          onClick={() => setPendingCancelOrder(order)}
                           disabled={!allowedActions.cancel || actionBusy}
                           style={{ minHeight: 42, borderRadius: 14, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: TEXT, padding: '0 14px', fontSize: 14, fontWeight: 700, cursor: !allowedActions.cancel || actionBusy ? 'not-allowed' : 'pointer', opacity: !allowedActions.cancel || actionBusy ? 0.55 : 1 }}
                         >
@@ -503,6 +525,52 @@ export function DgfyCustomerAccountPage({
                     <div style={{ fontSize: 14, color: MUTED }}>Addresses currently linked to your DGFY customer account.</div>
                   </div>
                 </div>
+                {typeof onSaveAddress === 'function' ? (
+                  <form
+                    onSubmit={async (event) => {
+                      event.preventDefault();
+                      const saved = await onSaveAddress(addressDraft);
+                      if (saved !== false) resetAddressDraft();
+                    }}
+                    style={{ borderRadius: 20, border: `1px solid ${BORDER}`, background: '#FFFFFF', padding: '16px 18px', display: 'grid', gap: 10 }}
+                  >
+                    <div style={{ fontSize: 15, fontWeight: 700, color: TEXT }}>Add Address</div>
+                    <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: MUTED }}>
+                      Label
+                      <input
+                        value={addressDraft.label}
+                        onChange={(event) => setAddressDraft((previous) => ({ ...previous, label: event.target.value }))}
+                        placeholder="Home, Office, Branch"
+                        style={{ minHeight: 40, borderRadius: 12, border: `1px solid ${BORDER}`, padding: '0 12px', fontSize: 14, color: TEXT }}
+                      />
+                    </label>
+                    <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: MUTED }}>
+                      Address
+                      <textarea
+                        value={addressDraft.address_line}
+                        onChange={(event) => setAddressDraft((previous) => ({ ...previous, address_line: event.target.value }))}
+                        placeholder="Street, barangay, city, province"
+                        rows={3}
+                        style={{ minHeight: 76, borderRadius: 12, border: `1px solid ${BORDER}`, padding: '10px 12px', fontSize: 14, color: TEXT, resize: 'vertical' }}
+                      />
+                    </label>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: TEXT, fontWeight: 700 }}>
+                      <input
+                        type="checkbox"
+                        checked={addressDraft.is_default}
+                        onChange={(event) => setAddressDraft((previous) => ({ ...previous, is_default: event.target.checked }))}
+                      />
+                      Make default address
+                    </label>
+                    <button
+                      type="submit"
+                      disabled={accountAddressActionId === 'new'}
+                      style={{ justifySelf: 'start', minHeight: 40, borderRadius: 14, border: 'none', background: PRIMARY, color: '#FFFFFF', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: accountAddressActionId === 'new' ? 'wait' : 'pointer', opacity: accountAddressActionId === 'new' ? 0.72 : 1 }}
+                    >
+                      {accountAddressActionId === 'new' ? 'Saving...' : 'Save Address'}
+                    </button>
+                  </form>
+                ) : null}
                 <div style={{ display: 'grid', gap: 12 }}>
                   {allAddresses.length === 0 ? (
                     <div style={{ borderRadius: 20, border: `1px dashed ${BORDER}`, background: SOFT_SURFACE, padding: '18px 20px', fontSize: 14, color: MUTED }}>
@@ -511,26 +579,114 @@ export function DgfyCustomerAccountPage({
                   ) : allAddresses.map((address) => {
                     const label = String(address.label || 'Address').trim() || 'Address';
                     const labelText = address.is_default ? `${label} - Default` : label;
+                    const isEditing = editingAddressId === address.address_id;
+                    const addressBusy = accountAddressActionId === String(address.address_id);
                     return (
                     <div key={`address-${address.address_id}`} style={{ borderRadius: 20, border: `1px solid ${BORDER}`, background: '#FFFFFF', padding: '16px 18px', display: 'grid', gap: 8 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <div style={{ fontSize: 15, fontWeight: 700, color: TEXT }}>{labelText}</div>
-                        {address.is_default ? (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 999, background: '#EFF6FF', color: PRIMARY, padding: '6px 10px', fontSize: 12, fontWeight: 700 }}>
-                            Default
-                          </span>
-                        ) : null}
-                      </div>
-                      <div style={{ fontSize: 14, lineHeight: 1.6, color: MUTED }}>{address.address_line || 'Address details unavailable.'}</div>
-                      {typeof onUseAddressForCheckout === 'function' ? (
-                        <button
-                          type="button"
-                          onClick={() => onUseAddressForCheckout(address)}
-                          style={{ justifySelf: 'start', minHeight: 38, borderRadius: 14, border: `1px solid ${BORDER}`, background: SOFT_SURFACE, color: PRIMARY, padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                      {isEditing ? (
+                        <form
+                          onSubmit={async (event) => {
+                            event.preventDefault();
+                            const saved = await onSaveAddress?.(editingAddressDraft, address);
+                            if (saved !== false) cancelEditAddress();
+                          }}
+                          style={{ display: 'grid', gap: 10 }}
                         >
-                          Use for Checkout
-                        </button>
-                      ) : null}
+                          <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: MUTED }}>
+                            Label
+                            <input
+                              value={editingAddressDraft.label}
+                              onChange={(event) => setEditingAddressDraft((previous) => ({ ...previous, label: event.target.value }))}
+                              style={{ minHeight: 40, borderRadius: 12, border: `1px solid ${BORDER}`, padding: '0 12px', fontSize: 14, color: TEXT }}
+                            />
+                          </label>
+                          <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: MUTED }}>
+                            Address
+                            <textarea
+                              value={editingAddressDraft.address_line}
+                              onChange={(event) => setEditingAddressDraft((previous) => ({ ...previous, address_line: event.target.value }))}
+                              rows={3}
+                              style={{ minHeight: 76, borderRadius: 12, border: `1px solid ${BORDER}`, padding: '10px 12px', fontSize: 14, color: TEXT, resize: 'vertical' }}
+                            />
+                          </label>
+                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: TEXT, fontWeight: 700 }}>
+                            <input
+                              type="checkbox"
+                              checked={editingAddressDraft.is_default}
+                              onChange={(event) => setEditingAddressDraft((previous) => ({ ...previous, is_default: event.target.checked }))}
+                            />
+                            Make default address
+                          </label>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button
+                              type="submit"
+                              disabled={addressBusy}
+                              style={{ minHeight: 38, borderRadius: 14, border: 'none', background: PRIMARY, color: '#FFFFFF', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: addressBusy ? 'wait' : 'pointer', opacity: addressBusy ? 0.72 : 1 }}
+                            >
+                              {addressBusy ? 'Saving...' : 'Save'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelEditAddress}
+                              disabled={addressBusy}
+                              style={{ minHeight: 38, borderRadius: 14, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: TEXT, padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: addressBusy ? 'wait' : 'pointer' }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <div style={{ fontSize: 15, fontWeight: 700, color: TEXT }}>{labelText}</div>
+                            {address.is_default ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 999, background: '#EFF6FF', color: PRIMARY, padding: '6px 10px', fontSize: 12, fontWeight: 700 }}>
+                                Default
+                              </span>
+                            ) : null}
+                          </div>
+                          <div style={{ fontSize: 14, lineHeight: 1.6, color: MUTED }}>{address.address_line || 'Address details unavailable.'}</div>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {typeof onUseAddressForCheckout === 'function' ? (
+                              <button
+                                type="button"
+                                onClick={() => onUseAddressForCheckout(address)}
+                                style={{ minHeight: 38, borderRadius: 14, border: `1px solid ${BORDER}`, background: SOFT_SURFACE, color: PRIMARY, padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                              >
+                                Use for Checkout
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={() => startEditAddress(address)}
+                              disabled={addressBusy}
+                              style={{ minHeight: 38, borderRadius: 14, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: TEXT, padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: addressBusy ? 'wait' : 'pointer' }}
+                            >
+                              Edit
+                            </button>
+                            {!address.is_default && typeof onSetDefaultAddress === 'function' ? (
+                              <button
+                                type="button"
+                                onClick={() => onSetDefaultAddress(address)}
+                                disabled={addressBusy}
+                                style={{ minHeight: 38, borderRadius: 14, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: TEXT, padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: addressBusy ? 'wait' : 'pointer' }}
+                              >
+                                Set Default
+                              </button>
+                            ) : null}
+                            {typeof onDeleteAddress === 'function' ? (
+                              <button
+                                type="button"
+                                onClick={() => onDeleteAddress(address)}
+                                disabled={addressBusy}
+                                style={{ minHeight: 38, borderRadius: 14, border: '1px solid #FECACA', background: '#FEF2F2', color: '#B42318', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: addressBusy ? 'wait' : 'pointer' }}
+                              >
+                                Delete
+                              </button>
+                            ) : null}
+                          </div>
+                        </>
+                      )}
                     </div>
                     );
                   })}
@@ -613,6 +769,53 @@ export function DgfyCustomerAccountPage({
           </button>
         </footer>
       </section>
+      {pendingCancelOrder ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Confirm order cancellation"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 2600,
+            display: 'grid',
+            placeItems: 'center',
+            padding: 18,
+            background: 'rgba(15,23,42,0.42)'
+          }}
+        >
+          <div style={{ width: 'min(100%, 460px)', borderRadius: 22, border: `1px solid ${BORDER}`, background: '#FFFFFF', boxShadow: '0 28px 70px rgba(15,23,42,0.24)', padding: 22, display: 'grid', gap: 14 }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: TEXT }}>Cancel this order?</div>
+            <div style={{ fontSize: 14, lineHeight: 1.6, color: MUTED }}>
+              This will send a cancellation request for {pendingCancelOrder.reference}. Orders can only be cancelled before preparation starts.
+            </div>
+            <div style={{ borderRadius: 16, border: `1px solid ${BORDER}`, background: SOFT_SURFACE, padding: '12px 14px', display: 'grid', gap: 4 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>{pendingCancelOrder.store_name || 'DGFY Store'}</div>
+              <div style={{ fontSize: 13, color: MUTED }}>{prettyStatus(pendingCancelOrder.status_label || pendingCancelOrder.status)} | {formatDate(pendingCancelOrder.occurred_at)}</div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setPendingCancelOrder(null)}
+                style={{ minHeight: 42, borderRadius: 14, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: TEXT, padding: '0 14px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
+              >
+                Keep Order
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const order = pendingCancelOrder;
+                  setPendingCancelOrder(null);
+                  onCancelOrder?.(order);
+                }}
+                style={{ minHeight: 42, borderRadius: 14, border: '1px solid #FECACA', background: '#DC2626', color: '#FFFFFF', padding: '0 14px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
+              >
+                Confirm Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

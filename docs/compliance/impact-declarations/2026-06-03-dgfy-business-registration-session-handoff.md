@@ -8,7 +8,7 @@ classification: regulatory
 surfaces: authentication,browser-sessions,user_registration,storefront,onboarding,settings,compliance
 reason_codes_impacted: DGFY_TENANT_SESSION_HANDOFF,AUTHORIZATION_FAILED,VALIDATION_FAILED
 policy_version: 2026.06.03
-verification_evidence: npm --prefix backend test -- --runTestsByPath tests/dgfyAuthUseCases.test.js tests/registerCompanyRequestUseCase.autoApproval.test.js,npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx,npm run check:architecture,npm run lint:docs
+verification_evidence: npm --prefix backend test -- --runTestsByPath tests/dgfyAuthUseCases.test.js tests/dgfyTenantSession.transport.test.js tests/registerCompanyRequestUseCase.autoApproval.test.js,npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx,npm run check:architecture,npm run lint:docs,npm run build:skupervisor,npm run build:store,Playwright rendered checks for desktop and mobile /register-company reset interaction
 rollback_note: Disable the DGFY tenant-session endpoint and route active company registration back to SKUpervisor login with email/company token prefilled. Keep DGFY account and membership records intact.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -45,6 +45,12 @@ This declaration covers changing public company registration from a DGFY-account
 Targeted validation for this declaration:
 
 1. `npm --prefix backend test -- --runTestsByPath tests/dgfyAuthUseCases.test.js tests/registerCompanyRequestUseCase.autoApproval.test.js`
-2. `npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx`
-3. `npm run check:architecture`
-4. `npm run lint:docs`
+2. `npm --prefix backend test -- --runTestsByPath tests/dgfyTenantSession.transport.test.js`
+3. `npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx`
+4. `npm run check:architecture`
+5. `npm run lint:docs`
+6. `npm run build:skupervisor`
+7. `npm run build:store`
+8. Playwright rendered checks for `/register-company?source=dgfy&auth=login#business-registration` on desktop and mobile, including nonblank page content, no framework overlay, zero console/page errors with frontend API mocks, and Reset tab interaction:
+   - `artifacts/rendered-qa/dgfy-register-company-desktop.png`
+   - `artifacts/rendered-qa/dgfy-register-company-mobile.png`

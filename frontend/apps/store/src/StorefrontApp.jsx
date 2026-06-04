@@ -119,6 +119,7 @@ import {
 } from './tracking/fnbAdapter.js';
 import TrackingRouteMap, { extractTrackingMapCoordinates } from './tracking/TrackingRouteMap.jsx';
 import HospitalityBookingPanel from './HospitalityBookingPanel.jsx';
+import { buildBusinessRegistrationUrl } from './businessRegistrationUrl.js';
 import {
   WORKFLOW_MODE_LABELS,
   WORKFLOW_MODE_SELECT_VALUES
@@ -1349,17 +1350,6 @@ const requestJson = async (url, { method = 'GET', body, storeSlug, authToken = '
     });
   }
   return payload?.data ?? payload;
-};
-
-const buildBusinessRegistrationUrl = (handoffToken = '') => {
-  const target = new URL('https://skupervisor.dgfy.ph/register-company');
-  target.searchParams.set('source', 'dgfy');
-  target.searchParams.set('auth', 'login');
-  if (handoffToken) {
-    target.searchParams.set('handoff_token', handoffToken);
-  }
-  target.hash = 'business-registration';
-  return target.toString();
 };
 
 const extractStockViolation = (error) => {
@@ -4224,6 +4214,8 @@ export default function StorefrontApp() {
   const [isAccountDrawerOpen, setIsAccountDrawerOpen] = useState(false);
   const [accountPanel, setAccountPanel] = useState(EMPTY_ACCOUNT_PANEL);
   const [accountOrderActionReference, setAccountOrderActionReference] = useState('');
+  const [accountAddressActionId, setAccountAddressActionId] = useState('');
+  const [pendingAccountReorder, setPendingAccountReorder] = useState(null);
   const [trackedCustomerActivity, setTrackedCustomerActivity] = useState(null);
   const [customerTrackLoadingReference, setCustomerTrackLoadingReference] = useState('');
   const [customerTrackError, setCustomerTrackError] = useState('');
@@ -7956,6 +7948,36 @@ export default function StorefrontApp() {
     }
   }, [handleLoadAccountPanel, handleTrackCustomerReference, trackedCustomerActivity?.reference]);
 
+  const buildAccountReorderCartLines = useCallback((lines = [], reference = '') => (Array.isArray(lines) ? lines : [])
+    .map((line) => {
+      const item = (Array.isArray(catalog) ? catalog : []).find((entry) => Number(entry?.item_id) === Number(line?.item_id));
+      if (!item) return null;
+      const maxStock = isItemAvailable(item) ? Number.POSITIVE_INFINITY : 0;
+      return {
+        item_id: item.item_id,
+        cart_line_id: `reorder:${reference || 'account'}:${item.item_id}`,
+        name: item.name,
+        variantName: item.variantName || '',
+        category: isServiceCatalogItem(item) ? 'service' : String(item.category || '').trim().toLowerCase(),
+        service_detail: item.service_detail || null,
+        quantity: Math.max(1, Number(line.quantity || 1)),
+        price: Number(item.default_sale_price ?? line.price ?? 0),
+        image_url: withAssetOrigin(item.image_url) || null,
+        unit_of_measure: item.unit_of_measure || line.unit_of_measure || '',
+        max_stock: maxStock,
+        serviceAreaLabel: item.serviceAreaLabel || '',
+        durationLabel: item.durationLabel || '',
+        line_modifiers: []
+      };
+    })
+    .filter(Boolean), [catalog]);
+
+  const getUnavailableReorderLineNames = useCallback((lines = []) => (Array.isArray(lines) ? lines : [])
+    .filter((line) => !(Array.isArray(catalog) ? catalog : []).some((entry) => Number(entry?.item_id) === Number(line?.item_id)))
+    .map((line) => String(line?.name || line?.item_name || `Item #${line?.item_id || ''}`).trim())
+    .filter(Boolean)
+    .slice(0, 4), [catalog]);
+
   const handleReorderAccountOrder = useCallback(async (order = {}) => {
     const normalizedReference = String(order?.reference || '').trim().toUpperCase();
     const dgfyToken = readDgfyAuthToken();
@@ -7977,43 +7999,33 @@ export default function StorefrontApp() {
       const targetSlug = toSlug(payload?.store_slug || order?.store_slug || selectedStore?.slug || routeSlug);
       const currentSlug = toSlug(selectedStore?.slug || routeSlug);
       if (targetSlug && currentSlug && targetSlug !== currentSlug && typeof window !== 'undefined') {
+        setPendingAccountReorder({
+          storeSlug: targetSlug,
+          reference: normalizedReference,
+          lines: Array.isArray(payload?.cart_lines) ? payload.cart_lines : []
+        });
         window.history.pushState({ storeSlug: targetSlug, storeSubpage: null }, '', storePath(targetSlug));
         setRouteSlug(targetSlug);
         setRouteSubpage(null);
         setRouteItemId(null);
         setRouteServiceItemId(null);
         setIsCheckoutOpen(false);
-        toast.info('Opened the original storefront. Reorder again after the catalog loads.');
+        toast.info('Opened the original storefront. Reorder items will load when the catalog is ready.');
         return;
       }
 
       const reusableLines = Array.isArray(payload?.cart_lines) ? payload.cart_lines : [];
-      const nextCart = reusableLines
-        .map((line) => {
-          const item = (Array.isArray(catalog) ? catalog : []).find((entry) => Number(entry?.item_id) === Number(line?.item_id));
-          if (!item) return null;
-          const maxStock = isItemAvailable(item) ? Number.POSITIVE_INFINITY : 0;
-          return {
-            item_id: item.item_id,
-            cart_line_id: `reorder:${normalizedReference}:${item.item_id}`,
-            name: item.name,
-            variantName: item.variantName || '',
-            category: isServiceCatalogItem(item) ? 'service' : String(item.category || '').trim().toLowerCase(),
-            service_detail: item.service_detail || null,
-            quantity: Math.max(1, Number(line.quantity || 1)),
-            price: Number(item.default_sale_price ?? line.price ?? 0),
-            image_url: withAssetOrigin(item.image_url) || null,
-            unit_of_measure: item.unit_of_measure || line.unit_of_measure || '',
-            max_stock: maxStock,
-            serviceAreaLabel: item.serviceAreaLabel || '',
-            durationLabel: item.durationLabel || '',
-            line_modifiers: []
-          };
-        })
-        .filter(Boolean);
+      const nextCart = buildAccountReorderCartLines(reusableLines, normalizedReference);
       if (nextCart.length === 0) {
-        toast.error('No reorderable items are currently available in this storefront catalog.');
+        const unavailableNames = getUnavailableReorderLineNames(reusableLines);
+        toast.error(unavailableNames.length > 0
+          ? `No reorderable items are currently available. Missing from catalog: ${unavailableNames.join(', ')}.`
+          : 'No reorderable items are currently available in this storefront catalog.');
         return;
+      }
+      const unavailableNames = getUnavailableReorderLineNames(reusableLines);
+      if (unavailableNames.length > 0) {
+        toast.warning(`Some previous items are unavailable and were not added: ${unavailableNames.join(', ')}.`);
       }
       setCart(nextCart);
       setCheckoutResult(null);
@@ -8027,7 +8039,118 @@ export default function StorefrontApp() {
     } finally {
       setAccountOrderActionReference('');
     }
-  }, [catalog, isFnbMode, routeSlug, selectedStore?.slug]);
+  }, [buildAccountReorderCartLines, getUnavailableReorderLineNames, isFnbMode, routeSlug, selectedStore?.slug]);
+
+  useEffect(() => {
+    if (!pendingAccountReorder) return;
+    const targetSlug = toSlug(pendingAccountReorder.storeSlug);
+    const currentSlug = toSlug(selectedStore?.slug || routeSlug);
+    if (!targetSlug || targetSlug !== currentSlug || loadingCatalog) return;
+    const nextCart = buildAccountReorderCartLines(pendingAccountReorder.lines, pendingAccountReorder.reference);
+    setPendingAccountReorder(null);
+    if (nextCart.length === 0) {
+      const unavailableNames = getUnavailableReorderLineNames(pendingAccountReorder.lines);
+      toast.error(unavailableNames.length > 0
+        ? `No reorderable items are currently available. Missing from catalog: ${unavailableNames.join(', ')}.`
+        : 'No reorderable items are currently available in this storefront catalog.');
+      return;
+    }
+    const unavailableNames = getUnavailableReorderLineNames(pendingAccountReorder.lines);
+    if (unavailableNames.length > 0) {
+      toast.warning(`Some previous items are unavailable and were not added: ${unavailableNames.join(', ')}.`);
+    }
+    setCart(nextCart);
+    setCheckoutResult(null);
+    setQuoteResult(null);
+    setQuoteNeedsRefresh(true);
+    setCheckoutTab(isFnbMode ? 'cart' : 'checkout');
+    setIsCheckoutOpen(true);
+    toast.success('Reorder items added to cart. Checkout will revalidate current pricing and stock.');
+  }, [buildAccountReorderCartLines, getUnavailableReorderLineNames, isFnbMode, loadingCatalog, pendingAccountReorder, routeSlug, selectedStore?.slug]);
+
+  const handleSaveAccountAddress = useCallback(async (draft = {}, existingAddress = null) => {
+    const dgfyToken = readDgfyAuthToken();
+    if (!dgfyToken) {
+      toast.error('Sign in to manage saved addresses.');
+      return false;
+    }
+    const addressLine = String(draft.address_line || '').trim();
+    if (!addressLine) {
+      toast.error('Enter an address before saving.');
+      return false;
+    }
+    const addressId = existingAddress?.address_id;
+    const actionId = addressId ? String(addressId) : 'new';
+    setAccountAddressActionId(actionId);
+    try {
+      await requestJson(addressId
+        ? `/api/v1/dgfy/customer/addresses/${encodeURIComponent(addressId)}`
+        : '/api/v1/dgfy/customer/addresses', {
+        method: addressId ? 'PUT' : 'POST',
+        authToken: dgfyToken,
+        cache: 'no-store',
+        body: {
+          label: String(draft.label || 'Address').trim() || 'Address',
+          address_line: addressLine,
+          is_default: draft.is_default === true
+        }
+      });
+      toast.success(addressId ? 'Address updated.' : 'Address saved.');
+      await handleLoadAccountPanel();
+      return true;
+    } catch (error) {
+      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to save this address.'));
+      return false;
+    } finally {
+      setAccountAddressActionId('');
+    }
+  }, [handleLoadAccountPanel]);
+
+  const handleSetDefaultAccountAddress = useCallback(async (address = {}) => {
+    const dgfyToken = readDgfyAuthToken();
+    const addressId = address?.address_id;
+    if (!dgfyToken || !addressId) {
+      toast.error('Sign in to manage saved addresses.');
+      return;
+    }
+    setAccountAddressActionId(String(addressId));
+    try {
+      await requestJson(`/api/v1/dgfy/customer/addresses/${encodeURIComponent(addressId)}/default`, {
+        method: 'PATCH',
+        authToken: dgfyToken,
+        cache: 'no-store'
+      });
+      toast.success('Default address updated.');
+      await handleLoadAccountPanel();
+    } catch (error) {
+      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to update the default address.'));
+    } finally {
+      setAccountAddressActionId('');
+    }
+  }, [handleLoadAccountPanel]);
+
+  const handleDeleteAccountAddress = useCallback(async (address = {}) => {
+    const dgfyToken = readDgfyAuthToken();
+    const addressId = address?.address_id;
+    if (!dgfyToken || !addressId) {
+      toast.error('Sign in to manage saved addresses.');
+      return;
+    }
+    setAccountAddressActionId(String(addressId));
+    try {
+      await requestJson(`/api/v1/dgfy/customer/addresses/${encodeURIComponent(addressId)}`, {
+        method: 'DELETE',
+        authToken: dgfyToken,
+        cache: 'no-store'
+      });
+      toast.success('Address deleted.');
+      await handleLoadAccountPanel();
+    } catch (error) {
+      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to delete this address.'));
+    } finally {
+      setAccountAddressActionId('');
+    }
+  }, [handleLoadAccountPanel]);
 
   const closeAccountDrawer = useCallback(() => {
     setIsAccountDrawerOpen(false);
@@ -9269,6 +9392,9 @@ export default function StorefrontApp() {
           onRegisterBusiness={openBusinessRegistrationFromDgfyAccount}
           onClearSavedDetails={clearSavedCustomerDetailsForDevice}
           onUseAddressForCheckout={useAccountAddressForCheckout}
+          onSaveAddress={handleSaveAccountAddress}
+          onDeleteAddress={handleDeleteAccountAddress}
+          onSetDefaultAddress={handleSetDefaultAccountAddress}
           accountIdentityInitials={accountIdentityInitials}
           accountIdentityName={accountIdentityName}
           accountIdentityContact={accountIdentityContact}
@@ -9281,6 +9407,7 @@ export default function StorefrontApp() {
           customerTrackLoadingReference={customerTrackLoadingReference}
           customerTrackError={customerTrackError}
           accountOrderActionReference={accountOrderActionReference}
+          accountAddressActionId={accountAddressActionId}
         />
       </main>
     );

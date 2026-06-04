@@ -8,6 +8,8 @@ const appSource = () => fs.readFileSync(path.join(appRoot, 'StorefrontApp.jsx'),
 const panelSource = () => fs.readFileSync(path.join(appRoot, 'FnbReservationPanel.jsx'), 'utf8');
 const productDetailsSource = () => fs.readFileSync(path.join(appRoot, 'Components/storefront/pages/FnbProductDetailsPage.jsx'), 'utf8');
 const accountPageSource = () => fs.readFileSync(path.join(appRoot, 'Components/storefront/pages/DgfyCustomerAccountPage.jsx'), 'utf8');
+const solutionsPageSource = () => fs.readFileSync(path.join(appRoot, 'Components/storefront/pages/SolutionsPage.jsx'), 'utf8');
+const businessRegistrationUrlSource = () => fs.readFileSync(path.join(appRoot, 'businessRegistrationUrl.js'), 'utf8');
 
 describe('Food & Beverage storefront contract', () => {
   it('renders restaurant menu metadata and carries modifiers into checkout lines', () => {
@@ -40,10 +42,32 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain('authToken: readStorefrontCustomerAuthToken()');
     expect(source).toContain('onCancelOrder={handleCancelAccountOrder}');
     expect(source).toContain('onReorderOrder={handleReorderAccountOrder}');
+    expect(source).toContain('const [pendingAccountReorder, setPendingAccountReorder]');
+    expect(source).toContain('buildAccountReorderCartLines');
+    expect(source).toContain('getUnavailableReorderLineNames');
     expect(source).not.toContain('isAccountDrawerOpen && (isGuestAccountDrawerState ?');
     expect(accountSource).toContain('allowed_actions');
     expect(accountSource).toContain('onCancelOrder?.(order)');
+    expect(accountSource).toContain('pendingCancelOrder');
+    expect(accountSource).toContain('Confirm Cancel');
     expect(accountSource).toContain('onReorderOrder?.(order)');
+    expect(accountSource).toContain('onSaveAddress');
+    expect(accountSource).toContain('onDeleteAddress');
+    expect(accountSource).toContain('onSetDefaultAddress');
+    expect(accountSource).toContain('Add Address');
+  });
+
+  it('builds business registration links through the configurable Storefront helper', () => {
+    const source = appSource();
+    const solutionsSource = solutionsPageSource();
+    const helperSource = businessRegistrationUrlSource();
+
+    expect(source).toContain("import { buildBusinessRegistrationUrl } from './businessRegistrationUrl.js';");
+    expect(solutionsSource).toContain("import { buildBusinessLoginUrl, buildBusinessRegistrationUrl } from '../../../businessRegistrationUrl.js';");
+    expect(helperSource).toContain('VITE_SKUPERVISOR_REGISTRATION_URL');
+    expect(helperSource).toContain('https://skupervisor.dgfy.ph/register-company');
+    expect(source).not.toContain("new URL('https://skupervisor.dgfy.ph/register-company')");
+    expect(solutionsSource).not.toContain("window.location.href = 'https://skupervisor.dgfy.ph/register-company'");
   });
 
   it('adds item-level reviews to the F&B detail experience without redesigning the page shell', () => {

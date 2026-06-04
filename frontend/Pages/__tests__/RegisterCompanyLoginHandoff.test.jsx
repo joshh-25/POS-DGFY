@@ -332,6 +332,41 @@ describe('RegisterCompany DGFY handoff', () => {
     expect(await screen.findByText('Dashboard screen')).toBeTruthy();
   });
 
+  it('preserves manual login fallback when tenant-session exchange fails after activation', async () => {
+    dgfyAuthMock.startDgfyTenantSession.mockRejectedValueOnce({
+      response: { data: { message: 'No active company membership is available for this DGFY account.' } }
+    });
+    apiMock.post.mockResolvedValueOnce({
+      data: {
+        success: true,
+        message: 'Company registered and activated successfully. You can sign in now.',
+        data: {
+          id: 'tenant-1',
+          name: 'Auto Foods',
+          status: 'active',
+          plan: 'premium',
+          company_token: 'token-autofoods-12345678',
+          workflow_mode: 'food_manufacturing'
+        }
+      }
+    });
+
+    renderRegistrationFlow();
+    await screen.findByRole('button', { name: /view terms/i });
+    await signInDgfy();
+
+    fireEvent.change(screen.getByLabelText('Company Name'), {
+      target: { value: 'Auto Foods' }
+    });
+    fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
+    fireEvent.click(screen.getByRole('button', { name: /create company/i }));
+
+    await waitFor(() => expect(dgfyAuthMock.startDgfyTenantSession).toHaveBeenCalled());
+    expect(await screen.findByText('Company Created')).toBeTruthy();
+    expect(screen.getByText('Auto Foods')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /continue to skupervisor login/i })).toBeTruthy();
+  });
+
   it('requires marketplace acknowledgement before company registration can be submitted', async () => {
     renderRegistrationFlow();
     await screen.findByRole('button', { name: /view terms/i });
