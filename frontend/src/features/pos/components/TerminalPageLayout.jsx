@@ -1,13 +1,15 @@
-import React, { Suspense, lazy, useMemo, useState } from 'react';
+import React, { Suspense, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Bell, Menu, UserRound, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { resolveAppAssetUrl } from '@/src/utils/assetUrl.js';
 
-const POSCheckoutTerminal = lazy(() => import('./POSCheckoutTerminal'));
-const TerminalLockDrawer = lazy(() => import('./TerminalLockDrawer'));
-const TerminalWorkspaceSidebar = lazy(() => import('./TerminalWorkspaceSidebar'));
-const TerminalOperationsWorkspace = lazy(() => import('./TerminalOperationsWorkspace'));
+import POSCheckoutTerminal from './POSCheckoutTerminal.jsx';
+import TerminalLockDrawer from './TerminalLockDrawer.jsx';
+import TerminalWorkspaceSidebar from './TerminalWorkspaceSidebar.jsx';
+import TerminalOperationsWorkspace from './TerminalOperationsWorkspace.jsx';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
+const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
 
 export default function TerminalPageLayout({
     locked,
@@ -105,7 +107,6 @@ export default function TerminalPageLayout({
   const complianceBlocked = Boolean(complianceBlockerDetails);
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
   const notificationCount = incomingOrders.length + (queueTotalCount > 0 ? 1 : 0) + (complianceBlocked ? 1 : 0);
-  const normalizedActiveTerminalId = String(activeTerminalId || '').trim();
   const notifications = useMemo(() => {
     const items = [];
     if (incomingOrders.length > 0) {
@@ -331,9 +332,6 @@ export default function TerminalPageLayout({
                         <div className="min-w-0 leading-tight">
                             <div className="truncate text-[13px] font-extrabold">{terminalUser?.username || 'Locked'}</div>
                             <div className="truncate text-[11px] text-[#64748B]">{terminalUser?.email || 'Sign in required'}</div>
-                            <div className="truncate text-[11px] text-[#64748B]">
-                                Terminal: <span className="font-semibold text-slate-900">{normalizedActiveTerminalId || 'Not selected'}</span>
-                            </div>
                         </div>
                     </div>
                     </div>
@@ -459,7 +457,7 @@ export default function TerminalPageLayout({
                     <div className="dgfy-pos-scrollbar-hidden absolute left-0 top-0 h-full w-[82%] max-w-[304px] overflow-y-auto bg-white p-3 shadow-2xl shadow-slate-950/30">
                         <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
                             <img
-                                src="/dgfy-horizontal_logo-removebg-preview.png"
+                                src={DGFY_POS_LOGO}
                                 alt="DGFY"
                                 className="h-8 w-auto min-w-0 object-contain"
                             />

@@ -4,7 +4,6 @@ import db from '../src/models/index.js';
 import sequelize from '../src/config/database.js';
 import { Op } from 'sequelize';
 import { generateDgfyToken } from '../src/modules/dgfy/usecases/dgfyAuthUseCases.js';
-import { DGFY_LEGAL_TERM_VERSIONS } from '../src/modules/shared/utils/dgfyLegalTerms.js';
 
 // Shared email prefix so afterAll can sweep up anything this suite touches
 // regardless of which individual test created it.
@@ -38,10 +37,7 @@ const baseData = (label) => ({
     name: `Lookup V2 Test Corp [${label}] ${ts}`,
     plan: 'standard',
     complianceMode: 'non_compliant',
-    workflowMode: 'msme',
-    accepted_company_terms: true,
-    company_terms_version: DGFY_LEGAL_TERM_VERSIONS.companyTerms,
-    marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
+    workflowMode: 'msme'
 });
 
 // ─── Cleanup ────────────────────────────────────────────────────────────────
@@ -176,10 +172,7 @@ describe('Company Token Lookup — full coverage', () => {
                     name: `Multi Corp A ${ts}`,
                     plan: 'standard',
                     complianceMode: 'non_compliant',
-                    workflowMode: 'msme',
-                    accepted_company_terms: true,
-                    company_terms_version: DGFY_LEGAL_TERM_VERSIONS.companyTerms,
-                    marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
+                    workflowMode: 'msme'
                 })
                 .expect(201);
 
@@ -190,10 +183,7 @@ describe('Company Token Lookup — full coverage', () => {
                     name: `Multi Corp B ${ts}`,
                     plan: 'standard',
                     complianceMode: 'non_compliant',
-                    workflowMode: 'msme',
-                    accepted_company_terms: true,
-                    company_terms_version: DGFY_LEGAL_TERM_VERSIONS.companyTerms,
-                    marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
+                    workflowMode: 'msme'
                 })
                 .expect(201);
 

@@ -25,26 +25,12 @@ const {
 } = await import('../src/services/emailOtpService.js');
 
 describe('email OTP service', () => {
-  let originalEmailOtpEnforcementEnabled;
-
-  beforeAll(() => {
-    originalEmailOtpEnforcementEnabled = process.env.EMAIL_OTP_ENFORCEMENT_ENABLED;
-  });
-
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.EMAIL_OTP_SECRET = 'test_email_otp_secret_32_chars_min';
     process.env.EMAIL_OTP_TTL_MINUTES = '10';
     process.env.EMAIL_OTP_MAX_ATTEMPTS = '5';
     process.env.EMAIL_OTP_ENFORCEMENT_ENABLED = 'true';
-  });
-
-  afterAll(() => {
-    if (originalEmailOtpEnforcementEnabled == null) {
-      delete process.env.EMAIL_OTP_ENFORCEMENT_ENABLED;
-    } else {
-      process.env.EMAIL_OTP_ENFORCEMENT_ENABLED = originalEmailOtpEnforcementEnabled;
-    }
   });
 
   it('creates a single-use OTP row and sends the code through email service', async () => {

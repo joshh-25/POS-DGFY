@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   closeTerminalShift,
@@ -36,8 +36,8 @@ import {
   pruneTerminalOperationHistory
 } from '../services/terminalOperationQueueStore.js';
 
-const TerminalPageLayout = lazy(() => import('../components/TerminalPageLayout'));
-const OnboardingSetupModal = lazy(() => import('../../onboarding/components/OnboardingSetupModal.jsx'));
+import TerminalPageLayout from '../components/TerminalPageLayout.jsx';
+import OnboardingSetupModal from '../../onboarding/components/OnboardingSetupModal.jsx';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 
 const DEFAULT_CURRENCY = 'PHP';
