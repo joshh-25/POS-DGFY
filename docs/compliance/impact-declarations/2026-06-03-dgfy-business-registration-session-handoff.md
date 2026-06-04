@@ -29,7 +29,7 @@ This declaration covers changing public company registration from a DGFY-account
 - Storefront DGFY account creation/sign-in now opens the authenticated **My Account** page after success.
 - Storefront **Register Your Business** creates a short-lived DGFY handoff token before routing to SKUpervisor company registration.
 - `/register-company` exchanges the DGFY handoff token, removes the one-time `handoff_token` from the URL after success or failure, focuses the business registration form, and collects only company name plus Business Industry as business data.
-- Expired or consumed handoff tokens recover through normal DGFY sign-in without invoking SKUpervisor tenant-session refresh. Public `/register-company` and DGFY auth endpoints must not call tenant `/auth/refresh-token` as a recovery path.
+- Expired or consumed handoff tokens recover through normal DGFY sign-in without invoking SKUpervisor tenant-session refresh. The `/register-company` browser flow requests `soft_fail` handoff exchange so expected expired/consumed recovery returns an invalid status payload instead of a browser-visible 4xx resource error; strict replay failure remains the default API behavior without `soft_fail`. Public `/register-company` and DGFY auth endpoints must not call tenant `/auth/refresh-token` as a recovery path.
 - Active company registration calls `/api/v1/dgfy/auth/tenant-session` to issue the normal SKUpervisor tenant session for an accepted DGFY founder membership.
 - IMS onboarding remains the first master-admin experience because the standard tenant login bootstrap still exposes onboarding metadata.
 

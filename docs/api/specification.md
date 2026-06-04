@@ -4604,6 +4604,8 @@ Exchange a valid DGFY handoff token for a normal DGFY account JWT.
 }
 ```
 
+Browser registration recovery may include `"soft_fail": true`. With that flag, expired, malformed, or already-consumed handoff tokens return HTTP `200` with `data.status="invalid"` and `data.reason="expired_or_consumed"` so `/register-company` can show the DGFY sign-in fallback without surfacing an expected 4xx resource error in the browser console. Without `soft_fail`, replay, expired, or invalid handoff tokens continue to fail with the normal authentication error response.
+
 ### POST /dgfy/auth/tenant-session
 
 Requires `Authorization: Bearer <dgfy-account-token>`.
