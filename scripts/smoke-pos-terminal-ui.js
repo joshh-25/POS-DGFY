@@ -87,7 +87,11 @@ const collectSalesRedirectEvidence = async (browser) => {
   page.on('requestfailed', (request) => failedRequests.push(request.url()));
   try {
     await page.goto(`${baseUrl}/sales?source=pos-smoke`, { waitUntil: 'domcontentloaded', timeout: 8000 });
-    await page.waitForTimeout(750);
+    await page.waitForURL((url) => {
+      const currentUrl = String(url);
+      return currentUrl.startsWith(`${expectedSkupervisorOrigin}/sales`)
+        || currentUrl.startsWith(`${expectedSkupervisorOrigin}/login`);
+    }, { timeout: 8000 });
   } catch {
     // The SKUpervisor dev server may be offline; URL mutation still proves redirect intent.
   }
