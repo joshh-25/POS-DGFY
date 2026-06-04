@@ -545,7 +545,20 @@ export const buildCreateDgfyHandoffUseCase = ({ repository }) => async ({ accoun
 
 export const buildExchangeDgfyHandoffUseCase = ({ repository }) => async ({ body }) => {
     const handoffToken = String(body?.handoff_token || body?.handoffToken || '').trim();
+    const softFail = body?.soft_fail === true || body?.softFail === true;
+    const invalidHandoffPayload = () => ok({
+        payload: {
+            success: true,
+            data: {
+                status: 'invalid',
+                reason: 'expired_or_consumed'
+            },
+            message: 'DGFY handoff token is invalid or expired.'
+        }
+    });
+
     if (!handoffToken) {
+        if (softFail) return invalidHandoffPayload();
         return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'DGFY handoff token is required.', { statusCode: 400 }));
     }
 
@@ -581,6 +594,7 @@ export const buildExchangeDgfyHandoffUseCase = ({ repository }) => async ({ body
             }
         });
     } catch (error) {
+        if (softFail) return invalidHandoffPayload();
         return fail(new DomainError(
             DomainErrorCode.AUTHENTICATION_FAILED,
             'DGFY handoff token is invalid or expired.',

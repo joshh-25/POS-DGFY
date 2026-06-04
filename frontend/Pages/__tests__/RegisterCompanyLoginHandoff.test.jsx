@@ -197,7 +197,7 @@ describe('RegisterCompany DGFY handoff', () => {
       { onLocationChange: (location) => locations.push(location) }
     );
 
-    await waitFor(() => expect(dgfyAuthMock.exchangeDgfyHandoff).toHaveBeenCalledWith('handoff-123'));
+    await waitFor(() => expect(dgfyAuthMock.exchangeDgfyHandoff).toHaveBeenCalledWith('handoff-123', { softFail: true }));
     expect(await screen.findByLabelText('Company Name')).toBeTruthy();
     expect(screen.getByText(/DGFY account connected/i)).toBeTruthy();
     await waitFor(() => expect(locations.at(-1).search).not.toContain('handoff_token'));
@@ -206,8 +206,9 @@ describe('RegisterCompany DGFY handoff', () => {
 
   it('recovers from an expired storefront handoff through normal DGFY sign in', async () => {
     const locations = [];
-    dgfyAuthMock.exchangeDgfyHandoff.mockRejectedValue({
-      response: { status: 403, data: { message: 'DGFY handoff token is invalid or expired.' } }
+    dgfyAuthMock.exchangeDgfyHandoff.mockResolvedValue({
+      status: 'invalid',
+      reason: 'expired_or_consumed'
     });
 
     renderRegistrationFlow(
@@ -215,7 +216,7 @@ describe('RegisterCompany DGFY handoff', () => {
       { onLocationChange: (location) => locations.push(location) }
     );
 
-    await waitFor(() => expect(dgfyAuthMock.exchangeDgfyHandoff).toHaveBeenCalledWith('expired-token'));
+    await waitFor(() => expect(dgfyAuthMock.exchangeDgfyHandoff).toHaveBeenCalledWith('expired-token', { softFail: true }));
     expect(await screen.findByText(/Your DGFY handoff expired/i)).toBeTruthy();
     await waitFor(() => expect(locations.at(-1).search).not.toContain('handoff_token'));
 

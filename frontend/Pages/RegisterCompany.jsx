@@ -327,8 +327,16 @@ export default function RegisterCompany() {
         handoffExchangeStartedRef.current = true;
         setAuthMode('login');
         setIsLoading(true);
-        exchangeDgfyHandoff(handoffToken)
+        exchangeDgfyHandoff(handoffToken, { softFail: true })
             .then((session) => {
+                if (session?.status === 'invalid') {
+                    clearDgfySession();
+                    setDgfyToken('');
+                    setDgfyAccount(null);
+                    setError('Your DGFY handoff expired. Sign in again to register your business.');
+                    clearHandoffTokenFromUrl();
+                    return;
+                }
                 setDgfySessionState(session);
                 setNotice('DGFY account connected. Register your business below.');
                 clearHandoffTokenFromUrl();

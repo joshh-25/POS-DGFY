@@ -1,8 +1,17 @@
 import { getCsrfCookie } from '../utils/browserSessionCookies.js';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const SESSION_ESTABLISHMENT_ROUTES = [
+  /^\/api\/v1\/auth\/(login|register|accept-invite)\b/i,
+  /^\/api\/v1\/admin\/login\b/i,
+  /^\/api\/v1\/dgfy\/auth\/(login|register|password-reset\/complete|handoff\/exchange)\b/i,
+  /^\/api\/v1\/store\/auth\/(login|register)\b/i
+];
 
 const hasBrowserSessionCookie = (req) => /(^|;\s*)sku_(refresh_token|dgfy_session|store_session|admin_session)=/.test(String(req.headers.cookie || ''));
+const isSessionEstablishmentRoute = (req) => SESSION_ESTABLISHMENT_ROUTES.some((pattern) => (
+  pattern.test(String(req.originalUrl || req.url || ''))
+));
 
 const sendCsrfError = (res) => res.status(403).json({
   success: false,
@@ -15,6 +24,7 @@ const sendCsrfError = (res) => res.status(403).json({
 export const csrfProtection = (req, res, next) => {
   const method = String(req.method || '').toUpperCase();
   if (SAFE_METHODS.has(method)) return next();
+  if (isSessionEstablishmentRoute(req)) return next();
   if (!hasBrowserSessionCookie(req)) return next();
 
   const cookieToken = getCsrfCookie(req);

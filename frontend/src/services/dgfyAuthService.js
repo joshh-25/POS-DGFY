@@ -126,12 +126,13 @@ export const createDgfyHandoff = async (token = getStoredDgfyToken()) => {
   return response.data.data;
 };
 
-export const exchangeDgfyHandoff = async (handoffToken) => {
+export const exchangeDgfyHandoff = async (handoffToken, { softFail = false } = {}) => {
   const response = await api.post('/dgfy/auth/handoff/exchange', {
-    handoff_token: handoffToken
+    handoff_token: handoffToken,
+    ...(softFail ? { soft_fail: true } : {})
   });
   const data = response.data.data;
-  storeDgfySession(data);
+  if (data?.token) storeDgfySession(data);
   return data;
 };
 

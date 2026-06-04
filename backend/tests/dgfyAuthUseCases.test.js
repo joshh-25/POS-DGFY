@@ -266,6 +266,18 @@ describe('dgfyAuthUseCases', () => {
         });
         expect(replayResult.success).toBe(false);
         expect(replayResult.error.statusCode).toBe(401);
+
+        const browserRecoveryResult = await exchangeUseCase({
+            body: {
+                handoff_token: handoffResult.data.payload.data.handoff_token,
+                soft_fail: true
+            }
+        });
+        expect(browserRecoveryResult.success).toBe(true);
+        expect(browserRecoveryResult.data.payload.data).toEqual({
+            status: 'invalid',
+            reason: 'expired_or_consumed'
+        });
     });
 
     it('starts a SKUpervisor tenant session from an accepted DGFY membership', async () => {
