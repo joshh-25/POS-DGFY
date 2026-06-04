@@ -8,7 +8,10 @@ describe('public route session refresh policy', () => {
     '/register-company',
     '/register-company/business',
     '/accept-invite',
-    '/reactivate'
+    '/reactivate',
+    '/admin',
+    '/admin/tenants',
+    '/admin/dgfy-accounts'
   ])('skips tenant session refresh on public route %s', (path) => {
     expect(shouldRefreshBrowserSessionForPath(path)).toBe(false);
   });

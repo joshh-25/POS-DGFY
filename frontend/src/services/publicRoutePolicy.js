@@ -3,7 +3,8 @@ const PUBLIC_AUTH_ROUTE_PREFIXES = [
   '/register',
   '/register-company',
   '/accept-invite',
-  '/reactivate'
+  '/reactivate',
+  '/admin'
 ];
 
 export const shouldRefreshBrowserSessionForPath = (pathname = '/') => {
