@@ -8,7 +8,7 @@ classification: regulatory
 surfaces: authentication,browser-sessions,user_registration,storefront,onboarding,settings,compliance
 reason_codes_impacted: DGFY_TENANT_SESSION_HANDOFF,AUTHORIZATION_FAILED,VALIDATION_FAILED
 policy_version: 2026.06.03
-verification_evidence: npm --prefix backend test -- --runTestsByPath tests/dgfyAuthUseCases.test.js tests/dgfyTenantSession.transport.test.js tests/registerCompanyRequestUseCase.autoApproval.test.js,npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx,npm run check:architecture,npm run lint:docs,npm run build:skupervisor,npm run build:store,Playwright rendered checks for desktop and mobile /register-company reset interaction
+verification_evidence: npm --prefix backend test -- --runTestsByPath tests/dgfyAuthUseCases.test.js tests/dgfyTenantSession.transport.test.js tests/registerCompanyRequestUseCase.autoApproval.test.js,npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx src/services/__tests__/api.interceptor.test.js src/services/__tests__/publicRoutePolicy.test.js src/store/__tests__/PermissionContext.publicRoutes.test.jsx src/features/settings/__tests__/WorkflowModeContext.publicRoutes.test.jsx src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx,npm run check:architecture,npm run lint:docs,npm run build:skupervisor,npm run build:store,Playwright rendered checks for desktop and mobile /register-company reset interaction
 rollback_note: Disable the DGFY tenant-session endpoint and route active company registration back to SKUpervisor login with email/company token prefilled. Keep DGFY account and membership records intact.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -28,7 +28,8 @@ This declaration covers changing public company registration from a DGFY-account
 
 - Storefront DGFY account creation/sign-in now opens the authenticated **My Account** page after success.
 - Storefront **Register Your Business** creates a short-lived DGFY handoff token before routing to SKUpervisor company registration.
-- `/register-company` exchanges the DGFY handoff token, focuses the business registration form, and collects only company name plus Business Industry as business data.
+- `/register-company` exchanges the DGFY handoff token, removes the one-time `handoff_token` from the URL after success or failure, focuses the business registration form, and collects only company name plus Business Industry as business data.
+- Expired or consumed handoff tokens recover through normal DGFY sign-in without invoking SKUpervisor tenant-session refresh. Public `/register-company` and DGFY auth endpoints must not call tenant `/auth/refresh-token` as a recovery path.
 - Active company registration calls `/api/v1/dgfy/auth/tenant-session` to issue the normal SKUpervisor tenant session for an accepted DGFY founder membership.
 - IMS onboarding remains the first master-admin experience because the standard tenant login bootstrap still exposes onboarding metadata.
 
@@ -46,7 +47,7 @@ Targeted validation for this declaration:
 
 1. `npm --prefix backend test -- --runTestsByPath tests/dgfyAuthUseCases.test.js tests/registerCompanyRequestUseCase.autoApproval.test.js`
 2. `npm --prefix backend test -- --runTestsByPath tests/dgfyTenantSession.transport.test.js`
-3. `npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx`
+3. `npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx src/services/__tests__/api.interceptor.test.js src/services/__tests__/publicRoutePolicy.test.js src/store/__tests__/PermissionContext.publicRoutes.test.jsx src/features/settings/__tests__/WorkflowModeContext.publicRoutes.test.jsx src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx`
 4. `npm run check:architecture`
 5. `npm run lint:docs`
 6. `npm run build:skupervisor`
