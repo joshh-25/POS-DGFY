@@ -26,8 +26,14 @@ const collectTerminalEvidence = async (browser, viewport) => {
     isMobile: viewport.isMobile
   });
   const logs = [];
+  const httpErrors = [];
   page.on('console', (message) => logs.push({ type: message.type(), text: message.text() }));
   page.on('pageerror', (error) => logs.push({ type: 'pageerror', text: error.message }));
+  page.on('response', (response) => {
+    if (response.status() >= 400) {
+      httpErrors.push({ status: response.status(), url: response.url() });
+    }
+  });
 
   await page.goto(`${baseUrl}/terminal`, { waitUntil: 'networkidle', timeout: 15000 });
   const bodyText = await page.locator('body').innerText({ timeout: 10000 });
@@ -43,6 +49,15 @@ const collectTerminalEvidence = async (browser, viewport) => {
     return topElement !== element && !element.contains(topElement);
   });
 
+  const ignoredHttpErrors = httpErrors.filter((entry) => {
+    return entry.status === 400 && /\/api\/v1\/auth\/refresh-token$/.test(entry.url);
+  });
+  const unexpectedHttpErrors = httpErrors.filter((entry) => !ignoredHttpErrors.includes(entry));
+  const consoleErrors = logs.filter((entry) => entry.type === 'error' || entry.type === 'pageerror').map((entry) => entry.text);
+  const visibleConsoleErrors = unexpectedHttpErrors.length === 0
+    ? consoleErrors.filter((text) => !/Failed to load resource: the server responded with a status of 400/.test(text))
+    : consoleErrors;
+
   const evidence = {
     viewport,
     hasTerminal: bodyText.includes('DGFY Terminal Workspace'),
@@ -52,7 +67,9 @@ const collectTerminalEvidence = async (browser, viewport) => {
     loginFormEditable: (await page.getByPlaceholder('cashier@company.com').inputValue()).includes(viewport.name)
       && (await page.getByPlaceholder('COUNTER-01').inputValue()).includes(viewport.name.toUpperCase()),
     lockDrawerBlocksCatalog,
-    errors: logs.filter((entry) => entry.type === 'error' || entry.type === 'pageerror').map((entry) => entry.text),
+    errors: visibleConsoleErrors,
+    httpErrors: unexpectedHttpErrors,
+    ignoredHttpErrors,
     warnings: logs.filter((entry) => entry.type === 'warning').map((entry) => entry.text)
   };
 
@@ -107,6 +124,9 @@ const run = async () => {
       }
       if (evidence.errors.length > 0) {
         failures.push(`${evidence.viewport.name}.consoleErrors=${evidence.errors.join(' | ')}`);
+      }
+      if (evidence.httpErrors.length > 0) {
+        failures.push(`${evidence.viewport.name}.httpErrors=${JSON.stringify(evidence.httpErrors)}`);
       }
     }
     if (!salesRedirect.passed) {
