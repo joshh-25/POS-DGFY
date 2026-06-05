@@ -1588,9 +1588,12 @@ const makeUserLocationElement = () => {
   return el;
 };
 
+const EMPTY_HIGHLIGHTED_MARKER_KEYS = [];
+
 function StoresMap({
   stores,
   selectedKey,
+  highlightedKeys = EMPTY_HIGHLIGHTED_MARKER_KEYS,
   onSelectStore,
   userLocation = null,
   height = 360,
@@ -1605,6 +1608,7 @@ function StoresMap({
   const onSelectStoreRef = useRef(onSelectStore);
   const autoOpenFrameRef = useRef(null);
   const popupGenerationRef = useRef(0);
+  const markerSignatureRef = useRef('');
   const [mapUnavailable, setMapUnavailable] = useState(false);
 
   useEffect(() => {
@@ -1674,12 +1678,29 @@ function StoresMap({
         autoOpenFrameRef.current = null;
       }
 
+      const rows = Array.isArray(stores) ? stores : [];
+      const nextMarkerSignature = rows
+        .map((store) => {
+          const markerKey = getDiscoveryMarkerKey(store);
+          const lat = Number(store?.latitude);
+          const lng = Number(store?.longitude);
+          return [
+            markerKey || toSlug(store?.slug || store?.tenant_name),
+            Number.isFinite(lat) ? lat.toFixed(6) : '',
+            Number.isFinite(lng) ? lng.toFixed(6) : '',
+            store?.location_id ?? ''
+          ].join(':');
+        })
+        .join('|');
+      const markerSetChanged = markerSignatureRef.current !== nextMarkerSignature;
+      markerSignatureRef.current = nextMarkerSignature;
+
       const retainedPopups = [];
       popupsRef.current.forEach((popup) => {
         const isOpen = typeof popup?.isOpen === 'function'
           ? popup.isOpen()
           : Boolean(popup?.node?.isConnected);
-        if (isOpen) {
+        if (!markerSetChanged && isOpen) {
           retainedPopups.push(popup);
           return;
         }
@@ -1691,7 +1712,6 @@ function StoresMap({
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
 
-      const rows = Array.isArray(stores) ? stores : [];
       const uniqueRows = [];
       const seenMarkerKeys = new Set();
       rows.forEach((store) => {
@@ -1707,6 +1727,11 @@ function StoresMap({
       });
       const bounds = [];
       const autoOpenCallbacks = [];
+      const highlightedKeySet = new Set(
+        (Array.isArray(highlightedKeys) ? highlightedKeys : [])
+          .map((key) => String(key || '').trim())
+          .filter(Boolean)
+      );
       const coordinateGroups = uniqueRows.reduce((acc, store) => {
       const lat = Number(store?.latitude);
       const lng = Number(store?.longitude);
@@ -1733,9 +1758,11 @@ function StoresMap({
       const clusterSelected = selectedKey
         ? group.some((entry) => String(getDiscoveryMarkerKey(entry) || '') === String(selectedKey))
         : group.some((entry) => entry?.is_primary_storefront === true);
+      const clusterHighlighted = group.some((entry) => highlightedKeySet.has(String(getDiscoveryMarkerKey(entry) || '')))
+        || clusterSelected;
 
       if (group.length > 1) {
-        const clusterElement = makeClusterElement(group.length, clusterSelected, `${group.length} storefronts at this location`);
+        const clusterElement = makeClusterElement(group.length, clusterHighlighted, `${group.length} storefronts at this location`);
         const clusterPopup = new maplibregl.Popup({
           anchor: 'bottom',
           offset: { bottom: [0, -14], top: [0, 12], left: [12, 0], right: [-12, 0] },
@@ -1785,14 +1812,16 @@ function StoresMap({
           .addTo(map);
         markersRef.current.push(clusterMarker);
         bounds.push([lng, lat]);
+        if (autoOpenPopups && clusterHighlighted) {
+          autoOpenCallbacks.push({ key: coordinateKey, open: openClusterPopup });
+        }
         return;
       }
 
       const [singleStore] = group;
       const markerKey = getDiscoveryMarkerKey(singleStore) || `${lat}:${lng}`;
-      const highlighted = selectedKey
-        ? markerKey === String(selectedKey)
-        : singleStore.is_primary_storefront === true;
+      const highlighted = highlightedKeySet.has(markerKey)
+        || (selectedKey ? markerKey === String(selectedKey) : singleStore.is_primary_storefront === true);
       const branchName = String(singleStore?.location_name || singleStore?.nearest_location_name || 'Main');
       const tenantName = String(singleStore?.tenant_name || 'Storefront');
       const markerAriaLabel = `Preview ${tenantName} at ${branchName}`;
@@ -1959,7 +1988,7 @@ function StoresMap({
           autoOpenFrameRef.current = null;
         }
       };
-    }, [stores, selectedKey, userLocation, autoOpenPopups, openPopupOnHover]);
+    }, [stores, selectedKey, highlightedKeys, userLocation, autoOpenPopups, openPopupOnHover]);
 
   if (mapUnavailable) {
     return (
@@ -5947,6 +5976,14 @@ export default function StorefrontApp() {
   const searchedDiscoveryMapPins = hasDiscoverySearch && filteredDiscoveryStores.length > 0
     ? discoveryMapPins
     : persistentDiscoveryMapPins;
+  const highlightedDiscoveryMarkerKeys = useMemo(() => {
+    if (hasDiscoverySearch) {
+      return (Array.isArray(searchedDiscoveryMapPins) ? searchedDiscoveryMapPins : [])
+        .map((pin) => getDiscoveryMarkerKey(pin))
+        .filter(Boolean);
+    }
+    return highlightedDiscoveryMarkerKey ? [highlightedDiscoveryMarkerKey] : [];
+  }, [hasDiscoverySearch, searchedDiscoveryMapPins, highlightedDiscoveryMarkerKey]);
   const discoveryResultsMapKey = useMemo(() => {
     const searchKey = String(search || '').trim().toLowerCase();
     const pinKey = (Array.isArray(searchedDiscoveryMapPins) ? searchedDiscoveryMapPins : [])
@@ -9097,6 +9134,7 @@ export default function StorefrontApp() {
                   key={discoveryResultsMapKey}
                   stores={searchedDiscoveryMapPins}
                   selectedKey={highlightedDiscoveryMarkerKey || null}
+                  highlightedKeys={highlightedDiscoveryMarkerKeys}
                   userLocation={discoveryCoords}
                   height="100%"
                     onSelectStore={(pin) => {
@@ -10988,6 +11026,7 @@ export default function StorefrontApp() {
                         <StoresMap
                           stores={activeDiscoveryMapPins}
                           selectedKey={highlightedDiscoveryMarkerKey || null}
+                          highlightedKeys={highlightedDiscoveryMarkerKeys}
                           userLocation={discoveryCoords}
                           height="100%"
                           onSelectStore={(pin) => {

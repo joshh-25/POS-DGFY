@@ -641,6 +641,10 @@ describe('storefront discovery integration flow', () => {
     await user.click(screen.getByRole('button', { name: /^Search$/i }));
     await waitFor(() => expect(screen.getAllByText('Store + Item match').length).toBeGreaterThan(0));
     expect(screen.getAllByText('In-stock match').length).toBeGreaterThan(0);
+    await waitFor(() => {
+      expect(document.querySelectorAll('.discovery-result-pin-visual.is-glowing').length).toBeGreaterThan(0);
+      expect(screen.getByRole('button', { name: 'Open storefront' })).toBeTruthy();
+    });
 
     await user.click(screen.getAllByRole('button', { name: 'View Store' })[0]);
     await waitFor(() => {
