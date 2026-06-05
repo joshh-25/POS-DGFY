@@ -211,6 +211,7 @@ export default function RegisterCompany() {
     const [notice, setNotice] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const handoffExchangeStartedRef = useRef(false);
+    const dgfySessionGenerationRef = useRef(0);
 
     const clearHandoffTokenFromUrl = useCallback(() => {
         const nextParams = new URLSearchParams(searchParams);
@@ -246,16 +247,18 @@ export default function RegisterCompany() {
     useEffect(() => {
         let cancelled = false;
         const token = getStoredDgfyToken();
-        if (!token) return undefined;
+        const sessionGeneration = dgfySessionGenerationRef.current;
 
         fetchDgfyMe(token)
             .then((data) => {
                 if (cancelled) return;
-                setDgfyToken(token);
+                if (sessionGeneration !== dgfySessionGenerationRef.current) return;
+                setDgfyToken(data?.token || token || getStoredDgfyToken());
                 setDgfyAccount(data?.account || null);
             })
             .catch(() => {
                 if (cancelled) return;
+                if (sessionGeneration !== dgfySessionGenerationRef.current) return;
                 clearDgfySession();
                 setDgfyToken('');
                 setDgfyAccount(null);
@@ -306,6 +309,7 @@ export default function RegisterCompany() {
         || (!hasCompanyLegalVersions(companyLegalSnapshot) ? 'Current DGFY company terms are incomplete. Company registration is disabled until the current terms are published.' : '');
 
     const setDgfySessionState = (session) => {
+        dgfySessionGenerationRef.current += 1;
         setDgfyToken(session?.token || getStoredDgfyToken());
         setDgfyAccount(session?.account || null);
         setError('');
@@ -496,23 +500,9 @@ export default function RegisterCompany() {
                 throw new Error(response.data?.message || 'Registration failed');
             }
 
-            const registrationData = response.data.data || {};
-            if (registrationData.status === 'active' && registrationData.company_token) {
-                try {
-                    await startDgfyTenantSession({
-                        tenantId: registrationData.id,
-                        companyToken: registrationData.company_token
-                    }, dgfyToken);
-                    navigate('/', { replace: true });
-                    return;
-                } catch (sessionError) {
-                    setNotice(sessionError.response?.data?.message || 'Company created. Sign in to SKUpervisor to continue.');
-                }
-            }
-
             setSuccess({
                 message: response.data.message,
-                data: registrationData
+                data: response.data.data || {}
             });
             setCompanyForm((current) => ({ ...current, acceptedCompanyTerms: false }));
         } catch (err) {
@@ -522,7 +512,44 @@ export default function RegisterCompany() {
         }
     };
 
+    const goToManualSkupervisorLogin = useCallback(() => {
+        navigate('/login', {
+            state: {
+                registration: {
+                    email: dgfyAccount?.email,
+                    companyToken: success?.data?.company_token,
+                    companyName: success?.data?.name
+                }
+            }
+        });
+    }, [dgfyAccount?.email, navigate, success?.data?.company_token, success?.data?.name]);
+
+    const handleProceedToSkupervisor = async () => {
+        setError('');
+        setNotice('');
+
+        if (!success?.data?.company_token || success?.data?.status !== 'active' || !dgfyToken) {
+            goToManualSkupervisorLogin();
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            await startDgfyTenantSession({
+                tenantId: success.data.id,
+                companyToken: success.data.company_token
+            }, dgfyToken);
+            navigate('/', { replace: true });
+        } catch (sessionError) {
+            setNotice(sessionError.response?.data?.message || 'Company created. Sign in to SKUpervisor to continue.');
+            goToManualSkupervisorLogin();
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const handleSignOutDgfy = async () => {
+        dgfySessionGenerationRef.current += 1;
         await logoutDgfyAccount(dgfyToken).catch(() => clearDgfySession());
         setDgfyToken('');
         setDgfyAccount(null);
@@ -536,6 +563,11 @@ export default function RegisterCompany() {
                     <CheckCircle2 className="mx-auto mb-4 h-14 w-14 text-[#0f7f73]" />
                     <h1 className="text-center text-2xl font-bold text-[#132033]">Company Created</h1>
                     <p className="mt-2 text-center text-sm text-slate-600">{success.message}</p>
+                    {notice ? (
+                        <div className="mt-5 rounded-2xl border border-[#b7ded7] bg-[#eefaf7] p-3 text-sm text-[#0f766e]">
+                            {notice}
+                        </div>
+                    ) : null}
                     <div className="mt-6 rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">
                         <p className="text-sm font-semibold text-[#132033]">{success.data?.name}</p>
                         <p className="mt-1 text-sm text-slate-600">Business industry: {WORKFLOW_MODE_LABELS[success.data?.workflow_mode] || success.data?.workflow_mode}</p>
@@ -543,17 +575,10 @@ export default function RegisterCompany() {
                     </div>
                     <Button
                         className="mt-6 w-full bg-[#1f5f9f] hover:bg-[#174f86]"
-                        onClick={() => navigate('/login', {
-                            state: {
-                                registration: {
-                                    email: dgfyAccount?.email,
-                                    companyToken: success.data?.company_token,
-                                    companyName: success.data?.name
-                                }
-                            }
-                        })}
+                        onClick={handleProceedToSkupervisor}
+                        disabled={isLoading}
                     >
-                        Continue to SKUpervisor Login
+                        {isLoading ? 'Opening SKUpervisor...' : 'Proceed to SKUpervisor'}
                     </Button>
                 </div>
             </div>
