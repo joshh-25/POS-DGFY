@@ -48,6 +48,14 @@ const missingStorefrontCatalogOverrideTableError = () => ({
     }
 });
 
+const missingStorefrontCatalogGalleryColumnError = () => ({
+    name: 'SequelizeDatabaseError',
+    original: {
+        code: 'ER_BAD_FIELD_ERROR',
+        sqlMessage: "Unknown column 'storefrontCatalogOverride.storefront_image_gallery' in 'field list'"
+    }
+});
+
 const missingServiceItemDetailsTableError = () => ({
     name: 'SequelizeDatabaseError',
     original: {
@@ -220,6 +228,37 @@ describe('storeRepository location-stock schema fallback', () => {
         });
 
         expect(result).toEqual([]);
+    });
+
+    it('listStoreCatalog retries without gallery when storefront override gallery column is missing', async () => {
+        itemFindAllMock
+            .mockRejectedValueOnce(missingStorefrontCatalogGalleryColumnError())
+            .mockResolvedValueOnce([
+                buildCatalogRow({
+                    item_id: 650,
+                    storefrontCatalogOverride: {
+                        storefront_visible: true,
+                        storefront_image_url: '/uploads/storefront/visible.png'
+                    }
+                })
+            ]);
+        itemLocationStockFindAllMock.mockResolvedValue([]);
+
+        const result = await storeRepository.listStoreCatalog({
+            search: '',
+            limit: 60,
+            location_id: null
+        });
+
+        expect(result).toHaveLength(1);
+        expect(result[0]).toEqual(expect.objectContaining({
+            item_id: 650,
+            image_url: '/uploads/storefront/visible.png',
+            image_gallery: [{ url: '/uploads/storefront/visible.png', is_primary: true, sort_order: 0 }]
+        }));
+        const retryQuery = itemFindAllMock.mock.calls[1][0];
+        const storefrontInclude = retryQuery.include.find((entry) => entry.as === 'storefrontCatalogOverride');
+        expect(storefrontInclude.attributes).toEqual(['storefront_visible', 'storefront_image_url']);
     });
 
     it('listStoreCatalog retries without service details when that optional table is unavailable', async () => {

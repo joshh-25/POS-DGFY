@@ -64,6 +64,17 @@ const makeJsonResponse = (data, ok = true) => ({
   json: async () => ({ data })
 });
 
+const makeErrorResponse = ({ status = 500, message = 'Request failed', errorCode = 'INTERNAL_ERROR', errors = {} } = {}) => ({
+  ok: false,
+  status,
+  json: async () => ({
+    success: false,
+    message,
+    error_code: errorCode,
+    errors
+  })
+});
+
 describe('storefront profile launcher', () => {
   let fetchMock;
 
@@ -209,6 +220,49 @@ describe('storefront profile launcher', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await waitFor(() => {
       expect(screen.getByLabelText(/1 active order/i)).toBeTruthy();
+    });
+  }, 10000);
+
+  it('keeps the storefront profile visible when catalog loading fails', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({ stores: [], pagination: { page: 1, limit: 100, total: 0, totalPages: 0 } });
+      }
+      if (normalized.includes('/api/v1/storefront/discovery/')) {
+        return makeJsonResponse({
+          slug: 'alpha',
+          tenant_name: 'Alpha Foods',
+          workflow_mode: 'msme',
+          location_id: 11,
+          address_line: 'Iloilo City',
+          storefront_open: true,
+          catalog_count: 2
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({ locations: [], primary_location_id: null });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeErrorResponse({
+          status: 500,
+          message: 'Failed to list storefront catalog',
+          errorCode: 'STORE_CATALOG_RUNTIME_ERROR',
+          errors: { catalog_error_type: 'runtime_failure' }
+        });
+      }
+      return makeJsonResponse({});
+    });
+
+    window.history.pushState({}, '', '/tenant-store/alpha');
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Alpha Foods').length).toBeGreaterThan(0);
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Storefront catalog could not load')).toBeTruthy();
+      expect(screen.getByText('Failed to list storefront catalog')).toBeTruthy();
     });
   }, 10000);
 });
