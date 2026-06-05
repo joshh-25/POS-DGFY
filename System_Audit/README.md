@@ -99,6 +99,11 @@ Commands executed during this audit:
 - `npm --prefix backend test -- --runTestsByPath tests/itemHandlers.transport.test.js` - passed 7 tests on 2026-06-04 after updating stale inventory transport mocks for the storefront gallery use-case exports.
 - `npm run gate:release:local` - passed on 2026-06-04 for target SHA `be59a6b55f4d6367acd124729b43fa4ee579d09b`; artifact `.tmp/release-gates/be59a6b55f4d6367acd124729b43fa4ee579d09b/local_readiness.json` records 15 gates passing, including `backend.test_matrix` with 275 active backend test files and the release-owned frontend budget report.
 - `npm --prefix backend test -- --runTestsByPath tests/tenantHandler.emailOtp.test.js tests/dgfyTenantSession.transport.test.js tests/browserSessionCookies.test.js` - passed on 2026-06-05 after hardening `/api/v1/auth/refresh-token` to recover tenant context from the signed HttpOnly refresh cookie when a fresh DGFY-to-SKUpervisor browser session is missing the companion tenant-context cookie/header.
+- `npm --prefix frontend test -- --run src/services/__tests__/api.interceptor.test.js` - passed 11 tests on 2026-06-05 after protected frontend API calls learned to preflight cookie-backed session refresh after hard reload.
+- `npm --prefix backend test -- --runTestsByPath tests/auth.test.js` - passed 12 tests on 2026-06-05 after login and refresh responses returned `data.company.token` with the tenant access payload.
+- `npm --prefix frontend test -- --run src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx` - passed 4 tests on 2026-06-05 after the shared IMS MapLibre picker moved to the inline raster style contract and preserved coordinate fallback behavior during tile-resource failures.
+- `npm --prefix frontend test -- --run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx` - passed 26 tests on 2026-06-05 proving onboarding and Settings still wire the shared MapLibre picker into location forms.
+- Production deployment on 2026-06-05 deployed target SHA `fe0d9fc82d011d9e03e095cae73105564727fb9e`; production deploy summary reported backend health, IMS, POS, Store, and Tenant Store public endpoints passed, tenant-store asset integrity passed, and frontend asset parity passed.
 
 ## Severity Model
 
@@ -142,7 +147,7 @@ Hygiene, documentation, or follow-through item that should be tracked but does n
 
 1. Close remaining critical and high security findings: default admin credential path, token storage, webhook fail-open, invite token leakage, and production env fail-stop. Dependency vulnerabilities are resolved as of 2026-06-02.
 2. Restore release gate integrity: backend lint, backend test evidence, frontend contract failures, frontend budget artifact self-containment, and the aggregate local release gate are remediated as of 2026-06-04 for target SHA `be59a6b55f4d6367acd124729b43fa4ee579d09b`.
-3. Refresh production promotion evidence for the next target SHA before declaring the June 5 tenant browser-session fix live: no-staging parity, exact deployed SHA, health checks, and a fresh-registration **Proceed to SKUpervisor** smoke.
+3. Treat the June 5 tenant browser-session and MapLibre picker fixes as production-deployed at SHA `fe0d9fc82d011d9e03e095cae73105564727fb9e`; refresh no-staging parity, exact deployed SHA, health checks, and feature-specific smoke again before declaring any later target SHA deployable.
 4. Reduce production performance risk: StorefrontApp decomposition, high-limit query review, upload transport validation.
 5. Close governance debt: RBAC fallback removal, architecture allowlist removal plan, fiscal/payment evidence.
 6. Add operational proof: SLO dashboards, alert evidence, AI adversarial/cost tests, release evidence that no longer depends on stale QA bypasses.

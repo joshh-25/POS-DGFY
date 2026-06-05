@@ -212,18 +212,23 @@ Authenticate user and establish a browser session.
     "phone_number": "+63 912 345 6789",
     "role": "staff",
     "token": "eyJhbGciOiJIUzI1NiIs...",
-    "expiresIn": 86400
+    "expiresIn": 86400,
+    "company": {
+      "id": "tenant-uuid",
+      "name": "Acme Store",
+      "token": "token-acme-123"
+    }
   },
   "message": "Login successful"
 }
 ```
 
-Browser responses set HttpOnly `sku_refresh_token` and `sku_tenant_context` cookies plus the browser-readable `sku_csrf_token` cookie. The refresh token is not returned in JSON.
+Browser responses set HttpOnly `sku_refresh_token` and `sku_tenant_context` cookies plus the browser-readable `sku_csrf_token` cookie. The refresh token is not returned in JSON. Tenant login responses include `data.company.token` so browser clients can keep tenant context in memory without persisting it in browser-readable storage.
 
 ### POST /auth/refresh-token
 Refresh the in-memory access token using the HttpOnly browser session cookie.
 
-Browser refresh authority is the HttpOnly `sku_refresh_token` cookie. If `sku_tenant_context` or `x-company-token` is missing, the backend may recover tenant context by verifying the signed refresh cookie, reading its `tenant_id`, and resolving the landlord tenant before running refresh-token rotation. Invalid, expired, tenant-less, tenant-mismatched, blacklisted, or inactive-user refresh attempts fail through the normal auth error path. The refresh token is never accepted as browser-readable JSON authority and is never returned in the response body.
+Browser refresh authority is the HttpOnly `sku_refresh_token` cookie. If `sku_tenant_context` or `x-company-token` is missing, the backend may recover tenant context by verifying the signed refresh cookie, reading its `tenant_id`, and resolving the landlord tenant before running refresh-token rotation. Invalid, expired, tenant-less, tenant-mismatched, blacklisted, or inactive-user refresh attempts fail through the normal auth error path. The refresh token is never accepted as browser-readable JSON authority and is never returned in the response body. Successful tenant refresh responses include `data.company.token` when tenant context is available so browser clients can restore the in-memory company-token header after hard reload.
 
 **Request**
 ```json
@@ -236,7 +241,12 @@ Browser refresh authority is the HttpOnly `sku_refresh_token` cookie. If `sku_te
   "success": true,
   "data": {
     "token": "eyJhbGciOiJIUzI1NiIs...",
-    "expiresIn": 86400
+    "expiresIn": 86400,
+    "company": {
+      "id": "tenant-uuid",
+      "name": "Acme Store",
+      "token": "token-acme-123"
+    }
   }
 }
 ```

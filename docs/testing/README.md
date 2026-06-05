@@ -45,7 +45,9 @@ Evidence semantics:
 2. RTR tests prove refresh authority is cookie-only, CSRF-protected, rotated on use, and replay-rejected.
 3. Frontend storage guards prove privileged tenant, refresh, DGFY, storefront, and admin tokens are not persisted in browser-readable storage.
 4. Tenant-handler and DGFY tenant-session transport tests prove the one-click company-registration handoff sets normal tenant cookies and that `/auth/refresh-token` can recover tenant context from a signed tenant-bound refresh cookie when the companion tenant-context cookie is missing.
-5. These gates do not prove all XSS vectors are impossible; CSP and input/output encoding reviews remain required for UI changes.
+5. Frontend API interceptor tests prove protected requests preflight cookie-backed session refresh after hard reload when the in-memory access token is empty.
+6. Backend auth tests prove login and refresh responses include `data.company.token` when tenant context is available, allowing the frontend to restore the company-token header without browser-readable tenant-token persistence.
+7. These gates do not prove all XSS vectors are impossible; CSP and input/output encoding reviews remain required for UI changes.
 
 ## PayMongo Webhook Security Gates
 

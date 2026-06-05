@@ -35,6 +35,7 @@ Current browser authentication contract:
 - Frontend code must not persist `authToken`, `refreshToken`, tenant context, DGFY customer tokens, storefront customer tokens, or admin tokens in `localStorage` or `sessionStorage`.
 - Cookie-authenticated unsafe requests must include `x-csrf-token` from the browser-readable `sku_csrf_token` cookie.
 - Tenant refresh requests use the HttpOnly `sku_refresh_token` cookie. When the companion tenant-context cookie is missing, the backend can recover tenant context from the signed refresh cookie's tenant binding before rotating the session; invalid or tenant-mismatched refresh cookies still fail closed.
+- Tenant login and refresh responses include `data.company.token` when tenant context is available. Frontend protected API requests preflight `refreshBrowserSession()` after a hard reload when the in-memory access token has been lost but the HttpOnly browser session cookie still exists.
 
 ---
 
@@ -48,7 +49,7 @@ The API service layer acts as a bridge between the frontend and backend, handlin
 
 ```javascript
 import axios from 'axios';
-import { getAuthHeaders, refreshBrowserSession } from './browserSession.js';
+import { getAccessToken, getAuthHeaders, refreshBrowserSession } from './browserSession.js';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
@@ -59,7 +60,20 @@ const api = axios.create({
   }
 });
 
-api.interceptors.request.use((config) => {
+const isProtectedRequest = (config) => {
+  const url = String(config.url || '');
+  return !url.includes('/auth/login') && !url.includes('/auth/refresh-token');
+};
+
+api.interceptors.request.use(async (config) => {
+  if (isProtectedRequest(config) && !getAccessToken()) {
+    try {
+      await refreshBrowserSession();
+    } catch {
+      // Let the original request continue and fail through the normal auth path.
+    }
+  }
+
   const method = String(config.method || 'get').toLowerCase();
   Object.assign(config.headers, getAuthHeaders({
     includeCsrf: !['get', 'head', 'options'].includes(method)
@@ -101,7 +115,7 @@ export const login = async ({ email, password, companyToken }) => {
 
   setBrowserSession({
     token: response.data.data.token,
-    companyToken
+    companyToken: response.data.data.company?.token || companyToken
   });
   window.dispatchEvent(new CustomEvent('auth:login'));
   return response.data.data;
