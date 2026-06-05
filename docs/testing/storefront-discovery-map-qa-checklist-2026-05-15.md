@@ -1,7 +1,7 @@
 ---
 status: reference
 owner: frontend
-last_reviewed: 2026-05-15
+last_reviewed: 2026-06-06
 applies_to: storefront_discovery_map
 ---
 
@@ -19,10 +19,12 @@ Scope: Differences between old vs current Storefront Discovery Map changes acros
 | 4 | Category chips behavior | Frontend | Chips mostly changed text/query presentation | Chips apply real category filtering | Click `Food` then `Laundry`, observe result changes | **Pass:** result set changes per selected chip. **Fail:** only text changes, results stay same |
 | 5 | Expanded category row | Frontend | Limited chip set | Primary row + expandable “More” chips | Click `More` chip and inspect extra categories | **Pass:** extra category chips appear and can be selected. **Fail:** no expansion |
 | 6 | Marker hover preview before search | Frontend | No reliable pre-search marker preview | Marker hover opens preview banner/card | On hero map (no search), hover markers | **Pass:** popup preview appears on hover. **Fail:** no popup appears |
-| 7 | Overlapping marker visibility | Frontend | Some stores hidden when coordinates overlap | Coordinate spreading ensures all markers visible | Compare visible markers vs known store count | **Pass:** all expected stores are represented. **Fail:** some stores missing on map |
+| 7 | Overlapping marker visibility | Frontend | Some stores hidden when coordinates overlap | Exact same-coordinate storefronts render as one shared marker with a selectable storefront list; coordinates are not visually offset | Compare visible shared marker count and selectable storefront list vs known same-coordinate stores | **Pass:** all expected stores are represented in the shared-marker list without displaced pins. **Fail:** stores are missing, pins are offset away from stored coordinates, or the shared list cannot be opened |
 | 8 | Map camera style | Frontend | More angled pitch/bearing | Cleaner flatter top-down map | Visually inspect map camera | **Pass:** map is flatter (minimal pitch/bearing). **Fail:** steep angle remains |
 | 9 | Business mode pin colors | Frontend | Mostly single green tone | Mode-based colors (F&B orange, services blue, MSME light green, etc.) | Inspect pins for mixed business modes | **Pass:** colors vary by mode and match design intent. **Fail:** mostly one color persists |
 | 10 | Marker popup design | Frontend | Simpler popup | Compact premium card with image/status/rating/ETA | Open map popup from marker | **Pass:** popup shows rich compact card fields. **Fail:** old minimal popup persists |
+| 10a | Search-active marker preview | Frontend | Search result pins could be listed without every matched map pin pulsing or showing the marker card | Active search results pulse for tenant/store-name and item/product matches, and active result pins auto-open the compact card with `Open storefront` | Search a tenant name and a product/service keyword, then inspect the matching map pins and preview card | **Pass:** every matching result pin pulses while search results are active and the preview card exposes `Open storefront`. **Fail:** only one result pulses, item matches do not pulse, or the preview card is missing |
+| 10b | Marker popup lifecycle | Frontend | A previously opened marker card could remain after pins rebuilt, visually separating the card from the active pin | Popup state is retained only while the marker set is unchanged and stale cards are removed when pins rebuild | Open a marker preview, change the search/filter so the marker set changes, then inspect the map | **Pass:** stale cards disappear or re-anchor to the current result marker set. **Fail:** a card remains far from its pin or belongs to an old result |
 | 11 | Discovery transition layout | Frontend | Less-structured post-search layout | Map-left + results-right split | Search any term (e.g., Pizza) | **Pass:** map shrinks and right panel appears. **Fail:** no split layout |
 | 12 | Results panel toggle | Frontend | No explicit list panel show/hide behavior | List panel can be shown/hidden | Use panel toggle button | **Pass:** panel opens/closes correctly. **Fail:** toggle has no effect |
 | 13 | List/Grid result views | Frontend | Older/default single representation | List default with grid toggle | Switch list/grid buttons | **Pass:** card layout changes between list and grid. **Fail:** no visual change |
