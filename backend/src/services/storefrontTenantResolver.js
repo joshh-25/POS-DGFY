@@ -5,6 +5,7 @@ import { getStorefrontDiscoveryCacheVersion } from './storefrontDiscoveryCacheSt
 import { getStorefrontDiscoverySharedSignature } from './storefrontDiscoveryFreshnessService.js';
 
 const CACHE_TTL_MS = 30 * 1000;
+const MISS_REPAIR_TTL_MS = 30 * 1000;
 let cache = {
   expiresAt: 0,
   bySlug: new Map(),
@@ -12,6 +13,7 @@ let cache = {
   signature: '0:0'
 };
 let emptyAutoRepairInFlight = false;
+const missRepairCooldownBySlug = new Map();
 
 const normalizeSlug = (value) => String(value || '').trim().toLowerCase();
 const shouldAutoRepairEmptyIndex = () => process.env.STOREFRONT_DISCOVERY_INDEX_AUTO_REPAIR_ON_EMPTY !== 'false';
@@ -74,8 +76,29 @@ const warmMap = async () => {
 export const resolveTenantByStoreSlug = async (slug) => {
   const normalizedSlug = normalizeSlug(slug);
   if (!normalizedSlug) return null;
-  const map = await warmMap();
-  return map.get(normalizedSlug) || null;
+  let map = await warmMap();
+  const cachedMatch = map.get(normalizedSlug);
+  if (cachedMatch) return cachedMatch;
+
+  const now = Date.now();
+  const missRepairCooldown = Number(missRepairCooldownBySlug.get(normalizedSlug) || 0);
+  if (missRepairCooldown > now) {
+    return null;
+  }
+
+  missRepairCooldownBySlug.set(normalizedSlug, now + MISS_REPAIR_TTL_MS);
+  try {
+    await reconcileStorefrontDiscoveryIndex({ pruneStale: false });
+    clearStorefrontTenantResolverCache();
+    map = await warmMap();
+    return map.get(normalizedSlug) || null;
+  } catch (error) {
+    logger.warn('[StorefrontTenantResolver] Miss repair reconcile failed', {
+      slug: normalizedSlug,
+      error: error?.message || 'unknown_error'
+    });
+    return null;
+  }
 };
 
 export const clearStorefrontTenantResolverCache = () => {
@@ -85,4 +108,5 @@ export const clearStorefrontTenantResolverCache = () => {
     version: -1,
     signature: '0:0'
   };
+  missRepairCooldownBySlug.clear();
 };

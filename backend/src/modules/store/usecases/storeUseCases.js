@@ -1890,6 +1890,247 @@ export const buildStoreCartQuoteUseCase = ({ storeRepository }) => {
     };
 };
 
+const serializePaymentSession = (session = {}) => ({
+    payment_session_id: session.public_reference,
+    public_reference: session.public_reference,
+    status: session.status,
+    provider: session.provider,
+    payment_method: 'qrph',
+    qr_code_image_url: session.qr_code_image_url || null,
+    checkout_url: session.checkout_url || null,
+    expires_at: session.expires_at || null,
+    subtotal_amount: session.subtotal_amount,
+    delivery_fee: session.delivery_fee,
+    service_fee_amount: session.service_fee_amount,
+    service_fee_label: getDgfyConvenienceFeeLabel(),
+    total_amount: session.total_amount,
+    currency: session.currency || 'PHP',
+    platform_fee_centavos: session.platform_fee_centavos,
+    tenant_transfer_merchant_id: session.tenant_transfer_merchant_id || null,
+    tracking_pin: session.tracking_pin || null,
+    pos_transaction_id: session.pos_transaction_id || null,
+    failure_code: session.failure_code || null,
+    failure_reason: session.failure_reason || null
+});
+
+export const buildStoreCheckoutPaymentSessionUseCase = ({
+    storeRepository,
+    commercePaymentRepository,
+    paymongoService,
+    commercePaymentsEnabled = false,
+    commerceQrphEnabled = false,
+    commercePaymongoSplitEnabled = false,
+    requireCommerceQrphConfig = () => []
+}) => {
+    return async ({ payload, storeCustomer = null }) => {
+        try {
+            if (!commercePaymentsEnabled || !commerceQrphEnabled) {
+                throw new DomainError(
+                    DomainErrorCode.SERVICE_UNAVAILABLE,
+                    'Online QR Ph payments are not enabled for this storefront.',
+                    { statusCode: 503 }
+                );
+            }
+
+            if (!isPlainObject(payload)) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'payload must be an object', { statusCode: 400 });
+            }
+
+            const missingConfig = requireCommerceQrphConfig();
+            if (missingConfig.length > 0) {
+                throw new DomainError(
+                    DomainErrorCode.SERVICE_UNAVAILABLE,
+                    `QR Ph payments are missing server configuration: ${missingConfig.join(', ')}`,
+                    { statusCode: 503 }
+                );
+            }
+
+            const tenantContext = dbStore.getStore() || {};
+            const tenantId = normalizeTenantIdentifier(tenantContext.tenantId);
+            const storeSlug = String(payload.store_slug || tenantContext.tenantToken || '').trim().toLowerCase();
+            if (!tenantId || tenantId === 'default') {
+                throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Tenant context is required for QR Ph checkout', { statusCode: 403 });
+            }
+
+            const idempotencyKey = String(payload.idempotency_key || '').trim();
+            if (idempotencyKey.length < 8) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'idempotency_key is required', { statusCode: 422 });
+            }
+
+            const account = await commercePaymentRepository.findTenantPaymentAccount({ tenantId, provider: 'paymongo' });
+            if (!account || account.onboarding_status !== 'active' || !account.qrph_enabled || !account.split_enabled || !account.charges_enabled) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This storefront is not ready for PayMongo QR Ph split payments.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            code: 'PAYMONGO_ACCOUNT_NOT_READY',
+                            onboarding_status: account?.onboarding_status || 'missing',
+                            wallet_status: account?.wallet_status || 'unknown',
+                            qrph_enabled: Boolean(account?.qrph_enabled),
+                            split_enabled: Boolean(account?.split_enabled),
+                            charges_enabled: Boolean(account?.charges_enabled)
+                        }
+                    }
+                );
+            }
+            if (account.wallet_status !== 'enabled' || !account.wallet_verified_at) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This storefront does not have verified PayMongo enabled-wallet evidence.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            code: 'PAYMONGO_WALLET_NOT_READY',
+                            wallet_status: account.wallet_status || 'unknown',
+                            wallet_verified_at: account.wallet_verified_at || null
+                        }
+                    }
+                );
+            }
+
+            const normalizedPayload = {
+                ...payload,
+                payment_type: 'qrph'
+            };
+            const requestHash = crypto.createHash('sha256').update(stableStringify(normalizedPayload)).digest('hex');
+            const existing = await commercePaymentRepository.findSessionByIdempotency({
+                tenantId,
+                targetType: 'store_checkout',
+                idempotencyKey
+            });
+            if (existing) {
+                if (existing.request_hash !== requestHash) {
+                    throw new DomainError(DomainErrorCode.CONFLICT, 'idempotency_key already used for a different checkout payload', { statusCode: 409 });
+                }
+                return ok({ idempotent_replay: true, payment_session: serializePaymentSession(existing) });
+            }
+
+            const resolved = await resolveCheckoutContext({
+                storeRepository,
+                payload: normalizedPayload,
+                storeCustomer
+            });
+
+            const totalAmountCentavos = toCentavos(resolved.totalAmount);
+            const platformFeeCentavos = toCentavos(resolved.serviceFeeAmount);
+            if (totalAmountCentavos <= 0 || platformFeeCentavos <= 0 || platformFeeCentavos >= totalAmountCentavos) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'QR Ph checkout amount is too low for fixed DGFY split settlement.',
+                    { statusCode: 422 }
+                );
+            }
+
+            const publicReference = `CPS-${randomAlphaNumeric(10)}`;
+            if (account.provider_merchant_id === process.env.PAYMONGO_DGFY_MERCHANT_ID) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Tenant PayMongo merchant ID must be different from the DGFY platform merchant ID.',
+                    {
+                        statusCode: 409,
+                        details: { code: 'PAYMONGO_SPLIT_RECIPIENT_CONFLICT' }
+                    }
+                );
+            }
+            const splitPayload = commercePaymongoSplitEnabled ? {
+                transfer_to: account.provider_merchant_id,
+                recipients: [{
+                    merchant_id: process.env.PAYMONGO_DGFY_MERCHANT_ID,
+                    split_type: 'fixed',
+                    value: platformFeeCentavos
+                }]
+            } : null;
+
+            const session = await commercePaymentRepository.createSession({
+                public_reference: publicReference,
+                tenant_id: tenantId,
+                store_slug: storeSlug || 'store',
+                provider: 'paymongo',
+                target_type: 'store_checkout',
+                status: 'created',
+                idempotency_key: idempotencyKey,
+                request_hash: requestHash,
+                checkout_payload: normalizedPayload,
+                subtotal_amount: resolved.prepared.subtotalAmount,
+                delivery_fee: resolved.deliveryFee,
+                service_fee_amount: resolved.serviceFeeAmount,
+                total_amount: resolved.totalAmount,
+                currency: 'PHP',
+                total_amount_centavos: totalAmountCentavos,
+                platform_fee_centavos: platformFeeCentavos,
+                tenant_transfer_merchant_id: account.provider_merchant_id,
+                split_payload: splitPayload
+            });
+
+            let providerResult;
+            try {
+                providerResult = await paymongoService.createQrphPaymentIntent({
+                    amount: totalAmountCentavos,
+                    currency: 'PHP',
+                    description: `DGFY storefront checkout ${publicReference}`,
+                    billing: {
+                        name: normalizedPayload.customer_name || 'Storefront Customer',
+                        email: normalizedPayload.customer_email || undefined,
+                        phone: normalizedPayload.customer_phone || undefined
+                    },
+                    metadata: {
+                        commerce_payment_session: publicReference,
+                        tenant_id: String(tenantId),
+                        store_slug: storeSlug,
+                        platform_fee_centavos: String(platformFeeCentavos)
+                    },
+                    splitPayment: splitPayload,
+                    returnUrl: process.env.STOREFRONT_PAYMENT_RETURN_URL || null
+                });
+            } catch (error) {
+                const failed = await commercePaymentRepository.updateSessionById(session.session_id, {
+                    status: 'failed',
+                    failure_code: 'PROVIDER_CREATE_FAILED',
+                    failure_reason: error.response?.data?.errors?.[0]?.detail || error.message || 'PayMongo QR Ph creation failed'
+                });
+                return ok({ payment_session: serializePaymentSession(failed) });
+            }
+
+            const expiresAt = providerResult.expiresAt ? new Date(providerResult.expiresAt) : new Date(Date.now() + 30 * 60 * 1000);
+            const updated = await commercePaymentRepository.updateSessionById(session.session_id, {
+                status: 'awaiting_payment',
+                provider_payment_intent_id: providerResult.paymentIntent?.id || providerResult.attachedIntent?.id || null,
+                provider_payment_method_id: providerResult.paymentMethod?.id || null,
+                qr_code_image_url: providerResult.qrCodeImageUrl || null,
+                checkout_url: providerResult.checkoutUrl || null,
+                expires_at: expiresAt,
+                provider_payload: providerResult.attachedIntent || providerResult.paymentIntent || null
+            });
+
+            return ok({ idempotent_replay: false, payment_session: serializePaymentSession(updated) });
+        } catch (error) {
+            return fail(mapStoreUseCaseError(error, 'Failed to create QR Ph payment session'));
+        }
+    };
+};
+
+export const buildGetStoreCheckoutPaymentSessionUseCase = ({ commercePaymentRepository }) => {
+    return async ({ paymentSessionId }) => {
+        try {
+            const reference = String(paymentSessionId || '').trim().toUpperCase();
+            if (!/^CPS-[A-Z0-9]{10}$/.test(reference)) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Invalid payment session reference', { statusCode: 422 });
+            }
+            const tenantContext = dbStore.getStore() || {};
+            const tenantId = normalizeTenantIdentifier(tenantContext.tenantId);
+            const session = await commercePaymentRepository.findSessionByPublicReference(reference);
+            if (!session || normalizeTenantIdentifier(session.tenant_id) !== tenantId) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payment session not found', { statusCode: 404 });
+            }
+            return ok({ payment_session: serializePaymentSession(session) });
+        } catch (error) {
+            return fail(mapStoreUseCaseError(error, 'Failed to load QR Ph payment session'));
+        }
+    };
+};
+
 export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
     return async ({ tenantId, payload, storeCustomer = null }) => {
         if (!isPlainObject(payload)) {
@@ -2419,22 +2660,27 @@ export const buildListStoreCustomerOrdersUseCase = ({ storeRepository }) => {
 
 const FOLLOW_VISITOR_ID_PATTERN = /^[A-Za-z0-9._:-]{16,128}$/;
 
-const resolveStorefrontSlugGuard = async ({ storeRepository }) => {
+const resolveStorefrontSlugGuard = async ({ storeRepository, tenantId, resolveDiscoverySlug = async () => null }) => {
+    const discoverySnapshot = await resolveDiscoverySlug({ tenantId }).catch(() => null);
+    const indexedSlug = String(discoverySnapshot?.slug || '').trim().toLowerCase();
     const settingsRows = await storeRepository.getSettingsByKeys(['store_tenant_slug']);
     const configured = String(settingsRows?.store_tenant_slug?.value || '').trim().toLowerCase();
-    if (!configured) {
+    if (!indexedSlug && !configured) {
         throw new DomainError(
             DomainErrorCode.RESOURCE_NOT_FOUND,
             'Storefront slug is not configured for this tenant',
             { statusCode: 404 }
         );
     }
-    return configured;
+    return {
+        indexedSlug,
+        configuredSlug: configured
+    };
 };
 
-const normalizeStorefrontFollowInput = async ({ storeRepository, tenantId, payload = {}, storeCustomer = null }) => {
+const normalizeStorefrontFollowInput = async ({ storeRepository, tenantId, payload = {}, storeCustomer = null, resolveDiscoverySlug = async () => null }) => {
     const normalizedTenantId = ensureTenantContext(tenantId);
-    const configuredTenantSlug = await resolveStorefrontSlugGuard({ storeRepository, tenantId: normalizedTenantId });
+    const allowedSlugConfig = await resolveStorefrontSlugGuard({ storeRepository, tenantId: normalizedTenantId, resolveDiscoverySlug });
     const storefrontSlug = String(payload?.storefront_slug || '').trim().toLowerCase();
     const visitorId = String(payload?.visitor_id || '').trim();
 
@@ -2445,7 +2691,11 @@ const normalizeStorefrontFollowInput = async ({ storeRepository, tenantId, paylo
             { statusCode: 422 }
         );
     }
-    if (storefrontSlug !== configuredTenantSlug) {
+    const allowedSlugs = new Set([
+        String(allowedSlugConfig?.indexedSlug || '').trim().toLowerCase(),
+        String(allowedSlugConfig?.configuredSlug || '').trim().toLowerCase()
+    ].filter(Boolean));
+    if (!allowedSlugs.has(storefrontSlug)) {
         throw new DomainError(
             DomainErrorCode.RESOURCE_NOT_FOUND,
             'Storefront slug was not found for this tenant',
@@ -2474,10 +2724,10 @@ const normalizeStorefrontFollowInput = async ({ storeRepository, tenantId, paylo
     };
 };
 
-export const buildGetStorefrontFollowStatusUseCase = ({ storeRepository }) => {
+export const buildGetStorefrontFollowStatusUseCase = ({ storeRepository, resolveDiscoverySlug = async () => null }) => {
     return async ({ tenantId, payload = {}, storeCustomer = null }) => {
         try {
-            const normalized = await normalizeStorefrontFollowInput({ storeRepository, tenantId, payload, storeCustomer });
+            const normalized = await normalizeStorefrontFollowInput({ storeRepository, tenantId, payload, storeCustomer, resolveDiscoverySlug });
             const [existing, followersCount] = await Promise.all([
                 storeRepository.findStorefrontFollow(normalized),
                 storeRepository.countStorefrontFollowsBySlug(normalized)
@@ -2493,10 +2743,10 @@ export const buildGetStorefrontFollowStatusUseCase = ({ storeRepository }) => {
     };
 };
 
-export const buildFollowStorefrontUseCase = ({ storeRepository }) => {
+export const buildFollowStorefrontUseCase = ({ storeRepository, resolveDiscoverySlug = async () => null }) => {
     return async ({ tenantId, payload = {}, storeCustomer = null }) => {
         try {
-            const normalized = await normalizeStorefrontFollowInput({ storeRepository, tenantId, payload, storeCustomer });
+            const normalized = await normalizeStorefrontFollowInput({ storeRepository, tenantId, payload, storeCustomer, resolveDiscoverySlug });
             await storeRepository.upsertStorefrontFollow(normalized);
             const followersCount = await storeRepository.countStorefrontFollowsBySlug(normalized);
             return ok({
@@ -2510,10 +2760,10 @@ export const buildFollowStorefrontUseCase = ({ storeRepository }) => {
     };
 };
 
-export const buildUnfollowStorefrontUseCase = ({ storeRepository }) => {
+export const buildUnfollowStorefrontUseCase = ({ storeRepository, resolveDiscoverySlug = async () => null }) => {
     return async ({ tenantId, payload = {}, storeCustomer = null }) => {
         try {
-            const normalized = await normalizeStorefrontFollowInput({ storeRepository, tenantId, payload, storeCustomer });
+            const normalized = await normalizeStorefrontFollowInput({ storeRepository, tenantId, payload, storeCustomer, resolveDiscoverySlug });
             await storeRepository.deleteStorefrontFollow(normalized);
             const followersCount = await storeRepository.countStorefrontFollowsBySlug(normalized);
             return ok({
