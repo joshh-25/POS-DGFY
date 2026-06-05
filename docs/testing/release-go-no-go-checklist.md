@@ -1,7 +1,7 @@
 # Release Go/No-Go Checklist (Current)
 
 Status: reference  
-Last updated: 2026-06-04
+Last updated: 2026-06-05
 
 ## Current Release State
 
@@ -11,6 +11,7 @@ Last updated: 2026-06-04
 4. Current open audit package: `System_Audit/README.md`.
 5. Current release blockers from the June 2 audit remain open until remediated. Local release gate, frontend contract suite failures, missing current green backend full-test evidence, and frontend budget artifact self-containment are remediated as of June 4, 2026 for target SHA `be59a6b55f4d6367acd124729b43fa4ee579d09b`.
 6. Production deployment status must not be advanced from this checklist alone; refresh no-staging parity, local release gate, production contract smoke, and human UAT evidence before the next production promotion.
+7. June 5, 2026 tenant browser-session hardening: `/api/v1/auth/refresh-token` can recover strict tenant context from the signed HttpOnly refresh cookie's tenant binding when the companion tenant-context cookie/header is missing. This is local source-level evidence until the target SHA is deployed and fresh-registration login is smoked live.
 
 Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for readiness status and blockers.
 
@@ -58,7 +59,8 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 21. `npm run gate:release:local` -> attempted on June 4, 2026 after frontend budget hardening, but the tool run timed out after 20 minutes during `backend.test_matrix`; no current-SHA `local_readiness.json` was produced by that attempt.
 22. `npm --prefix backend test -- --runTestsByPath tests/itemHandlers.transport.test.js` -> PASS on June 4, 2026 with 7 tests after updating stale inventory transport mocks for storefront gallery use-case exports.
 23. `npm run gate:release:local` -> PASS on June 4, 2026 for target SHA `be59a6b55f4d6367acd124729b43fa4ee579d09b`; artifact `.tmp/release-gates/be59a6b55f4d6367acd124729b43fa4ee579d09b/local_readiness.json` records 15 passing gates and the release-owned budget report path `.tmp/release-gates/be59a6b55f4d6367acd124729b43fa4ee579d09b/frontend-budgets/frontend_budget_report.json`.
-24. Previous production deploy, no-staging parity, and public smoke evidence remain historical May release evidence; refresh them before claiming a new deployable release target.
+24. `npm --prefix backend test -- --runTestsByPath tests/tenantHandler.emailOtp.test.js tests/dgfyTenantSession.transport.test.js tests/browserSessionCookies.test.js` -> PASS on June 5, 2026 after adding refresh-cookie tenant-context recovery for fresh DGFY-to-SKUpervisor browser sessions.
+25. Previous production deploy, no-staging parity, and public smoke evidence remain historical May release evidence; refresh them before claiming a new deployable release target.
 
 ## Remaining Non-Technical Blockers (Go/No-Go)
 

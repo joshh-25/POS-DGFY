@@ -34,6 +34,7 @@ Current browser authentication contract:
 - Frontend code may keep the access token in module memory through `frontend/src/services/browserSession.js`.
 - Frontend code must not persist `authToken`, `refreshToken`, tenant context, DGFY customer tokens, storefront customer tokens, or admin tokens in `localStorage` or `sessionStorage`.
 - Cookie-authenticated unsafe requests must include `x-csrf-token` from the browser-readable `sku_csrf_token` cookie.
+- Tenant refresh requests use the HttpOnly `sku_refresh_token` cookie. When the companion tenant-context cookie is missing, the backend can recover tenant context from the signed refresh cookie's tenant binding before rotating the session; invalid or tenant-mismatched refresh cookies still fail closed.
 
 ---
 
