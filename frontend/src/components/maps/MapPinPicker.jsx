@@ -5,9 +5,9 @@ import { cn } from '../../lib/utils.js';
 import { Button } from '@/components/ui/button';
 
 const TILE_BASE = 'https://tiles.openfreemap.org';
-const TILING_SERVER = import.meta.env.DEV
-  ? '/openfreemap/styles/liberty'
-  : (import.meta.env.VITE_TILING_SERVER || `${TILE_BASE}/styles/liberty`);
+const TILE_URL_TEMPLATE = import.meta.env.DEV
+  ? '/openfreemap/{z}/{x}/{y}.png'
+  : (import.meta.env.VITE_TILING_TILE_URL || `${TILE_BASE}/{z}/{x}/{y}.png`);
 const tileTransformRequest = import.meta.env.DEV
   ? (url) => {
       if (url.startsWith(TILE_BASE)) {
@@ -22,6 +22,26 @@ const PIN_ZOOM = 16;
 const MIN_ZOOM = 4;
 const MAX_ZOOM = 18;
 const RADIUS_SOURCE = 'delivery-radius';
+const MAP_READY_TIMEOUT_MS = 1500;
+
+const buildMapLibreStyle = () => ({
+  version: 8,
+  sources: {
+    'storefront-location-raster': {
+      type: 'raster',
+      tiles: [TILE_URL_TEMPLATE],
+      tileSize: 256,
+      attribution: 'Map data: OpenStreetMap contributors'
+    }
+  },
+  layers: [
+    {
+      id: 'storefront-location-raster',
+      type: 'raster',
+      source: 'storefront-location-raster'
+    }
+  ]
+});
 
 const buildPinSvg = ({ highlighted = false } = {}) => {
   const gradientTop = highlighted ? '#5eead4' : '#14b8a6';
@@ -107,6 +127,7 @@ export default function MapPinPicker({
   const onChangeRef = useRef(onChange);
   const loadErrorRef = useRef('');
   const isPinDragModeRef = useRef(false);
+  const radiusLayerReadyRef = useRef(false);
   const [loadError, setLoadError] = useState('');
   const [isLocating, setIsLocating] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
@@ -163,11 +184,50 @@ export default function MapPinPicker({
 
     let isCancelled = false;
     let map;
+    let readyTimer;
+
+    const markMapReady = () => {
+      if (isCancelled) return;
+      safeResizeMap(map, containerRef.current);
+      setIsMapReady(true);
+    };
+
+    const ensureRadiusLayers = () => {
+      if (isCancelled || !map || radiusLayerReadyRef.current) return;
+      try {
+        if (!map.getSource(RADIUS_SOURCE)) {
+          map.addSource(RADIUS_SOURCE, {
+            type: 'geojson',
+            data: pendingCircleDataRef.current ?? { type: 'FeatureCollection', features: [] }
+          });
+        }
+        if (!map.getLayer?.(`${RADIUS_SOURCE}-fill`)) {
+          map.addLayer({
+            id: `${RADIUS_SOURCE}-fill`,
+            type: 'fill',
+            source: RADIUS_SOURCE,
+            paint: { 'fill-color': '#2dd4bf', 'fill-opacity': 0.22 }
+          });
+        }
+        if (!map.getLayer?.(`${RADIUS_SOURCE}-line`)) {
+          map.addLayer({
+            id: `${RADIUS_SOURCE}-line`,
+            type: 'line',
+            source: RADIUS_SOURCE,
+            paint: { 'line-color': '#0f766e', 'line-width': 3, 'line-opacity': 0.95 }
+          });
+        }
+        pendingCircleDataRef.current = null;
+        radiusLayerReadyRef.current = true;
+      } catch {
+        // Defer radius overlay setup until MapLibre reports the style as fully loaded.
+      }
+    };
 
     try {
       map = new maplibregl.Map({
         container: containerRef.current,
-        style: TILING_SERVER,
+        style: buildMapLibreStyle(),
         transformRequest: tileTransformRequest,
         center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
         zoom: DEFAULT_ZOOM,
@@ -181,32 +241,19 @@ export default function MapPinPicker({
       map.dragRotate.disable();
       map.touchZoomRotate.disableRotation();
     } catch {
-      const loadErrorTimer = setTimeout(() => {
+      readyTimer = setTimeout(() => {
         setLoadError('Map failed to load. Please refresh and try again.');
       }, 0);
-      return () => clearTimeout(loadErrorTimer);
+      return () => clearTimeout(readyTimer);
     }
 
     map.once('load', () => {
-      if (isCancelled) return;
-      map.addSource(RADIUS_SOURCE, {
-        type: 'geojson',
-        data: pendingCircleDataRef.current ?? { type: 'FeatureCollection', features: [] }
-      });
-      pendingCircleDataRef.current = null;
-      map.addLayer({
-        id: `${RADIUS_SOURCE}-fill`,
-        type: 'fill',
-        source: RADIUS_SOURCE,
-        paint: { 'fill-color': '#2dd4bf', 'fill-opacity': 0.22 }
-      });
-      map.addLayer({
-        id: `${RADIUS_SOURCE}-line`,
-        type: 'line',
-        source: RADIUS_SOURCE,
-        paint: { 'line-color': '#0f766e', 'line-width': 3, 'line-opacity': 0.95 }
-      });
-      if (!isCancelled) setIsMapReady(true);
+      ensureRadiusLayers();
+      markMapReady();
+    });
+
+    map.on('styledata', () => {
+      ensureRadiusLayers();
     });
 
     map.on('click', (event) => {
@@ -218,7 +265,7 @@ export default function MapPinPicker({
 
     map.on('error', () => {
       if (!loadErrorRef.current && !isCancelled) {
-        const message = 'Map tiles failed to load. Check connection or disable blocking extensions.';
+        const message = 'Some map tiles could not load. You can still place the pin or edit coordinates manually.';
         loadErrorRef.current = message;
         setLoadError(message);
       }
@@ -232,20 +279,22 @@ export default function MapPinPicker({
     }
 
     // Kick initial resize after the browser has painted
-    setTimeout(() => {
+    readyTimer = setTimeout(() => {
       if (!isCancelled) {
-        safeResizeMap(map, containerRef.current);
-        setIsMapReady(true);
+        ensureRadiusLayers();
+        markMapReady();
       }
-    }, 0);
+    }, MAP_READY_TIMEOUT_MS);
 
     return () => {
       isCancelled = true;
+      clearTimeout(readyTimer);
       resizeObserverRef.current?.disconnect();
       resizeObserverRef.current = null;
       map.remove();
       mapRef.current = null;
       markerRef.current = null;
+      radiusLayerReadyRef.current = false;
     };
   }, []);
 

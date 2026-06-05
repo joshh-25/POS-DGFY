@@ -70,6 +70,10 @@ const maplibreMocks = vi.hoisted(() => {
       this.layers.push(layer);
     }
 
+    getLayer(layerId) {
+      return this.layers.find((layer) => layer.id === layerId);
+    }
+
     getCanvas() {
       return this.canvas;
     }
@@ -182,6 +186,15 @@ describe('MapPinPicker MapLibre behavior', () => {
       minZoom: 4,
       maxZoom: 18
     }));
+    expect(maplibreMocks.Map.mock.calls[0][0].style).toEqual(expect.objectContaining({
+      version: 8,
+      sources: expect.objectContaining({
+        'storefront-location-raster': expect.objectContaining({
+          type: 'raster',
+          tiles: expect.arrayContaining([expect.stringContaining('{z}/{x}/{y}.png')])
+        })
+      })
+    }));
     expect(maplibreMocks.maps[0].dragRotate.disable).toHaveBeenCalled();
     expect(maplibreMocks.maps[0].touchZoomRotate.disableRotation).toHaveBeenCalled();
     expect(await screen.findByLabelText(/Map location picker/i)).toBeTruthy();
@@ -216,6 +229,22 @@ describe('MapPinPicker MapLibre behavior', () => {
       longitude: 120.9842456
     });
     expect(maplibreMocks.Marker).toHaveBeenCalledWith(expect.objectContaining({ anchor: 'bottom' }));
+  });
+
+  it('keeps the MapLibre picker usable when tile requests emit a resource error', async () => {
+    render(<MapPinPicker latitude={10.7202} longitude={122.5621} deliveryRadiusKm={5} onChange={vi.fn()} />);
+
+    await waitFor(() => expect(maplibreMocks.maps[0]).toBeTruthy());
+    await waitFor(() => expect(screen.queryByText(/Loading map/i)).toBeNull());
+
+    act(() => {
+      maplibreMocks.maps[0].handlers.error?.({ error: new Error('tile failed') });
+    });
+
+    expect(screen.queryByText(/Map failed to load/i)).toBeNull();
+    expect(screen.getByText(/Some map tiles could not load/i)).toBeTruthy();
+    expect(screen.getByLabelText(/Map location picker/i)).toBeTruthy();
+    expect(screen.getByText(/Pinned: 10.720200, 122.562100/i)).toBeTruthy();
   });
 
   it('skips unsafe MapLibre resize when the container is not measurable', async () => {
