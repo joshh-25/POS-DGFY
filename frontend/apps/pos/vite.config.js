@@ -41,13 +41,27 @@ export default defineConfig({
         target: apiProxyTarget,
         changeOrigin: true,
         secure: false
+      },
+      '/osm': {
+        target: 'https://tile.openstreetmap.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/osm/, ''),
+        secure: false
       }
     }
   },
   preview: {
     port: 5174,
     host: true,
-    allowedHosts
+    allowedHosts,
+    proxy: {
+      '/osm': {
+        target: 'https://tile.openstreetmap.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/osm/, ''),
+        secure: false
+      }
+    }
   },
   build: {
     outDir: path.resolve(__dirname, '../../../dist-apps/pos'),

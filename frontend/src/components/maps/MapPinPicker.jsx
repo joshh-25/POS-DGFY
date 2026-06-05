@@ -4,17 +4,10 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { cn } from '../../lib/utils.js';
 import { Button } from '@/components/ui/button';
 
-const TILE_BASE = 'https://tiles.openfreemap.org';
+const TILE_BASE = 'https://tile.openstreetmap.org';
 const TILE_URL_TEMPLATE = import.meta.env.DEV
-  ? '/openfreemap/{z}/{x}/{y}.png'
+  ? '/osm/{z}/{x}/{y}.png'
   : (import.meta.env.VITE_TILING_TILE_URL || `${TILE_BASE}/{z}/{x}/{y}.png`);
-const tileTransformRequest = import.meta.env.DEV
-  ? (url) => {
-      if (url.startsWith(TILE_BASE)) {
-        return { url: url.replace(TILE_BASE, '/openfreemap') };
-      }
-    }
-  : undefined;
 
 const DEFAULT_CENTER = { latitude: 10.7202, longitude: 122.5621 };
 const DEFAULT_ZOOM = 12;
@@ -228,15 +221,13 @@ export default function MapPinPicker({
       map = new maplibregl.Map({
         container: containerRef.current,
         style: buildMapLibreStyle(),
-        transformRequest: tileTransformRequest,
         center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
         zoom: DEFAULT_ZOOM,
         minZoom: MIN_ZOOM,
         maxZoom: MAX_ZOOM,
+        trackResize: false,
         bearing: 0,
-        pitch: 0,
-        // [swLng, swLat, neLng, neLat]. MapLibre uses lng-first order.
-        maxBounds: [[-180, -85], [180, 85]]
+        pitch: 0
       });
       map.dragRotate.disable();
       map.touchZoomRotate.disableRotation();
@@ -291,7 +282,11 @@ export default function MapPinPicker({
       clearTimeout(readyTimer);
       resizeObserverRef.current?.disconnect();
       resizeObserverRef.current = null;
-      map.remove();
+      try {
+        map.remove();
+      } catch {
+        // Ignore late WebGL/resize cleanup failures while a modal or settings panel is closing.
+      }
       mapRef.current = null;
       markerRef.current = null;
       radiusLayerReadyRef.current = false;

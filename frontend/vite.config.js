@@ -53,6 +53,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/openfreemap/, '')
       },
+      '/osm': {
+        target: 'https://tile.openstreetmap.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/osm/, '')
+      },
     },
   },
   preview: {
@@ -75,6 +80,11 @@ export default defineConfig({
         target: 'https://tiles.openfreemap.org',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/openfreemap/, '')
+      },
+      '/osm': {
+        target: 'https://tile.openstreetmap.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/osm/, '')
       },
     },
   },
