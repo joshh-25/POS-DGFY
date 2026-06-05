@@ -162,9 +162,9 @@ export const normalizeStorefrontPageModel = ({
   const locationSummary = trimText(selectedStore?.location_name || selectedStore?.address_line);
   const addressLine = trimText(selectedStore?.address_line);
   const hours = trimText(
-    selectedStore?.storefront_hours_status?.display
-    || formatStorefrontBusinessHoursDisplay(selectedStore?.storefront_hours)
+    formatStorefrontBusinessHoursDisplay(selectedStore?.storefront_hours)
     || selectedStore?.storefront_hours
+    || selectedStore?.storefront_hours_status?.display
   );
   
   const contactRows = [];

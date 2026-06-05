@@ -17,10 +17,10 @@ import {
 /* ─────────────────────────────────────────────
    DGFY design tokens
 ───────────────────────────────────────────── */
-const PRIMARY      = '#0F6FFF';
-const PRIMARY_DARK = '#0A52CC';
-const PRIMARY_TINT = '#EBF3FF';
-const PRIMARY_RING = '#C4D9FF';
+const PRIMARY      = '#1A4E8D';
+const PRIMARY_DARK = '#1A4586';
+const PRIMARY_TINT = '#AEE8F4';
+const PRIMARY_RING = '#AEE8F4';
 const TEXT         = '#101828';
 const TEXT_SOFT    = '#344054';
 const MUTED        = '#667085';
@@ -82,7 +82,7 @@ function AuthInput({ icon: Icon, placeholder, value, onChange, autoComplete, typ
         boxSizing: 'border-box',
         cursor: 'text',
         transition: 'border-color 140ms ease, box-shadow 140ms ease',
-        boxShadow: focused ? `0 0 0 3px rgba(15,111,255,0.12)` : 'none'
+        boxShadow: focused ? '0 0 0 3px rgba(26,78,141,0.16)' : 'none'
       }}
     >
       <span
@@ -135,7 +135,7 @@ function PrimaryButton({ children, onClick, disabled, style = {} }) {
         borderRadius: 10,
         border: 'none',
         background: disabled
-          ? '#93B8FF'
+          ? '#7BA7D6'
           : `linear-gradient(135deg, ${PRIMARY} 0%, ${PRIMARY_DARK} 100%)`,
         color: '#FFFFFF',
         fontSize: 15,
@@ -146,7 +146,7 @@ function PrimaryButton({ children, onClick, disabled, style = {} }) {
         alignItems: 'center',
         justifyContent: 'center',
         gap: 8,
-        boxShadow: disabled ? 'none' : '0 4px 16px rgba(15,111,255,0.30)',
+        boxShadow: disabled ? 'none' : '0 4px 16px rgba(26,78,141,0.28)',
         transition: 'opacity 150ms ease, box-shadow 150ms ease',
         ...style
       }}
@@ -292,7 +292,7 @@ export function DgfyCustomerAuthModal({
                   display: 'grid',
                   placeItems: 'center',
                   flexShrink: 0,
-                  boxShadow: '0 6px 18px rgba(15,111,255,0.30)'
+                  boxShadow: '0 6px 18px rgba(26,78,141,0.28)'
                 }}
               >
                 <User size={22} strokeWidth={2.2} />
@@ -358,7 +358,7 @@ export function DgfyCustomerAuthModal({
                 style={{
                   borderRadius: 14,
                   border: `1px solid ${PRIMARY_RING}`,
-                  background: 'linear-gradient(135deg, rgba(15,111,255,0.07) 0%, rgba(15,111,255,0.02) 100%)',
+                  background: 'linear-gradient(135deg, rgba(174,232,244,0.24) 0%, rgba(26,78,141,0.05) 100%)',
                   padding: '14px 16px',
                   display: 'flex',
                   alignItems: 'flex-start',
@@ -415,7 +415,7 @@ export function DgfyCustomerAuthModal({
                             width: 52,
                             height: 52,
                             borderRadius: '50%',
-                            background: 'linear-gradient(135deg, #C2D9FF 0%, #DCE9FF 100%)',
+                            background: 'linear-gradient(135deg, rgba(174,232,244,0.82) 0%, rgba(255,255,255,0.98) 100%)',
                             color: PRIMARY,
                             display: 'grid',
                             placeItems: 'center',
@@ -610,7 +610,7 @@ export function DgfyCustomerAuthModal({
                         fontWeight: 700,
                         cursor: 'pointer',
                         transition: 'background 160ms ease, color 160ms ease',
-                        boxShadow: active ? '0 3px 10px rgba(15,111,255,0.28)' : 'none'
+                        boxShadow: active ? '0 3px 10px rgba(26,78,141,0.22)' : 'none'
                       }}
                     >
                       {label}

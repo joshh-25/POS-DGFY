@@ -3,6 +3,11 @@ import { ArrowLeft, Menu, User, X } from 'lucide-react';
 
 const HERO_CANVAS_MAX_WIDTH = 1320;
 const DGFY_HEADER_LOGO_URL = '/dgfy-logo.png';
+const DGFY_DISCOVERY_HOME_URL = 'https://dgfy.ph/';
+const DGFY_OCEAN_BLUE = '#1A4E8D';
+const DGFY_DEEP_BLUE = '#1A4586';
+const DGFY_ICE_BLUE = '#AEE8F4';
+const DGFY_ICE_BLUE_RING = 'rgba(174, 232, 244, 0.72)';
 
 export function StorefrontHeaderNav({
   isMobileViewport,
@@ -45,15 +50,15 @@ export function StorefrontHeaderNav({
     display: 'inline-flex',
     alignItems: 'center',
     gap: 6,
-    fontFamily: bodyFont || '"Inter", sans-serif',
+    fontFamily: bodyFont || '"Source Sans 3", "Segoe UI", sans-serif',
     padding: '8px 0',
     lineHeight: 1
   };
 
   const mobileMenuButtonStyle = {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     border: '1px solid #e2e8f0',
     background: '#ffffff',
     color: '#0f172a',
@@ -73,8 +78,8 @@ export function StorefrontHeaderNav({
         border: '1px solid #e5eaf2',
         boxShadow: '0 10px 28px rgba(15, 23, 42, 0.08)',
         marginBottom: 0,
-        width: isMobileViewport ? '100vw' : 'calc(100vw - 8px)',
-        marginLeft: isMobileViewport ? 'calc(50% - 50vw)' : 'calc(50% - 50vw + 4px)',
+        width: isMobileViewport ? '100%' : 'calc(100vw - 8px)',
+        marginLeft: isMobileViewport ? 0 : 'calc(50% - 50vw + 4px)',
         overflow: 'visible'
       }}
     >
@@ -82,23 +87,23 @@ export function StorefrontHeaderNav({
         style={{
           maxWidth: HERO_CANVAS_MAX_WIDTH,
           margin: '0 auto',
-          minHeight: isMobileViewport ? 68 : 82,
-          padding: isMobileViewport ? '12px 16px' : '0 52px',
+          minHeight: isMobileViewport ? 72 : 82,
+          padding: isMobileViewport ? '14px 16px 10px' : '0 52px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: isMobileViewport ? 14 : 32,
+          gap: isMobileViewport ? 12 : 32,
           flexDirection: 'row'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: isMobileViewport ? 10 : 14, minWidth: 0, flex: '0 0 auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobileViewport ? 12 : 14, minWidth: 0, flex: '0 0 auto' }}>
           <button
             type="button"
             aria-label="Back"
             onClick={onBack}
             style={{
-              width: isMobileViewport ? 38 : 42,
-              height: isMobileViewport ? 38 : 42,
+              width: isMobileViewport ? 44 : 42,
+              height: isMobileViewport ? 44 : 42,
               borderRadius: '50%',
               border: 'none',
               background: '#f8fafc',
@@ -112,17 +117,21 @@ export function StorefrontHeaderNav({
           >
             <ArrowLeft size={isMobileViewport ? 17 : 18} strokeWidth={2.4} />
           </button>
-          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <a
+            href={DGFY_DISCOVERY_HOME_URL}
+            aria-label="Go to DGFY home"
+            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, textDecoration: 'none' }}
+          >
             <img
               src={DGFY_HEADER_LOGO_URL}
               alt="DGFY logo"
               style={{ height: isMobileViewport ? 28 : 34, width: 'auto', display: 'block' }}
             />
-          </div>
+          </a>
         </div>
 
         {isMobileViewport ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto', flexShrink: 0, position: 'relative' }} ref={mobileMenuRef}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto', flexShrink: 0, position: 'relative' }} ref={mobileMenuRef}>
             <div style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
               <button
                 type="button"
@@ -130,18 +139,18 @@ export function StorefrontHeaderNav({
                 title="Profile"
                 onClick={onAccount || undefined}
                 style={{
-                  width: 40,
-                  height: 40,
+                  width: 44,
+                  height: 44,
                   borderRadius: '50%',
-                  border: '6px solid #eaf2ff',
-                  background: '#0b74ff',
+                  border: `5px solid ${DGFY_ICE_BLUE_RING}`,
+                  background: DGFY_OCEAN_BLUE,
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   cursor: typeof onAccount === 'function' ? 'pointer' : 'default',
                   color: '#ffffff',
                   flexShrink: 0,
-                  boxShadow: '0 8px 18px rgba(11, 116, 255, 0.28)'
+                  boxShadow: '0 8px 18px rgba(26, 78, 141, 0.24)'
                 }}
               >
                 <User size={17} strokeWidth={2.5} />
@@ -188,15 +197,15 @@ export function StorefrontHeaderNav({
                   position: 'absolute',
                   top: 'calc(100% + 10px)',
                   right: 0,
-                  minWidth: 220,
+                  minWidth: 264,
                   maxWidth: 'calc(100vw - 32px)',
                   borderRadius: 18,
                   border: '1px solid #e2e8f0',
                   background: '#ffffff',
                   boxShadow: '0 18px 36px rgba(15,23,42,.16)',
-                  padding: 12,
+                  padding: 14,
                   display: 'grid',
-                  gap: 8,
+                  gap: 10,
                   zIndex: 40
                 }}
               >
@@ -251,7 +260,7 @@ export function StorefrontHeaderNav({
             <button
               type="button"
               onClick={onShop}
-              style={{ ...textStyle, fontFamily: '"Inter", sans-serif' }}
+              style={textStyle}
             >
               Shop
             </button>
@@ -259,7 +268,7 @@ export function StorefrontHeaderNav({
               <button
                 type="button"
                 onClick={onTrack}
-                style={{ ...textStyle, fontFamily: '"Inter", sans-serif' }}
+                style={textStyle}
               >
                 Track Order
               </button>
@@ -274,19 +283,19 @@ export function StorefrontHeaderNav({
                   width: 48,
                   height: 48,
                   borderRadius: '50%',
-                  border: '6px solid #eaf2ff',
-                  background: '#0b74ff',
+                  border: `6px solid ${DGFY_ICE_BLUE_RING}`,
+                  background: DGFY_OCEAN_BLUE,
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   cursor: typeof onAccount === 'function' ? 'pointer' : 'default',
                   color: '#ffffff',
                   flexShrink: 0,
-                  boxShadow: '0 8px 18px rgba(11, 116, 255, 0.28)',
+                  boxShadow: '0 8px 18px rgba(26, 78, 141, 0.24)',
                   transition: 'background 0.2s, box-shadow 0.2s, transform 0.2s'
                 }}
-                onMouseOver={(e) => { e.currentTarget.style.background = '#075fd6'; e.currentTarget.style.boxShadow = '0 10px 22px rgba(11, 116, 255, 0.34)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                onMouseOut={(e) => { e.currentTarget.style.background = '#0b74ff'; e.currentTarget.style.boxShadow = '0 8px 18px rgba(11, 116, 255, 0.28)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+                onMouseOver={(e) => { e.currentTarget.style.background = DGFY_DEEP_BLUE; e.currentTarget.style.boxShadow = '0 10px 22px rgba(26, 78, 141, 0.3)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                onMouseOut={(e) => { e.currentTarget.style.background = DGFY_OCEAN_BLUE; e.currentTarget.style.boxShadow = '0 8px 18px rgba(26, 78, 141, 0.24)'; e.currentTarget.style.transform = 'translateY(0)'; }}
               >
                 <User size={20} strokeWidth={2.5} />
               </button>

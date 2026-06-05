@@ -6,6 +6,7 @@ import {
   ChefHat,
   MapPin,
   Plus,
+  Minus,
   ShieldAlert,
   ShoppingCart,
   Zap,
@@ -26,6 +27,8 @@ import {
 
 const STAR_COLOR = '#f59e0b';
 const STAR_SOFT = '#fef3c7';
+const FNB_DISPLAY_FONT = '"Outfit", "Avenir Next", "Segoe UI", sans-serif';
+const FNB_BODY_FONT = '"Source Sans 3", "Segoe UI", sans-serif';
 
 const formatRelativeDate = (value) => {
   const date = value ? new Date(value) : null;
@@ -112,12 +115,12 @@ const detailBadgeStyle = (background, color, border) => ({
   fontSize: 12,
   fontWeight: 700,
   letterSpacing: '0.02em',
-  fontFamily: '"Inter", -apple-system, sans-serif'
+  fontFamily: FNB_BODY_FONT
 });
 
 /* --- Button base (shared) --- */
 const actionButtonBase = {
-  fontFamily: '"Inter", -apple-system, sans-serif',
+  fontFamily: FNB_BODY_FONT,
   minHeight: 46,
   borderRadius: 18,
   fontSize: 16,
@@ -189,6 +192,7 @@ export function FnbProductDetailsPage({
 }) {
   const [activeTab, setActiveTab] = React.useState('nutrition');
   const [isDescExpanded, setIsDescExpanded] = React.useState(false);
+  const [isMobileSummaryOpen, setIsMobileSummaryOpen] = React.useState(false);
   const descRef = React.useRef(null);
   const [showReadMore, setShowReadMore] = React.useState(false);
 
@@ -212,7 +216,7 @@ export function FnbProductDetailsPage({
   if (!item) {
     return (
       <section style={{
-        fontFamily: '"Inter", -apple-system, sans-serif',
+        fontFamily: FNB_BODY_FONT,
         width: '100vw',
         marginLeft: 'calc(50% - 50vw)',
         background: '#ffffff',
@@ -234,7 +238,7 @@ export function FnbProductDetailsPage({
           <div style={{ width: 56, height: 56, borderRadius: 18, background: '#fff', color: '#f97316', display: 'grid', placeItems: 'center', border: '1px solid #fed7aa' }}>
             <ChefHat size={24} />
           </div>
-          <h2 style={{ margin: 0, fontSize: isMobileViewport ? 28 : 36, lineHeight: 1.05, fontWeight: 900, color: '#0f172a' }}>Item not available</h2>
+          <h2 style={{ margin: 0, fontSize: isMobileViewport ? 28 : 36, lineHeight: 1.05, fontWeight: 900, color: '#0f172a', fontFamily: FNB_DISPLAY_FONT }}>Item not available</h2>
           <p style={{ margin: 0, maxWidth: 560, fontSize: 16, lineHeight: 1.65, color: '#475569' }}>The item link is valid but the product is no longer available in the current storefront catalog.</p>
           <div>
             <button
@@ -284,6 +288,9 @@ export function FnbProductDetailsPage({
   const desktopSummaryTop = isMobileViewport ? 'auto' : 88;
   const hasModifiers = Array.isArray(modifierGroups) && modifierGroups.length > 0;
   const reviewEntries = Array.isArray(reviews) ? reviews : [];
+  const serviceFee = 0;
+  const safeQuantity = Math.max(1, Number(quantity || 1));
+  const subtotalPrice = Number(unitPrice || 0) * safeQuantity;
 
   const renderNutritionAndAllergens = () => {
     if (!hasInfoSection) return null;
@@ -295,7 +302,7 @@ export function FnbProductDetailsPage({
               type="button"
               onClick={() => setActiveTab('nutrition')}
               style={{
-                fontFamily: '"Inter", -apple-system, sans-serif',
+                fontFamily: FNB_BODY_FONT,
                 fontSize: 16,
                 fontWeight: 800,
                 color: activeTab === 'nutrition' ? '#15803d' : '#64748b',
@@ -315,7 +322,7 @@ export function FnbProductDetailsPage({
               type="button"
               onClick={() => setActiveTab('allergens')}
               style={{
-                fontFamily: '"Inter", -apple-system, sans-serif',
+                fontFamily: FNB_BODY_FONT,
                 fontSize: 16,
                 fontWeight: 800,
                 color: activeTab === 'allergens' ? '#15803d' : '#64748b',
@@ -384,6 +391,341 @@ export function FnbProductDetailsPage({
     );
   };
 
+  const renderRecommendedPairings = () => {
+    if (!Array.isArray(relatedItems) || relatedItems.length === 0) return null;
+
+    const sharedHeader = (
+      <h3 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 800, color: '#0f172a', fontFamily: FNB_DISPLAY_FONT }}>
+        Recommended Pairings
+      </h3>
+    );
+
+    /* ── MOBILE: Foodpanda-style containerised card list ── */
+    if (isMobileViewport) {
+      return (
+        <div style={{ borderTop: '1px solid rgba(226, 232, 240, 0.6)', paddingTop: 24, marginTop: 24 }}>
+          {sharedHeader}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {relatedItems.slice(0, 5).map((recommended) => {
+              const recImgUrl = withAssetOrigin(recommended.image_url);
+              return (
+                <div
+                  key={`recommended-mob-${recommended.item_id}`}
+                  onClick={() => onSelectRelatedItem?.(recommended)}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: '10px 12px',
+                    background: '#ffffff',
+                    border: '1px solid rgba(226, 232, 240, 0.9)',
+                    borderRadius: 16,
+                    boxShadow: '0 2px 10px rgba(15,23,42,0.04)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {/* Square thumbnail */}
+                  <div style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: 12,
+                    overflow: 'hidden',
+                    background: '#f1f5f9',
+                    flexShrink: 0,
+                    border: '1px solid rgba(226,232,240,0.7)',
+                  }}>
+                    {recImgUrl ? (
+                      <img src={recImgUrl} alt={recommended.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    ) : (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
+                        <ChefHat size={24} strokeWidth={1.5} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Name + category */}
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <div style={{
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: '#0f172a',
+                      lineHeight: 1.3,
+                      overflow: 'hidden',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                    }}>
+                      {recommended.name}
+                    </div>
+                    {String(recommended.sectionLabel || recommended.category || '').trim() ? (
+                      <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>
+                        {String(recommended.sectionLabel || recommended.category).trim()}
+                      </div>
+                    ) : null}
+                    {/* Price on its own line like Foodpanda */}
+                    <div style={{ fontSize: 13, fontWeight: 800, color: '#f97316', marginTop: 2 }}>
+                      {money(recommended.default_sale_price)}
+                    </div>
+                  </div>
+
+                  {/* Add button */}
+                  <button
+                    type="button"
+                    aria-label={`Add ${recommended.name} to cart`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onQuickAdd?.(recommended);
+                    }}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: '50%',
+                      background: '#f0fdf4',
+                      border: '1.5px solid #86efac',
+                      color: '#15803d',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                      transition: 'background 150ms ease',
+                    }}
+                  >
+                    <Plus size={18} strokeWidth={2.5} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    /* ── DESKTOP: original 3-column image card grid ── */
+    return (
+      <div style={{ borderTop: '1px solid rgba(226, 232, 240, 0.6)', paddingTop: 24, marginTop: 24, display: 'grid', gap: 16 }}>
+        {sharedHeader}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+          {relatedItems.slice(0, 3).map((recommended) => {
+            const recImgUrl = withAssetOrigin(recommended.image_url);
+            return (
+              <div
+                key={`recommended-desk-${recommended.item_id}`}
+                onClick={() => onSelectRelatedItem?.(recommended)}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                  cursor: 'pointer',
+                  background: '#ffffff',
+                  border: '1px solid rgba(226, 232, 240, 0.8)',
+                  borderRadius: 18,
+                  padding: 12,
+                  transition: 'box-shadow 160ms ease',
+                }}
+              >
+                <div style={{ width: '100%', height: 110, borderRadius: 12, overflow: 'hidden', background: '#f8fafc', flexShrink: 0 }}>
+                  {recImgUrl ? (
+                    <img src={recImgUrl} alt={recommended.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: '#64748b' }}>
+                      <ChefHat size={20} />
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flexGrow: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {recommended.name}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, marginTop: 'auto' }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316' }}>{money(recommended.default_sale_price)}</div>
+                    <button
+                      type="button"
+                      aria-label={`Add ${recommended.name} to cart`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onQuickAdd?.(recommended);
+                      }}
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: '50%',
+                        background: '#f0fdf4',
+                        border: '1px solid #86efac',
+                        color: '#15803d',
+                        display: 'grid',
+                        placeItems: 'center',
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderReviewsSection = () => (
+    <div
+      id="fnb-item-reviews-section"
+      style={{
+        display: 'grid',
+        gap: 16,
+        borderTop: '1px solid rgba(226, 232, 240, 0.6)',
+        paddingTop: 24,
+        marginTop: 24,
+        scrollMarginTop: 96,
+        transition: 'box-shadow 220ms ease, border-color 220ms ease',
+        ...(reviewSectionHighlighted ? {
+          borderRadius: 24,
+          paddingInline: 16,
+          paddingBottom: 12,
+          marginInline: -16,
+          boxShadow: '0 0 0 2px rgba(15,111,255,0.16), 0 18px 36px rgba(15,111,255,0.08)'
+        } : {})
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: isMobileViewport ? 'stretch' : 'center', justifyContent: 'space-between', gap: 16, flexDirection: isMobileViewport ? 'column' : 'row' }}>
+        <div style={{ display: 'grid', gap: 6 }}>
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0f172a', fontFamily: FNB_DISPLAY_FONT }}>Reviews & Ratings</h3>
+          <div style={{ fontSize: 13, color: '#64748b' }}>Verified customer feedback for this menu item.</div>
+        </div>
+        {canWriteReview ? (
+          <button
+            type="button"
+            onClick={onOpenWriteReview}
+            style={{
+              ...actionButtonBase,
+              minHeight: 42,
+              padding: '0 18px',
+              borderRadius: 14,
+              border: '1px solid #bfdbfe',
+              background: '#eff6ff',
+              color: '#0F6FFF',
+              boxShadow: '0 10px 24px rgba(15,111,255,0.08)'
+            }}
+          >
+            Write a Review
+          </button>
+        ) : null}
+      </div>
+
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 280px) minmax(0, 1fr)',
+        gap: 18
+      }}>
+        <div style={{
+          border: '1px solid rgba(226, 232, 240, 0.8)',
+          borderRadius: 20,
+          background: '#fff',
+          padding: 18,
+          display: 'grid',
+          gap: 14,
+          boxShadow: '0 12px 26px rgba(15,23,42,0.04)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ fontSize: 34, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>
+              {hasReviewSummary ? Number(ratingScore).toFixed(2) : '0.00'}
+            </div>
+            <div style={{ display: 'grid', gap: 6 }}>
+              <FractionalStars value={ratingScore || 0} size={18} />
+              <div style={{ fontSize: 12, color: '#64748b' }}>{Number(reviewCount || 0)} review{Number(reviewCount || 0) === 1 ? '' : 's'}</div>
+            </div>
+          </div>
+          {Array.from({ length: 5 }, (_, index) => 5 - index).map((starValue) => {
+            const total = Math.max(1, Number(reviewCount || 0));
+            const count = Number(reviewDistribution?.[starValue] || 0);
+            const percent = Math.max(0, Math.min(100, (count / total) * 100));
+            return (
+              <div key={`rating-dist-${starValue}`} style={{ display: 'grid', gridTemplateColumns: '36px 1fr 32px', gap: 10, alignItems: 'center' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>{starValue}★</div>
+                <div style={{ height: 8, borderRadius: 999, background: '#e2e8f0', overflow: 'hidden' }}>
+                  <div style={{ width: `${percent}%`, height: '100%', borderRadius: 999, background: '#f59e0b' }} />
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b', textAlign: 'right' }}>{count}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ display: 'grid', gap: 12 }}>
+          {reviewsLoading ? (
+            <div style={{ display: 'grid', placeItems: 'center', minHeight: 200, border: '1px solid rgba(226, 232, 240, 0.8)', borderRadius: 20, background: '#fff', color: '#64748b', fontSize: 14, padding: 20, textAlign: 'center' }}>
+              Loading customer reviews...
+            </div>
+          ) : reviewEntries.length > 0 ? (
+            <div style={{ display: 'grid', gap: 12 }}>
+              {reviewEntries.map((entry) => {
+                const reviewerName = String(entry?.reviewer_name || 'Customer').trim() || 'Customer';
+                const initials = String(entry?.reviewer_initials || reviewerName.split(/\s+/).map((part) => part.charAt(0).toUpperCase()).slice(0, 2).join('') || 'CU').slice(0, 2);
+                const mediaEntries = Array.isArray(entry?.media) ? entry.media : [];
+                return (
+                  <article
+                    key={`review-card-${entry?.review_id || `${reviewerName}-${entry?.submitted_at || ''}`}`}
+                    style={{
+                      border: '1px solid rgba(226, 232, 240, 0.8)',
+                      borderRadius: 20,
+                      background: '#fff',
+                      padding: 18,
+                      display: 'grid',
+                      gap: 12,
+                      boxShadow: '0 12px 26px rgba(15,23,42,0.04)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#eff6ff', color: '#0F6FFF', display: 'grid', placeItems: 'center', fontSize: 14, fontWeight: 800, flexShrink: 0 }}>
+                        {initials}
+                      </div>
+                      <div style={{ minWidth: 0, display: 'grid', gap: 4 }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{reviewerName}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <FractionalStars value={entry?.rating || 0} size={14} gap={2} />
+                          <div style={{ fontSize: 12, color: '#64748b' }}>
+                            {formatRelativeDate(entry?.submitted_at)}{entry?.verified_purchase === true ? ' - Verified Order' : ''}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {String(entry?.title || '').trim() ? (
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{String(entry.title).trim()}</div>
+                    ) : null}
+
+                    {String(entry?.comment || '').trim() ? (
+                      <div style={{ fontSize: 14, lineHeight: 1.7, color: '#475569' }}>{String(entry.comment).trim()}</div>
+                    ) : null}
+
+                    {mediaEntries.length > 0 ? (
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        {mediaEntries.slice(0, 4).map((mediaEntry, index) => (
+                          <div key={`review-media-${entry?.review_id || 'item'}-${index}`} style={{ width: 72, height: 72, borderRadius: 12, background: STAR_SOFT, border: '1px dashed #fdba74', display: 'grid', placeItems: 'center', color: '#c2410c', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                            {String(mediaEntry?.label || mediaEntry?.name || 'Photo').trim()}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ display: 'grid', placeItems: 'center', minHeight: 200, border: '1px solid rgba(226, 232, 240, 0.8)', borderRadius: 20, background: '#fff', color: '#64748b', fontSize: 14, padding: 20, textAlign: 'center' }}>
+              No verified reviews for this item yet.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   /* --- Spacing tokens (8px grid) --- */
   const sp = (n) => n * 8;
 
@@ -395,7 +737,7 @@ export function FnbProductDetailsPage({
 
   return (
     <section style={{
-      fontFamily: '"Inter", -apple-system, sans-serif',
+      fontFamily: FNB_BODY_FONT,
       width: '100vw',
       marginLeft: 'calc(50% - 50vw)',
       background: '#ffffff',
@@ -420,14 +762,15 @@ export function FnbProductDetailsPage({
         <div style={{
           maxWidth: 1320,
           margin: '0 auto',
-          padding: isMobileViewport ? `${sp(2)}px ${sp(2)}px` : `${sp(2)}px ${sp(3)}px`,
-          display: 'grid',
-          gridTemplateColumns: isMobileViewport ? '1fr' : '1fr auto 1fr',
-          gap: sp(2),
+          padding: isMobileViewport ? '10px 16px' : `${sp(2)}px ${sp(3)}px`,
+          display: isMobileViewport ? 'flex' : 'grid',
+          gridTemplateColumns: isMobileViewport ? undefined : '1fr auto 1fr',
+          justifyContent: isMobileViewport ? 'space-between' : undefined,
+          gap: isMobileViewport ? 12 : sp(2),
           alignItems: 'center'
         }}>
           {/* Back button + label */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: sp(2), minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobileViewport ? 10 : sp(2), minWidth: 0, flex: isMobileViewport ? '1 1 auto' : undefined }}>
             <button
               type="button"
               onClick={onBack}
@@ -449,12 +792,30 @@ export function FnbProductDetailsPage({
             >
               <ArrowLeft size={16} />
             </button>
-            <div style={{ display: 'grid', gap: 2, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Back to Menu</div>
-              {!isMobileViewport ? (
+            {isMobileViewport ? (
+              <div style={{
+                width: 34,
+                height: 34,
+                borderRadius: '50%',
+                overflow: 'hidden',
+                border: '1px solid rgba(226, 232, 240, 0.9)',
+                display: 'grid',
+                placeItems: 'center',
+                background: '#f8fafc',
+                flexShrink: 0
+              }}>
+                {storeLogoUrl ? (
+                  <img src={storeLogoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <Store size={15} color="#475569" />
+                )}
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: 2, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Back to Menu</div>
                 <div style={{ fontSize: 12, color: '#64748b' }}>Review before adding to cart</div>
-              ) : null}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* Store name centered (desktop only) */}
@@ -483,10 +844,10 @@ export function FnbProductDetailsPage({
           ) : null}
 
           {/* Branch + support + Cart */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: isMobileViewport ? 'flex-start' : 'flex-end', gap: 16 }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#475569', fontWeight: 600 }}>
-              <MapPin size={16} color="#64748b" />
-              <span>{branchLabel || 'Main Branch'}</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: isMobileViewport ? 'flex-end' : 'flex-end', gap: 16, flexShrink: 0 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: isMobileViewport ? 12 : 12, color: '#475569', fontWeight: 600, minHeight: isMobileViewport ? 36 : undefined, padding: isMobileViewport ? '0 10px' : undefined, borderRadius: isMobileViewport ? 999 : undefined, background: isMobileViewport ? '#f8fafc' : undefined, border: isMobileViewport ? '1px solid rgba(226, 232, 240, 0.9)' : undefined, maxWidth: isMobileViewport ? 140 : undefined }}>
+              <MapPin size={15} color="#64748b" />
+              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{branchLabel || 'Main Branch'}</span>
             </div>
 
           </div>
@@ -673,252 +1034,9 @@ export function FnbProductDetailsPage({
             </div>
 
             {/* Tabbed Switcher for Nutrition & Allergens (Dynamic and completely containerless) */}
-            {hasModifiers && renderNutritionAndAllergens()}
-
-
-            {Array.isArray(relatedItems) && relatedItems.length > 0 ? (
-              <div style={{
-                display: 'grid',
-                gap: 16,
-                borderTop: '1px solid rgba(226, 232, 240, 0.6)',
-                paddingTop: 24,
-                marginTop: 24
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0f172a' }}>Recommended Pairings</h3>
-                </div>
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, 1fr)',
-                  gap: 16
-                }}>
-                  {relatedItems.slice(0, 3).map((recommended) => {
-                    const recImgUrl = withAssetOrigin(recommended.image_url);
-                    return (
-                      <div
-                        key={`recommended-${recommended.item_id}`}
-                        onClick={() => onSelectRelatedItem?.(recommended)}
-                        style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: 8,
-                          cursor: 'pointer',
-                          background: '#ffffff',
-                          border: '1px solid rgba(226, 232, 240, 0.8)',
-                          borderRadius: 18,
-                          padding: 12
-                        }}
-                      >
-                        <div style={{ width: '100%', height: 110, borderRadius: 12, overflow: 'hidden', background: '#f8fafc', flexShrink: 0 }}>
-                          {recImgUrl ? (
-                            <img src={recImgUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          ) : (
-                            <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: '#64748b' }}>
-                              <ChefHat size={20} />
-                            </div>
-                          )}
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flexGrow: 1 }}>
-                          <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {recommended.name}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, marginTop: 'auto' }}>
-                            <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316' }}>{money(recommended.default_sale_price)}</div>
-                            <button
-                              type="button"
-                              aria-label={`Add ${recommended.name} to cart`}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                onQuickAdd?.(recommended);
-                              }}
-                              style={{
-                                width: 28,
-                                height: 28,
-                                borderRadius: '50%',
-                                background: '#f0fdf4',
-                                border: '1px solid #86efac',
-                                color: '#15803d',
-                                display: 'grid',
-                                placeItems: 'center',
-                                cursor: 'pointer',
-                                flexShrink: 0
-                              }}
-                            >
-                              <Plus size={16} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-
-            <div
-              id="fnb-item-reviews-section"
-              style={{
-              display: 'grid',
-              gap: 16,
-              borderTop: '1px solid rgba(226, 232, 240, 0.6)',
-              paddingTop: 24,
-              marginTop: 24,
-              scrollMarginTop: 96,
-              transition: 'box-shadow 220ms ease, border-color 220ms ease',
-              ...(reviewSectionHighlighted ? {
-                borderRadius: 24,
-                paddingInline: 16,
-                paddingBottom: 12,
-                marginInline: -16,
-                boxShadow: '0 0 0 2px rgba(15,111,255,0.16), 0 18px 36px rgba(15,111,255,0.08)'
-              } : {})
-            }}
-            >
-              <div style={{ display: 'flex', alignItems: isMobileViewport ? 'stretch' : 'center', justifyContent: 'space-between', gap: 16, flexDirection: isMobileViewport ? 'column' : 'row' }}>
-                <div style={{ display: 'grid', gap: 6 }}>
-                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0f172a' }}>Reviews & Ratings</h3>
-                  <div style={{ fontSize: 13, color: '#64748b' }}>Verified customer feedback for this menu item.</div>
-                </div>
-                {canWriteReview ? (
-                  <button
-                    type="button"
-                    onClick={onOpenWriteReview}
-                    style={{
-                      ...actionButtonBase,
-                      minHeight: 42,
-                      padding: '0 18px',
-                      borderRadius: 14,
-                      border: '1px solid #bfdbfe',
-                      background: '#eff6ff',
-                      color: '#0F6FFF',
-                      boxShadow: '0 10px 24px rgba(15,111,255,0.08)'
-                    }}
-                  >
-                    Write a Review
-                  </button>
-                ) : null}
-              </div>
-
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 280px) minmax(0, 1fr)',
-                gap: 18
-              }}>
-                <div style={{
-                  border: '1px solid rgba(226, 232, 240, 0.8)',
-                  borderRadius: 20,
-                  background: '#fff',
-                  padding: 18,
-                  display: 'grid',
-                  gap: 14,
-                  boxShadow: '0 12px 26px rgba(15,23,42,0.04)'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{ fontSize: 34, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>
-                      {hasReviewSummary ? Number(ratingScore).toFixed(2) : '0.00'}
-                    </div>
-                    <div style={{ display: 'grid', gap: 6 }}>
-                      <FractionalStars value={ratingScore || 0} size={18} />
-                      <div style={{ fontSize: 12, color: '#64748b' }}>{Number(reviewCount || 0)} review{Number(reviewCount || 0) === 1 ? '' : 's'}</div>
-                    </div>
-                  </div>
-                  <div style={{ display: 'grid', gap: 8 }}>
-                    {[5, 4, 3, 2, 1].map((starValue) => {
-                      const total = Math.max(1, Number(reviewCount || 0));
-                      const count = Number(reviewDistribution?.[starValue] || 0);
-                      const width = `${Math.min(100, (count / total) * 100)}%`;
-                      return (
-                        <div key={`distribution-${starValue}`} style={{ display: 'grid', gridTemplateColumns: '22px 1fr 26px', gap: 10, alignItems: 'center' }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>{starValue}</div>
-                          <div style={{ height: 8, borderRadius: 999, background: '#eef2f7', overflow: 'hidden' }}>
-                            <div style={{ width, height: '100%', borderRadius: 999, background: 'linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%)', transition: 'width 240ms ease' }} />
-                          </div>
-                          <div style={{ fontSize: 12, color: '#64748b', textAlign: 'right' }}>{count}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {reviewsLoading ? (
-                  <div style={{ display: 'grid', placeItems: 'center', minHeight: 200, border: '1px solid rgba(226, 232, 240, 0.8)', borderRadius: 20, background: '#fff', color: '#64748b', fontSize: 14 }}>
-                    Loading customer reviews...
-                  </div>
-                ) : reviewEntries.length > 0 ? (
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))',
-                    gap: 14
-                  }}>
-                    {reviewEntries.map((entry) => {
-                      const reviewerName = String(entry?.reviewer_name || 'Customer').trim() || 'Customer';
-                      const initials = String(entry?.reviewer_initials || reviewerName.split(/\s+/).map((part) => part.charAt(0).toUpperCase()).slice(0, 2).join('') || 'CU').slice(0, 2);
-                      const mediaEntries = Array.isArray(entry?.media_json) ? entry.media_json.filter(Boolean).slice(0, 3) : [];
-                      return (
-                        <article
-                          key={`review-card-${entry?.review_id || `${reviewerName}-${entry?.submitted_at || ''}`}`}
-                          style={{
-                            display: 'grid',
-                            gap: 12,
-                            border: '1px solid rgba(226, 232, 240, 0.8)',
-                            borderRadius: 18,
-                            padding: 16,
-                            background: '#fff',
-                            boxShadow: '0 12px 26px rgba(15,23,42,0.04)',
-                            transition: 'transform 160ms ease, box-shadow 160ms ease'
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                              <div style={{ width: 42, height: 42, borderRadius: 999, background: '#eff6ff', color: '#0F6FFF', display: 'grid', placeItems: 'center', fontSize: 15, fontWeight: 900, flexShrink: 0 }}>
-                                {initials}
-                              </div>
-                              <div style={{ display: 'grid', gap: 4, minWidth: 0 }}>
-                                <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{reviewerName}</div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                  <FractionalStars value={Number(entry?.rating || 0)} size={14} gap={3} />
-                                  <span style={{ fontSize: 12, fontWeight: 700, color: '#b45309' }}>{Number(entry?.rating || 0).toFixed(2)}</span>
-                                </div>
-                              </div>
-                            </div>
-                            {entry?.verified_purchase === true ? (
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999, background: '#ecfdf3', color: '#15803d', fontSize: 11, fontWeight: 800, border: '1px solid #bbf7d0', flexShrink: 0 }}>
-                                <BadgeCheck size={14} />
-                                Verified
-                              </span>
-                            ) : null}
-                          </div>
-
-                          {String(entry?.comment || '').trim() ? (
-                            <div style={{ fontSize: 14, lineHeight: 1.65, color: '#475569' }}>
-                              "{String(entry.comment).trim()}"
-                            </div>
-                          ) : null}
-
-                          {mediaEntries.length > 0 ? (
-                            <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
-                              {mediaEntries.map((mediaEntry, index) => (
-                                <div key={`review-media-${entry?.review_id || 'item'}-${index}`} style={{ width: 72, height: 72, borderRadius: 12, background: STAR_SOFT, border: '1px dashed #fdba74', display: 'grid', placeItems: 'center', color: '#c2410c', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
-                                  {String(mediaEntry?.label || mediaEntry?.name || 'Photo').trim()}
-                                </div>
-                              ))}
-                            </div>
-                          ) : null}
-
-                          <div style={{ fontSize: 12, color: '#64748b' }}>
-                            {formatRelativeDate(entry?.submitted_at)}{entry?.verified_purchase === true ? ' - Verified Order' : ''}
-                          </div>
-                        </article>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div style={{ display: 'grid', placeItems: 'center', minHeight: 200, border: '1px solid rgba(226, 232, 240, 0.8)', borderRadius: 20, background: '#fff', color: '#64748b', fontSize: 14, padding: 20, textAlign: 'center' }}>
-                    No verified reviews for this item yet.
-                  </div>
-                )}
-              </div>
-            </div>
+            {!isMobileViewport && hasModifiers && renderNutritionAndAllergens()}
+            {!isMobileViewport && renderRecommendedPairings()}
+            {!isMobileViewport && renderReviewsSection()}
           </div>
 
           {/* -- RIGHT COLUMN: Summary + Sticky Actions (Consolidated clean cardless panel) -- */}
@@ -933,7 +1051,7 @@ export function FnbProductDetailsPage({
               <div style={{ display: 'grid', gap: sp(1) }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
                   <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
-                    <h1 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, lineHeight: 1.15, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.025em', display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                    <h1 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, lineHeight: 1.15, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.025em', display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, fontFamily: FNB_DISPLAY_FONT }}>
                       {item.name}
                       {hasReviewSummary ? (
                         <span style={{
@@ -1011,10 +1129,12 @@ export function FnbProductDetailsPage({
 
                 {/* Stepper selector */}
                 <div style={{
-                  display: 'inline-flex',
+                  display: 'inline-grid',
+                  gridTemplateColumns: '32px minmax(24px, auto) 32px',
                   alignItems: 'center',
-                  gap: 12,
-                  padding: '6px 12px',
+                  justifyItems: 'center',
+                  gap: 4,
+                  padding: '6px 10px',
                   borderRadius: 999,
                   border: '1px solid rgba(226, 232, 240, 0.8)',
                   background: '#fff',
@@ -1028,17 +1148,17 @@ export function FnbProductDetailsPage({
                       border: 'none',
                       background: 'transparent',
                       color: '#475569',
-                      fontSize: 20,
-                      fontWeight: 600,
                       cursor: 'pointer',
-                      padding: '0 8px',
+                      width: 28,
+                      height: 28,
+                      padding: 0,
                       display: 'grid',
                       placeItems: 'center'
                     }}
                   >
-                    -
+                    <Minus size={14} strokeWidth={2.5} />
                   </button>
-                  <span style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', minWidth: 20, textAlign: 'center' }}>
+                  <span style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', minWidth: 24, textAlign: 'center', lineHeight: 1 }}>
                     {Math.max(1, Number(quantity || 1))}
                   </span>
                   <button
@@ -1049,21 +1169,21 @@ export function FnbProductDetailsPage({
                       border: 'none',
                       background: 'transparent',
                       color: '#475569',
-                      fontSize: 20,
-                      fontWeight: 600,
                       cursor: 'pointer',
-                      padding: '0 8px',
+                      width: 28,
+                      height: 28,
+                      padding: 0,
                       display: 'grid',
                       placeItems: 'center'
                     }}
                   >
-                    +
+                    <Plus size={14} strokeWidth={2.5} />
                   </button>
                 </div>
               </div>
 
               {/* Repositioned Nutrition & Allergens (if no modifiers are present) */}
-              {!hasModifiers && renderNutritionAndAllergens()}
+              {(isMobileViewport || !hasModifiers) && renderNutritionAndAllergens()}
 
 
               {/* Customization accordions customize engine */}
@@ -1206,8 +1326,12 @@ export function FnbProductDetailsPage({
                 </div>
               ) : null}
 
+              {isMobileViewport && renderReviewsSection()}
+
+              {isMobileViewport && renderRecommendedPairings()}
+
               {/* Total + CTA buttons */}
-              <div style={{ display: 'grid', gap: 16, borderTop: '1px solid rgba(226,232,240,0.6)', paddingTop: sp(2) }}>
+              {!isMobileViewport ? <div style={{ display: 'grid', gap: 16, borderTop: '1px solid rgba(226,232,240,0.6)', paddingTop: sp(2) }}>
                 {/* Clean borderless total row */}
                 <div style={{
                   display: 'flex',
@@ -1272,7 +1396,7 @@ export function FnbProductDetailsPage({
                   <Lock size={16} color="#64748b" />
                   Secure checkout • 100% safe
                 </div>
-              </div>
+              </div> : null}
             </div>
           </div>
         </div>
@@ -1280,50 +1404,204 @@ export function FnbProductDetailsPage({
 
       {/* -- Mobile sticky CTA bar -- */}
       {isMobileViewport ? (
-        <div
-          style={{
-            position: 'fixed',
-            left: sp(2),
-            right: sp(2),
-            bottom: sp(2),
-            zIndex: 60,
-            borderRadius: 20,
-            border: '1px solid rgba(226,232,240,0.9)',
-            background: 'rgba(255,255,255,0.97)',
-            backdropFilter: 'blur(18px)',
-            boxShadow: '0 16px 40px rgba(15,23,42,0.18)',
-            padding: sp(2),
-            display: 'grid',
-            gap: sp(1)
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: sp(2) }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Total</div>
-              <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', lineHeight: 1.1, letterSpacing: '-0.02em' }}>{money(totalPrice)}</div>
+        <>
+          <div
+            style={{
+              position: 'fixed',
+              left: sp(2),
+              right: sp(2),
+              bottom: sp(2),
+              zIndex: 60,
+              borderRadius: 20,
+              border: '1px solid rgba(226,232,240,0.9)',
+              background: 'rgba(255,255,255,0.97)',
+              backdropFilter: 'blur(18px)',
+              boxShadow: '0 16px 40px rgba(15,23,42,0.18)',
+              padding: sp(1.5)
+            }}
+          >
+            <div style={{ display: 'grid', gridTemplateColumns: '92px minmax(0, 1fr)', gap: 10, alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={() => setIsMobileSummaryOpen(true)}
+                disabled={!available}
+                style={{
+                  ...actionButtonBase,
+                  minHeight: 48,
+                  minWidth: 0,
+                  padding: '0 16px',
+                  borderRadius: 14,
+                  border: '1.5px solid #22C55E',
+                  background: '#ffffff',
+                  color: '#15803d',
+                  boxShadow: 'none',
+                  opacity: available ? 1 : 0.65
+                }}
+              >
+                <ShoppingCart size={16} />
+                Cart
+              </button>
+              <button
+                type="button"
+                onClick={onBuyNow}
+                disabled={!available}
+                style={{
+                  ...actionButtonBase,
+                  minHeight: 48,
+                  minWidth: 0,
+                  padding: '0 18px',
+                  borderRadius: 14,
+                  border: 'none',
+                  background: available ? '#f97316' : '#cbd5e1',
+                  color: '#fff',
+                  boxShadow: 'none',
+                  opacity: available ? 1 : 0.65
+                }}
+              >
+                Buy Now - {money(totalPrice)}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={onAddToCart}
-              disabled={!available}
+          </div>
+
+          {isMobileSummaryOpen ? (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Order Summary"
+              onClick={() => setIsMobileSummaryOpen(false)}
               style={{
-                ...actionButtonBase,
-                minHeight: 44,
-                borderRadius: 18,
-                minWidth: 160,
-                border: 'none',
-                background: available ? '#26884c' : '#cbd5e1',
-                color: '#fff',
-                boxShadow: 'none',
-                opacity: available ? 1 : 0.65,
-                flexShrink: 0
+                position: 'fixed',
+                inset: 0,
+                zIndex: 70,
+                background: 'rgba(15, 23, 42, 0.42)',
+                display: 'flex',
+                alignItems: 'flex-end',
+                justifyContent: 'center',
+                padding: `${sp(2)}px ${sp(2)}px ${sp(11)}px`
               }}
             >
-              <ShoppingCart size={16} />
-              Add to Cart
-            </button>
-          </div>
-        </div>
+              <div
+                onClick={(event) => event.stopPropagation()}
+                style={{
+                  width: '100%',
+                  maxWidth: 420,
+                  borderRadius: '24px 24px 18px 18px',
+                  background: '#ffffff',
+                  border: '1px solid rgba(226,232,240,0.9)',
+                  boxShadow: '0 24px 60px rgba(15,23,42,0.24)',
+                  padding: `${sp(1.5)}px ${sp(2)}px ${sp(2)}px`,
+                  display: 'grid',
+                  gap: sp(2)
+                }}
+              >
+                <div style={{ width: 56, height: 5, borderRadius: 999, background: '#e2e8f0', margin: '0 auto' }} />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0f172a', fontFamily: FNB_DISPLAY_FONT }}>Order Summary</h3>
+                  <button
+                    type="button"
+                    aria-label="Close order summary"
+                    onClick={() => setIsMobileSummaryOpen(false)}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: '50%',
+                      border: 'none',
+                      background: '#ffffff',
+                      color: '#334155',
+                      fontSize: 22,
+                      lineHeight: 1,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div style={{ borderTop: '1px solid rgba(226,232,240,0.8)', paddingTop: sp(2), display: 'grid', gap: sp(2) }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '64px minmax(0, 1fr) auto', gap: 12, alignItems: 'center' }}>
+                    <div style={{ width: 64, height: 64, borderRadius: 14, overflow: 'hidden', background: '#f8fafc', border: '1px solid rgba(226,232,240,0.8)', display: 'grid', placeItems: 'center' }}>
+                      {imageUrl ? (
+                        <img src={imageUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <ChefHat size={22} color="#94a3b8" />
+                      )}
+                    </div>
+                    <div style={{ minWidth: 0, display: 'grid', gap: 4 }}>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
+                      <div style={{ fontSize: 14, color: '#64748b' }}>Quantity: {safeQuantity}</div>
+                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: '#f97316', whiteSpace: 'nowrap' }}>{money(totalPrice)}</div>
+                  </div>
+
+                  <div style={{ borderTop: '1px solid rgba(226,232,240,0.8)', paddingTop: sp(1.5), display: 'grid', gap: 10 }}>
+                    {[
+                      ['Subtotal', money(subtotalPrice)],
+                      ['Add-ons', money(selectedModifiersTotal)],
+                      ['Service Fee', money(serviceFee)]
+                    ].map(([label, value]) => (
+                      <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#475569' }}>
+                        <span>{label}</span>
+                        <span style={{ fontWeight: 700, color: '#334155' }}>{value}</span>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingTop: 2 }}>
+                      <span style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>Total</span>
+                      <span style={{ fontSize: 22, fontWeight: 900, color: '#0f172a' }}>{money(totalPrice)}</span>
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#22C55E', textAlign: 'center' }}>
+                    Get cashback from this item!
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => setIsMobileSummaryOpen(false)}
+                      style={{
+                        ...actionButtonBase,
+                        minHeight: 44,
+                        minWidth: 0,
+                        padding: '0 14px',
+                        borderRadius: 12,
+                        border: '1px solid rgba(203, 213, 225, 0.9)',
+                        background: '#ffffff',
+                        color: '#334155',
+                        boxShadow: 'none',
+                        fontSize: 14
+                      }}
+                    >
+                      Continue Shopping
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMobileSummaryOpen(false);
+                        onAddToCart?.();
+                      }}
+                      disabled={!available}
+                      style={{
+                        ...actionButtonBase,
+                        minHeight: 44,
+                        minWidth: 0,
+                        padding: '0 16px',
+                        borderRadius: 12,
+                        border: 'none',
+                        background: available ? '#16a34a' : '#cbd5e1',
+                        color: '#ffffff',
+                        boxShadow: 'none',
+                        opacity: available ? 1 : 0.65,
+                        fontSize: 14
+                      }}
+                    >
+                      Confirm & Add to Cart
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </>
       ) : null}
     </section>
   );
