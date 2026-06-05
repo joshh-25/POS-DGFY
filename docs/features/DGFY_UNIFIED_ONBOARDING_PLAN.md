@@ -126,7 +126,7 @@ topic: dgfy_unified_onboarding_plan
 1. On successful login, master admin receives onboarding reminder + wizard for incomplete state.
 2. Wizard sections:
 - Optional profile picture and cover photo
-- Primary storefront location pin through the shared IMS MapLibre picker, with click-to-place, drag-to-adjust, browser geolocation, coordinate fields, and delivery-radius preview
+- Primary storefront location pin through the shared IMS MapLibre picker, with click-to-place, drag-to-adjust, browser geolocation, coordinate fields, and delivery-radius preview. The shared picker is also used by Settings > Storefront location editing and uses an inline raster style so a remote style JSON failure cannot blank the picker before merchants can place or adjust a pin.
 - Storefront business-hours setup in the same primary-location step, persisted to `storefront_hours`
 - Mode-aware bulk starter-item creation, including row-level partial saves, optional post-create storefront image upload retry, and exact generated-SKU replay handling that returns prior rows as idempotent success rather than duplicates
 3. Persist progress after each step and allow safe resume.

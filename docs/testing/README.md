@@ -132,6 +132,18 @@ Current bundle-gate expectations:
 8. After the PR #11 DGFY POS surface split, the budget gate enforces the renamed SKUpervisor POS route chunk and the standalone POS checkout chunk separately. Do not treat a missing or renamed route chunk as harmless without updating the budget script and recording new evidence in `docs/testing/pos-readiness-status.md`.
 9. The merged frontend toolchain targets Vite 8 / `@vitejs/plugin-react` 6. Deterministic installs for frontend builds require a Node version accepted by that toolchain (`^20.19.0 || ^22.12.0 || >=24.0.0`), even though backend runtime support can remain broader.
 
+## MapLibre Picker Runtime Gate
+
+Use this focused gate when changing the shared IMS MapLibre picker used by onboarding primary-location setup and Settings > Storefront location editing:
+
+1. `npm --prefix frontend test -- --run src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx`
+2. `npm --prefix frontend test -- --run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx`
+
+Evidence semantics:
+1. The focused MapLibre suite proves the picker initializes with the inline raster style contract, preserves click/geolocation/drag coordinate updates, skips unsafe hidden-container resize calls, and keeps the coordinate fallback usable when tile resource requests emit MapLibre errors.
+2. The onboarding and Settings suites prove both user-facing surfaces still wire the shared picker into their location forms.
+3. These gates do not prove live tile-provider availability, browser WebGL support, or production CSP/proxy parity; rendered browser QA remains required before claiming visual map parity.
+
 ## Claim Guardrail
 
 Current approved claim language for subscription telemetry:

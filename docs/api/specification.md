@@ -5447,7 +5447,7 @@ OTP email sends use `sendEmailOtpCode()` and explicitly set the sender display n
 - Login and current-user bootstrap payloads expose onboarding metadata for tenant master admins.
 - Non-master users do not own onboarding lifecycle and may receive `onboarding: null`.
 - The active wizard has three steps: `brand_assets`, `primary_location`, and `bulk_items`.
-- The `primary_location` wizard step uses the shared IMS MapLibre pin picker. Click, drag, or browser geolocation updates the same latitude/longitude fields submitted to the tenant-location API.
+- The `primary_location` wizard step uses the shared IMS MapLibre pin picker. The same picker is used by Settings > Storefront location editing. It uses an inline raster style so the picker is not blocked by a third-party style JSON request; click, drag, browser geolocation, or manual coordinate edits update the same latitude/longitude fields submitted to the tenant-location API.
 - The `primary_location` step also accepts `payload.business_hours` and persists it to the shared `storefront_hours` setting. The schedule uses `mode="weekly"`, `timezone` such as `Asia/Manila`, and `weekly.{sun..sat}` entries with `enabled`, `open`, and `close` in `HH:mm` format.
 - Stored legacy `classification_snapshot` data may remain in older `tenant_onboarding_progress` records, but the current wizard does not create or require business classification output.
 
