@@ -2153,6 +2153,35 @@ function StoreCatalogEmptyState({ mode = 'setup_pending', searchQuery = '', onRe
   );
 }
 
+function StoreCatalogErrorState({ message = '', guidance = '', onRefreshTenantPage }) {
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        border: '1px solid #fecaca',
+        borderRadius: 14,
+        background: 'linear-gradient(180deg,#fff7f7 0%,#ffffff 100%)',
+        padding: 16
+      }}
+    >
+      <div style={{ fontSize: 18, fontWeight: 800, color: '#991b1b' }}>Storefront catalog could not load</div>
+      <p style={{ margin: '8px 0 0 0', color: '#7f1d1d', fontSize: 14 }}>{message || 'Failed to load tenant storefront catalog.'}</p>
+      {guidance && (
+        <p style={{ margin: '8px 0 0 0', color: '#475569', fontSize: 14 }}>{guidance}</p>
+      )}
+      <div style={{ marginTop: 12 }}>
+        <button
+          type="button"
+          onClick={onRefreshTenantPage}
+          style={{ borderRadius: 10, border: '1px solid #b91c1c', background: '#fff', color: '#991b1b', padding: '8px 12px', fontWeight: 700 }}
+        >
+          Retry Catalog
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const STYLES = {
   colors: {
     brand: '#ea580c',
@@ -4159,7 +4188,7 @@ export default function StorefrontApp() {
   const [catalog, setCatalog] = useState([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [catalogError, setCatalogError] = useState('');
-  const [, setCatalogErrorGuidance] = useState('');
+  const [catalogErrorGuidance, setCatalogErrorGuidance] = useState('');
 
   const [orderMethod, setOrderMethod] = useState('delivery');
   const [cart, setCart] = useState([]);
@@ -4768,7 +4797,6 @@ export default function StorefrontApp() {
     } catch (error) {
       if (requestSequence !== storeLoadRequestSequenceRef.current) return;
       const normalizedError = classifyStoreCatalogError(error, 'Failed to load tenant storefront page.');
-      setSelectedStore(null);
       setStoreLocations([]);
       setCatalog([]);
       setCatalogError(normalizedError.message);
@@ -6394,7 +6422,7 @@ export default function StorefrontApp() {
   ]);
   const hasCatalogSearchQuery = catalogSearch.trim().length > 0;
   const catalogState = useMemo(() => {
-    if (loadingCatalog && catalog.length === 0) return 'empty_setup';
+    if (loadingCatalog && catalog.length === 0) return 'loading';
     if (loadingCatalog) return 'loading';
     if (catalogError) return 'error';
     if (!hasCatalogSearchQuery && filteredCatalog.length === 0) return 'empty_setup';
@@ -14015,13 +14043,23 @@ return (
           </div>
         )}
 
+        {catalogState === 'error' && (
+          <div style={{ maxWidth: 1320, margin: `${isMobileViewport ? 18 : 24}px auto 0`, width: '100%', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
+            <StoreCatalogErrorState
+              message={catalogError}
+              guidance={catalogErrorGuidance}
+              onRefreshTenantPage={refreshStorePageForTenantSetup}
+            />
+          </div>
+        )}
+
         {catalogState === 'empty_search_on_zero' && (
           <div style={{ maxWidth: 1320, margin: `${isMobileViewport ? 18 : 24}px auto 0`, width: '100%', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
             <StoreCatalogEmptyState mode="search_on_empty" searchQuery={catalogSearch.trim()} onRefreshTenantPage={refreshStorePageForTenantSetup} />
           </div>
         )}
 
-        {isServicesMode && filteredCatalog.length === 0 && !catalogError && (
+        {isServicesMode && filteredCatalog.length === 0 && !loadingCatalog && !catalogError && (
           <div style={{ maxWidth: 1320, margin: `${isMobileViewport ? 18 : 24}px auto 0`, width: '100%', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
             <StoreCatalogEmptyState
               mode={hasCatalogSearchQuery ? 'search_on_empty' : 'setup_pending'}

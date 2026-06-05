@@ -64,6 +64,14 @@ const isMissingStorefrontCatalogOverrideTableError = (error) => {
     return code === 'ER_NO_SUCH_TABLE' && message.includes('storefront_catalog_overrides');
 };
 
+const isMissingStorefrontCatalogGalleryColumnError = (error) => {
+    if (!error) return false;
+    const code = error.original?.code || error.parent?.code || error.code;
+    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
+    return code === 'ER_BAD_FIELD_ERROR'
+        && message.includes('storefrontCatalogOverride.storefront_image_gallery');
+};
+
 const isMissingServiceItemDetailTableError = (error) => {
     if (!error) return false;
     const code = error.original?.code || error.parent?.code || error.code;
@@ -84,7 +92,7 @@ const isMissingOptionalCatalogIncludeTableError = (error) => {
         || message.includes('fnb_modifier_groups')
         || message.includes('fnb_modifier_options')
         || message.includes('fnb_item_modifier_groups')
-    );
+    ) || isMissingStorefrontCatalogGalleryColumnError(error);
 };
 
 const isMissingItemLocationStockSchemaError = (error) => {
@@ -171,13 +179,17 @@ const applyLocationStock = (rows = [], stockMap = new Map()) => (
     })
 );
 
-const buildStorefrontOverrideInclude = (StorefrontCatalogOverride, PosCatalogOverride, { includeLegacyPosFallback = false } = {}) => {
+const buildStorefrontOverrideInclude = (StorefrontCatalogOverride, PosCatalogOverride, { includeLegacyPosFallback = false, includeGallery = true } = {}) => {
     const includes = [];
     if (StorefrontCatalogOverride) {
         includes.push({
             model: StorefrontCatalogOverride,
             as: 'storefrontCatalogOverride',
-            attributes: ['storefront_visible', 'storefront_image_url', 'storefront_image_gallery'],
+            attributes: [
+                'storefront_visible',
+                'storefront_image_url',
+                ...(includeGallery ? ['storefront_image_gallery'] : [])
+            ],
             required: false
         });
     }
@@ -617,7 +629,8 @@ export const storeRepository = {
                     PosCatalogOverride,
                     {
                         includeLegacyPosFallback: isMissingStorefrontCatalogOverrideTableError(error)
-                            && !isMissingPosCatalogOverrideTableError(error)
+                            && !isMissingPosCatalogOverrideTableError(error),
+                        includeGallery: !isMissingStorefrontCatalogGalleryColumnError(error)
                     }
                 ),
                 ...optionalDetailIncludes
