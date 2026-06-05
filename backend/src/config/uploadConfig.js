@@ -14,8 +14,9 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 export const TEMP_DIR = uploadDir;
-const IMAGE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
-const BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES = 6 * 1024 * 1024;
+export const IMAGE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
+export const BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES = 6 * 1024 * 1024;
+export const BULK_CATALOG_IMAGE_TRANSPORT_MAX_FILES = 50;
 
 // Configure storage
 const storage = multer.diskStorage({
@@ -86,6 +87,9 @@ const buildBulkCatalogImageUpload = ({ maxBytes = BULK_CATALOG_IMAGE_TRANSPORT_M
         fileSize: maxBytes,
         files: maxFiles
     },
+    // Bulk catalog image uploads intentionally accept the multipart batch at
+    // transport so the catalog use cases can return per-file results and clean
+    // rejected temp files. Do not make this strict without updating ADR 0017.
     fileFilter: (req, file, cb) => {
         cb(null, true);
     }
@@ -93,7 +97,7 @@ const buildBulkCatalogImageUpload = ({ maxBytes = BULK_CATALOG_IMAGE_TRANSPORT_M
 
 export const storefrontAssetUpload = buildStrictImageUpload({ maxBytes: IMAGE_UPLOAD_MAX_BYTES, maxFiles: 1 });
 export const posCatalogImageUpload = buildStrictImageUpload({ maxBytes: IMAGE_UPLOAD_MAX_BYTES, maxFiles: 1 });
-export const posCatalogBulkImageUpload = buildBulkCatalogImageUpload({ maxBytes: BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES, maxFiles: 50 });
+export const posCatalogBulkImageUpload = buildBulkCatalogImageUpload({ maxBytes: BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES, maxFiles: BULK_CATALOG_IMAGE_TRANSPORT_MAX_FILES });
 export const storefrontCatalogImageUpload = buildStrictImageUpload({ maxBytes: IMAGE_UPLOAD_MAX_BYTES, maxFiles: 1 });
 export const storefrontCatalogGalleryImageUpload = buildStrictImageUpload({ maxBytes: IMAGE_UPLOAD_MAX_BYTES, maxFiles: 10 });
-export const storefrontCatalogBulkImageUpload = buildBulkCatalogImageUpload({ maxBytes: BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES, maxFiles: 50 });
+export const storefrontCatalogBulkImageUpload = buildBulkCatalogImageUpload({ maxBytes: BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES, maxFiles: BULK_CATALOG_IMAGE_TRANSPORT_MAX_FILES });
