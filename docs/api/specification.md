@@ -151,7 +151,7 @@ Passwords only require a minimum length of 8 characters. The registration UI can
 Request a one-time email verification code for public account-entry flows. Email delivery must succeed; this endpoint fails closed when SMTP/Brevo API delivery is unavailable or provider authentication fails. Requests are OTP-rate-limited with `RATE_LIMIT_EMAIL_OTP_WINDOW_MS` and `RATE_LIMIT_EMAIL_OTP_MAX_REQUESTS`.
 
 Supported purposes:
-- `company_registration`: body requires `email`; retained for compatibility, but current DGFY company registration uses the authenticated account's `dgfy_account_verification` state and does not ask for this second OTP when the same email is already verified.
+- `company_registration`: body requires `email`; retained for compatibility with older flows, but current DGFY company registration uses the signed-in DGFY account directly and does not ask for this second OTP.
 - `tenant_user_registration`: body requires `email` and a tenant context (`x-company-token`).
 - `invitation_acceptance`: body requires `invitation_token`; the backend resolves tenant context and invited email from the invitation when `x-company-token` is absent.
 - `dgfy_account_verification`: requested through the authenticated DGFY account endpoint to verify the global DGFY email.
@@ -1126,6 +1126,32 @@ Append images to the ordered Storefront catalog image gallery for one item.
 - The response includes `storefront_image_gallery` ordered by `sort_order`.
 - Upload validation uses the same 5 MB per-image and safe MIME/signature checks as the single-image endpoint.
 - Appending to the gallery preserves `storefront_visible` and does not mutate POS menu images.
+
+### POST /items/storefront-images/bulk
+Upload Storefront catalog images in bulk by SKU filename stem.
+
+**Permission**: `items:edit`
+
+**Request**: `multipart/form-data` with up to 50 `images` file fields.
+
+**Matching Contract**
+- Each file is matched to an item by filename stem. For example, `SKU-001.png` matches item SKU `SKU-001`.
+- Duplicate filename stems in the same request return per-file `duplicate_filename`.
+- Unmatched filename stems return per-file `unmatched`.
+- POS menu image fields are not mutated.
+- Existing `storefront_visible` state is preserved.
+
+**Bulk Upload Security Contract**
+- Bulk upload transport intentionally accepts the multipart batch so the API can return per-file partial-success results.
+- Transport cap: 50 files, 6 MB per temporary upload.
+- Product policy cap: 5 MB per image result row.
+- Each file is validated before storage against the safe image MIME allowlist and binary signature. Unsupported MIME, unsupported signatures, and MIME/signature mismatches return per-file `failed`.
+- Rejected temp files are removed best-effort. If image storage succeeds but the catalog write fails, the newly stored image is removed best-effort.
+- Single-item and gallery image endpoints remain transport-strict; this lenient transport contract applies only to bulk setup endpoints.
+
+**Response Data**
+- `summary` counts `uploaded`, `failed`, `unmatched`, `duplicate_filename`, and `blocked_readiness`.
+- `results[]` includes `filename`, `sku_code`, `item_id`, `surface`, `status`, `image_url`, `errors`, and optional readiness/data payloads.
 
 ### PATCH /items/:item_id/storefront-images/gallery
 Reorder or prune the existing Storefront catalog gallery for one item.
@@ -2364,6 +2390,33 @@ Create/update POS catalog override for an item.
   "pos_visible": true
 }
 ```
+
+### POST /pos/catalog-overrides/images/bulk
+Upload POS catalog images in bulk by SKU filename stem.
+
+**Permission**: `items:edit`
+**Plan Gate**: Premium (`requirePremium`)
+
+**Request**: `multipart/form-data` with up to 50 `images` file fields.
+
+**Matching Contract**
+- Each file is matched to an item by filename stem. For example, `SKU-001.png` matches item SKU `SKU-001`.
+- Duplicate filename stems in the same request return per-file `duplicate_filename`.
+- Unmatched filename stems return per-file `unmatched`.
+- Storefront catalog image fields are not mutated.
+- Existing `pos_visible` state is preserved.
+
+**Bulk Upload Security Contract**
+- Bulk upload transport intentionally accepts the multipart batch so the API can return per-file partial-success results.
+- Transport cap: 50 files, 6 MB per temporary upload.
+- Product policy cap: 5 MB per image result row.
+- Each file is validated before storage against the safe image MIME allowlist and binary signature. Unsupported MIME, unsupported signatures, and MIME/signature mismatches return per-file `failed`.
+- Rejected temp files are removed best-effort. If image storage succeeds but the catalog write fails, the newly stored image is removed best-effort.
+- Single POS image upload remains transport-strict; this lenient transport contract applies only to bulk setup endpoints.
+
+**Response Data**
+- `summary` counts `uploaded`, `failed`, `unmatched`, and `duplicate_filename`.
+- `results[]` includes `filename`, `sku_code`, `item_id`, `surface`, `status`, `image_url`, `errors`, and optional readiness/data payloads.
 
 ### POST /pos/catalog-overrides/:item_id/image
 Upload/replace POS catalog image override (multipart file upload).
@@ -4936,8 +4989,8 @@ Submit a public company registration request.
 - Abuse control: public company registration is IP rate-limited by `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS` (production default: 5 requests per hour). Keep this strict because each accepted registration provisions an isolated tenant database by default.
 - Tenant-session fallback: if the DGFY tenant-session exchange fails after an active response, the frontend keeps the company-created state and routes the founder to manual sign-in with email/company token prefilled.
 - Founder contact and credentials: public company registration no longer accepts `adminEmail`, `adminPhone`, or `adminPassword`; the server derives them from the authenticated DGFY account.
-- Email ownership: public company registration requires the authenticated DGFY account email to already be verified. If the user registers a company with that same verified DGFY email, clients do not send `email_otp_code` and the backend does not consume a second same-address company OTP. If the DGFY account email changes, it must be verified again before registration can proceed.
-- Legal acknowledgement: public company registration requires the current company terms and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current` before tenant creation. The backend fails closed before tenant creation if legal acknowledgement persistence is unavailable. After confirming the authenticated DGFY email is verified, the landlord tenant row, pending-founder membership when applicable, and acknowledgement evidence are written in one landlord transaction. The acknowledgement states that DGFY is an e-marketplace/platform service provider, the seller owns the product, sets the price, fulfills the order, remains seller of record, payment is processed by a licensed payment partner, and DGFY deducts disclosed fees before remitting the seller's net settlement. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
+- Founder account source: public company registration requires a signed-in active DGFY account. The backend derives founder email, phone, username seed, and password hash from that account and does not require a separate DGFY email-code step or `email_verified_at` gate before tenant creation.
+- Legal acknowledgement: public company registration requires the current company terms and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current` before tenant creation. The backend fails closed before tenant creation if legal acknowledgement persistence is unavailable. After confirming there is a signed-in active DGFY account, the landlord tenant row, pending-founder membership when applicable, and acknowledgement evidence are written in one landlord transaction. The acknowledgement states that DGFY is an e-marketplace/platform service provider, the seller owns the product, sets the price, fulfills the order, remains seller of record, payment is processed by a licensed payment partner, and DGFY deducts disclosed fees before remitting the seller's net settlement. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
 
 **Response (201, explicit manual mode)**
 ```json

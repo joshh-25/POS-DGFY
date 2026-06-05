@@ -38,7 +38,7 @@ This declaration covers changing public company registration from a DGFY-account
 1. Tenant-session handoff must require an authenticated active DGFY account.
 2. Tenant-session handoff must only succeed for an accepted membership on an active tenant and active tenant user.
 3. Company registration must still derive founder email, phone, and password hash server-side from the DGFY account.
-4. Company registration must continue requiring verified DGFY email and current company/marketplace terms acknowledgement.
+4. Company registration must continue requiring a signed-in active DGFY account and current company/marketplace terms acknowledgement, without a separate DGFY email-code step after successful sign-in or handoff.
 5. Fallback must preserve manual SKUpervisor login when tenant-session exchange fails after active provisioning.
 
 ## Verification Evidence

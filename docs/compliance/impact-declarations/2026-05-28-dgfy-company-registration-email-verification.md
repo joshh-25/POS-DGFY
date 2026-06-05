@@ -1,8 +1,9 @@
 ---
-status: reference
+status: historical
 owner: engineering
-last_reviewed: 2026-05-28
+last_reviewed: 2026-06-05
 related_adr: docs/architecture/adr/0022-global-dgfy-account-business-registration.md
+superseded_by: docs/compliance/impact-declarations/2026-06-03-dgfy-business-registration-session-handoff.md
 declaration_id: 2026-05-28-dgfy-company-registration-email-verification
 classification: regulatory
 surfaces: settings,compliance,user_registration,storefront
@@ -22,7 +23,7 @@ preflight_request_ref: DGFY-COMPANY-EMAIL-VERIFICATION-2026-05-28
 
 Regulatory.
 
-This declaration covers the DGFY company-registration email-ownership rule. Public company registration still requires an authenticated DGFY account with a verified email, but registering a company with that same verified DGFY email no longer requires a second same-address SMTP OTP.
+This declaration records the previous DGFY company-registration email-ownership rule. It has been superseded: public company registration now requires a signed-in active DGFY account and current company/marketplace terms acknowledgement, but it does not require a separate DGFY email-code step or `email_verified_at` gate before tenant creation.
 
 ## Affected Surfaces
 
@@ -33,10 +34,10 @@ This declaration covers the DGFY company-registration email-ownership rule. Publ
 
 ## Compliance Preconditions
 
-1. Company registration must reject unverified DGFY accounts before tenant creation.
+1. Superseded: company registration no longer rejects a signed-in active DGFY account solely because `email_verified_at` is empty.
 2. Company registration must derive founder email from the authenticated DGFY account; clients must not provide or override founder email.
-3. A verified DGFY account email is sufficient for same-address company registration and must not trigger a second same-address company OTP.
-4. If DGFY email change is implemented later, the new email must clear verification state and complete `dgfy_account_verification` before company registration.
+3. A signed-in active DGFY account is sufficient for company registration and must not trigger a separate same-address company OTP.
+4. If DGFY email change is implemented later, that email-change flow owns its own verification requirement before the changed email can be treated as verified identity elsewhere.
 5. Legal acknowledgement checks remain fail-closed before tenant creation.
 
 ## Verification Evidence
