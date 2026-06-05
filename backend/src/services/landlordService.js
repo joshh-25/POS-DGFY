@@ -143,6 +143,17 @@ export const findTenantByToken = async (token) => {
     });
 };
 
+export const findTenantById = async (tenantId) => {
+    const normalizedTenantId = String(tenantId || '').trim();
+    if (!normalizedTenantId) return null;
+
+    const attributes = await resolveTenantLookupAttributes();
+    return await Tenant.findOne({
+        where: { id: normalizedTenantId },
+        attributes
+    });
+};
+
 export const findInvitationByToken = async (token, options = {}) => {
     const tokenHash = hashInvitationToken(token);
     return UserInvitation.findOne({
@@ -371,6 +382,7 @@ export const updateEmailTenantMapping = async (oldEmail, newEmail, tenantId) => 
 export default {
     createTenant,
     findTenantByToken,
+    findTenantById,
     findTenantByDbName,
     findInvitationByToken,
     resolveInvitationTenantTokenByToken,

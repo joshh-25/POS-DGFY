@@ -223,6 +223,8 @@ Browser responses set HttpOnly `sku_refresh_token` and `sku_tenant_context` cook
 ### POST /auth/refresh-token
 Refresh the in-memory access token using the HttpOnly browser session cookie.
 
+Browser refresh authority is the HttpOnly `sku_refresh_token` cookie. If `sku_tenant_context` or `x-company-token` is missing, the backend may recover tenant context by verifying the signed refresh cookie, reading its `tenant_id`, and resolving the landlord tenant before running refresh-token rotation. Invalid, expired, tenant-less, tenant-mismatched, blacklisted, or inactive-user refresh attempts fail through the normal auth error path. The refresh token is never accepted as browser-readable JSON authority and is never returned in the response body.
+
 **Request**
 ```json
 {}
@@ -4674,7 +4676,7 @@ Start a normal SKUpervisor tenant session from an authenticated DGFY account and
 }
 ```
 
-At least one of `tenant_id` or `company_token` is required. The authenticated DGFY account must have an accepted membership for the active tenant, and the linked tenant user must be active. The response sets the normal SKUpervisor refresh/company cookies and returns the standard tenant access session payload without exposing the refresh token.
+At least one of `tenant_id` or `company_token` is required. The authenticated DGFY account must have an accepted membership for the active tenant, and the linked tenant user must be active. The response sets the normal SKUpervisor refresh/company cookies and returns the standard tenant access session payload without exposing the refresh token. If a later browser reload has the refresh cookie but loses the companion tenant-context cookie, `/auth/refresh-token` can recover tenant context from the signed refresh cookie's `tenant_id` before normal rotation.
 
 ### GET /dgfy/auth/me
 
