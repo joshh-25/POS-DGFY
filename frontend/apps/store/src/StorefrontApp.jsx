@@ -1695,12 +1695,17 @@ function StoresMap({
       const markerSetChanged = markerSignatureRef.current !== nextMarkerSignature;
       markerSignatureRef.current = nextMarkerSignature;
 
+      const retainedPopupKeys = new Set();
       const retainedPopups = [];
       popupsRef.current.forEach((popup) => {
         const isOpen = typeof popup?.isOpen === 'function'
           ? popup.isOpen()
           : Boolean(popup?.node?.isConnected);
         if (!markerSetChanged && isOpen) {
+          const popupMarkerKey = String(popup?.__dgfyMarkerKey || '').trim();
+          if (popupMarkerKey) {
+            retainedPopupKeys.add(popupMarkerKey);
+          }
           retainedPopups.push(popup);
           return;
         }
@@ -1769,6 +1774,7 @@ function StoresMap({
           closeOnClick: false,
           focusAfterOpen: false
         });
+        clusterPopup.__dgfyMarkerKey = coordinateKey;
         popupsRef.current.push(clusterPopup);
         const clusterNode = createSharedCoordinatePreviewNode(group, {
           onSelect: (selectedStorefront) => {
@@ -1832,6 +1838,7 @@ function StoresMap({
           closeOnClick: false,
           focusAfterOpen: false
         });
+        popup.__dgfyMarkerKey = markerKey;
         popupsRef.current.push(popup);
       let closeTimer = null;
       let markerHovered = false;
@@ -1976,7 +1983,7 @@ function StoresMap({
             const openedMarkerKeys = new Set();
             autoOpenCallbacks.forEach((entry) => {
               const markerKey = String(entry?.key || '');
-              if (!markerKey || openedMarkerKeys.has(markerKey)) return;
+              if (!markerKey || retainedPopupKeys.has(markerKey) || openedMarkerKeys.has(markerKey)) return;
               openedMarkerKeys.add(markerKey);
               entry?.open?.();
             });
