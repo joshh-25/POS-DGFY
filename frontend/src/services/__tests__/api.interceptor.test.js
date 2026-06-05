@@ -210,6 +210,37 @@ describe('api.js — Token Refresh Mutex (Interceptor Unit Tests)', () => {
     expect(refreshCallCount).toBe(0);
   });
 
+  it('preflights protected requests with refresh when the tab has only session cookies after reload', async () => {
+    const session = await import('../browserSession.js');
+    session.clearBrowserSession();
+    const capturedHeaders = [];
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          token: 'rehydrated-access-token',
+          company: { token: 'rehydrated-company-token' }
+        }
+      })
+    }));
+
+    mockApi.onGet('/dashboard/stats').reply((config) => {
+      capturedHeaders.push({ ...config.headers });
+      return [200, { data: 'ok' }];
+    });
+
+    const result = await api.get('/dashboard/stats');
+
+    expect(result.data).toEqual({ data: 'ok' });
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/refresh-token'),
+      expect.objectContaining({ method: 'POST', credentials: 'include' })
+    );
+    expect(capturedHeaders[0].Authorization).toBe('Bearer rehydrated-access-token');
+    expect(capturedHeaders[0]['x-company-token']).toBe('rehydrated-company-token');
+  });
+
   // -------------------------------------------------------------------------
   // Test 2.4 — Double-refresh prevention: queued retry that gets 401
   //            does NOT trigger a second refresh cycle

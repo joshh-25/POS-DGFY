@@ -63,6 +63,22 @@ const parseCoordinate = (value) => {
 
 const toFixedCoordinate = (value) => Number(value.toFixed(8));
 
+const canResizeMapContainer = (container) => {
+  if (!container || container.isConnected === false) return false;
+  const rect = container.getBoundingClientRect?.();
+  if (!rect) return true;
+  return rect.width > 0 && rect.height > 0;
+};
+
+const safeResizeMap = (map, container) => {
+  if (!map || !canResizeMapContainer(container)) return;
+  try {
+    map.resize();
+  } catch {
+    // MapLibre can throw while a modal is closing or a hidden panel is being reflowed.
+  }
+};
+
 function createCirclePolygon(centerLng, centerLat, radiusMeters, steps = 64) {
   if (!(radiusMeters > 0)) return null;
   const R = 6371000;
@@ -211,14 +227,14 @@ export default function MapPinPicker({
     mapRef.current = map;
 
     if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
-      resizeObserverRef.current = new ResizeObserver(() => map.resize());
+      resizeObserverRef.current = new ResizeObserver(() => safeResizeMap(map, containerRef.current));
       resizeObserverRef.current.observe(containerRef.current);
     }
 
     // Kick initial resize after the browser has painted
     setTimeout(() => {
       if (!isCancelled) {
-        map.resize();
+        safeResizeMap(map, containerRef.current);
         setIsMapReady(true);
       }
     }, 0);

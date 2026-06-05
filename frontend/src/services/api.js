@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { clearClientSession } from './sessionCleanup.js';
-import { getAuthHeaders, refreshBrowserSession, setBrowserSession } from './browserSession.js';
+import { getAccessToken, getAuthHeaders, refreshBrowserSession, setBrowserSession } from './browserSession.js';
 import { emitGlobalApiError } from '../utils/errorHandler.js';
 
 const isTestEnvironment = (() => {
@@ -175,8 +175,12 @@ if (typeof window !== 'undefined') {
 
 // Request interceptor - Add JWT token to headers
 api.interceptors.request.use(
-  (config) => {
+  async (config) => {
     const method = String(config.method || 'get').toLowerCase();
+    if (!getAccessToken() && shouldAttemptTenantRefresh(config)) {
+      await refreshBrowserSession().catch(() => '');
+    }
+
     const sessionHeaders = getAuthHeaders({
       includeCsrf: !['get', 'head', 'options'].includes(method)
     });

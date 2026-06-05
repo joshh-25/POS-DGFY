@@ -169,6 +169,7 @@ describe('MapPinPicker MapLibre behavior', () => {
   afterEach(() => {
     cleanup();
     delete navigator.geolocation;
+    delete globalThis.ResizeObserver;
   });
 
   it('initializes MapLibre as a flat draggable location picker', async () => {
@@ -215,5 +216,29 @@ describe('MapPinPicker MapLibre behavior', () => {
       longitude: 120.9842456
     });
     expect(maplibreMocks.Marker).toHaveBeenCalledWith(expect.objectContaining({ anchor: 'bottom' }));
+  });
+
+  it('skips unsafe MapLibre resize when the container is not measurable', async () => {
+    let resizeCallback;
+    globalThis.ResizeObserver = vi.fn(function ResizeObserver(callback) {
+      resizeCallback = callback;
+      return {
+        observe: vi.fn(),
+        disconnect: vi.fn()
+      };
+    });
+    const getBoundingClientRectSpy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue({ width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0 });
+
+    render(<MapPinPicker latitude="" longitude="" deliveryRadiusKm={5} onChange={vi.fn()} />);
+    await waitFor(() => expect(maplibreMocks.maps[0]).toBeTruthy());
+
+    act(() => {
+      resizeCallback?.();
+    });
+
+    expect(maplibreMocks.maps[0].resize).not.toHaveBeenCalled();
+    getBoundingClientRectSpy.mockRestore();
   });
 });
