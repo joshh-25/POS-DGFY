@@ -5,7 +5,7 @@ Last updated: 2026-06-05
 
 ## Current Release State
 
-1. Latest production deployment evidence for the tenant session reload and MapLibre picker hardening is code target SHA `4f6eecd1778ae139e634d23821369f40f22dd5d0`, deployed on June 5, 2026 with health checks, frontend asset parity, and tenant-store asset integrity passing. Later docs-only release-state commits may advance repository HEAD without changing the runtime code bundle.
+1. Latest production deployment evidence for the tenant session reload and MapLibre picker hardening is code target SHA `4f6eecd1778ae139e634d23821369f40f22dd5d0`, deployed on June 5, 2026 with health checks, frontend asset parity, and tenant-store asset integrity passing. A Storefront discovery pin-placement/cache hardening fix is in progress after that deployment and must not be treated as live until a new deployed SHA and production smoke are recorded.
 2. June 2, 2026 audit state: dependency vulnerabilities are resolved and the dependency audit commands below return zero current npm advisories for locked root/backend/frontend trees.
 3. The local release gate now includes dependency audits and a focused frontend contract gate before docs, architecture, compliance, backend, frontend, and budget gates.
 4. Current open audit package: `System_Audit/README.md`.
@@ -65,6 +65,10 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 27. `npm --prefix frontend test -- --run src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx` -> PASS on June 5, 2026 with 4 tests after the shared IMS MapLibre picker moved to the inline raster style contract and preserved coordinate fallback behavior during tile-resource failures.
 28. `npm --prefix frontend test -- --run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx` -> PASS on June 5, 2026 with 26 tests proving onboarding and Settings still wire the shared MapLibre picker into location forms.
 29. Production deployment on June 5, 2026 deployed code target SHA `4f6eecd1778ae139e634d23821369f40f22dd5d0`; production deploy summary reported backend health, IMS, POS, Store, and Tenant Store public endpoints passed, tenant-store asset integrity passed, and frontend asset parity passed.
+30. `npm --prefix backend test -- cachePolicy.middleware.test.js cachePolicy.routeContracts.test.js` -> PASS on June 5, 2026 after tenant-scoped Storefront read-cache responses added `Vary: X-Store-Slug` coverage for cached catalog/location/tracking reads.
+31. `npm --prefix frontend test -- --run apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/discoveryPresentation.test.js apps/store/src/__tests__/discoveryMapDom.test.js` -> PASS on June 5, 2026 with 33 tests after Storefront discovery map pins were hardened to keep indexed discovery coordinates authoritative when `/store/locations` enrichment is stale or cache-reused.
+32. `npm --prefix frontend run build:store` -> PASS on June 5, 2026 after Storefront discovery pin-placement hardening.
+33. `npm run check:frontend-budgets` -> PASS on June 5, 2026 after the gate rebuilt all frontend apps and preserved the existing lazy MapLibre chunk warning-only posture.
 
 ## Remaining Non-Technical Blockers (Go/No-Go)
 
