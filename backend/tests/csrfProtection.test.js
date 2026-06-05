@@ -28,6 +28,7 @@ const runMiddleware = (reqOverrides = {}) => {
 describe('csrfProtection', () => {
   it.each([
     '/api/v1/auth/login',
+    '/api/v1/auth/lookup',
     '/api/v1/admin/login',
     '/api/v1/dgfy/auth/login',
     '/api/v1/dgfy/auth/handoff/exchange',
