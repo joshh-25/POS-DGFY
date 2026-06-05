@@ -55,6 +55,7 @@ const Settings = lazy(() => import('../Pages/Settings.jsx'))
 const Login = lazy(() => import('../Pages/Login.jsx'))
 const Register = lazy(() => import('../Pages/Register.jsx'))
 const RegisterCompany = lazy(() => import('../Pages/RegisterCompany.jsx'))
+const LegalDocument = lazy(() => import('../Pages/LegalDocument.jsx'))
 const AcceptInvite = lazy(() => import('../Pages/AcceptInvite.jsx'))
 const Reactivate = lazy(() => import('../Pages/Reactivate.jsx'))
 const MobileReceive = lazy(() => import('../Pages/MobileReceive.jsx'))
@@ -91,6 +92,8 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/register-company" element={<RegisterCompany />} />
+        <Route path="/legal/:slug" element={<LegalDocument />} />
+        <Route path="/privacy" element={<LegalDocument />} />
         <Route path="/accept-invite" element={<AcceptInvite />} />
         <Route path="/reactivate" element={<Reactivate />} />
 

@@ -2,6 +2,8 @@ const PUBLIC_AUTH_ROUTE_PREFIXES = [
   '/login',
   '/register',
   '/register-company',
+  '/legal',
+  '/privacy',
   '/accept-invite',
   '/reactivate',
   '/admin'
