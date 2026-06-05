@@ -1,10 +1,12 @@
 
 import tenantConnector from '../utils/TenantConnector.js';
 import dbStore from '../utils/dbStore.js';
-import { findTenantByToken, resolveInvitationTenantTokenByToken } from '../services/landlordService.js';
+import jwt from 'jsonwebtoken';
+import { findTenantById, findTenantByToken, resolveInvitationTenantTokenByToken } from '../services/landlordService.js';
 import logger from '../config/logger.js';
 import { getTenantModels } from '../utils/tenantModelFactory.js';
 import { resolveTenantByStoreSlug } from '../services/storefrontTenantResolver.js';
+import { getTenantContextToken, getTenantRefreshToken } from '../utils/browserSessionCookies.js';
 
 // Short-lived in-memory cache for tenant lookups.
 // Avoids a DB round-trip to the landlord database on every single API request.
@@ -14,6 +16,7 @@ const TENANT_CACHE_TTL_MS = 60_000; // 60 seconds
 const PLAN_SENSITIVE_ROUTE_PATTERN = /^\/api\/v1\/(pos|ai|forecast|payments|compliance|settings)\b/i;
 const STOREFRONT_ROUTE_PATTERN = /^\/api\/v1\/store(?:\/|$)/i;
 const STRICT_AUTH_ROUTE_PATTERN = /^\/api\/v1\/auth\/(register|email-otp\/request|login|refresh-token|logout|validate-invite|accept-invite)\b/i;
+const REFRESH_TOKEN_ROUTE_PATTERN = /^\/api\/v1\/auth\/refresh-token\b/i;
 
 const DEFAULT_TENANT_CONTEXT = Object.freeze({
     tenantId: 'default',
@@ -34,6 +37,26 @@ const sendTenantContextError = (res, statusCode, message, errorCode) => (
         timestamp: new Date().toISOString()
     })
 );
+
+const resolveTenantTokenFromRefreshCookie = async (req) => {
+    const refreshToken = getTenantRefreshToken(req);
+    if (!refreshToken) return '';
+
+    const refreshSecret = process.env.REFRESH_TOKEN_SECRET;
+    if (!refreshSecret) return '';
+
+    try {
+        const decoded = jwt.verify(refreshToken, refreshSecret);
+        const tenantId = String(decoded?.tenant_id || '').trim();
+        if (!tenantId) return '';
+
+        const tenant = await findTenantById(tenantId);
+        return String(tenant?.company_token || '').trim();
+    } catch (error) {
+        logger.warn(`[TenantHandler] Refresh-token tenant context recovery failed: ${error.message}`);
+        return '';
+    }
+};
 
 const resolveStrictAuthDbFailure = (tenantStatus) => {
     const normalizedStatus = String(tenantStatus || '').trim().toLowerCase();
@@ -89,12 +112,25 @@ export const invalidateTenantLookupCache = ({ companyToken = null, tenantId = nu
 export const tenantHandler = async (req, res, next) => {
     try {
         const path = req.path || '';
-        const isPublicWebhookRoute = path === '/api/v1/payments/webhook';
+        const isPublicWebhookRoute = path === '/api/v1/payments/webhook'
+            || path === '/api/v1/commerce-payments/paymongo/webhook';
         const isStrictAuthRoute = STRICT_AUTH_ROUTE_PATTERN.test(path);
 
         // 1. Identification Strategy:
         // Header (x-company-token) -> Store slug (x-store-slug for public store routes) -> Subdomain (Future) -> Auth User (Future)
         let companyToken = req.headers['x-company-token'];
+        if (!companyToken && isStrictAuthRoute) {
+            companyToken = getTenantContextToken(req);
+            if (companyToken) {
+                req.headers['x-company-token'] = companyToken;
+            }
+        }
+        if (!companyToken && REFRESH_TOKEN_ROUTE_PATTERN.test(path)) {
+            companyToken = await resolveTenantTokenFromRefreshCookie(req);
+            if (companyToken) {
+                req.headers['x-company-token'] = companyToken;
+            }
+        }
         const storeSlug = String(req.headers['x-store-slug'] || '').trim().toLowerCase();
         const allowStoreSlugResolution = STOREFRONT_ROUTE_PATTERN.test(path);
         if (!companyToken && isStrictAuthRoute && /\/(validate-invite|accept-invite|email-otp\/request)\b/i.test(path)) {

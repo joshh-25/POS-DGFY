@@ -10,6 +10,8 @@ const {
     PAYMONGO_SECRET_KEY,
     PAYMONGO_MODE,
     PAYMONGO_WEBHOOK_SECRET,
+    PAYMONGO_TEST_WEBHOOK_SECRET,
+    PAYMONGO_LIVE_WEBHOOK_SECRET,
     PAYMONGO_TEST_PUBLIC_KEY,
     PAYMONGO_TEST_SECRET_KEY,
     PAYMONGO_LIVE_PUBLIC_KEY,
@@ -24,9 +26,18 @@ const RESOLVED_SECRET_KEY = PAYMONGO_MODE === 'live'
     ? (PAYMONGO_LIVE_SECRET_KEY || PAYMONGO_SECRET_KEY)
     : (PAYMONGO_TEST_SECRET_KEY || PAYMONGO_SECRET_KEY);
 
+const RESOLVED_WEBHOOK_SECRET = PAYMONGO_MODE === 'live'
+    ? (PAYMONGO_LIVE_WEBHOOK_SECRET || PAYMONGO_WEBHOOK_SECRET)
+    : (PAYMONGO_TEST_WEBHOOK_SECRET || PAYMONGO_WEBHOOK_SECRET);
+
 const BASE_URL = PAYMONGO_MODE === 'live'
     ? 'https://api.paymongo.com/v1'
     : 'https://api-sandbox.paymongo.com/v1';
+
+const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = Number.parseInt(
+    process.env.PAYMONGO_WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS || '300',
+    10
+);
 
 /**
  * PayMongo Service
@@ -38,12 +49,12 @@ const BASE_URL = PAYMONGO_MODE === 'live'
  * - Subscriptions: Recurring charges using Payment Sources
  * - Webhooks: Payment status updates
  */
-class PayMongoService {
+export class PayMongoService {
     constructor() {
         this.baseUrl = BASE_URL;
         this.publicKey = RESOLVED_PUBLIC_KEY;
         this.secretKey = RESOLVED_SECRET_KEY;
-        this.webhookSecret = PAYMONGO_WEBHOOK_SECRET;
+        this.webhookSecret = RESOLVED_WEBHOOK_SECRET;
     }
 
     /**
@@ -89,6 +100,157 @@ class PayMongoService {
             return response.data.data;
         } catch (error) {
             logger.error('PayMongo Create Payment Error:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    async createPaymentIntent({
+        amount,
+        currency = 'PHP',
+        description,
+        paymentMethodAllowed = ['qrph'],
+        metadata = {},
+        splitPayment = null
+    }) {
+        try {
+            const attributes = {
+                amount,
+                currency,
+                description,
+                payment_method_allowed: paymentMethodAllowed,
+                metadata
+            };
+
+            if (splitPayment) {
+                attributes.split_payment = splitPayment;
+            }
+
+            const response = await axios.post(`${this.baseUrl}/payment_intents`, {
+                data: { attributes }
+            }, {
+                headers: this.getAuthHeader()
+            });
+
+            logger.info(`PayMongo payment intent created: ${response.data.data.id}`);
+            return response.data.data;
+        } catch (error) {
+            logger.error('PayMongo Create Payment Intent Error:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    async createPaymentMethod({ type = 'qrph', billing = {}, metadata = {} }) {
+        try {
+            const response = await axios.post(`${this.baseUrl}/payment_methods`, {
+                data: {
+                    attributes: {
+                        type,
+                        billing,
+                        metadata
+                    }
+                }
+            }, {
+                headers: this.getAuthHeader()
+            });
+
+            logger.info(`PayMongo payment method created: ${response.data.data.id}`);
+            return response.data.data;
+        } catch (error) {
+            logger.error('PayMongo Create Payment Method Error:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    async attachPaymentIntent({ paymentIntentId, paymentMethodId, returnUrl = null }) {
+        try {
+            const attributes = {
+                payment_method: paymentMethodId
+            };
+            if (returnUrl) attributes.return_url = returnUrl;
+
+            const response = await axios.post(`${this.baseUrl}/payment_intents/${paymentIntentId}/attach`, {
+                data: { attributes }
+            }, {
+                headers: this.getAuthHeader()
+            });
+
+            logger.info(`PayMongo payment intent attached: ${paymentIntentId}`);
+            return response.data.data;
+        } catch (error) {
+            logger.error('PayMongo Attach Payment Intent Error:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    async createQrphPaymentIntent({
+        amount,
+        currency = 'PHP',
+        description,
+        billing = {},
+        metadata = {},
+        splitPayment = null,
+        returnUrl = null
+    }) {
+        const paymentIntent = await this.createPaymentIntent({
+            amount,
+            currency,
+            description,
+            paymentMethodAllowed: ['qrph'],
+            metadata,
+            splitPayment
+        });
+        const paymentMethod = await this.createPaymentMethod({
+            type: 'qrph',
+            billing,
+            metadata
+        });
+        const attachedIntent = await this.attachPaymentIntent({
+            paymentIntentId: paymentIntent.id,
+            paymentMethodId: paymentMethod.id,
+            returnUrl
+        });
+
+        const nextAction = attachedIntent?.attributes?.next_action || {};
+        const code = nextAction?.code || {};
+        const expiresAt = code?.expires_at || nextAction?.expires_at || attachedIntent?.attributes?.expires_at || null;
+
+        return {
+            paymentIntent,
+            paymentMethod,
+            attachedIntent,
+            qrCodeImageUrl: code?.image_url || code?.imageUrl || null,
+            checkoutUrl: nextAction?.redirect?.url || nextAction?.redirect_url || null,
+            expiresAt
+        };
+    }
+
+    async createRefund({
+        amount,
+        paymentId,
+        reason = 'requested_by_customer',
+        notes = null,
+        splitRefund = null
+    }) {
+        try {
+            const attributes = {
+                amount,
+                payment_id: paymentId,
+                reason
+            };
+            if (notes) attributes.notes = String(notes).slice(0, 255);
+            if (splitRefund) attributes.split_refund = splitRefund;
+
+            const refundsBaseUrl = this.baseUrl.replace(/\/v1$/, '');
+            const response = await axios.post(`${refundsBaseUrl}/refunds`, {
+                data: { attributes }
+            }, {
+                headers: this.getAuthHeader()
+            });
+
+            logger.info(`PayMongo refund created: ${response.data.data.id}`);
+            return response.data.data;
+        } catch (error) {
+            logger.error('PayMongo Create Refund Error:', error.response?.data || error.message);
             throw error;
         }
     }
@@ -230,24 +392,67 @@ class PayMongoService {
 
     /**
      * Verify Webhook Signature
-     * PayMongo includes X-Paymongo-Signature header with HMAC-SHA256 of request body
+     * PayMongo includes Paymongo-Signature with HMAC-SHA256 of `${timestamp}.${rawBody}`.
      * @param {string} signature - Signature from header
      * @param {Buffer|string} body - Request body
      * @returns {boolean} True if signature is valid
      */
     verifyWebhookSignature(signature, body) {
         if (!this.webhookSecret) {
-            logger.warn('PAYMONGO_WEBHOOK_SECRET not configured. Skipping signature verification (DEV/TEST ONLY).');
-            return true;
+            const allowUnsignedWebhook = process.env.PAYMONGO_ALLOW_UNSIGNED_WEBHOOKS === 'true'
+                && process.env.NODE_ENV !== 'production'
+                && PAYMONGO_MODE !== 'live'
+                && process.env.PAYMENTS_ENABLED !== 'true';
+
+            if (allowUnsignedWebhook) {
+                logger.warn('PayMongo webhook signature verification bypassed by PAYMONGO_ALLOW_UNSIGNED_WEBHOOKS (non-production only).');
+                return true;
+            }
+            logger.warn('PayMongo webhook secret is not configured; rejecting webhook.');
+            return false;
         }
 
         try {
+            const signatureParts = String(signature || '')
+                .split(',')
+                .map((part) => part.trim())
+                .filter(Boolean)
+                .reduce((parts, part) => {
+                    const [key, ...valueParts] = part.split('=');
+                    if (key && valueParts.length > 0) {
+                        parts[key.trim()] = valueParts.join('=').trim();
+                    }
+                    return parts;
+                }, {});
+
+            const timestamp = signatureParts.t;
+            const modeSignature = PAYMONGO_MODE === 'live' ? signatureParts.li : signatureParts.te;
+            if (!timestamp || !modeSignature) {
+                return false;
+            }
+
+            const timestampSeconds = Number.parseInt(timestamp, 10);
+            const toleranceSeconds = Number.isFinite(WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS)
+                ? WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS
+                : 300;
+            if (!Number.isFinite(timestampSeconds)
+                || Math.abs(Math.floor(Date.now() / 1000) - timestampSeconds) > toleranceSeconds) {
+                logger.warn('PayMongo webhook rejected due to stale or invalid timestamp.');
+                return false;
+            }
+
+            const rawBody = Buffer.isBuffer(body)
+                ? body.toString('utf8')
+                : (typeof body === 'string' ? body : JSON.stringify(body));
             const expectedSignature = crypto
                 .createHmac('sha256', this.webhookSecret)
-                .update(typeof body === 'string' ? body : JSON.stringify(body))
+                .update(`${timestamp}.${rawBody}`)
                 .digest('hex');
 
-            return signature === expectedSignature;
+            const expectedBuffer = Buffer.from(expectedSignature, 'hex');
+            const providedBuffer = Buffer.from(modeSignature, 'hex');
+            return expectedBuffer.length === providedBuffer.length
+                && crypto.timingSafeEqual(providedBuffer, expectedBuffer);
         } catch (error) {
             logger.error('PayMongo Webhook Signature Verification Error:', error.message);
             return false;

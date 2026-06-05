@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-05-03
-last_reviewed: 2026-05-12
+last_reviewed: 2026-06-03
 classification: authoritative
 ---
 
@@ -21,7 +21,7 @@ This change follows `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDA
 - Inquiry Mode v1 uses existing tenant contact channels as the customer action. It does not add a persisted lead/inquiry inbox until a separate lead-management contract is approved.
 - Inventory Display is independent from Customer Access Mode. It controls customer-facing stock presentation only; exact stock remains server-side unless `inventory_display_mode=exact_quantity`.
 - Item-level storefront catalog visibility is independent from POS visibility. Inventory-facing users control this with `storefront_catalog_overrides.storefront_visible`, while POS continues to use `pos_catalog_overrides.pos_visible`.
-- Storefront item images are independent from POS menu images. Storefront catalog reads prefer `storefront_catalog_overrides.storefront_image_url` and use POS image data only as rollout/backfill fallback.
+- Storefront item images are independent from POS menu images. Storefront catalog reads prefer `storefront_catalog_overrides.storefront_image_url` as the primary image and `storefront_catalog_overrides.storefront_image_gallery` as the ordered detail gallery. POS image data is used only as rollout/backfill fallback.
 
 ## Mode Contract
 | Internal code | Label | Customer can see | Customer can do |
@@ -46,6 +46,7 @@ Inventory display modes:
 - Public Storefront catalog and checkout eligibility must read item-level storefront overrides when available. During additive rollout, a missing `storefront_catalog_overrides` table may fall back to the prior POS-derived policy with warning logging instead of returning `500`.
 - POS catalog responses and terminal eligibility must remain sourced from POS overrides only. Image upload/removal must not silently enable either POS or Storefront visibility.
 - Quote, checkout, and service booking public mutations must fail closed when the effective mode is not `transaction`.
+- Storefront product quotes/checkouts and public service booking/hold/batch mutations must also fail closed outside configured `storefront_hours` business hours. The same weekly setting drives the public hours label, public open/closed status, immediate/scheduled product checkout availability, and service booking schedule acceptance.
 - When the effective mode is `transaction`, Storefront checkout/booking must allow repeated customer orders and quantity `1+` lines/drafts whenever POS-equivalent readiness passes. Customer Access Mode controls whether the action is allowed; it must not impose a one-active-order or one-active-booking limit.
 - Onboarding remains a soft reminder per ADR 0013, but its business classification step should become the first capture point for Customer Access Mode and Inventory Display preferences.
 - Settings > Storefront becomes the long-term source-of-truth surface for changing these controls after onboarding.
@@ -71,6 +72,12 @@ After the additive table exists, Storefront catalog runtime reads must not treat
 POS-derived visibility and POS image data are now compatibility fallback only when the `storefront_catalog_overrides` table itself is unavailable during rollout. This preserves rollback safety without re-coupling item-level Storefront catalog state to POS state after migration.
 
 Image replacement is also sequenced for deploy safety: POS and Storefront uploads store the new file, commit the override update, and then best-effort remove the prior file. If the database update fails after storage succeeds, the newly stored file is removed and the old image remains in place.
+
+## Addendum: Storefront Item Gallery Contract (2026-06-03)
+
+Storefront item media now supports an ordered gallery. The first uploaded image remains the primary `storefront_image_url` for backward compatibility, and the full customer-facing order is stored in `storefront_image_gallery`. Public catalog responses expose both `image_url` and `image_gallery`; older clients can continue rendering `image_url`, while F&B item details use `image_gallery` for carousel thumbnails and slide navigation.
+
+Inventory onboarding and item setup can upload multiple item images. Multi-image upload appends to the ordered gallery and preserves the existing first image as primary; if no gallery exists, the first accepted upload becomes primary. Item/product setup surfaces can promote any existing gallery image to the first/primary position and can remove one gallery image without clearing the whole gallery. Single-image upload remains backward-compatible replacement for older clients. Upload/removal still preserves `storefront_visible` and must not mutate POS menu image fields.
 
 ## Addendum: Production Hardening And Default Enforcement (2026-05-04, updated 2026-05-15)
 

@@ -28,7 +28,7 @@ When to use:
 10. `docs/features/FOOD_AND_BEVERAGE_MODE.md`
 - Food & Beverage mode restaurant workflow, item taxonomy, restaurant inventory boundary, table/check/kitchen/reservation behavior, and service-charge separation.
 11. `docs/features/STOREFRONT_CURRENT_STANDING.md`
-- Current storefront implementation standing for shared template registry, mode-specific presentation, duplicate-coordinate marker fanout, and current storefront regression/build evidence.
+- Current storefront implementation standing for shared template registry, mode-specific presentation, duplicate-coordinate marker fanout, MapLibre/WebGL fallback behavior, and current storefront regression/build evidence.
 12. `docs/proposals/MASTER_ONBOARDING_QUESTIONNAIRE_ANALYSIS.md`
 - Strategic questionnaire analysis reference for advisory onboarding classification and monetization segmentation framing.
 

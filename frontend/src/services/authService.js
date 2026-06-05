@@ -1,5 +1,6 @@
 import api from './api.js';
 import { clearClientSession } from './sessionCleanup.js';
+import { getAccessToken, refreshBrowserSession, setBrowserSession } from './browserSession.js';
 
 export const register = async (userData, companyToken) => {
   // Pass company token in header for the registration request (to route to correct DB)
@@ -11,10 +12,7 @@ export const register = async (userData, companyToken) => {
 
   const response = await api.post('/auth/register', userData, config);
 
-  // Store company token for future requests
-  if (companyToken) {
-    localStorage.setItem('companyToken', companyToken);
-  }
+  setBrowserSession({ companyToken });
 
   return response.data.data;
 };
@@ -56,13 +54,8 @@ export const login = async (credentials) => {
     password: credentials.password
   }, config);
 
-  const { token, refreshToken } = response.data.data;
-  localStorage.setItem('authToken', token);
-  localStorage.setItem('refreshToken', refreshToken);
-  // Store company token for future requests
-  if (resolvedCompanyToken) {
-    localStorage.setItem('companyToken', resolvedCompanyToken);
-  }
+  const { token } = response.data.data;
+  setBrowserSession({ token, companyToken: resolvedCompanyToken });
 
   // Dispatch custom event to notify PermissionContext to reload
   window.dispatchEvent(new CustomEvent('auth:login'));
@@ -91,18 +84,14 @@ export const logout = async () => {
 };
 
 export const refreshToken = async () => {
-  const refreshToken = localStorage.getItem('refreshToken');
-  const response = await api.post('/auth/refresh-token', { refreshToken });
-  const { token, refreshToken: newRefreshToken } = response.data.data;
-  localStorage.setItem('authToken', token);
-  if (newRefreshToken) {
-    localStorage.setItem('refreshToken', newRefreshToken);
-  }
-  return token;
+  return refreshBrowserSession();
 };
 
 export const getCurrentUser = async () => {
-  const token = localStorage.getItem('authToken');
+  let token = getAccessToken();
+  if (!token) {
+    token = await refreshBrowserSession().catch(() => '');
+  }
   if (!token) return null;
 
   try {

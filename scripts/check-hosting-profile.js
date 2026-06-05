@@ -1,19 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-
-const VALID_PROFILES = new Set(['shared', 'vps']);
-const REQUIRED_KEYS = [
-  'NODE_ENV',
-  'DB_HOST',
-  'DB_USER',
-  'DB_NAME',
-  'DB_PASSWORD',
-  'JWT_SECRET',
-  'REFRESH_TOKEN_SECRET',
-  'CORS_ORIGIN'
-];
-const SECRET_KEYS = ['JWT_SECRET', 'REFRESH_TOKEN_SECRET'];
-const PLACEHOLDER_PATTERN = /(change[_-]?this|change[_-]?me|replace[_-]?with|placeholder|your[_-]?|example\.com|xxxx)/i;
+const { validateHostingProfile } = require('../backend/src/config/productionEnvValidation.cjs');
 
 const parseArgs = (argv) => {
   const args = {
@@ -87,105 +74,6 @@ const readEnvFile = (envFile) => {
     }
     throw error;
   }
-};
-
-const hasValue = (env, key) => String(env[key] || '').trim().length > 0;
-
-const isTruthy = (value) => ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
-
-const normalizeMode = (value) => {
-  const normalized = String(value || '').trim().toLowerCase();
-  if (normalized === 'fail-closed') return 'fail_closed';
-  if (normalized === 'fail-open') return 'fail_open';
-  return normalized;
-};
-
-const validateRequiredKeys = (env, errors) => {
-  for (const key of REQUIRED_KEYS) {
-    if (!hasValue(env, key)) {
-      errors.push(`Missing required environment value: ${key}`);
-    }
-  }
-};
-
-const validateSecrets = (env, errors) => {
-  for (const key of SECRET_KEYS) {
-    const value = String(env[key] || '').trim();
-    if (!value) continue;
-
-    if (value.length < 32) {
-      errors.push(`${key} must be at least 32 characters long`);
-    }
-    if (PLACEHOLDER_PATTERN.test(value)) {
-      errors.push(`${key} must not use a placeholder value`);
-    }
-  }
-};
-
-const validateHostingProfile = ({ profile, env, envFile = null }) => {
-  const normalizedProfile = String(profile || '').trim().toLowerCase();
-  const errors = [];
-  const warnings = [];
-
-  if (!VALID_PROFILES.has(normalizedProfile)) {
-    errors.push('Profile must be one of: shared, vps');
-    return { ok: false, errors, warnings, profile: normalizedProfile, envFile };
-  }
-
-  validateRequiredKeys(env, errors);
-  validateSecrets(env, errors);
-
-  const envProfile = String(env.HOSTING_PROFILE || '').trim().toLowerCase();
-  if (envProfile && envProfile !== normalizedProfile) {
-    errors.push(`HOSTING_PROFILE must be ${normalizedProfile} for this preflight`);
-  }
-
-  if (String(env.NODE_ENV || '').trim().toLowerCase() !== 'production') {
-    errors.push('NODE_ENV must be production for hosting preflight');
-  }
-
-  if (isTruthy(env.DB_AUTO_SYNC)) {
-    errors.push('DB_AUTO_SYNC must not be true in hosted production profiles');
-  }
-
-  const blacklistMode = normalizeMode(env.AUTH_BLACKLIST_FAILURE_MODE);
-  const redisConfigured = hasValue(env, 'REDIS_URL');
-
-  if (normalizedProfile === 'shared') {
-    if (redisConfigured) {
-      errors.push('Shared profile must not set REDIS_URL');
-    }
-    if (blacklistMode !== 'fail_open') {
-      errors.push('Shared profile requires AUTH_BLACKLIST_FAILURE_MODE=fail_open');
-    }
-    if (String(env.TEMP_FILE_STORAGE || '').trim().toLowerCase() !== 'local') {
-      errors.push('Shared profile requires TEMP_FILE_STORAGE=local');
-    }
-    if (hasValue(env, 'HOSTING_INSTANCE_COUNT') && String(env.HOSTING_INSTANCE_COUNT).trim() !== '1') {
-      errors.push('Shared profile requires HOSTING_INSTANCE_COUNT=1 when set');
-    }
-  }
-
-  if (normalizedProfile === 'vps') {
-    if (!redisConfigured) {
-      errors.push('VPS profile requires REDIS_URL');
-    }
-    if (blacklistMode !== 'fail_closed') {
-      errors.push('VPS profile requires AUTH_BLACKLIST_FAILURE_MODE=fail_closed');
-    }
-  }
-
-  if (isTruthy(env.PAYMENTS_ENABLED) && normalizedProfile === 'shared') {
-    warnings.push('PAYMENTS_ENABLED=true on shared hosting relies on single-process scheduler assumptions');
-  }
-
-  return {
-    ok: errors.length === 0,
-    errors,
-    warnings,
-    profile: normalizedProfile,
-    envFile
-  };
 };
 
 const runCli = () => {

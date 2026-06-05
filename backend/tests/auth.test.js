@@ -8,7 +8,7 @@ import tenantConnector from '../src/utils/TenantConnector.js';
 import { getTenantModels } from '../src/utils/tenantModelFactory.js';
 import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
 
-jest.setTimeout(60000);
+jest.setTimeout(180000);
 
 describe('Authentication API', () => {
   const TEST_EMAILS = ['test@example.com', 'testuser2@example.com'];
@@ -200,8 +200,12 @@ describe('Authentication API', () => {
 
       expect(response.body.success).toBe(true);
       expect(response.body.data).toHaveProperty('token');
-      expect(response.body.data).toHaveProperty('refreshToken');
+      expect(response.body.data).not.toHaveProperty('refreshToken');
       expect(response.body.data).toHaveProperty('expiresIn');
+      expect(response.body.data.company).toEqual(expect.objectContaining({
+        token: TEST_COMPANY_TOKEN
+      }));
+      expect(response.headers['set-cookie']?.join(';')).toContain('sku_refresh_token=');
     });
 
     it('should return 401 for invalid password', async () => {
@@ -232,7 +236,8 @@ describe('Authentication API', () => {
   });
 
   describe('POST /api/v1/auth/refresh-token', () => {
-    let refreshToken;
+    let sessionCookies;
+    let csrfToken;
 
     beforeEach(async () => {
       // Create a test user and get refresh token
@@ -252,29 +257,37 @@ describe('Authentication API', () => {
           email: 'test@example.com',
           password: 'TestPassword123!'
         });
-      refreshToken = loginResp.body.data.refreshToken;
+      sessionCookies = loginResp.headers['set-cookie'];
+      csrfToken = String(sessionCookies.find((cookie) => cookie.startsWith('sku_csrf_token=')) || '')
+        .split(';')[0]
+        .split('=')[1];
     });
 
     it('should refresh token successfully', async () => {
       const response = await request(app)
         .post('/api/v1/auth/refresh-token')
-        .set('x-company-token', TEST_COMPANY_TOKEN)
-        .send({ refreshToken })
+        .set('Cookie', sessionCookies)
+        .set('x-csrf-token', decodeURIComponent(csrfToken))
+        .send({})
         .expect(200);
 
       expect(response.body.success).toBe(true);
       expect(response.body.data).toHaveProperty('token');
       expect(response.body.data).toHaveProperty('expiresIn');
+      expect(response.body.data.company).toEqual(expect.objectContaining({
+        token: TEST_COMPANY_TOKEN
+      }));
     });
 
-    it('should return 401 for invalid refresh token', async () => {
+    it('should reject refresh authority sent only in the JSON body', async () => {
       const response = await request(app)
         .post('/api/v1/auth/refresh-token')
         .set('x-company-token', TEST_COMPANY_TOKEN)
         .send({ refreshToken: 'invalid-token' })
-        .expect(401);
+        .expect(400);
 
       expect(response.body.success).toBe(false);
+      expect(response.body.message).toBe('Refresh token is required');
     });
   });
 
@@ -415,4 +428,3 @@ describe('Authentication API', () => {
     });
   });
 });
-

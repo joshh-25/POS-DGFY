@@ -17,12 +17,134 @@ Use this table to avoid over-claiming what a green test run proves.
 | Live sandbox tests (legacy/opt-in) | PayPal sandbox canary E2E suites | Real provider verification flow + backend transition contracts when payments are explicitly re-enabled | Production traffic behavior, customer engagement depth |
 | Production evidence | reconciliation dashboards, longitudinal audits | Real-world behavior over time in deployed environment | Causal impact without controlled experiments |
 
+## Dependency Audit Gates
+
+Dependency vulnerability audits are mandatory release evidence.
+
+Required commands:
+1. `npm run audit:dependencies:prod`
+2. `npm run audit:dependencies`
+
+Evidence semantics:
+1. The production audit blocks production packaging when root, backend, or frontend shipped dependency trees contain known npm advisory vulnerabilities.
+2. The full audit blocks release readiness when dev/test tooling contains known npm advisory vulnerabilities, because the toolchain is part of release evidence generation.
+3. A green audit proves the locked dependency trees have no known npm advisories at execution time. It does not prove packages are vulnerability-free outside the npm advisory database.
+
+## Browser Session Security Gates
+
+Browser session security evidence is mandatory for auth, POS, DGFY, storefront, or admin changes.
+
+Required commands:
+1. `npm --prefix backend test -- --runTestsByPath tests/browserSessionCookies.test.js`
+2. `npm --prefix backend test -- --runTestsByPath tests/rtr_verification.test.js`
+3. `npm --prefix frontend test -- --run src/services/__tests__/browserTokenStorage.guard.test.js`
+4. For DGFY-to-SKUpervisor tenant-session handoff or tenant refresh routing changes: `npm --prefix backend test -- --runTestsByPath tests/tenantHandler.emailOtp.test.js tests/dgfyTenantSession.transport.test.js tests/browserSessionCookies.test.js`
+
+Evidence semantics:
+1. Backend cookie tests prove refresh/session authority is issued and cleared with the ADR 0026 cookie attributes.
+2. RTR tests prove refresh authority is cookie-only, CSRF-protected, rotated on use, and replay-rejected.
+3. Frontend storage guards prove privileged tenant, refresh, DGFY, storefront, and admin tokens are not persisted in browser-readable storage.
+4. Tenant-handler and DGFY tenant-session transport tests prove the one-click company-registration handoff sets normal tenant cookies and that `/auth/refresh-token` can recover tenant context from a signed tenant-bound refresh cookie when the companion tenant-context cookie is missing.
+5. Frontend API interceptor tests prove protected requests preflight cookie-backed session refresh after hard reload when the in-memory access token is empty.
+6. Backend auth tests prove login and refresh responses include `data.company.token` when tenant context is available, allowing the frontend to restore the company-token header without browser-readable tenant-token persistence.
+7. These gates do not prove all XSS vectors are impossible; CSP and input/output encoding reviews remain required for UI changes.
+
+## PayMongo Webhook Security Gates
+
+PayMongo webhook integrity evidence is mandatory when subscription/payment workflows or payment-provider configuration change.
+
+Required command:
+1. `npm --prefix backend test -- --runTestsByPath tests/paymongoWebhookSignature.test.js`
+
+Evidence semantics:
+1. Service-level tests prove PayMongo webhook verification rejects missing secrets, missing signatures, invalid signatures, stale timestamps, and mode-mismatched signatures.
+2. Use-case tests prove invalid PayMongo signatures are rejected before webhook-log creation or payment/subscription mutation.
+3. Replay tests prove already processed PayMongo events return an idempotent response without repeating payment mutation.
+4. These gates do not prove live PayMongo delivery, provider dashboard configuration, child-account webhook registration, or settlement correctness.
+
+## Production Env Security Gates
+
+Production env validation evidence is mandatory when authentication, payments, browser sessions, hosting profiles, deploy scripts, PM2 startup, or production configuration changes.
+
+Required commands:
+1. `npm run check:production-env`
+2. `npm --prefix backend test -- --runTestsByPath tests/productionEnvValidation.test.js tests/productionEnvGuard.test.js tests/hostingProfilePreflight.test.js`
+
+Evidence semantics:
+1. Production validation tests prove missing or invalid required values fail closed before the backend accepts traffic.
+2. Startup guard tests prove failing output names variables and validation reasons without logging secret values.
+3. Fixture validation proves shared, VPS, and payment-enabled PayMongo production env shapes stay valid without requiring real production secrets in CI.
+4. These gates do not prove the live server has correct secret values; deploy must still validate the real `backend/.env` on the target host.
+
+## Tenant Invitation Link Security Gates
+
+Invitation link security evidence is mandatory for tenant onboarding, user-management invitation, Settings, and AI user-management changes.
+
+Required commands:
+1. `npm --prefix backend test -- --runTestsByPath tests/settingsCompanyInfo.usecase.test.js tests/settingsHandlers.companyInfo.test.js tests/userManagementToolRegistry.test.js tests/aiTools.test.js tests/emailTemplates.invitation.test.js`
+2. `npm --prefix backend test -- --runTestsByPath tests/authTenantIsolation.hardening.test.js tests/authUsecases.applicationResult.test.js tests/tenantHandler.emailOtp.test.js tests/emailOtpService.test.js`
+3. `npm --prefix frontend test -- --run Pages/__tests__/AcceptInvite.test.jsx Components/users/__tests__/UserManagementModal.rbacContract.test.js`
+
+Evidence semantics:
+1. Settings company-info tests prove the API no longer returns `registration_link`.
+2. AI tests prove the retired `get_company_join_link` tool cannot generate company-token registration URLs.
+3. Email-template and user-management tests prove generated invitation links are `/accept-invite?token=<invitation_token>` only.
+4. Frontend invitation tests prove legacy `company` and `companyToken` URL parameters are ignored for registry-backed validation, OTP request, and acceptance.
+5. These gates do not prove that all historically issued links have expired; ADR 0015 still governs already-issued tenant-local compatibility until expiry.
+
+## Frontend Contract Gates
+
+Frontend contract evidence is mandatory for release readiness and for changes touching Storefront discovery, DGFY account surfaces, admin auth, hospitality mode, F&B POS/storefront behavior, purchase-order receipt valuation, marker rendering, or follow controls.
+
+Required commands:
+1. `npm run test:frontend:contracts`
+2. `npm run test:frontend`
+
+Evidence semantics:
+1. The focused contract gate covers the admin interceptor, hospitality storefront integration, marker preview coordinates/fallbacks, F&B checkout/storefront contracts, discovery endpoint/abort behavior, follow/profile/discovery-header interactions, and PO receipt valuation.
+2. The full frontend suite proves the focused contract gate does not pass only in isolation and that adjacent frontend suites still execute together.
+3. The local release gate runs `npm run test:frontend:contracts` through `scripts/gate-release-local.js`.
+4. These gates do not prove browser visual parity, live map-provider behavior, or production account-provider behavior; manual/browser QA remains required where visual placement or live provider interaction matters.
+
+## Backend Test Matrix Gate
+
+Backend matrix evidence is mandatory for release readiness and for changes touching backend auth, payment, compliance, POS/fiscal, tenant provisioning, storefront, inventory, reporting, AI tools, database integration, or platform services.
+
+Required command:
+1. `npm run test:backend:matrix`
+
+Evidence semantics:
+1. The matrix discovers active backend Jest test files from the backend Jest config, then runs them in bounded groups with one file per chunk by default.
+2. The matrix writes `.tmp/release-gates/<sha>/backend-test-matrix/backend_test_matrix.json` with target SHA, active test count, group count, schema preflight result, per-chunk duration, status, timeout, and log path.
+3. Schema preflight must pass before test execution; it verifies the matrix is pointed at a test database and repairs only known test-schema drift needed for current suites.
+4. The local release gate runs `npm run test:backend:matrix` through `scripts/gate-release-local.js`.
+5. CI runs `node ../scripts/run-backend-test-matrix.js` from the backend job and uploads `.tmp/release-gates/<sha>/backend-test-matrix/**` as the backend matrix artifact.
+6. A green matrix proves the backend Jest inventory completes under the configured chunk timeout in the local or CI test environment. It does not prove production database parity, live provider behavior, browser E2E assertions behind opt-in flags, or external compliance approval.
+
 ## Frontend Bundle Guard
 
 Current bundle-gate expectations:
-1. `npm run check:frontend-budgets` enforces route-chunk ceilings for login, POS, terminal, and sales surfaces.
-2. The shared MapLibre dependency is intentionally isolated as `vendor-maplibre-*`; it is large but lazy-loaded by map-picker surfaces and is checked against the dedicated build cap instead of being treated as a generic vendor regression.
-3. Other vendor growth still remains actionable through the largest-chunk report.
+1. `npm run check:frontend-budgets` owns a fresh `npm --prefix frontend run build:all` execution by default, then enforces route-chunk ceilings for login, POS, terminal, and sales surfaces.
+2. The gate requires all three current app artifact directories: `dist-apps/skupervisor/assets`, `dist-apps/pos/assets`, and `dist-apps/store/assets`. Falling back to a partial or legacy artifact set is not release evidence.
+3. Freshness is checked against the build start time for every budgeted route chunk. A missing, renamed, or stale route chunk fails the gate before it can be treated as a passing budget verdict.
+4. Prebuilt artifacts are allowed only through the explicit contract `npm run check:frontend-budgets -- --skip-build --built-after <ISO timestamp or epoch ms>`. This mode is for CI jobs that have already run the same multi-app build and need a timestamped freshness proof.
+5. The default standalone report is `.tmp/frontend-budgets/frontend_budget_report.json`. The local release gate writes the release-owned report to `.tmp/release-gates/<sha>/frontend-budgets/frontend_budget_report.json`.
+6. The shared MapLibre dependency is intentionally isolated as `vendor-maplibre-*`; it is large but lazy-loaded by map-picker surfaces and is checked against the dedicated build cap instead of being treated as a generic vendor regression.
+7. Other vendor growth still remains actionable through the largest-chunk report.
+8. After the PR #11 DGFY POS surface split, the budget gate enforces the renamed SKUpervisor POS route chunk and the standalone POS checkout chunk separately. Do not treat a missing or renamed route chunk as harmless without updating the budget script and recording new evidence in `docs/testing/pos-readiness-status.md`.
+9. The merged frontend toolchain targets Vite 8 / `@vitejs/plugin-react` 6. Deterministic installs for frontend builds require a Node version accepted by that toolchain (`^20.19.0 || ^22.12.0 || >=24.0.0`), even though backend runtime support can remain broader.
+
+## MapLibre Picker Runtime Gate
+
+Use this focused gate when changing the shared IMS MapLibre picker used by onboarding primary-location setup and Settings > Storefront location editing:
+
+1. `npm --prefix frontend test -- --run src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx`
+2. `npm --prefix frontend test -- --run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx`
+
+Evidence semantics:
+1. The focused MapLibre suite proves the picker initializes with the inline OpenStreetMap raster style contract, preserves click/geolocation/drag coordinate updates, disables MapLibre's internal resize tracker for modal/panel teardown safety, skips unsafe hidden-container resize calls, and keeps the coordinate fallback usable when tile resource requests emit MapLibre errors.
+2. The onboarding and Settings suites prove both user-facing surfaces still wire the shared picker into their location forms.
+3. These gates do not prove live tile-provider availability, browser WebGL support, or production CSP/proxy parity; rendered browser QA remains required before claiming visual map parity.
 
 ## Claim Guardrail
 
@@ -47,6 +169,25 @@ Use this checklist for final cashier/admin acceptance before changing status fro
 - Cross-app manual readiness runbook (IMS + POS + Store):
   - `docs/testing/manual-qa-readiness-runbook-pos-ims-store.md`
 
+Repeatable DGFY POS split-surface smoke:
+1. Start standalone POS locally, for example `npm --prefix frontend run dev:pos -- --port 5174`.
+2. Run `npm run smoke:pos-terminal-ui`.
+3. Expected proof:
+   - desktop `1440x960`, tablet `820x1180`, and mobile `390x844` render terminal identity, POS catalog, current sale, and lock drawer
+   - login form fields are editable
+   - locked drawer blocks catalog actions until unlock
+   - standalone `/sales` hands off to the SKUpervisor origin; production may complete that proof as an auth-guarded `/login` redirect when no SKUpervisor session is present
+   - no console errors
+
+Targeted DGFY POS split-surface contract checks:
+1. Run `npm --prefix frontend test -- --run src/features/pos/utils/__tests__/checkoutSurfaceContract.test.js src/features/pos/__tests__/checkoutSurfaceParity.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/receiptContractConformance.contract.test.js`.
+2. Expected proof:
+   - standalone POS and SKUpervisor POS use the shared checkout payload builder
+   - terminal ID, payment handoff, discount, F&B metadata, modifiers, kitchen station, and scan metadata stay aligned
+   - DGFY fee label/rate and receipt fallback behavior stay centralized
+   - receipt fiscal/non-fiscal rendering is driven only by explicit server `document_type` and `document_context`; `INV-`/`NFS-` invoice prefixes are not fiscal-status signals
+   - intentional UI differences remain documented by contract assertions
+
 Current price/cost readiness checks:
 - POS, Storefront, Dispatch Orders, and barcode cart handoff require `default_sale_price > 0` for customer-facing sale lines.
 - Missing or zero selling price must fail closed with setup/readiness feedback; customer sale flows must not use `cost_per_unit` as a fallback price.
@@ -63,7 +204,7 @@ Historical note:
 - Legacy SKU expansion manual walkthrough notes were archived to `docs/archive/testing/2026-03/sku-expansion-manual-test-runbook-2026-03-31.md`.
 - Dated release go/no-go snapshot was archived to `docs/archive/testing/2026-04/release-go-no-go-checklist-2026-04-21.md`.
 - Active POS readiness source of truth is `docs/testing/pos-readiness-status.md`; historical run logs remain evidence-only and must not be used as current behavior contracts.
-- Latest fee/branding contract hardening evidence is recorded in section `3.14` of `docs/testing/pos-readiness-status.md`.
+- Latest DGFY POS/SKUpervisor surface split review and post-fix ratings are recorded in section `3.24` of `docs/testing/pos-readiness-status.md`.
 
 ## Compliance Activation Readiness E2E
 
@@ -218,6 +359,7 @@ Use these tests whenever changing hosting profile env, Redis/cache behavior, AI 
 
 Shared hosting degraded profile:
 ```bash
+npm run check:production-env
 npm run preflight:shared
 npm run test:hosting:shared
 ```
@@ -231,6 +373,7 @@ Expected shared-mode evidence:
 
 Redis-capable VPS profile:
 ```bash
+npm run check:production-env
 npm run preflight:vps
 npm run test:hosting:vps
 ```
@@ -243,7 +386,7 @@ Expected VPS-mode evidence:
 
 Targeted backend regression suites:
 ```bash
-npm --prefix backend test -- --runTestsByPath tests/hostingProfilePreflight.test.js tests/tempFileService.local.test.js tests/healthService.test.js tests/authFailClosed.test.js tests/rateLimiterStoreMode.test.js tests/ai_export_e2e.test.js tests/securityTransport.middleware.test.js
+npm --prefix backend test -- --runTestsByPath tests/productionEnvValidation.test.js tests/productionEnvGuard.test.js tests/hostingProfilePreflight.test.js tests/tempFileService.local.test.js tests/healthService.test.js tests/authFailClosed.test.js tests/rateLimiterStoreMode.test.js tests/ai_export_e2e.test.js tests/securityTransport.middleware.test.js
 ```
 
 Frontend/admin readiness check:

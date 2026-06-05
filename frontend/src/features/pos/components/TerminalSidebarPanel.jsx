@@ -125,7 +125,7 @@ export default function TerminalSidebarPanel({
   if (isCollapsed && !isWorkspaceMode) {
     return (
       <aside
-        className={`${className} flex-col bg-white border border-slate-200 rounded-2xl p-2 gap-2 h-fit xl:h-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain shadow-sm`}
+        className={`${className} flex-col rounded-xl border border-slate-200 bg-white p-2 gap-2 h-fit shadow-sm shadow-slate-200/70 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain`}
       >
         <Button
           type="button"
@@ -137,18 +137,18 @@ export default function TerminalSidebarPanel({
           <ChevronLeft className="w-4 h-4" />
         </Button>
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-center">
-          <p className="text-[10px] font-semibold text-slate-500 uppercase">User</p>
-          <p className="text-xs font-semibold text-slate-900 truncate" title={terminalUser?.username || 'Locked'}>
+          <p className="text-[10px] font-extrabold uppercase text-[#334155]">User</p>
+          <p className="truncate text-xs font-black text-[#0F172A]" title={terminalUser?.username || 'Locked'}>
             {terminalUser?.username || 'Locked'}
           </p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-center">
-          <p className="text-[10px] font-semibold text-slate-500 uppercase">Shift</p>
-          <p className="text-xs font-semibold text-slate-900">{shiftState?.shift ? 'Open' : 'Closed'}</p>
+          <p className="text-[10px] font-extrabold uppercase text-[#334155]">Shift</p>
+          <p className="text-xs font-black text-[#0F172A]">{shiftState?.shift ? 'Open' : 'Closed'}</p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-center">
-          <p className="text-[10px] font-semibold text-slate-500 uppercase">Sales</p>
-          <p className="text-xs font-semibold text-slate-900">{terminalMeta.pettyCashSymbol} {money(todayDashboard?.salesSummary?.total_amount)}</p>
+          <p className="text-[10px] font-extrabold uppercase text-[#334155]">Sales</p>
+          <p className="text-xs font-black text-[#0F172A]">{terminalMeta.pettyCashSymbol} {money(todayDashboard?.salesSummary?.total_amount)}</p>
         </div>
         {locked ? (
           <Button type="button" variant="outline" className="h-9 w-full px-2" onClick={() => setDrawerOpen(true)} title="Unlock terminal">
@@ -165,7 +165,7 @@ export default function TerminalSidebarPanel({
 
   return (
     <aside
-      className={`${className} flex-col bg-white border border-slate-200 rounded-2xl p-4 gap-4 ${isWorkspaceMode ? 'w-full' : 'h-fit xl:h-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain'} shadow-sm`}
+      className={`${className} flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 ${isWorkspaceMode ? 'w-full' : 'h-fit xl:h-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain'}`}
     >
       {!isWorkspaceMode && (
         <>
@@ -181,67 +181,67 @@ export default function TerminalSidebarPanel({
             </Button>
           </div>
           <div className="flex items-start gap-2">
-            <UserCircle2 className="w-5 h-5 text-slate-600 mt-0.5" />
+            <UserCircle2 className="mt-0.5 h-5 w-5 text-[#1A4E8D]" />
             <div>
-              <p className="text-sm font-semibold text-slate-900">
+              <p className="text-sm font-black text-[#0F172A]">
                 {terminalUser?.username || 'Terminal Locked'}
               </p>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-[#64748B]">
                 {terminalUser?.email || 'Sign in required'}
               </p>
               {terminalUser?.role && (
-                <p className="text-xs text-teal-600 uppercase tracking-wide mt-1">{terminalUser.role}</p>
+                <p className="mt-1 text-xs font-extrabold uppercase tracking-wide text-[#1A4E8D]">{terminalUser.role}</p>
               )}
             </div>
           </div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-[#64748B]">
             Cashier accountability and transaction timestamps are recorded on every POS checkout.
           </div>
         </>
       )}
 
       {isWorkspaceMode && workspaceConfig && (
-        <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Operational View</p>
-          <h2 className="mt-1 text-lg font-bold text-slate-900">{workspaceConfig.title}</h2>
-          <p className="mt-1 text-sm text-slate-600">{workspaceConfig.description}</p>
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-3">
+          <p className="text-xs font-extrabold uppercase tracking-wide text-[#1A4E8D]">Operational View</p>
+          <h2 className="mt-1 text-lg font-black text-[#0F172A]">{workspaceConfig.title}</h2>
+          <p className="mt-1 text-sm leading-5 text-[#334155]">{workspaceConfig.description}</p>
         </div>
       )}
 
       {showSection('terminal_setup') && (
-        <div id={sectionIds.terminalSetup} className="rounded-lg border border-slate-200 bg-white px-3 py-3 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Terminal Setup Context</p>
+        <div id={sectionIds.terminalSetup} className="space-y-3 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm shadow-slate-200/70">
+          <p className="text-xs font-extrabold uppercase tracking-wide text-[#334155]">Terminal Setup Context</p>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-600">Petty Cash</span>
-            <span className="font-semibold text-slate-900">
+            <span className="text-[#334155]">Petty Cash</span>
+            <span className="font-extrabold text-[#0F172A]">
               {terminalMeta.pettyCashSymbol} {money(terminalMeta.pettyCashAmount)}
             </span>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-600">Active Discounts</span>
-            <span className="font-semibold text-slate-900">{terminalMeta.activeDiscountCount}</span>
+            <span className="text-[#334155]">Active Discounts</span>
+            <span className="font-extrabold text-[#0F172A]">{terminalMeta.activeDiscountCount}</span>
           </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-600">DGFY Global Fee Policy</span>
-                <span className="font-semibold text-slate-900">
+                <span className="text-[#334155]">DGFY Global Fee Policy</span>
+                <span className="font-extrabold text-[#0F172A]">
                   {(Array.isArray(terminalMeta.enabledFeeMethods) && terminalMeta.enabledFeeMethods.length > 0)
                     ? 'Active'
                     : 'Inactive'}
                 </span>
               </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-600">Compliance Policy</span>
-            <span className="font-semibold text-emerald-700">Dual-mode</span>
+            <span className="text-[#334155]">Compliance Policy</span>
+            <span className="font-extrabold text-emerald-700">Dual-mode</span>
           </div>
           {terminalMeta?.locationBindingReadiness && (
             <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-600">Binding Readiness</span>
-              <span className={`font-semibold ${terminalMeta.locationBindingReadiness.ready_for_strict_mode === true ? 'text-emerald-700' : 'text-amber-700'}`}>
+              <span className="text-[#334155]">Binding Readiness</span>
+              <span className={`font-extrabold ${terminalMeta.locationBindingReadiness.ready_for_strict_mode === true ? 'text-emerald-700' : 'text-amber-700'}`}>
                 {terminalMeta.locationBindingReadiness.ready_for_strict_mode === true ? 'Ready' : 'Needs remediation'}
               </span>
             </div>
           )}
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[11px] text-[#64748B]">
             Managed by tenant compliance mode and verification controls.
           </p>
           {terminalMeta.loading && (
@@ -251,8 +251,8 @@ export default function TerminalSidebarPanel({
       )}
 
       {showSection('shift_controls') && (
-        <div id={sectionIds.activeShift} className="rounded-lg border border-slate-200 bg-white px-3 py-3 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Active Shift</p>
+        <div id={sectionIds.activeShift} className="space-y-3 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm shadow-slate-200/70">
+          <p className="text-xs font-extrabold uppercase tracking-wide text-[#334155]">Active Shift</p>
           <Label className="text-xs">Operating Location</Label>
           <select
             className="w-full rounded-md border border-slate-200 px-2 py-2 text-sm"
@@ -378,8 +378,8 @@ export default function TerminalSidebarPanel({
       )}
 
       {showCashDrawerCard && (
-        <div id={sectionIds.cashDrawer} className="rounded-lg border border-slate-200 bg-white px-3 py-3 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Cash Drawer Event</p>
+        <div id={sectionIds.cashDrawer} className="space-y-3 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm shadow-slate-200/70">
+          <p className="text-xs font-extrabold uppercase tracking-wide text-[#334155]">Cash Drawer Event</p>
           {(!shiftState.shift || !canAdjustCashDrawer) ? (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
               {!shiftState.shift
@@ -423,8 +423,8 @@ export default function TerminalSidebarPanel({
       )}
 
       {showCloseShiftCard && (
-        <div id={sectionIds.closeShift} className="rounded-lg border border-slate-200 bg-white px-3 py-3 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Close Shift</p>
+        <div id={sectionIds.closeShift} className="space-y-3 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm shadow-slate-200/70">
+          <p className="text-xs font-extrabold uppercase tracking-wide text-[#334155]">Close Shift</p>
           {(!shiftState.shift || !canCloseDay) ? (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
               {!shiftState.shift
@@ -457,8 +457,8 @@ export default function TerminalSidebarPanel({
       )}
 
       {showSection('location_scope') && (
-        <div id={sectionIds.locationScope} className="rounded-lg border border-slate-200 bg-white px-3 py-3 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Location Scope</p>
+        <div id={sectionIds.locationScope} className="space-y-3 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm shadow-slate-200/70">
+          <p className="text-xs font-extrabold uppercase tracking-wide text-[#334155]">Location Scope</p>
           {!canViewPos ? (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
               You need POS view permission to manage location scope for online orders.
@@ -494,8 +494,8 @@ export default function TerminalSidebarPanel({
       )}
 
       {showSection('incoming_queue') && (
-        <div id={sectionIds.incomingOrders} className="rounded-lg border border-slate-200 bg-white px-3 py-3 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Incoming Online Orders</p>
+        <div id={sectionIds.incomingOrders} className="space-y-3 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm shadow-slate-200/70">
+          <p className="text-xs font-extrabold uppercase tracking-wide text-[#334155]">Incoming Online Orders</p>
           {!canViewPos || incomingOrdersAccessState === 'forbidden' ? (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
               {incomingOrdersErrorMessage || 'You need POS view permission to access incoming online orders.'}
@@ -550,7 +550,7 @@ export default function TerminalSidebarPanel({
                           href={mapLink}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[11px] font-semibold text-teal-700 underline"
+                          className="text-[11px] font-semibold text-[#1A4E8D] underline"
                         >
                           Open pin in map
                         </a>
@@ -605,10 +605,10 @@ export default function TerminalSidebarPanel({
       )}
 
       {showSection('sales_today') && (
-        <div id={sectionIds.salesToday} className="rounded-lg border border-slate-200 bg-white px-3 py-3 space-y-2">
+        <div id={sectionIds.salesToday} className="space-y-3 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm shadow-slate-200/70">
           <div className="flex items-center gap-2">
             <Clock3 className="w-4 h-4 text-slate-500" />
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sales For Today</p>
+            <p className="text-xs font-extrabold uppercase tracking-wide text-[#334155]">Sales For Today</p>
           </div>
           {todayDashboard.loading ? (
             <p className="text-xs text-slate-500">Refreshing today summary...</p>

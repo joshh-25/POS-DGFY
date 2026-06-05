@@ -103,6 +103,24 @@ const makeJsonResponse = (data, ok = true) => ({
   json: async () => ({ data: injectWorkflowMode(data) })
 });
 
+const dgfyLegalTerms = {
+  flows: {
+    account_registration: {
+      snapshot: {
+        terms_version: 'dgfy-account-terms-2026-05-26',
+        privacy_version: 'dgfy-privacy-2026-05-26',
+        marketplace_terms_version: 'dgfy-marketplace-provider-2026-05-26',
+        acknowledgement_text: 'I agree to the DGFY Terms, Privacy Policy, and marketplace account terms.'
+      },
+      documents: [
+        { key: 'accountTerms', title: 'DGFY Account Terms', version: 'dgfy-account-terms-2026-05-26', summary: 'Account terms', href: '/legal/dgfy-account-terms' },
+        { key: 'privacy', title: 'DGFY Privacy Policy', version: 'dgfy-privacy-2026-05-26', summary: 'Privacy terms', href: '/privacy' },
+        { key: 'marketplaceTerms', title: 'DGFY Marketplace Provider Terms', version: 'dgfy-marketplace-provider-2026-05-26', summary: 'Marketplace terms', href: '/legal/dgfy-marketplace-provider-terms' }
+      ]
+    }
+  }
+};
+
 const getDiscoveryQueryUrls = (fetchMock) => fetchMock.mock.calls
   .map(([url]) => String(url))
   .filter((url) => url.includes('/api/v1/storefront/discovery?'));
@@ -159,6 +177,8 @@ describe('storefront discovery integration flow', () => {
 
   afterEach(() => {
     cleanup();
+    window.localStorage.clear();
+    window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
     document.body.querySelectorAll('.store-marker-preview-card').forEach((node) => node.remove());
     vi.clearAllMocks();
     vi.unstubAllGlobals();
@@ -211,6 +231,247 @@ describe('storefront discovery integration flow', () => {
 
     expect(mapOptions.bearing).toBe(0);
     expect(mapOptions.pitch).toBe(0);
+  });
+
+  it('keeps account access visible when MapLibre cannot initialize WebGL', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    maplibregl.Map.mockImplementationOnce(function MapUnavailable() {
+      throw new Error('webgl unavailable');
+    });
+    const defaultFetch = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(async (url, options = {}) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/dgfy/auth/me')) {
+        return {
+          ok: false,
+          json: async () => ({ success: false, message: 'Unauthorized' })
+        };
+      }
+      return defaultFetch(url, options);
+    });
+
+    try {
+      render(<App />);
+
+      expect(await screen.findByText('Store map unavailable')).toBeTruthy();
+      expect(await screen.findByText('Log in / Sign up')).toBeTruthy();
+
+      fireEvent.click(screen.getByText('Log in / Sign up'));
+
+      expect(await screen.findByText('DGFY Account')).toBeTruthy();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('registers from the storefront account panel with approved field order and terms acknowledgement', async () => {
+    const defaultFetch = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(async (url, options = {}) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/dgfy/legal-terms/current')) {
+        return makeJsonResponse(dgfyLegalTerms);
+      }
+      if (normalized.includes('/api/v1/dgfy/auth/me')) {
+        return {
+          ok: false,
+          json: async () => ({ success: false, message: 'Unauthorized' })
+        };
+      }
+      if (normalized.includes('/api/v1/dgfy/auth/register')) {
+        return makeJsonResponse({
+          token: 'dgfy-token',
+          account: {
+            id: 'dgfy-1',
+            first_name: 'Ada',
+            middle_name: 'Byron',
+            last_name: 'Lovelace',
+            email: 'ada@example.test',
+            phone: '+639123456789'
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/dgfy/customer/dashboard')) {
+        return makeJsonResponse({
+          account: {
+            id: 'dgfy-1',
+            first_name: 'Ada',
+            middle_name: 'Byron',
+            last_name: 'Lovelace',
+            email: 'ada@example.test',
+            phone: '+639123456789'
+          },
+          orders: [],
+          bookings: [],
+          addresses: [],
+          loyalty: null
+        });
+      }
+      return defaultFetch(url, options);
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /log in \/ sign up/i })[0]);
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+    const termsCheckbox = await screen.findByRole('checkbox', { name: /I have reviewed and agree to the current DGFY Account Terms/i });
+    await waitFor(() => expect(fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl).includes('/api/v1/dgfy/legal-terms/current'))).toBe(true));
+    await waitFor(() => expect(termsCheckbox.disabled).toBe(false));
+
+    const submitButton = screen.getByRole('button', { name: /create dgfy account/i });
+    const placeholders = Array.from(submitButton.closest('form').querySelectorAll('input'))
+      .map((input) => input.placeholder)
+      .filter(Boolean)
+      .slice(0, 7);
+    expect(placeholders).toEqual([
+      'Last name',
+      'First name',
+      'Middle name (optional)',
+      'Email',
+      'Contact number',
+      'Password',
+      'Confirm password'
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: /view terms/i }));
+    expect(screen.getByRole('dialog', { name: /current dgfy terms/i })).toBeTruthy();
+    expect(screen.getByText('DGFY Account Terms')).toBeTruthy();
+    fireEvent.click(screen.getAllByRole('button', { name: /close/i }).find((button) => button.textContent === 'Close'));
+
+    fireEvent.change(screen.getByPlaceholderText('Last name'), { target: { value: 'Lovelace' } });
+    fireEvent.change(screen.getByPlaceholderText('First name'), { target: { value: 'Ada' } });
+    fireEvent.change(screen.getByPlaceholderText('Middle name (optional)'), { target: { value: 'Byron' } });
+    fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'ada@example.test' } });
+    fireEvent.change(screen.getByPlaceholderText('Contact number'), { target: { value: '+639123456789' } });
+    fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'password123' } });
+    fireEvent.change(screen.getByPlaceholderText('Confirm password'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /show password/i }));
+    fireEvent.click(screen.getByRole('button', { name: /show confirm password/i }));
+    expect(screen.getByPlaceholderText('Password').type).toBe('text');
+    expect(screen.getByPlaceholderText('Confirm password').type).toBe('text');
+    fireEvent.click(termsCheckbox);
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      const registerCall = fetchMock.mock.calls.find(([requestUrl]) => String(requestUrl).includes('/api/v1/dgfy/auth/register'));
+      expect(registerCall).toBeTruthy();
+      expect(JSON.parse(registerCall[1].body)).toEqual(expect.objectContaining({
+        first_name: 'Ada',
+        middle_name: 'Byron',
+        last_name: 'Lovelace',
+        email: 'ada@example.test',
+        phone: '+639123456789',
+        accepted_terms: true,
+        terms_version: 'dgfy-account-terms-2026-05-26',
+        privacy_version: 'dgfy-privacy-2026-05-26',
+        marketplace_terms_version: 'dgfy-marketplace-provider-2026-05-26'
+      }));
+    });
+  }, 15000);
+
+  it('auto-loads signed-in DGFY customer context and exposes saved address checkout actions', async () => {
+    window.history.pushState({}, '', '/tenant-store/alpha');
+    window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = 'dgfy-token';
+    const defaultFetch = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(async (url, options = {}) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery/alpha')) {
+        return makeJsonResponse({
+          slug: 'alpha',
+          tenant_name: 'Alpha Foods',
+          location_id: 11,
+          address_line: 'Iloilo City',
+          storefront_open: true,
+          catalog_count: 1,
+          storefront_cover_image_url: '/uploads/storefront-assets/t1/cover.png',
+          storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png'
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Main Branch', address_line: 'Alpha Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({
+          items: [
+            { item_id: 5, name: 'Pantry Pack', category: 'General', default_sale_price: 120, storefront_visible: true, current_stock: 10, checkout_allowed: true }
+          ],
+          pagination: { count: 1 }
+        });
+      }
+      if (normalized.includes('/api/v1/dgfy/customer/dashboard')) {
+        return makeJsonResponse({
+          account: {
+            id: 'dgfy-1',
+            first_name: 'Ada',
+            last_name: 'Lovelace',
+            email: 'ada@example.test',
+            phone: '+639123456789'
+          },
+          orders: [
+            { activity_id: 100, reference: 'SK-ABC123', status: 'placed', total_amount: 120, occurred_at: '2026-05-28T01:00:00Z' }
+          ],
+          bookings: [],
+          addresses: [
+            { address_id: 9, label: 'Home', address_line: 'Iloilo Home Address', latitude: 10.71, longitude: 122.55, is_default: true }
+          ],
+          loyalty: { balance: 12, transactions: [] }
+        });
+      }
+      if (normalized.includes('/api/v1/store/auth/me')) {
+        return makeJsonResponse({
+          customer: {
+            id: 'dgfy-1',
+            first_name: 'Ada',
+            last_name: 'Lovelace',
+            email: 'ada@example.test',
+            phone: '+639123456789'
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/orders')) {
+        return makeJsonResponse({
+          orders: [
+            { activity_id: 100, reference: 'SK-ABC123', status: 'placed', total_amount: 120, occurred_at: '2026-05-28T01:00:00Z' }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/store/services/bookings')) {
+        return makeJsonResponse({ bookings: [] });
+      }
+      if (normalized.includes('/api/v1/dgfy/customer/addresses')) {
+        return makeJsonResponse({
+          addresses: [
+            { address_id: 9, label: 'Home', address_line: 'Iloilo Home Address', latitude: 10.71, longitude: 122.55, is_default: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/dgfy/customer/loyalty')) {
+        return makeJsonResponse({
+          loyalty: { balance: 12, transactions: [] }
+        });
+      }
+      return defaultFetch(url, options);
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl).includes('/api/v1/dgfy/customer/dashboard'))).toBe(true);
+    });
+    fireEvent.click((await screen.findAllByRole('button', { name: /^profile$/i }))[0]);
+
+    expect(await screen.findByText('My Account')).toBeTruthy();
+    expect(await screen.findByText('Ada Lovelace')).toBeTruthy();
+    expect(screen.getByText('Home - Default')).toBeTruthy();
+    expect(screen.getByText('Iloilo Home Address')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Use for Checkout' })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Track' }).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reorder' })).toBeTruthy();
   });
 
   it('searches only after the current search action is submitted', async () => {
@@ -469,7 +730,7 @@ describe('storefront discovery integration flow', () => {
 
     await user.click(alphaMarkerElement);
     await waitFor(() => expect(screen.getAllByText('Main').length).toBeGreaterThan(0));
-    expect(screen.getAllByText('Main Road').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Iloilo City').length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole('button', { name: 'Open storefront' }));
     await waitFor(() => {
@@ -685,6 +946,92 @@ describe('storefront discovery integration flow', () => {
     expect(screen.getByRole('button', { name: 'Open storefront' })).toBeTruthy();
   });
 
+  it('keeps indexed discovery coordinates when tenant location enrichment is reused from another store', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Alpha Foods',
+              slug: 'alpha',
+              storefront_open: true,
+              location_id: 11,
+              location_name: 'Alpha Main',
+              address_line: 'Alpha Road',
+              latitude: 10.7268685,
+              longitude: 122.5051406,
+              catalog_count: 2,
+              matching_location_ids: [11],
+              nearest_matching_location_id: 11
+            },
+            {
+              tenant_id: 'tenant-2',
+              tenant_name: 'Beta Foods',
+              slug: 'beta',
+              storefront_open: true,
+              location_id: 22,
+              location_name: 'Beta Main',
+              address_line: 'Beta Road',
+              latitude: 10.7202,
+              longitude: 122.5621,
+              catalog_count: 1,
+              matching_location_ids: [22],
+              nearest_matching_location_id: 22
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Alpha Main', address_line: 'Alpha Road', latitude: 10.7268685, longitude: 122.5051406, is_active: true, is_primary_storefront: true, is_open: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/Alpha Foods/i)).toBeTruthy());
+    await waitFor(() => {
+      const locationRequests = fetchMock.mock.calls
+        .map(([url]) => String(url))
+        .filter((url) => url.includes('/api/v1/store/locations'));
+      expect(locationRequests.length).toBeGreaterThanOrEqual(2);
+    });
+
+    expect(screen.queryByRole('button', { name: /2 storefronts at this location/i })).toBeNull();
+    const markerAtAlphaCoordinate = maplibregl.Marker.mock.results.some((result) => (
+      result?.value?.setLngLat?.mock?.calls?.some(([coordinate]) => (
+        Array.isArray(coordinate)
+        && Number(coordinate[0]).toFixed(6) === '122.505141'
+        && Number(coordinate[1]).toFixed(6) === '10.726869'
+      ))
+    ));
+    const markerAtBetaCoordinate = maplibregl.Marker.mock.results.some((result) => (
+      result?.value?.setLngLat?.mock?.calls?.some(([coordinate]) => (
+        Array.isArray(coordinate)
+        && Number(coordinate[0]).toFixed(6) === '122.562100'
+        && Number(coordinate[1]).toFixed(6) === '10.720200'
+      ))
+    ));
+    expect(markerAtAlphaCoordinate).toBe(true);
+    expect(markerAtBetaCoordinate).toBe(true);
+  });
+
   it('does not cluster storefronts at the default center when coordinate data is missing', async () => {
     fetchMock.mockImplementation(async (url) => {
       const normalized = String(url);
@@ -864,6 +1211,60 @@ describe('storefront discovery integration flow', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /10 storefronts at this location/i })[0]);
     await waitFor(() => expect(screen.getByText('Showing all 10 storefronts at this exact pin')).toBeTruthy());
     expect(screen.getByRole('button', { name: /Select Store 10 at Main Branch/i })).toBeTruthy();
+  });
+
+  it('updates featured local merchants pagination dots when carousel arrows are clicked', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+      configurable: true,
+      value: vi.fn(function scrollTo(options = {}) {
+        this.scrollLeft = Number(options.left || 0);
+        this.dispatchEvent(new Event('scroll'));
+      })
+    });
+
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: Array.from({ length: 10 }, (_, index) => ({
+            tenant_id: `tenant-${index + 1}`,
+            tenant_name: `Store ${index + 1}`,
+            slug: `store-${index + 1}`,
+            storefront_open: true,
+            storefront_categories: ['services'],
+            address_line: 'Shared Address',
+            latitude: 10.72 + (index * 0.001),
+            longitude: 122.56 + (index * 0.001),
+            catalog_count: 1,
+            location_id: index + 1
+          })),
+          pagination: { page: 1, limit: 100, total: 10, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      return makeJsonResponse({});
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Show featured merchants page 5' })).toBeTruthy());
+
+    const firstPageDot = screen.getByRole('button', { name: 'Show featured merchants page 1' });
+    const secondPageDot = screen.getByRole('button', { name: 'Show featured merchants page 2' });
+    expect(firstPageDot.getAttribute('aria-current')).toBe('page');
+
+    await user.click(screen.getByRole('button', { name: 'Show next featured merchants' }));
+    await waitFor(() => expect(secondPageDot.getAttribute('aria-current')).toBe('page'));
+    expect(firstPageDot.getAttribute('aria-current')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Show previous featured merchants' }));
+    await waitFor(() => expect(firstPageDot.getAttribute('aria-current')).toBe('page'));
   });
 
   it('falls back to the storefront initial when profile image fails to load', async () => {

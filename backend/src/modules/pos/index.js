@@ -7,6 +7,14 @@ import {
     buildCheckoutPosUseCase,
     buildListPosTransactionsUseCase,
     buildGetPosTransactionByIdUseCase,
+    buildRecordFiscalPrintEventUseCase,
+    buildVoidPosTransactionUseCase,
+    buildGenerateESalesReportUseCase,
+    buildListESalesReportsUseCase,
+    buildVerifyFiscalEventLedgerUseCase,
+    buildUpdateESalesReportStatusUseCase,
+    buildUpsertFiscalTerminalRegistrationUseCase,
+    buildListFiscalTerminalRegistrationsUseCase,
     buildCloseDayZReadingUseCase,
     buildGetDailyZReadingUseCase,
     buildGetCurrentXReadingUseCase,
@@ -34,6 +42,14 @@ export const scanPosBarcodeUseCase = buildScanPosBarcodeUseCase({ posRepository 
 export const checkoutPosUseCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
 export const listPosTransactionsUseCase = buildListPosTransactionsUseCase({ posRepository });
 export const getPosTransactionByIdUseCase = buildGetPosTransactionByIdUseCase({ posRepository });
+export const recordFiscalPrintEventUseCase = buildRecordFiscalPrintEventUseCase({ posRepository });
+export const voidPosTransactionUseCase = buildVoidPosTransactionUseCase({ posRepository, stockMovementService });
+export const generateESalesReportUseCase = buildGenerateESalesReportUseCase({ posRepository });
+export const listESalesReportsUseCase = buildListESalesReportsUseCase({ posRepository });
+export const verifyFiscalEventLedgerUseCase = buildVerifyFiscalEventLedgerUseCase({ posRepository });
+export const updateESalesReportStatusUseCase = buildUpdateESalesReportStatusUseCase({ posRepository });
+export const upsertFiscalTerminalRegistrationUseCase = buildUpsertFiscalTerminalRegistrationUseCase({ posRepository });
+export const listFiscalTerminalRegistrationsUseCase = buildListFiscalTerminalRegistrationsUseCase({ posRepository });
 export const closeDayZReadingUseCase = buildCloseDayZReadingUseCase({ posRepository });
 export const getDailyZReadingUseCase = buildGetDailyZReadingUseCase({ posRepository });
 export const getCurrentXReadingUseCase = buildGetCurrentXReadingUseCase({ posRepository });

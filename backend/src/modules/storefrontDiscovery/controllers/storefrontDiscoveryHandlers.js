@@ -1,5 +1,6 @@
 import {
     listStorefrontDiscoveryUseCase,
+    listStorefrontMapPinsUseCase,
     getStorefrontProfileUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
@@ -20,6 +21,26 @@ const defaultErrorPayload = (req, res, failure) => ({
 export const listStorefrontDiscovery = async (req, res, next) => {
     try {
         const result = await listStorefrontDiscoveryUseCase({
+            query: req.validatedQuery || req.query
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const listStorefrontMapPins = async (req, res, next) => {
+    try {
+        const result = await listStorefrontMapPinsUseCase({
             query: req.validatedQuery || req.query
         });
 
@@ -59,5 +80,6 @@ export const getStorefrontProfile = async (req, res, next) => {
 
 export default {
     listStorefrontDiscovery,
+    listStorefrontMapPins,
     getStorefrontProfile
 };

@@ -97,6 +97,7 @@ export default function Layout({ children, currentPageName }) {
     fetchUser();
   }, [setGlobalCurrentUser]);
 
+
   const onboarding = currentUser?.onboarding || null;
   const onboardingState = String(onboarding?.tenant_onboarding_state || 'not_started').trim().toLowerCase();
   const shouldShowOnboardingReminder = Boolean(
@@ -166,8 +167,7 @@ export default function Layout({ children, currentPageName }) {
           {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </button>
         <div className="flex items-center gap-3 ml-4">
-          <img src="/logo-icon.png" alt="SKUpervisor" className="h-8 w-8" />
-          <span className="font-semibold text-slate-900">SKUpervisor</span>
+          <img src="/dgfy-horizontal_logo-removebg-preview.png" alt="DGFY.PH" className="h-8 w-auto max-w-[150px] object-contain" />
         </div>
       </div>
 
@@ -181,12 +181,13 @@ export default function Layout({ children, currentPageName }) {
 
       {/* Sidebar */}
       <aside className={cn(
-        "fixed left-0 top-0 h-full w-64 bg-white border-r border-slate-200 z-50 transition-transform duration-300 lg:translate-x-0 flex flex-col",
+        "fixed left-0 top-0 h-full w-64 bg-white border-r border-slate-200 z-50 transition-transform duration-300 flex flex-col",
+        "lg:translate-x-0",
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="p-6">
           <div className="flex flex-col gap-1">
-            <img src="/logo.png" alt="SKUpervisor" className="h-10" />
+            <img src="/dgfy-horizontal_logo-removebg-preview.png" alt="DGFY.PH" className="h-11 w-auto max-w-[220px] object-contain" />
             <p className="text-xs text-slate-500 ml-1">Inventory Management System</p>
           </div>
         </div>

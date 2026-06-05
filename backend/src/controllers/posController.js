@@ -25,7 +25,15 @@ export {
     closeTerminalShift,
     getTerminalTodayDashboard,
     listIncomingOnlineOrders,
-    updateOnlineOrderStatus
+    updateOnlineOrderStatus,
+    recordFiscalPrintEvent,
+    voidTransaction,
+    generateESalesReport,
+    listESalesReports,
+    verifyFiscalEventLedger,
+    updateESalesReportStatus,
+    upsertFiscalTerminalRegistration,
+    listFiscalTerminalRegistrations
 } from '../modules/pos/controllers/posHandlers.js';
 
 import {
@@ -51,7 +59,15 @@ import {
     closeTerminalShift,
     getTerminalTodayDashboard,
     listIncomingOnlineOrders,
-    updateOnlineOrderStatus
+    updateOnlineOrderStatus,
+    recordFiscalPrintEvent,
+    voidTransaction,
+    generateESalesReport,
+    listESalesReports,
+    verifyFiscalEventLedger,
+    updateESalesReportStatus,
+    upsertFiscalTerminalRegistration,
+    listFiscalTerminalRegistrations
 } from '../modules/pos/controllers/posHandlers.js';
 
 export default {
@@ -77,5 +93,13 @@ export default {
     closeTerminalShift,
     getTerminalTodayDashboard,
     listIncomingOnlineOrders,
-    updateOnlineOrderStatus
+    updateOnlineOrderStatus,
+    recordFiscalPrintEvent,
+    voidTransaction,
+    generateESalesReport,
+    listESalesReports,
+    verifyFiscalEventLedger,
+    updateESalesReportStatus,
+    upsertFiscalTerminalRegistration,
+    listFiscalTerminalRegistrations
 };

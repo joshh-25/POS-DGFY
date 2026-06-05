@@ -681,6 +681,13 @@ log "Target branch: $TARGET_BRANCH"
 ENV_FILE="$BACKEND_DIR/.env"
 [[ -f "$ENV_FILE" ]] || fatal "Missing backend env file: $ENV_FILE"
 
+HOSTING_PROFILE_RAW="$(env_value "$ENV_FILE" "HOSTING_PROFILE")"
+[[ -n "${HOSTING_PROFILE_RAW:-}" ]] || fatal "Missing required env variable HOSTING_PROFILE in backend/.env"
+if ! node "$PROJECT_ROOT/scripts/check-hosting-profile.js" --profile "$HOSTING_PROFILE_RAW" --env-file "$ENV_FILE"; then
+    fatal "Production environment validation failed for HOSTING_PROFILE=$HOSTING_PROFILE_RAW"
+fi
+log "Production environment validation passed (profile=$HOSTING_PROFILE_RAW)."
+
 REQUIRED_ENV_VARS=("DB_HOST" "DB_USER" "DB_NAME" "JWT_SECRET")
 for var in "${REQUIRED_ENV_VARS[@]}"; do
     value="$(env_value "$ENV_FILE" "$var")"
@@ -739,6 +746,8 @@ validate_paymongo_env() {
     local mode_secret
     local resolved_public
     local resolved_secret
+    local generic_webhook_secret
+    local mode_webhook_secret
     local webhook_secret
 
     paymongo_mode="$(env_value "$ENV_FILE" "PAYMONGO_MODE")"
@@ -770,12 +779,18 @@ validate_paymongo_env() {
     [[ -n "$resolved_public" ]] || fatal "Missing PayMongo public key for mode '$paymongo_mode' (set mode-specific key or PAYMONGO_PUBLIC_KEY)."
     [[ -n "$resolved_secret" ]] || fatal "Missing PayMongo secret key for mode '$paymongo_mode' (set mode-specific key or PAYMONGO_SECRET_KEY)."
 
-    webhook_secret="$(env_value "$ENV_FILE" "PAYMONGO_WEBHOOK_SECRET")"
+    generic_webhook_secret="$(env_value "$ENV_FILE" "PAYMONGO_WEBHOOK_SECRET")"
+    if [[ "$paymongo_mode" == "live" ]]; then
+        mode_webhook_secret="$(env_value "$ENV_FILE" "PAYMONGO_LIVE_WEBHOOK_SECRET")"
+    else
+        mode_webhook_secret="$(env_value "$ENV_FILE" "PAYMONGO_TEST_WEBHOOK_SECRET")"
+    fi
+    webhook_secret="${mode_webhook_secret:-$generic_webhook_secret}"
     if [[ "${DEPLOY_REQUIRE_PAYMENT_WEBHOOK_SECRET:-1}" == "1" && -z "$webhook_secret" ]]; then
-        fatal "PAYMONGO_WEBHOOK_SECRET is required for secure webhook verification in production deploys."
+        fatal "PayMongo webhook secret is required for secure webhook verification in production deploys (set mode-specific secret or PAYMONGO_WEBHOOK_SECRET)."
     fi
     if [[ -z "$webhook_secret" ]]; then
-        warn "PAYMONGO_WEBHOOK_SECRET is not set. Webhook signature verification will be bypassed."
+        warn "PayMongo webhook secret is not set. Runtime PayMongo webhook verification rejects unsigned requests unless an explicit non-production bypass is configured."
     fi
 
     log "PayMongo env validation passed (mode=$paymongo_mode)."

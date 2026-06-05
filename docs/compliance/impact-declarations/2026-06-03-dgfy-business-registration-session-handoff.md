@@ -1,0 +1,57 @@
+---
+status: reference
+owner: engineering
+last_reviewed: 2026-06-03
+related_adr: docs/architecture/adr/0022-global-dgfy-account-business-registration.md
+declaration_id: 2026-06-03-dgfy-business-registration-session-handoff
+classification: regulatory
+surfaces: authentication,browser-sessions,user_registration,storefront,onboarding,settings,compliance
+reason_codes_impacted: DGFY_TENANT_SESSION_HANDOFF,AUTHORIZATION_FAILED,VALIDATION_FAILED
+policy_version: 2026.06.03
+verification_evidence: npm --prefix backend test -- --runTestsByPath tests/dgfyAuthUseCases.test.js tests/dgfyTenantSession.transport.test.js tests/registerCompanyRequestUseCase.autoApproval.test.js,npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx src/services/__tests__/api.interceptor.test.js src/services/__tests__/publicRoutePolicy.test.js src/store/__tests__/PermissionContext.publicRoutes.test.jsx src/features/settings/__tests__/WorkflowModeContext.publicRoutes.test.jsx src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx,npm run check:architecture,npm run lint:docs,npm run build:skupervisor,npm run build:store,Playwright rendered checks for desktop and mobile /register-company reset interaction
+rollback_note: Disable the DGFY tenant-session endpoint and route active company registration back to SKUpervisor login with email/company token prefilled. Keep DGFY account and membership records intact.
+preflight_result: no_breach
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-06-03T00:00:00+08:00
+preflight_request_ref: DGFY-BUSINESS-REGISTRATION-SESSION-HANDOFF-2026-06-03
+---
+
+# DGFY Business Registration Session Handoff
+
+## Compliance Impact Classification
+
+Regulatory.
+
+This declaration covers changing public company registration from a DGFY-account-to-login handoff into a DGFY-account-to-IMS session handoff after active tenant provisioning. The change affects authentication, browser sessions, user registration, Storefront account routing, and first-login onboarding. It does not alter fiscal document classification, tax computation, receipt numbering, payment-provider settlement, or compliance activation decisions.
+
+## Affected Surfaces
+
+- Storefront DGFY account creation/sign-in now opens the authenticated **My Account** page after success.
+- Storefront **Register Your Business** creates a short-lived DGFY handoff token before routing to SKUpervisor company registration.
+- `/register-company` exchanges the DGFY handoff token, removes the one-time `handoff_token` from the URL after success or failure, focuses the business registration form, and collects only company name plus Business Industry as business data.
+- Expired or consumed handoff tokens recover through normal DGFY sign-in without invoking SKUpervisor tenant-session refresh. The `/register-company` browser flow requests `soft_fail` handoff exchange so expected expired/consumed recovery returns an invalid status payload instead of a browser-visible 4xx resource error; strict replay failure remains the default API behavior without `soft_fail`. Public `/register-company` and DGFY auth endpoints must not call tenant `/auth/refresh-token` as a recovery path.
+- Active company registration calls `/api/v1/dgfy/auth/tenant-session` to issue the normal SKUpervisor tenant session for an accepted DGFY founder membership.
+- IMS onboarding remains the first master-admin experience because the standard tenant login bootstrap still exposes onboarding metadata.
+
+## Compliance Preconditions
+
+1. Tenant-session handoff must require an authenticated active DGFY account.
+2. Tenant-session handoff must only succeed for an accepted membership on an active tenant and active tenant user.
+3. Company registration must still derive founder email, phone, and password hash server-side from the DGFY account.
+4. Company registration must continue requiring a signed-in active DGFY account and current company/marketplace terms acknowledgement, without a separate DGFY email-code step after successful sign-in or handoff.
+5. Fallback must preserve manual SKUpervisor login when tenant-session exchange fails after active provisioning.
+
+## Verification Evidence
+
+Targeted validation for this declaration:
+
+1. `npm --prefix backend test -- --runTestsByPath tests/dgfyAuthUseCases.test.js tests/registerCompanyRequestUseCase.autoApproval.test.js`
+2. `npm --prefix backend test -- --runTestsByPath tests/dgfyTenantSession.transport.test.js`
+3. `npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx src/services/__tests__/api.interceptor.test.js src/services/__tests__/publicRoutePolicy.test.js src/store/__tests__/PermissionContext.publicRoutes.test.jsx src/features/settings/__tests__/WorkflowModeContext.publicRoutes.test.jsx src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx`
+4. `npm run check:architecture`
+5. `npm run lint:docs`
+6. `npm run build:skupervisor`
+7. `npm run build:store`
+8. Playwright rendered checks for `/register-company?source=dgfy&auth=login#business-registration` on desktop and mobile, including nonblank page content, no framework overlay, zero console/page errors with frontend API mocks, and Reset tab interaction:
+   - `artifacts/rendered-qa/dgfy-register-company-desktop.png`
+   - `artifacts/rendered-qa/dgfy-register-company-mobile.png`

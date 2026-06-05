@@ -225,7 +225,10 @@ describe('healthService', () => {
                 status: 'optional_unavailable'
             },
             tokenBlacklist: {
-                mode: 'fail_open'
+                mode: 'fail_open',
+                requiresRedis: false,
+                status: 'healthy',
+                message: 'Token blacklist policy is satisfiable by the current runtime.'
             },
             tempFileStorage: {
                 mode: 'local'
@@ -320,5 +323,83 @@ describe('healthService', () => {
             required: true,
             status: 'degraded'
         });
+        expect(health.capabilities.tokenBlacklist).toEqual({
+            mode: 'fail_closed',
+            requiresRedis: true,
+            status: 'degraded',
+            message: 'Token blacklist is fail-closed but Redis is not configured and connected; authenticated APIs will return 503.'
+        });
+    });
+
+    it('degrades health when fail-closed token blacklist cannot use Redis even on a shared profile', async () => {
+        process.env = {
+            ...originalEnv,
+            NODE_ENV: 'production',
+            HOSTING_PROFILE: 'shared',
+            REDIS_URL: '',
+            AUTH_BLACKLIST_FAILURE_MODE: 'fail_closed',
+            TEMP_FILE_STORAGE: 'local'
+        };
+
+        const { health, statusCode } = await buildHealthResponse({
+            testConnectionFn: async () => true,
+            isRedisConnectedFn: () => false,
+            getTenantPoolStatsFn: () => ({
+                total: 1,
+                pending: 0,
+                capacity: 20,
+                utilizationPercent: 5
+            }),
+            getRateLimiterStoreModeFn: () => 'memory',
+            runtimeSchemaAuditState: {
+                enabled: true,
+                preflight_required: true,
+                status: 'healthy',
+                message: 'Runtime schema readiness checks passed.',
+                last_checked_at: '2026-03-03T00:00:00.000Z',
+                missing_migration_count: 0,
+                missing_column_count: 0,
+                warning_count: 0,
+                missing_migrations: [],
+                missing_columns: []
+            },
+            schemaIndexAuditState: {
+                enabled: true,
+                status: 'healthy',
+                message: 'Required index contract satisfied.',
+                last_checked_at: '2026-03-03T00:00:00.000Z',
+                tenants_checked: 1,
+                missing_count: 0,
+                missing: []
+            },
+            billingFunnelAuditState: {
+                enabled: true,
+                status: 'healthy',
+                message: 'Billing funnel telemetry integrity checks passed.',
+                last_checked_at: '2026-03-03T00:30:00.000Z',
+                lookback_hours: 24,
+                attempt_grace_minutes: 15,
+                rows_scanned: 5,
+                recent_write_failures: 0,
+                recent_skips: 0,
+                recent_table_missing_skips: 0,
+                recent_model_unavailable_skips: 0,
+                recent_missing_event_type_skips: 0,
+                missing_correlation_count: 0,
+                missing_outcome_count: 0,
+                orphan_attempt_count: 0,
+                duplicate_event_count: 0,
+                payment_without_telemetry_count: 0,
+                tenant_state_mismatch_count: 0,
+                webhook_without_telemetry_count: 0,
+                route_outcome_mismatch_count: 0,
+                issues: []
+            },
+            environment: 'production'
+        });
+
+        expect(statusCode).toBe(503);
+        expect(health.success).toBe(false);
+        expect(health.capabilities.tokenBlacklist.status).toBe('degraded');
     });
 });

@@ -48,8 +48,7 @@ describe('settingsHandlers.getCompanyInfo', () => {
       success: true,
       data: {
         company_name: 'Acme',
-        company_token: 'token-123',
-        registration_link: 'http://localhost:5173/register?token=token-123'
+        company_token: 'token-123'
       }
     });
 
@@ -66,6 +65,7 @@ describe('settingsHandlers.getCompanyInfo', () => {
       message: 'Company information retrieved successfully',
       timestamp: expect.any(String)
     }));
+    expect(res.json.mock.calls[0][0].data).not.toHaveProperty('registration_link');
     expect(mockGetCompanyInfoUseCase).toHaveBeenCalledWith({ tenantId: 123 });
     expect(next).not.toHaveBeenCalled();
   });

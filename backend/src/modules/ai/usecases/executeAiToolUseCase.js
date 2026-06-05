@@ -45,7 +45,6 @@ export const buildExecuteAiToolUseCase = ({
         case 'remove_user_from_company':
         case 'update_user_permissions':
         case 'create_user_invitation':
-        case 'get_company_join_link':
         case 'export_users_csv':
         case 'import_users_csv':
         case 'get_available_permissions':

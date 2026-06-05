@@ -12,6 +12,7 @@ const __dirname = dirname(__filename);
 dotenv.config({ path: join(__dirname, '..', '.env') });
 
 import paymentRoutes from './routes/payments.js';
+import commercePaymentRoutes from './routes/commercePayments.js';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -32,12 +33,15 @@ import { initBillingScheduler } from './schedulers/billingScheduler.js';
 import sequelize from './config/database.js';
 import './models/index.js'; // Initialize model associations
 import { tenantHandler } from './middleware/tenantHandler.js';
+import csrfProtection from './middleware/csrfProtection.js';
 import tenantConnector from './utils/TenantConnector.js';
 import { auditRequiredIndexes } from './services/schemaIndexAuditService.js';
 import { auditBillingFunnelIntegrity } from './services/engagementIntegrityAuditService.js';
 import { buildHealthResponse } from './services/healthService.js';
 import { metricsEnabled, renderPrometheusMetrics } from './services/metricsService.js';
 import { auditRuntimeSchemaReadiness } from './services/runtimeSchemaAuditService.js';
+import { buildCorsPolicy } from './config/corsPolicy.js';
+import productionEnvValidation from './config/productionEnvValidation.cjs';
 import {
   startStorefrontDiscoveryIndexReconciliationScheduler,
   stopStorefrontDiscoveryIndexReconciliationScheduler
@@ -49,6 +53,7 @@ import {
 import * as aiController from './controllers/aiController.js';
 import { paymentsEnabled } from './config/paymentsFeature.js';
 
+const { formatValidationFailure, validateProductionEnv } = productionEnvValidation;
 const app = express();
 
 // Fix 7.3: Use Node's built-in querystring parser instead of qs.
@@ -145,94 +150,27 @@ if (isProduction || trustProxyRequested) {
   app.set('trust proxy', false);
 }
 
-// Environment validation for Production
-if (isProduction) {
-  const requiredEnv = ['DB_HOST', 'DB_USER', 'DB_NAME', 'JWT_SECRET'];
-  const missing = requiredEnv.filter(env => !process.env[env]);
-  if (missing.length > 0) {
-    logger.error(`❌ CRITICAL: Missing required production environment variables: ${missing.join(', ')}`);
-    // We don't exit immediately here to allow the server to potentially show a health check failure
-  }
+// Production config must fail before the app can accept traffic.
+const productionEnvValidationResult = validateProductionEnv({ env: process.env });
+for (const warning of productionEnvValidationResult.warnings) {
+  logger.warn(`[production-env] ${warning}`);
+}
+if (productionEnvValidationResult.shouldFail) {
+  logger.error(`CRITICAL: ${formatValidationFailure(productionEnvValidationResult)}. Server will not start.`);
+  process.exit(1);
 }
 
 // CORS configuration - must be applied before helmet
-const configuredCorsOrigins = (process.env.CORS_ORIGIN || '')
-  .split(',')
-  .map((entry) => entry.trim())
-  .filter(Boolean);
-
-const matchesWildcardOrigin = (origin, wildcardPattern) => {
-  if (!origin || !wildcardPattern.startsWith('*.')) return false;
-  try {
-    const parsed = new URL(origin);
-    const suffix = wildcardPattern.slice(1).toLowerCase();
-    return parsed.hostname.toLowerCase().endsWith(suffix);
-  } catch {
-    return false;
-  }
-};
-
-const isExplicitOriginAllowed = (origin) => {
-  if (!origin) return true;
-  return configuredCorsOrigins.some((allowedOrigin) => {
-    if (allowedOrigin.startsWith('*.')) {
-      return matchesWildcardOrigin(origin, allowedOrigin);
-    }
-    return allowedOrigin === origin;
-  });
-};
-
-const isDevelopmentOriginAllowed = (origin) => {
-  if (!origin) return true;
-
-  const developmentOriginPatterns = [
-    /^http:\/\/localhost:517[0-9]$/,
-    /^http:\/\/127\.0\.0\.1:517[0-9]$/,
-    /^http:\/\/localhost:417[0-9]$/,
-    /^http:\/\/127\.0\.0\.1:417[0-9]$/,
-    /^http:\/\/localhost:5000$/,
-    /^http:\/\/127\.0\.0\.1:5000$/,
-    /^http:\/\/\d{1,3}(?:\.\d{1,3}){3}:517[0-9]$/,
-    /^http:\/\/\d{1,3}(?:\.\d{1,3}){3}:417[0-9]$/,
-    /^https?:\/\/(?:skupervisor|pos|store)\.localhost:517[0-9]$/,
-    /^https?:\/\/(?:skupervisor|pos|store)\.localhost:417[0-9]$/,
-    /^https?:\/\/(?:skupervisor|pos|store)\.local(?:host)?(?::\d{2,5})?$/
-  ];
-
-  if (developmentOriginPatterns.some((pattern) => pattern.test(origin))) {
-    return true;
-  }
-
-  try {
-    const parsed = new URL(origin);
-    const host = parsed.hostname.toLowerCase();
-    const knownSurface = host === 'skupervisor.surebizcorp.com'
-      || host === 'pos.surebizcorp.com'
-      || host === 'surebizcorp.com'
-      || host === 'store.surebizcorp.com'
-      || host === 'skupervisor.dgfy.ph'
-      || host === 'pos.dgfy.ph'
-      || host === 'dgfy.ph'
-      || host === 'store.dgfy.ph';
-    return Boolean(knownSurface);
-  } catch {
-    return false;
-  }
-};
-
-const resolveCorsAllowed = (origin) => {
-  if (configuredCorsOrigins.length > 0 && isExplicitOriginAllowed(origin)) {
-    return true;
-  }
-  if (!isProduction) {
-    return isDevelopmentOriginAllowed(origin);
-  }
-  return configuredCorsOrigins.length === 0 && isDevelopmentOriginAllowed(origin);
-};
+const { resolveCorsAccess } = buildCorsPolicy({
+  corsOrigin: process.env.CORS_ORIGIN || '',
+  publicApiCorsOrigin: process.env.PUBLIC_API_CORS_ORIGIN || '',
+  isProduction
+});
 
 const corsOptionsDelegate = (req, callback) => {
   const origin = req.headers.origin || null;
-  const allowed = resolveCorsAllowed(origin);
+  const corsAccess = resolveCorsAccess(origin, req);
+  const allowed = corsAccess.allowed;
 
   if (!allowed) {
     const correlationId = req.headers['x-request-id'] || req.headers['x-correlation-id'] || `cors-${crypto.randomUUID()}`;
@@ -242,13 +180,17 @@ const corsOptionsDelegate = (req, callback) => {
       path: req.originalUrl || req.url || '',
       request_id: correlationId
     });
-    callback(new Error('Not allowed by CORS'));
+    const corsError = new Error('Not allowed by CORS');
+    corsError.statusCode = 403;
+    corsError.code = 'CORS_NOT_ALLOWED';
+    callback(corsError);
     return;
   }
 
   callback(null, {
     origin: true,
     credentials: true,
+    methods: corsAccess.publicApi ? ['GET', 'HEAD', 'OPTIONS'] : undefined,
     optionsSuccessStatus: 200,
     exposedHeaders: ['Content-Disposition', 'Content-Length']
   });
@@ -315,6 +257,7 @@ app.use(express.json({
   }
 }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(csrfProtection);
 
 // Capture basic HTTP metrics before route handlers mutate response status.
 app.use(metricsMiddleware);
@@ -682,6 +625,7 @@ app.use('/api/v1/storefront', storefrontDiscoveryRoutes);
 app.use('/api/v1/storefront', geoSearchRoutes);
 app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/feedback', feedbackRoutes);
+app.use('/api/v1/commerce-payments', commercePaymentRoutes);
 app.use('/api/v1/payments', paymentRoutes);
 // Mount specific admin routes first to avoid catching issues
 app.use('/api/v1/admin/tenants', adminTenantRoutes);

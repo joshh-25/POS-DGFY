@@ -64,6 +64,14 @@ const isMissingStorefrontCatalogOverrideTableError = (error) => {
     return code === 'ER_NO_SUCH_TABLE' && message.includes('storefront_catalog_overrides');
 };
 
+const isMissingStorefrontCatalogGalleryColumnError = (error) => {
+    if (!error) return false;
+    const code = error.original?.code || error.parent?.code || error.code;
+    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
+    return code === 'ER_BAD_FIELD_ERROR'
+        && message.includes('storefrontCatalogOverride.storefront_image_gallery');
+};
+
 const isMissingServiceItemDetailTableError = (error) => {
     if (!error) return false;
     const code = error.original?.code || error.parent?.code || error.code;
@@ -84,7 +92,7 @@ const isMissingOptionalCatalogIncludeTableError = (error) => {
         || message.includes('fnb_modifier_groups')
         || message.includes('fnb_modifier_options')
         || message.includes('fnb_item_modifier_groups')
-    );
+    ) || isMissingStorefrontCatalogGalleryColumnError(error);
 };
 
 const isMissingItemLocationStockSchemaError = (error) => {
@@ -171,13 +179,17 @@ const applyLocationStock = (rows = [], stockMap = new Map()) => (
     })
 );
 
-const buildStorefrontOverrideInclude = (StorefrontCatalogOverride, PosCatalogOverride, { includeLegacyPosFallback = false } = {}) => {
+const buildStorefrontOverrideInclude = (StorefrontCatalogOverride, PosCatalogOverride, { includeLegacyPosFallback = false, includeGallery = true } = {}) => {
     const includes = [];
     if (StorefrontCatalogOverride) {
         includes.push({
             model: StorefrontCatalogOverride,
             as: 'storefrontCatalogOverride',
-            attributes: ['storefront_visible', 'storefront_image_url'],
+            attributes: [
+                'storefront_visible',
+                'storefront_image_url',
+                ...(includeGallery ? ['storefront_image_gallery'] : [])
+            ],
             required: false
         });
     }
@@ -270,6 +282,51 @@ const mapStorefrontCatalogImageUrl = (row = {}, { allowLegacyPosFallback = false
     || (allowLegacyPosFallback ? row?.posCatalogOverride?.pos_image_url : null)
     || null
 );
+
+const normalizeStorefrontImageGallery = (value) => {
+    const source = typeof value === 'string'
+        ? (() => {
+            try {
+                return JSON.parse(value);
+            } catch {
+                return [];
+            }
+        })()
+        : value;
+    return (Array.isArray(source) ? source : [])
+        .map((entry, index) => ({
+            path: entry?.path || null,
+            url: entry?.url || null,
+            is_primary: entry?.is_primary === true,
+            sort_order: Number.isFinite(Number(entry?.sort_order)) ? Number(entry.sort_order) : index
+        }))
+        .filter((entry) => entry.url || entry.path)
+        .sort((a, b) => {
+            if (a.is_primary !== b.is_primary) return a.is_primary ? -1 : 1;
+            return a.sort_order - b.sort_order;
+        })
+        .map((entry, index) => ({
+            ...entry,
+            is_primary: index === 0,
+            sort_order: index
+        }));
+};
+
+const mapStorefrontCatalogImageGallery = (row = {}, options = {}) => {
+    const primaryUrl = mapStorefrontCatalogImageUrl(row, options);
+    const normalized = normalizeStorefrontImageGallery(row?.storefrontCatalogOverride?.storefront_image_gallery || []);
+    const hasPrimaryInGallery = normalized.some((entry) => entry.url === primaryUrl);
+    const gallery = primaryUrl && !hasPrimaryInGallery
+        ? [{ path: null, url: primaryUrl, is_primary: true, sort_order: 0 }, ...normalized]
+        : normalized;
+    return gallery
+        .filter((entry) => entry.url)
+        .map((entry, index) => ({
+            url: entry.url,
+            is_primary: index === 0,
+            sort_order: index
+        }));
+};
 
 const warnStorefrontOverrideFallback = (error) => {
     logger.warn('[StoreRepository] Falling back to POS-derived storefront catalog visibility while storefront override table is unavailable', {
@@ -520,6 +577,7 @@ export const storeRepository = {
                 cost_per_unit: row.cost_per_unit,
                 vat_type: row.vat_type,
                 image_url: mapStorefrontCatalogImageUrl(row, { allowLegacyPosFallback }),
+                image_gallery: mapStorefrontCatalogImageGallery(row, { allowLegacyPosFallback }),
                 service_detail: row?.serviceDetail || null,
                 nutrition: row?.nutrition || null,
                 allergens: Array.isArray(row?.allergens) ? row.allergens : [],
@@ -571,7 +629,8 @@ export const storeRepository = {
                     PosCatalogOverride,
                     {
                         includeLegacyPosFallback: isMissingStorefrontCatalogOverrideTableError(error)
-                            && !isMissingPosCatalogOverrideTableError(error)
+                            && !isMissingPosCatalogOverrideTableError(error),
+                        includeGallery: !isMissingStorefrontCatalogGalleryColumnError(error)
                     }
                 ),
                 ...optionalDetailIncludes
@@ -681,6 +740,7 @@ export const storeRepository = {
                         default_sale_price: item.default_sale_price,
                         vat_type: item.vat_type,
                         image_url: mapStorefrontCatalogImageUrl(item),
+                        image_gallery: mapStorefrontCatalogImageGallery(item),
                         service_detail: item.serviceDetail || null
                     },
                     storefront_visible: storefrontVisible

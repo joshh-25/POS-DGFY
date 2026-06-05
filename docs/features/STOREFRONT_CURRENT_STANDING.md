@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: frontend
-last_reviewed: 2026-05-21
+last_reviewed: 2026-05-29
 applies_to: storefront_all_modes
 topic: storefront_current_standing
 ---
@@ -16,11 +16,14 @@ This is a frontend capability/status reference, not a new architecture decision.
 ## Authoritative Inputs Used
 - `docs/START_HERE.md` (authoritative, last_reviewed: 2026-03-06)
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md` (authoritative, last_reviewed: 2026-03-06)
-- `docs/architecture/ARCHITECTURE_GOVERNANCE.md` (authoritative, last_reviewed: 2026-03-06)
+- `docs/architecture/ARCHITECTURE_GOVERNANCE.md` (authoritative, last_reviewed: 2026-05-21)
 - `docs/architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md`
 - `docs/architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md`
 - `docs/architecture/adr/0016-services-mode-independent-booking-and-ticketing.md`
 - `docs/architecture/adr/0019-food-and-beverage-mode-full-service-restaurant.md`
+- `docs/architecture/adr/0022-global-dgfy-account-business-registration.md`
+- `docs/architecture/adr/0023-front-facing-dgfy-customer-account.md`
+- `docs/architecture/adr/0024-fulfilled-guest-item-reviews.md`
 
 ## Classification
 - Change class for this documentation update: `within-existing-boundary`
@@ -38,6 +41,14 @@ This is a frontend capability/status reference, not a new architecture decision.
 - Pin clicks/taps synchronously select the pin, open or keep the Discover Nearby panel visible, and show the marker preview. Store navigation remains an explicit card/list action.
 - Empty-state guidance for tenants without storefront-ready sellable items is active.
 - Storefront follow/share controls are available where tenant flags enable them.
+- Storefront headers expose `Log in / Sign up` as an immediately visible DGFY account action, separate from checkout-only account prompts.
+- Storefront DGFY account registration uses the same backend-owned legal-terms endpoint and fail-closed acknowledgement contract as `/register-company`.
+- Signed-in storefront sessions auto-load DGFY customer context, prefill empty checkout contact fields from the account profile, prefill an empty delivery address from the default saved address, and expose saved-address use/save actions across checkout, booking, and account surfaces.
+- Signed-in account surfaces now prefer the unified DGFY history endpoint. The History panel filters all, Orders, F&B, Services, and Hospitality activities; rows preserve eligible track/cancel/reorder actions and expose typed review targets returned by the backend.
+- Completed Storefront tracking can expose item-level `Review Item` entry points through fulfilled guest review invites. The invite path is separate from signed-in account history and creates pending moderated reviews only after token validation.
+- `Register Your Business` routes to SKUpervisor company registration with the DGFY business-registration handoff (`source=dgfy`, `auth=login`, optional `handoff_token`, `#business-registration`).
+- Checkout and Services booking confirmations render backend `account_action` signals so signed-in DGFY customers, signup-eligible guests, guests whose email already has an account, and download-only guests receive distinct guidance.
+- Discovery map initialization is defensive. If MapLibre/WebGL cannot initialize in the browser, the Storefront discovery page remains usable, renders the `Log in / Sign up` account action, and shows a list fallback instead of blanking the page.
 - The merged storefront pilot keeps mode-specific view-model logic in the storefront app while preserving existing backend/source-of-truth contracts.
 
 ## Mode Standing
@@ -61,6 +72,7 @@ This is a frontend capability/status reference, not a new architecture decision.
 - F&B view model, menu grouping, default modifier selection, allergen presentation, and mode-specific catalog sections are active.
 - F&B ordering flow supports customer/order details and mode-aware checkout progression.
 - F&B reservation entry is active through the restaurant reservation surface.
+- F&B product detail pages include item review summary/detail sections, and completed F&B/order tracking can route eligible fulfilled item targets into the review flow.
 - F&B contract anchors and storefront rendering expectations are currently satisfied by tests.
 
 ## 4) Simple Mode (`msme` presentation)
@@ -70,20 +82,26 @@ This is a frontend capability/status reference, not a new architecture decision.
 - Simple storefront contract coverage is active.
 
 ## Storefront Regression Standing (Latest Run)
-Run date: `2026-05-21`
+Run date: `2026-05-29`
 
-Targeted Storefront discovery commands:
-- `npm --prefix frontend test -- --run apps/store/src/__tests__/discoveryPresentation.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx`
-- `npm --prefix backend test -- --runInBand --runTestsByPath tests/storefrontDiscoveryRepository.test.js tests/storefrontDiscoveryIndexService.catalogVisibility.test.js`
-- `npm run build:store`
+Targeted Storefront discovery/account commands:
+- `npm --prefix backend test -- --runTestsByPath tests/dgfyCustomerUseCases.test.js tests/dgfyCustomerHandlers.transport.test.js tests/storefrontBusinessHours.test.js tests/storeRepository.locationStockFallback.test.js`
+- `npm --prefix frontend test -- --run apps/store/src/__tests__/fnbOrderTracking.contract.test.js apps/store/src/__tests__/fnbStorefront.contract.test.js apps/store/src/__tests__/profileLauncher.integration.test.jsx apps/store/src/__tests__/discoveryHeaderAccount.integration.test.jsx apps/store/src/__tests__/checkoutRules.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/storefrontFollow.integration.test.jsx apps/store/src/__tests__/storefrontErrorMessages.test.js apps/store/src/__tests__/normalizeStorefrontPageModel.test.js --testTimeout 20000`
+- `npm --prefix frontend run build:store`
+- `npm run check:architecture`
+- `npm run lint:docs`
+- `npm run check:compliance`
+- `git diff --check`
 
 Targeted matrix result:
-- Storefront discovery map/search flow: `PASS` (`24/24` targeted frontend tests)
-- Storefront discovery repository and catalog visibility indexing: `PASS` (`19/19` targeted backend tests)
+- Backend DGFY customer, review invite, business-hours, and location-stock fallback tests: `PASS` (`29/29` targeted tests)
+- Storefront F&B tracking/product detail, account/profile launcher, discovery, checkout, follow, error-message, and normalization tests: `PASS` (`58/58` targeted tests)
 - Storefront production build: `PASS`
-- Discovery-index dry-run reconciliation: `PASS`, `status=healthy`, `upserted=4`, `failed=0`
-- Discovery-index write reconciliation: `PASS`, `status=healthy`, `upserted=4`, `failed=0`
-- Local browser QA: `PASS` after installing the Playwright Chromium runtime into the user cache. Local production-like backend headers were proxied in Playwright because the active local backend env enforces HTTPS/CORS. Search `aircon` returned 2 stores, no false no-match state appeared, 2 map markers rendered, marker preview was visible, and the fixed search shell remained visible after scrolling (`top=64`).
+- Architecture guardrails and controller-boundary checks: `PASS`
+- Governed docs lint: `PASS`
+- Compliance drift/declaration checks: `PASS`
+- Diff whitespace check: `PASS`
+- Local rendered QA: `not run` in this reconciliation session because no in-app browser tool was exposed and Playwright was not installed in the checkout. Runtime behavior was covered by targeted jsdom Storefront integration tests plus the production store build.
 
 ## Notes
 - This file intentionally tracks the frontend standing and test evidence snapshot only.
@@ -97,3 +115,8 @@ Targeted matrix result:
 - Pin click opens/keeps the Discover Nearby results panel and marker preview synchronously. Store navigation is an explicit card/list action.
 - Duplicate-coordinate cluster previews now show all same-coordinate storefronts in a bounded scrollable card rather than hiding overflow entries.
 - Storefront discovery index reconciliation is part of the guarded production deploy path by default, with a dry-run CLI for preflight impact review.
+
+## Discovery Map Availability Standing (2026-05-28)
+- `StoresMap` catches MapLibre initialization failures, logs a warning, and renders a store-list fallback instead of allowing a WebGL failure to crash the discovery route.
+- `DeliveryPinMap` catches MapLibre initialization failures and renders a delivery-address fallback message so checkout/delivery flows do not blank when the map canvas is unavailable.
+- The account header remains visible when map initialization fails, so DGFY login/signup and business-registration actions stay reachable before checkout.

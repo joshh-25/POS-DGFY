@@ -1,7 +1,7 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-05-18
+last_reviewed: 2026-06-05
 declaration_id: 2026-05-18-leaflet-to-maplibre-migration
 classification: regulatory
 surfaces: storefront,settings,tenant_locations,compliance,pos,terminal
@@ -60,3 +60,17 @@ No business logic, access-control rules, pricing calculations, or compliance gua
 - `npm --prefix frontend run build:store`
 - `npm run lint:docs`
 - `git diff --check`
+
+## Addendum (2026-06-05): Shared IMS Picker Raster Endpoint Hardening
+
+The shared IMS `MapPinPicker` used by onboarding and Settings now uses an inline raster style backed by `https://tile.openstreetmap.org/{z}/{x}/{y}.png` in production and `/osm/{z}/{x}/{y}.png` through the Vite dev/preview proxy locally.
+
+Reason:
+1. `https://tiles.openfreemap.org/styles/liberty` remains valid for the Storefront vector-style maps.
+2. `https://tiles.openfreemap.org/{z}/{x}/{y}.png` is not a valid raw raster tile endpoint and returns HTTP 403, which left the shared IMS picker blank.
+3. The IMS picker only needs a simple location-pin basemap; it does not need OpenFreeMap glyphs, sprites, or vector style resources.
+
+Runtime hardening:
+1. `trackResize: false` is set on the shared picker MapLibre instance so MapLibre does not fire its own resize handler while onboarding modals or Settings panels are closing.
+2. The component-owned `ResizeObserver` keeps guarded resize behavior and catches late MapLibre cleanup failures during unmount.
+3. Storefront discovery maps continue to use their existing OpenFreeMap vector style contract; this addendum only changes the shared IMS picker.

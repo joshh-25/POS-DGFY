@@ -102,6 +102,7 @@ export default function ProductCreateWizard({
   onDeletePosImage,
   onToggleStorefrontVisibility,
   onUploadStorefrontImage,
+  onSetPrimaryStorefrontImage,
   onDeleteStorefrontImage,
   onOpenBulkPosSetup
 }) {
@@ -631,6 +632,7 @@ export default function ProductCreateWizard({
               onDeletePosImage={onDeletePosImage}
               onToggleStorefrontVisibility={onToggleStorefrontVisibility}
               onUploadStorefrontImage={onUploadStorefrontImage}
+              onSetPrimaryStorefrontImage={onSetPrimaryStorefrontImage}
               onDeleteStorefrontImage={onDeleteStorefrontImage}
               onOpenBulkPosSetup={onOpenBulkPosSetup}
             />

@@ -32,6 +32,8 @@ No-staging release policy reference:
   - `JWT_SECRET`
   - `REFRESH_TOKEN_SECRET`
   - `CORS_ORIGIN`
+  - `SESSION_COOKIE_SECURE=true` for production browser session cookies
+  - `SESSION_COOKIE_DOMAIN=.dgfy.ph` only when the deployment intentionally shares sessions across approved `dgfy.ph` subdomains; otherwise omit it for host-only cookies
   - `AUTH_BLACKLIST_FAILURE_MODE`
   - `TEMP_FILE_STORAGE`
   - `TENANT_REGISTRATION_APPROVAL_MODE` (`auto_standard` by default; `manual` only for explicit admin-review rollback)
@@ -39,6 +41,7 @@ No-staging release policy reference:
   - `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`
   - `REDIS_URL` when `HOSTING_PROFILE=vps`
   - Payment-provider config only when `PAYMENTS_ENABLED=true`
+  - `PAYMONGO_WEBHOOK_SECRET` or the correct mode-specific PayMongo webhook secret when `PAYMENTS_ENABLED=true`; production and live-mode deployments must reject unsigned PayMongo webhooks
 - Current production `CORS_ORIGIN` must include every public IMS/POS/storefront domain that calls backend APIs directly:
   - `https://skupervisor.surebizcorp.com`
   - `https://surebizcorp.com`
@@ -49,6 +52,7 @@ No-staging release policy reference:
   - `https://dgfy.ph`
   - `https://store.dgfy.ph`
   - `https://staging.dgfy.ph` (staging IMS — added 2026-05-19)
+- Third-party public map/API consumers must use `PUBLIC_API_CORS_ORIGIN`, not the global authenticated `CORS_ORIGIN`. For MapViu, set `PUBLIC_API_CORS_ORIGIN=https://mapviu.com,https://*.mapviu.com`; this only permits public `GET`/`HEAD`/`OPTIONS` reads for `/api/v1/storefront/discovery`, `/api/v1/storefront/discovery/map-pins`, and `/api/v1/storefront/geo-search`.
 - Optional deploy override:
   - `DEPLOY_RUN_BILLING_VERIFY=auto|0|1` (default `auto`)
     - `auto`: billing checks run only when `PAYMENTS_ENABLED=true`
@@ -64,6 +68,9 @@ For Namecheap shared hosting, use the artifact-based GitHub Actions lane in `doc
 Before deploying to a new host type, validate the selected profile:
 
 ```bash
+# CI/local fixture guard for required production env shapes
+npm run check:production-env
+
 # Shared hosting without Redis
 npm run preflight:shared
 npm run test:hosting:shared
@@ -74,6 +81,8 @@ npm run test:hosting:vps
 ```
 
 Shared hosting uses `backend/.env.shared.example` and `frontend/.env.shared.example` as templates. VPS/Redis hosting uses `backend/.env.vps.example` and `frontend/.env.vps.example` as templates. Do not leave placeholder secrets or `DB_AUTO_SYNC=true` in production.
+
+Production runtime uses the same env validation policy as the hosting preflight scripts. Missing or invalid required values cause startup to exit non-zero before the backend accepts traffic. Failure output must name variables or validation reasons only and must not print secret values.
 
 Tenant registration rollout note:
 1. Keep `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` for the default public company registration flow.
@@ -376,6 +385,12 @@ Audit must return healthy (`exit 0`) before deploy can complete when billing che
 
 If your current business model has billing paused, keep `PAYMENTS_ENABLED=false` and leave `DEPLOY_RUN_BILLING_VERIFY=auto` (or set `0` explicitly) so billing hooks are skipped by policy.
 
+PayMongo webhook security rule:
+1. Production, live-mode, and `PAYMENTS_ENABLED=true` deployments must configure `PAYMONGO_WEBHOOK_SECRET`, `PAYMONGO_TEST_WEBHOOK_SECRET`, or `PAYMONGO_LIVE_WEBHOOK_SECRET` as appropriate for the selected mode.
+2. Runtime verification is fail-closed. Missing, unsigned, invalid, or stale PayMongo webhook signatures return `401` before payment or subscription mutation.
+3. `PAYMONGO_ALLOW_UNSIGNED_WEBHOOKS=true` is only for explicit non-production local testing while `PAYMENTS_ENABLED=false`; it must not be set for production, live mode, or payment-enabled deployments.
+4. Before re-enabling payment workflows, run `npm --prefix backend test -- --runTestsByPath tests/paymongoWebhookSignature.test.js` and confirm unsigned webhook probes are rejected.
+
 ## Tenant Schema Sync Regression Gate
 Deploy now fails only when tenant schema sync introduces a new failure signature or mutates an existing baseline signature.
 
@@ -425,6 +440,8 @@ DB_AUTO_SYNC=false
 ```
 
 Secrets and host-specific values still belong in `backend/.env`; do not put database passwords, JWT secrets, SMTP credentials, payment credentials, or Redis credentials in the ecosystem file. Generate dotenv-safe secrets without `#` or unquoted shell metacharacters, or quote them explicitly, because dotenv treats inline `#` as comment syntax.
+
+`SESSION_COOKIE_SECURE=true` is required for production browser session cookies. Set `SESSION_COOKIE_DOMAIN` only for an approved shared-session domain such as `.dgfy.ph`; omit it for host-only cookies.
 
 Use ecosystem reload flow (already handled by deploy script):
 
@@ -578,6 +595,10 @@ Without this rewrite, tenant-store asset URLs (for example `/tenant-store/assets
 
 ## Manual Fallback (Last Resort)
 Use only if deploy script itself is broken:
+
+The `--no-audit` install flags below are deterministic install controls only. They are acceptable for fallback deployment only after explicit dependency audit evidence has passed for the release target:
+1. `npm run audit:dependencies:prod`
+2. `npm run audit:dependencies`
 
 ```bash
 cd /var/www/skupervisor

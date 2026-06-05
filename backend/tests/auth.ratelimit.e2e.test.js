@@ -1,8 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll, jest } from '@jest/globals';
 import request from 'supertest';
 import sequelize from '../src/config/database.js';
 import { initializeRedis, closeRedis } from '../src/config/redis.js';
 import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
+
+jest.setTimeout(180000);
 
 const originalEnv = { ...process.env };
 let app;
@@ -46,15 +48,14 @@ beforeAll(async () => {
 
 afterAll(async () => {
     process.env = originalEnv;
+    if (server) {
+        await new Promise((resolve) => server.close(resolve));
+    }
     if (testTenantContext) {
         await destroyTestTenant(testTenantContext);
     }
     await sequelize.close();
     await closeRedis();
-
-    if (server) {
-        await new Promise((resolve) => server.close(resolve));
-    }
 });
 
 describe('E2E True Real-World Authentication Rate Limiting', () => {

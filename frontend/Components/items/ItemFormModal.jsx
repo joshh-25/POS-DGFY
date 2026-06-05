@@ -190,6 +190,7 @@ export default function ItemFormModal({
   onDeletePosImage,
   onToggleStorefrontVisibility,
   onUploadStorefrontImage,
+  onSetPrimaryStorefrontImage,
   onDeleteStorefrontImage,
   onOpenBulkPosSetup
 }) {
@@ -239,6 +240,33 @@ export default function ItemFormModal({
     () => resolveBusinessModeItemDefaults(workflowMode),
     [workflowMode]
   );
+  const storefrontGallery = useMemo(() => {
+    const entries = Array.isArray(storefrontConfig?.storefront_image_gallery)
+      ? storefrontConfig.storefront_image_gallery
+      : [];
+    const gallery = entries
+      .map((entry, index) => ({
+        path: entry?.path || null,
+        url: entry?.url || entry?.image_url || entry,
+        is_primary: index === 0,
+        sort_order: index
+      }))
+      .filter((entry) => entry.path || entry.url);
+    const primaryUrl = storefrontConfig?.storefront_image_url || null;
+    if (primaryUrl && !gallery.some((entry) => entry.url === primaryUrl)) {
+      gallery.unshift({
+        path: storefrontConfig?.storefront_image_path || null,
+        url: primaryUrl,
+        is_primary: true,
+        sort_order: 0
+      });
+    }
+    return gallery.map((entry, index) => ({
+      ...entry,
+      is_primary: index === 0,
+      sort_order: index
+    }));
+  }, [storefrontConfig]);
   const modeItemTaxonomy = useMemo(
     () => resolveModeItemTaxonomy(workflowMode),
     [workflowMode]
@@ -1376,26 +1404,62 @@ export default function ItemFormModal({
 
               {item ? (
                 <div className="space-y-3">
-                  {storefrontConfig?.storefront_image_url ? (
-                    <img
-                      src={resolveAssetUrl(storefrontConfig.storefront_image_url)}
-                      alt={`${item.name} storefront catalog`}
-                      className="h-28 w-40 rounded-md border border-slate-200 object-cover"
-                    />
+                  {storefrontGallery.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {storefrontGallery.map((entry, index) => (
+                        <div key={`${entry.url || entry.path}-${index}`} className="rounded-md border border-slate-200 bg-white p-2">
+                          <div className="relative">
+                            <img
+                              src={resolveAssetUrl(entry.url || entry.path)}
+                              alt={`${item.name} storefront image ${index + 1}`}
+                              className="h-24 w-full rounded-md object-cover"
+                            />
+                            {index === 0 && (
+                              <Badge className="absolute left-2 top-2 bg-emerald-600 text-white hover:bg-emerald-600">
+                                Primary
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {index > 0 && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => onSetPrimaryStorefrontImage && onSetPrimaryStorefrontImage(item, index)}
+                                disabled={!onSetPrimaryStorefrontImage}
+                              >
+                                Set first
+                              </Button>
+                            )}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => onDeleteStorefrontImage && onDeleteStorefrontImage(item, index)}
+                              disabled={!onDeleteStorefrontImage}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   ) : (
                     <p className="text-sm text-slate-500">No item image uploaded yet.</p>
                   )}
                   <div className="flex flex-wrap gap-2">
                     <label className="cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100">
-                      Upload Item Image
+                      Add Item Images
                       <input
                         type="file"
                         accept="image/*"
+                        multiple
                         className="hidden"
                         onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          if (file && onUploadStorefrontImage) {
-                            onUploadStorefrontImage(item, file);
+                          const files = Array.from(event.target.files || []);
+                          if (files.length && onUploadStorefrontImage) {
+                            onUploadStorefrontImage(item, files);
                           }
                           event.target.value = '';
                         }}
@@ -1405,9 +1469,9 @@ export default function ItemFormModal({
                       type="button"
                       variant="outline"
                       onClick={() => onDeleteStorefrontImage && onDeleteStorefrontImage(item)}
-                      disabled={!storefrontConfig?.storefront_image_url || !onDeleteStorefrontImage}
+                      disabled={storefrontGallery.length === 0 || !onDeleteStorefrontImage}
                     >
-                      Remove Item Image
+                      Remove All Item Images
                     </Button>
                   </div>
                 </div>

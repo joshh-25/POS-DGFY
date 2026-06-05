@@ -6,6 +6,7 @@ Updated: 2026-04-07
 Update note (2026-04-07): regulatory source chain refreshed to include BIR RR 7-2024, RR 11-2025, RR 26-2025, and BSP PSOF/MORPS context without changing lifecycle architecture decisions.
 Update note (2026-04-07): compliance declaration guardrail semantics tightened with path/surface-computed minimum classification floors and strict major/regulatory preflight evidence validation, without changing route/API contracts.
 Update note (2026-04-21): superseded in part by ADR 0011 for governed compliant-to-non-compliant downgrade exceptions (platform force and tenant one-per-cycle revert).
+Update note (2026-06-02): POS receipt print surfaces must classify fiscal/non-fiscal status only from explicit server-provided `document_type` and `document_context`; invoice number prefixes are sequence identifiers only and are not fiscal-status signals.
 
 ## Context
 The product must support both:
@@ -29,6 +30,7 @@ Update note (2026-05-21): ADR 0022 amends public company registration. New publi
 5. POS output contract is mode-based:
    - non-compliant and compliant-pending -> `non_fiscal_slip`
    - compliant-active -> `fiscal_invoice`
+   - frontend print surfaces must consume explicit server contract fields (`receipt_contract.document_type`/`document_context` or persisted transaction `document_type`/`document_context`) and must not infer fiscal status from invoice number prefixes
 6. Compliant activation is checklist-gated (profile, artifacts, peripherals, readiness tests, required settings).
 7. Compliant mode is fail-closed on policy denials/required setup.
 8. Artifact/peripheral trust is verification-based (`pending_review|verified|rejected|revoked`), not submitter self-attestation.

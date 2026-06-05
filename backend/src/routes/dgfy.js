@@ -14,10 +14,19 @@ import {
     logoutDgfyAccount,
     requestDgfyPasswordReset,
     requestDgfyEmailVerification,
+    startDgfyTenantSession,
     updateDgfyProfile,
     verifyDgfyEmail,
     registerDgfyAccount
 } from '../modules/dgfy/controllers/dgfyAuthHandlers.js';
+import {
+    getAdminDgfyAccount,
+    deleteAdminDgfyAccount,
+    listAdminDgfyAccounts,
+    reactivateAdminDgfyAccount,
+    suspendAdminDgfyAccount,
+    updateAdminDgfyAccountProfile
+} from '../modules/dgfy/controllers/dgfyAdminAccountHandlers.js';
 import {
     cancelDgfyCustomerOrder,
     createDgfyCustomerAddress,
@@ -57,7 +66,15 @@ router.post('/auth/password/change', authenticateDgfyAccount, changeDgfyPassword
 router.post('/auth/email-verification/request', authLimiter, authenticateDgfyAccount, requestDgfyEmailVerification);
 router.post('/auth/email-verification/verify', authLimiter, authenticateDgfyAccount, verifyDgfyEmail);
 router.post('/auth/handoff', authenticateDgfyAccount, createDgfyHandoff);
+router.post('/auth/tenant-session', authLimiter, authenticateDgfyAccount, startDgfyTenantSession);
 router.post('/invitations/:membership_id/accept', authenticateDgfyAccount, acceptDgfyInvitation);
+
+router.get('/admin/accounts', authenticateAdmin, listAdminDgfyAccounts);
+router.get('/admin/accounts/:account_id', authenticateAdmin, getAdminDgfyAccount);
+router.patch('/admin/accounts/:account_id/profile', authenticateAdmin, updateAdminDgfyAccountProfile);
+router.post('/admin/accounts/:account_id/suspend', authenticateAdmin, suspendAdminDgfyAccount);
+router.post('/admin/accounts/:account_id/reactivate', authenticateAdmin, reactivateAdminDgfyAccount);
+router.delete('/admin/accounts/:account_id', authenticateAdmin, deleteAdminDgfyAccount);
 
 router.get('/customer/dashboard', authenticateDgfyAccount, getDgfyCustomerDashboard);
 router.get('/customer/activities', authenticateDgfyAccount, listDgfyCustomerActivities);

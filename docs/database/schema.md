@@ -201,23 +201,31 @@ DGFY front-facing customer accounts are landlord-scoped and separate from tenant
 Primary migration:
 
 1. `20260522000002-add-dgfy-front-facing-customer-account.cjs`
+2. `20260528000001-add-middle-name-to-dgfy-accounts.cjs`
+
+Landlord account field update:
+
+- `dgfy_accounts.middle_name` is nullable `STRING(80)` and stores the optional DGFY account middle name collected between first and last name in account/profile flows.
 
 Landlord tables:
 
-1. `dgfy_customer_activities` stores account-facing activity snapshots across tenant databases. Activity rows include DGFY account, tenant, optional store customer, activity type, public reference, store label, status, payment status, total amount, customer contact snapshot, display snapshot, and occurrence timestamp.
+1. `dgfy_customer_activities` stores account-facing activity snapshots across tenant databases. Activity rows include DGFY account, tenant, optional store customer, activity type (`order`, `service_booking`, `hospitality_booking`, or `fnb_order`), public reference, store label, status, payment status, total amount, customer contact snapshot, display snapshot, and occurrence timestamp.
 2. `dgfy_customer_addresses` stores global saved addresses for DGFY customer accounts, including label, address lines, city/province/postal/country, phone, coordinates, metadata, and default-address flag.
-3. `dgfy_customer_reviews` stores account-gated product reviews. Reviews are purchase-gated by DGFY customer activity and start pending approval.
+3. `dgfy_customer_reviews` stores account-gated typed reviews. Reviews are purchase-gated by paid or completed DGFY customer activity, start pending approval, and identify `target_type`/`target_id` for product, service, Hospitality booking, F&B order, or F&B item review targets.
 4. `dgfy_loyalty_transactions` stores read-only DGFY loyalty ledger rows. Balance is an aggregate of all transactions, not only recent visible rows.
 5. `dgfy_tracking_recovery_codes` stores hashed tracking-recovery codes with generic production responses, attempt limits, expiry, and single-use consumption.
-6. `dgfy_customer_backfill_runs` stores historical backfill audit rows, including dry-run/apply status, tenant/activity counters, mode-specific `order_count`, `service_booking_count`, `hospitality_booking_count`, matched-account/upsert counters, failures, timestamps, and JSON summary.
+6. `dgfy_customer_backfill_runs` stores historical backfill audit rows, including dry-run/apply status, tenant/activity counters, mode-specific `order_count`, `service_booking_count`, `hospitality_booking_count`, `fnb_order_count`, matched-account/upsert counters, failures, timestamps, and JSON summary.
+7. `dgfy_account_admin_audit_logs` stores platform-admin DGFY account lifecycle evidence. Rows include `audit_log_id`, `dgfy_account_id`, action (`profile_update`, `suspend`, `reactivate`, `delete`), actor username, optional reason, request ID, IP address, user agent, safe `before_snapshot`/`after_snapshot` JSON, and timestamps. Snapshots must not include password hashes, tokens, OTP values, or other secrets.
 
 Operational contract:
 
 - `npm run backfill:dgfy-customer-activity:apply` runs landlord migrations before applying historical customer activity writes.
 - Dry-run uses `npm run backfill:dgfy-customer-activity -- ...` and does not write activity rows.
-- Historical backfill scans POS customer orders, Services bookings, and Hospitality reservations.
-- Production dry-runs can require mode evidence with `--require-activity-types=order,service_booking,hospitality_booking` before apply.
+- Historical backfill scans POS customer orders, F&B checks linked through POS transactions, Services bookings, and Hospitality reservations.
+- Production dry-runs can require mode evidence with `--require-activity-types=order,service_booking,hospitality_booking,fnb_order` before apply.
 - Phone verification remains deferred for the customer account rollout. Phone values are matching/contact data only and must not be treated as verified identity.
+- Platform-admin DGFY account management uses `dgfy_accounts.is_active` as `active`/`suspended`; `dgfy_accounts.deleted_at` marks a deleted/deidentified account. Suspended or deleted accounts cannot log in, and existing DGFY sessions fail on the next authenticated DGFY request when the account is reloaded.
+- Platform-admin DGFY delete/deidentify preserves the account row and evidence-bearing related rows while overwriting email, phone, username, names, and password hash with non-user placeholders. This releases the original credentials for re-registration without physically deleting legal acknowledgements, memberships, customer activity, reviews, loyalty, order/history, or admin audit evidence.
 
 ### 2. Tenant Databases (Isolated Contexts)
 **Database Name Pattern**: `sku_tenant_[id]` or as specified in `tenants.db_name`
@@ -286,6 +294,36 @@ Restaurant service charge remains separate from the DGFY convenience fee. DGFY c
 F&B menu inventory reuses `product_composition` for recipes. POS checkout deducts ingredient rows for F&B menu items with `composition_type='ingredient'`; menu items without recipe rows continue to deduct the sold item directly.
 
 F&B reservation scheduling stores `duration_minutes` and `buffer_minutes` on `fnb_reservation_requests` with `requested_at` and optional primary `table_id`. Combined-table bookings use `fnb_reservation_tables` to store every assigned table. Confirmed/seated reservations use the combined duration plus reset-buffer window to prevent overlap on any assigned table and to reject party sizes above selected seat capacity.
+
+---
+
+## RMO 24-2023 Fiscal Runtime Addendum (2026-06-01)
+
+The tenant-local POS schema now carries internal RMO 24-2023 fiscal preparation controls. These records support compliant-mode activation evidence and fiscal runtime auditability; they do not replace external BIR accreditation, PTU/ATG approval, legal/tax sign-off, or official filing acknowledgement.
+
+Primary migration:
+
+1. `20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs`
+
+`pos_transactions` fiscal snapshot additions:
+
+1. `buyer_tin`
+2. `buyer_business_style`
+3. `buyer_address`
+4. `fiscal_document_template_version`
+5. `fiscal_document_hash`
+6. `fiscal_document_snapshot`
+7. `fiscal_lifecycle_state`
+8. `fiscal_reprint_count`
+9. `fiscal_void_event_hash`
+10. `void_reason`
+
+Fiscal runtime tables:
+
+1. `pos_fiscal_terminal_registrations` stores terminal-specific MIN, machine serial, software serial, software version, PTU, binding, evidence reference, status, and verification metadata. Fiscal checkout and compliant activation require at least one verified terminal registration.
+2. `pos_fiscal_events` stores append-only fiscal events with `event_sequence`, `previous_event_hash`, `event_hash`, payload, actor, terminal, invoice, and timestamp fields. `/pos/fiscal-ledger/integrity` recomputes the hash chain and reports sequence or linkage issues.
+3. `pos_fiscal_print_events` stores original print and reprint evidence. Reprints require a reason; browser print completion remains operator-attested.
+4. `pos_esales_reports` stores monthly Asia/Manila eSales package payloads, payload hashes, generation evidence, and submitted/accepted/rejected lifecycle evidence references.
 
 ---
 
@@ -863,7 +901,7 @@ CREATE TABLE item_nutrition (
 );
 ```
 
-### 5. Item Allergens Table
+### 6. Item Allergens Table
 
 ```sql
 CREATE TABLE item_allergens (
@@ -879,7 +917,7 @@ CREATE TABLE item_allergens (
 );
 ```
 
-### 6. Product Composition Table
+### 7. Product Composition Table
 
 ```sql
 CREATE TABLE product_composition (
@@ -898,7 +936,7 @@ CREATE TABLE product_composition (
 );
 ```
 
-### 7. Suppliers Table
+### 8. Suppliers Table
 
 ```sql
 CREATE TABLE suppliers (
@@ -930,7 +968,7 @@ CREATE TABLE suppliers (
 - Soft delete writes `status = 'inactive'`, `deleted_at`, and `deleted_by`.
 - Default list/detail/mutation behavior excludes soft-deleted suppliers.
 
-### 8. Supplier Items Table
+### 9. Supplier Items Table
 
 ```sql
 CREATE TABLE supplier_items (
@@ -951,7 +989,7 @@ CREATE TABLE supplier_items (
 );
 ```
 
-### 9. Bulk Discounts Table
+### 10. Bulk Discounts Table
 
 ```sql
 CREATE TABLE bulk_discounts (
@@ -967,7 +1005,7 @@ CREATE TABLE bulk_discounts (
 );
 ```
 
-### 10. Purchase Orders Table
+### 11. Purchase Orders Table
 
 ```sql
 CREATE TABLE purchase_orders (
@@ -996,7 +1034,7 @@ CREATE TABLE purchase_orders (
 );
 ```
 
-### 11. PO Line Items Table
+### 12. PO Line Items Table
 
 ```sql
 CREATE TABLE po_line_items (
@@ -1019,7 +1057,7 @@ CREATE TABLE po_line_items (
 );
 ```
 
-### 12. Job Orders Table
+### 13. Job Orders Table
 
 ```sql
 CREATE TABLE job_orders (
@@ -1064,7 +1102,7 @@ CREATE TABLE job_orders (
 **Alignment Note (2026-04-07):**
 - `20260407000004-align-job-orders-schema-with-model.cjs` adds missing `quality_check` and aligns `quantity_produced` precision with the runtime model contract.
 
-### 13. JO Ingredients Table
+### 14. JO Ingredients Table
 
 ```sql
 CREATE TABLE jo_ingredients (
@@ -1087,7 +1125,7 @@ CREATE TABLE jo_ingredients (
 );
 ```
 
-### 14. Stock Movements Table
+### 15. Stock Movements Table
 
 ```sql
 CREATE TABLE stock_movements (
@@ -1134,7 +1172,7 @@ CREATE TABLE stock_movements (
 - Non-transfer movements use `location_id` for location-scoped stock and FIFO handling.
 - Pure service rows (`items.category = service` or `items.mode_item_preset = service`) are stock-exempt and must not create manual stock movement, transfer, FIFO, weighted-cost, or inventory-valuation rows. Physical service add-ons/products and supplies remain normal stock-bearing inventory rows.
 
-### 15. Batch Transactions Table
+### 16. Batch Transactions Table
 
 ```sql
 CREATE TABLE batch_transactions (
@@ -1153,7 +1191,7 @@ CREATE TABLE batch_transactions (
 );
 ```
 
-### 16. Audit Logs Table
+### 17. Audit Logs Table
 
 ```sql
 CREATE TABLE audit_logs (
@@ -1174,7 +1212,7 @@ CREATE TABLE audit_logs (
 );
 ```
 
-### 17. System Settings Table
+### 18. System Settings Table
 
 ```sql
 CREATE TABLE system_settings (
@@ -1211,8 +1249,23 @@ CREATE TABLE system_settings (
   - `service_fee_label_snapshot` (string, nullable)
   - `service_fee_method_snapshot` (enum `dine_in|takeout|pickup|delivery`, nullable; legacy `online` remains read-compatible for historical data)
   - `service_fee_overridden` (boolean, default false)
+  - `payment_status` (enum `unpaid|payment_pending|paid|failed|refund_pending|partial_refunded|refunded`, default `paid`)
+  - `payment_reference` (provider payment/reference ID, nullable)
+  - `payment_checkout_url` (provider checkout URL, nullable)
+  - `payment_provider` (provider key such as `paymongo`, nullable)
+  - `payment_session_reference` (commerce payment session public reference, nullable)
+  - `payment_status` supports `refund_pending`, `partial_refunded`, and `refunded` for PayMongo commerce refund reconciliation.
 
-### 18. POS Catalog Overrides Table
+## Commerce Payment Sessions Addendum (2026-05-19)
+
+Landlord-level payment routing tables support PayMongo QR Ph Storefront payments without coupling provider webhooks to tenant-local lookups:
+
+- `tenant_payment_accounts`: one row per UUID tenant/provider with PayMongo child merchant ID, wallet ID, wallet status (`unknown`, `closed_loop`, `enabled`, `restricted`), wallet verification timestamp, onboarding status, QR Ph readiness, split readiness, charge readiness, requirements snapshot, readiness evidence metadata, and last sync time.
+- `commerce_payment_sessions`: one row per Storefront online payment attempt with UUID `tenant_id`, immutable checkout payload, DGFY fee snapshot, total amount in pesos and centavos, PayMongo Payment Intent/Payment Method/Payment IDs, QR image URL, expiration, webhook state, split payload, final `pos_transaction_id`, and manual-resolution failure fields.
+- `commerce_payment_refunds`: one row per PayMongo refund attempt with UUID `tenant_id`, public refund reference, linked commerce session, provider payment/refund IDs, amount in centavos, reason, notes, refund strategy, split-refund payload, provider payload, status, failure fields, and requester.
+- Admin settlement reporting is derived from `commerce_payment_sessions` plus `commerce_payment_refunds`; it is a reconciliation view over stored local payment evidence, not a PayMongo payout ledger.
+
+### 19. POS Catalog Overrides Table
 
 ```sql
 CREATE TABLE pos_catalog_overrides (
@@ -1240,7 +1293,32 @@ CREATE TABLE pos_catalog_overrides (
   - `product + finished_goods` => visible
   - other categories/types => hidden until explicitly enabled
 
-### 19. POS Terminal Shifts Table
+### 20. Storefront Catalog Overrides Table
+
+```sql
+CREATE TABLE storefront_catalog_overrides (
+    storefront_catalog_override_id INT PRIMARY KEY AUTO_INCREMENT,
+    item_id INT NOT NULL UNIQUE,
+    storefront_visible BOOLEAN NOT NULL DEFAULT TRUE,
+    storefront_image_path VARCHAR(500) NULL,
+    storefront_image_url VARCHAR(500) NULL,
+    storefront_image_gallery JSON NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (item_id) REFERENCES items(item_id) ON DELETE CASCADE ON UPDATE CASCADE,
+    INDEX idx_item_id (item_id)
+);
+```
+
+**Current Implementation Note (2026-06):**
+- This table is tenant-local and optional per item.
+- `storefront_visible` controls customer-facing Storefront catalog membership independently from POS visibility.
+- `storefront_image_url` is the backward-compatible primary item image.
+- `storefront_image_gallery` stores the ordered customer-facing gallery; the first entry is primary and is mirrored to `storefront_image_url`.
+- POS-derived image data is a rollout fallback only when this table is unavailable.
+
+### 21. POS Terminal Shifts Table
 
 ```sql
 CREATE TABLE pos_terminal_shifts (
@@ -1273,7 +1351,7 @@ CREATE TABLE pos_terminal_shifts (
 - Tracks cashier/session accountability for isolated terminal workflows.
 - Checkout flow can require an active open shift before allowing POS transactions.
 
-### 20. POS Cash Drawer Events Table
+### 22. POS Cash Drawer Events Table
 
 ```sql
 CREATE TABLE pos_cash_drawer_events (

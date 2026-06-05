@@ -12,23 +12,21 @@ describe('buildGetCompanyInfoUseCase', () => {
         };
 
         const useCase = buildGetCompanyInfoUseCase({
-            tenantRepository,
-            frontendUrlProvider: () => 'https://example.com'
+            tenantRepository
         });
 
         const result = await useCase({ tenantId: 'tenant-1' });
         expect(result.success).toBe(true);
         expect(result.data).toEqual({
             company_name: 'Tenant A',
-            company_token: 'token-a',
-            registration_link: 'https://example.com/register?token=token-a'
+            company_token: 'token-a'
         });
+        expect(result.data.registration_link).toBeUndefined();
     });
 
     it('returns failure result when tenant context is missing', async () => {
         const useCase = buildGetCompanyInfoUseCase({
-            tenantRepository: { findById: jest.fn() },
-            frontendUrlProvider: () => 'https://example.com'
+            tenantRepository: { findById: jest.fn() }
         });
 
         const result = await useCase({ tenantId: null });

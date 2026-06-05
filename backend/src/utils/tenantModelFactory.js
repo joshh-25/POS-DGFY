@@ -11,6 +11,7 @@ const NON_TENANT_MODEL_EXPORTS = new Set([
     'DgfyAccount',
     'DgfyAccountHandoff',
     'DgfyAccountTenantMembership',
+    'DgfyAccountAdminAuditLog',
     'DgfyLegalAcknowledgement',
     'Payment',
     'WebhookLog',
@@ -29,7 +30,10 @@ const NON_TENANT_MODEL_EXPORTS = new Set([
     'TenantComplianceAuditLog',
     'TenantComplianceAuditFailure',
     'TenantComplianceFinalReviewDocument',
-    'TenantComplianceFinalReviewSignoff'
+    'TenantComplianceFinalReviewSignoff',
+    'TenantPaymentAccount',
+    'CommercePaymentSession',
+    'CommercePaymentRefund'
 ]);
 
 const isSequelizeModel = (candidate) => (

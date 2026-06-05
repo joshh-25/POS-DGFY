@@ -31,21 +31,21 @@ Add a landlord-level `email_otps` registry for purpose-scoped email verification
 5. DGFY password recovery supports:
    - `dgfy_password_reset`
 6. The final mutation must consume a matching OTP before:
-   - public company registration creates a tenant request,
    - tenant user registration creates an account,
    - invitation acceptance activates an invited account,
    - authenticated profile update changes email and landlord email-to-tenant mapping.
    - a DGFY account is marked email-verified for company registration eligibility.
    - a DGFY password reset changes the global DGFY account password.
-7. Configured email delivery failure is fail-closed for OTP requests. Delivery may use SMTP or the Brevo HTTPS API fallback, but account email ownership checks cannot be bypassed by manual links.
-8. OTP request routes use `RATE_LIMIT_EMAIL_OTP_WINDOW_MS` and `RATE_LIMIT_EMAIL_OTP_MAX_REQUESTS` with purpose, tenant, request IP, and email/invitation-token identity in the key.
-9. Invitation-acceptance OTP requests resolve tenant context from `invitation_token` when no `x-company-token` is present, matching token-only invite validation and acceptance links.
-10. Controllers remain transport-only. OTP creation/verification lives in service/use-case boundaries and the registry is landlord-scoped so tenant-local schemas are not required before company registration.
-11. Phone verification is out of scope for this ADR version. `phone_verified_at` on DGFY accounts is reserved for a future phone OTP flow and must stay nullable until that flow is implemented.
+7. Public company registration must use the authenticated DGFY account email. If that DGFY email is already verified, company registration must not require a second same-address `company_registration` OTP. If the DGFY email is changed, the DGFY account email verification state must be cleared and the new email must be verified before company registration can proceed.
+8. Configured email delivery failure is fail-closed for OTP requests. Delivery may use SMTP or the Brevo HTTPS API fallback, but account email ownership checks cannot be bypassed by manual links.
+9. OTP request routes use `RATE_LIMIT_EMAIL_OTP_WINDOW_MS` and `RATE_LIMIT_EMAIL_OTP_MAX_REQUESTS` with purpose, tenant, request IP, and email/invitation-token identity in the key.
+10. Invitation-acceptance OTP requests resolve tenant context from `invitation_token` when no `x-company-token` is present, matching token-only invite validation and acceptance links.
+11. Controllers remain transport-only. OTP creation/verification lives in service/use-case boundaries and the registry is landlord-scoped so tenant-local schemas are not required before company registration.
+12. Phone verification is out of scope for this ADR version. `phone_verified_at` on DGFY accounts is reserved for a future phone OTP flow and must stay nullable until that flow is implemented.
 
 ## Consequences
 1. Email ownership is proved before new login identities and email-to-tenant mappings are written.
-2. Company registration now depends on working email delivery twice when the DGFY account is new: once to mark the global DGFY account email as verified, and once for the purpose-scoped `company_registration` OTP immediately before tenant creation.
+2. Company registration depends on working email delivery only when the DGFY account email is not yet verified or has changed. Once the authenticated DGFY account email is verified, registering a company with that same email does not send or consume a second same-address OTP.
 3. Invitation acceptance remains token-first, but the invited email must also receive and provide the OTP.
 4. Email changes no longer update tenant lookup mappings unless the new email is verified.
 5. OTP rows are auditable and disposable; expired/consumed rows can be cleaned by future maintenance without changing account state.

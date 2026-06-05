@@ -17,6 +17,7 @@ import { listTenantLocations } from '@/services/tenantLocationService.js';
 import { getComplianceProfile } from '@/services/complianceService.js';
 import api from '@/services/api.js';
 import { clearClientSession } from '@/services/sessionCleanup.js';
+import { getAccessToken, getCompanyToken, refreshBrowserSession } from '@/services/browserSession.js';
 import { useWorkflowMode } from '../../settings/WorkflowModeContext.jsx';
 import { getWorkflowModeLabel, isMsmeWorkflowMode } from '../../settings/workflowMode.js';
 import { resolveBusinessModePosDefaults } from '../../settings/businessModeTemplates.js';
@@ -37,6 +38,8 @@ import {
 } from '../services/terminalOperationQueueStore.js';
 
 const TerminalPageLayout = lazy(() => import('../components/TerminalPageLayout'));
+const OnboardingSetupModal = lazy(() => import('../../onboarding/components/OnboardingSetupModal.jsx'));
+const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 
 const DEFAULT_CURRENCY = 'PHP';
 const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
@@ -46,6 +49,7 @@ const ONLINE_ORDER_POLL_INTERVAL_MS = 12000;
 const QUEUE_HISTORY_LIMIT = 250;
 const TERMINAL_OPERATION_MAX_RETRIES = 5;
 const TERMINAL_OPERATION_REPLAY_BATCH_SIZE = 25;
+const DESKTOP_TERMINAL_BREAKPOINT_PX = IS_DGFY_POS_SURFACE ? 1024 : 1280;
 const CHECKOUT_VIEW_MODES = ['checkout', 'history', 'receipt'];
 const OPERATIONS_VIEW_MODES = [
   'incoming_queue',
@@ -266,10 +270,11 @@ export default function TerminalPage() {
     const stored = localStorage.getItem('posTerminalSidebarCollapsed');
     return stored === '1';
   });
-  const [locked, setLocked] = useState(() => !localStorage.getItem('authToken'));
-  const [drawerOpen, setDrawerOpen] = useState(() => !localStorage.getItem('authToken'));
+  const [locked, setLocked] = useState(() => !getAccessToken());
+  const [drawerOpen, setDrawerOpen] = useState(() => !getAccessToken());
   const [loadingUser, setLoadingUser] = useState(false);
   const [terminalUser, setTerminalUser] = useState(null);
+  const [onboardingSetupOpen, setOnboardingSetupOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [activeTerminalId, setActiveTerminalId] = useState(() => readStoredTerminalId());
   const [terminalRegistry, setTerminalRegistry] = useState([]);
@@ -367,7 +372,7 @@ export default function TerminalPage() {
   const replayingQueueRef = useRef(false);
   const [isDesktopWide, setIsDesktopWide] = useState(() => {
     if (typeof window === 'undefined') return false;
-    return window.innerWidth >= 1280;
+    return window.innerWidth >= DESKTOP_TERMINAL_BREAKPOINT_PX;
   });
   const isMsmeMode = isMsmeWorkflowMode(workflowMode);
   const modePosDefaults = useMemo(
@@ -920,7 +925,10 @@ export default function TerminalPage() {
   }, [refreshTerminalOperationQueue]);
 
   const hydrateUser = useCallback(async () => {
-    const token = localStorage.getItem('authToken');
+    let token = getAccessToken();
+    if (!token) {
+      token = await refreshBrowserSession().catch(() => '');
+    }
     if (!token) {
       setTerminalUser(null);
       setLocked(true);
@@ -1156,7 +1164,7 @@ export default function TerminalPage() {
     setSubmitting(true);
     try {
       let resolvedCompanyToken = String(
-        (typeof window !== 'undefined' ? window.localStorage.getItem('companyToken') : '') || ''
+        getCompanyToken() || ''
       ).trim();
       if (!resolvedCompanyToken) {
         resolvedCompanyToken = String(await lookupCompanyToken(email) || '').trim();
@@ -1593,7 +1601,7 @@ export default function TerminalPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const handleResize = () => {
-      setIsDesktopWide(window.innerWidth >= 1280);
+      setIsDesktopWide(window.innerWidth >= DESKTOP_TERMINAL_BREAKPOINT_PX);
     };
     handleResize();
     window.addEventListener('resize', handleResize);
@@ -1706,10 +1714,27 @@ export default function TerminalPage() {
     <Suspense fallback={<div className="min-h-screen bg-slate-100 p-6 text-sm text-slate-500">Loading terminal workspace...</div>}>
       <>
         {showOnboardingReminder && (
-          <div className="mx-4 mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-            Tenant onboarding is incomplete ({onboardingCompletedCount}/{onboardingRequiredTotal} required checks). Continue in Settings.
+          <div className="fixed right-4 top-4 z-[70] max-w-[min(92vw,420px)] rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 shadow-lg shadow-amber-900/10">
+            <span>
+              Tenant onboarding is incomplete ({onboardingCompletedCount}/{onboardingRequiredTotal} required checks).
+            </span>
+            <button
+              type="button"
+              className="ml-1 font-extrabold underline underline-offset-2"
+              onClick={() => setOnboardingSetupOpen(true)}
+            >
+              Continue in Settings.
+            </button>
           </div>
         )}
+        <OnboardingSetupModal
+          open={onboardingSetupOpen}
+          onClose={() => setOnboardingSetupOpen(false)}
+          onboarding={terminalUser?.onboarding || null}
+          currentUser={terminalUser}
+          workflowMode={workflowMode}
+          onRefreshUser={hydrateUser}
+        />
         <TerminalPageLayout
           locked={locked}
           isOnline={isOnline}

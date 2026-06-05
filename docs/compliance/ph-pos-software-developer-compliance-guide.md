@@ -2,10 +2,10 @@
 status: authoritative
 authority_level: authoritative
 owner: compliance
-last_reviewed: 2026-04-22
+last_reviewed: 2026-06-01
 applies_to: ph_pos_software_provider
 topic: ph_pos_software_developer_compliance
-related_adr: 0007-dual-mode-pos-compliance-program.md,0011-compliance-downgrade-escape-hatches.md
+related_adr: 0007-dual-mode-pos-compliance-program.md,0011-compliance-downgrade-escape-hatches.md,0025-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md
 ---
 
 # PH POS Software Developer Compliance Guide
@@ -47,12 +47,16 @@ This guide defines regulator-aligned controls to enforce in product logic, persi
 3. Non-compliant mode issues only `non_fiscal_slip`.
 4. Fiscal behavior is allowed only in `compliant_active`, fail-closed on policy failure.
 5. Verified-only trust model applies to artifacts and peripherals in compliant mode.
+6. RMO 24-2023 filing readiness is a separate activation gate. Generic profile, artifact, peripheral, and submission-document completion is not enough for fiscal activation unless `rmo_filing_readiness.ready=true`.
+7. Verified fiscal terminal registration is also required before `compliant_active`; non-compliant and compliant-pending tenants remain limited to non-fiscal output.
 
 ## Mandatory Control Objectives
 1. BIR controls:
    - Lifecycle gating for fiscal issuance.
    - Mandatory invoice/receipt metadata and contract enforcement.
    - Terminal-aware accredited peripheral checks with shared fallback.
+   - RMO 24-2023 filing evidence, fiscal document sample review, verified fiscal terminal registration, fiscal integrity proof, and eSales/reporting rehearsal before `compliant_active`.
+   - Internal fiscal runtime controls: server-owned fiscal document snapshots, fiscal print/reprint evidence, fiscal void stock-return evidence, sequenced fiscal event ledger verification, and eSales package/status evidence.
 2. NPC controls:
    - DPO and registration profile requirements.
    - Breach-response and security control confirmations.
@@ -78,7 +82,9 @@ This guide defines regulator-aligned controls to enforce in product logic, persi
 2. `npm run check:architecture`
 3. `npm run check:compliance`
 4. Compliance-focused backend and frontend tests
-5. Updated declaration evidence with rollback notes
+5. RMO filing readiness evidence when fiscal activation or receipt/reporting behavior is affected
+6. Updated declaration evidence with rollback notes
+7. Fiscal ledger integrity verification evidence when fiscal event behavior changes
 
 ## Cadence
 1. Regulator-source verification monthly.

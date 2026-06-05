@@ -16,8 +16,11 @@ const baseEnv = {
   JWT_SECRET: strongSecret('jwt'),
   REFRESH_TOKEN_SECRET: strongSecret('refresh'),
   CORS_ORIGIN: 'https://app.test',
+  SESSION_COOKIE_SECURE: 'true',
   AUTH_BLACKLIST_FAILURE_MODE: 'fail_open',
   TEMP_FILE_STORAGE: 'local',
+  RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS: '3600000',
+  RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS: '5',
   HOSTING_INSTANCE_COUNT: '1'
 };
 

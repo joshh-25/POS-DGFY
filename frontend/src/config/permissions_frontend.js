@@ -56,6 +56,9 @@ export const PERMISSIONS = {
             ADJUST_CASH_DRAWER: "pos:cash_drawer_adjust",
             CLOSE_DAY_POS: "pos:close_day",
             REPRINT_POS_RECEIPT: "pos:reprint",
+            VOID_POS_TRANSACTION: "pos:void",
+            MANAGE_FISCAL_TERMINALS: "pos:fiscal_terminals:manage",
+            MANAGE_ESALES_REPORTS: "pos:esales:manage",
             SWITCH_LOCATION_POS: "pos:switch_location"
         }
     },
@@ -190,6 +193,9 @@ export const PERMISSION_GROUPS = {
             ADJUST_CASH_DRAWER: "pos:cash_drawer_adjust",
             CLOSE_DAY_POS: "pos:close_day",
             REPRINT_POS_RECEIPT: "pos:reprint",
+            VOID_POS_TRANSACTION: "pos:void",
+            MANAGE_FISCAL_TERMINALS: "pos:fiscal_terminals:manage",
+            MANAGE_ESALES_REPORTS: "pos:esales:manage",
             SWITCH_LOCATION_POS: "pos:switch_location"
         }
     },

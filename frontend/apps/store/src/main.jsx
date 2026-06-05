@@ -10,7 +10,7 @@ export function App() {
   return (
     <>
       <StorefrontApp />
-      <Toaster richColors position="top-right" />
+      <Toaster richColors position="top-right" closeButton duration={2200} />
     </>
   );
 }

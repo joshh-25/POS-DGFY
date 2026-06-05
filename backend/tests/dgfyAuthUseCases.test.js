@@ -9,6 +9,7 @@ import {
     buildLoginDgfyAccountUseCase,
     buildRequestDgfyPasswordResetUseCase,
     buildRequestDgfyEmailVerificationUseCase,
+    buildStartDgfyTenantSessionUseCase,
     buildUpdateDgfyProfileUseCase,
     buildVerifyDgfyEmailUseCase,
     buildRegisterDgfyAccountUseCase
@@ -18,6 +19,7 @@ import { DGFY_LEGAL_TERM_VERSIONS } from '../src/modules/shared/utils/dgfyLegalT
 const createAccount = (overrides = {}) => ({
     id: 'dgfy-1',
     first_name: 'Ada',
+    middle_name: null,
     last_name: 'Lovelace',
     username: 'Ada',
     email: 'ada@example.test',
@@ -53,6 +55,7 @@ describe('dgfyAuthUseCases', () => {
         const result = await useCase({
             body: {
                 first_name: 'Ada',
+                middle_name: 'Byron',
                 last_name: 'Lovelace',
                 email: 'ADA@EXAMPLE.TEST',
                 phone: '+63 912 345 6789',
@@ -75,12 +78,14 @@ describe('dgfyAuthUseCases', () => {
         expect(repository.transaction).toHaveBeenCalled();
         expect(repository.create).toHaveBeenCalledWith(expect.objectContaining({
             first_name: 'Ada',
+            middle_name: 'Byron',
             last_name: 'Lovelace',
             username: 'Ada',
             email: 'ada@example.test',
             phone: '+63 912 345 6789'
         }), { transaction: 'tx-account' });
         expect(result.data.payload.data.token).toBeTruthy();
+        expect(result.data.payload.data.account.middle_name).toBe('Byron');
         expect(repository.mirrorPendingInvitationsForAccount).toHaveBeenCalledWith(expect.anything(), { transaction: 'tx-account' });
         expect(repository.recordLegalAcknowledgement).toHaveBeenCalledWith(expect.objectContaining({
             flow: 'dgfy_account_registration',
@@ -261,6 +266,59 @@ describe('dgfyAuthUseCases', () => {
         });
         expect(replayResult.success).toBe(false);
         expect(replayResult.error.statusCode).toBe(401);
+
+        const browserRecoveryResult = await exchangeUseCase({
+            body: {
+                handoff_token: handoffResult.data.payload.data.handoff_token,
+                soft_fail: true
+            }
+        });
+        expect(browserRecoveryResult.success).toBe(true);
+        expect(browserRecoveryResult.data.payload.data).toEqual({
+            status: 'invalid',
+            reason: 'expired_or_consumed'
+        });
+    });
+
+    it('starts a SKUpervisor tenant session from an accepted DGFY membership', async () => {
+        const session = {
+            token: 'tenant-token',
+            refreshToken: 'tenant-refresh-token',
+            company: { id: 'tenant-1', token: 'token-tenant-1' }
+        };
+        const createTenantSessionForDgfyAccount = jest.fn().mockResolvedValue(session);
+        const useCase = buildStartDgfyTenantSessionUseCase({ createTenantSessionForDgfyAccount });
+        const account = createAccount({ id: 'dgfy-account-1' });
+
+        const result = await useCase({
+            account,
+            body: {
+                tenant_id: 'tenant-1',
+                company_token: 'token-tenant-1'
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(createTenantSessionForDgfyAccount).toHaveBeenCalledWith({
+            account,
+            tenantId: 'tenant-1',
+            companyToken: 'token-tenant-1'
+        });
+        expect(result.data.payload.data).toEqual(session);
+    });
+
+    it('requires company identity before starting a SKUpervisor tenant session', async () => {
+        const createTenantSessionForDgfyAccount = jest.fn();
+        const useCase = buildStartDgfyTenantSessionUseCase({ createTenantSessionForDgfyAccount });
+
+        const result = await useCase({
+            account: createAccount(),
+            body: {}
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(400);
+        expect(createTenantSessionForDgfyAccount).not.toHaveBeenCalled();
     });
 
     it('updates the DGFY profile and clears phone verification when phone changes', async () => {
@@ -280,6 +338,7 @@ describe('dgfyAuthUseCases', () => {
             account,
             body: {
                 first_name: 'Grace',
+                middle_name: 'Brewster',
                 last_name: 'Hopper',
                 phone: '+639987654321'
             }
@@ -288,11 +347,13 @@ describe('dgfyAuthUseCases', () => {
         expect(result.success).toBe(true);
         expect(repository.updateProfile).toHaveBeenCalledWith(account, expect.objectContaining({
             first_name: 'Grace',
+            middle_name: 'Brewster',
             last_name: 'Hopper',
             username: 'Grace',
             phone: '+639987654321',
             phone_verified_at: null
         }));
+        expect(result.data.payload.data.account.middle_name).toBe('Brewster');
         expect(result.data.payload.data.account.username).toBe('Grace');
     });
 

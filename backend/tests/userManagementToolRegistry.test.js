@@ -88,6 +88,18 @@ describe('userManagementToolRegistry', () => {
     });
   });
 
+  it('does not expose the retired company-token join-link tool', () => {
+    const registry = buildUserManagementToolRegistry({
+      userService: {},
+      tempFileService: {},
+      logger: { error: jest.fn() },
+      permissions: {},
+      companyTokenProvider: () => 'tenant-token'
+    });
+
+    expect(registry.get_company_join_link).toBeUndefined();
+  });
+
   it('update_user_role resolves by email and passes resolved id to service', async () => {
     const updateUserRole = jest.fn().mockResolvedValue({
       user_id: 7,
@@ -147,6 +159,8 @@ describe('userManagementToolRegistry', () => {
     expect(result.success).toBe(true);
     expect(result.invitation.token).toBe('tok_abc123');
     expect(result.details['Accept URL']).toBe('https://app.example.test/accept-invite?token=tok_abc123');
+    expect(result.details['Accept URL']).not.toContain('company');
+    expect(result.details['Accept URL']).not.toContain('token-tenant');
     expect(result.message).toContain('Manual Invitation Link');
   });
 

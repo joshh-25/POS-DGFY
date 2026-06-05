@@ -12,7 +12,11 @@ const allowedHosts = ['pos.surebizcorp.com', 'pos.dgfy.ph', 'localhost', '127.0.
 export default defineConfig({
   root: __dirname,
   plugins: [react()],
+  define: {
+    'import.meta.env.VITE_APP_SURFACE': JSON.stringify('pos')
+  },
   resolve: {
+    dedupe: ['react', 'react-dom'],
     alias: [
       { find: '@/hooks', replacement: path.resolve(frontendRoot, 'src/hooks') },
       { find: '@/components', replacement: path.resolve(frontendRoot, 'Components') },
@@ -37,13 +41,27 @@ export default defineConfig({
         target: apiProxyTarget,
         changeOrigin: true,
         secure: false
+      },
+      '/osm': {
+        target: 'https://tile.openstreetmap.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/osm/, ''),
+        secure: false
       }
     }
   },
   preview: {
     port: 5174,
     host: true,
-    allowedHosts
+    allowedHosts,
+    proxy: {
+      '/osm': {
+        target: 'https://tile.openstreetmap.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/osm/, ''),
+        secure: false
+      }
+    }
   },
   build: {
     outDir: path.resolve(__dirname, '../../../dist-apps/pos'),

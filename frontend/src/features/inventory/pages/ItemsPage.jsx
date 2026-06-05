@@ -64,6 +64,9 @@ import {
   updateStorefrontCatalogOverride,
   updateBulkStorefrontCatalogOverrides,
   uploadStorefrontCatalogImage,
+  uploadStorefrontCatalogImages,
+  updateStorefrontCatalogGallery,
+  deleteStorefrontCatalogGalleryImage,
   uploadBulkStorefrontCatalogImages,
   deleteStorefrontCatalogImage
 } from '@/services/storefrontCatalogService.js';
@@ -433,33 +436,87 @@ export default function Items() {
     }
   };
 
-  const handleUploadStorefrontImage = async (item, file) => {
+  const handleUploadStorefrontImage = async (item, files) => {
     const itemId = item?.item_id || item?.id;
-    if (!itemId || !file || !canConfigureStorefrontCatalog) return;
+    const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : (files ? [files] : []);
+    if (!itemId || normalizedFiles.length === 0 || !canConfigureStorefrontCatalog) return;
 
     try {
-      const updated = await uploadStorefrontCatalogImage(itemId, file);
+      const updated = normalizedFiles.length > 1
+        ? await uploadStorefrontCatalogImages(itemId, normalizedFiles)
+        : await uploadStorefrontCatalogImage(itemId, normalizedFiles[0]);
       setStorefrontCatalogOverrides((prev) => ({
         ...prev,
         [itemId]: { ...(prev[itemId] || {}), ...updated }
       }));
-      toast.success(`Item image updated for ${item.name}`);
+      toast.success(normalizedFiles.length > 1 ? `Item gallery updated for ${item.name}` : `Item image updated for ${item.name}`);
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to upload item image');
     }
   };
 
-  const handleDeleteStorefrontImage = async (item) => {
+  const normalizeStorefrontGallery = (storefrontConfig = {}) => {
+    const entries = Array.isArray(storefrontConfig?.storefront_image_gallery)
+      ? storefrontConfig.storefront_image_gallery
+      : [];
+    const primaryUrl = storefrontConfig?.storefront_image_url || null;
+    const gallery = entries
+      .map((entry, index) => ({
+        path: entry?.path || null,
+        url: entry?.url || entry?.image_url || entry,
+        is_primary: index === 0,
+        sort_order: index
+      }))
+      .filter((entry) => entry.url || entry.path);
+    if (primaryUrl && !gallery.some((entry) => entry.url === primaryUrl)) {
+      gallery.unshift({ path: storefrontConfig?.storefront_image_path || null, url: primaryUrl, is_primary: true, sort_order: 0 });
+    }
+    return gallery.map((entry, index) => ({
+      ...entry,
+      is_primary: index === 0,
+      sort_order: index
+    }));
+  };
+
+  const handleSetPrimaryStorefrontImage = async (item, imageIndex) => {
+    const itemId = item?.item_id || item?.id;
+    if (!itemId || !canConfigureStorefrontCatalog) return;
+    const current = normalizeStorefrontGallery(resolveStorefrontConfig(item));
+    const normalizedImageIndex = Number.parseInt(imageIndex, 10);
+    if (!Number.isInteger(normalizedImageIndex) || normalizedImageIndex <= 0 || normalizedImageIndex >= current.length) return;
+    const nextGallery = [
+      current[normalizedImageIndex],
+      ...current.filter((_, index) => index !== normalizedImageIndex)
+    ].map((entry, index) => ({ ...entry, is_primary: index === 0, sort_order: index }));
+
+    try {
+      const updated = await updateStorefrontCatalogGallery(itemId, nextGallery);
+      setStorefrontCatalogOverrides((prev) => ({
+        ...prev,
+        [itemId]: { ...(prev[itemId] || {}), ...updated }
+      }));
+      toast.success(`Primary storefront image updated for ${item.name}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to update primary item image');
+    }
+  };
+
+  const handleDeleteStorefrontImage = async (item, imageIndex = null) => {
     const itemId = item?.item_id || item?.id;
     if (!itemId || !canConfigureStorefrontCatalog) return;
 
     try {
-      const updated = await deleteStorefrontCatalogImage(itemId);
+      const normalizedImageIndex = Number.parseInt(imageIndex, 10);
+      const updated = Number.isInteger(normalizedImageIndex) && normalizedImageIndex >= 0
+        ? await deleteStorefrontCatalogGalleryImage(itemId, normalizedImageIndex)
+        : await deleteStorefrontCatalogImage(itemId);
       setStorefrontCatalogOverrides((prev) => ({
         ...prev,
-        [itemId]: { ...(prev[itemId] || {}), ...(updated || {}), storefront_image_url: null }
+        [itemId]: Number.isInteger(normalizedImageIndex) && normalizedImageIndex >= 0
+          ? { ...(prev[itemId] || {}), ...(updated || {}) }
+          : { ...(prev[itemId] || {}), ...(updated || {}), storefront_image_url: null, storefront_image_gallery: null }
       }));
-      toast.success(`Item image removed for ${item.name}`);
+      toast.success(Number.isInteger(normalizedImageIndex) ? `Item gallery image removed for ${item.name}` : `Item image removed for ${item.name}`);
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to remove item image');
     }
@@ -2232,6 +2289,7 @@ export default function Items() {
                       const storefrontConfigResolved = resolveStorefrontConfig(item);
                       const storefrontVisible = storefrontConfigResolved.storefront_visible !== false;
                       const storefrontImageUrl = storefrontConfigResolved.storefront_image_url || null;
+                      const storefrontImageGallery = normalizeStorefrontGallery(storefrontConfigResolved);
                       const checked = posChecklistSelectedIds.has(itemId);
                       const readiness = posReadinessByItemId[itemId] || buildFallbackPosReadiness(item);
                       const recommendation = getCatalogRecommendationForItem(item);
@@ -2349,26 +2407,58 @@ export default function Items() {
                               </td>
                               <td className="p-3">
                                 <div className="space-y-2">
-                                  {storefrontImageUrl ? (
-                                    <img
-                                      src={storefrontImageUrl}
-                                      alt={`${item.name} storefront catalog`}
-                                      className="h-16 w-20 rounded-md border border-slate-200 object-cover"
-                                    />
+                                  {storefrontImageGallery.length > 0 ? (
+                                    <div className="flex max-w-xs flex-wrap gap-2">
+                                      {storefrontImageGallery.map((entry, index) => (
+                                        <div key={`${entry.url || entry.path}-${index}`} className="space-y-1">
+                                          <div className="relative">
+                                            <img
+                                              src={resolveAssetUrl(entry.url || entry.path)}
+                                              alt={`${item.name} storefront image ${index + 1}`}
+                                              className="h-16 w-20 rounded-md border border-slate-200 object-cover"
+                                            />
+                                            {index === 0 && (
+                                              <span className="absolute left-1 top-1 rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                                                Primary
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="flex gap-1">
+                                            {index > 0 && (
+                                              <button
+                                                type="button"
+                                                className="rounded border border-slate-200 px-1.5 py-0.5 text-[10px] text-slate-600 hover:bg-slate-50"
+                                                onClick={() => handleSetPrimaryStorefrontImage(item, index)}
+                                              >
+                                                Set first
+                                              </button>
+                                            )}
+                                            <button
+                                              type="button"
+                                              className="rounded border border-red-200 px-1.5 py-0.5 text-[10px] text-red-700 hover:bg-red-50"
+                                              onClick={() => handleDeleteStorefrontImage(item, index)}
+                                            >
+                                              Remove
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
                                   ) : (
                                     <span className="text-xs text-slate-500">No image</span>
                                   )}
                                   <div className="flex flex-wrap gap-2">
                                     <label className="cursor-pointer rounded border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50">
-                                      Upload
+                                      Add Images
                                       <input
                                         type="file"
                                         accept="image/*"
+                                        multiple
                                         className="hidden"
                                         onChange={(event) => {
-                                          const file = event.target.files?.[0];
-                                          if (file) {
-                                            handleUploadStorefrontImage(item, file);
+                                          const files = Array.from(event.target.files || []);
+                                          if (files.length) {
+                                            handleUploadStorefrontImage(item, files);
                                           }
                                           event.target.value = '';
                                         }}
@@ -2379,9 +2469,9 @@ export default function Items() {
                                       variant="outline"
                                       size="sm"
                                       onClick={() => handleDeleteStorefrontImage(item)}
-                                      disabled={!storefrontImageUrl}
+                                      disabled={storefrontImageGallery.length === 0 && !storefrontImageUrl}
                                     >
-                                      Remove
+                                      Remove All
                                     </Button>
                                   </div>
                                 </div>
@@ -2463,6 +2553,7 @@ export default function Items() {
           onDeletePosImage={handleDeletePosImage}
           onToggleStorefrontVisibility={handleToggleStorefrontVisibility}
           onUploadStorefrontImage={handleUploadStorefrontImage}
+          onSetPrimaryStorefrontImage={handleSetPrimaryStorefrontImage}
           onDeleteStorefrontImage={handleDeleteStorefrontImage}
           onOpenBulkPosSetup={() => {
             if (editingItem) {
@@ -2502,6 +2593,7 @@ export default function Items() {
             onDeletePosImage={handleDeletePosImage}
             onToggleStorefrontVisibility={handleToggleStorefrontVisibility}
             onUploadStorefrontImage={handleUploadStorefrontImage}
+            onSetPrimaryStorefrontImage={handleSetPrimaryStorefrontImage}
             onDeleteStorefrontImage={handleDeleteStorefrontImage}
             onOpenBulkPosSetup={() => {
               if (editingProduct) {

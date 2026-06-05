@@ -16,7 +16,7 @@ Billing funnel telemetry means server-side events emitted during:
 2. Premium upgrade attempts and selected outcomes
 3. Manual-to-PayPal migration attempts and selected outcomes
 4. Inactive-account PayPal reactivation attempts and selected outcomes
-5. Selected PayPal payment webhook outcomes
+5. Selected PayPal and PayMongo payment webhook outcomes
 
 Limited product usage telemetry means server-side events emitted when authenticated users successfully access or execute selected core workflows such as:
 1. Dashboard views
@@ -29,7 +29,7 @@ These events answer questions like:
 - Did an upgrade attempt reach the backend?
 - Was a premium registration blocked because the subscription was missing or inactive?
 - Did a migration/reactivation attempt fail due to PayPal plan mismatch or missing configuration?
-- Did a payment sale webhook complete and persist?
+- Did a payment webhook complete, persist, or fail before business processing because signature verification failed?
 
 ## What The Current System Does Measure
 1. Backend-observed registration attempts and some registration outcomes

@@ -63,6 +63,31 @@ const FINAL_REVIEW_DOCUMENT_REQUIREMENTS = Object.freeze({
         code: 'submission.encryption_verification_evidence',
         label: 'Latest encryption verification evidence',
         requiresFreshness: true
+    },
+    rmo_24_2023_control_matrix: {
+        code: 'rmo.control_matrix',
+        label: 'RMO 24-2023 control matrix',
+        requiresFreshness: false
+    },
+    rmo_24_2023_filing_authority_decision: {
+        code: 'rmo.filing_authority_decision',
+        label: 'RMO filing authority and responsibility decision',
+        requiresFreshness: false
+    },
+    rmo_24_2023_receipt_sample_pack: {
+        code: 'rmo.receipt_sample_pack',
+        label: 'RMO fiscal receipt/invoice sample pack',
+        requiresFreshness: false
+    },
+    rmo_24_2023_fiscal_integrity_evidence: {
+        code: 'rmo.fiscal_integrity_evidence',
+        label: 'RMO fiscal event integrity evidence',
+        requiresFreshness: true
+    },
+    rmo_24_2023_esales_reporting_plan: {
+        code: 'rmo.esales_reporting_plan',
+        label: 'RMO eSales reporting plan and rehearsal evidence',
+        requiresFreshness: true
     }
 });
 
@@ -123,7 +148,7 @@ const resolvePaymentHandoffPolicyReady = (profile = {}, now = new Date()) => {
 };
 
 const resolveChecklistEvidence = async ({ complianceRepository, tenantId = null, profile = {} }) => {
-    const [fiscalState, appendOnlyState, submissionReadiness, encryptionPolicyState] = await Promise.all([
+    const [fiscalState, appendOnlyState, submissionReadiness, encryptionPolicyState, rmoFilingReadiness, fiscalTerminalReadiness] = await Promise.all([
         typeof complianceRepository?.getFiscalAccumulatorState === 'function'
             ? complianceRepository.getFiscalAccumulatorState()
             : Promise.resolve({ ready: true, lifetime_grand_total_cents: 0 }),
@@ -135,7 +160,13 @@ const resolveChecklistEvidence = async ({ complianceRepository, tenantId = null,
             : Promise.resolve({ ready: true, complete: 0, total: 0, missing: 0, items: [] }),
         typeof complianceRepository?.getEncryptionPolicyPrerequisitesState === 'function'
             ? complianceRepository.getEncryptionPolicyPrerequisitesState()
-            : Promise.resolve({ ready: true, checks: {}, issues: [] })
+            : Promise.resolve({ ready: true, checks: {}, issues: [] }),
+        typeof complianceRepository?.getRmoFilingReadiness === 'function'
+            ? complianceRepository.getRmoFilingReadiness(tenantId)
+            : Promise.resolve({ ready: false, complete: 0, total: 0, missing: 0, items: [] }),
+        typeof complianceRepository?.getFiscalTerminalRegistrationReadiness === 'function'
+            ? complianceRepository.getFiscalTerminalRegistrationReadiness()
+            : Promise.resolve({ ready: false, verified_count: 0, total_count: 0 })
     ]);
 
     return {
@@ -159,6 +190,19 @@ const resolveChecklistEvidence = async ({ complianceRepository, tenantId = null,
             total: Number.parseInt(submissionReadiness?.total || 0, 10) || 0,
             missing: Number.parseInt(submissionReadiness?.missing || 0, 10) || 0,
             items: Array.isArray(submissionReadiness?.items) ? submissionReadiness.items : []
+        },
+        rmo_filing_readiness: {
+            ready: rmoFilingReadiness?.ready === true,
+            complete: Number.parseInt(rmoFilingReadiness?.complete || 0, 10) || 0,
+            total: Number.parseInt(rmoFilingReadiness?.total || 0, 10) || 0,
+            missing: Number.parseInt(rmoFilingReadiness?.missing || 0, 10) || 0,
+            items: Array.isArray(rmoFilingReadiness?.items) ? rmoFilingReadiness.items : []
+        },
+        fiscal_terminal_registration: {
+            ready: fiscalTerminalReadiness?.ready === true,
+            verified_count: Number.parseInt(fiscalTerminalReadiness?.verified_count || 0, 10) || 0,
+            total_count: Number.parseInt(fiscalTerminalReadiness?.total_count || 0, 10) || 0,
+            action_target: fiscalTerminalReadiness?.action_target || '/settings?tab=pos#fiscal-terminal-registration'
         }
     };
 };

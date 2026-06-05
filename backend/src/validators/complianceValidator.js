@@ -23,7 +23,12 @@ const profilePatchSchema = Joi.object({
         ptu_certificate_number: Joi.string().trim().max(120).allow('', null),
         tax_classification_controls_confirmed: Joi.boolean(),
         non_resettable_grand_total_enabled: Joi.boolean(),
-        mandatory_receipt_fields_confirmed: Joi.boolean()
+        mandatory_receipt_fields_confirmed: Joi.boolean(),
+        rmo_24_2023_filing_verified: Joi.boolean(),
+        fiscal_document_content_reviewed: Joi.boolean(),
+        terminal_registration_controls_confirmed: Joi.boolean(),
+        ejournal_integrity_controls_confirmed: Joi.boolean(),
+        esales_reporting_controls_confirmed: Joi.boolean()
     }).min(1),
     npc: Joi.object({
         dpo_name: Joi.string().trim().max(120),

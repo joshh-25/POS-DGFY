@@ -38,19 +38,23 @@ Object.defineProperty(globalThis, 'BroadcastChannel', {
 });
 
 let buildItemsCacheScope;
+let clearBrowserSession;
+let setBrowserSession;
 
 describe('useItems cache scope isolation', () => {
   beforeAll(async () => {
     ({ buildItemsCacheScope } = await import('../useItems.js'));
+    ({ clearBrowserSession, setBrowserSession } = await import('../../services/browserSession.js'));
   });
 
   beforeEach(() => {
     localStorage.clear();
+    clearBrowserSession();
   });
 
   it('changes cache scope when auth epoch changes', () => {
     const params = { limit: 1000, search: 'milk' };
-    localStorage.setItem('companyToken', 'tenant-a');
+    setBrowserSession({ companyToken: 'tenant-a' });
     localStorage.setItem('authEpoch', '1');
     const scopeA = buildItemsCacheScope(params);
 
@@ -63,10 +67,10 @@ describe('useItems cache scope isolation', () => {
   it('changes cache scope when company token changes', () => {
     const params = { limit: 1000 };
     localStorage.setItem('authEpoch', '8');
-    localStorage.setItem('companyToken', 'tenant-a');
+    setBrowserSession({ companyToken: 'tenant-a' });
     const scopeA = buildItemsCacheScope(params);
 
-    localStorage.setItem('companyToken', 'tenant-b');
+    setBrowserSession({ companyToken: 'tenant-b' });
     const scopeB = buildItemsCacheScope(params);
 
     expect(scopeA).not.toBe(scopeB);
@@ -75,7 +79,7 @@ describe('useItems cache scope isolation', () => {
   it('keeps cache scope stable for same session identity', () => {
     const params = { limit: 1000, category: 'raw_material' };
     localStorage.setItem('authEpoch', '3');
-    localStorage.setItem('companyToken', 'tenant-a');
+    setBrowserSession({ companyToken: 'tenant-a' });
 
     const scopeA = buildItemsCacheScope(params);
     const scopeB = buildItemsCacheScope(params);

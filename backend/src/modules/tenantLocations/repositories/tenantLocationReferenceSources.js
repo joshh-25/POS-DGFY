@@ -40,6 +40,14 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         where: (locationId) => ({ location_id: locationId })
     },
     {
+        key: 'posFiscalTerminalRegistrations',
+        label: 'POS fiscal terminal registrations',
+        modelName: 'PosFiscalTerminalRegistration',
+        association: 'PosFiscalTerminalRegistration.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
         key: 'posTerminalShifts',
         label: 'POS terminal shifts',
         modelName: 'PosTerminalShift',

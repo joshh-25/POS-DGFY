@@ -50,13 +50,24 @@ function main() {
   const gates = [];
 
   addGate(gates, 'release.target_sha', Boolean(targetSha), `target_sha=${targetSha || '<missing>'}`);
+  addGate(gates, 'dependencies.audit.prod', runCommand(npmCmd, ['run', 'audit:dependencies:prod']), 'npm run audit:dependencies:prod');
+  addGate(gates, 'dependencies.audit.full', runCommand(npmCmd, ['run', 'audit:dependencies']), 'npm run audit:dependencies');
   addGate(gates, 'docs.lint', runCommand(npmCmd, ['run', 'lint:docs']), 'npm run lint:docs');
   addGate(gates, 'architecture.guardrails', runCommand(npmCmd, ['run', 'check:architecture']), 'npm run check:architecture');
   addGate(gates, 'compliance.contracts', runCommand(npmCmd, ['run', 'check:compliance']), 'npm run check:compliance');
+  addGate(gates, 'production.env.fixtures', runCommand(npmCmd, ['run', 'check:production-env']), 'npm run check:production-env');
   addGate(gates, 'runtime.doctor', runCommand(npmCmd, ['run', 'doctor:runtime']), 'npm run doctor:runtime');
   addGate(gates, 'backend.lint', runCommand(npmCmd, ['--prefix', 'backend', 'run', 'lint']), 'npm --prefix backend run lint');
+  addGate(gates, 'backend.test_matrix', runCommand(npmCmd, ['run', 'test:backend:matrix']), 'npm run test:backend:matrix');
   addGate(gates, 'frontend.lint', runCommand(npmCmd, ['--prefix', 'frontend', 'run', 'lint']), 'npm --prefix frontend run lint');
-  addGate(gates, 'frontend.budgets', runCommand(npmCmd, ['run', 'check:frontend-budgets']), 'npm run check:frontend-budgets');
+  addGate(gates, 'frontend.contracts', runCommand(npmCmd, ['run', 'test:frontend:contracts']), 'npm run test:frontend:contracts');
+  const frontendBudgetReportFile = path.join(evidenceDir, 'frontend-budgets', 'frontend_budget_report.json');
+  addGate(
+    gates,
+    'frontend.budgets',
+    runCommand(npmCmd, ['run', 'check:frontend-budgets', '--', '--report', frontendBudgetReportFile]),
+    `npm run check:frontend-budgets -- --report ${frontendBudgetReportFile}`
+  );
   addGate(
     gates,
     'scroll.contracts',
@@ -95,6 +106,7 @@ function main() {
     artifact_paths: {
       local_readiness_file: outputFile,
       release_verdict_file: verdictFile,
+      frontend_budget_report_file: frontendBudgetReportFile,
     },
   };
   fs.writeFileSync(outputFile, JSON.stringify(payload, null, 2));

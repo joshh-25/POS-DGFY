@@ -33,9 +33,9 @@ const getAppUrl = () => process.env.APP_URL || 'http://localhost:5173';
 const getEmailDeliveryProvider = () => String(process.env.EMAIL_DELIVERY_PROVIDER || 'auto').trim().toLowerCase();
 const getBrevoApiUrl = () => process.env.BREVO_API_URL || 'https://api.brevo.com/v3/smtp/email';
 const stripHtml = (html = '') => String(html).replace(/<[^>]*>/g, '');
-const getFromIdentity = () => ({
-  fromName: process.env.EMAIL_FROM_NAME || 'SKUpervisor',
-  fromEmail: process.env.EMAIL_FROM || process.env.SMTP_USER
+const getFromIdentity = ({ fromName, fromEmail } = {}) => ({
+  fromName: fromName || process.env.EMAIL_FROM_NAME || 'SKUpervisor',
+  fromEmail: fromEmail || process.env.EMAIL_FROM || process.env.SMTP_USER
 });
 
 export const isSmtpConfigured = () => {
@@ -119,18 +119,18 @@ const buildBrevoRecipients = (to) => {
     .filter((entry) => entry.email);
 };
 
-export const sendEmailViaBrevoApi = async ({ to, subject, html, text }) => {
+export const sendEmailViaBrevoApi = async ({ to, subject, html, text, fromName, fromEmail }) => {
   if (!isBrevoApiConfigured()) {
     const error = new Error('Brevo API email delivery is not configured. Set BREVO_API_KEY and EMAIL_FROM.');
     error.code = 'BREVO_API_NOT_CONFIGURED';
     throw error;
   }
 
-  const { fromName, fromEmail } = getFromIdentity();
+  const { fromName: resolvedFromName, fromEmail: resolvedFromEmail } = getFromIdentity({ fromName, fromEmail });
   const payload = {
     sender: {
-      name: fromName,
-      email: fromEmail
+      name: resolvedFromName,
+      email: resolvedFromEmail
     },
     to: buildBrevoRecipients(to),
     subject,
@@ -186,16 +186,16 @@ export const sendEmailViaBrevoApi = async ({ to, subject, html, text }) => {
  * @param {string} [options.text] - Plain text content (optional)
  * @returns {Promise<Object>} - Nodemailer send result
  */
-export const sendEmail = async ({ to, subject, html, text }) => {
+export const sendEmail = async ({ to, subject, html, text, fromName, fromEmail }) => {
   const provider = getEmailDeliveryProvider();
   const allowBrevoFallback = process.env.EMAIL_DELIVERY_FALLBACK_TO_BREVO_API !== 'false';
 
   if (provider === 'brevo_api') {
-    return sendEmailViaBrevoApi({ to, subject, html, text });
+    return sendEmailViaBrevoApi({ to, subject, html, text, fromName, fromEmail });
   }
 
   if (!isSmtpConfigured() && isBrevoApiConfigured()) {
-    return sendEmailViaBrevoApi({ to, subject, html, text });
+    return sendEmailViaBrevoApi({ to, subject, html, text, fromName, fromEmail });
   }
 
   const transporter = getTransporter();
@@ -206,10 +206,10 @@ export const sendEmail = async ({ to, subject, html, text }) => {
     throw error;
   }
 
-  const { fromName, fromEmail } = getFromIdentity();
+  const { fromName: resolvedFromName, fromEmail: resolvedFromEmail } = getFromIdentity({ fromName, fromEmail });
 
   const mailOptions = {
-    from: `"${fromName}" <${fromEmail}>`,
+    from: `"${resolvedFromName}" <${resolvedFromEmail}>`,
     to,
     subject,
     html,
@@ -227,7 +227,7 @@ export const sendEmail = async ({ to, subject, html, text }) => {
     logger.error(`Failed to send email to ${to}:`, error);
     if (allowBrevoFallback && isBrevoApiConfigured()) {
       logger.warn(`Retrying email to ${to} through Brevo API after SMTP failure`);
-      return sendEmailViaBrevoApi({ to, subject, html, text });
+      return sendEmailViaBrevoApi({ to, subject, html, text, fromName, fromEmail });
     }
     throw error;
   }
@@ -241,16 +241,14 @@ export const sendEmail = async ({ to, subject, html, text }) => {
  * @param {string} params.role - Role being assigned (staff/manager/admin)
  * @param {string} params.invitationToken - Unique invitation token
  * @param {string} params.tenantName - Company/tenant name
- * @param {string} [params.companyToken] - Company token for tenant-bound invite acceptance
  * @returns {Promise<Object>} - Nodemailer send result
  */
-export const sendInvitationEmail = async ({ email, inviterName, role, invitationToken, tenantName, companyToken }) => {
+export const sendInvitationEmail = async ({ email, inviterName, role, invitationToken, tenantName }) => {
   const appUrl = getAppUrl();
   const html = getInvitationTemplate({
     inviterName,
     role: role.charAt(0).toUpperCase() + role.slice(1), // Capitalize role
     invitationToken,
-    companyToken,
     tenantName,
     expiresIn: '7 days',
     appUrl
@@ -348,9 +346,10 @@ export const sendEmailOtpCode = async ({ email, code, purposeLabel = 'email veri
 
   return sendEmail({
     to: email,
-    subject: 'Your SKUpervisor email verification code',
+    subject: 'Your DGFY email verification code',
     html,
-    text: `Your SKUpervisor email verification code is ${code}. It expires in ${safeMinutes} minutes.`
+    text: `Your DGFY email verification code is ${code}. It expires in ${safeMinutes} minutes.`,
+    fromName: 'DGFY'
   });
 };
 
@@ -563,4 +562,3 @@ export default {
   verifyConnection,
   isEmailConfigured
 };
-

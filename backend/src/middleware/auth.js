@@ -1,5 +1,6 @@
 import { verifyToken, isTokenBlacklisted } from '../services/authService.js';
 import dbStore from '../utils/dbStore.js';
+import { getCookie, SESSION_COOKIE_NAMES } from '../utils/browserSessionCookies.js';
 import { paymentsEnabled } from '../config/paymentsFeature.js';
 import { PERMISSIONS, DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
 import { isPhoneCompletionEnforcedForTenant } from '../config/phoneCompletionRollout.js';
@@ -431,15 +432,16 @@ export const authenticateAdmin = async (req, res, next) => {
   try {
     // Get token from header
     const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith('Bearer ')
+      ? authHeader.substring(7)
+      : getCookie(req, SESSION_COOKIE_NAMES.admin);
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!token) {
       return res.status(401).json({
         success: false,
         message: 'Admin authentication required'
       });
     }
-
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
 
     const isBlacklisted = await isTokenBlacklisted(token);
     if (isBlacklisted) {

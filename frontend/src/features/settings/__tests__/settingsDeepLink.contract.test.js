@@ -45,6 +45,10 @@ describe('settings deep-link contract', () => {
     expect(SETTINGS_HASH_TO_TAB['#section-artifacts']).toBe('compliance');
     expect(SETTINGS_HASH_TO_TAB['#section-peripherals']).toBe('compliance');
     expect(SETTINGS_HASH_TO_TAB['#section-final-review']).toBe('compliance');
+    expect(SETTINGS_HASH_TO_TAB['#section-rmo-filing-readiness']).toBe('compliance');
+    expect(SETTINGS_HASH_TO_TAB['#fiscal-terminal-registration']).toBe('pos');
+    expect(SETTINGS_HASH_TO_TAB['#fiscal-ledger-integrity']).toBe('pos');
+    expect(SETTINGS_HASH_TO_TAB['#esales-reporting']).toBe('pos');
   });
 
   it('keeps known hash targets backed by real section ids', () => {
@@ -52,6 +56,9 @@ describe('settings deep-link contract', () => {
     const complianceContent = fs.readFileSync(compliancePanelPath, 'utf8');
 
     expect(settingsContent).toContain('id="receipt-contract-settings"');
+    expect(settingsContent).toContain('id="fiscal-terminal-registration"');
+    expect(settingsContent).toContain('id="fiscal-ledger-integrity"');
+    expect(settingsContent).toContain('id="esales-reporting"');
     expect(settingsContent).toContain('id="storefront-operations-settings"');
     expect(settingsContent).toContain('id="storefront-access-settings"');
     expect(settingsContent).toContain('id="storefront-locations-settings"');
@@ -61,6 +68,24 @@ describe('settings deep-link contract', () => {
     expect(complianceContent).toContain('id="section-artifacts"');
     expect(complianceContent).toContain('id="section-peripherals"');
     expect(complianceContent).toContain('id="section-final-review"');
+    expect(complianceContent).toContain('id="section-rmo-filing-readiness"');
+  });
+
+  it('keeps POS fiscal settings UI wired to backend services and avoids browser prompt reprint flow', () => {
+    const settingsContent = fs.readFileSync(settingsPagePath, 'utf8');
+    const posContent = fs.readFileSync(posCheckoutTerminalPath, 'utf8');
+
+    expect(settingsContent).toContain('fetchFiscalTerminalRegistrations');
+    expect(settingsContent).toContain('fetchFiscalLedgerIntegrity');
+    expect(settingsContent).toContain('saveFiscalTerminalRegistration');
+    expect(settingsContent).toContain('generateESalesReport');
+    expect(settingsContent).toContain('updateESalesReportStatus');
+    expect(settingsContent).toContain('Fiscal Terminal Registration');
+    expect(settingsContent).toContain('Fiscal Ledger Integrity');
+    expect(settingsContent).toContain('eSales Reporting Packages');
+    expect(posContent).not.toContain('window.prompt');
+    expect(posContent).toContain('Record Fiscal Print Evidence');
+    expect(posContent).toContain('Confirm Printed');
   });
 
   it('keeps cross-surface settings targets emitted by policy and POS code resolvable', () => {

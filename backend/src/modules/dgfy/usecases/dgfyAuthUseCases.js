@@ -48,13 +48,21 @@ const parsePositiveInt = (value) => {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
-const buildFullName = (account) => normalizeName(`${account?.first_name || ''} ${account?.last_name || ''}`);
+const hasBodyKey = (body, key) => Object.prototype.hasOwnProperty.call(body || {}, key);
+const pickBodyValue = (body, snakeKey, camelKey, fallback) => {
+    if (hasBodyKey(body, snakeKey)) return body[snakeKey];
+    if (hasBodyKey(body, camelKey)) return body[camelKey];
+    return fallback;
+};
+
+const buildFullName = (account) => normalizeName(`${account?.first_name || ''} ${account?.middle_name || ''} ${account?.last_name || ''}`);
 
 export const sanitizeDgfyAccount = (account) => {
     if (!account) return null;
     return {
         id: account.id,
         first_name: account.first_name,
+        middle_name: account.middle_name || null,
         last_name: account.last_name,
         username: account.username,
         email: account.email,
@@ -86,6 +94,7 @@ export const buildRegisterDgfyAccountUseCase = ({
     hashPassword
 }) => async ({ body, metadata = {} }) => {
     const firstName = normalizeName(body?.first_name || body?.firstName);
+    const middleName = normalizeName(body?.middle_name || body?.middleName);
     const lastName = normalizeName(body?.last_name || body?.lastName);
     const email = normalizeEmail(body?.email);
     const phone = normalizePhoneNumber(body?.phone);
@@ -95,7 +104,7 @@ export const buildRegisterDgfyAccountUseCase = ({
     if (!firstName || !lastName || !email || !phone || !password) {
         return fail(new DomainError(
             DomainErrorCode.VALIDATION_FAILED,
-            'First name, last name, email, phone, and password are required.',
+            'Last name, first name, email, phone, and password are required.',
             { statusCode: 400 }
         ));
     }
@@ -145,6 +154,7 @@ export const buildRegisterDgfyAccountUseCase = ({
         account = await repository.transaction(async (transaction) => {
             const createdAccount = await repository.create({
                 first_name: firstName,
+                middle_name: middleName || null,
                 last_name: lastName,
                 username: firstName,
                 email,
@@ -253,8 +263,9 @@ export const buildGetDgfyMeUseCase = ({ repository }) => async ({ account }) => 
 };
 
 export const buildUpdateDgfyProfileUseCase = ({ repository }) => async ({ account, body }) => {
-    const firstName = normalizeName(body?.first_name || body?.firstName || account.first_name);
-    const lastName = normalizeName(body?.last_name || body?.lastName || account.last_name);
+    const firstName = normalizeName(pickBodyValue(body, 'first_name', 'firstName', account.first_name));
+    const middleName = normalizeName(pickBodyValue(body, 'middle_name', 'middleName', account.middle_name || ''));
+    const lastName = normalizeName(pickBodyValue(body, 'last_name', 'lastName', account.last_name));
     const phone = normalizePhoneNumber(body?.phone ?? account.phone);
     const email = normalizeEmail(body?.email || account.email);
 
@@ -269,7 +280,7 @@ export const buildUpdateDgfyProfileUseCase = ({ repository }) => async ({ accoun
     if (!firstName || !lastName || !phone) {
         return fail(new DomainError(
             DomainErrorCode.VALIDATION_FAILED,
-            'First name, last name, and phone are required.',
+            'Last name, first name, and phone are required.',
             { statusCode: 400 }
         ));
     }
@@ -285,6 +296,7 @@ export const buildUpdateDgfyProfileUseCase = ({ repository }) => async ({ accoun
 
     const updated = await repository.updateProfile(account, {
         first_name: firstName,
+        middle_name: middleName || null,
         last_name: lastName,
         username: firstName,
         phone,
@@ -533,7 +545,20 @@ export const buildCreateDgfyHandoffUseCase = ({ repository }) => async ({ accoun
 
 export const buildExchangeDgfyHandoffUseCase = ({ repository }) => async ({ body }) => {
     const handoffToken = String(body?.handoff_token || body?.handoffToken || '').trim();
+    const softFail = body?.soft_fail === true || body?.softFail === true;
+    const invalidHandoffPayload = () => ok({
+        payload: {
+            success: true,
+            data: {
+                status: 'invalid',
+                reason: 'expired_or_consumed'
+            },
+            message: 'DGFY handoff token is invalid or expired.'
+        }
+    });
+
     if (!handoffToken) {
+        if (softFail) return invalidHandoffPayload();
         return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'DGFY handoff token is required.', { statusCode: 400 }));
     }
 
@@ -569,6 +594,7 @@ export const buildExchangeDgfyHandoffUseCase = ({ repository }) => async ({ body
             }
         });
     } catch (error) {
+        if (softFail) return invalidHandoffPayload();
         return fail(new DomainError(
             DomainErrorCode.AUTHENTICATION_FAILED,
             'DGFY handoff token is invalid or expired.',
@@ -651,6 +677,42 @@ export const buildAcceptDgfyInvitationUseCase = ({ repository }) => async ({ acc
             DomainErrorCode.INTERNAL_ERROR,
             'Failed to accept DGFY invitation.',
             { statusCode: 500, cause: error }
+        ));
+    }
+};
+
+export const buildStartDgfyTenantSessionUseCase = ({
+    createTenantSessionForDgfyAccount
+}) => async ({ account, body }) => {
+    const tenantId = String(body?.tenant_id || body?.tenantId || '').trim();
+    const companyToken = String(body?.company_token || body?.companyToken || '').trim();
+
+    if (!tenantId && !companyToken) {
+        return fail(new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'Company identity is required to start a SKUpervisor session.',
+            { statusCode: 400 }
+        ));
+    }
+
+    try {
+        const session = await createTenantSessionForDgfyAccount({
+            account,
+            tenantId,
+            companyToken
+        });
+        return ok({
+            payload: {
+                success: true,
+                data: session,
+                message: 'SKUpervisor session started.'
+            }
+        });
+    } catch (error) {
+        return fail(new DomainError(
+            error?.statusCode === 401 ? DomainErrorCode.AUTHENTICATION_FAILED : DomainErrorCode.AUTHORIZATION_FAILED,
+            error.message || 'Unable to start a SKUpervisor session for this DGFY account.',
+            { statusCode: error?.statusCode || 403, cause: error }
         ));
     }
 };

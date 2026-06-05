@@ -299,9 +299,9 @@ npm test -- --testPathPattern=token_refresh_race.test
 
 | # | Test | What it proves |
 |---|------|----------------|
-| 1.1 | Valid refresh token → new token pair | Happy path: correct JWT structure (`token`, `refreshToken`, `expiresIn: 86400`) |
-| 1.2 | Expired/invalid token → 401 | Backend correctly rejects bad tokens with `success: false` |
-| 1.3 | Missing token body → 422 | Validator rejects missing `refreshToken` field |
+| 1.1 | Valid refresh cookie -> new access token and rotated refresh cookie | Happy path: access JWT is returned, refresh JWT stays out of JSON, and the cookie rotates |
+| 1.2 | Body-only refresh token -> 400 | Backend ignores JSON refresh authority and requires the HttpOnly cookie contract |
+| 1.3 | Sequential refresh cookie -> rotated cookie | Valid cookie refresh returns a new access token and a new refresh cookie |
 | 1.4 | Blacklist after use (mocked Redis) | Used token is blacklisted; second use returns 401 |
 
 **Infrastructure notes**:

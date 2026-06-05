@@ -55,8 +55,8 @@ export const loginSchema = Joi.object({
 });
 
 export const refreshTokenSchema = Joi.object({
-  refreshToken: Joi.string().required().messages({
-    'any.required': 'Refresh token is required'
+  refreshToken: Joi.string().optional().allow('').messages({
+    'string.base': 'Refresh token must be a string'
   })
 });
 
@@ -274,4 +274,3 @@ export const validateEmailOtpRequest = (req, res, next) => {
   req.validatedData = value;
   next();
 };
-

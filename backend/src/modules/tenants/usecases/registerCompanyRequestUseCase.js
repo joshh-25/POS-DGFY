@@ -18,7 +18,6 @@ import {
     resolveRegisteredTenantPlan
 } from './tenantPlanPolicy.js';
 import { isValidPhoneNumber, normalizePhoneNumber } from '../../../utils/phoneNumber.js';
-import { verifyEmailOtp, EMAIL_OTP_PURPOSES } from '../../../services/emailOtpService.js';
 
 const buildLegalPersistenceError = () => new DomainError(
     DomainErrorCode.INTERNAL_ERROR,
@@ -61,7 +60,6 @@ export const buildRegisterCompanyRequestUseCase = ({
     return async ({ body, dgfyAccount, correlationId, metadata = {} }) => {
         const {
             name,
-            email_otp_code: emailOtpCode,
             subscriptionId,
             workflowMode
         } = body || {};
@@ -140,20 +138,6 @@ export const buildRegisterCompanyRequestUseCase = ({
                 ));
             }
 
-            if (!dgfyAccount.email_verified_at) {
-                await tracker.failed({
-                    failureCode: 'authorization_failed',
-                    failureReason: 'dgfy_email_unverified',
-                    httpStatus: 403
-                });
-
-                return fail(new DomainError(
-                    DomainErrorCode.AUTHORIZATION_FAILED,
-                    'Verify your DGFY email before registering a company.',
-                    { statusCode: 403 }
-                ));
-            }
-
             let legalAcknowledgement;
             try {
                 legalAcknowledgement = assertDgfyLegalAcknowledgement({
@@ -183,13 +167,6 @@ export const buildRegisterCompanyRequestUseCase = ({
 
                 return fail(persistenceError);
             }
-
-            await verifyEmailOtp({
-                purpose: EMAIL_OTP_PURPOSES.COMPANY_REGISTRATION,
-                email: adminEmail,
-                code: emailOtpCode,
-                tenantId: null
-            });
 
             if (!isWorkflowMode(workflowMode)) {
                 await tracker.failed({

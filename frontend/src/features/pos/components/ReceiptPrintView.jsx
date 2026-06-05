@@ -1,8 +1,11 @@
 import React from 'react';
+import {
+    DGFY_CONVENIENCE_FEE_LABEL,
+    resolveReceiptDocumentContract
+} from '../utils/checkoutSurfaceContract.js';
 
 const money = (value) => `PHP ${Number(value || 0).toFixed(2)}`;
 const DGFY_BRAND_NAME = 'DGFY';
-const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
 const DGFY_ACRONYM = 'Discover Goods For You';
 
 const parseTransactionMetadata = (value) => {
@@ -31,36 +34,6 @@ const parseArrayMetadata = (value) => {
     }
 };
 
-const resolveDocumentType = ({ transaction, receiptContract }) => {
-    const contractType = String(receiptContract?.document_type || '').toLowerCase();
-    if (contractType === 'fiscal_invoice' || contractType === 'non_fiscal_slip') {
-        return contractType;
-    }
-
-    const stored = String(transaction?.document_type || '').toLowerCase();
-    if (stored === 'fiscal_invoice' || stored === 'non_fiscal_slip') {
-        return stored;
-    }
-
-    const invoiceNumber = String(transaction?.invoice_number || '').toUpperCase();
-    if (invoiceNumber.startsWith('INV-')) return 'fiscal_invoice';
-    return 'non_fiscal_slip';
-};
-
-const resolveDocumentContext = ({ transaction, receiptContract, documentType }) => {
-    const contractContext = String(receiptContract?.document_context || '').trim().toLowerCase();
-    if (['fiscal', 'non_fiscal', 'training_test'].includes(contractContext)) {
-        return contractContext;
-    }
-
-    const persistedContext = String(transaction?.document_context || '').trim().toLowerCase();
-    if (['fiscal', 'non_fiscal', 'training_test'].includes(persistedContext)) {
-        return persistedContext;
-    }
-
-    return documentType === 'fiscal_invoice' ? 'fiscal' : 'non_fiscal';
-};
-
 export default function ReceiptPrintView({ transaction, businessSettings = {}, receiptContract = null }) {
     if (!transaction) return null;
 
@@ -68,40 +41,74 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
         ? new Date(transaction.created_at).toLocaleString()
         : '-';
     const lines = Array.isArray(transaction.lines) ? transaction.lines : [];
-    const documentType = resolveDocumentType({ transaction, receiptContract });
-    const documentContext = resolveDocumentContext({ transaction, receiptContract, documentType });
+    const resolvedReceiptContract = resolveReceiptDocumentContract(transaction, receiptContract);
+    const documentType = resolvedReceiptContract.document_type;
+    const documentContext = resolvedReceiptContract.document_context;
     const transactionMetadata = parseTransactionMetadata(transaction?.special_instructions);
+    const fiscalSnapshot = parseTransactionMetadata(transaction?.fiscal_document_snapshot);
+    const fiscalSeller = fiscalSnapshot?.seller && typeof fiscalSnapshot.seller === 'object'
+        ? fiscalSnapshot.seller
+        : {};
+    const fiscalBuyer = fiscalSnapshot?.buyer && typeof fiscalSnapshot.buyer === 'object'
+        ? fiscalSnapshot.buyer
+        : {};
     const contractMetadata = transactionMetadata?.receipt_contract
         && typeof transactionMetadata.receipt_contract === 'object'
         ? transactionMetadata.receipt_contract
         : {};
-    const receiptContractVersion = String(contractMetadata?.version || '').trim() || '2026.04.08';
+    const receiptContractVersion = String(
+        fiscalSnapshot?.document?.receipt_contract_version || contractMetadata?.version || ''
+    ).trim() || '2026.04.08';
     const isFiscal = documentType === 'fiscal_invoice';
     const isTrainingContext = documentContext === 'training_test';
     const documentLabel = isFiscal ? 'FISCAL INVOICE' : 'NON-FISCAL SLIP';
     const restaurantServiceChargeAmount = Number(transaction.restaurant_service_charge_amount || 0);
+    const fiscalPrintCount = Array.isArray(transaction.fiscalPrintEvents)
+        ? transaction.fiscalPrintEvents.length
+        : 0;
+    const reprintCount = Math.max(Number(transaction.fiscal_reprint_count || 0), Math.max(0, fiscalPrintCount - 1));
+    const sellerName = isFiscal
+        ? (fiscalSeller.registered_name || fiscalSeller.business_name || businessSettings.pos_registered_name || businessSettings.pos_business_name)
+        : businessSettings.pos_business_name;
+    const sellerTinBranch = fiscalSeller.tin_branch || businessSettings.pos_tin_branch;
+    const sellerAddress = fiscalSeller.address || businessSettings.pos_address;
+    const sellerPtuNumber = fiscalSeller.ptu_number || businessSettings.pos_ptu_number;
+    const sellerMinNumber = fiscalSeller.min_number || businessSettings.pos_min_number;
+    const sellerAccreditationNumber = fiscalSeller.accreditation_number || businessSettings.pos_accreditation_number;
+    const sellerSoftwareIdentity = [
+        fiscalSeller.software_name,
+        fiscalSeller.software_version,
+        fiscalSeller.software_serial_number
+    ].filter(Boolean).join(' / ');
 
     return (
         <div className="bg-white border border-slate-200 rounded-xl p-4 print:border-none print:rounded-none print:p-0">
             <div className="text-center border-b border-dashed border-slate-300 pb-3 mb-3">
-                <p className="font-semibold text-slate-900">{businessSettings.pos_business_name || DGFY_BRAND_NAME}</p>
-                {businessSettings.pos_business_name && (
+                <p className="font-semibold text-slate-900">{sellerName || DGFY_BRAND_NAME}</p>
+                {sellerName && (
                     <p className="text-xs text-slate-600">Brand: {DGFY_BRAND_NAME}</p>
                 )}
-                {isFiscal && businessSettings.pos_tin_branch && (
-                    <p className="text-xs text-slate-600">TIN/Branch: {businessSettings.pos_tin_branch}</p>
+                {isFiscal && sellerTinBranch && (
+                    <p className="text-xs text-slate-600">TIN/Branch: {sellerTinBranch}</p>
                 )}
-                {businessSettings.pos_address && (
-                    <p className="text-xs text-slate-600">{businessSettings.pos_address}</p>
+                {sellerAddress && (
+                    <p className="text-xs text-slate-600">{sellerAddress}</p>
                 )}
                 {isFiscal && (
                     <div className="text-xs text-slate-500 mt-1 space-y-0.5">
-                        {businessSettings.pos_ptu_number && <p>PTU: {businessSettings.pos_ptu_number}</p>}
-                        {businessSettings.pos_min_number && <p>MIN: {businessSettings.pos_min_number}</p>}
-                        {businessSettings.pos_accreditation_number && <p>Accreditation: {businessSettings.pos_accreditation_number}</p>}
+                        {sellerPtuNumber && <p>PTU: {sellerPtuNumber}</p>}
+                        {sellerMinNumber && <p>MIN: {sellerMinNumber}</p>}
+                        {sellerAccreditationNumber && <p>Accreditation: {sellerAccreditationNumber}</p>}
+                        {sellerSoftwareIdentity && <p>Software: {sellerSoftwareIdentity}</p>}
                     </div>
                 )}
                 <h3 className="font-semibold text-slate-900 mt-2">{documentLabel}</h3>
+                {isFiscal && reprintCount > 0 && (
+                    <p className="mt-1 text-xs font-semibold text-slate-700">REPRINT #{reprintCount}</p>
+                )}
+                {isFiscal && transaction.fiscal_lifecycle_state === 'voided' && (
+                    <p className="mt-1 text-xs font-semibold text-red-700">VOIDED</p>
+                )}
                 {!isFiscal && (
                     <div className={`mt-1 rounded-md border px-2 py-1 text-[11px] uppercase tracking-wide ${isTrainingContext ? 'border-red-300 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
                         <p className="font-semibold">NOT A FISCAL RECEIPT</p>
@@ -118,6 +125,15 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                     </p>
                 )}
             </div>
+            {isFiscal && (fiscalBuyer.name || fiscalBuyer.tin || fiscalBuyer.business_style || fiscalBuyer.address) && (
+                <div className="mb-3 border-b border-dashed border-slate-300 pb-3 text-xs text-slate-600">
+                    <p className="font-semibold text-slate-800">Buyer</p>
+                    {fiscalBuyer.name && <p>{fiscalBuyer.name}</p>}
+                    {fiscalBuyer.tin && <p>TIN: {fiscalBuyer.tin}</p>}
+                    {fiscalBuyer.business_style && <p>Business style: {fiscalBuyer.business_style}</p>}
+                    {fiscalBuyer.address && <p>{fiscalBuyer.address}</p>}
+                </div>
+            )}
 
             <div className="space-y-2 text-sm mb-4">
                 {lines.map((line) => {
@@ -196,6 +212,9 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
             <div className="text-center text-xs text-slate-500 mt-3 pt-3 border-t border-dashed border-slate-300 space-y-0.5">
                 <p>Document context: {documentContext}</p>
                 <p>Receipt contract version: {receiptContractVersion}</p>
+                {transaction.fiscal_document_hash && (
+                    <p>Fiscal document hash: {String(transaction.fiscal_document_hash).slice(0, 12)}</p>
+                )}
                 <p>Sequence control: invoice number is system-generated and immutable.</p>
                 {businessSettings.pos_receipt_footer_message && (
                     <p>{businessSettings.pos_receipt_footer_message}</p>

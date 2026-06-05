@@ -7,9 +7,7 @@ import {
   DoorOpen,
   Hammer,
   Hotel,
-  PackagePlus,
   Percent,
-  Plus,
   RefreshCw,
   Sparkles,
   UserRound

@@ -38,6 +38,10 @@ import PosInvoiceCounter from './PosInvoiceCounter.js';
 import PosZReadingSnapshot from './PosZReadingSnapshot.js';
 import PosOperationReplay from './PosOperationReplay.js';
 import PosCatalogOverride from './PosCatalogOverride.js';
+import PosFiscalTerminalRegistration from './PosFiscalTerminalRegistration.js';
+import PosFiscalEvent from './PosFiscalEvent.js';
+import PosFiscalPrintEvent from './PosFiscalPrintEvent.js';
+import PosESalesReport from './PosESalesReport.js';
 import StorefrontCatalogOverride from './StorefrontCatalogOverride.js';
 import PosTerminalShift from './PosTerminalShift.js';
 import PosCashDrawerEvent from './PosCashDrawerEvent.js';
@@ -100,6 +104,7 @@ import EmailOtpFactory from './Landlord/EmailOtp.js';
 import DgfyAccountFactory from './Landlord/DgfyAccount.js';
 import DgfyAccountTenantMembershipFactory from './Landlord/DgfyAccountTenantMembership.js';
 import DgfyAccountHandoffFactory from './Landlord/DgfyAccountHandoff.js';
+import DgfyAccountAdminAuditLogFactory from './Landlord/DgfyAccountAdminAuditLog.js';
 import DgfyLegalAcknowledgementFactory from './Landlord/DgfyLegalAcknowledgement.js';
 import DgfyCustomerActivityFactory from './Landlord/DgfyCustomerActivity.js';
 import DgfyCustomerAddressFactory from './Landlord/DgfyCustomerAddress.js';
@@ -118,6 +123,9 @@ import TenantComplianceAuditLogFactory from './Landlord/TenantComplianceAuditLog
 import TenantComplianceAuditFailureFactory from './Landlord/TenantComplianceAuditFailure.js';
 import TenantComplianceFinalReviewDocumentFactory from './Landlord/TenantComplianceFinalReviewDocument.js';
 import TenantComplianceFinalReviewSignoffFactory from './Landlord/TenantComplianceFinalReviewSignoff.js';
+import TenantPaymentAccountFactory from './Landlord/TenantPaymentAccount.js';
+import CommercePaymentSessionFactory from './Landlord/CommercePaymentSession.js';
+import CommercePaymentRefundFactory from './Landlord/CommercePaymentRefund.js';
 const Tenant = TenantFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const UserInvitation = UserInvitationFactory(sequelize);
@@ -125,6 +133,7 @@ const EmailOtp = EmailOtpFactory(sequelize);
 const DgfyAccount = DgfyAccountFactory(sequelize);
 const DgfyAccountTenantMembership = DgfyAccountTenantMembershipFactory(sequelize);
 const DgfyAccountHandoff = DgfyAccountHandoffFactory(sequelize);
+const DgfyAccountAdminAuditLog = DgfyAccountAdminAuditLogFactory(sequelize);
 const DgfyLegalAcknowledgement = DgfyLegalAcknowledgementFactory(sequelize);
 const DgfyCustomerActivity = DgfyCustomerActivityFactory(sequelize);
 const DgfyCustomerAddress = DgfyCustomerAddressFactory(sequelize);
@@ -143,6 +152,9 @@ const TenantComplianceAuditLog = TenantComplianceAuditLogFactory(sequelize);
 const TenantComplianceAuditFailure = TenantComplianceAuditFailureFactory(sequelize);
 const TenantComplianceFinalReviewDocument = TenantComplianceFinalReviewDocumentFactory(sequelize);
 const TenantComplianceFinalReviewSignoff = TenantComplianceFinalReviewSignoffFactory(sequelize);
+const TenantPaymentAccount = TenantPaymentAccountFactory(sequelize);
+const CommercePaymentSession = CommercePaymentSessionFactory(sequelize);
+const CommercePaymentRefund = CommercePaymentRefundFactory(sequelize);
 
 // Landlord Models
 import AiUsageLogFactory from './Landlord/AiUsageLog.js';
@@ -167,6 +179,8 @@ DgfyAccount.hasMany(DgfyAccountTenantMembership, { foreignKey: 'dgfy_account_id'
 DgfyAccountTenantMembership.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
 DgfyAccount.hasMany(DgfyAccountHandoff, { foreignKey: 'dgfy_account_id', as: 'handoffs' });
 DgfyAccountHandoff.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
+DgfyAccount.hasMany(DgfyAccountAdminAuditLog, { foreignKey: 'dgfy_account_id', as: 'adminAuditLogs' });
+DgfyAccountAdminAuditLog.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
 Tenant.hasMany(DgfyLegalAcknowledgement, { foreignKey: 'tenant_id', as: 'legalAcknowledgements' });
 DgfyLegalAcknowledgement.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 DgfyAccount.hasMany(DgfyLegalAcknowledgement, { foreignKey: 'dgfy_account_id', as: 'legalAcknowledgements' });
@@ -183,6 +197,14 @@ Tenant.hasMany(TenantComplianceFinalReviewDocument, { foreignKey: 'tenant_id', a
 TenantComplianceFinalReviewDocument.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasOne(TenantComplianceFinalReviewSignoff, { foreignKey: 'tenant_id', as: 'complianceFinalReviewSignoff' });
 TenantComplianceFinalReviewSignoff.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasOne(TenantPaymentAccount, { foreignKey: 'tenant_id', as: 'paymentAccount' });
+TenantPaymentAccount.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(CommercePaymentSession, { foreignKey: 'tenant_id', as: 'commercePaymentSessions' });
+CommercePaymentSession.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(CommercePaymentRefund, { foreignKey: 'tenant_id', as: 'commercePaymentRefunds' });
+CommercePaymentRefund.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+CommercePaymentSession.hasMany(CommercePaymentRefund, { foreignKey: 'payment_session_id', as: 'refunds' });
+CommercePaymentRefund.belongsTo(CommercePaymentSession, { foreignKey: 'payment_session_id', as: 'paymentSession' });
 
 // User associations
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
@@ -332,8 +354,13 @@ PosTransaction.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'locat
 PosTransaction.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
 PosTransaction.belongsTo(User, { foreignKey: 'fnb_server_id', as: 'fnbServer' });
 PosTransaction.hasMany(PosTransactionLine, { foreignKey: 'pos_transaction_id', as: 'lines' });
+PosTransaction.hasMany(PosFiscalEvent, { foreignKey: 'pos_transaction_id', as: 'fiscalEvents' });
+PosTransaction.hasMany(PosFiscalPrintEvent, { foreignKey: 'pos_transaction_id', as: 'fiscalPrintEvents' });
 PosTransactionLine.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
 PosTransactionLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+PosFiscalEvent.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
+PosFiscalPrintEvent.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
+PosFiscalTerminalRegistration.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 User.hasMany(PosTransaction, { foreignKey: 'cashier_id', as: 'posTransactions' });
 User.hasMany(PosTransaction, { foreignKey: 'accepted_by', as: 'acceptedPosTransactions' });
 Item.hasMany(PosTransactionLine, { foreignKey: 'item_id', as: 'posTransactionLines' });
@@ -594,6 +621,10 @@ const db = {
   PosZReadingSnapshot,
   PosOperationReplay,
   PosCatalogOverride,
+  PosFiscalTerminalRegistration,
+  PosFiscalEvent,
+  PosFiscalPrintEvent,
+  PosESalesReport,
   StorefrontCatalogOverride,
   PosTerminalShift,
   PosCashDrawerEvent,
@@ -654,6 +685,7 @@ const db = {
   DgfyAccount,
   DgfyAccountTenantMembership,
   DgfyAccountHandoff,
+  DgfyAccountAdminAuditLog,
   DgfyLegalAcknowledgement,
   DgfyCustomerActivity,
   DgfyCustomerAddress,
@@ -672,7 +704,10 @@ const db = {
   TenantComplianceAuditLog,
   TenantComplianceAuditFailure,
   TenantComplianceFinalReviewDocument,
-  TenantComplianceFinalReviewSignoff
+  TenantComplianceFinalReviewSignoff,
+  TenantPaymentAccount,
+  CommercePaymentSession,
+  CommercePaymentRefund
 };
 
 export default db;
@@ -717,6 +752,10 @@ export {
   PosZReadingSnapshot,
   PosOperationReplay,
   PosCatalogOverride,
+  PosFiscalTerminalRegistration,
+  PosFiscalEvent,
+  PosFiscalPrintEvent,
+  PosESalesReport,
   StorefrontCatalogOverride,
   PosTerminalShift,
   PosCashDrawerEvent,
@@ -777,6 +816,7 @@ export {
   DgfyAccount,
   DgfyAccountTenantMembership,
   DgfyAccountHandoff,
+  DgfyAccountAdminAuditLog,
   DgfyLegalAcknowledgement,
   DgfyCustomerActivity,
   DgfyCustomerAddress,
@@ -796,6 +836,9 @@ export {
   TenantComplianceAuditFailure,
   TenantComplianceFinalReviewDocument,
   TenantComplianceFinalReviewSignoff,
+  TenantPaymentAccount,
+  CommercePaymentSession,
+  CommercePaymentRefund,
   GeoItem,
   GeoStoreItem,
   GeoItemAlias

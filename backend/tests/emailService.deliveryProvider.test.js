@@ -24,7 +24,8 @@ jest.unstable_mockModule('../src/config/logger.js', () => ({
 const {
   getEmailProviderMode,
   isEmailConfigured,
-  sendEmail
+  sendEmail,
+  sendEmailOtpCode
 } = await import('../src/services/emailService.js');
 
 const ORIGINAL_ENV = { ...process.env };
@@ -133,6 +134,43 @@ describe('email service delivery providers', () => {
     expect(result).toEqual(expect.objectContaining({
       provider: 'brevo_api',
       messageId: '<brevo-fallback-id>'
+    }));
+  });
+
+  it('keeps SKUpervisor as the generic default sender display name', async () => {
+    process.env.SMTP_HOST = 'smtp.example.com';
+    process.env.SMTP_USER = 'smtp-user@example.com';
+    process.env.SMTP_PASS = 'smtp-pass';
+    sendMailMock.mockResolvedValue({ messageId: '<smtp-message-id>' });
+
+    await sendEmail({
+      to: 'user@example.com',
+      subject: 'Generic notification',
+      html: '<p>Hello</p>'
+    });
+
+    expect(sendMailMock).toHaveBeenCalledWith(expect.objectContaining({
+      from: '"SKUpervisor" <smtp-user@example.com>',
+      subject: 'Generic notification'
+    }));
+  });
+
+  it('uses DGFY as the default sender display name for verification emails', async () => {
+    process.env.SMTP_HOST = 'smtp.example.com';
+    process.env.SMTP_USER = 'smtp-user@example.com';
+    process.env.SMTP_PASS = 'smtp-pass';
+    process.env.EMAIL_FROM_NAME = 'SKUpervisor';
+    sendMailMock.mockResolvedValue({ messageId: '<smtp-message-id>' });
+
+    await sendEmailOtpCode({
+      email: 'user@example.com',
+      code: '123456'
+    });
+
+    expect(sendMailMock).toHaveBeenCalledWith(expect.objectContaining({
+      from: '"DGFY" <smtp-user@example.com>',
+      subject: 'Your DGFY email verification code',
+      text: expect.stringContaining('Your DGFY email verification code is 123456')
     }));
   });
 });

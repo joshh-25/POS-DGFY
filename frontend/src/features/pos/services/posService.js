@@ -33,6 +33,46 @@ export const fetchPosTransactionById = async (id) => {
     return response.data?.data;
 };
 
+export const recordFiscalPrintEvent = async (id, payload = {}) => {
+    const response = await api.post(`/pos/transactions/${id}/print-events`, payload);
+    return response.data?.data;
+};
+
+export const voidPosTransaction = async (id, payload = {}) => {
+    const response = await api.post(`/pos/transactions/${id}/void`, payload);
+    return response.data?.data;
+};
+
+export const generateESalesReport = async (payload = {}) => {
+    const response = await api.post('/pos/esales-reports/generate', payload);
+    return response.data?.data;
+};
+
+export const fetchESalesReports = async () => {
+    const response = await api.get('/pos/esales-reports');
+    return response.data?.data;
+};
+
+export const fetchFiscalLedgerIntegrity = async () => {
+    const response = await api.get('/pos/fiscal-ledger/integrity');
+    return response.data?.data;
+};
+
+export const updateESalesReportStatus = async (id, payload = {}) => {
+    const response = await api.patch(`/pos/esales-reports/${id}/status`, payload);
+    return response.data?.data;
+};
+
+export const fetchFiscalTerminalRegistrations = async () => {
+    const response = await api.get('/pos/fiscal-terminal-registrations');
+    return response.data?.data;
+};
+
+export const saveFiscalTerminalRegistration = async (payload = {}) => {
+    const response = await api.put('/pos/fiscal-terminal-registrations', payload);
+    return response.data?.data;
+};
+
 export const closePosDay = async (businessDate = null) => {
     const response = await api.post('/pos/z-reading/close-day', businessDate ? { business_date: businessDate } : {});
     return response.data?.data;
@@ -102,6 +142,14 @@ export default {
     createPosCheckout,
     fetchPosTransactions,
     fetchPosTransactionById,
+    recordFiscalPrintEvent,
+    voidPosTransaction,
+    generateESalesReport,
+    fetchESalesReports,
+    fetchFiscalLedgerIntegrity,
+    updateESalesReportStatus,
+    fetchFiscalTerminalRegistrations,
+    saveFiscalTerminalRegistration,
     closePosDay,
     fetchDailyZReading,
     fetchCurrentXReading,
