@@ -202,6 +202,9 @@ describe('Authentication API', () => {
       expect(response.body.data).toHaveProperty('token');
       expect(response.body.data).not.toHaveProperty('refreshToken');
       expect(response.body.data).toHaveProperty('expiresIn');
+      expect(response.body.data.company).toEqual(expect.objectContaining({
+        token: TEST_COMPANY_TOKEN
+      }));
       expect(response.headers['set-cookie']?.join(';')).toContain('sku_refresh_token=');
     });
 
@@ -271,6 +274,9 @@ describe('Authentication API', () => {
       expect(response.body.success).toBe(true);
       expect(response.body.data).toHaveProperty('token');
       expect(response.body.data).toHaveProperty('expiresIn');
+      expect(response.body.data.company).toEqual(expect.objectContaining({
+        token: TEST_COMPANY_TOKEN
+      }));
     });
 
     it('should reject refresh authority sent only in the JSON body', async () => {

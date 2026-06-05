@@ -31,6 +31,19 @@ const defaultErrorPayload = (req, res, failure) => ({
   timestamp: timestamp()
 });
 
+const withTenantCompanyPayload = (session = {}, tenantToken = null) => {
+  const payload = stripBrowserRefreshToken(session);
+  const token = String(tenantToken || payload?.company?.token || '').trim();
+  if (!token || !payload || typeof payload !== 'object') return payload;
+  return {
+    ...payload,
+    company: {
+      ...(payload.company || {}),
+      token
+    }
+  };
+};
+
 const persistSecurityAuditEvent = async (req, {
   eventType,
   operation,
@@ -150,7 +163,10 @@ export const login = async (req, res, next) => {
       successStatusCodeResolver: () => 200,
       successPayloadResolver: () => ({
         success: true,
-        data: stripBrowserRefreshToken(result.data),
+        data: withTenantCompanyPayload(
+          result.data,
+          req.headers?.['x-company-token'] || req.tenant?.company_token || null
+        ),
         message: 'Login successful',
         timestamp: timestamp()
       }),
@@ -188,7 +204,10 @@ export const refreshToken = async (req, res, next) => {
       successStatusCodeResolver: () => 200,
       successPayloadResolver: () => ({
         success: true,
-        data: stripBrowserRefreshToken(result.data),
+        data: withTenantCompanyPayload(
+          result.data,
+          req.headers?.['x-company-token'] || req.tenant?.company_token || null
+        ),
         message: 'Token refreshed successfully',
         timestamp: timestamp()
       }),
