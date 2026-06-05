@@ -103,7 +103,7 @@ Commands executed during this audit:
 - `npm --prefix backend test -- --runTestsByPath tests/auth.test.js` - passed 12 tests on 2026-06-05 after login and refresh responses returned `data.company.token` with the tenant access payload.
 - `npm --prefix frontend test -- --run src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx` - passed 4 tests on 2026-06-05 after the shared IMS MapLibre picker moved to the inline raster style contract and preserved coordinate fallback behavior during tile-resource failures.
 - `npm --prefix frontend test -- --run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx` - passed 26 tests on 2026-06-05 proving onboarding and Settings still wire the shared MapLibre picker into location forms.
-- Production deployment on 2026-06-05 deployed target SHA `fe0d9fc82d011d9e03e095cae73105564727fb9e`; production deploy summary reported backend health, IMS, POS, Store, and Tenant Store public endpoints passed, tenant-store asset integrity passed, and frontend asset parity passed.
+- Production deployment on 2026-06-05 deployed code target SHA `4f6eecd1778ae139e634d23821369f40f22dd5d0`; production deploy summary reported backend health, IMS, POS, Store, and Tenant Store public endpoints passed, tenant-store asset integrity passed, and frontend asset parity passed. A later docs-only release-state commit may advance repository HEAD without changing the runtime code bundle.
 
 ## Severity Model
 
@@ -147,7 +147,7 @@ Hygiene, documentation, or follow-through item that should be tracked but does n
 
 1. Close remaining critical and high security findings: default admin credential path, token storage, webhook fail-open, invite token leakage, and production env fail-stop. Dependency vulnerabilities are resolved as of 2026-06-02.
 2. Restore release gate integrity: backend lint, backend test evidence, frontend contract failures, frontend budget artifact self-containment, and the aggregate local release gate are remediated as of 2026-06-04 for target SHA `be59a6b55f4d6367acd124729b43fa4ee579d09b`.
-3. Treat the June 5 tenant browser-session and MapLibre picker fixes as production-deployed at SHA `fe0d9fc82d011d9e03e095cae73105564727fb9e`; refresh no-staging parity, exact deployed SHA, health checks, and feature-specific smoke again before declaring any later target SHA deployable.
+3. Treat the June 5 tenant browser-session and MapLibre picker fixes as production-deployed at code SHA `4f6eecd1778ae139e634d23821369f40f22dd5d0`; refresh no-staging parity, exact deployed SHA, health checks, and feature-specific smoke again before declaring any later target SHA deployable.
 4. Reduce production performance risk: StorefrontApp decomposition, high-limit query review, upload transport validation.
 5. Close governance debt: RBAC fallback removal, architecture allowlist removal plan, fiscal/payment evidence.
 6. Add operational proof: SLO dashboards, alert evidence, AI adversarial/cost tests, release evidence that no longer depends on stale QA bypasses.

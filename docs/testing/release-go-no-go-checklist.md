@@ -5,13 +5,13 @@ Last updated: 2026-06-05
 
 ## Current Release State
 
-1. Latest production deployment evidence for the tenant session reload and MapLibre picker hardening is target SHA `fe0d9fc82d011d9e03e095cae73105564727fb9e`, deployed on June 5, 2026 with health checks, frontend asset parity, and tenant-store asset integrity passing.
+1. Latest production deployment evidence for the tenant session reload and MapLibre picker hardening is code target SHA `4f6eecd1778ae139e634d23821369f40f22dd5d0`, deployed on June 5, 2026 with health checks, frontend asset parity, and tenant-store asset integrity passing. Later docs-only release-state commits may advance repository HEAD without changing the runtime code bundle.
 2. June 2, 2026 audit state: dependency vulnerabilities are resolved and the dependency audit commands below return zero current npm advisories for locked root/backend/frontend trees.
 3. The local release gate now includes dependency audits and a focused frontend contract gate before docs, architecture, compliance, backend, frontend, and budget gates.
 4. Current open audit package: `System_Audit/README.md`.
 5. Current release blockers from the June 2 audit remain open until remediated. Local release gate, frontend contract suite failures, missing current green backend full-test evidence, and frontend budget artifact self-containment are remediated as of June 4, 2026 for target SHA `be59a6b55f4d6367acd124729b43fa4ee579d09b`.
 6. Production deployment status must not be advanced from this checklist alone; refresh no-staging parity, local release gate, production contract smoke, and human UAT evidence before the next production promotion.
-7. June 5, 2026 tenant browser-session hardening is live at SHA `fe0d9fc82d011d9e03e095cae73105564727fb9e`: `/api/v1/auth/refresh-token` can recover strict tenant context from the signed HttpOnly refresh cookie's tenant binding when the companion tenant-context cookie/header is missing, and login/refresh responses include `data.company.token` so the frontend can rehydrate both access and tenant context after hard reload.
+7. June 5, 2026 tenant browser-session hardening is live at code SHA `4f6eecd1778ae139e634d23821369f40f22dd5d0`: `/api/v1/auth/refresh-token` can recover strict tenant context from the signed HttpOnly refresh cookie's tenant binding when the companion tenant-context cookie/header is missing, and login/refresh responses include `data.company.token` so the frontend can rehydrate both access and tenant context after hard reload.
 
 Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for readiness status and blockers.
 
@@ -64,7 +64,7 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 26. `npm --prefix backend test -- --runTestsByPath tests/auth.test.js` -> PASS on June 5, 2026 with 12 tests after login and refresh responses returned `data.company.token` with the normal tenant access payload.
 27. `npm --prefix frontend test -- --run src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx` -> PASS on June 5, 2026 with 4 tests after the shared IMS MapLibre picker moved to the inline raster style contract and preserved coordinate fallback behavior during tile-resource failures.
 28. `npm --prefix frontend test -- --run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx` -> PASS on June 5, 2026 with 26 tests proving onboarding and Settings still wire the shared MapLibre picker into location forms.
-29. Production deployment on June 5, 2026 deployed target SHA `fe0d9fc82d011d9e03e095cae73105564727fb9e`; production deploy summary reported backend health, IMS, POS, Store, and Tenant Store public endpoints passed, tenant-store asset integrity passed, and frontend asset parity passed.
+29. Production deployment on June 5, 2026 deployed code target SHA `4f6eecd1778ae139e634d23821369f40f22dd5d0`; production deploy summary reported backend health, IMS, POS, Store, and Tenant Store public endpoints passed, tenant-store asset integrity passed, and frontend asset parity passed.
 
 ## Remaining Non-Technical Blockers (Go/No-Go)
 
