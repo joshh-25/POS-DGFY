@@ -4252,6 +4252,8 @@ export default function StorefrontApp() {
   const [customerTrackLoadingReference, setCustomerTrackLoadingReference] = useState('');
   const [customerTrackError, setCustomerTrackError] = useState('');
   const [dgfyAuthTokenState, setDgfyAuthTokenState] = useState(() => readDgfyAuthToken());
+  const [hasDgfyCookieSession, setHasDgfyCookieSession] = useState(false);
+  const dgfyCookieRehydrateAttemptedRef = useRef(false);
   const [customerAuthMode, setCustomerAuthMode] = useState('sign_in');
   const [customerAuthSubmitting, setCustomerAuthSubmitting] = useState(false);
   const [customerAuthError, setCustomerAuthError] = useState('');
@@ -4356,8 +4358,8 @@ export default function StorefrontApp() {
   const isStandaloneTrackingPage = isTrackSubpage || (isOrderSubpage && checkoutTab === 'track');
   const storeAuthToken = readStoreAuthToken();
   const dgfyAuthToken = String(dgfyAuthTokenState || '').trim();
-  const isDgfyCustomerSignedIn = Boolean(dgfyAuthToken);
-  const isStorefrontAccountAuthenticated = Boolean(storeAuthToken || dgfyAuthToken);
+  const isDgfyCustomerSignedIn = Boolean(dgfyAuthToken || hasDgfyCookieSession);
+  const isStorefrontAccountAuthenticated = Boolean(storeAuthToken || dgfyAuthToken || hasDgfyCookieSession);
   const isGuestStorefrontUser = !isStorefrontAccountAuthenticated;
   const trackingMode = isFnbMode ? 'fnb' : (isServicesMode ? 'services' : 'simple');
   const trackingAdapterRegistry = useMemo(
@@ -4499,7 +4501,7 @@ export default function StorefrontApp() {
   const handleLoadAccountPanel = useCallback(async () => {
     const dgfyToken = readDgfyAuthToken();
     const storeToken = readStoreAuthToken();
-    const shouldLoadDgfyAccount = Boolean(dgfyToken || !storeToken);
+    const shouldLoadDgfyAccount = Boolean(dgfyToken || hasDgfyCookieSession || !storeToken);
     setAccountPanel((prev) => ({ ...prev, loading: true, error: '' }));
     try {
       if (shouldLoadDgfyAccount) {
@@ -4521,6 +4523,7 @@ export default function StorefrontApp() {
           addresses: Array.isArray(dashboardData?.addresses) ? dashboardData.addresses : [],
           loyalty: loyaltyData?.loyalty || dashboardData?.loyalty || null
         });
+        setHasDgfyCookieSession(true);
         return;
       }
 
@@ -4548,6 +4551,7 @@ export default function StorefrontApp() {
       if (shouldLoadDgfyAccount && isUnauthorizedRequestError(error)) {
         clearDgfyAuthToken();
         setDgfyAuthTokenState('');
+        setHasDgfyCookieSession(false);
         if (storeToken && selectedStore?.slug) {
           try {
             const [me, ordersData, bookingsData] = await Promise.all([
@@ -4579,7 +4583,7 @@ export default function StorefrontApp() {
       }
       setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: normalizeStorefrontErrorMessage(error, 'Unable to load account.') });
     }
-  }, [selectedStore?.slug]);
+  }, [hasDgfyCookieSession, selectedStore?.slug]);
 
   const handleCustomerSignInFieldChange = useCallback((field, value) => {
     setCustomerSignInForm((previous) => ({ ...previous, [field]: value }));
@@ -5042,6 +5046,34 @@ export default function StorefrontApp() {
   }, [customerAuthMode, dgfyLegalTerms, dgfyLegalTermsLoading, isAccountDrawerOpen, isStorefrontAccountAuthenticated, loadDgfyLegalTerms]);
 
   useEffect(() => {
+    if (dgfyCookieRehydrateAttemptedRef.current || dgfyAuthToken || storeAuthToken || hasDgfyCookieSession) return;
+    dgfyCookieRehydrateAttemptedRef.current = true;
+    let cancelled = false;
+    requestJson('/api/v1/dgfy/auth/me', { cache: 'no-store' })
+      .then((meData) => {
+        if (cancelled) return;
+        const account = meData?.account || meData || null;
+        if (!account) return;
+        setHasDgfyCookieSession(true);
+        setAccountPanel((previous) => (
+          previous?.me
+            ? previous
+            : {
+              ...previous,
+              error: '',
+              me: account
+            }
+        ));
+      })
+      .catch(() => {
+        if (!cancelled) setHasDgfyCookieSession(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dgfyAuthToken, hasDgfyCookieSession, storeAuthToken]);
+
+  useEffect(() => {
     if (!isAccountSubpage || accountPanel.loading) return;
     const hasLoadedAccountData = Boolean(
       accountPanel.me
@@ -5056,7 +5088,7 @@ export default function StorefrontApp() {
   }, [accountPanel.addresses, accountPanel.bookings, accountPanel.error, accountPanel.loading, accountPanel.loyalty, accountPanel.me, accountPanel.orders, handleLoadAccountPanel, isAccountSubpage]);
 
   useEffect(() => {
-    if (!dgfyAuthToken || accountPanel.loading) return;
+    if (!isDgfyCustomerSignedIn || accountPanel.loading) return;
     const hasLoadedAccountData = Boolean(
       accountPanel.me
       || (Array.isArray(accountPanel.orders) && accountPanel.orders.length > 0)
@@ -5067,7 +5099,7 @@ export default function StorefrontApp() {
     );
     if (hasLoadedAccountData) return;
     handleLoadAccountPanel();
-  }, [accountPanel.addresses, accountPanel.bookings, accountPanel.error, accountPanel.loading, accountPanel.loyalty, accountPanel.me, accountPanel.orders, dgfyAuthToken, handleLoadAccountPanel]);
+  }, [accountPanel.addresses, accountPanel.bookings, accountPanel.error, accountPanel.loading, accountPanel.loyalty, accountPanel.me, accountPanel.orders, handleLoadAccountPanel, isDgfyCustomerSignedIn]);
 
   useEffect(() => {
     if (!isAccountDrawerOpen) {
@@ -8205,7 +8237,7 @@ export default function StorefrontApp() {
   }, []);
   const handleStorefrontSignOut = useCallback(async () => {
     const dgfyToken = readDgfyAuthToken();
-    if (dgfyToken) {
+    if (dgfyToken || hasDgfyCookieSession || accountPanel.me) {
       try {
         await requestJson('/api/v1/dgfy/auth/logout', { method: 'POST', authToken: dgfyToken, cache: 'no-store' });
       } catch {
@@ -8215,6 +8247,7 @@ export default function StorefrontApp() {
     clearDgfyAuthToken();
     clearStoreAuthToken();
     setDgfyAuthTokenState('');
+    setHasDgfyCookieSession(false);
     setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: '' });
     setTrackedCustomerActivity(null);
     setCustomerTrackLoadingReference('');
@@ -8222,7 +8255,7 @@ export default function StorefrontApp() {
     setCustomerAuthMode('sign_in');
     setCustomerAuthError('');
     toast.success('Signed out.');
-  }, []);
+  }, [accountPanel.me, hasDgfyCookieSession]);
 
   const handleCustomerAuthSubmit = useCallback(async (formDrafts = null) => {
     if (customerAuthSubmitting) return;
@@ -8243,6 +8276,7 @@ export default function StorefrontApp() {
         if (!token) throw new Error('Missing customer auth token.');
         writeDgfyAuthToken(token);
         setDgfyAuthTokenState(token);
+        setHasDgfyCookieSession(true);
         setCustomerSignInForm({ email: '', password: '' });
       } else {
         const registerForm = formDrafts?.register || customerRegisterForm;
@@ -8263,6 +8297,7 @@ export default function StorefrontApp() {
         if (!token) throw new Error('Missing customer auth token.');
         writeDgfyAuthToken(token);
         setDgfyAuthTokenState(token);
+        setHasDgfyCookieSession(true);
         setCustomerRegisterForm({
           first_name: '',
           middle_name: '',

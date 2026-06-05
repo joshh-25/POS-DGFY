@@ -4,6 +4,17 @@ import { setBrowserSession } from './browserSession.js';
 let dgfyToken = '';
 let dgfyAccount = null;
 
+const dgfyRequestConfig = (token = getStoredDgfyToken()) => {
+  const normalizedToken = String(token || '').trim();
+  return normalizedToken
+    ? {
+      headers: {
+        Authorization: `Bearer ${normalizedToken}`
+      }
+    }
+    : {};
+};
+
 export const getStoredDgfyToken = () => {
   return dgfyToken;
 };
@@ -42,14 +53,11 @@ export const loginDgfyAccount = async (payload) => {
 };
 
 export const fetchDgfyMe = async (token = getStoredDgfyToken()) => {
-  if (!token) return null;
-  const response = await api.get('/dgfy/auth/me', {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  });
+  const normalizedToken = String(token || '').trim();
+  const response = await api.get('/dgfy/auth/me', dgfyRequestConfig(normalizedToken));
   const data = response.data.data;
-  if (data?.account) storeDgfySession({ token, account: data.account });
+  if (data?.account) storeDgfySession({ token: normalizedToken, account: data.account });
+  if (data?.token) storeDgfySession(data);
   return data;
 };
 
@@ -105,24 +113,14 @@ export const completeDgfyPasswordReset = async (payload) => {
 
 export const logoutDgfyAccount = async (token = getStoredDgfyToken()) => {
   try {
-    if (token) {
-      await api.post('/dgfy/auth/logout', {}, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-    }
+    await api.post('/dgfy/auth/logout', {}, dgfyRequestConfig(token));
   } finally {
     clearDgfySession();
   }
 };
 
 export const createDgfyHandoff = async (token = getStoredDgfyToken()) => {
-  const response = await api.post('/dgfy/auth/handoff', {}, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  });
+  const response = await api.post('/dgfy/auth/handoff', {}, dgfyRequestConfig(token));
   return response.data.data;
 };
 
@@ -152,11 +150,7 @@ export const startDgfyTenantSession = async ({
   const response = await api.post('/dgfy/auth/tenant-session', {
     tenant_id: tenantId,
     company_token: companyToken
-  }, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  });
+  }, dgfyRequestConfig(token));
   const data = response.data.data;
   setBrowserSession({
     token: data?.token,
