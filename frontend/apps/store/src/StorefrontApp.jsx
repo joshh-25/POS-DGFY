@@ -865,6 +865,54 @@ const toNumberOrNull = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
+const getIndexedDiscoveryCoordinate = (store = {}) => {
+  const latitude = toNumberOrNull(store?.latitude);
+  const longitude = toNumberOrNull(store?.longitude);
+  if (latitude == null || longitude == null) return null;
+  if (isKnownProvisionedPlaceholderCoordinate(latitude, longitude)) return null;
+  return { latitude, longitude };
+};
+const coordinatesMatch = (left = {}, right = {}, tolerance = 0.00001) => {
+  const leftLatitude = toNumberOrNull(left?.latitude);
+  const leftLongitude = toNumberOrNull(left?.longitude);
+  const rightLatitude = toNumberOrNull(right?.latitude);
+  const rightLongitude = toNumberOrNull(right?.longitude);
+  if (leftLatitude == null || leftLongitude == null || rightLatitude == null || rightLongitude == null) return false;
+  return Math.abs(leftLatitude - rightLatitude) <= tolerance
+    && Math.abs(leftLongitude - rightLongitude) <= tolerance;
+};
+const getLocationMatchingIndexedRow = (store = {}, locations = []) => {
+  const indexedCoordinate = getIndexedDiscoveryCoordinate(store);
+  const indexedLocationId = Number(store?.location_id);
+  if (!Number.isInteger(indexedLocationId) || indexedLocationId <= 0) return null;
+  const match = (Array.isArray(locations) ? locations : [])
+    .find((location) => Number(location?.location_id) === indexedLocationId) || null;
+  if (!match) return null;
+  if (indexedCoordinate && !coordinatesMatch(indexedCoordinate, match)) return null;
+  return match;
+};
+const buildIndexedDiscoveryPin = ({ store = {}, slug = '', markerSuffix = 'indexed', location = null, distanceKm = null } = {}) => {
+  const indexedCoordinate = getIndexedDiscoveryCoordinate(store);
+  if (!indexedCoordinate) return null;
+  const numericLocationId = Number(store?.location_id ?? location?.location_id);
+  const stableLocationId = Number.isInteger(numericLocationId) && numericLocationId > 0
+    ? numericLocationId
+    : `${indexedCoordinate.latitude.toFixed(6)}:${indexedCoordinate.longitude.toFixed(6)}`;
+  return {
+    ...store,
+    marker_key: `${slug || toSlug(store?.slug || store?.tenant_name) || 'store'}:${markerSuffix}:${stableLocationId}`,
+    latitude: indexedCoordinate.latitude,
+    longitude: indexedCoordinate.longitude,
+    location_id: Number.isInteger(numericLocationId) && numericLocationId > 0 ? numericLocationId : null,
+    location_name: location?.name || store?.location_name || store?.nearest_location_name || 'Main',
+    address_line: location?.address_line || store?.address_line || '',
+    is_primary_storefront: location?.is_primary_storefront === true || store?.is_primary_storefront === true,
+    branch_label: location?.is_primary_storefront === false ? 'Branch' : 'Storefront pin',
+    distance_km: Number.isFinite(Number(distanceKm))
+      ? Number(distanceKm)
+      : (Number.isFinite(Number(store?.nearest_distance_km)) ? Number(store.nearest_distance_km) : null)
+  };
+};
 const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
   const toRad = (value) => value * (Math.PI / 180);
   const earthRadiusKm = 6371;
@@ -5452,17 +5500,19 @@ export default function StorefrontApp() {
         const primaryLocation = pins.find((location) => Number(location.location_id) === Number(locationBundle.primary_location_id))
           || pins.find((location) => location?.is_primary_storefront === true)
           || null;
+        const indexedCoordinate = getIndexedDiscoveryCoordinate(store);
+        const indexedLocation = getLocationMatchingIndexedRow(store, pins);
         const preferredMatchingLocation = discoveryPinScope === 'all_matching_branches'
           ? nearestMatchingLocation
           : null;
-        const fallbackLocation = preferredMatchingLocation || primaryLocation || nearestMatchingLocation || pins[0] || null;
+        const fallbackLocation = indexedLocation || preferredMatchingLocation || primaryLocation || nearestMatchingLocation || pins[0] || null;
         const fallbackLat = toNumberOrNull(store?.latitude);
         const fallbackLng = toNumberOrNull(store?.longitude);
         const hasStoreCoordinate = fallbackLat != null
           && fallbackLng != null
           && !isKnownProvisionedPlaceholderCoordinate(fallbackLat, fallbackLng);
-        const anchorLatitude = fallbackLocation?.latitude ?? (hasStoreCoordinate ? fallbackLat : null);
-        const anchorLongitude = fallbackLocation?.longitude ?? (hasStoreCoordinate ? fallbackLng : null);
+        const anchorLatitude = indexedCoordinate?.latitude ?? fallbackLocation?.latitude ?? (hasStoreCoordinate ? fallbackLat : null);
+        const anchorLongitude = indexedCoordinate?.longitude ?? fallbackLocation?.longitude ?? (hasStoreCoordinate ? fallbackLng : null);
         const nearestPinWithDistance = hasDiscoveryLocation
           ? pins
             .map((location) => ({
@@ -5614,6 +5664,24 @@ export default function StorefrontApp() {
       const nearestMatchingLocation = Number.isInteger(nearestMatchingLocationId)
         ? (activeWithCoords.find((location) => Number(location.location_id) === nearestMatchingLocationId) || null)
         : null;
+      const indexedCoordinate = getIndexedDiscoveryCoordinate(store);
+      const indexedLocation = getLocationMatchingIndexedRow(store, activeWithCoords);
+      const indexedDistanceKm = hasDiscoveryLocation && indexedCoordinate
+        ? haversineDistanceKm(discoveryLat, discoveryLng, indexedCoordinate.latitude, indexedCoordinate.longitude)
+        : null;
+      const shouldUseIndexedPrimaryPin = Boolean(indexedCoordinate)
+        && (discoveryPinScope === 'tenant_primary' || !hasSearchQuery);
+      if (shouldUseIndexedPrimaryPin) {
+        const indexedPin = buildIndexedDiscoveryPin({
+          store,
+          slug,
+          markerSuffix: 'indexed',
+          location: indexedLocation,
+          distanceKm: indexedDistanceKm
+        });
+        if (indexedPin) pins.push(indexedPin);
+        if (discoveryPinScope === 'tenant_primary') return;
+      }
       if (activeWithCoords.length === 0) {
         const lat = toNumberOrNull(store?.latitude);
         const lng = toNumberOrNull(store?.longitude);
@@ -5769,6 +5837,21 @@ export default function StorefrontApp() {
           longitude: toNumberOrNull(location?.longitude)
         }))
         .filter((location) => location.latitude != null && location.longitude != null);
+      const indexedCoordinate = getIndexedDiscoveryCoordinate(store);
+      if (indexedCoordinate) {
+        const indexedLocation = getLocationMatchingIndexedRow(store, activeLocations);
+        const indexedPin = buildIndexedDiscoveryPin({
+          store,
+          slug,
+          markerSuffix: 'hero-indexed',
+          location: indexedLocation,
+          distanceKm: hasDiscoveryLocation
+            ? haversineDistanceKm(discoveryLat, discoveryLng, indexedCoordinate.latitude, indexedCoordinate.longitude)
+            : null
+        });
+        if (indexedPin) pins.push(indexedPin);
+        return;
+      }
 
       if (activeLocations.length === 0) {
         const lat = toNumberOrNull(store?.latitude);

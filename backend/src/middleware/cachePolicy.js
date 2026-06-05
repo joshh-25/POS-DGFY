@@ -22,7 +22,8 @@ export const setReadCacheControl = ({
   sMaxAgeSeconds = 15,
   staleWhileRevalidateSeconds = 30,
   staleIfErrorSeconds = 60,
-  scope = 'public'
+  scope = 'public',
+  varyHeaders = []
 } = {}) => {
   const normalizedMaxAge = toPositiveInt(maxAgeSeconds, 15);
   const normalizedSharedMaxAge = toPositiveInt(sMaxAgeSeconds, normalizedMaxAge);
@@ -37,11 +38,15 @@ export const setReadCacheControl = ({
     `stale-while-revalidate=${normalizedStaleWhileRevalidate}`,
     `stale-if-error=${normalizedStaleIfError}`
   ].join(', ');
+  const additionalVaryHeaders = Array.isArray(varyHeaders)
+    ? varyHeaders.map((header) => String(header || '').trim()).filter(Boolean)
+    : String(varyHeaders || '').split(',').map((header) => header.trim()).filter(Boolean);
+  const varyHeaderValue = ['Accept-Encoding', 'Origin', ...additionalVaryHeaders].join(', ');
 
   return (req, res, next) => {
     if (!['GET', 'HEAD'].includes(req.method)) return next();
     res.setHeader('Cache-Control', headerValue);
-    res.setHeader('Vary', mergeVaryHeader(res.getHeader('Vary'), 'Accept-Encoding, Origin'));
+    res.setHeader('Vary', mergeVaryHeader(res.getHeader('Vary'), varyHeaderValue));
     return next();
   };
 };
@@ -58,4 +63,3 @@ export default {
   setReadCacheControl,
   setNoStoreCacheControl
 };
-

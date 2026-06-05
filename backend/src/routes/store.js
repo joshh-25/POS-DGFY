@@ -56,21 +56,24 @@ const catalogReadCacheControl = setReadCacheControl({
     sMaxAgeSeconds: 45,
     staleWhileRevalidateSeconds: 90,
     staleIfErrorSeconds: 180,
-    scope: 'public'
+    scope: 'public',
+    varyHeaders: ['X-Store-Slug']
 });
 const locationsReadCacheControl = setReadCacheControl({
     maxAgeSeconds: 30,
     sMaxAgeSeconds: 30,
     staleWhileRevalidateSeconds: 60,
     staleIfErrorSeconds: 120,
-    scope: 'public'
+    scope: 'public',
+    varyHeaders: ['X-Store-Slug']
 });
 const trackingReadCacheControl = setReadCacheControl({
     maxAgeSeconds: 5,
     sMaxAgeSeconds: 5,
     staleWhileRevalidateSeconds: 10,
     staleIfErrorSeconds: 20,
-    scope: 'private'
+    scope: 'private',
+    varyHeaders: ['X-Store-Slug']
 });
 
 router.get('/catalog', catalogReadCacheControl, validateStoreCatalogQuery, storeController.listStoreCatalog);

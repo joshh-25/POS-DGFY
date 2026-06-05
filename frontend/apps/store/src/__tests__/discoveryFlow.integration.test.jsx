@@ -238,6 +238,17 @@ describe('storefront discovery integration flow', () => {
     maplibregl.Map.mockImplementationOnce(function MapUnavailable() {
       throw new Error('webgl unavailable');
     });
+    const defaultFetch = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(async (url, options = {}) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/dgfy/auth/me')) {
+        return {
+          ok: false,
+          json: async () => ({ success: false, message: 'Unauthorized' })
+        };
+      }
+      return defaultFetch(url, options);
+    });
 
     try {
       render(<App />);
@@ -259,6 +270,12 @@ describe('storefront discovery integration flow', () => {
       const normalized = String(url);
       if (normalized.includes('/api/v1/dgfy/legal-terms/current')) {
         return makeJsonResponse(dgfyLegalTerms);
+      }
+      if (normalized.includes('/api/v1/dgfy/auth/me')) {
+        return {
+          ok: false,
+          json: async () => ({ success: false, message: 'Unauthorized' })
+        };
       }
       if (normalized.includes('/api/v1/dgfy/auth/register')) {
         return makeJsonResponse({
@@ -296,9 +313,9 @@ describe('storefront discovery integration flow', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: /log in \/ sign up/i })[0]);
     fireEvent.click(screen.getByRole('button', { name: /create account/i }));
-    await screen.findByRole('checkbox', { name: /I have reviewed and agree to the current DGFY Account Terms/i });
+    const termsCheckbox = await screen.findByRole('checkbox', { name: /I have reviewed and agree to the current DGFY Account Terms/i });
     await waitFor(() => expect(fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl).includes('/api/v1/dgfy/legal-terms/current'))).toBe(true));
-    await waitFor(() => expect(screen.getByRole('checkbox', { name: /I have reviewed and agree to the current DGFY Account Terms/i }).disabled).toBe(false));
+    await waitFor(() => expect(termsCheckbox.disabled).toBe(false));
 
     const submitButton = screen.getByRole('button', { name: /create dgfy account/i });
     const placeholders = Array.from(submitButton.closest('form').querySelectorAll('input'))
@@ -331,7 +348,7 @@ describe('storefront discovery integration flow', () => {
     fireEvent.click(screen.getByRole('button', { name: /show confirm password/i }));
     expect(screen.getByPlaceholderText('Password').type).toBe('text');
     expect(screen.getByPlaceholderText('Confirm password').type).toBe('text');
-    fireEvent.click(screen.getByRole('checkbox', { name: /I have reviewed and agree to the current DGFY Account Terms/i }));
+    fireEvent.click(termsCheckbox);
     fireEvent.click(submitButton);
 
     await waitFor(() => {
@@ -927,6 +944,92 @@ describe('storefront discovery integration flow', () => {
     fireEvent.click(screen.getByRole('button', { name: /Select Alpha Foods at Main Branch/i }));
     await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
     expect(screen.getByRole('button', { name: 'Open storefront' })).toBeTruthy();
+  });
+
+  it('keeps indexed discovery coordinates when tenant location enrichment is reused from another store', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Alpha Foods',
+              slug: 'alpha',
+              storefront_open: true,
+              location_id: 11,
+              location_name: 'Alpha Main',
+              address_line: 'Alpha Road',
+              latitude: 10.7268685,
+              longitude: 122.5051406,
+              catalog_count: 2,
+              matching_location_ids: [11],
+              nearest_matching_location_id: 11
+            },
+            {
+              tenant_id: 'tenant-2',
+              tenant_name: 'Beta Foods',
+              slug: 'beta',
+              storefront_open: true,
+              location_id: 22,
+              location_name: 'Beta Main',
+              address_line: 'Beta Road',
+              latitude: 10.7202,
+              longitude: 122.5621,
+              catalog_count: 1,
+              matching_location_ids: [22],
+              nearest_matching_location_id: 22
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Alpha Main', address_line: 'Alpha Road', latitude: 10.7268685, longitude: 122.5051406, is_active: true, is_primary_storefront: true, is_open: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/Alpha Foods/i)).toBeTruthy());
+    await waitFor(() => {
+      const locationRequests = fetchMock.mock.calls
+        .map(([url]) => String(url))
+        .filter((url) => url.includes('/api/v1/store/locations'));
+      expect(locationRequests.length).toBeGreaterThanOrEqual(2);
+    });
+
+    expect(screen.queryByRole('button', { name: /2 storefronts at this location/i })).toBeNull();
+    const markerAtAlphaCoordinate = maplibregl.Marker.mock.results.some((result) => (
+      result?.value?.setLngLat?.mock?.calls?.some(([coordinate]) => (
+        Array.isArray(coordinate)
+        && Number(coordinate[0]).toFixed(6) === '122.505141'
+        && Number(coordinate[1]).toFixed(6) === '10.726869'
+      ))
+    ));
+    const markerAtBetaCoordinate = maplibregl.Marker.mock.results.some((result) => (
+      result?.value?.setLngLat?.mock?.calls?.some(([coordinate]) => (
+        Array.isArray(coordinate)
+        && Number(coordinate[0]).toFixed(6) === '122.562100'
+        && Number(coordinate[1]).toFixed(6) === '10.720200'
+      ))
+    ));
+    expect(markerAtAlphaCoordinate).toBe(true);
+    expect(markerAtBetaCoordinate).toBe(true);
   });
 
   it('does not cluster storefronts at the default center when coordinate data is missing', async () => {
