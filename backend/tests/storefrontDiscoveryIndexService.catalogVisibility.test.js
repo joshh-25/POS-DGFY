@@ -20,6 +20,10 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
         create: mockIndexCreate,
         count: mockIndexCount,
         findOne: jest.fn()
+    },
+    StorefrontHandleReservation: {
+        findOne: jest.fn(),
+        create: jest.fn()
     }
 }));
 
@@ -88,6 +92,16 @@ describe('storefrontDiscoveryIndexService catalog visibility', () => {
                     is_active: true,
                     is_primary_storefront: true,
                     is_open: true
+                },
+                {
+                    location_id: 11,
+                    name: 'Branch',
+                    address_line: 'Branch Road',
+                    latitude: 10.73,
+                    longitude: 122.57,
+                    is_active: true,
+                    is_primary_storefront: false,
+                    is_open: true
                 }
             ])
         };
@@ -136,7 +150,13 @@ describe('storefrontDiscoveryIndexService catalog visibility', () => {
         };
         const ItemLocationStock = {
             findAll: jest.fn().mockResolvedValue([
-                { item_id: 2, location_id: 10, quantity_on_hand: 3 }
+                { item_id: 2, location_id: 10, quantity_on_hand: 3 },
+                { item_id: 2, location_id: 11, quantity_on_hand: 3 }
+            ])
+        };
+        const StorefrontLocationItemOverride = {
+            findAll: jest.fn().mockResolvedValue([
+                { item_id: 2, location_id: 11, storefront_available: false }
             ])
         };
         mockGetTenantModels.mockReturnValue({
@@ -145,6 +165,7 @@ describe('storefrontDiscoveryIndexService catalog visibility', () => {
             Item,
             PosCatalogOverride: { name: 'PosCatalogOverride' },
             StorefrontCatalogOverride: { name: 'StorefrontCatalogOverride' },
+            StorefrontLocationItemOverride,
             ServiceItemDetail: { name: 'ServiceItemDetail' },
             ItemLocationStock
         });
@@ -172,10 +193,16 @@ describe('storefrontDiscoveryIndexService catalog visibility', () => {
             expect.objectContaining({
                 item_id: 3,
                 item_name: 'Aircon Cleaning',
-                matching_location_ids: [10],
-                in_stock_location_ids: [10]
+                matching_location_ids: [10, 11],
+                in_stock_location_ids: [10, 11]
             })
         ]));
+        expect(StorefrontLocationItemOverride.findAll).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({
+                item_id: expect.any(Object),
+                location_id: expect.any(Object)
+            })
+        }));
         const publicProductSnapshot = snapshot.item_search_snapshot.find((entry) => entry.item_id === 2);
         const serviceSnapshot = snapshot.item_search_snapshot.find((entry) => entry.item_id === 3);
         expect(publicProductSnapshot.text).toContain('show 1');

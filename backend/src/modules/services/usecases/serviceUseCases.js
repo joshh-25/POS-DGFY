@@ -692,7 +692,8 @@ export const buildListServiceCatalogUseCase = ({ serviceRepository }) => async (
             search: query.search,
             storefrontOnly,
             posOnly: query.pos_only === true || query.pos_only === 'true',
-            limit: query.limit
+            limit: query.limit,
+            location_id: query.location_id
         });
         return ok({
             services: rows.map((row) => serializeCatalogItem(row, {
@@ -1160,7 +1161,9 @@ export const buildGetServiceAvailabilityUseCase = ({ serviceRepository }) => asy
         const requestedLocationId = toPositiveInt(query.location_id);
         const intervalMinutes = Math.max(5, Math.min(240, toPositiveInt(query.slot_interval_minutes, 30)));
 
-        const service = await serviceRepository.findServiceItemById(serviceItemId);
+        const service = await serviceRepository.findServiceItemById(serviceItemId, {
+            storefrontLocationId: storefrontOnly ? requestedLocationId : null
+        });
         if (!service) {
             throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Service is not available for booking', { statusCode: 404 });
         }
@@ -1331,9 +1334,11 @@ const createServiceBookingRecord = async ({
         if (!serviceItemId) {
             throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'service_item_id is required', { statusCode: 422 });
         }
+        let locationId = toPositiveInt(payload.location_id);
         const service = await serviceRepository.findServiceItemById(serviceItemId, {
             transaction,
-            lock: true
+            lock: true,
+            storefrontLocationId: String(source || '').trim() === 'storefront' ? locationId : null
         });
         if (!service) {
             throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Service is not available for booking', { statusCode: 404 });
@@ -1370,7 +1375,6 @@ const createServiceBookingRecord = async ({
         const bufferEndAt = new Date(endAt.getTime() + toNonNegativeInt(detail.buffer_after_minutes, 0) * 60 * 1000);
         let providerUserId = toPositiveInt(payload.provider_user_id);
         let resourceId = toPositiveInt(payload.resource_id);
-        let locationId = toPositiveInt(payload.location_id);
         const quantity = toPositiveInt(payload.quantity, 1);
         const holdToken = normalizeHoldToken(payload.hold_token);
         let activeHold = null;
@@ -1427,6 +1431,24 @@ const createServiceBookingRecord = async ({
                 if (replacementCustomerId && requestCustomerId && replacementCustomerId !== requestCustomerId) {
                     throw new DomainError(DomainErrorCode.CONFLICT, 'Replacement hold belongs to a different customer account', { statusCode: 409 });
                 }
+            }
+        }
+        if (
+            String(source || '').trim() === 'storefront'
+            && locationId
+            && typeof serviceRepository.isServiceItemAvailableForStorefrontLocation === 'function'
+        ) {
+            const storefrontLocationAvailable = await serviceRepository.isServiceItemAvailableForStorefrontLocation(
+                service.item_id,
+                locationId,
+                { transaction }
+            );
+            if (!storefrontLocationAvailable) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'Service is not available at the selected location',
+                    { statusCode: 404 }
+                );
             }
         }
         const excludedHoldId = activeHold?.hold_id || replacementHold?.hold_id || null;
@@ -1990,7 +2012,11 @@ export const buildCreateServiceWaitlistEntryUseCase = ({ serviceRepository }) =>
         if (!serviceItemId) {
             throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'service_item_id is required', { statusCode: 422 });
         }
-        const service = await serviceRepository.findServiceItemById(serviceItemId, { transaction });
+        const waitlistLocationId = toPositiveInt(payload.location_id);
+        const service = await serviceRepository.findServiceItemById(serviceItemId, {
+            transaction,
+            storefrontLocationId: String(source || '').trim() === 'storefront' ? waitlistLocationId : null
+        });
         if (!service) {
             throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Service item not found', { statusCode: 404 });
         }

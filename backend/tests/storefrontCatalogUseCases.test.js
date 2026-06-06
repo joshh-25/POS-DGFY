@@ -109,6 +109,148 @@ describe('storefront catalog use cases', () => {
         });
     });
 
+    it('updates storefront branch availability without requiring global visibility changes', async () => {
+        const upsertStorefrontCatalogOverride = jest.fn();
+        const upsertStorefrontItemLocationAvailability = jest.fn().mockResolvedValue([
+            { item_id: 80, location_id: 2, storefront_available: false }
+        ]);
+        const listStorefrontItemLocationAvailability = jest.fn().mockResolvedValue(new Map([
+            [80, [
+                { location_id: 1, name: 'Main', storefront_available: true },
+                { location_id: 2, name: 'Branch', storefront_available: false }
+            ]]
+        ]));
+        const useCase = buildUpdateStorefrontCatalogOverrideUseCase({
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({
+                    item_id: 80,
+                    name: 'Branch item',
+                    default_sale_price: 125
+                }),
+                findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue({
+                    item_id: 80,
+                    storefront_visible: true
+                }),
+                upsertStorefrontCatalogOverride,
+                upsertStorefrontItemLocationAvailability,
+                listStorefrontItemLocationAvailability
+            }
+        });
+
+        const result = await useCase({
+            itemId: 80,
+            payload: {
+                location_availability: [
+                    { location_id: 2, storefront_available: false }
+                ]
+            },
+            user: editableUser
+        });
+
+        expect(upsertStorefrontCatalogOverride).not.toHaveBeenCalled();
+        expect(upsertStorefrontItemLocationAvailability).toHaveBeenCalledWith(80, [
+            { location_id: 2, storefront_available: false }
+        ]);
+        expect(result.location_availability).toEqual([
+            { location_id: 1, name: 'Main', storefront_available: true },
+            { location_id: 2, name: 'Branch', storefront_available: false }
+        ]);
+    });
+
+    it('commits visibility and branch availability in one transaction when both are patched', async () => {
+        const transaction = {
+            finished: false,
+            commit: jest.fn(async function commit() { this.finished = 'commit'; }),
+            rollback: jest.fn(async function rollback() { this.finished = 'rollback'; })
+        };
+        const upsertStorefrontCatalogOverride = jest.fn().mockResolvedValue({
+            item_id: 81,
+            storefront_visible: true
+        });
+        const upsertStorefrontItemLocationAvailability = jest.fn().mockResolvedValue([
+            { item_id: 81, location_id: 2, storefront_available: false }
+        ]);
+        const listStorefrontItemLocationAvailability = jest.fn().mockResolvedValue(new Map([
+            [81, [{ location_id: 2, name: 'Branch', storefront_available: false }]]
+        ]));
+        const useCase = buildUpdateStorefrontCatalogOverrideUseCase({
+            itemRepository: {
+                beginTransaction: jest.fn().mockResolvedValue(transaction),
+                getItemById: jest.fn().mockResolvedValue({
+                    item_id: 81,
+                    name: 'Visible branch item',
+                    default_sale_price: 125
+                }),
+                upsertStorefrontCatalogOverride,
+                upsertStorefrontItemLocationAvailability,
+                listStorefrontItemLocationAvailability
+            }
+        });
+
+        const result = await useCase({
+            itemId: 81,
+            payload: {
+                storefront_visible: true,
+                location_availability: [
+                    { location_id: 2, storefront_available: false }
+                ]
+            },
+            user: editableUser
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            item_id: 81,
+            storefront_visible: true,
+            location_availability: [{ location_id: 2, name: 'Branch', storefront_available: false }]
+        }));
+        expect(upsertStorefrontCatalogOverride).toHaveBeenCalledWith(81, {
+            storefront_visible: true
+        }, { transaction });
+        expect(upsertStorefrontItemLocationAvailability).toHaveBeenCalledWith(81, [
+            { location_id: 2, storefront_available: false }
+        ], { transaction });
+        expect(transaction.commit).toHaveBeenCalled();
+        expect(transaction.rollback).not.toHaveBeenCalled();
+    });
+
+    it('rolls back visibility when branch availability write fails in a combined patch', async () => {
+        const transaction = {
+            finished: false,
+            commit: jest.fn(async function commit() { this.finished = 'commit'; }),
+            rollback: jest.fn(async function rollback() { this.finished = 'rollback'; })
+        };
+        const useCase = buildUpdateStorefrontCatalogOverrideUseCase({
+            itemRepository: {
+                beginTransaction: jest.fn().mockResolvedValue(transaction),
+                getItemById: jest.fn().mockResolvedValue({
+                    item_id: 82,
+                    name: 'Rollback branch item',
+                    default_sale_price: 125
+                }),
+                upsertStorefrontCatalogOverride: jest.fn().mockResolvedValue({
+                    item_id: 82,
+                    storefront_visible: true
+                }),
+                upsertStorefrontItemLocationAvailability: jest.fn().mockRejectedValue(new Error('branch write failed')),
+                listStorefrontItemLocationAvailability: jest.fn()
+            }
+        });
+
+        await expect(useCase({
+            itemId: 82,
+            payload: {
+                storefront_visible: true,
+                location_availability: [
+                    { location_id: 2, storefront_available: false }
+                ]
+            },
+            user: editableUser
+        })).rejects.toThrow('branch write failed');
+
+        expect(transaction.rollback).toHaveBeenCalled();
+        expect(transaction.commit).not.toHaveBeenCalled();
+    });
+
     it('blocks enabling storefront visibility when sale price is missing or zero', async () => {
         const upsertStorefrontCatalogOverride = jest.fn();
         const useCase = buildUpdateStorefrontCatalogOverrideUseCase({

@@ -457,9 +457,15 @@ const storefrontCatalogOverridesQuerySchema = Joi.object({
   limit: Joi.number().integer().min(1).max(1000).optional()
 });
 
+const storefrontLocationAvailabilitySchema = Joi.array().items(Joi.object({
+  location_id: Joi.number().integer().positive().required(),
+  storefront_available: Joi.boolean().required()
+})).max(500);
+
 const updateStorefrontCatalogOverrideSchema = Joi.object({
-  storefront_visible: Joi.boolean().required()
-});
+  storefront_visible: Joi.boolean().optional(),
+  location_availability: storefrontLocationAvailabilitySchema.optional()
+}).or('storefront_visible', 'location_availability');
 
 const updateFolderSchema = Joi.object({
   show_in_pos_filter: Joi.boolean().required()

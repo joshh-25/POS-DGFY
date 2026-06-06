@@ -43,6 +43,7 @@ import PosFiscalEvent from './PosFiscalEvent.js';
 import PosFiscalPrintEvent from './PosFiscalPrintEvent.js';
 import PosESalesReport from './PosESalesReport.js';
 import StorefrontCatalogOverride from './StorefrontCatalogOverride.js';
+import StorefrontLocationItemOverride from './StorefrontLocationItemOverride.js';
 import PosTerminalShift from './PosTerminalShift.js';
 import PosCashDrawerEvent from './PosCashDrawerEvent.js';
 import PosShiftLocationTransition from './PosShiftLocationTransition.js';
@@ -117,6 +118,7 @@ import PaymentFactory from './Landlord/Payment.js';
 import WebhookLogFactory from './Landlord/WebhookLog.js';
 import EngagementEventFactory from './Landlord/EngagementEvent.js';
 import StorefrontDiscoveryIndexFactory from './Landlord/StorefrontDiscoveryIndex.js';
+import StorefrontHandleReservationFactory from './Landlord/StorefrontHandleReservation.js';
 import TenantComplianceArtifactFactory from './Landlord/TenantComplianceArtifact.js';
 import TenantCompliancePeripheralFactory from './Landlord/TenantCompliancePeripheral.js';
 import TenantComplianceAuditLogFactory from './Landlord/TenantComplianceAuditLog.js';
@@ -146,6 +148,7 @@ const Payment = PaymentFactory(sequelize);
 const WebhookLog = WebhookLogFactory(sequelize);
 const EngagementEvent = EngagementEventFactory(sequelize);
 const StorefrontDiscoveryIndex = StorefrontDiscoveryIndexFactory(sequelize);
+const StorefrontHandleReservation = StorefrontHandleReservationFactory(sequelize);
 const TenantComplianceArtifact = TenantComplianceArtifactFactory(sequelize);
 const TenantCompliancePeripheral = TenantCompliancePeripheralFactory(sequelize);
 const TenantComplianceAuditLog = TenantComplianceAuditLogFactory(sequelize);
@@ -175,6 +178,8 @@ Tenant.hasMany(EngagementEvent, { foreignKey: 'tenant_id', as: 'engagementEvents
 EngagementEvent.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasOne(StorefrontDiscoveryIndex, { foreignKey: 'tenant_id', as: 'storefrontDiscoveryIndex' });
 StorefrontDiscoveryIndex.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasOne(StorefrontHandleReservation, { foreignKey: 'tenant_id', as: 'storefrontHandleReservation' });
+StorefrontHandleReservation.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 DgfyAccount.hasMany(DgfyAccountTenantMembership, { foreignKey: 'dgfy_account_id', as: 'tenantMemberships' });
 DgfyAccountTenantMembership.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
 DgfyAccount.hasMany(DgfyAccountHandoff, { foreignKey: 'dgfy_account_id', as: 'handoffs' });
@@ -370,6 +375,8 @@ Item.hasOne(PosCatalogOverride, { foreignKey: 'item_id', as: 'posCatalogOverride
 PosCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 Item.hasOne(StorefrontCatalogOverride, { foreignKey: 'item_id', as: 'storefrontCatalogOverride' });
 StorefrontCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+Item.hasMany(StorefrontLocationItemOverride, { foreignKey: 'item_id', as: 'storefrontLocationItemOverrides' });
+StorefrontLocationItemOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 PosTerminalShift.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
 PosTerminalShift.belongsTo(User, { foreignKey: 'closed_by', as: 'closedByUser' });
 PosTerminalShift.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
@@ -394,11 +401,13 @@ User.hasMany(PosShiftLocationTransition, { foreignKey: 'actor_user_id', as: 'pos
 TenantLocation.hasMany(PosTransaction, { foreignKey: 'location_id', as: 'posTransactions' });
 TenantLocation.hasMany(PosTerminalShift, { foreignKey: 'location_id', as: 'posTerminalShifts' });
 TenantLocation.hasMany(ItemLocationStock, { foreignKey: 'location_id', as: 'itemLocationStocks' });
+TenantLocation.hasMany(StorefrontLocationItemOverride, { foreignKey: 'location_id', as: 'storefrontItemOverrides' });
 TenantLocation.hasMany(FIFOBatch, { foreignKey: 'location_id', as: 'fifoBatches' });
 TenantLocation.hasMany(StockMovement, { foreignKey: 'location_id', as: 'stockMovements' });
 TenantLocation.hasMany(StockMovement, { foreignKey: 'source_location_id', as: 'sourceStockMovements' });
 TenantLocation.hasMany(StockMovement, { foreignKey: 'destination_location_id', as: 'destinationStockMovements' });
 ItemLocationStock.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+StorefrontLocationItemOverride.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 User.belongsToMany(TenantLocation, {
   through: UserLocationGrant,
   foreignKey: 'user_id',
@@ -626,6 +635,8 @@ const db = {
   PosFiscalPrintEvent,
   PosESalesReport,
   StorefrontCatalogOverride,
+  StorefrontLocationItemOverride,
+  StorefrontHandleReservation,
   PosTerminalShift,
   PosCashDrawerEvent,
   PosShiftLocationTransition,
@@ -757,6 +768,8 @@ export {
   PosFiscalPrintEvent,
   PosESalesReport,
   StorefrontCatalogOverride,
+  StorefrontLocationItemOverride,
+  StorefrontHandleReservation,
   PosTerminalShift,
   PosCashDrawerEvent,
   PosShiftLocationTransition,

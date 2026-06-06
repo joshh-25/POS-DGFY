@@ -136,14 +136,67 @@ export const buildUpdateStorefrontCatalogOverrideUseCase = ({ itemRepository }) 
       throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, `Item ${normalizedItemId} was not found`, { statusCode: 404 });
     }
 
+    const hasStorefrontVisiblePatch = typeof payload.storefront_visible === 'boolean';
+    const hasLocationAvailabilityPatch = Array.isArray(payload.location_availability);
+
+    if (!hasStorefrontVisiblePatch && !hasLocationAvailabilityPatch) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'storefront_visible or location_availability is required',
+        { statusCode: 400 }
+      );
+    }
+
     if (payload.storefront_visible === true) {
       assertStorefrontPriceReady(item, normalizedItemId, 'Storefront visibility');
     }
 
-    const data = await itemRepository.upsertStorefrontCatalogOverride(normalizedItemId, {
-      storefront_visible: payload.storefront_visible
-    });
-    return toSerializable(data);
+    const shouldUseTransaction = hasStorefrontVisiblePatch
+      && hasLocationAvailabilityPatch
+      && typeof itemRepository.beginTransaction === 'function';
+    const transaction = shouldUseTransaction ? await itemRepository.beginTransaction() : null;
+
+    try {
+      const repositoryOptions = transaction ? { transaction } : {};
+      const data = hasStorefrontVisiblePatch
+        ? await itemRepository.upsertStorefrontCatalogOverride(
+          normalizedItemId,
+          { storefront_visible: payload.storefront_visible },
+          ...(transaction ? [repositoryOptions] : [])
+        )
+        : await itemRepository.findStorefrontCatalogOverrideByItemId(
+          normalizedItemId,
+          ...(transaction ? [repositoryOptions] : [])
+        );
+
+      if (hasLocationAvailabilityPatch) {
+        await itemRepository.upsertStorefrontItemLocationAvailability(
+          normalizedItemId,
+          payload.location_availability,
+          ...(transaction ? [repositoryOptions] : [])
+        );
+      }
+
+      const availabilityByItemId = typeof itemRepository.listStorefrontItemLocationAvailability === 'function'
+        ? await itemRepository.listStorefrontItemLocationAvailability(
+          [normalizedItemId],
+          ...(transaction ? [repositoryOptions] : [])
+        )
+        : new Map();
+
+      if (transaction) await transaction.commit();
+
+      return {
+        ...toSerializable(data || { item_id: normalizedItemId }),
+        item_id: normalizedItemId,
+        location_availability: availabilityByItemId.get(normalizedItemId) || []
+      };
+    } catch (error) {
+      if (transaction && !transaction.finished) {
+        await transaction.rollback();
+      }
+      throw error;
+    }
   };
 };
 

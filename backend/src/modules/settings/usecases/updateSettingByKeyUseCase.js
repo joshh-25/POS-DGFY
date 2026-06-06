@@ -18,6 +18,7 @@ import {
     assertStrictBindingReadiness
 } from './posTerminalLocationBindingPolicy.js';
 import { resolveChangedSettingKeys } from './settingsChangeSet.js';
+import { assertPublicStorefrontHandleAvailable } from './publicStorefrontHandlePolicy.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 
@@ -70,6 +71,15 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository }) => {
                     ));
                 }
                 normalizedValue = normalizeWorkflowMode(value);
+            }
+            if (key === 'store_tenant_slug') {
+                await assertPublicStorefrontHandleAvailable({
+                    handleValue: normalizedValue,
+                    settingsRepository
+                });
+                if (typeof settingsRepository?.reservePublicStorefrontHandle === 'function') {
+                    await settingsRepository.reservePublicStorefrontHandle(normalizedValue);
+                }
             }
             if (
                 key === POS_TERMINAL_LOCATION_BINDING_ENFORCED_KEY
