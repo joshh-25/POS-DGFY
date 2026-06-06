@@ -154,7 +154,7 @@ npm run dev:store
 
 - Skupervisor: `http://localhost:5173/`
 - POS: `http://localhost:5174/`
-- Storefront discovery: `http://localhost:5175/tenant-store`
+- Storefront discovery: `http://localhost:5175/map-dgfy`
 - Backend health: `http://localhost:5000/health`
 
 ### 10. Verify Login/API Readiness
@@ -410,8 +410,8 @@ Local URLs:
 - Backend API: `http://localhost:5000/api/v1`
 - Skupervisor app: `http://localhost:5173/`
 - POS app: `http://localhost:5174/`
-- Storefront discovery: `http://localhost:5175/tenant-store`
-- Tenant storefront page: `http://localhost:5175/tenant-store/<slug>`
+- Storefront discovery: `http://localhost:5175/map-dgfy`
+- Tenant storefront page: `http://localhost:5175/<slug>`
 
 ## Current Feature Flags And Rollout Defaults
 

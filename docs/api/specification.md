@@ -1078,10 +1078,48 @@ List item-level Storefront catalog overrides for authenticated inventory setup s
     "storefront_image_gallery": [
       { "url": "/uploads/storefront-catalog/default/item-1.png", "is_primary": true, "sort_order": 0 }
     ],
+    "location_availability": [
+      {
+        "location_id": 1,
+        "name": "Main Branch",
+        "is_open": true,
+        "is_active": true,
+        "is_primary_storefront": true,
+        "storefront_available": true
+      },
+      {
+        "location_id": 2,
+        "name": "Branch 2",
+        "is_open": true,
+        "is_active": true,
+        "is_primary_storefront": false,
+        "storefront_available": false
+      }
+    ],
     "has_storefront_override": true
   }
 ]
 ```
+
+`location_availability` lists active tenant branches for IMS setup screens. Missing branch override rows default to `storefront_available=true` for additive rollout compatibility.
+
+### PATCH /items/:item_id/storefront-override
+Update item-level Storefront visibility and/or branch availability.
+
+**Permission**: `items:edit`
+
+**Request Body**
+```json
+{
+  "storefront_visible": true,
+  "location_availability": [
+    { "location_id": 1, "storefront_available": true },
+    { "location_id": 2, "storefront_available": false }
+  ]
+}
+```
+
+At least one of `storefront_visible` or `location_availability` is required. Branch availability does not bypass Storefront readiness, mode readiness, branch stock, or service capacity rules. Public `/store/catalog?location_id=<id>`, QR resolution, quote, checkout, and booking flows must hide or reject items explicitly disabled for the selected branch.
 
 **Notes**
 - This is an inventory-facing authenticated setup endpoint, not a public Storefront read.
@@ -2870,7 +2908,7 @@ Return tenant system settings for IMS Settings.
 
 **Response Notes**
 - Persisted settings are returned by key from tenant `system_settings`.
-- `store_is_visible.value=true` means the tenant may appear in public DGFY discovery/map feeds and public storefront profile reads once a valid active primary location exists. Enabling it does not create a location pin by itself. `store_is_visible.value=false` hides both the discovery/map listing and `/store/:slug` public profile page.
+- `store_is_visible.value=true` means the tenant may appear in public DGFY discovery/map feeds and public storefront profile reads once a valid active primary location exists. Enabling it does not create a location pin by itself. `store_is_visible.value=false` hides both the discovery/map listing and the canonical root-handle public profile page (`/:store_tenant_slug`). `/store/:slug` and `/tenant-store/:slug` are compatibility paths only.
 - `customer_access_modes_enabled` is an additive read-only virtual key, not a persisted tenant setting. It reflects the effective runtime Customer Access Mode enforcement state for the current tenant context.
 - `customer_access_modes_enabled.value=true` means public Storefront Customer Access Mode enforcement is active for the tenant.
 - `customer_access_modes_enabled.value=false` means the global rollback switch is active for the tenant. Operators should treat `CUSTOMER_ACCESS_MODES_ENABLED=false` as rollback-only and use `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` for tenant re-enablement while recovery evidence is gathered.
@@ -3254,6 +3292,7 @@ Services Mode storefront routes are public or Store JWT-authenticated tenant rou
 
 **Booking/Ticket Contract**
 - Public service booking and waitlist mutations fail closed unless `access_capabilities.booking=true` while enforcement is active.
+- Public service catalog, availability, holds, bookings, and waitlist mutations accept/forward `location_id` when the customer has selected a branch. If tenant-local `storefront_location_item_overrides.storefront_available=false` for that service item and branch, public reads hide the service and mutations return not found before capacity is reserved.
 - Public service booking, booking-hold, and batch-booking mutations also fail closed when the requested `start_at`/`scheduled_for` is outside a valid weekly `storefront_hours` schedule, returning `422` with `reason_code=OUTSIDE_STOREFRONT_BUSINESS_HOURS` before service capacity is reserved.
 - Ticket means booking/order confirmation; receipt means payment proof.
 - Public booking lookup redacts customer contact details.
@@ -3261,7 +3300,7 @@ Services Mode storefront routes are public or Store JWT-authenticated tenant rou
 - Guests whose email has no existing StoreCustomer account receive a short-lived claim token plus image download.
 - Guests whose email already belongs to a StoreCustomer account are not prompted to register/sign in from the receipt prompt; image download remains available.
 - Required `intake_form_schema` fields must be answered before booking is accepted.
-- `GET /store/services/availability` accepts `service_item_id`, `date` (`YYYY-MM-DD`), optional `location_id`, optional `resource_id`, optional `provider_user_id`, `quantity` (`1+`), and `slot_interval_minutes`. It returns only slots that pass service bookability, positive sale price readiness, lead time, active assignment/resource matching, resource weekly availability, blackout dates, overlapping booking quantity capacity, and active unexpired hold quantity capacity. The response also includes `diagnostics.blocked_counts`, `diagnostics.dominant_blocker`, `diagnostics.setup_warnings`, and `diagnostics.guidance` so storefronts can explain missing slots without exposing private booking details. The response is customer guidance; booking creation still revalidates under the booking mutation.
+- `GET /store/services/availability` accepts `service_item_id`, `date` (`YYYY-MM-DD`), optional `location_id`, optional `resource_id`, optional `provider_user_id`, `quantity` (`1+`), and `slot_interval_minutes`. It returns only slots that pass branch Storefront availability, service bookability, positive sale price readiness, lead time, active assignment/resource matching, resource weekly availability, blackout dates, overlapping booking quantity capacity, and active unexpired hold quantity capacity. The response also includes `diagnostics.blocked_counts`, `diagnostics.dominant_blocker`, `diagnostics.setup_warnings`, and `diagnostics.guidance` so storefronts can explain missing slots without exposing private booking details. The response is customer guidance; booking creation still revalidates under the booking mutation.
 - `POST /store/services/holds` accepts `service_item_id`, `start_at`, optional `end_at` or `duration_minutes`, `quantity`, optional `location_id`/`resource_id`/`provider_user_id`, required `idempotency_key`, and optional `replace_hold_token`. Active unexpired holds reserve capacity briefly, can be replaced by an edited draft without self-blocking, and must be passed as `hold_token` to the final booking mutation to be consumed.
 - Public hold and booking mutations require `idempotency_key` (`8..120` chars). Matching retries replay the existing hold/booking response; reuse with a different request payload returns conflict.
 - `quantity` is accepted on service bookings and defaults to `1`; totals and capacity checks multiply by quantity. Quantity above `1` requires a capacity anchor, currently an active assigned service resource. Provider-only and location-only bookings remain effective capacity `1`.
@@ -5502,7 +5541,7 @@ Persist onboarding progress for a step (idempotent).
 - `bulk_items`
 
 For `primary_location`, the payload may include:
-- `public_storefront_visible` (`boolean`, strict JSON boolean): when `false`, the tenant remains hidden from DGFY discovery/map feeds and `/store/:slug`; no public pin is required for onboarding readiness. When `true`, the merchant must save a real active primary location before discovery/profile publication can expose the tenant.
+- `public_storefront_visible` (`boolean`, strict JSON boolean): when `false`, the tenant remains hidden from DGFY discovery/map feeds and the canonical root-handle page (`/:store_tenant_slug`); no public pin is required for onboarding readiness. When `true`, the merchant must save a real active primary location before discovery/profile publication can expose the tenant.
 - `business_hours`: optional weekly Storefront business-hours schedule persisted to `storefront_hours`.
 - `location_id`, `name`, and `is_primary_storefront`: metadata for the saved tenant location when public visibility is enabled.
 

@@ -16,7 +16,7 @@ The public DGFY surface has two account-related entry points:
 1. **Log in / Sign up** opens the front-facing DGFY customer account experience.
 2. **Register Your Business** routes to company registration and must not be used as the general customer login path.
 
-Tenant storefront headers expose **Log in / Sign up** directly so customers can authenticate or create an account without waiting until checkout. On a tenant storefront, **My Account** / profile actions route to the standalone `/tenant-store/:slug/account` page instead of opening the account dashboard as a modal. On the discovery page, signed-in DGFY customers use the global `/tenant-store/account` page for cross-store orders, bookings, saved addresses, loyalty activity, and business registration. Signed-out discovery users still get the authentication dialog.
+Tenant storefront headers expose **Log in / Sign up** directly so customers can authenticate or create an account without waiting until checkout. On a tenant storefront, **My Account** / profile actions route to the standalone `/:store_tenant_slug/account` page instead of opening the account dashboard as a modal. On the discovery page, signed-in DGFY customers use the global `/map-dgfy/account` page for cross-store orders, bookings, saved addresses, loyalty activity, and business registration. Signed-out discovery users still get the authentication dialog.
 
 DGFY accounts are landlord-scoped. Tenant-local `store_customers` remain tenant-isolated compatibility rows and can be lazily linked to a DGFY account with `dgfy_account_id`.
 

@@ -216,7 +216,7 @@ What `deploy.sh` does:
   - `https://skupervisor.surebizcorp.com`
   - `https://pos.surebizcorp.com`
   - `https://surebizcorp.com`
-  - `https://surebizcorp.com/tenant-store`
+  - `https://surebizcorp.com/map-dgfy`
   - `https://skupervisor.dgfy.ph`
   - `https://pos.dgfy.ph`
   - `https://dgfy.ph`
@@ -555,7 +555,7 @@ sudo certbot --nginx -d skupervisor.dgfy.ph -d pos.dgfy.ph -d dgfy.ph -d store.d
 - IMS: `https://skupervisor.surebizcorp.com`
 - POS: `https://pos.surebizcorp.com`
 - Storefront: `https://surebizcorp.com`
-- Tenant Store: `https://surebizcorp.com/tenant-store`
+- Tenant Store discovery: `https://surebizcorp.com/map-dgfy`
 - Staging IMS: `https://staging.dgfy.ph`
 
 ## Force Non-Compliant Observability
@@ -585,13 +585,13 @@ Pass criteria:
 3. Expiry report CSV headers include `Location`.
 
 ### Nginx Path-Base Requirement (Tenant Store)
-When store is hosted via Vite preview on port `5175` with base path `/tenant-store/`, Nginx must rewrite `/tenant-store/*` before proxying to `5175`.
+When store is hosted via Vite preview on port `5175`, the canonical Storefront build is rooted at `/` so tenant handles can resolve as `/:store_tenant_slug` and discovery can resolve at `/map-dgfy`.
 
 Required behavior:
-1. `location = /tenant-store` redirects to `/tenant-store/`
-2. `location /tenant-store/` rewrites `^/tenant-store/(.*)$` to `/$1` before `proxy_pass http://127.0.0.1:5175`
+1. `location /map-dgfy` and tenant-handle fallback paths serve the Storefront app shell.
+2. Legacy `/tenant-store/*` and `/store/*` paths continue serving the Storefront app shell for compatibility and are canonicalized by the client.
 
-Without this rewrite, tenant-store asset URLs (for example `/tenant-store/assets/*.js` and manifest) can return HTML fallback and cause blank-page + manifest syntax errors.
+The Storefront build should not use a `/tenant-store/` asset base for the canonical root-handle deployment; root-scoped assets prevent blank-page + manifest syntax errors on `/:store_tenant_slug`.
 
 ## Manual Fallback (Last Resort)
 Use only if deploy script itself is broken:
