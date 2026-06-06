@@ -43,6 +43,7 @@
     "audit:location-stock-parity": "node scripts/audit-location-stock-parity.js",
     "audit:location-stock-parity:allow-missing": "node scripts/audit-location-stock-parity.js --allow-missing-tables",
     "audit:location-stock-parity:repair": "node scripts/audit-location-stock-parity.js --repair-current-stock --allow-missing-tables",
+    "audit:storefront-public-visibility": "node scripts/audit-storefront-public-visibility.js",
     "audit:tenant-index-headroom": "node scripts/audit-tenant-index-headroom.js",
     "reconcile:storefront-discovery": "node scripts/reconcile-storefront-discovery-index.js",
     "remediate:tenant-redundant-indexes": "node scripts/remediate-tenant-redundant-indexes.js",

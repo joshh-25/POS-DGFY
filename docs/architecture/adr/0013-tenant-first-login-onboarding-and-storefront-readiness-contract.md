@@ -37,12 +37,12 @@ Adopt a tenant-scoped onboarding lifecycle with soft-reminder UX:
 
 4. First-login wizard steps
 - `brand_assets`: optional storefront profile picture and cover photo. Missing images never block completion.
-- `primary_location`: create or update the active primary storefront location pin used by discovery and tenant-page map surfaces. IMS setup surfaces use a MapLibre pin picker for click-to-place, drag-to-adjust, geolocation, delivery-radius preview, and initial Storefront business-hours setup while preserving editable coordinate fields.
+- `primary_location`: captures whether the tenant wants to be public on the DGFY map and public storefront page. Public visibility is opt-in. When enabled, this step creates or updates the active primary storefront location pin used by discovery and tenant-page map surfaces. IMS setup surfaces use a MapLibre pin picker for click-to-place, drag-to-adjust, geolocation, delivery-radius preview, and initial Storefront business-hours setup while preserving editable coordinate fields.
 - `bulk_items`: create starter catalog rows from the active workflow mode's onboarding item presets.
 
 5. Required completion checklist
 - Store name ready (registration baseline)
-- At least one active primary storefront location
+- At least one active primary storefront location when public map/page visibility is enabled. Hidden storefronts satisfy this readiness check until the merchant opts in.
 - At least one active starter item with positive `default_sale_price`
 - For corrected item-taxonomy modes, the starter item must carry a mode-valid `mode_item_preset`
 - `current_stock=0` does not block onboarding completion
@@ -64,6 +64,7 @@ Adopt a tenant-scoped onboarding lifecycle with soft-reminder UX:
 8. Storefront readiness integration
 - Saving `primary_location` or `bulk_items`, and completing onboarding, triggers storefront discovery sync reliability runner.
 - Saving `primary_location` may also persist `storefront_hours` as the tenant's weekly business-hours schedule. That schedule is displayed on Storefront discovery/profile surfaces and is used by Storefront checkout availability checks.
+- Saving `primary_location` may also persist `store_is_visible`. When `store_is_visible=false`, public discovery and public storefront profile reads must not expose the tenant, and no default/bootstrap map pin may make the tenant public.
 - Existing discovery/profile/checkout contracts remain backward compatible.
 
 9. Generation policy
@@ -113,6 +114,14 @@ Adopt a tenant-scoped onboarding lifecycle with soft-reminder UX:
 2. Business hours remain non-blocking for onboarding completion, but the saved schedule becomes the long-term `storefront_hours` setting so merchants do not need a second setup pass in Settings.
 3. Storefront discovery/profile surfaces display the derived business-hours label.
 4. Storefront product quote/checkout and service booking/hold/batch mutations use the same setting to reject immediate or scheduled customer transactions outside configured hours while preserving legacy free-text `storefront_hours` values as display-compatible and non-breaking.
+
+## Addendum (2026-06-06): Public Storefront Visibility Opt-In
+
+1. Auto-provisioned tenants start with `store_is_visible=false` and no synthetic/default primary storefront location. Provisioning must override any migration-seeded public-visible default for the new tenant database before the discovery bootstrap runs, and must not place a new company on the DGFY map using fallback coordinates.
+2. The onboarding `primary_location` step and Settings > Storefront expose the same tenant-level public visibility control. When off, the tenant is hidden from DGFY discovery/map feeds and the public `/store/:slug` profile page is hidden.
+3. Hidden tenants may continue onboarding without saving a public location pin. The primary-location readiness check is only required after the merchant opts in to public map/page visibility.
+4. When the merchant opts in, they must save a real active primary storefront location before the discovery sync can publish a public map/profile row. Settings must make this dependency visible so merchants do not confuse saving the visibility switch with immediate publication when no active primary pin exists.
+5. Operators must use the Storefront public visibility audit before tightening legacy fallback behavior or after any discovery remediation. The audit reports hidden tenants that remain indexed, visible tenants without active primary pins, missing or invalid visibility settings, stale indexed locations, and fallback-location publication.
 
 ## Addendum (2026-05-21): DGFY Account Founder Source
 

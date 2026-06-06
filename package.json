@@ -47,6 +47,7 @@
     "audit:location-stock-parity": "cd backend && npm run audit:location-stock-parity",
     "audit:location-stock-parity:allow-missing": "cd backend && npm run audit:location-stock-parity:allow-missing",
     "audit:location-stock-parity:repair": "cd backend && npm run audit:location-stock-parity:repair",
+    "audit:storefront-public-visibility": "cd backend && npm run audit:storefront-public-visibility",
     "audit:tenant-index-headroom": "cd backend && npm run audit:tenant-index-headroom --",
     "reconcile:storefront-discovery": "cd backend && npm run reconcile:storefront-discovery --",
     "remediate:tenant-redundant-indexes": "cd backend && npm run remediate:tenant-redundant-indexes --",

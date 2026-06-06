@@ -21,9 +21,17 @@ const onboardingBulkItemRowSchema = Joi.object({
 });
 const MAX_EVENT_METADATA_BYTES = 8 * 1024;
 
+const primaryLocationStepPayloadSchema = Joi.object({
+  public_storefront_visible: Joi.boolean().strict().optional()
+}).unknown(true);
+
 export const onboardingStepSchema = Joi.object({
   step_key: Joi.string().trim().lowercase().valid(...ONBOARDING_STEP_KEYS).required(),
-  payload: Joi.object().unknown(true).default({})
+  payload: Joi.when('step_key', {
+    is: 'primary_location',
+    then: primaryLocationStepPayloadSchema.default({}),
+    otherwise: Joi.object().unknown(true).default({})
+  })
 });
 
 export const onboardingEventSchema = Joi.object({

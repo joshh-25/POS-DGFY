@@ -86,12 +86,6 @@ DB_AUTO_SYNC=false
 # - longitude: -180 to 180
 # - delivery radius: 0.1 to 100 (km)
 # - wait minutes: 0 to 240
-STOREFRONT_DEFAULT_LOCATION_NAME=Main Branch
-STOREFRONT_DEFAULT_LOCATION_ADDRESS=Iloilo City
-STOREFRONT_DEFAULT_LATITUDE=10.699817
-STOREFRONT_DEFAULT_LONGITUDE=122.559893
-STOREFRONT_DEFAULT_DELIVERY_RADIUS_KM=5
-STOREFRONT_DEFAULT_WAIT_MINUTES=15
 # Subscription/payment system toggle (default-off).
 # Set to true only when subscription workflows are intentionally re-enabled.
 PAYMENTS_ENABLED=false

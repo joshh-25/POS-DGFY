@@ -53,25 +53,28 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 1. Backend domain and settings
 - Shared policy helpers live in `backend/src/modules/shared/utils/customerAccessPolicy.js`.
 - Tenant-local settings are persisted in `system_settings`: `customer_access_mode`, `inventory_display_mode`, and `inventory_low_stock_display_threshold`.
-- Existing and newly provisioned tenants default to `customer_access_mode=catalog`, `inventory_display_mode=availability`, and low-stock threshold `5`.
+- Existing tenants keep their persisted `store_is_visible` value. Newly provisioned tenants default to `store_is_visible=false`, `customer_access_mode=catalog`, `inventory_display_mode=availability`, and low-stock threshold `5`. Provisioning must overwrite a migration-seeded `store_is_visible=true` row for the new tenant before discovery bootstrap runs.
+- `store_is_visible=false` hides the tenant from public discovery/map feeds and public storefront profile reads. This tenant-level public visibility switch is evaluated before Customer Access Mode; a hidden tenant is not exposed as a Map Listing Only entry.
 - Settings validation and normalization accept the new keys through the modular Settings flow. Controllers remain transport-only. Bulk Settings saves compare incoming keys with persisted values before compliance preflight, so unchanged fiscal POS fields included by the full Settings form do not block unrelated Storefront/profile/system changes for non-compliant tenants.
 - Settings, tenant onboarding location/item saves, tenant location changes, and storefront asset changes refresh the discovery index after successful use-case results so public search/profile rows do not carry stale access-mode, location, or starter-catalog data.
 
 2. Onboarding
 - The current first-login wizard no longer captures Customer Access Mode or Inventory Display choices.
+- The `primary_location` step captures whether the tenant wants to appear on the DGFY map and public storefront page. Public visibility is opt-in. Hidden tenants can continue onboarding without a public pin; visible tenants must save a real active primary storefront location.
 - Legacy tenants may still have `business_classification` or `classification_snapshot` payloads; those records are backward-compatible context only.
 - New tenants use the Settings > Storefront controls for Customer Access Mode and Inventory Display, with default `catalog` and `availability` behavior.
 - Onboarding remains a soft reminder and does not block IMS/POS access.
 
 3. Settings
 - The Storefront tab exposes `#storefront-access-settings` for Customer Access Mode and Inventory Display.
+- Settings > Storefront exposes the same public map/page visibility switch through `store_is_visible`. Turning it off hides both public discovery/map pins and the public `/store/:slug` page. Turning it on does not create a pin by itself; Settings warns when no active primary storefront pin exists because public publication remains blocked until a real pin is saved.
 - The section shows requested mode, effective mode, max allowed mode, limitation copy, and a runtime enforcement status sourced from `GET /settings` key `customer_access_modes_enabled`.
 - `customer_access_modes_enabled` is a virtual runtime setting derived from `CUSTOMER_ACCESS_MODES_ENABLED` and tenant allowlisting. It is read-only and must not be persisted in `system_settings`.
 - Modes above the declared onboarding registration stage are disabled in normal tenant UI; backend runtime still enforces public actions.
 - Item-level storefront catalog controls live on inventory item setup surfaces, not Settings. Settings controls whether the Storefront can browse/order overall; `Show in Storefront` controls one item.
 
 4. Storefront public APIs
-- Discovery/profile/catalog responses include additive access metadata. The landlord discovery index materializes `customer_access_mode`, `effective_customer_access_mode`, `inventory_display_mode`, `access_capabilities`, limitation metadata, and runtime enforcement state so discovery cards can suppress Order Now without a tenant DB fanout.
+- Discovery/profile/catalog responses include additive access metadata. The landlord discovery index materializes `customer_access_mode`, `effective_customer_access_mode`, `inventory_display_mode`, `access_capabilities`, limitation metadata, and runtime enforcement state so discovery cards can suppress Order Now without a tenant DB fanout. Tenants with `store_is_visible=false` are removed from the index and public profile reads return not found.
 - For `ghost`, discovery/profile still work, item-search snapshots are suppressed during discovery indexing, and `/store/catalog` returns no public items while enforcement is active.
 - For `catalog` and `inquiry`, `/store/catalog` returns public rows but quote/checkout/booking mutations fail closed while enforcement is active.
 - For `transaction`, quote/checkout/booking remain available subject to existing location, stock, compliance, and payment gates.
@@ -117,6 +120,8 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 
 7. Storefront location pins
 - Settings > Storefront can add, edit, set primary, deactivate/reactivate, and permanently delete inactive tenant location pins. Active pins show deactivate as the first-line path before permanent delete is exposed.
+- Provisioning no longer creates a default primary storefront pin from environment fallback coordinates. New tenants publish a map/profile row only after provisioning has forced `store_is_visible=false`, the merchant opts into public visibility, and a real active primary location is saved.
+- Operators can run `npm run audit:storefront-public-visibility` to audit active tenants for hidden tenants that are still indexed, visible tenants without an active primary pin, missing or invalid `store_is_visible` settings, discovery rows that point to inactive/missing locations, and legacy fallback-location publication. The command fails on critical findings by default; use `-- --fail-on warning` for stricter gates or `-- --json` for machine-readable evidence. Use `-- --repair-missing-settings` only when the intended remediation is to preserve current public exposure while inserting an explicit `store_is_visible` row matching the tenant's current discovery-index visibility.
 - Permanent delete is allowed only for unused location rows with no POS transaction, terminal shift/transition/audit, inventory stock, FIFO batch, stock movement, user-location grant, service resource, provider assignment, booking, or booking-hold references. The backend keeps this as a named reference-source manifest and test coverage compares it against direct `TenantLocation` model associations, exact foreign keys, and manifest where-clauses so future location references cannot silently bypass the guard.
 - Blocked permanent deletes return `409` with `reference_counts`; Settings must show the blocking categories and keep deactivate as the safe fallback instead of leaving the operator with only a failed delete toast. If the backend cannot inspect every named tenant-local reference model, permanent delete returns `503 SERVICE_UNAVAILABLE` and remains disabled until tenant schema/runtime health is restored. If a dependent row is created concurrently after the pre-delete count, database FK failure is also mapped to the same `409` conflict so permanent delete remains fail-closed.
 - Successful location create, update, deactivate, reactivate, and delete actions refresh Storefront discovery so public map/profile rows do not carry stale primary-pin state.

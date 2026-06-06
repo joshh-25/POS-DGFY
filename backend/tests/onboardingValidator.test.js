@@ -17,7 +17,7 @@ describe('onboardingValidator schemas', () => {
   it('accepts primary location and bulk item step keys', () => {
     const locationValue = onboardingStepSchema.validate({
       step_key: 'primary_location',
-      payload: { location_id: 1 }
+      payload: { location_id: 1, public_storefront_visible: true }
     });
     const value = onboardingStepSchema.validate({
       step_key: 'bulk_items',
@@ -26,6 +26,16 @@ describe('onboardingValidator schemas', () => {
 
     expect(locationValue.error).toBeUndefined();
     expect(value.error).toBeUndefined();
+  });
+
+  it('rejects non-boolean primary location public visibility values', () => {
+    const value = onboardingStepSchema.validate({
+      step_key: 'primary_location',
+      payload: { public_storefront_visible: 'yes' }
+    });
+
+    expect(value.error).toBeDefined();
+    expect(value.error.message).toMatch(/public_storefront_visible/i);
   });
 
   it('rejects unknown onboarding step keys', () => {
