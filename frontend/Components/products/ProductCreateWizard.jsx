@@ -75,6 +75,7 @@ const BASE_PRODUCT_DATA = {
   quality_control: {},
   regulatory_compliance: {},
   production_notes: '',
+  storefront_location_availability: [],
   fifo_enabled: true
 };
 
@@ -101,6 +102,7 @@ export default function ProductCreateWizard({
   onUploadPosImage,
   onDeletePosImage,
   onToggleStorefrontVisibility,
+  onToggleStorefrontLocationAvailability,
   onUploadStorefrontImage,
   onSetPrimaryStorefrontImage,
   onDeleteStorefrontImage,
@@ -631,6 +633,7 @@ export default function ProductCreateWizard({
               onUploadPosImage={onUploadPosImage}
               onDeletePosImage={onDeletePosImage}
               onToggleStorefrontVisibility={onToggleStorefrontVisibility}
+              onToggleStorefrontLocationAvailability={onToggleStorefrontLocationAvailability}
               onUploadStorefrontImage={onUploadStorefrontImage}
               onSetPrimaryStorefrontImage={onSetPrimaryStorefrontImage}
               onDeleteStorefrontImage={onDeleteStorefrontImage}

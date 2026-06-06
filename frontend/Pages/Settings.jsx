@@ -2511,7 +2511,7 @@ export default function Settings() {
                     maxLength={80}
                   />
                   <p className="text-xs text-slate-500">
-                    Used for the public storefront URL path: `/store/:slug`.
+                    Used for the public storefront URL path: `/:slug`.
                   </p>
                 </div>
                 <div className="space-y-2">

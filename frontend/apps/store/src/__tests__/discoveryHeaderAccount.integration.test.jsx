@@ -200,7 +200,7 @@ describe('discovery header customer account actions', () => {
     await user.click(screen.getByRole('button', { name: /^my account$/i }));
 
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/tenant-store/account');
+      expect(window.location.pathname).toBe('/map-dgfy/account');
       expect(screen.getByRole('heading', { name: /^My Account$/i })).toBeTruthy();
     });
     expect(screen.queryByRole('dialog', { name: /dgfy account/i })).toBeNull();

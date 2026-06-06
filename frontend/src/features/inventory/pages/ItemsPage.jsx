@@ -341,7 +341,10 @@ export default function Items() {
     const override = storefrontCatalogOverrides[itemId];
     return {
       storefront_visible: override ? override.storefront_visible !== false : getDefaultStorefrontVisibility(item),
-      storefront_image_url: resolveAssetUrl(override?.storefront_image_url) || null
+      storefront_image_path: override?.storefront_image_path || null,
+      storefront_image_url: resolveAssetUrl(override?.storefront_image_url) || null,
+      storefront_image_gallery: Array.isArray(override?.storefront_image_gallery) ? override.storefront_image_gallery : [],
+      location_availability: Array.isArray(override?.location_availability) ? override.location_availability : []
     };
   }, [getDefaultStorefrontVisibility, storefrontCatalogOverrides]);
 
@@ -434,6 +437,65 @@ export default function Items() {
     } catch (error) {
       toast.error(error?.response?.data?.message || error?.message || 'Failed to update storefront visibility');
     }
+  };
+
+  const handleToggleStorefrontLocationAvailability = async (item, locationId, nextAvailable) => {
+    const itemId = item?.item_id || item?.id;
+    const normalizedLocationId = Number.parseInt(locationId, 10);
+    if (!itemId || !canConfigureStorefrontCatalog || !Number.isInteger(normalizedLocationId) || normalizedLocationId <= 0) return;
+
+    const currentConfig = resolveStorefrontConfig(item);
+    const currentRows = Array.isArray(currentConfig.location_availability) ? currentConfig.location_availability : [];
+    const hasLocationRow = currentRows.some((row) => Number(row?.location_id) === normalizedLocationId);
+    const nextRows = hasLocationRow
+      ? currentRows.map((row) => (
+        Number(row?.location_id) === normalizedLocationId
+          ? { ...row, storefront_available: Boolean(nextAvailable) }
+          : row
+      ))
+      : [
+        ...currentRows,
+        {
+          location_id: normalizedLocationId,
+          storefront_available: Boolean(nextAvailable)
+        }
+      ];
+
+    try {
+      const updated = await updateStorefrontCatalogOverride(itemId, {
+        location_availability: nextRows.map((row) => ({
+          location_id: row.location_id,
+          storefront_available: row.storefront_available !== false
+        }))
+      });
+      setStorefrontCatalogOverrides((prev) => ({
+        ...prev,
+        [itemId]: { ...(prev[itemId] || {}), ...updated }
+      }));
+      toast.success(`Storefront branch availability updated for ${item.name}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to update storefront branch availability');
+    }
+  };
+
+  const applyStorefrontLocationAvailabilityPatch = async (item, rows = []) => {
+    const itemId = Number(item?.item_id || item?.id || 0);
+    const normalizedRows = (Array.isArray(rows) ? rows : [])
+      .map((row) => ({
+        location_id: Number.parseInt(row?.location_id, 10),
+        storefront_available: row?.storefront_available !== false
+      }))
+      .filter((row) => Number.isInteger(row.location_id) && row.location_id > 0);
+    if (!itemId || normalizedRows.length === 0 || !canConfigureStorefrontCatalog) return null;
+
+    const updated = await updateStorefrontCatalogOverride(itemId, {
+      location_availability: normalizedRows
+    });
+    setStorefrontCatalogOverrides((prev) => ({
+      ...prev,
+      [itemId]: { ...(prev[itemId] || {}), ...updated }
+    }));
+    return updated;
   };
 
   const handleUploadStorefrontImage = async (item, files) => {
@@ -1167,27 +1229,32 @@ export default function Items() {
 
   const handleProductSubmit = async (productData) => {
     try {
+      const {
+        storefront_location_availability: storefrontLocationAvailabilityPatch = [],
+        ...productPayload
+      } = productData || {};
       let savedProduct = null;
       if (editingProduct) {
         // If finalizing a draft, use finalizeItem with the updated data
-        if (editingProduct.status === 'draft' && productData.status === 'active') {
-          savedProduct = await finalizeItem(editingProduct.item_id, productData);
+        if (editingProduct.status === 'draft' && productPayload.status === 'active') {
+          savedProduct = await finalizeItem(editingProduct.item_id, productPayload);
           toast.success('Product finalized successfully');
         } else {
           // Regular update (draft->draft or active->active)
-          savedProduct = await updateItem(editingProduct.item_id, productData);
+          savedProduct = await updateItem(editingProduct.item_id, productPayload);
           toast.success('Product updated successfully');
         }
       } else {
         // Creating new product
-        savedProduct = await createItem(productData);
+        savedProduct = await createItem(productPayload);
         toast.success('Product created successfully');
       }
+      await applyStorefrontLocationAvailabilityPatch(savedProduct || editingProduct, storefrontLocationAvailabilityPatch);
       refetch();
       setShowProductWizard(false);
       setEditingProduct(null);
-      if (isLikelyPosSellable(savedProduct || editingProduct || productData)) {
-        launchPosReadinessFlow(savedProduct || editingProduct || productData);
+      if (isLikelyPosSellable(savedProduct || editingProduct || productPayload)) {
+        launchPosReadinessFlow(savedProduct || editingProduct || productPayload);
         toast.message('Product saved. Complete POS readiness checks before checkout.');
       }
     } catch (error) {
@@ -1205,11 +1272,15 @@ export default function Items() {
 
   const handleProductSaveDraft = async (productData) => {
     try {
+      const {
+        storefront_location_availability: _storefrontLocationAvailabilityPatch = [],
+        ...productPayload
+      } = productData || {};
       if (editingProduct) {
-        await updateItem(editingProduct.item_id, productData);
+        await updateItem(editingProduct.item_id, productPayload);
         toast.success('Product draft updated successfully');
       } else {
-        await createItemDraft(productData);
+        await createItemDraft(productPayload);
         toast.success('Product draft saved successfully');
       }
       refetch();
@@ -1231,6 +1302,7 @@ export default function Items() {
       const {
         supplier_links: supplierLinks = [],
         supplier_links_dirty: supplierLinksDirty = false,
+        storefront_location_availability: storefrontLocationAvailabilityPatch = [],
         ...itemPayload
       } = itemData || {};
       const isEditingExistingItem = Boolean(editingItem);
@@ -1261,6 +1333,8 @@ export default function Items() {
       }
 
       const targetItemId = Number(savedItem?.item_id || savedItem?.id || editingItem?.item_id || 0);
+      await applyStorefrontLocationAvailabilityPatch(savedItem || editingItem, storefrontLocationAvailabilityPatch);
+
       if (isMsmeMode && supplierLinksDirty && Number.isInteger(targetItemId) && targetItemId > 0) {
         try {
           await replaceItemSuppliers(targetItemId, supplierLinks);
@@ -1319,6 +1393,7 @@ export default function Items() {
       const draftPayload = { ...(itemData || {}) };
       delete draftPayload.supplier_links;
       delete draftPayload.supplier_links_dirty;
+      delete draftPayload.storefront_location_availability;
       await createItemDraft(draftPayload);
       toast.success('Item draft saved successfully');
       refetch();
@@ -2552,6 +2627,7 @@ export default function Items() {
           onUploadPosImage={handleUploadPosImage}
           onDeletePosImage={handleDeletePosImage}
           onToggleStorefrontVisibility={handleToggleStorefrontVisibility}
+          onToggleStorefrontLocationAvailability={handleToggleStorefrontLocationAvailability}
           onUploadStorefrontImage={handleUploadStorefrontImage}
           onSetPrimaryStorefrontImage={handleSetPrimaryStorefrontImage}
           onDeleteStorefrontImage={handleDeleteStorefrontImage}
@@ -2592,6 +2668,7 @@ export default function Items() {
             onUploadPosImage={handleUploadPosImage}
             onDeletePosImage={handleDeletePosImage}
             onToggleStorefrontVisibility={handleToggleStorefrontVisibility}
+            onToggleStorefrontLocationAvailability={handleToggleStorefrontLocationAvailability}
             onUploadStorefrontImage={handleUploadStorefrontImage}
             onSetPrimaryStorefrontImage={handleSetPrimaryStorefrontImage}
             onDeleteStorefrontImage={handleDeleteStorefrontImage}

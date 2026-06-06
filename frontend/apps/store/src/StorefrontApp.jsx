@@ -852,15 +852,49 @@ const getPreferredBookingTimeForDate = (serviceItem, dateString, currentTime = '
   if (currentTime && availableSlots.some((slot) => slot.value === currentTime)) return currentTime;
   return availableSlots[0]?.value || '09:00';
 };
-const TENANT_STORE_BASE_PATH = '/tenant-store';
+const DISCOVERY_BASE_PATH = '/map-dgfy';
+const TENANT_STORE_BASE_PATH = DISCOVERY_BASE_PATH;
+const LEGACY_TENANT_STORE_BASE_PATH = '/tenant-store';
+const LEGACY_STORE_BASE_PATH = '/store';
 const STORE_BOOKING_SUBPAGE = 'book';
 const STORE_ORDER_SUBPAGE = 'order';
 const STORE_TRACK_SUBPAGE = 'track';
 const STORE_ACCOUNT_SUBPAGE = 'account';
 const STORE_SERVICE_SUBPAGE = 'service';
 const STORE_ITEM_SUBPAGE = 'item';
-const DISCOVERY_ACCOUNT_PATH = `${TENANT_STORE_BASE_PATH}/${STORE_ACCOUNT_SUBPAGE}`;
-const storePath = (slug, subpage = null, query = '') => `${TENANT_STORE_BASE_PATH}/${encodeURIComponent(toSlug(slug))}${subpage ? `/${subpage}` : ''}${query || ''}`;
+const DISCOVERY_ACCOUNT_PATH = `${DISCOVERY_BASE_PATH}/${STORE_ACCOUNT_SUBPAGE}`;
+const LEGACY_DISCOVERY_ACCOUNT_PATH = `${LEGACY_TENANT_STORE_BASE_PATH}/${STORE_ACCOUNT_SUBPAGE}`;
+const RESERVED_ROOT_ROUTE_SEGMENTS = new Set([
+  'api',
+  'admin',
+  'assets',
+  'dashboard',
+  'dgfy',
+  'favicon.ico',
+  'health',
+  'legal',
+  'login',
+  'logout',
+  DISCOVERY_BASE_PATH.slice(1),
+  'manifest.json',
+  'platform-admin',
+  'register',
+  'settings',
+  LEGACY_STORE_BASE_PATH.slice(1),
+  LEGACY_TENANT_STORE_BASE_PATH.slice(1),
+  'uploads'
+]);
+const appendLocationQuery = (query = '', locationId = null) => {
+  const normalizedQuery = String(query || '').trim();
+  const params = new URLSearchParams(normalizedQuery.startsWith('?') ? normalizedQuery.slice(1) : normalizedQuery);
+  const parsedLocationId = Number(locationId);
+  if (Number.isInteger(parsedLocationId) && parsedLocationId > 0) {
+    params.set('location_id', String(parsedLocationId));
+  }
+  const serialized = params.toString();
+  return serialized ? `?${serialized}` : '';
+};
+const storePath = (slug, subpage = null, query = '', locationId = null) => `/${encodeURIComponent(toSlug(slug))}${subpage ? `/${subpage}` : ''}${appendLocationQuery(query, locationId)}`;
 const toNumberOrNull = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
@@ -927,7 +961,8 @@ const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
 const readRouteSlug = () => {
   if (typeof window === 'undefined') return null;
   const path = window.location.pathname || '';
-  if (path.toLowerCase() === DISCOVERY_ACCOUNT_PATH) return null;
+  const lowerPath = path.toLowerCase();
+  if ([DISCOVERY_BASE_PATH, DISCOVERY_ACCOUNT_PATH, LEGACY_TENANT_STORE_BASE_PATH, LEGACY_DISCOVERY_ACCOUNT_PATH].includes(lowerPath)) return null;
   const patterns = [
     /^\/tenant-store\/([^/]+)(?:\/[^/]+)?$/i,
     /^\/store\/([^/]+)(?:\/[^/]+)?$/i
@@ -936,20 +971,30 @@ const readRouteSlug = () => {
     const match = path.match(pattern);
     if (match?.[1]) return decodeURIComponent(match[1]).toLowerCase();
   }
+  const rootMatch = path.match(/^\/([^/]+)(?:\/[^/]+)?$/i);
+  if (rootMatch?.[1]) {
+    const segment = decodeURIComponent(rootMatch[1]).toLowerCase();
+    if (!RESERVED_ROOT_ROUTE_SEGMENTS.has(segment)) return segment;
+  }
   const hashPatterns = [
     /^#\/tenant-store\/([^/]+)(?:\/[^/]+)?$/i,
-    /^#\/store\/([^/]+)(?:\/[^/]+)?$/i
+    /^#\/store\/([^/]+)(?:\/[^/]+)?$/i,
+    /^#\/([^/]+)(?:\/[^/]+)?$/i
   ];
   for (const pattern of hashPatterns) {
     const match = (window.location.hash || '').match(pattern);
-    if (match?.[1]) return decodeURIComponent(match[1]).toLowerCase();
+    if (match?.[1]) {
+      const segment = decodeURIComponent(match[1]).toLowerCase();
+      if (!RESERVED_ROOT_ROUTE_SEGMENTS.has(segment)) return segment;
+    }
   }
   return null;
 };
 const readStoreSubpage = () => {
   if (typeof window === 'undefined') return null;
   const path = window.location.pathname || '';
-  if (path.toLowerCase() === DISCOVERY_ACCOUNT_PATH) return STORE_ACCOUNT_SUBPAGE;
+  const lowerPath = path.toLowerCase();
+  if ([DISCOVERY_ACCOUNT_PATH, LEGACY_DISCOVERY_ACCOUNT_PATH].includes(lowerPath)) return STORE_ACCOUNT_SUBPAGE;
   const patterns = [
     /^\/tenant-store\/[^/]+\/([^/]+)$/i,
     /^\/store\/[^/]+\/([^/]+)$/i
@@ -957,6 +1002,11 @@ const readStoreSubpage = () => {
   for (const pattern of patterns) {
     const match = path.match(pattern);
     if (match?.[1]) return decodeURIComponent(match[1]).toLowerCase();
+  }
+  const rootMatch = path.match(/^\/([^/]+)\/([^/]+)$/i);
+  if (rootMatch?.[1] && rootMatch?.[2]) {
+    const segment = decodeURIComponent(rootMatch[1]).toLowerCase();
+    if (!RESERVED_ROOT_ROUTE_SEGMENTS.has(segment)) return decodeURIComponent(rootMatch[2]).toLowerCase();
   }
   const hashPatterns = [
     /^#\/tenant-store\/[^/]+\/([^/]+)$/i,
@@ -967,6 +1017,12 @@ const readStoreSubpage = () => {
     if (match?.[1]) return decodeURIComponent(match[1]).toLowerCase();
   }
   return null;
+};
+const readRouteLocationId = () => {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search || '');
+  const parsed = Number(params.get('location_id'));
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 const readStoreServiceItemId = () => {
   if (typeof window === 'undefined') return null;
@@ -4109,6 +4165,7 @@ const SimpleHero = ({
 export default function StorefrontApp() {
   const [routeSlug, setRouteSlug] = useState(() => readRouteSlug());
   const [routeSubpage, setRouteSubpage] = useState(() => readStoreSubpage());
+  const [routeLocationId, setRouteLocationId] = useState(() => readRouteLocationId());
   const [routeServiceItemId, setRouteServiceItemId] = useState(() => readStoreServiceItemId());
   const [routeItemId, setRouteItemId] = useState(() => readStoreItemId());
   const [routeReviewToken, setRouteReviewToken] = useState(() => readStoreReviewToken());
@@ -4213,7 +4270,7 @@ export default function StorefrontApp() {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     const serviceItemId = String(service?.item_id || '').trim();
     if (!normalized || !serviceItemId || typeof window === 'undefined') return;
-    const target = storePath(normalized, STORE_SERVICE_SUBPAGE, `?service=${encodeURIComponent(serviceItemId)}`);
+    const target = storePath(normalized, STORE_SERVICE_SUBPAGE, `?service=${encodeURIComponent(serviceItemId)}`, selectedLocationId);
     if (`${window.location.pathname}${window.location.search}` !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_SERVICE_SUBPAGE, serviceItemId }, '', target);
     }
@@ -4238,7 +4295,7 @@ export default function StorefrontApp() {
       params.set('review_token', reviewToken);
       params.set('review', '1');
     }
-    const target = storePath(normalized, STORE_ITEM_SUBPAGE, `?${params.toString()}`);
+    const target = storePath(normalized, STORE_ITEM_SUBPAGE, `?${params.toString()}`, routeLocationId);
     if (`${window.location.pathname}${window.location.search}` !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_ITEM_SUBPAGE, itemId, reviewToken }, '', target);
     }
@@ -4250,7 +4307,7 @@ export default function StorefrontApp() {
     setRouteItemId(itemId);
     setRouteReviewToken(reviewToken);
     setIsCheckoutOpen(false);
-  }, [routeSlug, selectedStore?.slug]);
+  }, [routeLocationId, routeSlug, selectedStore?.slug]);
   const closeFnbDetail = () => {
     setSelectedFnbDetail(null);
     setSelectedFnbDetailQuantity(1);
@@ -4853,20 +4910,25 @@ export default function StorefrontApp() {
       }
       if (requestSequence !== storeLoadRequestSequenceRef.current) return;
 
-      if (profile?.slug && toSlug(profile.slug) !== normalized && typeof window !== 'undefined') {
+      const isLegacyStorefrontPath = typeof window !== 'undefined'
+        && (
+          window.location.pathname.toLowerCase().startsWith(`${LEGACY_TENANT_STORE_BASE_PATH}/`)
+          || window.location.pathname.toLowerCase().startsWith(`${LEGACY_STORE_BASE_PATH}/`)
+        );
+      if (profile?.slug && (toSlug(profile.slug) !== normalized || isLegacyStorefrontPath) && typeof window !== 'undefined') {
         const canonicalPath = routeSubpage === STORE_BOOKING_SUBPAGE
-          ? storePath(profile.slug, STORE_BOOKING_SUBPAGE)
+          ? storePath(profile.slug, STORE_BOOKING_SUBPAGE, '', routeLocationId)
           : routeSubpage === STORE_TRACK_SUBPAGE
-            ? storePath(profile.slug, STORE_TRACK_SUBPAGE)
+            ? storePath(profile.slug, STORE_TRACK_SUBPAGE, '', routeLocationId)
           : routeSubpage === STORE_ORDER_SUBPAGE
-            ? storePath(profile.slug, STORE_ORDER_SUBPAGE)
+            ? storePath(profile.slug, STORE_ORDER_SUBPAGE, '', routeLocationId)
           : routeSubpage === STORE_SERVICE_SUBPAGE && routeServiceItemId
-            ? storePath(profile.slug, STORE_SERVICE_SUBPAGE, `?service=${encodeURIComponent(routeServiceItemId)}`)
+            ? storePath(profile.slug, STORE_SERVICE_SUBPAGE, `?service=${encodeURIComponent(routeServiceItemId)}`, routeLocationId)
           : routeSubpage === STORE_ITEM_SUBPAGE && routeItemId
-            ? storePath(profile.slug, STORE_ITEM_SUBPAGE, `?item=${encodeURIComponent(routeItemId)}`)
+            ? storePath(profile.slug, STORE_ITEM_SUBPAGE, `?item=${encodeURIComponent(routeItemId)}`, routeLocationId)
           : routeSubpage === STORE_ACCOUNT_SUBPAGE || currentPathSubpage === STORE_ACCOUNT_SUBPAGE
-            ? storePath(profile.slug, STORE_ACCOUNT_SUBPAGE)
-          : storePath(profile.slug);
+            ? storePath(profile.slug, STORE_ACCOUNT_SUBPAGE, '', routeLocationId)
+          : storePath(profile.slug, null, '', routeLocationId);
         if (`${window.location.pathname}${window.location.search}` !== canonicalPath) {
           window.history.replaceState({ storeSlug: profile.slug, storeSubpage: routeSubpage }, '', canonicalPath);
         }
@@ -4888,6 +4950,9 @@ export default function StorefrontApp() {
         setStoreLocations(locations);
         setPrimaryLocationId(nextPrimaryLocationId);
         if (locations.length > 0) {
+          const urlLocation = routeLocationId == null
+            ? null
+            : (locations.find((location) => Number(location.location_id) === Number(routeLocationId)) || null);
           const preferredLocationId = (
             preferredStoreLocationSelection?.slug
             && toSlug(preferredStoreLocationSelection.slug) === toSlug(profile.slug)
@@ -4902,7 +4967,8 @@ export default function StorefrontApp() {
             : (locations.find((location) => Number(location.location_id) === Number(nextPrimaryLocationId)) || null);
           const firstOpenLocation = locations.find((location) => location?.is_open !== false) || null;
           const fallbackLocationId = (
-            preferredLocation?.location_id
+            urlLocation?.location_id
+            ?? preferredLocation?.location_id
             ?? firstOpenLocation?.location_id
             ?? primaryLocation?.location_id
             ?? locations[0]?.location_id
@@ -4916,10 +4982,13 @@ export default function StorefrontApp() {
         }
       } catch {
         const fallbackPrimaryLocationId = profileLocations.find((location) => location.is_primary_storefront)?.location_id ?? profile.location_id ?? null;
+        const fallbackRouteLocation = routeLocationId == null
+          ? null
+          : (profileLocations.find((location) => Number(location.location_id) === Number(routeLocationId)) || null);
         setStoreLocations(profileLocations);
         setPrimaryLocationId(fallbackPrimaryLocationId);
-        resolvedCatalogLocationId = fallbackPrimaryLocationId;
-        setSelectedLocationId(fallbackPrimaryLocationId);
+        resolvedCatalogLocationId = fallbackRouteLocation?.location_id ?? fallbackPrimaryLocationId;
+        setSelectedLocationId(resolvedCatalogLocationId);
       }
 
       const catalogQuery = resolvedCatalogLocationId == null
@@ -4944,7 +5013,7 @@ export default function StorefrontApp() {
         setLoadingCatalog(false);
       }
     }
-  }, [currentPathSubpage, preferredStoreLocationSelection, routeItemId, routeServiceItemId, routeSubpage]);
+  }, [currentPathSubpage, preferredStoreLocationSelection, routeItemId, routeLocationId, routeServiceItemId, routeSubpage]);
 
   const refreshStorePageForTenantSetup = useCallback(() => {
     if (!routeSlug) return;
@@ -5142,12 +5211,21 @@ export default function StorefrontApp() {
     const onPopState = () => {
       setRouteSlug(readRouteSlug());
       setRouteSubpage(readStoreSubpage());
+      setRouteLocationId(readRouteLocationId());
       setRouteServiceItemId(readStoreServiceItemId());
       setRouteItemId(readStoreItemId());
       setRouteReviewToken(readStoreReviewToken());
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const normalizedPath = window.location.pathname.toLowerCase();
+    if (normalizedPath === LEGACY_TENANT_STORE_BASE_PATH || normalizedPath === `${LEGACY_TENANT_STORE_BASE_PATH}/`) {
+      window.history.replaceState({}, '', DISCOVERY_BASE_PATH);
+    }
   }, []);
 
   useEffect(() => {
@@ -5393,12 +5471,14 @@ export default function StorefrontApp() {
       slug: normalized,
       locationId: Number(locationId)
     });
-    const target = storePath(normalized);
-    if (window.location.pathname !== target) {
+    const targetLocationId = locationId == null ? null : Number(locationId);
+    const target = storePath(normalized, null, '', targetLocationId);
+    if (`${window.location.pathname}${window.location.search}` !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: null }, '', target);
     }
     setRouteSlug(normalized);
     setRouteSubpage(null);
+    setRouteLocationId(targetLocationId);
     setRouteServiceItemId(null);
     setRouteItemId(null);
   };
@@ -5413,12 +5493,14 @@ export default function StorefrontApp() {
       locationId: Number(locationId)
     });
     const targetSubpage = STORE_ORDER_SUBPAGE;
-    const target = storePath(normalized, targetSubpage);
+    const targetLocationId = locationId == null ? null : Number(locationId);
+    const target = storePath(normalized, targetSubpage, '', targetLocationId);
     if (`${window.location.pathname}${window.location.search}` !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: targetSubpage }, '', target);
     }
     setRouteSlug(normalized);
     setRouteSubpage(targetSubpage);
+    setRouteLocationId(targetLocationId);
     setRouteServiceItemId(null);
     setRouteItemId(null);
     setPendingOrderInitialTab(resolvedInitialTab);
@@ -5435,12 +5517,13 @@ export default function StorefrontApp() {
   const goStoreBookingPage = ({ preserveSelectedService = false } = {}) => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     if (!normalized || typeof window === 'undefined') return;
-    const target = storePath(normalized, STORE_BOOKING_SUBPAGE);
+    const target = storePath(normalized, STORE_BOOKING_SUBPAGE, '', selectedLocationId);
     if (`${window.location.pathname}${window.location.search}` !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_BOOKING_SUBPAGE }, '', target);
     }
     setRouteSlug(normalized);
     setRouteSubpage(STORE_BOOKING_SUBPAGE);
+    setRouteLocationId(selectedLocationId);
     setRouteServiceItemId(null);
     setRouteItemId(null);
     if (!preserveSelectedService) {
@@ -5453,12 +5536,13 @@ export default function StorefrontApp() {
     if (!normalized || typeof window === 'undefined') return;
     const persistedTrackedOrders = readTrackedOrdersForStore(normalized).filter((entry) => !TERMINAL_TRACKING_STATUSES.has(String(entry.status || '').trim().toLowerCase()));
     const resolvedInitialTab = initialTab || 'checkout';
-    const target = storePath(normalized, STORE_ORDER_SUBPAGE);
+    const target = storePath(normalized, STORE_ORDER_SUBPAGE, '', selectedLocationId);
     if (`${window.location.pathname}${window.location.search}` !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_ORDER_SUBPAGE }, '', target);
     }
     setRouteSlug(normalized);
     setRouteSubpage(STORE_ORDER_SUBPAGE);
+    setRouteLocationId(selectedLocationId);
     setRouteServiceItemId(null);
     setRouteItemId(null);
     setPendingOrderInitialTab(resolvedInitialTab);
@@ -5479,13 +5563,14 @@ export default function StorefrontApp() {
     if (!normalized || typeof window === 'undefined') return;
     const normalizedPin = String(pin || selectedTrackingPin || trackingPinInput || readLastTrackingPinForStore(normalized) || '').trim().toUpperCase();
     const target = normalizedPin
-      ? `${storePath(normalized, STORE_TRACK_SUBPAGE)}?pin=${encodeURIComponent(normalizedPin)}`
-      : storePath(normalized, STORE_TRACK_SUBPAGE);
+      ? storePath(normalized, STORE_TRACK_SUBPAGE, `?pin=${encodeURIComponent(normalizedPin)}`, selectedLocationId)
+      : storePath(normalized, STORE_TRACK_SUBPAGE, '', selectedLocationId);
     if (`${window.location.pathname}${window.location.search}` !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_TRACK_SUBPAGE }, '', target);
     }
     setRouteSlug(normalized);
     setRouteSubpage(STORE_TRACK_SUBPAGE);
+    setRouteLocationId(selectedLocationId);
     setRouteServiceItemId(null);
     setRouteItemId(null);
     setPendingOrderInitialTab('track');
@@ -5502,19 +5587,20 @@ export default function StorefrontApp() {
   const goStoreAccountPage = useCallback(() => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     if (!normalized || typeof window === 'undefined') return;
-    const target = storePath(normalized, STORE_ACCOUNT_SUBPAGE);
+    const target = storePath(normalized, STORE_ACCOUNT_SUBPAGE, '', selectedLocationId);
     if (`${window.location.pathname}${window.location.search}` !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_ACCOUNT_SUBPAGE }, '', target);
     }
     setRouteSlug(normalized);
     setRouteSubpage(STORE_ACCOUNT_SUBPAGE);
+    setRouteLocationId(selectedLocationId);
     setRouteServiceItemId(null);
     setRouteItemId(null);
     setIsCheckoutOpen(false);
     setIsGuestTrackingDrawerOpen(false);
     setIsAccountDrawerOpen(false);
     handleLoadAccountPanel();
-  }, [handleLoadAccountPanel, routeSlug, selectedStore?.slug]);
+  }, [handleLoadAccountPanel, routeSlug, selectedLocationId, selectedStore?.slug]);
   const goDiscoveryAccountPage = useCallback(() => {
     if (typeof window === 'undefined') return;
     if (`${window.location.pathname}${window.location.search}` !== DISCOVERY_ACCOUNT_PATH) {
@@ -5522,6 +5608,7 @@ export default function StorefrontApp() {
     }
     setRouteSlug(null);
     setRouteSubpage(STORE_ACCOUNT_SUBPAGE);
+    setRouteLocationId(null);
     setRouteServiceItemId(null);
     setRouteItemId(null);
     setSelectedStore(null);
@@ -5535,12 +5622,13 @@ export default function StorefrontApp() {
   const goStoreCatalogPage = () => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     if (!normalized || typeof window === 'undefined') return;
-    const target = storePath(normalized);
+    const target = storePath(normalized, null, '', selectedLocationId);
     if (`${window.location.pathname}${window.location.search}` !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: null }, '', target);
     }
     setRouteSlug(normalized);
     setRouteSubpage(null);
+    setRouteLocationId(selectedLocationId);
     setRouteServiceItemId(null);
     setRouteItemId(null);
     setFnbOrderStep(2);
@@ -5548,9 +5636,10 @@ export default function StorefrontApp() {
   };
 
   const goDiscovery = () => {
-    if (window.location.pathname !== TENANT_STORE_BASE_PATH) window.history.pushState({}, '', TENANT_STORE_BASE_PATH);
+    if (`${window.location.pathname}${window.location.search}` !== DISCOVERY_BASE_PATH) window.history.pushState({}, '', DISCOVERY_BASE_PATH);
     setRouteSlug(null);
     setRouteSubpage(null);
+    setRouteLocationId(null);
     setRouteServiceItemId(null);
     setRouteItemId(null);
     setSelectedStore(null);
@@ -5596,8 +5685,24 @@ export default function StorefrontApp() {
   const handleBranchMenuSelection = useCallback((nextValue) => {
     const nextLocationId = nextValue ? Number(nextValue) : null;
     setSelectedLocationId(nextLocationId);
+    setRouteLocationId(nextLocationId);
+    const normalized = toSlug(selectedStore?.slug || routeSlug);
+    if (normalized && typeof window !== 'undefined') {
+      const currentSubpage = readStoreSubpage();
+      const params = new URLSearchParams(window.location.search || '');
+      if (nextLocationId == null) {
+        params.delete('location_id');
+      } else {
+        params.set('location_id', String(nextLocationId));
+      }
+      const query = params.toString() ? `?${params.toString()}` : '';
+      const target = storePath(normalized, currentSubpage, query);
+      if (`${window.location.pathname}${window.location.search}` !== target) {
+        window.history.replaceState({ storeSlug: normalized, storeSubpage: currentSubpage }, '', target);
+      }
+    }
     setHasSelectedBranchFromMenu(true);
-  }, []);
+  }, [routeSlug, selectedStore?.slug]);
 
   const cartTotal = useMemo(() => cart.reduce((sum, line) => sum + (Number(line.quantity) * Number(line.price)), 0), [cart]);
   const cartCount = useMemo(() => cart.reduce((sum, line) => sum + Number(line.quantity || 0), 0), [cart]);
@@ -6439,10 +6544,10 @@ export default function StorefrontApp() {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     const resolvedItemId = String(itemId || '').trim();
     if (!normalized || !resolvedItemId || typeof window === 'undefined') return;
-    const target = storePath(normalized, STORE_ITEM_SUBPAGE, `?item=${encodeURIComponent(resolvedItemId)}`);
+    const target = storePath(normalized, STORE_ITEM_SUBPAGE, `?item=${encodeURIComponent(resolvedItemId)}`, selectedLocationId);
     window.history.replaceState({ storeSlug: normalized, storeSubpage: STORE_ITEM_SUBPAGE, itemId: resolvedItemId }, '', target);
     setRouteReviewToken('');
-  }, [routeItemId, routeSlug, selectedStore?.slug]);
+  }, [routeItemId, routeSlug, selectedLocationId, selectedStore?.slug]);
   const loadFnbItemReviews = useCallback(async (itemId) => {
     const tenantId = String(selectedStore?.tenant_id || '').trim();
     const normalizedStoreSlug = toSlug(selectedStore?.slug || routeSlug);
@@ -8302,6 +8407,7 @@ export default function StorefrontApp() {
         window.history.pushState({ storeSlug: targetSlug, storeSubpage: null }, '', storePath(targetSlug));
         setRouteSlug(targetSlug);
         setRouteSubpage(null);
+        setRouteLocationId(null);
         setRouteItemId(null);
         setRouteServiceItemId(null);
         setIsCheckoutOpen(false);
@@ -11884,7 +11990,7 @@ export default function StorefrontApp() {
                 <StoresMap
                   stores={storeLocations.length > 0 ? storeLocations.map(l => ({ ...l, tenant_name: selectedStore?.tenant_name })) : [selectedStore]}
                   selectedKey={selectedLocationId != null ? `loc-${selectedLocationId}` : null}
-                  onSelectStore={(l) => l?.location_id && setSelectedLocationId(l.location_id)}
+                  onSelectStore={(l) => l?.location_id && handleBranchMenuSelection(l.location_id)}
                 />
               </section>
             )}
@@ -14551,7 +14657,7 @@ return (
                     Fulfillment Location
                     <select
                       value={selectedLocationId ?? ''}
-                      onChange={(event) => setSelectedLocationId(event.target.value ? Number(event.target.value) : null)}
+                      onChange={(event) => handleBranchMenuSelection(event.target.value || null)}
                       style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
                     >
                       {storeLocations.map((location) => (
@@ -17186,7 +17292,7 @@ return (
                           Fulfillment Location
                           <select
                             value={selectedLocationId ?? ''}
-                            onChange={(e) => setSelectedLocationId(e.target.value ? Number(e.target.value) : null)}
+                            onChange={(e) => handleBranchMenuSelection(e.target.value || null)}
                             style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
                           >
                             {storeLocations.map((location) => (
@@ -17535,7 +17641,7 @@ return (
                     <ArrowLeft size={18} />
                   </button>
                   <a
-                    href={storePath(toSlug(selectedStore?.slug || routeSlug))}
+                    href={storePath(toSlug(selectedStore?.slug || routeSlug), null, '', selectedLocationId)}
                     onClick={(e) => { e.preventDefault(); goStoreCatalogPage(); }}
                     style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, textDecoration: 'none', cursor: 'pointer' }}
                   >

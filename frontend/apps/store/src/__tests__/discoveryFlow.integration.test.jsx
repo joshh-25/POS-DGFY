@@ -1631,4 +1631,50 @@ describe('storefront discovery integration flow', () => {
       expect(screen.getByText('No items are available to search yet')).toBeTruthy();
     });
   });
+
+  it('loads root tenant URLs with the selected location_id catalog scope', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery/alpha')) {
+        return makeJsonResponse({
+          slug: 'alpha',
+          tenant_name: 'Alpha Foods',
+          workflow_mode: 'services',
+          location_id: 11,
+          location_name: 'Main',
+          address_line: 'Main Road',
+          storefront_open: true,
+          catalog_count: 1
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Main', address_line: 'Main Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true },
+            { location_id: 22, name: 'Branch', address_line: 'Branch Road', latitude: 10.73, longitude: 122.57, is_active: true, is_primary_storefront: false, is_open: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({ stores: [], pagination: { page: 1, limit: 100, total: 0, totalPages: 0 } });
+      }
+      return makeJsonResponse({});
+    });
+
+    window.history.pushState({}, '', '/alpha?location_id=22');
+    render(<App />);
+
+    await waitFor(() => {
+      const catalogCalls = fetchMock.mock.calls
+        .map(([requestUrl]) => String(requestUrl))
+        .filter((requestUrl) => requestUrl.includes('/api/v1/store/catalog?'));
+      expect(catalogCalls.some((requestUrl) => requestUrl.includes('location_id=22'))).toBe(true);
+    });
+    expect(window.location.pathname).toBe('/alpha');
+    expect(window.location.search).toBe('?location_id=22');
+  });
 });

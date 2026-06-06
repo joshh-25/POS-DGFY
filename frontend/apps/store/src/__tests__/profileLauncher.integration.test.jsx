@@ -207,7 +207,7 @@ describe('storefront profile launcher', () => {
     await user.click(profileButton);
 
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/tenant-store/alpha/account');
+      expect(window.location.pathname).toBe('/alpha/account');
       expect(screen.getByRole('heading', { name: /^My Account$/i })).toBeTruthy();
     });
   }, 10000);
