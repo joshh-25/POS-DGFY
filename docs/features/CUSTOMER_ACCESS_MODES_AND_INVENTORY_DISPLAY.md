@@ -242,6 +242,18 @@ Validated on 2026-06-06 for Storefront search-active marker previews:
 - Popup retention is marker-set aware: click/focus previews remain stable while the marker set is unchanged, but stale previews are removed when pins are rebuilt so cards do not remain detached from the active pin.
 - Targeted Storefront suites: `npm --prefix frontend exec vitest run apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/storefrontMarkerPreview.test.js apps/store/src/__tests__/discoveryPresentation.test.js --pool=threads` passed 3 files and 37 tests.
 
+Validated on 2026-06-06 for Storefront map/search viewport and result stability:
+- Initial Storefront discovery centers on the browser location only when location permission is already granted, or when a prior explicit `Near me` success is available in a browser without Permissions API support. The frontend stores only the permission-success hint, not user coordinates.
+- Normal submitted text searches stay storefront-first and do not request geolocation, inherit a tiny `0.1 km` location radius, or clip valid tenant/item matches by the user's last location. The discovery request continues to use `result_mode=union`, `stock_filter=include_out_of_stock`, `pin_scope=tenant_primary`, and `include_match_meta=true`.
+- Item searches render tenant storefronts that carry the searched item as the primary result cards. Item match details remain supporting context only.
+- The map remains mounted during search refreshes when existing pins are available, then fits once per changed submitted query/filter result set. Repeating the same submitted search does not repeatedly refit or produce zoom flicker.
+- Matching pins use a shared popup offset for standalone and clustered-marker previews so marker-card spacing follows the A/C Innovative Solutions spacing target while preserving exact stored coordinates.
+- Targeted Storefront suites: `npm --prefix frontend exec vitest run apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/discoveryMapDom.test.js apps/store/src/__tests__/storefrontMarkerPreview.test.js apps/store/src/__tests__/discoveryPresentation.test.js --pool=threads` passed 4 files and 42 tests.
+- Backend discovery contract suites: `npm --prefix backend test -- --runTestsByPath tests/storefrontDiscoveryRepository.test.js tests/storefrontDiscoveryMapPins.usecase.test.js` passed 2 files and 19 tests, including union store/item matching, out-of-stock inclusion, nearest matching branches, and degraded snapshot behavior.
+- Storefront build and architecture gates passed with `npm --prefix frontend run build:store` and `npm run check:architecture`. Rendered local route health passed, but automated browser text-entry and screenshot capture were blocked by the current Browser tooling in this session, so live production visual smoke remains required after deployment.
+
+Operational readiness rating after this Storefront map/search remediation: **8.6/10** locally validated. Remaining risk is production-data/browser confirmation for item/store searches, exact-coordinate cluster card behavior, and desktop/mobile screenshot evidence after deploy.
+
 Validated on 2026-05-24 for inventory item/product `Save and exit` hardening and item image copy:
 - Product and item create/edit footers now wrap on narrow viewports, disable footer actions during pending saves, and use a ref-backed save guard to prevent same-tick duplicate submissions.
 - New and draft item/product `Save and exit` paths save draft state and close without finalizing; existing active rows update and close; explicit finalize/create/update buttons remain the only finalization paths.

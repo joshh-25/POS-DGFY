@@ -1,16 +1,16 @@
 # Release Go/No-Go Checklist (Current)
 
 Status: reference  
-Last updated: 2026-06-05
+Last updated: 2026-06-06
 
 ## Current Release State
 
-1. Latest production deployment evidence for the tenant session reload and MapLibre picker hardening is code target SHA `4f6eecd1778ae139e634d23821369f40f22dd5d0`, deployed on June 5, 2026 with health checks, frontend asset parity, and tenant-store asset integrity passing. A Storefront discovery pin-placement/cache hardening fix is in progress after that deployment and must not be treated as live until a new deployed SHA and production smoke are recorded.
+1. Latest production deployment evidence for the tenant session reload and MapLibre picker hardening is code target SHA `4f6eecd1778ae139e634d23821369f40f22dd5d0`, deployed on June 5, 2026 with health checks, frontend asset parity, and tenant-store asset integrity passing. A June 6 Storefront map/search remediation is locally validated after that deployment and must not be treated as live until a new deployed SHA and production smoke are recorded.
 2. June 2, 2026 audit state: dependency vulnerabilities are resolved and the dependency audit commands below return zero current npm advisories for locked root/backend/frontend trees.
 3. The local release gate now includes dependency audits and a focused frontend contract gate before docs, architecture, compliance, backend, frontend, and budget gates.
 4. Current open audit package: `System_Audit/README.md`.
 5. Current release blockers from the June 2 audit remain open until remediated. Local release gate, frontend contract suite failures, missing current green backend full-test evidence, and frontend budget artifact self-containment are remediated as of June 4, 2026 for target SHA `be59a6b55f4d6367acd124729b43fa4ee579d09b`.
-6. Production deployment status must not be advanced from this checklist alone; refresh no-staging parity, local release gate, production contract smoke, and human UAT evidence before the next production promotion.
+6. Production deployment status must not be advanced from this checklist alone; refresh no-staging parity, local release gate or approved targeted release evidence, production contract smoke, and human UAT evidence before the next production promotion.
 7. June 5, 2026 tenant browser-session hardening is live at code SHA `4f6eecd1778ae139e634d23821369f40f22dd5d0`: `/api/v1/auth/refresh-token` can recover strict tenant context from the signed HttpOnly refresh cookie's tenant binding when the companion tenant-context cookie/header is missing, and login/refresh responses include `data.company.token` so the frontend can rehydrate both access and tenant context after hard reload.
 
 Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for readiness status and blockers.
@@ -34,7 +34,7 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 15. `npm run audit:fifo-drift`
 16. `npm run audit:tenant-index-headroom -- --redundant-groups-threshold=0`
 
-## Latest Technical Evidence (2026-06-05)
+## Latest Technical Evidence (2026-06-06)
 
 1. `npm run audit:dependencies:prod` -> PASS with zero current npm advisories.
 2. `npm run audit:dependencies` -> PASS with zero current npm advisories.
@@ -69,6 +69,12 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 31. `npm --prefix frontend test -- --run apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/discoveryPresentation.test.js apps/store/src/__tests__/discoveryMapDom.test.js` -> PASS on June 5, 2026 with 33 tests after Storefront discovery map pins were hardened to keep indexed discovery coordinates authoritative when `/store/locations` enrichment is stale or cache-reused.
 32. `npm --prefix frontend run build:store` -> PASS on June 5, 2026 after Storefront discovery pin-placement hardening.
 33. `npm run check:frontend-budgets` -> PASS on June 5, 2026 after the gate rebuilt all frontend apps and preserved the existing lazy MapLibre chunk warning-only posture.
+34. `npm --prefix frontend exec vitest run apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/discoveryMapDom.test.js apps/store/src/__tests__/storefrontMarkerPreview.test.js apps/store/src/__tests__/discoveryPresentation.test.js --pool=threads` -> PASS on June 6, 2026 with 4 files / 42 tests after Storefront map/search viewport stabilization, geolocation scoping hardening, item-search storefront result coverage, popup offset consistency, and repeated-search refit regression coverage. npm printed the existing unknown `--pool` warning but executed the suites.
+35. `npm --prefix backend test -- --runTestsByPath tests/storefrontDiscoveryRepository.test.js tests/storefrontDiscoveryMapPins.usecase.test.js` -> PASS on June 6, 2026 with 2 suites / 19 tests, covering union store/item discovery, out-of-stock inclusion, aircon/A-C alias behavior, nearest matching branch metadata, and degraded snapshot behavior.
+36. `npm --prefix frontend run build:store` -> PASS on June 6, 2026 after Storefront map/search remediation, with the existing Browserslist freshness warning and plugin timing warning only.
+37. `npm run check:architecture` -> PASS on June 6, 2026 after Storefront map/search remediation.
+38. `git diff --check` -> PASS on June 6, 2026 after Storefront map/search remediation.
+39. Local rendered Storefront route health passed on June 6, 2026 at `/tenant-store`: title, desktop search controls, map region, and overlay-free render were present with no console warnings/errors. Automated browser text entry and screenshot capture were blocked by Browser tooling in this session, so production visual smoke remains required.
 
 ## Remaining Non-Technical Blockers (Go/No-Go)
 
