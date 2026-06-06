@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: frontend
-last_reviewed: 2026-05-29
+last_reviewed: 2026-06-06
 applies_to: storefront_all_modes
 topic: storefront_current_standing
 ---
@@ -49,6 +49,7 @@ This is a frontend capability/status reference, not a new architecture decision.
 - `Register Your Business` routes to SKUpervisor company registration with the DGFY business-registration handoff (`source=dgfy`, `auth=login`, optional `handoff_token`, `#business-registration`).
 - Checkout and Services booking confirmations render backend `account_action` signals so signed-in DGFY customers, signup-eligible guests, guests whose email already has an account, and download-only guests receive distinct guidance.
 - Discovery map initialization is defensive. If MapLibre/WebGL cannot initialize in the browser, the Storefront discovery page remains usable, renders the `Log in / Sign up` account action, and shows a list fallback instead of blanking the page.
+- Storefront map/search stabilization is locally validated as of 2026-06-06. Submitted text searches stay storefront-first, item matches render tenant storefront result cards, matching pins auto-open marker previews, repeated identical searches do not refit/flicker, and duplicate-coordinate results stay on exact IMS coordinates through a shared selectable marker card.
 - The merged storefront pilot keeps mode-specific view-model logic in the storefront app while preserving existing backend/source-of-truth contracts.
 
 ## Mode Standing
@@ -82,26 +83,22 @@ This is a frontend capability/status reference, not a new architecture decision.
 - Simple storefront contract coverage is active.
 
 ## Storefront Regression Standing (Latest Run)
-Run date: `2026-05-29`
+Run date: `2026-06-06`
 
 Targeted Storefront discovery/account commands:
-- `npm --prefix backend test -- --runTestsByPath tests/dgfyCustomerUseCases.test.js tests/dgfyCustomerHandlers.transport.test.js tests/storefrontBusinessHours.test.js tests/storeRepository.locationStockFallback.test.js`
-- `npm --prefix frontend test -- --run apps/store/src/__tests__/fnbOrderTracking.contract.test.js apps/store/src/__tests__/fnbStorefront.contract.test.js apps/store/src/__tests__/profileLauncher.integration.test.jsx apps/store/src/__tests__/discoveryHeaderAccount.integration.test.jsx apps/store/src/__tests__/checkoutRules.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/storefrontFollow.integration.test.jsx apps/store/src/__tests__/storefrontErrorMessages.test.js apps/store/src/__tests__/normalizeStorefrontPageModel.test.js --testTimeout 20000`
+- `npm --prefix frontend exec vitest run apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/discoveryMapDom.test.js apps/store/src/__tests__/storefrontMarkerPreview.test.js apps/store/src/__tests__/discoveryPresentation.test.js --pool=threads`
+- `npm --prefix backend test -- --runTestsByPath tests/storefrontDiscoveryRepository.test.js tests/storefrontDiscoveryMapPins.usecase.test.js`
 - `npm --prefix frontend run build:store`
 - `npm run check:architecture`
-- `npm run lint:docs`
-- `npm run check:compliance`
 - `git diff --check`
 
 Targeted matrix result:
-- Backend DGFY customer, review invite, business-hours, and location-stock fallback tests: `PASS` (`29/29` targeted tests)
-- Storefront F&B tracking/product detail, account/profile launcher, discovery, checkout, follow, error-message, and normalization tests: `PASS` (`58/58` targeted tests)
+- Storefront discovery flow, map DOM, marker preview, and presentation suites: `PASS` (`42/42` targeted tests). npm printed the existing unknown `--pool` warning but executed the suites.
+- Backend Storefront discovery repository and map-pin use-case suites: `PASS` (`19/19` targeted tests), including union store/item matching, out-of-stock inclusion, nearest matching branches, and degraded snapshot behavior.
 - Storefront production build: `PASS`
 - Architecture guardrails and controller-boundary checks: `PASS`
-- Governed docs lint: `PASS`
-- Compliance drift/declaration checks: `PASS`
 - Diff whitespace check: `PASS`
-- Local rendered QA: `not run` in this reconciliation session because no in-app browser tool was exposed and Playwright was not installed in the checkout. Runtime behavior was covered by targeted jsdom Storefront integration tests plus the production store build.
+- Local rendered route health: `PASS` for `/tenant-store` page identity, desktop search controls, map region, and overlay-free render. Automated browser text entry and screenshot capture were blocked by Browser tooling, so production visual smoke is still required before claiming the June 6 Storefront map/search remediation as live.
 
 ## Notes
 - This file intentionally tracks the frontend standing and test evidence snapshot only.
