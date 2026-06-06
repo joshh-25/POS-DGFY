@@ -7,9 +7,10 @@ import maplibregl from 'maplibre-gl';
 import { App } from '../main.jsx';
 
 vi.mock('maplibre-gl', () => {
-  function PopupApi() {
+  function PopupApi(options = {}) {
     const handlers = {};
     const api = {
+      options,
       node: null,
       html: '',
       on: vi.fn((eventName, handler) => {
@@ -132,6 +133,14 @@ const getLastDiscoveryParams = (fetchMock) => {
   const parsed = new URL(last, 'http://localhost');
   return parsed.searchParams;
 };
+
+const getMapApis = () => maplibregl.Map.mock.results
+  .map((result) => result?.value)
+  .filter(Boolean);
+
+const getMapViewportCallCount = () => getMapApis().reduce((total, mapApi) => (
+  total + (mapApi.flyTo?.mock?.calls?.length || 0) + (mapApi.fitBounds?.mock?.calls?.length || 0)
+), 0);
 
 describe('storefront discovery integration flow', () => {
   let fetchMock;
@@ -502,16 +511,12 @@ describe('storefront discovery integration flow', () => {
     expect(fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl).includes('/api/v1/storefront/geo-search'))).toBe(false);
   });
 
-  it('ignores stale geolocation callbacks from earlier search actions', async () => {
+  it('does not request geolocation or location-scope normal submitted searches', async () => {
     const user = userEvent.setup();
-    const pendingGeolocationRequests = [];
+    const getCurrentPosition = vi.fn();
     Object.defineProperty(window.navigator, 'geolocation', {
       configurable: true,
-      value: {
-        getCurrentPosition: vi.fn((success, error) => {
-          pendingGeolocationRequests.push({ success, error });
-        })
-      }
+      value: { getCurrentPosition }
     });
 
     render(<App />);
@@ -522,31 +527,71 @@ describe('storefront discovery integration flow', () => {
     const searchInput = screen.getByPlaceholderText('Search products, services or stores nearby...');
     await user.type(searchInput, 'milk');
     await user.click(screen.getByRole('button', { name: /^Search$/i }));
-    await user.clear(searchInput);
-    await user.type(searchInput, 'rice');
-    await user.click(screen.getByRole('button', { name: /^Search$/i }));
 
-    expect(pendingGeolocationRequests).toHaveLength(2);
-    pendingGeolocationRequests[0].success({ coords: { latitude: 1, longitude: 2 } });
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
-    let searchValues = getDiscoveryQueryUrls(fetchMock)
-      .map((requestUrl) => new URL(requestUrl, 'http://localhost').searchParams.get('search'))
-      .filter(Boolean);
-    expect(searchValues).not.toContain('milk');
-
-    pendingGeolocationRequests[1].success({ coords: { latitude: 10.7, longitude: 122.5 } });
     await waitFor(() => {
       const params = getLastDiscoveryParams(fetchMock);
-      expect(params.get('search')).toBe('rice');
-      expect(params.get('latitude')).toBe('10.7');
-      expect(params.get('longitude')).toBe('122.5');
+      expect(params.get('search')).toBe('milk');
+      expect(params.get('latitude')).toBeNull();
+      expect(params.get('longitude')).toBeNull();
+      expect(params.get('pin_scope')).toBe('tenant_primary');
     });
+    expect(getCurrentPosition).not.toHaveBeenCalled();
 
-    searchValues = getDiscoveryQueryUrls(fetchMock)
+    const searchValues = getDiscoveryQueryUrls(fetchMock)
       .map((requestUrl) => new URL(requestUrl, 'http://localhost').searchParams.get('search'))
       .filter(Boolean);
-    expect(searchValues).toContain('rice');
-    expect(searchValues).not.toContain('milk');
+    expect(searchValues).toContain('milk');
+  });
+
+  it('centers initial discovery on existing granted location permission without prompting denied users', async () => {
+    const getCurrentPosition = vi.fn((success) => {
+      success({ coords: { latitude: 10.7, longitude: 122.5 } });
+    });
+    Object.defineProperty(window.navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition }
+    });
+    Object.defineProperty(window.navigator, 'permissions', {
+      configurable: true,
+      value: {
+        query: vi.fn(async () => ({ state: 'granted' }))
+      }
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      const params = getLastDiscoveryParams(fetchMock);
+      expect(params.get('latitude')).toBe('10.7');
+      expect(params.get('longitude')).toBe('122.5');
+      expect(params.get('pin_scope')).toBe('tenant_primary');
+    });
+    expect(window.navigator.permissions.query).toHaveBeenCalledWith({ name: 'geolocation' });
+    expect(getCurrentPosition).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses prior explicit location success as a fallback when permissions API is unavailable', async () => {
+    window.localStorage.setItem('dgfy_storefront_discovery_location_permission_v1', 'granted');
+    const getCurrentPosition = vi.fn((success) => {
+      success({ coords: { latitude: 10.75, longitude: 122.55 } });
+    });
+    Object.defineProperty(window.navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition }
+    });
+    Object.defineProperty(window.navigator, 'permissions', {
+      configurable: true,
+      value: undefined
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      const params = getLastDiscoveryParams(fetchMock);
+      expect(params.get('latitude')).toBe('10.75');
+      expect(params.get('longitude')).toBe('122.55');
+    });
+    expect(getCurrentPosition).toHaveBeenCalledTimes(1);
   });
 
   it('sends the current discovery query contract by default', async () => {
@@ -570,6 +615,191 @@ describe('storefront discovery integration flow', () => {
     await waitFor(() => {
       expect(screen.getAllByText(/No stores matched "milk"/i).length).toBeGreaterThan(0);
     });
+  });
+
+  it('keeps item-search storefront results after a previous Near Me request', async () => {
+    const user = userEvent.setup();
+    const getCurrentPosition = vi.fn((success) => {
+      success({ coords: { latitude: 10.7, longitude: 122.5 } });
+    });
+    Object.defineProperty(window.navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition }
+    });
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        const parsed = new URL(normalized, 'http://localhost');
+        const search = parsed.searchParams.get('search');
+        return makeJsonResponse({
+          stores: search === 'aircon'
+            ? [
+                {
+                  tenant_id: 'tenant-ac',
+                  tenant_name: 'A/C Innovative Solutions',
+                  slug: 'ac-innovative-solutions',
+                  storefront_open: true,
+                  address_line: 'Iloilo City',
+                  latitude: 10.7001938,
+                  longitude: 122.5623094,
+                  catalog_count: 4,
+                  nearest_distance_km: 4.1,
+                  distance_km: 4.1,
+                  match_reasons: ['item'],
+                  matching_item_count: 1,
+                  matching_item_sample: ['Aircon cleaning'],
+                  has_in_stock_match: true,
+                  matching_location_ids: [11],
+                  nearest_matching_location_id: 11
+                }
+              ]
+            : [],
+          pagination: { page: 1, limit: 100, total: search === 'aircon' ? 1 : 0, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: parsed.searchParams.get('pin_scope') || 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Main Branch', address_line: 'Iloilo City', latitude: 10.7001938, longitude: 122.5623094, is_active: true, is_primary_storefront: true, is_open: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
+
+    await user.click(screen.getByTitle('Use my current location'));
+    await waitFor(() => {
+      const params = getLastDiscoveryParams(fetchMock);
+      expect(params.get('pin_scope')).toBe('nearest_matching_branch');
+      expect(params.get('latitude')).toBe('10.7');
+    });
+
+    await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'aircon');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+
+    await waitFor(() => expect(screen.getAllByText('A/C Innovative Solutions').length).toBeGreaterThan(0));
+    await waitFor(() => {
+      expect(document.querySelectorAll('.discovery-result-pin-visual.is-glowing').length).toBeGreaterThan(0);
+    });
+    const params = getLastDiscoveryParams(fetchMock);
+    expect(params.get('search')).toBe('aircon');
+    expect(params.get('pin_scope')).toBe('tenant_primary');
+    expect(params.get('latitude')).toBeNull();
+    expect(params.get('longitude')).toBeNull();
+  });
+
+  it('moves to a new submitted result set once without refitting repeated identical searches', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        const parsed = new URL(normalized, 'http://localhost');
+        const search = parsed.searchParams.get('search');
+        const stores = search === 'space'
+          ? [
+              {
+                tenant_id: 'tenant-space',
+                tenant_name: 'Space Hardware',
+                slug: 'space-hardware',
+                storefront_open: true,
+                address_line: 'Iloilo City',
+                latitude: 10.73,
+                longitude: 122.58,
+                catalog_count: 3,
+                match_reasons: ['store']
+              }
+            ]
+          : search === 'aircon'
+            ? [
+                {
+                  tenant_id: 'tenant-ac',
+                  tenant_name: 'A/C Innovative Solutions',
+                  slug: 'ac-innovative-solutions',
+                  storefront_open: true,
+                  address_line: 'Iloilo City',
+                  latitude: 10.7001938,
+                  longitude: 122.5623094,
+                  catalog_count: 4,
+                  match_reasons: ['item'],
+                  matching_item_count: 1,
+                  has_in_stock_match: true
+                }
+              ]
+            : [];
+        return makeJsonResponse({
+          stores,
+          pagination: { page: 1, limit: 100, total: stores.length, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        const parsed = new URL(normalized, 'http://localhost');
+        const slug = parsed.searchParams.get('slug');
+        const isSpace = slug === 'space-hardware';
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            {
+              location_id: 11,
+              name: 'Main Branch',
+              address_line: 'Iloilo City',
+              latitude: isSpace ? 10.73 : 10.7001938,
+              longitude: isSpace ? 122.58 : 122.5623094,
+              is_active: true,
+              is_primary_storefront: true,
+              is_open: true
+            }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
+
+    const searchInput = screen.getByPlaceholderText('Search products, services or stores nearby...');
+    await user.type(searchInput, 'aircon');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+    await waitFor(() => expect(screen.getAllByText('A/C Innovative Solutions').length).toBeGreaterThan(0));
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl).includes('/api/v1/store/locations'))).toBe(true);
+    });
+    await waitFor(() => {
+      expect(getMapViewportCallCount()).toBeGreaterThan(0);
+    });
+    const firstSearchViewportCalls = getMapViewportCallCount();
+
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+    await waitFor(() => expect(getLastDiscoveryParams(fetchMock).get('search')).toBe('aircon'));
+    expect(getMapViewportCallCount()).toBe(firstSearchViewportCalls);
+
+    await user.clear(searchInput);
+    await user.type(searchInput, 'space');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+    await waitFor(() => expect(screen.getAllByText('Space Hardware').length).toBeGreaterThan(0));
+    expect(getMapViewportCallCount()).toBeGreaterThan(firstSearchViewportCalls);
   });
 
   it('renders match badges and opens store with preferred matching location id', async () => {
@@ -645,6 +875,11 @@ describe('storefront discovery integration flow', () => {
       expect(document.querySelectorAll('.discovery-result-pin-visual.is-glowing').length).toBeGreaterThan(0);
       expect(screen.getByRole('button', { name: 'Open storefront' })).toBeTruthy();
     });
+    expect(maplibregl.Popup.mock.calls.some(([options]) => (
+      options?.anchor === 'bottom'
+      && options?.offset?.bottom?.[1] === -18
+      && options?.offset?.top?.[1] === 14
+    ))).toBe(true);
 
     await user.click(screen.getAllByRole('button', { name: 'View Store' })[0]);
     await waitFor(() => {

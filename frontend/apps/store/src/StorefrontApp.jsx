@@ -1589,6 +1589,8 @@ const makeUserLocationElement = () => {
 };
 
 const EMPTY_HIGHLIGHTED_MARKER_KEYS = [];
+const STORE_MARKER_POPUP_OFFSET = { bottom: [0, -18], top: [0, 14], left: [14, 0], right: [-14, 0] };
+const DISCOVERY_LOCATION_PERMISSION_STORAGE_KEY = 'dgfy_storefront_discovery_location_permission_v1';
 
 function StoresMap({
   stores,
@@ -1598,7 +1600,9 @@ function StoresMap({
   userLocation = null,
   height = 360,
   autoOpenPopups = false,
-  openPopupOnHover = false
+  openPopupOnHover = false,
+  viewportPolicy = 'auto',
+  viewportSignal = ''
 }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
@@ -1609,6 +1613,9 @@ function StoresMap({
   const autoOpenFrameRef = useRef(null);
   const popupGenerationRef = useRef(0);
   const markerSignatureRef = useRef('');
+  const viewportHasFitRef = useRef(false);
+  const lastViewportLocationSignatureRef = useRef('');
+  const lastViewportSignalRef = useRef('');
   const [mapUnavailable, setMapUnavailable] = useState(false);
 
   useEffect(() => {
@@ -1694,6 +1701,14 @@ function StoresMap({
         .join('|');
       const markerSetChanged = markerSignatureRef.current !== nextMarkerSignature;
       markerSignatureRef.current = nextMarkerSignature;
+      const normalizedViewportSignal = String(viewportSignal || '').trim();
+      const viewportSignalChanged = lastViewportSignalRef.current !== normalizedViewportSignal;
+      lastViewportSignalRef.current = normalizedViewportSignal;
+      const userLocationSignature = userLocation?.latitude != null && userLocation?.longitude != null
+        ? `${Number(userLocation.latitude).toFixed(6)}:${Number(userLocation.longitude).toFixed(6)}`
+        : '';
+      const userLocationChanged = lastViewportLocationSignatureRef.current !== userLocationSignature;
+      lastViewportLocationSignatureRef.current = userLocationSignature;
 
       const retainedPopupKeys = new Set();
       const retainedPopups = [];
@@ -1770,7 +1785,7 @@ function StoresMap({
         const clusterElement = makeClusterElement(group.length, clusterHighlighted, `${group.length} storefronts at this location`);
         const clusterPopup = new maplibregl.Popup({
           anchor: 'bottom',
-          offset: { bottom: [0, -14], top: [0, 12], left: [12, 0], right: [-12, 0] },
+          offset: STORE_MARKER_POPUP_OFFSET,
           closeOnClick: false,
           focusAfterOpen: false
         });
@@ -1834,7 +1849,7 @@ function StoresMap({
       const el = makePinElement(singleStore.workflow_mode || singleStore.business_mode, highlighted, markerAriaLabel);
         const popup = new maplibregl.Popup({
           anchor: 'bottom',
-          offset: { bottom: [0, -14], top: [0, 12], left: [12, 0], right: [-12, 0] },
+          offset: STORE_MARKER_POPUP_OFFSET,
           closeOnClick: false,
           focusAfterOpen: false
         });
@@ -1967,14 +1982,22 @@ function StoresMap({
       }
     }
 
-      if (bounds.length === 1) map.flyTo({ center: bounds[0], zoom: autoOpenPopups ? 14 : 15 });
-      if (bounds.length > 1) {
+      const shouldFitViewport = viewportPolicy !== 'search-stable'
+        || !viewportHasFitRef.current
+        || viewportSignalChanged
+        || userLocationChanged;
+      if (shouldFitViewport && bounds.length === 1) {
+        map.flyTo({ center: bounds[0], zoom: autoOpenPopups ? 14 : 15 });
+        viewportHasFitRef.current = true;
+      }
+      if (shouldFitViewport && bounds.length > 1) {
         const lngs = bounds.map((b) => b[0]);
         const lats = bounds.map((b) => b[1]);
         map.fitBounds(
           [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
           { padding: autoOpenPopups ? 56 : 24, maxZoom: autoOpenPopups ? 13.5 : 14 }
         );
+        viewportHasFitRef.current = true;
       }
         if (autoOpenCallbacks.length > 0 && typeof window !== 'undefined') {
           autoOpenFrameRef.current = window.requestAnimationFrame(() => {
@@ -1995,7 +2018,7 @@ function StoresMap({
           autoOpenFrameRef.current = null;
         }
       };
-    }, [stores, selectedKey, highlightedKeys, userLocation, autoOpenPopups, openPopupOnHover]);
+    }, [stores, selectedKey, highlightedKeys, userLocation, autoOpenPopups, openPopupOnHover, viewportPolicy, viewportSignal]);
 
   if (mapUnavailable) {
     return (
@@ -4404,6 +4427,7 @@ export default function StorefrontApp() {
   const discoveryRequestSequenceRef = useRef(0);
   const discoveryAbortControllerRef = useRef(null);
   const discoveryIntentSequenceRef = useRef(0);
+  const initialDiscoveryGeolocationAttemptedRef = useRef(false);
   const storeLoadRequestSequenceRef = useRef(0);
   const locationCatalogRequestSequenceRef = useRef(0);
   const lastImmediateDiscoveryRequestRef = useRef({ search: '', at: 0 });
@@ -4708,6 +4732,32 @@ export default function StorefrontApp() {
     </div>
   );
 
+  const markDiscoveryLocationPermissionGranted = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(DISCOVERY_LOCATION_PERMISSION_STORAGE_KEY, 'granted');
+    } catch {
+      // Location permission remembering is opportunistic and must not block discovery.
+    }
+  }, []);
+
+  const clearDiscoveryLocationPermissionHint = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.removeItem(DISCOVERY_LOCATION_PERMISSION_STORAGE_KEY);
+    } catch {
+      // Location permission remembering is opportunistic and must not block discovery.
+    }
+  }, []);
+
+  const hasDiscoveryLocationPermissionHint = useCallback(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return window.localStorage.getItem(DISCOVERY_LOCATION_PERMISSION_STORAGE_KEY) === 'granted';
+    } catch {
+      return false;
+    }
+  }, []);
 
   const loadStores = useCallback(async (coords = undefined, options = {}) => {
     const useImmediateSearch = options?.useImmediateSearch === true;
@@ -4919,6 +4969,51 @@ export default function StorefrontApp() {
     }
     loadStores();
   }, [loadStores, debouncedDiscoverySearch]);
+
+  useEffect(() => {
+    if (initialDiscoveryGeolocationAttemptedRef.current) return undefined;
+    if (typeof navigator === 'undefined' || !navigator?.geolocation) return undefined;
+    initialDiscoveryGeolocationAttemptedRef.current = true;
+    let cancelled = false;
+    const requestInitialLocation = () => {
+      if (cancelled) return;
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          if (cancelled) return;
+          markDiscoveryLocationPermissionGranted();
+          loadStores({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          }, { pinScope: 'tenant_primary' });
+        },
+        (error) => {
+          if (Number(error?.code || 0) === 1) {
+            clearDiscoveryLocationPermissionHint();
+          }
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 8000
+        }
+      );
+    };
+
+    if (navigator?.permissions?.query) {
+      navigator.permissions.query({ name: 'geolocation' }).then((permissionStatus) => {
+        if (cancelled || permissionStatus?.state !== 'granted') return;
+        requestInitialLocation();
+      }).catch(() => {
+        if (hasDiscoveryLocationPermissionHint()) {
+          requestInitialLocation();
+        }
+      });
+    } else if (hasDiscoveryLocationPermissionHint()) {
+      requestInitialLocation();
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [clearDiscoveryLocationPermissionHint, hasDiscoveryLocationPermissionHint, loadStores, markDiscoveryLocationPermissionGranted]);
 
   useEffect(() => {
     discoveryCoordsRef.current = discoveryCoords;
@@ -5595,22 +5690,7 @@ export default function StorefrontApp() {
       });
   }, [stores, discoveryCoords, discoveryLocationMap, discoveryPinScope]);
   const discoveryResultStores = useMemo(() => {
-    const hasDiscoveryLocation = discoveryCoords?.latitude != null && discoveryCoords?.longitude != null;
-    const searcherRadiusKm = 0.1;
-    const radiusScoped = hasDiscoverySearch && hasDiscoveryLocation
-      ? storesWithNearestBranch.filter((store) => {
-          const distanceKm = Number(store?.nearest_distance_km);
-          if (!Number.isFinite(distanceKm) || distanceKm > searcherRadiusKm) return false;
-
-          // Also honor each business-configured delivery radius when present.
-          const deliveryRadiusKm = Number(store?.delivery_radius_km);
-          if (Number.isFinite(deliveryRadiusKm) && deliveryRadiusKm > 0) {
-            return distanceKm <= deliveryRadiusKm;
-          }
-          return true;
-        })
-      : storesWithNearestBranch;
-    const sorted = [...radiusScoped];
+    const sorted = [...storesWithNearestBranch];
     sorted.sort((a, b) => {
       if (discoverySortBy === 'open') {
         if (Boolean(a?.storefront_open) !== Boolean(b?.storefront_open)) return a?.storefront_open ? -1 : 1;
@@ -5633,7 +5713,7 @@ export default function StorefrontApp() {
       return String(a?.tenant_name || '').localeCompare(String(b?.tenant_name || ''));
     });
     return sorted;
-  }, [storesWithNearestBranch, hasDiscoverySearch, discoveryCoords, discoverySortBy]);
+  }, [storesWithNearestBranch, discoverySortBy]);
   const filteredDiscoveryStores = useMemo(() => {
     return discoveryResultStores.filter((store) => {
       const categories = normalizeStorefrontCategories(store?.storefront_categories).map((entry) => String(entry || '').trim().toLowerCase());
@@ -5991,16 +6071,24 @@ export default function StorefrontApp() {
     }
     return highlightedDiscoveryMarkerKey ? [highlightedDiscoveryMarkerKey] : [];
   }, [hasDiscoverySearch, searchedDiscoveryMapPins, highlightedDiscoveryMarkerKey]);
-  const discoveryResultsMapKey = useMemo(() => {
-    const searchKey = String(search || '').trim().toLowerCase();
-    const pinKey = (Array.isArray(searchedDiscoveryMapPins) ? searchedDiscoveryMapPins : [])
-      .map((pin) => String(
-        pin?.marker_key
-        || `${toSlug(pin?.slug || pin?.tenant_name)}:${pin?.location_id ?? `${pin?.latitude}:${pin?.longitude}`}`
-      ))
-      .join('|');
-    return `discovery-results-map:${searchKey}:${filteredDiscoveryStores.length}:${pinKey}`;
-  }, [searchedDiscoveryMapPins, filteredDiscoveryStores.length, search]);
+  const discoveryViewportSignal = useMemo(() => ([
+    hasDiscoverySearch ? `search:${debouncedDiscoverySearch.trim().toLowerCase()}` : 'browse',
+    `category:${discoveryCategoryFilter}`,
+    `distance:${discoveryDistanceFilter}`,
+    `open:${discoveryOpenFilter}`,
+    `rating:${discoveryRatingFilter}`,
+    `availability:${discoveryAvailabilityFilter}`,
+    `pin:${discoveryPinScope}`
+  ].join('|')), [
+    hasDiscoverySearch,
+    debouncedDiscoverySearch,
+    discoveryCategoryFilter,
+    discoveryDistanceFilter,
+    discoveryOpenFilter,
+    discoveryRatingFilter,
+    discoveryAvailabilityFilter,
+    discoveryPinScope
+  ]);
   useEffect(() => {
     return () => {
       if (discoveryNoMatchToastTimerRef.current) {
@@ -8462,14 +8550,18 @@ export default function StorefrontApp() {
     navigator.geolocation.getCurrentPosition(
       (position) => {
         if (intentSequence !== discoveryIntentSequenceRef.current) return;
+        markDiscoveryLocationPermissionGranted();
         setDebouncedDiscoverySearch(currentSearch);
         loadStores({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude
         }, { useImmediateSearch: true, pinScope: 'nearest_matching_branch', intentSequence });
       },
-      () => {
+      (error) => {
         if (intentSequence !== discoveryIntentSequenceRef.current) return;
+        if (Number(error?.code || 0) === 1) {
+          clearDiscoveryLocationPermissionHint();
+        }
         setDebouncedDiscoverySearch(currentSearch);
         loadStores(undefined, { useImmediateSearch: true, pinScope: 'nearest_matching_branch', intentSequence });
       },
@@ -8490,27 +8582,7 @@ export default function StorefrontApp() {
     setSelectedMapPin(null);
     lastImmediateDiscoveryRequestRef.current = { search: currentSearch, at: Date.now() };
     setDebouncedDiscoverySearch(currentSearch);
-    if (!navigator?.geolocation) {
-      loadStores(undefined, { useImmediateSearch: true, intentSequence });
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        if (intentSequence !== discoveryIntentSequenceRef.current) return;
-        loadStores({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude
-        }, { useImmediateSearch: true, intentSequence });
-      },
-      () => {
-        if (intentSequence !== discoveryIntentSequenceRef.current) return;
-        loadStores(undefined, { useImmediateSearch: true, intentSequence });
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 8000
-      }
-    );
+    loadStores(null, { useImmediateSearch: true, intentSequence, pinScope: 'tenant_primary' });
   };
   const handlePopularDiscoveryCategory = (query) => {
     const normalized = String(query || '').trim();
@@ -9136,9 +9208,11 @@ export default function StorefrontApp() {
               className={`discovery-results-stage__map ${isDiscoveryMobileViewport ? `discovery-results-stage__map--mobile-fullbleed ${isResultsPanelVisible ? 'is-results-visible' : 'is-results-hidden'}` : ''}`}
               style={{ position: 'relative', zIndex: 20, flex: '1 1 auto', minWidth: 0, height: discoveryStageMapHeight }}
             >
-              {!loadingStores && !storesError && (searchedDiscoveryMapPins.length > 0 || (hasDiscoverySearch && filteredDiscoveryStores.length === 0)) ? (
+              {!storesError && (
+                searchedDiscoveryMapPins.length > 0
+                || (!loadingStores && hasDiscoverySearch && filteredDiscoveryStores.length === 0)
+              ) ? (
                 <StoresMap
-                  key={discoveryResultsMapKey}
                   stores={searchedDiscoveryMapPins}
                   selectedKey={highlightedDiscoveryMarkerKey || null}
                   highlightedKeys={highlightedDiscoveryMarkerKeys}
@@ -9158,6 +9232,8 @@ export default function StorefrontApp() {
                   }}
                   autoOpenPopups={filteredDiscoveryStores.length > 0}
                   openPopupOnHover={true}
+                  viewportPolicy="search-stable"
+                  viewportSignal={discoveryViewportSignal}
                 />
               ) : (
                 <div style={{ height: '100%', background: '#f8fafc', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>
