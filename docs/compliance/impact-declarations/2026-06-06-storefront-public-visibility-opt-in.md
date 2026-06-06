@@ -48,9 +48,17 @@ Required validation for this declaration:
 2. `npm run check:architecture`
 3. `npm run check:compliance`
 4. `npm --prefix backend test -- --runTestsByPath tests/onboardingUsecases.applicationResult.test.js tests/onboardingValidator.test.js tests/tenantProvisioning.storefrontBootstrap.test.js tests/storefrontPublicVisibilityAuditService.test.js`
-5. `npm --prefix frontend test -- --run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx`
-6. `npm --prefix frontend run build:skupervisor`
-7. `git diff --check`
+5. From `frontend/`: `npm exec vitest run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx --pool=threads`
+6. `npm run audit:storefront-public-visibility -- --json`
+7. `npm --prefix frontend run build:skupervisor`
+8. `git diff --check`
+
+Local audit evidence recorded on 2026-06-06:
+
+1. The first local audit returned `status=critical` for 4 active local tenants because 2 already-indexed tenants had no explicit `store_is_visible` setting.
+2. `--repair-missing-settings` inserted explicit `store_is_visible=true` for those already-public tenants, preserving current exposure instead of hiding or publishing tenants by assumption.
+3. The follow-up local audit returned `status=healthy` for 4 active local tenants.
+4. This evidence is local-data evidence only. It does not prove production tenant data is remediated.
 
 ## Production Verification
 

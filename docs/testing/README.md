@@ -146,6 +146,25 @@ Evidence semantics:
 2. The onboarding and Settings suites prove both user-facing surfaces still wire the shared picker into their location forms.
 3. These gates do not prove live tile-provider availability, browser WebGL support, or production CSP/proxy parity; rendered browser QA remains required before claiming visual map parity.
 
+## Storefront Public Visibility Gate
+
+Use this gate when changing tenant provisioning, onboarding primary-location setup, Settings > Storefront visibility controls, discovery indexing, or public storefront profile visibility.
+
+Required commands:
+1. `npm run audit:storefront-public-visibility -- --json`
+2. `npm --prefix backend test -- --runTestsByPath tests/tenantProvisioning.storefrontBootstrap.test.js tests/onboardingUsecases.applicationResult.test.js tests/onboardingValidator.test.js tests/storefrontPublicVisibilityAuditService.test.js`
+3. From `frontend/`: `npm exec vitest run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx --pool=threads`
+4. `npm run lint:docs`
+5. `npm run check:architecture`
+6. `npm --prefix frontend run build:skupervisor`
+7. `git diff --check`
+
+Evidence semantics:
+1. The audit proves the current tenant data has no hidden tenant still indexed, no invalid or missing explicit `store_is_visible` setting, no visible tenant missing an active primary pin, no stale indexed location, and no legacy fallback-location publication beyond the governed compatibility path.
+2. `-- --fail-on warning` may be used as a stricter pre-release gate when fallback-location publication should block promotion.
+3. `-- --repair-missing-settings` only backfills an explicit setting that preserves current discovery-index exposure. It must not be used as a substitute for deciding whether a tenant should be public.
+4. A green local audit does not prove production tenant data is clean. Production or canary release evidence must include the same audit against the target data plus public discovery/profile smoke for hidden and visible tenants.
+
 ## Claim Guardrail
 
 Current approved claim language for subscription telemetry:

@@ -18,7 +18,7 @@ Authoritative docs used for this plan:
 
 - `docs/START_HERE.md` (authoritative, last_reviewed: 2026-03-06)
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md` (authoritative, last_reviewed: 2026-03-06)
-- `docs/architecture/ARCHITECTURE_GOVERNANCE.md` (authoritative, last_reviewed: 2026-03-06)
+- `docs/architecture/ARCHITECTURE_GOVERNANCE.md` (authoritative, last_reviewed: 2026-05-21)
 - `docs/architecture/adr/0006-skupervisor-expansion-program-boundaries.md`
 - `docs/architecture/adr/0007-dual-mode-pos-compliance-program.md`
 - `docs/architecture/adr/0008-tenant-workflow-mode-msme-simplification.md`
@@ -258,6 +258,16 @@ Validated on 2026-06-06 for Storefront map/search viewport and result stability:
 - Storefront build and architecture gates passed with `npm --prefix frontend run build:store` and `npm run check:architecture`. Rendered local route health passed, but automated browser text-entry and screenshot capture were blocked by the current Browser tooling in this session, so live production visual smoke remains required after deployment.
 
 Operational readiness rating after this Storefront map/search remediation: **8.6/10** locally validated. Remaining risk is production-data/browser confirmation for item/store searches, exact-coordinate cluster card behavior, and desktop/mobile screenshot evidence after deploy.
+
+Validated on 2026-06-06 for Storefront public visibility opt-in:
+- Tenant provisioning now forces newly provisioned tenants to `store_is_visible=false` before discovery bootstrap and no longer creates a default primary pin from environment fallback coordinates.
+- Onboarding and Settings expose the same public map/page switch. Hidden tenants can complete onboarding without a public pin; visible tenants still need an active primary storefront location before discovery/profile publication.
+- The Storefront public visibility audit is available at `npm run audit:storefront-public-visibility`. It reports hidden indexed tenants, missing/invalid visibility settings, visible tenants without active primary pins, stale indexed locations, and legacy fallback-location publication.
+- Local audit evidence initially found two active tenants with missing explicit `store_is_visible` settings while already indexed with active primary pins. Repair mode inserted explicit `store_is_visible=true` rows to preserve current exposure, and a follow-up local audit returned `status=healthy` for 4 active tenants.
+- Targeted backend suites passed for provisioning defaults, onboarding visibility persistence, strict onboarding validation, discovery sync triggering, and the public visibility audit service.
+- Targeted frontend suites passed for onboarding and Settings visibility behavior. The correct Vitest invocation is from the `frontend/` root for alias resolution: `npm exec vitest run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx --pool=threads`.
+
+Operational readiness rating after this public visibility pass: **8.9/10** locally validated. Remaining risk is production/canary proof: run the audit against production tenant data, confirm newly registered tenants stay hidden until opt-in, and confirm hidden public profile reads return not found after deploy.
 
 Validated on 2026-05-24 for inventory item/product `Save and exit` hardening and item image copy:
 - Product and item create/edit footers now wrap on narrow viewports, disable footer actions during pending saves, and use a ref-backed save guard to prevent same-tick duplicate submissions.
