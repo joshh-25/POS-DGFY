@@ -1,6 +1,7 @@
 import { storeRepository } from './repositories/storeRepository.js';
 import { commercePaymentRepository } from '../commercePayments/repositories/commercePaymentRepository.js';
 import { paymongoService } from '../../services/paymongoService.js';
+import { getStorefrontDiscoveryIndexSnapshotForTenant } from '../../services/storefrontDiscoveryIndexService.js';
 import {
     commercePaymentsEnabled,
     commerceQrphEnabled,
@@ -61,9 +62,18 @@ export const trackStoreOrderUseCase = buildTrackStoreOrderUseCase({ storeReposit
 export const claimStoreOrderUseCase = buildClaimStoreOrderUseCase({ storeRepository });
 export const cancelStoreOrderUseCase = buildCancelStoreOrderUseCase({ storeRepository });
 export const listStoreCustomerOrdersUseCase = buildListStoreCustomerOrdersUseCase({ storeRepository });
-export const getStorefrontFollowStatusUseCase = buildGetStorefrontFollowStatusUseCase({ storeRepository });
-export const followStorefrontUseCase = buildFollowStorefrontUseCase({ storeRepository });
-export const unfollowStorefrontUseCase = buildUnfollowStorefrontUseCase({ storeRepository });
+export const getStorefrontFollowStatusUseCase = buildGetStorefrontFollowStatusUseCase({
+    storeRepository,
+    resolveDiscoverySlug: getStorefrontDiscoveryIndexSnapshotForTenant
+});
+export const followStorefrontUseCase = buildFollowStorefrontUseCase({
+    storeRepository,
+    resolveDiscoverySlug: getStorefrontDiscoveryIndexSnapshotForTenant
+});
+export const unfollowStorefrontUseCase = buildUnfollowStorefrontUseCase({
+    storeRepository,
+    resolveDiscoverySlug: getStorefrontDiscoveryIndexSnapshotForTenant
+});
 
 export * from './contracts/storeRepository.contract.js';
 export * from './repositories/storeRepository.js';

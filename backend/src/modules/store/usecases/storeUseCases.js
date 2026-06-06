@@ -2610,22 +2610,27 @@ export const buildListStoreCustomerOrdersUseCase = ({ storeRepository }) => {
 
 const FOLLOW_VISITOR_ID_PATTERN = /^[A-Za-z0-9._:-]{16,128}$/;
 
-const resolveStorefrontSlugGuard = async ({ storeRepository }) => {
+const resolveStorefrontSlugGuard = async ({ storeRepository, tenantId, resolveDiscoverySlug = async () => null }) => {
+    const discoverySnapshot = await resolveDiscoverySlug({ tenantId }).catch(() => null);
+    const indexedSlug = String(discoverySnapshot?.slug || '').trim().toLowerCase();
     const settingsRows = await storeRepository.getSettingsByKeys(['store_tenant_slug']);
     const configured = String(settingsRows?.store_tenant_slug?.value || '').trim().toLowerCase();
-    if (!configured) {
+    if (!indexedSlug && !configured) {
         throw new DomainError(
             DomainErrorCode.RESOURCE_NOT_FOUND,
             'Storefront slug is not configured for this tenant',
             { statusCode: 404 }
         );
     }
-    return configured;
+    return {
+        indexedSlug,
+        configuredSlug: configured
+    };
 };
 
-const normalizeStorefrontFollowInput = async ({ storeRepository, tenantId, payload = {}, storeCustomer = null }) => {
+const normalizeStorefrontFollowInput = async ({ storeRepository, tenantId, payload = {}, storeCustomer = null, resolveDiscoverySlug = async () => null }) => {
     const normalizedTenantId = ensureTenantContext(tenantId);
-    const configuredTenantSlug = await resolveStorefrontSlugGuard({ storeRepository, tenantId: normalizedTenantId });
+    const allowedSlugConfig = await resolveStorefrontSlugGuard({ storeRepository, tenantId: normalizedTenantId, resolveDiscoverySlug });
     const storefrontSlug = String(payload?.storefront_slug || '').trim().toLowerCase();
     const visitorId = String(payload?.visitor_id || '').trim();
 
@@ -2636,7 +2641,11 @@ const normalizeStorefrontFollowInput = async ({ storeRepository, tenantId, paylo
             { statusCode: 422 }
         );
     }
-    if (storefrontSlug !== configuredTenantSlug) {
+    const allowedSlugs = new Set([
+        String(allowedSlugConfig?.indexedSlug || '').trim().toLowerCase(),
+        String(allowedSlugConfig?.configuredSlug || '').trim().toLowerCase()
+    ].filter(Boolean));
+    if (!allowedSlugs.has(storefrontSlug)) {
         throw new DomainError(
             DomainErrorCode.RESOURCE_NOT_FOUND,
             'Storefront slug was not found for this tenant',
@@ -2665,10 +2674,10 @@ const normalizeStorefrontFollowInput = async ({ storeRepository, tenantId, paylo
     };
 };
 
-export const buildGetStorefrontFollowStatusUseCase = ({ storeRepository }) => {
+export const buildGetStorefrontFollowStatusUseCase = ({ storeRepository, resolveDiscoverySlug = async () => null }) => {
     return async ({ tenantId, payload = {}, storeCustomer = null }) => {
         try {
-            const normalized = await normalizeStorefrontFollowInput({ storeRepository, tenantId, payload, storeCustomer });
+            const normalized = await normalizeStorefrontFollowInput({ storeRepository, tenantId, payload, storeCustomer, resolveDiscoverySlug });
             const [existing, followersCount] = await Promise.all([
                 storeRepository.findStorefrontFollow(normalized),
                 storeRepository.countStorefrontFollowsBySlug(normalized)
@@ -2684,10 +2693,10 @@ export const buildGetStorefrontFollowStatusUseCase = ({ storeRepository }) => {
     };
 };
 
-export const buildFollowStorefrontUseCase = ({ storeRepository }) => {
+export const buildFollowStorefrontUseCase = ({ storeRepository, resolveDiscoverySlug = async () => null }) => {
     return async ({ tenantId, payload = {}, storeCustomer = null }) => {
         try {
-            const normalized = await normalizeStorefrontFollowInput({ storeRepository, tenantId, payload, storeCustomer });
+            const normalized = await normalizeStorefrontFollowInput({ storeRepository, tenantId, payload, storeCustomer, resolveDiscoverySlug });
             await storeRepository.upsertStorefrontFollow(normalized);
             const followersCount = await storeRepository.countStorefrontFollowsBySlug(normalized);
             return ok({
@@ -2701,10 +2710,10 @@ export const buildFollowStorefrontUseCase = ({ storeRepository }) => {
     };
 };
 
-export const buildUnfollowStorefrontUseCase = ({ storeRepository }) => {
+export const buildUnfollowStorefrontUseCase = ({ storeRepository, resolveDiscoverySlug = async () => null }) => {
     return async ({ tenantId, payload = {}, storeCustomer = null }) => {
         try {
-            const normalized = await normalizeStorefrontFollowInput({ storeRepository, tenantId, payload, storeCustomer });
+            const normalized = await normalizeStorefrontFollowInput({ storeRepository, tenantId, payload, storeCustomer, resolveDiscoverySlug });
             await storeRepository.deleteStorefrontFollow(normalized);
             const followersCount = await storeRepository.countStorefrontFollowsBySlug(normalized);
             return ok({

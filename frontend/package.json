@@ -50,6 +50,8 @@
     "@vitejs/plugin-react": "^6.0.2",
     "autoprefixer": "^10.4.16",
     "axios-mock-adapter": "^2.1.0",
+    "browserslist": "^4.28.2",
+    "caniuse-lite": "^1.0.30001797",
     "eslint": "^8.57.1",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
