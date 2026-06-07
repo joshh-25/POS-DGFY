@@ -1616,6 +1616,66 @@ export default function TenantManager() {
                 </div>
             )}
 
+            {/* Capability Audit Modal */}
+            {capabilityAuditTenant && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                    <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-lg bg-white shadow-xl">
+                        <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-6">
+                            <div>
+                                <h2 className="text-xl font-bold text-slate-900">Capability audit trail</h2>
+                                <p className="mt-1 text-sm text-slate-600">{capabilityAuditTenant.name}</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeCapabilityAuditLogs}
+                                className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                                aria-label="Close capability audit trail"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+                        <div className="max-h-[68vh] overflow-y-auto p-6">
+                            {capabilityAuditLoading ? (
+                                <div className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-8 text-sm text-slate-600">
+                                    <RefreshCw className="h-4 w-4 animate-spin" />
+                                    Loading audit logs...
+                                </div>
+                            ) : capabilityAuditLogs.length === 0 ? (
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-600">
+                                    No capability audit logs recorded yet.
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {capabilityAuditLogs.map((log) => (
+                                        <div key={log.id || log.created_at} className="rounded-lg border border-slate-200 bg-white p-4">
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <div className="text-sm font-semibold text-slate-900">
+                                                    {log.actor_username || 'platform_admin'}
+                                                </div>
+                                                <div className="text-xs text-slate-500">
+                                                    {log.created_at ? formatDate(log.created_at) : 'Unknown time'}
+                                                </div>
+                                            </div>
+                                            <p className="mt-2 text-sm text-slate-700">{log.reason || 'No reason recorded'}</p>
+                                            <div className="mt-3 grid grid-cols-1 gap-2 text-xs md:grid-cols-2">
+                                                <div className="rounded-md bg-slate-50 p-3">
+                                                    <div className="mb-1 font-semibold uppercase tracking-wide text-slate-400">Before</div>
+                                                    <div className="text-slate-700">{formatCapabilitySnapshot(log.before_snapshot)}</div>
+                                                </div>
+                                                <div className="rounded-md bg-emerald-50 p-3">
+                                                    <div className="mb-1 font-semibold uppercase tracking-wide text-emerald-600">After</div>
+                                                    <div className="text-emerald-800">{formatCapabilitySnapshot(log.after_snapshot)}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Capability Confirmation Modal */}
             {pendingCapabilityChange && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">

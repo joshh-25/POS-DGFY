@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     getTenants: vi.fn(),
     updateTenant: vi.fn(),
     updateTenantCapabilities: vi.fn(),
+    listTenantCapabilityAuditLogs: vi.fn(),
     createTenant: vi.fn(),
     deleteTenant: vi.fn(),
     approveTenant: vi.fn(),
@@ -77,6 +78,30 @@ describe('TenantManager capability controls', () => {
       ]
     });
     mocks.adminServiceMock.updateTenantCapabilities.mockResolvedValue({ success: true });
+    mocks.adminServiceMock.listTenantCapabilityAuditLogs.mockResolvedValue({
+      data: {
+        logs: [
+          {
+            id: 10,
+            actor_username: 'skupervisor',
+            reason: 'Tenant requested POS restoration',
+            created_at: '2026-06-07T03:00:00.000Z',
+            before_snapshot: {
+              ims_enabled: true,
+              pos_enabled: false,
+              storefront_visible: true,
+              customer_access_mode: 'catalog'
+            },
+            after_snapshot: {
+              ims_enabled: true,
+              pos_enabled: true,
+              storefront_visible: true,
+              customer_access_mode: 'catalog'
+            }
+          }
+        ]
+      }
+    });
   });
 
   afterEach(() => {
@@ -112,5 +137,23 @@ describe('TenantManager capability controls', () => {
 
     await screen.findByText('Kusina & Cafe');
     expect(screen.getByText('Needs primary map pin')).toBeTruthy();
+  });
+
+  it('loads and renders recent capability audit logs', async () => {
+    const user = userEvent.setup();
+    render(<TenantManager />);
+
+    await screen.findByText('Kusina & Cafe');
+    await user.click(screen.getAllByRole('button', { name: /Audit/i })[0]);
+
+    await waitFor(() => {
+      expect(mocks.adminServiceMock.listTenantCapabilityAuditLogs).toHaveBeenCalledWith(
+        'tenant-kusina',
+        { limit: 20 }
+      );
+    });
+    expect(await screen.findByText('Tenant requested POS restoration')).toBeTruthy();
+    expect(screen.getByText(/POS Off/i)).toBeTruthy();
+    expect(screen.getByText(/POS On/i)).toBeTruthy();
   });
 });
