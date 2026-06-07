@@ -5180,6 +5180,53 @@ Update platform-admin capability controls for an active tenant.
 - Persists a landlord `tenant_admin_audit_logs` row with platform-admin actor, request metadata, reason, and before/after capability snapshots.
 - Storefront visibility or access-mode changes refresh `storefront_discovery_index`. If that refresh fails, the backend rolls back the Storefront setting changes and returns an error instead of reporting success.
 
+### GET /admin/tenants/:id/capabilities/audit-logs
+List recent platform-admin capability changes for one tenant.
+
+**Query**
+- `limit`: optional integer from 1-100. Defaults to 20.
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "tenant_id": 1,
+    "logs": [
+      {
+        "id": 12,
+        "tenant_id": 1,
+        "action": "capability_update",
+        "actor_username": "skupervisor",
+        "reason": "Temporarily disable POS during terminal readiness remediation",
+        "request_id": "req-123",
+        "before_snapshot": {
+          "ims_enabled": true,
+          "pos_enabled": true,
+          "storefront_visible": true,
+          "customer_access_mode": "catalog"
+        },
+        "after_snapshot": {
+          "ims_enabled": true,
+          "pos_enabled": false,
+          "storefront_visible": true,
+          "customer_access_mode": "catalog"
+        },
+        "metadata": {
+          "changed_fields": ["tenant_pos_enabled"],
+          "storefront_sync_required": false
+        },
+        "created_at": "2026-06-07T03:00:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+**Notes**
+- The endpoint is tenant-scoped and requires platform-admin authentication.
+- Returned rows are ordered newest first.
+
 ### POST /admin/tenants/:id/approve
 Approve a pending tenant registration and provision their isolated database.
 

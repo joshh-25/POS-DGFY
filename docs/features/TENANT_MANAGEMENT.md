@@ -295,5 +295,6 @@ Located at `/admin/tenants`.
 - **Search/Filter**: Quickly find companies.
 - **Quick Actions**: Approve, Reject, Edit, Delete.
 - **Capability Controls**: IMS, POS, and Storefront/Maps changes open a confirmation modal and require a reason persisted to the platform-admin audit trail. Storefront/Maps shows readiness when the tenant is visible but lacks an active primary mapped location.
+- **Capability Audit Trail**: Active tenant cards expose recent platform-admin capability changes from `GET /admin/tenants/:id/capabilities/audit-logs`, including actor, reason, timestamp, and before/after capability state.
 - **Compliance Safety Guard**: `Force non-compliant` is available only when backend eligibility indicates allowed (`can_force_non_compliant=true`). For blocked states, UI uses server-provided `force_non_compliant_block_reason` to render disabled helper text.
 - **Stats**: Total tenants, active vs pending counts.
