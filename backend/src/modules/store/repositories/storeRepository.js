@@ -208,7 +208,7 @@ const loadStorefrontLocationAvailabilityMap = async (itemIds = [], locationId = 
     try {
         StorefrontLocationItemOverride = dbStore.get('StorefrontLocationItemOverride');
     } catch {
-        StorefrontLocationItemOverride = null;
+        // Optional tenant model; older schemas may not expose branch-level overrides.
     }
     if (!StorefrontLocationItemOverride?.findAll) {
         return {

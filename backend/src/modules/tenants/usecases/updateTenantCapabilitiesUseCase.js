@@ -147,7 +147,10 @@ export const buildUpdateTenantCapabilitiesUseCase = ({
                             error: rollbackSyncError.message
                         });
                     }
-                    throw new Error(`Storefront discovery sync failed; capability changes were rolled back. ${syncError.message || ''}`.trim());
+                    throw new Error(
+                        `Storefront discovery sync failed; capability changes were rolled back. ${syncError.message || ''}`.trim(),
+                        { cause: syncError }
+                    );
                 }
             }
 
