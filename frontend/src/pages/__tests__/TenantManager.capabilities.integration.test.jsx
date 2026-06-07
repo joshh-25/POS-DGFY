@@ -113,10 +113,13 @@ describe('TenantManager capability controls', () => {
     render(<TenantManager />);
 
     await screen.findByText('Kusina & Cafe');
-    await user.type(screen.getByPlaceholderText('Search tenants'), 'kusina');
+    expect(screen.getByText('Tenant search')).toBeTruthy();
+    expect(screen.getByText('2 of 2')).toBeTruthy();
+    await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kusina');
 
     expect(screen.getByText('Kusina & Cafe')).toBeTruthy();
     expect(screen.queryByText('Kate Store')).toBeNull();
+    expect(screen.getByText('1 of 2')).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: /POS Off/i }));
     await screen.findByText('Confirm capability change');
@@ -136,7 +139,24 @@ describe('TenantManager capability controls', () => {
     render(<TenantManager />);
 
     await screen.findByText('Kusina & Cafe');
+    expect(screen.getAllByRole('region', { name: 'Core workspace access' })).toHaveLength(2);
+    expect(screen.getAllByRole('region', { name: 'Public storefront controls' })).toHaveLength(2);
     expect(screen.getByText('Needs primary map pin')).toBeTruthy();
+    expect(screen.getAllByText('Storefront sub-modes')).toHaveLength(2);
+    expect(screen.getAllByText('Catalog plus inquiry/contact CTAs')).toHaveLength(2);
+  });
+
+  it('keeps storefront sub-modes disabled until Storefront Maps is visible', async () => {
+    const user = userEvent.setup();
+    render(<TenantManager />);
+
+    await screen.findByText('Kate Store');
+    await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kate');
+
+    expect(screen.getByText('Hidden from maps')).toBeTruthy();
+    expect(screen.getByText('Turn on Storefront / Maps before changing the customer-facing sub-mode.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Map listing only/i }).disabled).toBe(true);
+    expect(screen.getByRole('button', { name: /Storefront \/ Maps Off/i }).disabled).toBe(false);
   });
 
   it('loads and renders recent capability audit logs', async () => {
