@@ -8,7 +8,7 @@ classification: regulatory
 surfaces: admin-tenants,tenant-management,pos,storefront-discovery,ims,settings,compliance,terminal
 reason_codes_impacted: ALLOWED,TENANT_CAPABILITY_DISABLED,VALIDATION_FAILED
 policy_version: 2026.06.07
-verification_evidence: npm run check:architecture,npm run lint:docs,npm run check:compliance,npm --prefix backend test -- --runTestsByPath tests/adminTenantCapabilityValidator.test.js tests/listTenantCapabilityAuditLogs.usecase.test.js tests/tenantCapabilitySettings.test.js tests/listTenants.usecase.test.js --runInBand,cd frontend && npm exec vitest run src/pages/__tests__/TenantManager.capabilities.integration.test.jsx src/pages/__tests__/TenantManager.editPlan.integration.test.jsx src/pages/__tests__/TenantManager.forceNonCompliant.integration.test.jsx -- --pool=threads,npm --prefix frontend run build:skupervisor,git diff --check
+verification_evidence: npm run check:architecture,npm run lint:docs,npm run check:compliance,npm --prefix backend test -- --runTestsByPath tests/adminTenantCapabilities.transport.test.js tests/tenantCapabilityRouteGates.test.js tests/updateTenantCapabilitiesUseCase.rollback.test.js tests/adminTenantCapabilityValidator.test.js tests/listTenantCapabilityAuditLogs.usecase.test.js tests/tenantCapabilitySettings.test.js tests/listTenants.usecase.test.js --runInBand,cd frontend && npm exec vitest run src/pages/__tests__/TenantManager.capabilities.integration.test.jsx src/pages/__tests__/TenantManager.editPlan.integration.test.jsx src/pages/__tests__/TenantManager.forceNonCompliant.integration.test.jsx -- --pool=threads,npm --prefix frontend run build:skupervisor,git diff --check
 rollback_note: Revert the admin capability endpoint, Tenant Manager capability UI, IMS/POS route gates, and related docs together; then rerun storefront discovery sync for any tenant whose Storefront visibility changed during the rollout.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -48,7 +48,7 @@ Required validation for this declaration:
 1. `npm run check:architecture`
 2. `npm run lint:docs`
 3. `npm run check:compliance`
-4. `npm --prefix backend test -- --runTestsByPath tests/adminTenantCapabilityValidator.test.js tests/listTenantCapabilityAuditLogs.usecase.test.js tests/tenantCapabilitySettings.test.js tests/listTenants.usecase.test.js --runInBand`
+4. `npm --prefix backend test -- --runTestsByPath tests/adminTenantCapabilities.transport.test.js tests/tenantCapabilityRouteGates.test.js tests/updateTenantCapabilitiesUseCase.rollback.test.js tests/adminTenantCapabilityValidator.test.js tests/listTenantCapabilityAuditLogs.usecase.test.js tests/tenantCapabilitySettings.test.js tests/listTenants.usecase.test.js --runInBand`
 5. From `frontend/`: `npm exec vitest run src/pages/__tests__/TenantManager.capabilities.integration.test.jsx src/pages/__tests__/TenantManager.editPlan.integration.test.jsx src/pages/__tests__/TenantManager.forceNonCompliant.integration.test.jsx -- --pool=threads`
 6. Tenant Manager audit-trail rendering: `npm --prefix frontend test -- TenantManager.capabilities.integration.test.jsx`
 7. `npm --prefix frontend run build:skupervisor`
