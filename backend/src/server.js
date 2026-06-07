@@ -596,43 +596,45 @@ import adminAuthRoutes from './routes/adminAuth.js';
 import adminTenantRoutes from './routes/adminTenants.js';
 import complianceRoutes from './routes/compliance.js';
 import onboardingRoutes from './routes/onboarding.js';
+import { requireTenantCapability } from './middleware/auth.js';
 
 // Auth routes (authLimiter applied selectively per-route in auth.js)
 app.use('/api/v1/auth', authRoutes);
+const requireImsCapability = requireTenantCapability('tenant_ims_enabled', 'IMS');
 app.use('/api/v1/users', userRoutes);
-app.use('/api/v1/settings', settingsRoutes);
-app.use('/api/v1/items', itemRoutes);
-app.use('/api/v1/suppliers', supplierRoutes);
-app.use('/api/v1/purchase-orders', purchaseOrderRoutes);
-app.use('/api/v1/job-orders', jobOrderRoutes);
-app.use('/api/v1/dispatch-orders', dispatchOrderRoutes);
-app.use('/api/v1/stock-movements', stockMovementRoutes);
-app.use('/api/v1/dashboard', dashboardRoutes);
-app.use('/api/v1/reports', reportRoutes);
-app.use('/api/v1/forecast', forecastRoutes);
-app.use('/api/v1/alerts', alertRoutes);
+app.use('/api/v1/settings', requireImsCapability, settingsRoutes);
+app.use('/api/v1/items', requireImsCapability, itemRoutes);
+app.use('/api/v1/suppliers', requireImsCapability, supplierRoutes);
+app.use('/api/v1/purchase-orders', requireImsCapability, purchaseOrderRoutes);
+app.use('/api/v1/job-orders', requireImsCapability, jobOrderRoutes);
+app.use('/api/v1/dispatch-orders', requireImsCapability, dispatchOrderRoutes);
+app.use('/api/v1/stock-movements', requireImsCapability, stockMovementRoutes);
+app.use('/api/v1/dashboard', requireImsCapability, dashboardRoutes);
+app.use('/api/v1/reports', requireImsCapability, reportRoutes);
+app.use('/api/v1/forecast', requireImsCapability, forecastRoutes);
+app.use('/api/v1/alerts', requireImsCapability, alertRoutes);
 app.use('/api/v1/receive-tokens', receiveTokenRoutes);
-app.use('/api/v1/ai', aiRoutes);
+app.use('/api/v1/ai', requireImsCapability, aiRoutes);
 app.use('/api/v1/pos', posRoutes);
-app.use('/api/v1/services', servicesRoutes);
-app.use('/api/v1/fnb', fnbRoutes);
-app.use('/api/v1/hospitality', hospitalityRoutes);
-app.use('/api/v1/sales', salesRoutes);
-app.use('/api/v1/tenant-locations', tenantLocationRoutes);
+app.use('/api/v1/services', requireImsCapability, servicesRoutes);
+app.use('/api/v1/fnb', requireImsCapability, fnbRoutes);
+app.use('/api/v1/hospitality', requireImsCapability, hospitalityRoutes);
+app.use('/api/v1/sales', requireImsCapability, salesRoutes);
+app.use('/api/v1/tenant-locations', requireImsCapability, tenantLocationRoutes);
 app.use('/api/v1/store/hospitality', hospitalityStorefrontRoutes);
 app.use('/api/v1/store', storeRoutes);
 app.use('/api/v1/storefront', storefrontDiscoveryRoutes);
 app.use('/api/v1/storefront', geoSearchRoutes);
-app.use('/api/v1/analytics', analyticsRoutes);
-app.use('/api/v1/feedback', feedbackRoutes);
+app.use('/api/v1/analytics', requireImsCapability, analyticsRoutes);
+app.use('/api/v1/feedback', requireImsCapability, feedbackRoutes);
 app.use('/api/v1/commerce-payments', commercePaymentRoutes);
 app.use('/api/v1/payments', paymentRoutes);
 // Mount specific admin routes first to avoid catching issues
 app.use('/api/v1/admin/tenants', adminTenantRoutes);
 
 app.use('/api/v1/admin', adminAuthRoutes);
-app.use('/api/v1/compliance', complianceRoutes);
-app.use('/api/v1/onboarding', onboardingRoutes);
+app.use('/api/v1/compliance', requireImsCapability, complianceRoutes);
+app.use('/api/v1/onboarding', requireImsCapability, onboardingRoutes);
 
 // Error handling middleware (must be last)
 app.use(notFoundHandler);

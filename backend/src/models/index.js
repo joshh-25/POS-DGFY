@@ -125,6 +125,7 @@ import TenantComplianceAuditLogFactory from './Landlord/TenantComplianceAuditLog
 import TenantComplianceAuditFailureFactory from './Landlord/TenantComplianceAuditFailure.js';
 import TenantComplianceFinalReviewDocumentFactory from './Landlord/TenantComplianceFinalReviewDocument.js';
 import TenantComplianceFinalReviewSignoffFactory from './Landlord/TenantComplianceFinalReviewSignoff.js';
+import TenantAdminAuditLogFactory from './Landlord/TenantAdminAuditLog.js';
 import TenantPaymentAccountFactory from './Landlord/TenantPaymentAccount.js';
 import CommercePaymentSessionFactory from './Landlord/CommercePaymentSession.js';
 import CommercePaymentRefundFactory from './Landlord/CommercePaymentRefund.js';
@@ -155,6 +156,7 @@ const TenantComplianceAuditLog = TenantComplianceAuditLogFactory(sequelize);
 const TenantComplianceAuditFailure = TenantComplianceAuditFailureFactory(sequelize);
 const TenantComplianceFinalReviewDocument = TenantComplianceFinalReviewDocumentFactory(sequelize);
 const TenantComplianceFinalReviewSignoff = TenantComplianceFinalReviewSignoffFactory(sequelize);
+const TenantAdminAuditLog = TenantAdminAuditLogFactory(sequelize);
 const TenantPaymentAccount = TenantPaymentAccountFactory(sequelize);
 const CommercePaymentSession = CommercePaymentSessionFactory(sequelize);
 const CommercePaymentRefund = CommercePaymentRefundFactory(sequelize);
@@ -198,6 +200,8 @@ Tenant.hasMany(TenantCompliancePeripheral, { foreignKey: 'tenant_id', as: 'compl
 TenantCompliancePeripheral.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(TenantComplianceAuditLog, { foreignKey: 'tenant_id', as: 'complianceAuditLogs' });
 TenantComplianceAuditLog.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(TenantAdminAuditLog, { foreignKey: 'tenant_id', as: 'adminAuditLogs' });
+TenantAdminAuditLog.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(TenantComplianceFinalReviewDocument, { foreignKey: 'tenant_id', as: 'complianceFinalReviewDocuments' });
 TenantComplianceFinalReviewDocument.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasOne(TenantComplianceFinalReviewSignoff, { foreignKey: 'tenant_id', as: 'complianceFinalReviewSignoff' });
@@ -716,6 +720,7 @@ const db = {
   TenantComplianceAuditFailure,
   TenantComplianceFinalReviewDocument,
   TenantComplianceFinalReviewSignoff,
+  TenantAdminAuditLog,
   TenantPaymentAccount,
   CommercePaymentSession,
   CommercePaymentRefund
@@ -849,6 +854,7 @@ export {
   TenantComplianceAuditFailure,
   TenantComplianceFinalReviewDocument,
   TenantComplianceFinalReviewSignoff,
+  TenantAdminAuditLog,
   TenantPaymentAccount,
   CommercePaymentSession,
   CommercePaymentRefund,

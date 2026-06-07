@@ -360,6 +360,39 @@ export const updateTenant = async (tenantId, updates) => {
     return response.data;
 };
 
+export const updateTenantCapabilities = async (tenantId, updates) => {
+    const token = getToken();
+
+    if (!token) {
+        throw new Error('Admin authentication required');
+    }
+
+    const response = await adminApi.patch(`/admin/tenants/${tenantId}/capabilities`, updates, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
+
+    return response.data;
+};
+
+export const listTenantCapabilityAuditLogs = async (tenantId, params = {}) => {
+    const token = getToken();
+
+    if (!token) {
+        throw new Error('Admin authentication required');
+    }
+
+    const response = await adminApi.get(`/admin/tenants/${tenantId}/capabilities/audit-logs`, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        },
+        params
+    });
+
+    return response.data;
+};
+
 /**
  * Permanently delete tenant
  */

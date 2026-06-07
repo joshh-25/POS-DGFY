@@ -42,7 +42,7 @@ const buildForceNonCompliantEligibility = (tenant) => {
     };
 };
 
-const enrichTenant = (tenant) => {
+const enrichTenant = (tenant, capabilities = null) => {
     const baseTenant = toPlainTenant(tenant);
     const eligibility = buildForceNonCompliantEligibility(baseTenant);
     const effectivePlan = resolveTenantEffectivePlan(baseTenant);
@@ -51,11 +51,27 @@ const enrichTenant = (tenant) => {
         ...baseTenant,
         effective_plan: effectivePlan,
         plan_policy: effectivePlan !== baseTenant.plan ? 'registered_tenant_premium_capable' : 'stored_plan',
+        capabilities,
         ...eligibility
     };
 };
 
-export const buildListTenantsUseCase = ({ tenantAdminRepository, logger }) => {
+const mapWithConcurrency = async (items = [], limit = 5, mapper) => {
+    const results = new Array(items.length);
+    let cursor = 0;
+    const workerCount = Math.min(Math.max(Number(limit) || 1, 1), items.length || 1);
+    const workers = Array.from({ length: workerCount }, async () => {
+        while (cursor < items.length) {
+            const index = cursor;
+            cursor += 1;
+            results[index] = await mapper(items[index], index);
+        }
+    });
+    await Promise.all(workers);
+    return results;
+};
+
+export const buildListTenantsUseCase = ({ tenantAdminRepository, tenantConnector, readTenantCapabilities, logger }) => {
     return async ({ status }) => {
         try {
             const where = {};
@@ -65,7 +81,22 @@ export const buildListTenantsUseCase = ({ tenantAdminRepository, logger }) => {
 
             const tenants = await tenantAdminRepository.listTenants(where);
             const enrichedTenants = Array.isArray(tenants)
-                ? tenants.map(enrichTenant)
+                ? await mapWithConcurrency(tenants, 5, async (tenant) => {
+                    let capabilities = null;
+                    const plainTenant = toPlainTenant(tenant);
+                    if (plainTenant.status === 'active' && tenantConnector && readTenantCapabilities) {
+                        try {
+                            capabilities = await readTenantCapabilities({ tenant: plainTenant, tenantConnector });
+                        } catch (capabilityError) {
+                            logger?.warn?.('[ListTenants] Failed to load tenant capability settings', {
+                                tenantId: plainTenant.id || null,
+                                error: capabilityError.message
+                            });
+                            capabilities = { unavailable: true };
+                        }
+                    }
+                    return enrichTenant(plainTenant, capabilities);
+                })
                 : [];
 
             return ok({

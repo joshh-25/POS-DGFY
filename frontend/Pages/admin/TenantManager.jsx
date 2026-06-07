@@ -18,7 +18,12 @@ import {
     RotateCcw,
     ShieldCheck,
     FileCheck2,
-    HardDrive
+    HardDrive,
+    Search,
+    Monitor,
+    ShoppingCart,
+    MapPin,
+    Store
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -39,6 +44,18 @@ const COMPLIANCE_MODE_LABELS = {
     non_compliant_active: 'Non-compliant',
     compliant_pending: 'Compliant (Pending)',
     compliant_active: 'Compliant (Active)'
+};
+const CUSTOMER_ACCESS_MODE_OPTIONS = [
+    { value: 'ghost', label: 'Map listing only' },
+    { value: 'catalog', label: 'Catalog only' },
+    { value: 'inquiry', label: 'Inquiry mode' },
+    { value: 'transaction', label: 'Online ordering mode' }
+];
+const DEFAULT_TENANT_CAPABILITIES = {
+    ims_enabled: true,
+    pos_enabled: true,
+    storefront_visible: false,
+    customer_access_mode: 'catalog'
 };
 const FORCE_NON_COMPLIANT_ALLOWED_STATES = new Set(['compliant_pending', 'compliant_active']);
 const FORCE_NON_COMPLIANT_HELPER_TEXT = 'Platform force non-compliant override is only allowed from compliant_pending or compliant_active';
@@ -70,6 +87,11 @@ const getTenantEffectivePlan = (tenant = {}) => {
     if (tenant.status === 'pending' || tenant.status === 'active') return 'premium';
     return tenant.plan || 'premium';
 };
+
+const getTenantCapabilities = (tenant = {}) => ({
+    ...DEFAULT_TENANT_CAPABILITIES,
+    ...(tenant.capabilities && typeof tenant.capabilities === 'object' ? tenant.capabilities : {})
+});
 
 const formatTenantPlanLabel = (plan) => {
     const normalized = String(plan || '').trim().toLowerCase();
@@ -153,7 +175,14 @@ export default function TenantManager() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
+    const [searchQuery, setSearchQuery] = useState('');
     const [actionLoading, setActionLoading] = useState(null); // tenant id being processed
+    const [capabilityLoading, setCapabilityLoading] = useState('');
+    const [pendingCapabilityChange, setPendingCapabilityChange] = useState(null);
+    const [capabilityReason, setCapabilityReason] = useState('');
+    const [capabilityAuditTenant, setCapabilityAuditTenant] = useState(null);
+    const [capabilityAuditLogs, setCapabilityAuditLogs] = useState([]);
+    const [capabilityAuditLoading, setCapabilityAuditLoading] = useState(false);
 
     // Add Tenant Modal State
     const [showAddModal, setShowAddModal] = useState(false);
@@ -215,6 +244,70 @@ export default function TenantManager() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const openCapabilityChange = (tenant, patch, label) => {
+        if (!tenant?.id) return;
+        setPendingCapabilityChange({ tenant, patch, label });
+        setCapabilityReason('');
+    };
+
+    const closeCapabilityChange = () => {
+        if (capabilityLoading) return;
+        setPendingCapabilityChange(null);
+        setCapabilityReason('');
+    };
+
+    const handleUpdateCapabilities = async (event) => {
+        event?.preventDefault?.();
+        const tenant = pendingCapabilityChange?.tenant;
+        const patch = pendingCapabilityChange?.patch || {};
+        const reason = capabilityReason.trim();
+        if (!tenant?.id) return;
+        if (reason.length < 3) {
+            toast.error('Reason is required and must be at least 3 characters.');
+            return;
+        }
+        const loadingKey = `${tenant.id}:${Object.keys(patch).join(',')}`;
+        setCapabilityLoading(loadingKey);
+        try {
+            await adminService.updateTenantCapabilities(tenant.id, { ...patch, reason });
+            await loadTenants();
+            setPendingCapabilityChange(null);
+            setCapabilityReason('');
+            toast.success('Tenant capabilities updated');
+        } catch (err) {
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(`Failed to update tenant capabilities: ${normalized.message}`);
+            }
+        } finally {
+            setCapabilityLoading('');
+        }
+    };
+
+    const openCapabilityAuditLogs = async (tenant) => {
+        if (!tenant?.id) return;
+        setCapabilityAuditTenant(tenant);
+        setCapabilityAuditLogs([]);
+        setCapabilityAuditLoading(true);
+        try {
+            const response = await adminService.listTenantCapabilityAuditLogs(tenant.id, { limit: 20 });
+            setCapabilityAuditLogs(response.data?.logs || []);
+        } catch (err) {
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(`Failed to load capability audit logs: ${normalized.message}`);
+            }
+        } finally {
+            setCapabilityAuditLoading(false);
+        }
+    };
+
+    const closeCapabilityAuditLogs = () => {
+        setCapabilityAuditTenant(null);
+        setCapabilityAuditLogs([]);
+        setCapabilityAuditLoading(false);
     };
 
     const handleApprove = async (tenantId) => {
@@ -594,7 +687,41 @@ export default function TenantManager() {
         });
     };
 
+    const formatCapabilitySnapshot = (snapshot = {}) => {
+        const modeLabel = CUSTOMER_ACCESS_MODE_OPTIONS.find(
+            (option) => option.value === snapshot?.customer_access_mode
+        )?.label || snapshot?.customer_access_mode || 'N/A';
+        return [
+            `IMS ${snapshot?.ims_enabled ? 'On' : 'Off'}`,
+            `POS ${snapshot?.pos_enabled ? 'On' : 'Off'}`,
+            `Storefront ${snapshot?.storefront_visible ? 'On' : 'Off'}`,
+            modeLabel
+        ].join(' / ');
+    };
+
     const pendingCount = tenants.filter(t => t.status === 'pending').length;
+    const visibleTenants = useMemo(() => {
+        const query = searchQuery.trim().toLowerCase();
+        if (!query) return tenants;
+        return tenants.filter((tenant) => {
+            const capabilities = getTenantCapabilities(tenant);
+            const modeLabel = CUSTOMER_ACCESS_MODE_OPTIONS.find((option) => option.value === capabilities.customer_access_mode)?.label || '';
+            return [
+                tenant.name,
+                tenant.admin_email,
+                tenant.company_token,
+                tenant.status,
+                getTenantEffectivePlan(tenant),
+                modeLabel,
+                capabilities.ims_enabled ? 'ims enabled' : 'ims disabled',
+                capabilities.pos_enabled ? 'pos enabled' : 'pos disabled',
+                capabilities.storefront_visible ? 'storefront visible maps' : 'storefront hidden'
+            ]
+                .join(' ')
+                .toLowerCase()
+                .includes(query);
+        });
+    }, [searchQuery, tenants]);
     const filterByComplianceStatus = (records = []) => {
         if (complianceFilter === 'all') return records;
         if (complianceFilter === 'needs_review') {
@@ -741,19 +868,31 @@ export default function TenantManager() {
 
             {/* Filters */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
-                <div className="flex items-center gap-3">
-                    <Filter className="w-4 h-4 text-slate-400" />
-                    <span className="text-sm text-slate-600">Filter:</span>
-                    {['all', 'pending', 'active', 'rejected'].map(status => (
-                        <Button
-                            key={status}
-                            variant={statusFilter === status ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setStatusFilter(status)}
-                        >
-                            {status.charAt(0).toUpperCase() + status.slice(1)}
-                        </Button>
-                    ))}
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <Filter className="w-4 h-4 text-slate-400" />
+                        <span className="text-sm text-slate-600">Filter:</span>
+                        {['all', 'pending', 'active', 'rejected'].map(status => (
+                            <Button
+                                key={status}
+                                variant={statusFilter === status ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setStatusFilter(status)}
+                            >
+                                {status.charAt(0).toUpperCase() + status.slice(1)}
+                            </Button>
+                        ))}
+                    </div>
+                    <label className="relative block w-full lg:w-80">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                            type="search"
+                            value={searchQuery}
+                            onChange={(event) => setSearchQuery(event.target.value)}
+                            placeholder="Search tenants"
+                            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                        />
+                    </label>
                 </div>
             </div>
 
@@ -772,19 +911,25 @@ export default function TenantManager() {
                         <RefreshCw className="w-8 h-8 text-slate-400 animate-spin mx-auto mb-3" />
                         <p className="text-slate-600">Loading tenants...</p>
                     </div>
-                ) : tenants.length === 0 ? (
+                ) : visibleTenants.length === 0 ? (
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
                         <Building2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                         <p className="text-slate-600 text-lg font-medium">No tenants found</p>
                         <p className="text-slate-500 text-sm">
-                            {statusFilter !== 'all' ? `No ${statusFilter} tenants` : 'No company registrations yet'}
+                            {searchQuery.trim() ? 'No tenants match your search' : (statusFilter !== 'all' ? `No ${statusFilter} tenants` : 'No company registrations yet')}
                         </p>
                     </div>
                 ) : (
-                    tenants.map(tenant => {
+                    visibleTenants.map(tenant => {
                         const statusConfig = STATUS_CONFIG[tenant.status] || STATUS_CONFIG.inactive;
                         const StatusIcon = statusConfig.icon;
                         const isProcessing = actionLoading === tenant.id;
+                        const capabilities = getTenantCapabilities(tenant);
+                        const storefrontReadiness = capabilities.storefront_readiness || {};
+                        const storefrontPublishable = storefrontReadiness.publishable === true;
+                        const selectedAccessMode = CUSTOMER_ACCESS_MODE_OPTIONS.find(
+                            (option) => option.value === capabilities.customer_access_mode
+                        ) || CUSTOMER_ACCESS_MODE_OPTIONS[1];
 
                         return (
                             <div
@@ -793,8 +938,8 @@ export default function TenantManager() {
                             >
                                 <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <h3 className="text-xl font-semibold text-slate-900">
+                                        <div className="flex min-w-0 flex-wrap items-center gap-3 mb-2">
+                                            <h3 className="min-w-0 max-w-full truncate text-xl font-semibold text-slate-900" title={tenant.name}>
                                                 {tenant.name}
                                             </h3>
                                             <span className={cn(
@@ -806,25 +951,35 @@ export default function TenantManager() {
                                             </span>
                                         </div>
 
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 text-sm mt-4">
-                                            <div className="flex items-center gap-2 text-slate-600">
+                                        <div className="grid grid-cols-1 gap-3 text-sm mt-4 md:grid-cols-2 2xl:grid-cols-4">
+                                            <div className="min-w-0 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                                                <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">Admin email</div>
+                                                <div className="flex min-w-0 items-center gap-2 text-slate-700">
                                                 <Mail className="w-4 h-4 text-slate-400" />
                                                 <span className="truncate" title={tenant.admin_email || 'N/A'}>
                                                     {tenant.admin_email || 'N/A'}
                                                 </span>
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-2 text-slate-600">
+                                            <div className="min-w-0 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                                                <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">Company token</div>
+                                                <div className="flex min-w-0 items-center gap-2 text-slate-700">
                                                 <Key className="w-4 h-4 text-slate-400" />
-                                                <code className="bg-slate-100 px-2 py-0.5 rounded text-xs break-all">
+                                                <code className="block min-w-0 truncate rounded bg-white px-2 py-0.5 text-xs" title={tenant.company_token}>
                                                     {tenant.company_token}
                                                 </code>
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-2 text-slate-600">
+                                            <div className="min-w-0 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                                                <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">Created</div>
+                                                <div className="flex min-w-0 items-center gap-2 text-slate-700">
                                                 <Calendar className="w-4 h-4 text-slate-400" />
-                                                <span>{formatDate(tenant.createdAt)}</span>
+                                                <span className="truncate">{formatDate(tenant.createdAt || tenant.created_at)}</span>
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-2 text-slate-600">
-                                                <span className="text-slate-400">Plan:</span>
+                                            <div className="min-w-0 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                                                <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">Plan & compliance</div>
+                                                <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-slate-700">
                                                 <span>{formatTenantPlanLabel(getTenantEffectivePlan(tenant))}</span>
                                                 {tenant.payment_method && (
                                                     <span className={cn(
@@ -850,7 +1005,103 @@ export default function TenantManager() {
                                                         {COMPLIANCE_MODE_LABELS[tenant.compliance_mode_state] || tenant.compliance_mode_state}
                                                     </span>
                                                 ) : null}
+                                                </div>
                                             </div>
+                                        </div>
+
+                                        <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+                                            <div className="mb-3 flex items-center justify-between gap-3">
+                                                <div>
+                                                    <div className="text-sm font-semibold text-slate-900">Tenant capabilities</div>
+                                                    <div className="text-xs text-slate-500">Platform-level access for IMS, POS, and public Storefront.</div>
+                                                </div>
+                                                <div className="flex shrink-0 items-center gap-2">
+                                                    {capabilities.unavailable ? (
+                                                        <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">Settings unavailable</span>
+                                                    ) : null}
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => openCapabilityAuditLogs(tenant)}
+                                                        className="h-8 px-2 text-xs"
+                                                    >
+                                                        <FileCheck2 className="mr-1 h-3.5 w-3.5" />
+                                                        Audit
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                                                {[
+                                                    { key: 'ims_enabled', icon: Monitor, label: 'IMS', value: capabilities.ims_enabled, patch: { ims_enabled: !capabilities.ims_enabled } },
+                                                    { key: 'pos_enabled', icon: ShoppingCart, label: 'POS', value: capabilities.pos_enabled, patch: { pos_enabled: !capabilities.pos_enabled } },
+                                                    { key: 'storefront_visible', icon: MapPin, label: 'Storefront / Maps', value: capabilities.storefront_visible, patch: { storefront_visible: !capabilities.storefront_visible } }
+                                                ].map((control) => {
+                                                    const ControlIcon = control.icon;
+                                                    const loading = capabilityLoading.startsWith(`${tenant.id}:`);
+                                                    const nextState = control.value ? 'Off' : 'On';
+                                                    return (
+                                                        <button
+                                                            key={control.key}
+                                                            type="button"
+                                                            aria-label={`${control.label} ${control.value ? 'On' : 'Off'}`}
+                                                            disabled={tenant.status !== 'active' || loading || capabilities.unavailable}
+                                                            onClick={() => openCapabilityChange(tenant, control.patch, `${control.label} ${nextState}`)}
+                                                            className={cn(
+                                                                'flex min-h-[52px] items-center justify-between rounded-lg border px-3 py-2 text-left transition',
+                                                                control.value
+                                                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                                                    : 'border-slate-200 bg-slate-50 text-slate-600',
+                                                                'disabled:cursor-not-allowed disabled:opacity-60'
+                                                            )}
+                                                        >
+                                                            <span className="flex min-w-0 items-center gap-2">
+                                                                <ControlIcon className="h-4 w-4 shrink-0" />
+                                                                <span className="truncate text-sm font-medium">{control.label}</span>
+                                                            </span>
+                                                            <span className="rounded-full bg-white/80 px-2 py-0.5 text-xs font-semibold">
+                                                                {control.value ? 'On' : 'Off'}
+                                                            </span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                            {capabilities.storefront_visible ? (
+                                                <div className="mt-3 border-t border-slate-100 pt-3">
+                                                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                            <Store className="h-3.5 w-3.5" />
+                                                            Storefront mode
+                                                        </div>
+                                                        <span className={cn(
+                                                            'inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold',
+                                                            storefrontPublishable
+                                                                ? 'bg-emerald-50 text-emerald-700'
+                                                                : 'bg-amber-50 text-amber-700'
+                                                        )}>
+                                                            {storefrontPublishable ? 'Ready to publish' : 'Needs primary map pin'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                                                        {CUSTOMER_ACCESS_MODE_OPTIONS.map((option) => (
+                                                            <button
+                                                                key={option.value}
+                                                                type="button"
+                                                                disabled={tenant.status !== 'active' || capabilityLoading.startsWith(`${tenant.id}:`) || capabilities.unavailable}
+                                                                onClick={() => openCapabilityChange(tenant, { customer_access_mode: option.value }, `Storefront mode: ${option.label}`)}
+                                                                className={cn(
+                                                                    'rounded-lg border px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60',
+                                                                    selectedAccessMode.value === option.value
+                                                                        ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                                                                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                                                                )}
+                                                            >
+                                                                {option.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ) : null}
                                         </div>
                                     </div>
 
@@ -1362,6 +1613,70 @@ export default function TenantManager() {
                             )}
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Capability Confirmation Modal */}
+            {pendingCapabilityChange && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                    <form
+                        onSubmit={handleUpdateCapabilities}
+                        className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl"
+                    >
+                        <div className="mb-4 flex items-start justify-between gap-4">
+                            <div>
+                                <h2 className="text-xl font-bold text-slate-900">Confirm capability change</h2>
+                                <p className="mt-1 text-sm text-slate-600">
+                                    {pendingCapabilityChange.label} for {pendingCapabilityChange.tenant?.name}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeCapabilityChange}
+                                className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                                aria-label="Close capability confirmation"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+                        <label className="block text-sm font-medium text-slate-700" htmlFor="capability-reason">
+                            Reason
+                        </label>
+                        <textarea
+                            id="capability-reason"
+                            value={capabilityReason}
+                            onChange={(event) => setCapabilityReason(event.target.value)}
+                            rows={4}
+                            maxLength={500}
+                            className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                            placeholder="State why this tenant capability is being changed."
+                            required
+                        />
+                        <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                            <span>This reason is saved in the platform-admin audit trail.</span>
+                            <span>{capabilityReason.trim().length}/500</span>
+                        </div>
+                        <div className="mt-6 flex justify-end gap-3">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={closeCapabilityChange}
+                                disabled={Boolean(capabilityLoading)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="submit"
+                                disabled={Boolean(capabilityLoading) || capabilityReason.trim().length < 3}
+                                className="bg-slate-900 text-white hover:bg-slate-800"
+                            >
+                                {capabilityLoading ? (
+                                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                ) : null}
+                                Apply change
+                            </Button>
+                        </div>
+                    </form>
                 </div>
             )}
 

@@ -1,6 +1,6 @@
 import express from 'express';
 import * as posController from '../controllers/posController.js';
-import { authenticate, checkPermission, requirePremium } from '../middleware/auth.js';
+import { authenticate, checkPermission, requirePremium, requireTenantCapability } from '../middleware/auth.js';
 import { posLimiter } from '../middleware/rateLimiter.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import { posCatalogBulkImageUpload, posCatalogImageUpload } from '../config/uploadConfig.js';
@@ -37,6 +37,7 @@ const router = express.Router();
 
 router.use(authenticate);
 router.use(requirePremium);
+router.use(requireTenantCapability('tenant_pos_enabled', 'POS'));
 router.use(posLimiter);
 
 router.get('/catalog', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosCatalogQuery, posController.listCatalog);
