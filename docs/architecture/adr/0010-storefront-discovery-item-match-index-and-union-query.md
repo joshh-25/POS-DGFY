@@ -98,3 +98,12 @@ The June 6 root-handle and branch-scoping decision is amended as follows:
 2. The "main branch" for discovery means the active tenant location flagged `is_primary_storefront=true`. Default discovery still uses `pin_scope=tenant_primary`, so company-name search shows that primary Storefront pin unless the customer explicitly enters a nearest/matching-branch flow.
 3. `location_id` branch scoping applies to service catalog, service availability, service holds, service bookings, and service waitlist mutations in addition to product catalog, quote, checkout, QR, and reorder reads.
 4. Tenant-local `storefront_location_item_overrides.storefront_available=false` hides the item/service from that branch before stock labels, service capacity, checkout validation, or booking validation are applied. Discovery item-search snapshots must also remove explicitly disabled branch locations from `matching_location_ids` and `in_stock_location_ids`.
+
+## Addendum (2026-06-07): Platform-Admin Storefront Visibility Controls
+
+Platform-admin Tenant Manager may update active tenants' Storefront publication state without logging into the tenant IMS.
+
+1. The parent **Storefront / Maps** capability writes tenant-local `system_settings.store_is_visible`.
+2. The Storefront sub-mode writes tenant-local `system_settings.customer_access_mode` using the existing `ghost`, `catalog`, `inquiry`, and `transaction` codes.
+3. Successful platform-admin changes to either setting must refresh the landlord `storefront_discovery_index` for that tenant.
+4. These controls must not change item-level `storefront_catalog_overrides`, branch-level `storefront_location_item_overrides`, POS catalog visibility, tenant lifecycle status, or clean-handle reservation ownership.

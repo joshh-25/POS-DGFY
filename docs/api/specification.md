@@ -154,7 +154,7 @@ Supported purposes:
 - `company_registration`: body requires `email`; retained for compatibility with older flows, but current DGFY company registration uses the signed-in DGFY account directly and does not ask for this second OTP.
 - `tenant_user_registration`: body requires `email` and a tenant context (`x-company-token`).
 - `invitation_acceptance`: body requires `invitation_token`; the backend resolves tenant context and invited email from the invitation when `x-company-token` is absent.
-- `dgfy_account_verification`: requested through the authenticated DGFY account endpoint to verify the global DGFY email.
+- `dgfy_account_verification`: body requires `email` for DGFY account registration before account creation; existing signed-in accounts can also request this purpose through the authenticated DGFY account endpoint.
 - `dgfy_password_reset`: requested through the DGFY password recovery flow before changing a global DGFY account password.
 
 Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 10), lock after `EMAIL_OTP_MAX_ATTEMPTS` (default 5), and are consumed with a conditional update so a concurrently submitted request cannot reuse a code after it is consumed. Production enables enforcement by default; `EMAIL_OTP_ENFORCEMENT_ENABLED=false` is the rollback switch.
@@ -4578,6 +4578,7 @@ Create a global DGFY account used for customer account surfaces and business reg
   "phone": "+639123456789",
   "password": "minimum8",
   "confirm_password": "minimum8",
+  "email_otp_code": "123456",
   "accepted_terms": true,
   "terms_version": "dgfy-account-terms-2026-05-26",
   "privacy_version": "dgfy-privacy-2026-05-26",
@@ -4585,7 +4586,7 @@ Create a global DGFY account used for customer account surfaces and business reg
 }
 ```
 
-Registration requires the current DGFY account terms, privacy terms, and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current`. The account row, mirrored DGFY invitation memberships, and acknowledgement evidence are written in one landlord transaction; persistence misconfiguration fails closed with `500 LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_UNAVAILABLE`. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
+Registration requires a prior `dgfy_account_verification` code from `POST /auth/email-otp/request` for the submitted email, plus the current DGFY account terms, privacy terms, and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current`. The registration mutation consumes the email OTP, creates the account with `email_verified_at` set, and writes the account row, mirrored DGFY invitation memberships, and acknowledgement evidence in one landlord transaction; persistence misconfiguration fails closed with `500 LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_UNAVAILABLE`. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
 
 The customer-facing registration order is Last Name, First Name, Optional Middle Name, email, contact number, password, and confirm password. Password fields expose visibility toggles. `middle_name` is optional and nullable; when present it is returned on account/profile/customer surfaces.
 
@@ -4604,6 +4605,8 @@ The customer-facing registration order is Last Name, First Name, Optional Middle
       "email": "ada@example.com",
       "phone": "+639123456789",
       "is_active": true,
+      "email_verified_at": "2026-05-21T10:03:00.000Z",
+      "is_email_verified": true,
       "last_login_at": null
     },
     "token": "dgfy-jwt",
@@ -5098,6 +5101,19 @@ List all tenant registrations with their status.
       "compliance_mode_choice_required": true,
       "can_force_non_compliant": false,
       "force_non_compliant_block_reason": "Compliance mode has not been selected yet.",
+      "capabilities": {
+        "ims_enabled": true,
+        "pos_enabled": true,
+        "storefront_visible": false,
+        "customer_access_mode": "catalog",
+        "storefront_readiness": {
+          "has_active_primary_location": false,
+          "has_coordinates": false,
+          "publishable": false,
+          "visible_and_publishable": false,
+          "reason": "missing_active_primary_storefront_location"
+        }
+      },
       "created_at": "2026-02-06T..."
     }
   ]
@@ -5110,6 +5126,59 @@ List all tenant registrations with their status.
 - Admin UI should treat these fields as source-of-truth instead of recomputing eligibility from local assumptions.
 - `effective_plan`: authoritative plan value to render and use for admin presentation. Pending and active tenants return `premium` even if a historical stored `plan` value is still `standard`.
 - `plan_policy`: explains whether `effective_plan` came from stored metadata (`stored_plan`) or registered-tenant premium capability normalization (`registered_tenant_premium_capable`).
+- `capabilities`: active tenants include platform-admin capability settings. Missing tenant-local capability settings default to `ims_enabled=true`, `pos_enabled=true`, `storefront_visible=false`, and `customer_access_mode=catalog`.
+- `capabilities.storefront_readiness`: indicates whether public Storefront visibility can publish through an active primary storefront location with valid coordinates.
+
+### PATCH /admin/tenants/:id/capabilities
+Update platform-admin capability controls for an active tenant.
+
+**Request**
+```json
+{
+  "ims_enabled": true,
+  "pos_enabled": false,
+  "storefront_visible": true,
+  "customer_access_mode": "inquiry",
+  "reason": "Temporarily disable POS while the tenant completes terminal readiness remediation"
+}
+```
+
+**Validation**
+- At least one of `ims_enabled`, `pos_enabled`, `storefront_visible`, or `customer_access_mode` is required.
+- Boolean fields must be JSON booleans, not strings.
+- `customer_access_mode` must be one of `ghost`, `catalog`, `inquiry`, or `transaction`.
+- `reason` is required, trimmed, and must be 3-500 characters.
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "message": "Tenant capabilities updated successfully",
+  "data": {
+    "tenant_id": 1,
+    "capabilities": {
+      "ims_enabled": true,
+      "pos_enabled": false,
+      "storefront_visible": true,
+      "customer_access_mode": "inquiry",
+      "storefront_readiness": {
+        "has_active_primary_location": true,
+        "has_coordinates": true,
+        "publishable": true,
+        "visible_and_publishable": true,
+        "location_id": 12,
+        "location_name": "Main Branch",
+        "reason": null
+      }
+    }
+  }
+}
+```
+
+**Side Effects**
+- Writes tenant-local `system_settings` rows inside one tenant database transaction.
+- Persists a landlord `tenant_admin_audit_logs` row with platform-admin actor, request metadata, reason, and before/after capability snapshots.
+- Storefront visibility or access-mode changes refresh `storefront_discovery_index`. If that refresh fails, the backend rolls back the Storefront setting changes and returns an error instead of reporting success.
 
 ### POST /admin/tenants/:id/approve
 Approve a pending tenant registration and provision their isolated database.

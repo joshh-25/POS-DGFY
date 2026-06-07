@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-05-28
+last_reviewed: 2026-06-07
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -16,14 +16,14 @@ The SKU Inventory Manager uses a **Multi-Tenant Architecture** with **Database I
 ## Tenant Lifecycle
 
 ### 1. Registration (Current Policy)
-- **DGFY Account Requirement**: Public company registration requires a signed-in global DGFY account. The founder's email, phone, username seed, and password hash are derived server-side from that account.
+- **DGFY Account Requirement**: Public company registration requires a signed-in global DGFY account. DGFY account signup first sends a `dgfy_account_verification` SMTP OTP to the submitted email and consumes that code before creating the account. The founder's email, phone, username seed, and password hash are derived server-side from the verified DGFY account.
 - **DGFY Account Registration Order**: Account creation collects Last Name, First Name, Optional Middle Name, email, contact number, password, and confirm password in that order. Password and confirmation fields expose visibility toggles. The optional middle name is persisted as `dgfy_accounts.middle_name` and appears in DGFY profile/customer account surfaces when present.
 - **Premium-Capable Account**: Every newly registered tenant persists `plan=premium` by default so mode-specific premium-gated surfaces are available after activation. The registration UI no longer displays a premium-capable widget.
 - **Default Auto-Accept Mode**: `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` is the default. Public company registration immediately creates the landlord tenant row, provisions the isolated tenant database, activates the tenant, and shows the founder a company-created confirmation page. Clicking **Proceed to SKUpervisor** exchanges the signed-in DGFY account plus accepted founder membership for the normal tenant session without retyping credentials.
 - **Manual Approval Rollback Mode**: `TENANT_REGISTRATION_APPROVAL_MODE=manual` keeps the traditional pending flow available when operators intentionally need platform-admin review before provisioning.
 - **Provider Subscription Onboarding**: Disabled for this phase. Requests that include provider subscription verification are rejected with `503` and `PAYMENTS_DISABLED`.
 - **Founder Contact Requirement**: Public company registration uses the signed-in DGFY account phone number. The landlord tenant record stores it as `admin_phone`, and provisioning copies it into the founder/admin user's `phone_number`.
-- **Founder Account Source**: Public company registration requires a signed-in active DGFY account. The company-registration path uses that account email as the founder email and does not show or require a separate DGFY email-code step after successful sign-in or storefront handoff. Future DGFY email-change work owns its own verification contract before a changed email can be treated as verified identity elsewhere.
+- **Founder Account Source**: Public company registration requires a signed-in active DGFY account. The company-registration path uses that already-verified account email as the founder email and does not show or require a separate DGFY email-code step after successful sign-in or storefront handoff. Future DGFY email-change work owns its own verification contract before a changed email can be treated as verified identity elsewhere.
 - **Required Terms Acknowledgement**: DGFY account registration and public company registration both require current ToS/T&C acknowledgement loaded from `GET /api/v1/dgfy/legal-terms/current`. The account checkbox remains disabled until `terms_version`, `privacy_version`, and `marketplace_terms_version` are present; the company checkbox remains disabled until `company_terms_version` and `marketplace_terms_version` are present. The backend rejects missing, false, or stale acknowledgement with `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`, fails closed when legal persistence is unavailable, and persists successful acknowledgement evidence in landlord `dgfy_legal_acknowledgements`.
 - **Legal Evidence Atomicity**: DGFY account creation, invitation membership mirroring, and account acknowledgement evidence are written in one landlord transaction. Company registration checks legal-persistence availability before tenant creation; after confirming there is a signed-in active DGFY account, the landlord tenant row and company acknowledgement evidence are written in one landlord transaction before tenant provisioning.
 - **Marketplace Provider Framing**: Registration copy must identify DGFY as an e-marketplace/platform service provider. The company remains seller of record, owns the product/service listing, sets prices, fulfills orders, handles customer obligations, and uses a registered business payout account. DGFY facilitates the transaction, uses a licensed payment partner, deducts disclosed fees, and remits the seller's net settlement; the product must not describe this as DGFY wallet points, cash-out credit, or DGFY reselling the merchant's goods.
@@ -115,6 +115,16 @@ Current policy notes:
 
 > **Known Caveat**: MariaDB may return the `permissions` JSON column as a string. `PermissionContext.jsx` handles this with `JSON.parse()` pre-processing (fixed in Phase 32).
 
+## Platform-Admin Capability Controls
+
+Tenant Manager exposes platform-owner capability switches for active tenants:
+
+- **IMS** uses tenant-local `system_settings.tenant_ims_enabled`. Missing rows default to enabled. When disabled, authenticated IMS route groups such as Settings, Items, Suppliers, Purchases, Stock, Dashboard, Reports, AI, Services, F&B, Hospitality, Sales, Analytics, Feedback, Compliance, Onboarding, tenant locations, and tenant user-management operations return `403 TENANT_CAPABILITY_DISABLED`; auth, current-user profile/password remediation, platform-admin, receive-token, billing/payment, and public Storefront routes remain outside this gate.
+- **POS** uses tenant-local `system_settings.tenant_pos_enabled`. Missing rows default to enabled. When disabled, `/api/v1/pos/*` returns `403 TENANT_CAPABILITY_DISABLED` after normal authentication and premium context checks. Shared mode routes that authorize through POS permission fallbacks ignore those POS fallback permissions while the tenant POS capability is disabled, but native Services/F&B/Hospitality permissions remain usable.
+- **Storefront / Maps** reuses the governed public visibility and access-mode contract. Parent visibility writes `store_is_visible`; sub-mode writes `customer_access_mode` using the existing labels `Map Listing Only`, `Catalog Only`, `Inquiry Mode`, and `Online Ordering Mode`.
+
+Capability changes require a platform-admin reason, write a landlord `tenant_admin_audit_logs` row with before/after capability snapshots, and write tenant-local settings in a tenant DB transaction. Platform-admin Storefront changes must refresh the landlord `storefront_discovery_index` after successful tenant setting writes; if the refresh fails, the backend compensates by rolling back the Storefront setting changes and returns an error instead of reporting a stale success. Tenant list responses include `capabilities.storefront_readiness` so the admin UI can show whether Storefront visibility is actually publishable through an active primary storefront map pin with coordinates. These switches must not mutate tenant lifecycle `status`, subscription `plan`, item-level POS visibility, item-level Storefront visibility, or branch availability overrides.
+
 ## Technical Architecture
 
 ### Database Schema (Main DB)
@@ -198,10 +208,10 @@ Mappings are created automatically when:
 1. A company is registered and provisioning succeeds in `auto_standard`, or immediately for pending manual registrations
 2. A user is invited and accepts their invitation through the tenant invitation flow or the DGFY invitation membership flow
 
-Company-user registration and tenant invitation acceptance now require a phone number and an email OTP. Public company registration derives phone and credentials from the authenticated DGFY account and does not ask for a separate company-registration email OTP or DGFY email-code step after sign-in. Existing accepted users created before this requirement can add or change their phone number from Settings > Profile. Settings rejects profile saves that would leave the resulting account phone blank or invalid, and the authenticated shell shows a remediation banner with a direct Profile link until the stored account phone is completed.
+Company-user registration, tenant invitation acceptance, and DGFY account registration now require a phone number and an email OTP. Public company registration derives phone and credentials from the authenticated DGFY account and does not ask for a separate company-registration email OTP or DGFY email-code step after sign-in. Existing accepted users created before this requirement can add or change their phone number from Settings > Profile. Settings rejects profile saves that would leave the resulting account phone blank or invalid, and the authenticated shell shows a remediation banner with a direct Profile link until the stored account phone is completed.
 
 Email ownership checks are required before login identity is created or changed:
-- `dgfy_account_verification`: requested after DGFY account login/registration when the account surface needs to mark the global account email as verified.
+- `dgfy_account_verification`: requested before DGFY account registration creates the global account, and still available from the authenticated account surface for older unverified accounts.
 - Company registration uses the signed-in DGFY account email directly and does not require a separate DGFY email-code step before `/admin/tenants/register`.
 - `tenant_user_registration`: requested with tenant context before `/auth/register`.
 - `invitation_acceptance`: requested from an invitation token before `/auth/accept-invite`.
@@ -284,5 +294,6 @@ Located at `/admin/tenants`.
 - **List View**: Filter by status (Pending, Active, etc.).
 - **Search/Filter**: Quickly find companies.
 - **Quick Actions**: Approve, Reject, Edit, Delete.
+- **Capability Controls**: IMS, POS, and Storefront/Maps changes open a confirmation modal and require a reason persisted to the platform-admin audit trail. Storefront/Maps shows readiness when the tenant is visible but lacks an active primary mapped location.
 - **Compliance Safety Guard**: `Force non-compliant` is available only when backend eligibility indicates allowed (`can_force_non_compliant=true`). For blocked states, UI uses server-provided `force_non_compliant_block_reason` to render disabled helper text.
 - **Stats**: Total tenants, active vs pending counts.
