@@ -40,6 +40,14 @@ export const registerDgfyAccount = async (payload) => {
   return data;
 };
 
+export const requestDgfyRegistrationEmailVerification = async (email) => {
+  const response = await api.post('/auth/email-otp/request', {
+    purpose: 'dgfy_account_verification',
+    email
+  });
+  return response.data.data;
+};
+
 export const fetchDgfyLegalTerms = async () => {
   const response = await api.get('/dgfy/legal-terms/current');
   return response.data.data;

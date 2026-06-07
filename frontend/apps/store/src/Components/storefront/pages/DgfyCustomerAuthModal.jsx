@@ -185,6 +185,7 @@ export function DgfyCustomerAuthModal({
   hasSavedCustomerDetails,
   onCustomerAuthModeChange,
   onSubmit,
+  onRequestRegisterEmailOtp,
   onContinueAsGuest,
   onClearSavedDetails,
   onForgotPassword
@@ -194,6 +195,9 @@ export function DgfyCustomerAuthModal({
   const [showRegisterPassword,        setShowRegisterPassword]        = React.useState(false);
   const [showRegisterConfirmPassword, setShowRegisterConfirmPassword] = React.useState(false);
   const [isTermsDialogOpen,           setIsTermsDialogOpen]           = React.useState(false);
+  const [registerOtpSentTo,            setRegisterOtpSentTo]            = React.useState('');
+  const [registerOtpSending,           setRegisterOtpSending]           = React.useState(false);
+  const [registerOtpNotice,            setRegisterOtpNotice]            = React.useState('');
   const [localSignInForm,             setLocalSignInForm]             = React.useState(() => ({ ...(customerSignInForm || {}) }));
   const [localRegisterForm,           setLocalRegisterForm]           = React.useState(() => ({ ...(customerRegisterForm || {}) }));
 
@@ -213,18 +217,58 @@ export function DgfyCustomerAuthModal({
     setLocalRegisterForm((previous) => ({ ...previous, [field]: value }));
   }, []);
 
+  React.useEffect(() => {
+    setRegisterOtpSentTo('');
+    setRegisterOtpNotice('');
+    setLocalRegisterForm((previous) => previous.email_otp_code ? { ...previous, email_otp_code: '' } : previous);
+  }, [localRegisterForm.email]);
+
+  const requestRegisterEmailOtp = React.useCallback(async () => {
+    const email = String(localRegisterForm.email || '').trim().toLowerCase();
+    if (!email) {
+      setRegisterOtpNotice('Enter your email before requesting a code.');
+      return;
+    }
+    setRegisterOtpSending(true);
+    setRegisterOtpNotice('');
+    try {
+      await onRequestRegisterEmailOtp?.(email);
+      setRegisterOtpSentTo(email);
+      setLocalRegisterForm((previous) => ({ ...previous, email_otp_code: '' }));
+      setRegisterOtpNotice(`Verification code sent to ${email}.`);
+    } catch (error) {
+      setRegisterOtpNotice(error?.message || 'Could not send verification code. Please try again.');
+    } finally {
+      setRegisterOtpSending(false);
+    }
+  }, [localRegisterForm.email, onRequestRegisterEmailOtp]);
+
   const submitLocalAuthForm = React.useCallback(() => {
+    if (customerAuthMode === 'create_account') {
+      const email = String(localRegisterForm.email || '').trim().toLowerCase();
+      if (!/^\d{6}$/.test(String(localRegisterForm.email_otp_code || '').trim())) {
+        setRegisterOtpNotice('Enter the 6-digit verification code sent to your DGFY email.');
+        return;
+      }
+      if (registerOtpSentTo !== email) {
+        setRegisterOtpNotice('Send a verification code to this email before creating the account.');
+        return;
+      }
+    }
     onSubmit?.({
       signIn: localSignInForm,
       register: localRegisterForm
     });
-  }, [localRegisterForm, localSignInForm, onSubmit]);
+  }, [customerAuthMode, localRegisterForm, localSignInForm, onSubmit, registerOtpSentTo]);
 
   const savedName     = String(savedCustomerDetails?.name || '').trim() || 'Saved customer';
   const savedContact  = toMaskedContact(savedCustomerDetails);
   const savedInitials = toInitials(savedName);
   const savedAgeLabel = formatSavedAge(savedCustomerDetails?.updatedAt);
   const isSignIn      = customerAuthMode === 'sign_in';
+  const registerEmail = String(localRegisterForm.email || '').trim().toLowerCase();
+  const isRegisterEmailCodeReady = /^\d{6}$/.test(String(localRegisterForm.email_otp_code || '').trim())
+    && registerOtpSentTo === registerEmail;
 
   const BENEFITS = [
     { icon: ShoppingBag,    title: 'Orders',        body: 'Track your orders across all DGFY stores.' },
@@ -817,6 +861,36 @@ export function DgfyCustomerAuthModal({
                     autoComplete="email"
                   />
 
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1fr) 128px',
+                        gap: 10,
+                        alignItems: 'center'
+                      }}
+                    >
+                      <AuthInput
+                        icon={ShieldCheck}
+                        placeholder="Email verification code"
+                        value={localRegisterForm.email_otp_code || ''}
+                        onChange={(e) => updateRegisterField('email_otp_code', e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        autoComplete="one-time-code"
+                      />
+                      <PrimaryButton
+                        onClick={requestRegisterEmailOtp}
+                        disabled={customerAuthSubmitting || registerOtpSending || !String(localRegisterForm.email || '').trim()}
+                        style={{ height: 46, boxShadow: 'none' }}
+                      >
+                        {registerOtpSending ? 'Sending...' : 'Send code'}
+                      </PrimaryButton>
+                    </div>
+                    <div style={{ fontSize: 12, lineHeight: 1.5, color: registerOtpNotice ? TEXT_SOFT : MUTED }}>
+                      {registerOtpNotice || 'Verify this email before creating your DGFY account.'}
+                      {registerOtpSentTo && !registerOtpNotice ? ` Last sent to ${registerOtpSentTo}.` : ''}
+                    </div>
+                  </div>
+
                   <AuthInput
                     icon={Phone}
                     placeholder="Contact number"
@@ -907,7 +981,7 @@ export function DgfyCustomerAuthModal({
 
                   <PrimaryButton
                     onClick={submitLocalAuthForm}
-                    disabled={customerAuthSubmitting || dgfyLegalTermsLoading}
+                    disabled={customerAuthSubmitting || dgfyLegalTermsLoading || !isRegisterEmailCodeReady}
                   >
                     {customerAuthSubmitting
                       ? 'Creating account...'

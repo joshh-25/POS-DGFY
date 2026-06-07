@@ -47,7 +47,11 @@ import { createTenantSessionForDgfyAccount } from '../../services/dgfyTenantSess
 
 export const registerDgfyAccountUseCase = buildRegisterDgfyAccountUseCase({
     repository: dgfyAccountRepository,
-    hashPassword: (password) => bcrypt.hash(password, 10)
+    hashPassword: (password) => bcrypt.hash(password, 10),
+    verifyEmailOtp,
+    emailOtpPurposes: {
+        DGFY_ACCOUNT_VERIFICATION: 'dgfy_account_verification'
+    }
 });
 
 export const getDgfyLegalTermsUseCase = buildGetDgfyLegalTermsUseCase();

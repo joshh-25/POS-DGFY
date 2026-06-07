@@ -280,6 +280,13 @@ describe('storefront discovery integration flow', () => {
       if (normalized.includes('/api/v1/dgfy/legal-terms/current')) {
         return makeJsonResponse(dgfyLegalTerms);
       }
+      if (normalized.includes('/api/v1/auth/email-otp/request')) {
+        return makeJsonResponse({
+          otp_id: 'otp-1',
+          purpose: 'dgfy_account_verification',
+          email: 'ada@example.test'
+        });
+      }
       if (normalized.includes('/api/v1/dgfy/auth/me')) {
         return {
           ok: false,
@@ -330,12 +337,13 @@ describe('storefront discovery integration flow', () => {
     const placeholders = Array.from(submitButton.closest('form').querySelectorAll('input'))
       .map((input) => input.placeholder)
       .filter(Boolean)
-      .slice(0, 7);
+      .slice(0, 8);
     expect(placeholders).toEqual([
       'Last name',
       'First name',
       'Middle name (optional)',
       'Email',
+      'Email verification code',
       'Contact number',
       'Password',
       'Confirm password'
@@ -350,6 +358,16 @@ describe('storefront discovery integration flow', () => {
     fireEvent.change(screen.getByPlaceholderText('First name'), { target: { value: 'Ada' } });
     fireEvent.change(screen.getByPlaceholderText('Middle name (optional)'), { target: { value: 'Byron' } });
     fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'ada@example.test' } });
+    fireEvent.click(screen.getByRole('button', { name: /send code/i }));
+    await waitFor(() => {
+      const otpCall = fetchMock.mock.calls.find(([requestUrl]) => String(requestUrl).includes('/api/v1/auth/email-otp/request'));
+      expect(otpCall).toBeTruthy();
+      expect(JSON.parse(otpCall[1].body)).toEqual({
+        purpose: 'dgfy_account_verification',
+        email: 'ada@example.test'
+      });
+    });
+    fireEvent.change(screen.getByPlaceholderText('Email verification code'), { target: { value: '123456' } });
     fireEvent.change(screen.getByPlaceholderText('Contact number'), { target: { value: '+639123456789' } });
     fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'password123' } });
     fireEvent.change(screen.getByPlaceholderText('Confirm password'), { target: { value: 'password123' } });
@@ -369,6 +387,7 @@ describe('storefront discovery integration flow', () => {
         last_name: 'Lovelace',
         email: 'ada@example.test',
         phone: '+639123456789',
+        email_otp_code: '123456',
         accepted_terms: true,
         terms_version: 'dgfy-account-terms-2026-05-26',
         privacy_version: 'dgfy-privacy-2026-05-26',

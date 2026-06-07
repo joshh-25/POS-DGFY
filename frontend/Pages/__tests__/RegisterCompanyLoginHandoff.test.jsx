@@ -24,6 +24,7 @@ const dgfyAuthMock = vi.hoisted(() => ({
   logoutDgfyAccount: vi.fn(),
   requestDgfyEmailVerification: vi.fn(),
   requestDgfyPasswordReset: vi.fn(),
+  requestDgfyRegistrationEmailVerification: vi.fn(),
   startDgfyTenantSession: vi.fn(),
   verifyDgfyEmail: vi.fn(),
   registerDgfyAccount: vi.fn(),
@@ -143,6 +144,8 @@ describe('RegisterCompany DGFY handoff', () => {
     dgfyAuthMock.logoutDgfyAccount.mockReset();
     dgfyAuthMock.requestDgfyEmailVerification.mockReset();
     dgfyAuthMock.requestDgfyPasswordReset.mockReset();
+    dgfyAuthMock.requestDgfyRegistrationEmailVerification.mockReset();
+    dgfyAuthMock.requestDgfyRegistrationEmailVerification.mockResolvedValue({ otp_id: 'otp-1' });
     dgfyAuthMock.verifyDgfyEmail.mockReset();
     dgfyAuthMock.registerDgfyAccount.mockReset();
     dgfyAuthMock.updateDgfyProfile.mockReset();
@@ -271,12 +274,13 @@ describe('RegisterCompany DGFY handoff', () => {
       .find((button) => button.type === 'submit');
     const labels = Array.from(submitButton.closest('form').querySelectorAll('label'))
       .map((label) => label.textContent.trim());
-    expect(labels.slice(0, 7)).toEqual([
+    expect(labels.slice(0, 8)).toEqual([
       'Last Name',
       'First Name',
       'Optional Middle Name',
       'Email',
       'Contact Number',
+      'Email Verification Code',
       'Password',
       'Confirm Password'
     ]);
@@ -290,6 +294,9 @@ describe('RegisterCompany DGFY handoff', () => {
     fireEvent.change(screen.getByLabelText('Optional Middle Name'), { target: { value: 'Byron' } });
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'ada@example.test' } });
     fireEvent.change(screen.getByLabelText('Contact Number'), { target: { value: '+639123456789' } });
+    fireEvent.click(screen.getByRole('button', { name: /send code/i }));
+    await waitFor(() => expect(dgfyAuthMock.requestDgfyRegistrationEmailVerification).toHaveBeenCalledWith('ada@example.test'));
+    fireEvent.change(screen.getByLabelText('Email Verification Code'), { target: { value: '123456' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
     fireEvent.change(screen.getByLabelText('Confirm Password'), { target: { value: 'password123' } });
     fireEvent.click(screen.getAllByRole('button', { name: /^show password$/i })[0]);
@@ -303,6 +310,7 @@ describe('RegisterCompany DGFY handoff', () => {
       last_name: 'Lovelace',
       email: 'ada@example.test',
       phone: '+639123456789',
+      email_otp_code: '123456',
       accepted_terms: true,
       terms_version: 'dgfy-account-terms-2026-05-26',
       privacy_version: 'dgfy-privacy-2026-05-26',

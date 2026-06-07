@@ -13,6 +13,7 @@ import {
     loginDgfyAccount,
     logoutDgfyAccount,
     requestDgfyPasswordReset,
+    requestDgfyRegistrationEmailVerification,
     registerDgfyAccount,
     startDgfyTenantSession
 } from '../src/services/dgfyAuthService.js';
@@ -196,8 +197,11 @@ export default function RegisterCompany() {
         phone: '',
         password: '',
         confirmPassword: '',
+        emailOtpCode: '',
         acceptedTerms: false
     });
+    const [authEmailOtpSentTo, setAuthEmailOtpSentTo] = useState('');
+    const [isSendingAuthEmailOtp, setIsSendingAuthEmailOtp] = useState(false);
     const [loginForm, setLoginForm] = useState({ email: '', password: '' });
     const [resetForm, setResetForm] = useState({ email: '', code: '', password: '', confirmPassword: '' });
     const [resetStep, setResetStep] = useState('request');
@@ -352,6 +356,36 @@ export default function RegisterCompany() {
         return undefined;
     }, [clearHandoffTokenFromUrl, searchParams]);
 
+    useEffect(() => {
+        setAuthEmailOtpSentTo('');
+        setAuthForm((current) => current.emailOtpCode ? { ...current, emailOtpCode: '' } : current);
+    }, [authForm.email]);
+
+    const handleRequestDgfyRegistrationEmailOtp = async () => {
+        setError('');
+        const email = authForm.email.trim().toLowerCase();
+        if (!email) {
+            setError('Email is required before requesting a verification code.');
+            return;
+        }
+        if (!emailPattern.test(email)) {
+            setError('Enter a valid email address before requesting a verification code.');
+            return;
+        }
+
+        setIsSendingAuthEmailOtp(true);
+        try {
+            await requestDgfyRegistrationEmailVerification(email);
+            setAuthEmailOtpSentTo(email);
+            setAuthForm((current) => ({ ...current, emailOtpCode: '' }));
+            setNotice(`Verification code sent to ${email}.`);
+        } catch (err) {
+            setError(err.response?.data?.message || 'Could not send verification code. Please try again.');
+        } finally {
+            setIsSendingAuthEmailOtp(false);
+        }
+    };
+
     const handleRegisterDgfyAccount = async (event) => {
         event.preventDefault();
         setError('');
@@ -370,6 +404,14 @@ export default function RegisterCompany() {
         }
         if (authForm.password !== authForm.confirmPassword) {
             setError('Passwords do not match.');
+            return;
+        }
+        if (!/^\d{6}$/.test(authForm.emailOtpCode.trim())) {
+            setError('Enter the 6-digit verification code sent to your DGFY email.');
+            return;
+        }
+        if (authEmailOtpSentTo !== authForm.email.trim().toLowerCase()) {
+            setError('Send a verification code to this DGFY email before creating the account.');
             return;
         }
         if (!authForm.acceptedTerms) {
@@ -391,6 +433,7 @@ export default function RegisterCompany() {
                 phone: authForm.phone,
                 password: authForm.password,
                 confirm_password: authForm.confirmPassword,
+                email_otp_code: authForm.emailOtpCode.trim(),
                 accepted_terms: true,
                 terms_version: accountLegalSnapshot.terms_version,
                 privacy_version: accountLegalSnapshot.privacy_version,
@@ -667,6 +710,37 @@ export default function RegisterCompany() {
                                             <Input id="dgfyPhone" type="tel" value={authForm.phone} onChange={(e) => setAuthForm({ ...authForm, phone: e.target.value })} required disabled={isLoading} className="mt-1" />
                                         </div>
                                     </div>
+                                    <div className="rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">
+                                        <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+                                            <div>
+                                                <Label htmlFor="dgfyEmailOtpCode">Email Verification Code</Label>
+                                                <Input
+                                                    id="dgfyEmailOtpCode"
+                                                    inputMode="numeric"
+                                                    pattern="[0-9]{6}"
+                                                    maxLength={6}
+                                                    value={authForm.emailOtpCode}
+                                                    onChange={(e) => setAuthForm({ ...authForm, emailOtpCode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                                                    required
+                                                    disabled={isLoading}
+                                                    className="mt-1"
+                                                />
+                                            </div>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={handleRequestDgfyRegistrationEmailOtp}
+                                                disabled={isLoading || isSendingAuthEmailOtp || !authForm.email.trim()}
+                                                className="border-[#1f5f9f] text-[#1f5f9f] hover:bg-[#e8f4ff]"
+                                            >
+                                                {isSendingAuthEmailOtp ? 'Sending...' : 'Send Code'}
+                                            </Button>
+                                        </div>
+                                        <p className="mt-2 text-xs text-slate-600">
+                                            We will send a DGFY verification code to this email before creating the account.
+                                            {authEmailOtpSentTo ? ` Last sent to ${authEmailOtpSentTo}.` : ''}
+                                        </p>
+                                    </div>
                                     <div className="grid gap-4 md:grid-cols-2">
                                         <div>
                                             <Label htmlFor="dgfyPassword">Password</Label>
@@ -688,7 +762,7 @@ export default function RegisterCompany() {
                                         snapshotText={accountLegalSnapshot.acknowledgement_text}
                                         versionLabel={accountLegalSnapshot.marketplace_terms_version ? `Marketplace terms version ${accountLegalSnapshot.marketplace_terms_version}` : ''}
                                     />
-                                    <Button type="submit" disabled={isLoading || !authForm.acceptedTerms || accountLegalTermsUnavailable} className="w-full bg-[#1f5f9f] hover:bg-[#174f86]">
+                                    <Button type="submit" disabled={isLoading || !authForm.acceptedTerms || accountLegalTermsUnavailable || !/^\d{6}$/.test(authForm.emailOtpCode.trim())} className="w-full bg-[#1f5f9f] hover:bg-[#174f86]">
                                         {isLoading ? 'Creating account...' : 'Create DGFY Account'}
                                     </Button>
                                 </form>

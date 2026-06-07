@@ -8601,6 +8601,9 @@ export default function StorefrontApp() {
         setCustomerSignInForm({ email: '', password: '' });
       } else {
         const registerForm = formDrafts?.register || customerRegisterForm;
+        if (!/^\d{6}$/.test(String(registerForm.email_otp_code || '').trim())) {
+          throw new Error('Enter the 6-digit verification code sent to your DGFY email.');
+        }
         const legalTerms = dgfyLegalTerms || await loadDgfyLegalTerms();
         const snapshot = legalTerms?.flows?.account_registration?.snapshot || {};
         const payload = await requestJson('/api/v1/dgfy/auth/register', {
@@ -8639,6 +8642,21 @@ export default function StorefrontApp() {
       setCustomerAuthSubmitting(false);
     }
   }, [closeAccountDrawer, customerAuthMode, customerAuthSubmitting, customerRegisterForm, customerSignInForm, dgfyLegalTerms, handleLoadAccountPanel, loadDgfyLegalTerms, openAccountPanel]);
+
+  const handleRequestDgfyRegistrationEmailOtp = useCallback(async (email) => {
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    if (!normalizedEmail) {
+      throw new Error('Email is required before requesting a verification code.');
+    }
+    await requestJson('/api/v1/auth/email-otp/request', {
+      method: 'POST',
+      cache: 'no-store',
+      body: {
+        purpose: 'dgfy_account_verification',
+        email: normalizedEmail
+      }
+    });
+  }, []);
 
   const handleNearMe = () => {
     const currentSearch = String(searchRef.current || search || '').trim();
@@ -18354,6 +18372,7 @@ return (
           onSignInFieldChange={handleCustomerSignInFieldChange}
           onRegisterFieldChange={handleCustomerRegisterFieldChange}
           onSubmit={handleCustomerAuthSubmit}
+          onRequestRegisterEmailOtp={handleRequestDgfyRegistrationEmailOtp}
           onContinueAsGuest={() => {
             if (hasSavedCustomerDetails) {
               applySavedCustomerDetails();
