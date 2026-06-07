@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-06-07
+last_reviewed: 2026-06-08
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -124,6 +124,14 @@ Tenant Manager exposes platform-owner capability switches for active tenants:
 - **Storefront / Maps** reuses the governed public visibility and access-mode contract. Parent visibility writes `store_is_visible`; sub-mode writes `customer_access_mode` using the existing labels `Map Listing Only`, `Catalog Only`, `Inquiry Mode`, and `Online Ordering Mode`.
 
 Capability changes require a platform-admin reason, write a landlord `tenant_admin_audit_logs` row with before/after capability snapshots, and write tenant-local settings in a tenant DB transaction. Platform-admin Storefront changes must refresh the landlord `storefront_discovery_index` after successful tenant setting writes; if the refresh fails, the backend compensates by rolling back the Storefront setting changes and returns an error instead of reporting a stale success. Tenant list responses include `capabilities.storefront_readiness` so the admin UI can show whether Storefront visibility is actually publishable through an active primary storefront map pin with coordinates. These switches must not mutate tenant lifecycle `status`, subscription `plan`, item-level POS visibility, item-level Storefront visibility, or branch availability overrides.
+
+Current production status as of 2026-06-08:
+- Capability backend compatibility fix and Tenant Manager UI refinements are deployed at SHA `023e5f9ff0c71340cb9f92a9a7d7526920a62e05`.
+- Production remote `HEAD` and deploy marker both match that SHA; deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260608_024256.summary.txt` reports backend, IMS, POS, Storefront, public endpoints, frontend asset parity, tenant schema sync, and strict index-headroom checks passing.
+- The release used the documented emergency no-staging bypass because stale QA deployed-head evidence was the sole failed gate. `System_Audit/7.2-Release_evidence_depends_on_stale_or_bypassable_QA_paths.md` remains open until the QA deployed-head evidence path is made deterministic.
+- Live platform-admin smoke returned login `200`, tenant list `200`, 13 tenants, zero `capabilities.unavailable` tenant rows, and capability audit-log route `200`.
+- The smoke sampled an active tenant with IMS enabled, POS enabled, Storefront visible, `customer_access_mode=catalog`, and publishable Storefront readiness through an active primary mapped location. Frontend validation covered the sectioned Core access / Public Storefront controls, Storefront sub-mode disabled state, Tenant search behavior, and `build:skupervisor`; rendered browser validation was blocked in this session because the in-app Browser tool was unavailable and no importable Playwright package exists in the repo runtime.
+- Local workstation `npm run gate:release:prod-contracts:env` was not run because `.env.prod.local` is absent; the production deploy wrapper summary and live smoke are the current production evidence.
 
 ## Technical Architecture
 
@@ -292,9 +300,9 @@ Located at `/admin/tenants`.
 
 **Features:**
 - **List View**: Filter by status (Pending, Active, etc.).
-- **Search/Filter**: Quickly find companies.
+- **Search/Filter**: Search is a first-class admin tool for large tenant lists. It matches company name, admin email, company token, status, plan, Customer Access Mode, and capability state, and shows the current result count beside the search box.
 - **Quick Actions**: Approve, Reject, Edit, Delete.
-- **Capability Controls**: IMS, POS, and Storefront/Maps changes open a confirmation modal and require a reason persisted to the platform-admin audit trail. Storefront/Maps shows readiness when the tenant is visible but lacks an active primary mapped location.
+- **Capability Controls**: IMS/POS controls are grouped as core workspace access, while Storefront/Maps visibility and Customer Access Mode are grouped as public Storefront controls. Changes open a confirmation modal and require a reason persisted to the platform-admin audit trail. Storefront/Maps shows readiness when the tenant is visible but lacks an active primary mapped location.
 - **Capability Audit Trail**: Active tenant cards expose recent platform-admin capability changes from `GET /admin/tenants/:id/capabilities/audit-logs`, including actor, reason, timestamp, and before/after capability state.
 - **Compliance Safety Guard**: `Force non-compliant` is available only when backend eligibility indicates allowed (`can_force_non_compliant=true`). For blocked states, UI uses server-provided `force_non_compliant_block_reason` to render disabled helper text.
 - **Stats**: Total tenants, active vs pending counts.

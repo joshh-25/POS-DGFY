@@ -1,14 +1,14 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-06-07
+last_reviewed: 2026-06-08
 related_adr: docs/architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md
 declaration_id: 2026-06-07-platform-admin-tenant-capability-controls
 classification: regulatory
 surfaces: admin-tenants,tenant-management,pos,storefront-discovery,ims,settings,compliance,terminal
 reason_codes_impacted: ALLOWED,TENANT_CAPABILITY_DISABLED,VALIDATION_FAILED
 policy_version: 2026.06.07
-verification_evidence: npm run check:architecture,npm run lint:docs,npm run check:compliance,npm --prefix backend test -- --runTestsByPath tests/adminTenantCapabilities.transport.test.js tests/tenantCapabilityRouteGates.test.js tests/updateTenantCapabilitiesUseCase.rollback.test.js tests/adminTenantCapabilityValidator.test.js tests/listTenantCapabilityAuditLogs.usecase.test.js tests/tenantCapabilitySettings.test.js tests/listTenants.usecase.test.js --runInBand,cd frontend && npm exec vitest run src/pages/__tests__/TenantManager.capabilities.integration.test.jsx src/pages/__tests__/TenantManager.editPlan.integration.test.jsx src/pages/__tests__/TenantManager.forceNonCompliant.integration.test.jsx -- --pool=threads,npm --prefix frontend run build:skupervisor,git diff --check
+verification_evidence: npm run check:architecture,npm run lint:docs,npm run check:compliance,npm --prefix backend test -- --runTestsByPath tests/tenantCapabilityReadiness.schemaCompatibility.test.js tests/adminTenantCapabilities.transport.test.js tests/tenantCapabilityRouteGates.test.js tests/updateTenantCapabilitiesUseCase.rollback.test.js tests/adminTenantCapabilityValidator.test.js tests/listTenantCapabilityAuditLogs.usecase.test.js tests/tenantCapabilitySettings.test.js tests/listTenants.usecase.test.js --runInBand,cd frontend && npm exec vitest run src/pages/__tests__/TenantManager.capabilities.integration.test.jsx src/pages/__tests__/TenantManager.editPlan.integration.test.jsx src/pages/__tests__/TenantManager.forceNonCompliant.integration.test.jsx -- --pool=threads,npm --prefix frontend run build:skupervisor,git diff --check
 rollback_note: Revert the admin capability endpoint, Tenant Manager capability UI, IMS/POS route gates, and related docs together; then rerun storefront discovery sync for any tenant whose Storefront visibility changed during the rollout.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -27,6 +27,7 @@ This declaration covers platform-admin Tenant Manager controls for tenant-level 
 ## Affected Surfaces
 
 - Tenant Manager reads active tenant capability settings and renders IMS, POS, Storefront / Maps, and Storefront access-mode controls.
+- Tenant Manager groups IMS/POS as core workspace access, groups Storefront visibility/access modes as public Storefront controls, and exposes first-class tenant search across company identity and capability state without changing the capability payload contract.
 - `PATCH /api/v1/admin/tenants/:id/capabilities` requires a reason, validates strict booleans/access modes, writes tenant-local `system_settings` rows for `tenant_ims_enabled`, `tenant_pos_enabled`, `store_is_visible`, and `customer_access_mode`, and persists a landlord `tenant_admin_audit_logs` row with before/after snapshots.
 - `GET /api/v1/admin/tenants/:id/capabilities/audit-logs` exposes recent tenant-scoped capability audit logs to platform admins.
 - `/api/v1/pos/*` returns `403 TENANT_CAPABILITY_DISABLED` when platform POS access is disabled. Shared mode routes that authorize through POS permission fallbacks ignore those fallback permissions while POS is disabled.
@@ -48,7 +49,7 @@ Required validation for this declaration:
 1. `npm run check:architecture`
 2. `npm run lint:docs`
 3. `npm run check:compliance`
-4. `npm --prefix backend test -- --runTestsByPath tests/adminTenantCapabilities.transport.test.js tests/tenantCapabilityRouteGates.test.js tests/updateTenantCapabilitiesUseCase.rollback.test.js tests/adminTenantCapabilityValidator.test.js tests/listTenantCapabilityAuditLogs.usecase.test.js tests/tenantCapabilitySettings.test.js tests/listTenants.usecase.test.js tests/adminTenantHandlers.transport.test.js tests/storefrontPrimaryLocation.discovery.integration.test.js --runInBand`
+4. `npm --prefix backend test -- --runTestsByPath tests/tenantCapabilityReadiness.schemaCompatibility.test.js tests/adminTenantCapabilities.transport.test.js tests/tenantCapabilityRouteGates.test.js tests/updateTenantCapabilitiesUseCase.rollback.test.js tests/adminTenantCapabilityValidator.test.js tests/listTenantCapabilityAuditLogs.usecase.test.js tests/tenantCapabilitySettings.test.js tests/listTenants.usecase.test.js --runInBand`
 5. From `frontend/`: `npm exec vitest run src/pages/__tests__/TenantManager.capabilities.integration.test.jsx src/pages/__tests__/TenantManager.editPlan.integration.test.jsx src/pages/__tests__/TenantManager.forceNonCompliant.integration.test.jsx -- --pool=threads`
 6. Tenant Manager audit-trail rendering: `npm --prefix frontend test -- TenantManager.capabilities.integration.test.jsx`
 7. `npm --prefix frontend run build:skupervisor`
@@ -57,3 +58,14 @@ Required validation for this declaration:
 ## Production Verification
 
 Production verification must confirm that active tenants keep enabled IMS/POS defaults when the new settings are absent, POS-disabled tenants receive `TENANT_CAPABILITY_DISABLED` on POS routes, and Storefront visibility/access-mode changes produce the expected public discovery/profile result after discovery sync.
+
+Current production evidence from 2026-06-08:
+
+- Deployed target SHA: `023e5f9ff0c71340cb9f92a9a7d7526920a62e05`.
+- Emergency no-staging bypass was explicitly recorded because stale QA deployed-head evidence was the sole failed promotion gate after QA smoke, rollback/restore docs, architecture, and compliance checks passed. This does not close `System_Audit/7.2-Release_evidence_depends_on_stale_or_bypassable_QA_paths.md`; it records the auditable bypass for this release only.
+- Production remote `HEAD` and `.deploy-state/last_deployed_commit` both matched `023e5f9ff0c71340cb9f92a9a7d7526920a62e05`.
+- Production deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260608_024256.summary.txt` reported backend, IMS, POS, Storefront, and public endpoint health checks passing, frontend asset parity passing, tenant schema sync healthy, and strict index-headroom checks healthy.
+- `https://skupervisor.dgfy.ph/api/v1/health` returned `200` with `environment=production`, database connected, Redis connected, and `runtimeSchema=healthy`.
+- Platform-admin smoke against `https://skupervisor.dgfy.ph` returned login `200`, tenant list `200`, `tenant_count=13`, `capabilities.unavailable` count `0`, and capability audit-log route `200`.
+- The production smoke specifically verified that tenant readiness still loads when the tenant-local `tenant_locations` model does not expose optional `storefront_last_synced_at`; `storefront_readiness` remained publishable for the sampled active tenant with coordinates.
+- `npm run gate:release:prod-contracts:env` was not run locally because `.env.prod.local` was absent in the workstation checkout; production deploy wrapper health and smoke evidence above are the current production proof for this declaration.
