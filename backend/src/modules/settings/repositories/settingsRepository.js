@@ -35,6 +35,12 @@ const createStorefrontHandleConflictError = (handle) => {
     return error;
 };
 
+const isMissingTableError = (error, tableName) => {
+    const code = error?.original?.code || error?.parent?.code || error?.code;
+    const message = String(error?.original?.sqlMessage || error?.parent?.sqlMessage || error?.message || '');
+    return code === 'ER_NO_SUCH_TABLE' && message.includes(tableName);
+};
+
 const createDefaultOrderMethodFees = () => ORDER_METHODS.reduce((acc, method) => {
     acc[method] = {
         enabled: false,
@@ -696,14 +702,20 @@ export const settingsRepository = {
         if (!normalized) return null;
 
         if (typeof StorefrontHandleReservation?.findOne === 'function') {
-            const reservation = await StorefrontHandleReservation.findOne({
-                where: { handle: normalized },
-                attributes: ['tenant_id', 'handle'],
-                transaction: options.transaction
-            });
-            if (reservation) {
-                const payload = reservation && typeof reservation.toJSON === 'function' ? reservation.toJSON() : reservation;
-                return { tenant_id: payload.tenant_id, slug: payload.handle };
+            try {
+                const reservation = await StorefrontHandleReservation.findOne({
+                    where: { handle: normalized },
+                    attributes: ['tenant_id', 'handle'],
+                    transaction: options.transaction
+                });
+                if (reservation) {
+                    const payload = reservation && typeof reservation.toJSON === 'function' ? reservation.toJSON() : reservation;
+                    return { tenant_id: payload.tenant_id, slug: payload.handle };
+                }
+            } catch (error) {
+                if (!isMissingTableError(error, 'storefront_handle_reservations')) {
+                    throw error;
+                }
             }
         }
 
@@ -723,28 +735,28 @@ export const settingsRepository = {
         const tenantId = dbStore.getStore()?.tenantId || null;
         if (!tenantId || tenantId === 'default') return null;
 
-        const existingByHandle = await StorefrontHandleReservation.findOne({
-            where: { handle: normalized },
-            transaction: options.transaction,
-            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
-        });
-        if (existingByHandle) {
-            const payload = existingByHandle && typeof existingByHandle.toJSON === 'function'
-                ? existingByHandle.toJSON()
-                : existingByHandle;
-            if (String(payload?.tenant_id || '') !== String(tenantId)) {
-                throw createStorefrontHandleConflictError(normalized);
-            }
-            return payload;
-        }
-
-        const existingByTenant = await StorefrontHandleReservation.findOne({
-            where: { tenant_id: tenantId },
-            transaction: options.transaction,
-            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
-        });
-
         try {
+            const existingByHandle = await StorefrontHandleReservation.findOne({
+                where: { handle: normalized },
+                transaction: options.transaction,
+                lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+            });
+            if (existingByHandle) {
+                const payload = existingByHandle && typeof existingByHandle.toJSON === 'function'
+                    ? existingByHandle.toJSON()
+                    : existingByHandle;
+                if (String(payload?.tenant_id || '') !== String(tenantId)) {
+                    throw createStorefrontHandleConflictError(normalized);
+                }
+                return payload;
+            }
+
+            const existingByTenant = await StorefrontHandleReservation.findOne({
+                where: { tenant_id: tenantId },
+                transaction: options.transaction,
+                lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+            });
+
             if (existingByTenant) {
                 await existingByTenant.update({
                     handle: normalized,
@@ -762,6 +774,7 @@ export const settingsRepository = {
             }, { transaction: options.transaction });
             return created && typeof created.toJSON === 'function' ? created.toJSON() : created;
         } catch (error) {
+            if (isMissingTableError(error, 'storefront_handle_reservations')) return null;
             if (
                 error?.name === 'SequelizeUniqueConstraintError'
                 || String(error?.original?.code || error?.parent?.code || '').includes('ER_DUP_ENTRY')
