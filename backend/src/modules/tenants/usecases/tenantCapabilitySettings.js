@@ -33,6 +33,14 @@ const serializeBoolean = (value) => (value === true ? 'true' : 'false');
 
 const isFiniteCoordinate = (value) => Number.isFinite(Number(value));
 
+const buildTenantLocationReadinessAttributes = (TenantLocation) => {
+    const attributes = ['location_id', 'name', 'latitude', 'longitude'];
+    if (TenantLocation?.rawAttributes?.storefront_last_synced_at) {
+        attributes.push('storefront_last_synced_at');
+    }
+    return attributes;
+};
+
 const buildStorefrontReadiness = async () => {
     const TenantLocation = dbStore.get('TenantLocation');
     if (!TenantLocation) {
@@ -49,7 +57,7 @@ const buildStorefrontReadiness = async () => {
             is_primary_storefront: true,
             is_active: true
         },
-        attributes: ['location_id', 'name', 'latitude', 'longitude', 'storefront_last_synced_at']
+        attributes: buildTenantLocationReadinessAttributes(TenantLocation)
     });
 
     if (!primaryLocation) {
