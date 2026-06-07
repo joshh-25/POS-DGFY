@@ -241,7 +241,7 @@ Platform-admin tenant capability changes are persisted in the landlord audit tab
 ```sql
 CREATE TABLE tenant_admin_audit_logs (
     tenant_admin_audit_log_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    tenant_id INT NOT NULL,
+    tenant_id CHAR(36) NOT NULL,
     action ENUM('capability_update') NOT NULL,
     actor_username VARCHAR(120) NOT NULL,
     reason VARCHAR(500) NOT NULL,

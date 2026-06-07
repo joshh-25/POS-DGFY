@@ -5155,7 +5155,7 @@ Update platform-admin capability controls for an active tenant.
   "success": true,
   "message": "Tenant capabilities updated successfully",
   "data": {
-    "tenant_id": 1,
+    "tenant_id": "tenant-uuid",
     "capabilities": {
       "ims_enabled": true,
       "pos_enabled": false,
@@ -5191,11 +5191,11 @@ List recent platform-admin capability changes for one tenant.
 {
   "success": true,
   "data": {
-    "tenant_id": 1,
+    "tenant_id": "tenant-uuid",
     "logs": [
       {
         "id": 12,
-        "tenant_id": 1,
+        "tenant_id": "tenant-uuid",
         "action": "capability_update",
         "actor_username": "skupervisor",
         "reason": "Temporarily disable POS during terminal readiness remediation",
