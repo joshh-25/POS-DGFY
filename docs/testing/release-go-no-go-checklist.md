@@ -1,11 +1,11 @@
 # Release Go/No-Go Checklist (Current)
 
 Status: reference  
-Last updated: 2026-06-06
+Last updated: 2026-06-08
 
 ## Current Release State
 
-1. Latest production deployment evidence for the tenant session reload and MapLibre picker hardening is code target SHA `4f6eecd1778ae139e634d23821369f40f22dd5d0`, deployed on June 5, 2026 with health checks, frontend asset parity, and tenant-store asset integrity passing. A June 6 Storefront map/search remediation is locally validated after that deployment and must not be treated as live until a new deployed SHA and production smoke are recorded.
+1. Latest production deployment evidence before the current marker/draft hardening is code target SHA `023e5f9ff0c71340cb9f92a9a7d7526920a62e05`, deployed on June 8, 2026 with health checks, frontend asset parity, and platform-admin tenant capability smoke recorded in `docs/README.md`. The June 8 Storefront marker/draft hardening is locally validated and must not be treated as live until a new deployed SHA and production smoke are recorded.
 2. June 2, 2026 audit state: dependency vulnerabilities are resolved and the dependency audit commands below return zero current npm advisories for locked root/backend/frontend trees.
 3. The local release gate now includes dependency audits and a focused frontend contract gate before docs, architecture, compliance, backend, frontend, and budget gates.
 4. Current open audit package: `System_Audit/README.md`.
@@ -75,13 +75,17 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 37. `npm run check:architecture` -> PASS on June 6, 2026 after Storefront map/search remediation.
 38. `git diff --check` -> PASS on June 6, 2026 after Storefront map/search remediation.
 39. Local rendered Storefront route health passed on June 6, 2026 at `/tenant-store`: title, desktop search controls, map region, and overlay-free render were present with no console warnings/errors. Automated browser text entry and screenshot capture were blocked by Browser tooling in this session, so production visual smoke remains required.
+40. `npm --prefix frontend exec vitest run src/features/inventory/__tests__/itemProductWizard.contract.test.js apps/store/src/__tests__/storefrontMarkerCss.contract.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx --pool=threads` -> PASS on June 8, 2026 with 3 files / 39 tests after Storefront marker glow stopped scaling the marker body and IMS draft saves preserved branch availability.
+41. `npm --prefix backend test -- --runTestsByPath tests/storefrontCatalogUseCases.test.js tests/servicesMode.usecases.test.js tests/storefrontDiscoveryIndexService.catalogVisibility.test.js tests/settingsUsecases.applicationResult.test.js` -> PASS on June 8, 2026 with 4 suites / 73 tests for branch availability, services branch scoping, discovery snapshots, and clean-handle reservation behavior.
+42. `npm --prefix frontend run build:store` -> PASS on June 8, 2026 after marker/draft hardening.
+43. Local rendered Storefront route health passed on June 8, 2026 at `/map-dgfy`: title, desktop search controls, map region, overlay-free render, search-field interaction, and zero relevant console warnings/errors. The local development dataset had no seeded discovery stores, so production visual smoke is still required for real-pin zoom placement.
 
 ## Remaining Non-Technical Blockers (Go/No-Go)
 
 1. Cashier/admin UAT signoff evidence completed and reviewed
 2. Source-separation parity proof reviewed
 3. Strict location-binding operational acceptance logged
-4. Visual browser QA evidence for Storefront marker placement across zoom levels and touch/desktop interactions captured
+4. Visual browser QA evidence for Storefront marker placement across zoom levels and touch/desktop interactions captured against seeded or production pins
 
 ## Evidence Artifacts
 

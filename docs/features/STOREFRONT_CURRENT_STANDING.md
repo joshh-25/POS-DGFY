@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: frontend
-last_reviewed: 2026-06-06
+last_reviewed: 2026-06-08
 applies_to: storefront_all_modes
 topic: storefront_current_standing
 ---
@@ -38,6 +38,7 @@ This is a frontend capability/status reference, not a new architecture decision.
 - Catalog and checkout visibility are controlled by customer access and inventory display policy.
 - Tenant profile/cover branding, branch selection, and map marker previews are active.
 - Duplicate-coordinate location pins render as a single exact-coordinate cluster marker. The cluster opens a compact selectable list that shows all entries with internal scrolling for dense same-coordinate locations; stored IMS coordinates remain the only marker, popup, and map-bounds source.
+- Search-active marker glow no longer scales the marker body. The stored coordinate remains the visual anchor during zoom while glow/ripple effects stay around the pin.
 - Pin clicks/taps synchronously select the pin, open or keep the Discover Nearby panel visible, and show the marker preview. Store navigation remains an explicit card/list action.
 - Empty-state guidance for tenants without storefront-ready sellable items is active.
 - Storefront follow/share controls are available where tenant flags enable them.
@@ -50,6 +51,7 @@ This is a frontend capability/status reference, not a new architecture decision.
 - Checkout and Services booking confirmations render backend `account_action` signals so signed-in DGFY customers, signup-eligible guests, guests whose email already has an account, and download-only guests receive distinct guidance.
 - Discovery map initialization is defensive. If MapLibre/WebGL cannot initialize in the browser, the Storefront discovery page remains usable, renders the `Log in / Sign up` account action, and shows a list fallback instead of blanking the page.
 - Storefront map/search stabilization is locally validated as of 2026-06-06. Submitted text searches stay storefront-first, item matches render tenant storefront result cards, matching pins auto-open marker previews, repeated identical searches do not refit/flicker, and duplicate-coordinate results stay on exact IMS coordinates through a shared selectable marker card.
+- Branch-level Storefront availability is preserved from IMS item and product draft saves as well as final create/update flows. Draft saves now apply submitted branch toggles through the same `storefront_location_item_overrides` path used by active item edits.
 - The merged storefront pilot keeps mode-specific view-model logic in the storefront app while preserving existing backend/source-of-truth contracts.
 
 ## Mode Standing
@@ -83,22 +85,26 @@ This is a frontend capability/status reference, not a new architecture decision.
 - Simple storefront contract coverage is active.
 
 ## Storefront Regression Standing (Latest Run)
-Run date: `2026-06-06`
+Run date: `2026-06-08`
 
 Targeted Storefront discovery/account commands:
 - `npm --prefix frontend exec vitest run apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/discoveryMapDom.test.js apps/store/src/__tests__/storefrontMarkerPreview.test.js apps/store/src/__tests__/discoveryPresentation.test.js --pool=threads`
 - `npm --prefix backend test -- --runTestsByPath tests/storefrontDiscoveryRepository.test.js tests/storefrontDiscoveryMapPins.usecase.test.js`
+- `npm --prefix frontend exec vitest run src/features/inventory/__tests__/itemProductWizard.contract.test.js apps/store/src/__tests__/storefrontMarkerCss.contract.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx --pool=threads`
+- `npm --prefix backend test -- --runTestsByPath tests/storefrontCatalogUseCases.test.js tests/servicesMode.usecases.test.js tests/storefrontDiscoveryIndexService.catalogVisibility.test.js tests/settingsUsecases.applicationResult.test.js`
 - `npm --prefix frontend run build:store`
 - `npm run check:architecture`
 - `git diff --check`
 
 Targeted matrix result:
+- June 8 marker/draft hardening frontend slice: `PASS` (`39/39` targeted tests). npm printed the existing unknown `--pool` warning but executed the suites.
+- June 8 backend branch catalog/services/handle slice: `PASS` (`73/73` targeted tests).
 - Storefront discovery flow, map DOM, marker preview, and presentation suites: `PASS` (`42/42` targeted tests). npm printed the existing unknown `--pool` warning but executed the suites.
 - Backend Storefront discovery repository and map-pin use-case suites: `PASS` (`19/19` targeted tests), including union store/item matching, out-of-stock inclusion, nearest matching branches, and degraded snapshot behavior.
 - Storefront production build: `PASS`
 - Architecture guardrails and controller-boundary checks: `PASS`
 - Diff whitespace check: `PASS`
-- Local rendered route health: `PASS` for `/tenant-store` page identity, desktop search controls, map region, and overlay-free render. Automated browser text entry and screenshot capture were blocked by Browser tooling, so production visual smoke is still required before claiming the June 6 Storefront map/search remediation as live.
+- Local rendered route health: `PASS` for `/map-dgfy` page identity, desktop search controls, map region, overlay-free render, search-field interaction, and zero relevant console warnings/errors. The local development dataset had no seeded discovery stores, so live production or seeded-data visual smoke remains required before claiming marker placement against real pins.
 
 ## Notes
 - This file intentionally tracks the frontend standing and test evidence snapshot only.
@@ -111,6 +117,7 @@ Targeted matrix result:
 - Single-result searches auto-focus the exact pin and preview; multi-result searches fit the exact unique marker coordinates.
 - Pin click opens/keeps the Discover Nearby results panel and marker preview synchronously. Store navigation is an explicit card/list action.
 - Duplicate-coordinate cluster previews now show all same-coordinate storefronts in a bounded scrollable card rather than hiding overflow entries.
+- Search-active glow keeps the marker body unscaled so zooming does not make a coordinate-anchored pin appear detached from its saved location.
 - Storefront discovery index reconciliation is part of the guarded production deploy path by default, with a dry-run CLI for preflight impact review.
 
 ## Discovery Map Availability Standing (2026-05-28)

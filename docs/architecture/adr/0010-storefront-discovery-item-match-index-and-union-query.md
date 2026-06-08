@@ -107,3 +107,10 @@ Platform-admin Tenant Manager may update active tenants' Storefront publication 
 2. The Storefront sub-mode writes tenant-local `system_settings.customer_access_mode` using the existing `ghost`, `catalog`, `inquiry`, and `transaction` codes.
 3. Successful platform-admin changes to either setting must refresh the landlord `storefront_discovery_index` for that tenant.
 4. These controls must not change item-level `storefront_catalog_overrides`, branch-level `storefront_location_item_overrides`, POS catalog visibility, tenant lifecycle status, or clean-handle reservation ownership.
+
+## Addendum (2026-06-08): Marker Stability and Draft Branch Availability
+
+The June root-handle and branch-scoping implementation is hardened as follows:
+
+1. Search-active Storefront marker glow remains presentation-only. The MapLibre marker root and the visible marker body must stay anchored to the stored latitude/longitude; pulse/glow effects may animate surrounding pseudo-elements or filter only, but must not scale or translate the marker body in a way that makes the pin appear to drift during zoom.
+2. IMS item and product draft saves must preserve `storefront_location_item_overrides` when branch availability toggles are submitted. Draft behavior remains separate from final Storefront visibility and sale-readiness decisions, but a draft save must not silently drop branch-level Storefront availability choices.
