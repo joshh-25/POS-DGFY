@@ -50,20 +50,16 @@ import {
   UtensilsCrossed,
   ChefHat,
   Copy,
-  User,
   ChevronUp,
   ChevronDown,
-  Share2,
   Trash2,
   X,
   Navigation,
-  Map,
   MoreHorizontal,
   Store,
   ShieldCheck,
   Zap,
   Heart,
-  LogOut,
   ChevronLeft,
   ChevronRight,
   Info,
@@ -76,7 +72,6 @@ import { canCheckout, getCheckoutBlockReason } from './checkoutRules.js';
 import { filterCatalogItems } from './catalogSearch.js';
 import {
   getDiscoveryEmptyStateMessage,
-  getDiscoveryMatchBadges,
   getPreferredDiscoveryLocationId,
   selectDiscoveryPinLocations
 } from './discoveryPresentation.js';
@@ -89,8 +84,7 @@ import {
   canUseCheckout,
   canUseProductCart,
   canViewCatalog,
-  getAccessCapabilities,
-  getInventoryDisplayLabel
+  getAccessCapabilities
 } from './customerAccess.js';
 import { getFoodBeverageStorefrontViewModel } from './fnbStorefrontViewModel.js';
 import { getBusinessModePinMeta, renderBusinessModePinSvg } from './businessModePins.js';
@@ -124,6 +118,8 @@ import {
   getTrackingFlowForOrderMethod
 } from './tracking/fnbAdapter.js';
 import TrackingRouteMap, { extractTrackingMapCoordinates } from './tracking/TrackingRouteMap.jsx';
+import HospitalityBookingPanel from './HospitalityBookingPanel.jsx';
+import { buildBusinessRegistrationUrl } from './businessRegistrationUrl.js';
 import {
   WORKFLOW_MODE_LABELS,
   WORKFLOW_MODE_SELECT_VALUES
@@ -224,13 +220,6 @@ const DGFY_BRAND_NAME = 'DGFY';
 const DGFY_ACRONYM = 'Discover Goods For You';
 const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
 const DGFY_CONVENIENCE_FEE_RATE = 0.01;
-const DISCOVERY_BADGE_TONE_STYLES = {
-  teal: { color: '#0f766e', background: '#ecfeff', borderColor: '#99f6e4' },
-  blue: { color: '#1a4e8d', background: '#eff6ff', borderColor: '#bfdbfe' },
-  slate: { color: '#334155', background: '#f8fafc', borderColor: '#cbd5e1' },
-  emerald: { color: '#047857', background: '#ecfdf5', borderColor: '#a7f3d0' },
-  amber: { color: '#92400e', background: '#fff7ed', borderColor: '#fed7aa' }
-};
 function buildPinnedDeliveryAddress(pin) {
   const latitude = Number(pin?.latitude);
   const longitude = Number(pin?.longitude);
@@ -370,30 +359,6 @@ function StoreFollowGlyph({
   );
 }
 
-const POPULAR_DISCOVERY_CATEGORIES = Object.freeze([
-  { label: 'Food', query: 'Food' },
-  { label: 'Grocery', query: 'Grocery' },
-  { label: 'Laundry', query: 'Laundry' },
-  { label: 'Salon', query: 'Salon' },
-  { label: 'Hardware', query: 'Hardware' },
-  { label: 'More', query: 'Services' }
-]);
-const DISCOVERY_CATEGORY_FILTER_OPTIONS = Object.freeze([
-  ['all', 'All'],
-  ['food', 'Food'],
-  ['grocery', 'Grocery'],
-  ['laundry', 'Laundry'],
-  ['salon', 'Salon'],
-  ['hardware', 'Hardware'],
-  ['services', 'Services'],
-  ['pharmacy', 'Pharmacy'],
-  ['electronics', 'Electronics'],
-  ['bakery', 'Bakery'],
-  ['clothing', 'Clothing'],
-  ['drinks', 'Drinks'],
-  ['food stall', 'Food Stall'],
-  ['frozen', 'Frozen']
-]);
 const DISCOVERY_CATEGORY_MATCHERS = Object.freeze({
   food: ['food', 'cafe', 'coffee', 'bakery', 'drinks', 'food stall', 'frozen', 'f&b'],
   grocery: ['grocery', 'supermarket', 'mart'],
@@ -887,16 +852,100 @@ const getPreferredBookingTimeForDate = (serviceItem, dateString, currentTime = '
   if (currentTime && availableSlots.some((slot) => slot.value === currentTime)) return currentTime;
   return availableSlots[0]?.value || '09:00';
 };
-const TENANT_STORE_BASE_PATH = '/tenant-store';
+const DISCOVERY_BASE_PATH = '/map-dgfy';
+const TENANT_STORE_BASE_PATH = DISCOVERY_BASE_PATH;
+const LEGACY_TENANT_STORE_BASE_PATH = '/tenant-store';
+const LEGACY_STORE_BASE_PATH = '/store';
 const STORE_BOOKING_SUBPAGE = 'book';
 const STORE_ORDER_SUBPAGE = 'order';
 const STORE_TRACK_SUBPAGE = 'track';
+const STORE_ACCOUNT_SUBPAGE = 'account';
 const STORE_SERVICE_SUBPAGE = 'service';
 const STORE_ITEM_SUBPAGE = 'item';
-const storePath = (slug, subpage = null, query = '') => `${TENANT_STORE_BASE_PATH}/${encodeURIComponent(toSlug(slug))}${subpage ? `/${subpage}` : ''}${query || ''}`;
+const DISCOVERY_ACCOUNT_PATH = `${DISCOVERY_BASE_PATH}/${STORE_ACCOUNT_SUBPAGE}`;
+const LEGACY_DISCOVERY_ACCOUNT_PATH = `${LEGACY_TENANT_STORE_BASE_PATH}/${STORE_ACCOUNT_SUBPAGE}`;
+const RESERVED_ROOT_ROUTE_SEGMENTS = new Set([
+  'api',
+  'admin',
+  'assets',
+  'dashboard',
+  'dgfy',
+  'favicon.ico',
+  'health',
+  'legal',
+  'login',
+  'logout',
+  DISCOVERY_BASE_PATH.slice(1),
+  'manifest.json',
+  'platform-admin',
+  'register',
+  'settings',
+  LEGACY_STORE_BASE_PATH.slice(1),
+  LEGACY_TENANT_STORE_BASE_PATH.slice(1),
+  'uploads'
+]);
+const appendLocationQuery = (query = '', locationId = null) => {
+  const normalizedQuery = String(query || '').trim();
+  const params = new URLSearchParams(normalizedQuery.startsWith('?') ? normalizedQuery.slice(1) : normalizedQuery);
+  const parsedLocationId = Number(locationId);
+  if (Number.isInteger(parsedLocationId) && parsedLocationId > 0) {
+    params.set('location_id', String(parsedLocationId));
+  }
+  const serialized = params.toString();
+  return serialized ? `?${serialized}` : '';
+};
+const storePath = (slug, subpage = null, query = '', locationId = null) => `/${encodeURIComponent(toSlug(slug))}${subpage ? `/${subpage}` : ''}${appendLocationQuery(query, locationId)}`;
 const toNumberOrNull = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+};
+const getIndexedDiscoveryCoordinate = (store = {}) => {
+  const latitude = toNumberOrNull(store?.latitude);
+  const longitude = toNumberOrNull(store?.longitude);
+  if (latitude == null || longitude == null) return null;
+  if (isKnownProvisionedPlaceholderCoordinate(latitude, longitude)) return null;
+  return { latitude, longitude };
+};
+const coordinatesMatch = (left = {}, right = {}, tolerance = 0.00001) => {
+  const leftLatitude = toNumberOrNull(left?.latitude);
+  const leftLongitude = toNumberOrNull(left?.longitude);
+  const rightLatitude = toNumberOrNull(right?.latitude);
+  const rightLongitude = toNumberOrNull(right?.longitude);
+  if (leftLatitude == null || leftLongitude == null || rightLatitude == null || rightLongitude == null) return false;
+  return Math.abs(leftLatitude - rightLatitude) <= tolerance
+    && Math.abs(leftLongitude - rightLongitude) <= tolerance;
+};
+const getLocationMatchingIndexedRow = (store = {}, locations = []) => {
+  const indexedCoordinate = getIndexedDiscoveryCoordinate(store);
+  const indexedLocationId = Number(store?.location_id);
+  if (!Number.isInteger(indexedLocationId) || indexedLocationId <= 0) return null;
+  const match = (Array.isArray(locations) ? locations : [])
+    .find((location) => Number(location?.location_id) === indexedLocationId) || null;
+  if (!match) return null;
+  if (indexedCoordinate && !coordinatesMatch(indexedCoordinate, match)) return null;
+  return match;
+};
+const buildIndexedDiscoveryPin = ({ store = {}, slug = '', markerSuffix = 'indexed', location = null, distanceKm = null } = {}) => {
+  const indexedCoordinate = getIndexedDiscoveryCoordinate(store);
+  if (!indexedCoordinate) return null;
+  const numericLocationId = Number(store?.location_id ?? location?.location_id);
+  const stableLocationId = Number.isInteger(numericLocationId) && numericLocationId > 0
+    ? numericLocationId
+    : `${indexedCoordinate.latitude.toFixed(6)}:${indexedCoordinate.longitude.toFixed(6)}`;
+  return {
+    ...store,
+    marker_key: `${slug || toSlug(store?.slug || store?.tenant_name) || 'store'}:${markerSuffix}:${stableLocationId}`,
+    latitude: indexedCoordinate.latitude,
+    longitude: indexedCoordinate.longitude,
+    location_id: Number.isInteger(numericLocationId) && numericLocationId > 0 ? numericLocationId : null,
+    location_name: location?.name || store?.location_name || store?.nearest_location_name || 'Main',
+    address_line: location?.address_line || store?.address_line || '',
+    is_primary_storefront: location?.is_primary_storefront === true || store?.is_primary_storefront === true,
+    branch_label: location?.is_primary_storefront === false ? 'Branch' : 'Storefront pin',
+    distance_km: Number.isFinite(Number(distanceKm))
+      ? Number(distanceKm)
+      : (Number.isFinite(Number(store?.nearest_distance_km)) ? Number(store.nearest_distance_km) : null)
+  };
 };
 const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
   const toRad = (value) => value * (Math.PI / 180);
@@ -909,24 +958,11 @@ const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return earthRadiusKm * c;
 };
-const getSpreadMarkerCoordinate = (lat, lng, index, total) => {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isInteger(index) || total <= 1) {
-    return { latitude: lat, longitude: lng };
-  }
-  const ringPosition = index + 1;
-  const angle = ((Math.PI * 2) / total) * ringPosition;
-  const radiusDegrees = 0.00016 + Math.floor(index / 6) * 0.00005;
-  const lngAdjustment = radiusDegrees * Math.cos(angle) / Math.max(Math.cos((lat * Math.PI) / 180), 0.35);
-  const latAdjustment = radiusDegrees * Math.sin(angle);
-  return {
-    latitude: lat + latAdjustment,
-    longitude: lng + lngAdjustment
-  };
-};
-
 const readRouteSlug = () => {
   if (typeof window === 'undefined') return null;
   const path = window.location.pathname || '';
+  const lowerPath = path.toLowerCase();
+  if ([DISCOVERY_BASE_PATH, DISCOVERY_ACCOUNT_PATH, LEGACY_TENANT_STORE_BASE_PATH, LEGACY_DISCOVERY_ACCOUNT_PATH].includes(lowerPath)) return null;
   const patterns = [
     /^\/tenant-store\/([^/]+)(?:\/[^/]+)?$/i,
     /^\/store\/([^/]+)(?:\/[^/]+)?$/i
@@ -935,19 +971,30 @@ const readRouteSlug = () => {
     const match = path.match(pattern);
     if (match?.[1]) return decodeURIComponent(match[1]).toLowerCase();
   }
+  const rootMatch = path.match(/^\/([^/]+)(?:\/[^/]+)?$/i);
+  if (rootMatch?.[1]) {
+    const segment = decodeURIComponent(rootMatch[1]).toLowerCase();
+    if (!RESERVED_ROOT_ROUTE_SEGMENTS.has(segment)) return segment;
+  }
   const hashPatterns = [
     /^#\/tenant-store\/([^/]+)(?:\/[^/]+)?$/i,
-    /^#\/store\/([^/]+)(?:\/[^/]+)?$/i
+    /^#\/store\/([^/]+)(?:\/[^/]+)?$/i,
+    /^#\/([^/]+)(?:\/[^/]+)?$/i
   ];
   for (const pattern of hashPatterns) {
     const match = (window.location.hash || '').match(pattern);
-    if (match?.[1]) return decodeURIComponent(match[1]).toLowerCase();
+    if (match?.[1]) {
+      const segment = decodeURIComponent(match[1]).toLowerCase();
+      if (!RESERVED_ROOT_ROUTE_SEGMENTS.has(segment)) return segment;
+    }
   }
   return null;
 };
 const readStoreSubpage = () => {
   if (typeof window === 'undefined') return null;
   const path = window.location.pathname || '';
+  const lowerPath = path.toLowerCase();
+  if ([DISCOVERY_ACCOUNT_PATH, LEGACY_DISCOVERY_ACCOUNT_PATH].includes(lowerPath)) return STORE_ACCOUNT_SUBPAGE;
   const patterns = [
     /^\/tenant-store\/[^/]+\/([^/]+)$/i,
     /^\/store\/[^/]+\/([^/]+)$/i
@@ -955,6 +1002,11 @@ const readStoreSubpage = () => {
   for (const pattern of patterns) {
     const match = path.match(pattern);
     if (match?.[1]) return decodeURIComponent(match[1]).toLowerCase();
+  }
+  const rootMatch = path.match(/^\/([^/]+)\/([^/]+)$/i);
+  if (rootMatch?.[1] && rootMatch?.[2]) {
+    const segment = decodeURIComponent(rootMatch[1]).toLowerCase();
+    if (!RESERVED_ROOT_ROUTE_SEGMENTS.has(segment)) return decodeURIComponent(rootMatch[2]).toLowerCase();
   }
   const hashPatterns = [
     /^#\/tenant-store\/[^/]+\/([^/]+)$/i,
@@ -965,6 +1017,12 @@ const readStoreSubpage = () => {
     if (match?.[1]) return decodeURIComponent(match[1]).toLowerCase();
   }
   return null;
+};
+const readRouteLocationId = () => {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search || '');
+  const parsed = Number(params.get('location_id'));
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 const readStoreServiceItemId = () => {
   if (typeof window === 'undefined') return null;
@@ -1005,7 +1063,7 @@ const inferRuntimeApiOrigin = () => {
     || (numericPort >= 4173 && numericPort <= 4185)
   );
   if (!isLocalHost || !isLikelyViteStorePort) return '';
-  return `${protocol}//${hostname}:5001`;
+  return `${protocol}//${hostname}:5000`;
 };
 
 const resolveConfiguredOrigin = (rawValue = '') => {
@@ -1025,7 +1083,6 @@ const configuredAssetOrigin = resolveConfiguredOrigin(import.meta.env.VITE_ASSET
 const assetOrigin = configuredAssetOrigin || apiOrigin;
 const configuredPublicStorefrontOrigin = resolveConfiguredOrigin(import.meta.env.VITE_PUBLIC_STOREFRONT_ORIGIN);
 const publicStorefrontOrigin = configuredPublicStorefrontOrigin || 'https://dgfy.ph';
-const buildStamp = String(import.meta.env.VITE_BUILD_STAMP || '').trim();
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/';
 const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`;
 const withApiOrigin = (url) => {
@@ -1089,11 +1146,7 @@ const parseBooleanFlag = (value, fallback = false) => {
 };
 const buildAccessPolicyStorePatch = (accessPolicy = null) => {
   if (!accessPolicy || typeof accessPolicy !== 'object') return null;
-  // In development mode, allow ordering flows locally by default so dev/test
-  // storefronts are usable even when backend tenant settings are set to
-  // conservative modes (catalog/inquiry). This mirrors backend behavior
-  // but makes local testing smoother. Production builds remain unchanged.
-  const patched = {
+  return {
     customer_access_mode: accessPolicy.customer_access_mode,
     effective_customer_access_mode: accessPolicy.effective_customer_access_mode,
     max_customer_access_mode: accessPolicy.max_customer_access_mode,
@@ -1103,19 +1156,6 @@ const buildAccessPolicyStorePatch = (accessPolicy = null) => {
     access_limitation_reason: accessPolicy.limitation_reason || accessPolicy.access_limitation_reason || null,
     customer_access_modes_enabled: accessPolicy.customer_access_modes_enabled
   };
-
-  if (import.meta.env.DEV) {
-    patched.access_capabilities = {
-      ...patched.access_capabilities,
-      cart: true,
-      quote: true,
-      checkout: true,
-      booking: true,
-      payment: true
-    };
-  }
-
-  return patched;
 };
 
 export const findCanonicalStorefrontSlug = (requestedSlug, stores = []) => {
@@ -1147,43 +1187,6 @@ const resolveDiscoveryCategoryFilterValue = (label) => {
   return normalized;
 };
 
-const normalizeStorefrontGallery = (value) => parseOptionalArray(value)
-  .map((entry, index) => {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
-    const url = String(entry.url || '').trim();
-    const path = String(entry.path || '').trim();
-    if (!url && !path) return null;
-    return {
-      url: withAssetOrigin(url) || '',
-      path: withAssetOrigin(path) || '',
-      caption: String(entry.caption || '').trim(),
-      alt: String(entry.alt || '').trim(),
-      sort_order: Number.isInteger(Number(entry.sort_order)) ? Number(entry.sort_order) : index
-    };
-  })
-  .filter(Boolean)
-  .sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0))
-  .slice(0, 24);
-
-const normalizeStorefrontDeliveryPartners = (value) => parseOptionalArray(value)
-  .map((entry) => {
-    if (typeof entry === 'string') {
-      const partner = String(entry || '').trim().toLowerCase();
-      if (!partner) return null;
-      return { partner, label: partner, url: '' };
-    }
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
-    const partner = String(entry.partner || '').trim().toLowerCase();
-    if (!partner) return null;
-    return {
-      partner,
-      label: String(entry.label || '').trim() || partner,
-      url: sanitizeExternalLink(entry.url)
-    };
-  })
-  .filter(Boolean)
-  .slice(0, 8);
-
 const normalizeStorefrontReviewSummary = (value) => {
   const raw = parseOptionalObject(value);
   if (!raw) return null;
@@ -1210,44 +1213,6 @@ const sanitizeExternalLink = (value) => {
   } catch {
     return '';
   }
-};
-
-const createStorePopupNode = (store = {}) => {
-  const container = document.createElement('div');
-  container.style.display = 'grid';
-  container.style.gap = '4px';
-
-  const row = document.createElement('div');
-  row.style.display = 'flex';
-  row.style.alignItems = 'center';
-  row.style.gap = '8px';
-
-  const profileImageUrl = withAssetOrigin(store?.storefront_profile_image_url);
-  if (profileImageUrl) {
-    const img = document.createElement('img');
-    img.setAttribute('src', profileImageUrl);
-    img.setAttribute('alt', '');
-    img.style.width = '28px';
-    img.style.height = '28px';
-    img.style.borderRadius = '999px';
-    img.style.objectFit = 'cover';
-    img.style.border = '1px solid #d1d5db';
-    img.onerror = () => {
-      img.remove();
-    };
-    row.appendChild(img);
-  }
-
-  const title = document.createElement('strong');
-  title.textContent = String(store?.location_name || store?.tenant_name || 'Store');
-  row.appendChild(title);
-  container.appendChild(row);
-
-  const address = document.createElement('div');
-  address.textContent = String(store?.address_line || '');
-  container.appendChild(address);
-
-  return container;
 };
 
 const normalizeProfileLocations = (profile = {}) => (
@@ -1281,8 +1246,8 @@ const locationsMatchProfileSnapshot = (locations = [], profile = {}) => {
 
 const STOREFRONT_AUTH_TOKEN_KEYS = ['dgfy_store_customer_token', 'store_customer_token', 'store_token'];
 const DGFY_CUSTOMER_AUTH_TOKEN_KEYS = ['dgfy_customer_account_token', 'dgfy_account_token', 'dgfyAccountToken'];
-const STOREFRONT_RECENT_STORES_STORAGE_KEY = 'dgfy_store_recent_stores';
-const STOREFRONT_LAST_STORE_STORAGE_KEY = 'dgfy_store_last_store_slug';
+let storefrontAuthTokenMemory = '';
+let dgfyCustomerAuthTokenMemory = '';
 const STOREFRONT_SAVED_DETAILS_STORAGE_KEY = 'dgfy_store_saved_customer_details_v1';
 const STOREFRONT_LAST_TRACKING_PIN_KEY_PREFIX = 'dgfy_store_last_tracking_pin_v1';
 const STOREFRONT_TRACKED_ORDERS_KEY_PREFIX = 'dgfy_store_tracked_orders_v1';
@@ -1299,48 +1264,39 @@ const EMPTY_ACCOUNT_PANEL = Object.freeze({
 });
 
 const readStoreAuthToken = () => {
-  if (typeof window === 'undefined') return '';
-  for (const key of STOREFRONT_AUTH_TOKEN_KEYS) {
-    const token = String(window.localStorage.getItem(key) || '').trim();
-    if (token) return token;
-  }
-  return '';
+  return storefrontAuthTokenMemory || (typeof window !== 'undefined' ? String(window.__SKU_STOREFRONT_AUTH_TOKEN__ || '') : '');
 };
 
 const readDgfyAuthToken = () => {
-  if (typeof window === 'undefined') return '';
-  for (const key of DGFY_CUSTOMER_AUTH_TOKEN_KEYS) {
-    const token = String(window.localStorage.getItem(key) || '').trim();
-    if (token) return token;
-  }
-  return '';
+  return dgfyCustomerAuthTokenMemory || (typeof window !== 'undefined' ? String(window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ || '') : '');
 };
 
-const writeStoreAuthToken = (token) => {
-  if (typeof window === 'undefined') return;
-  const normalizedToken = String(token || '').trim();
-  if (!normalizedToken) return;
-  window.localStorage.setItem(STOREFRONT_AUTH_TOKEN_KEYS[0], normalizedToken);
-  STOREFRONT_AUTH_TOKEN_KEYS.slice(1).forEach((key) => window.localStorage.removeItem(key));
-};
+const readStorefrontCustomerAuthToken = () => readDgfyAuthToken() || readStoreAuthToken();
 
 const writeDgfyAuthToken = (token) => {
   if (typeof window === 'undefined') return;
   const normalizedToken = String(token || '').trim();
   if (!normalizedToken) return;
-  window.localStorage.setItem(DGFY_CUSTOMER_AUTH_TOKEN_KEYS[0], normalizedToken);
+  dgfyCustomerAuthTokenMemory = normalizedToken;
+  window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = normalizedToken;
   DGFY_CUSTOMER_AUTH_TOKEN_KEYS.slice(1).forEach((key) => window.localStorage.removeItem(key));
 };
 
 const clearStoreAuthToken = () => {
   if (typeof window === 'undefined') return;
+  storefrontAuthTokenMemory = '';
+  window.__SKU_STOREFRONT_AUTH_TOKEN__ = '';
   STOREFRONT_AUTH_TOKEN_KEYS.forEach((key) => window.localStorage.removeItem(key));
 };
 
 const clearDgfyAuthToken = () => {
   if (typeof window === 'undefined') return;
+  dgfyCustomerAuthTokenMemory = '';
+  window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
   DGFY_CUSTOMER_AUTH_TOKEN_KEYS.forEach((key) => window.localStorage.removeItem(key));
 };
+
+const isUnauthorizedRequestError = (error) => Number(error?.status || error?.payload?.status) === 401;
 
 const normalizeSavedCustomerDetails = (value) => {
   if (!value || typeof value !== 'object') return null;
@@ -1459,58 +1415,28 @@ const maskValue = (value = '', keepPrefix = 2, keepSuffix = 1) => {
   return `${raw.slice(0, keepPrefix)}${'*'.repeat(Math.max(2, raw.length - keepPrefix - keepSuffix))}${raw.slice(-keepSuffix)}`;
 };
 
-const normalizeRecentStoreEntry = (entry) => {
-  if (!entry || typeof entry !== 'object') return null;
-  const slug = toSlug(entry.slug);
-  if (!slug) return null;
-  return {
-    slug,
-    tenant_name: String(entry.tenant_name || entry.name || slug).trim() || slug,
-    address_line: String(entry.address_line || '').trim(),
-    business_mode: String(entry.business_mode || entry.workflow_mode || '').trim().toLowerCase(),
-    storefront_open: entry.storefront_open !== false
-  };
-};
-
-const readRecentStores = () => {
-  if (typeof window === 'undefined') return [];
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(STOREFRONT_RECENT_STORES_STORAGE_KEY) || '[]');
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map(normalizeRecentStoreEntry).filter(Boolean).slice(0, 8);
-  } catch {
-    return [];
-  }
-};
-
-const readLastStoreSlug = () => {
-  if (typeof window === 'undefined') return '';
-  return toSlug(window.localStorage.getItem(STOREFRONT_LAST_STORE_STORAGE_KEY) || '');
-};
-
-const persistRecentStore = (entry) => {
-  const normalizedEntry = normalizeRecentStoreEntry(entry);
-  if (typeof window === 'undefined' || !normalizedEntry) return readRecentStores();
-  const next = [
-    normalizedEntry,
-    ...readRecentStores().filter((store) => toSlug(store.slug) !== normalizedEntry.slug)
-  ].slice(0, 8);
-  window.localStorage.setItem(STOREFRONT_RECENT_STORES_STORAGE_KEY, JSON.stringify(next));
-  window.localStorage.setItem(STOREFRONT_LAST_STORE_STORAGE_KEY, normalizedEntry.slug);
-  return next;
-};
-
-const requestJson = async (url, { method = 'GET', body, storeSlug, authToken = '', cache = 'default' } = {}) => {
+const requestJson = async (url, { method = 'GET', body, storeSlug, authToken = '', cache = 'default', signal } = {}) => {
   let response;
   try {
     const token = String(authToken || '').trim();
+    const normalizedMethod = String(method || 'GET').toUpperCase();
+    const csrfToken = typeof document === 'undefined'
+      ? ''
+      : decodeURIComponent(String(document.cookie || '')
+        .split(';')
+        .map((entry) => entry.trim())
+        .find((entry) => entry.startsWith('sku_csrf_token='))
+        ?.slice('sku_csrf_token='.length) || '');
     response = await fetch(withApiOrigin(url), {
       method,
       cache,
+      credentials: 'include',
+      signal,
       headers: {
         'Content-Type': 'application/json',
         ...(storeSlug ? { 'x-store-slug': storeSlug } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(!['GET', 'HEAD', 'OPTIONS'].includes(normalizedMethod) && csrfToken ? { 'x-csrf-token': csrfToken } : {})
       },
       body: body ? JSON.stringify(body) : undefined
     });
@@ -1691,7 +1617,6 @@ const getOrCreateStorefrontVisitorId = () => {
 
 const makePinElement = (mode, selected = false, ariaLabel = 'Store marker', glow = false) => {
   const el = document.createElement('div');
-  el.style.cssText = `width:${selected ? 38 : 34}px;height:${selected ? 48 : 44}px;display:flex;align-items:center;justify-content:center;cursor:pointer;`;
   el.setAttribute('role', 'button');
   el.setAttribute('tabindex', '0');
   el.setAttribute('aria-label', ariaLabel);
@@ -1715,18 +1640,25 @@ const makePinElement = (mode, selected = false, ariaLabel = 'Store marker', glow
 const makeUserLocationElement = () => {
   const el = document.createElement('div');
   el.style.cssText = 'width:20px;height:20px;border-radius:999px;background:#1a4e8d;border:3px solid #fff;box-shadow:0 6px 14px rgba(15,23,42,.35);';
+  el.className = 'storefront-user-location-marker';
   return el;
 };
+
+const EMPTY_HIGHLIGHTED_MARKER_KEYS = [];
+const STORE_MARKER_POPUP_OFFSET = { bottom: [0, -58], top: [0, 58], left: [58, 0], right: [-58, 0] };
+const DISCOVERY_LOCATION_PERMISSION_STORAGE_KEY = 'dgfy_storefront_discovery_location_permission_v1';
 
 function StoresMap({
   stores,
   selectedKey,
+  highlightedKeys = EMPTY_HIGHLIGHTED_MARKER_KEYS,
   onSelectStore,
   userLocation = null,
   height = 360,
   autoOpenPopups = false,
   openPopupOnHover = false,
-  pinGlow = false
+  viewportPolicy = 'auto',
+  viewportSignal = ''
 }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
@@ -1736,6 +1668,10 @@ function StoresMap({
   const onSelectStoreRef = useRef(onSelectStore);
   const autoOpenFrameRef = useRef(null);
   const popupGenerationRef = useRef(0);
+  const markerSignatureRef = useRef('');
+  const viewportHasFitRef = useRef(false);
+  const lastViewportLocationSignatureRef = useRef('');
+  const lastViewportSignalRef = useRef('');
   const [mapUnavailable, setMapUnavailable] = useState(false);
 
   useEffect(() => {
@@ -1805,12 +1741,42 @@ function StoresMap({
         autoOpenFrameRef.current = null;
       }
 
+      const rows = Array.isArray(stores) ? stores : [];
+      const nextMarkerSignature = rows
+        .map((store) => {
+          const markerKey = getDiscoveryMarkerKey(store);
+          const lat = Number(store?.latitude);
+          const lng = Number(store?.longitude);
+          return [
+            markerKey || toSlug(store?.slug || store?.tenant_name),
+            Number.isFinite(lat) ? lat.toFixed(6) : '',
+            Number.isFinite(lng) ? lng.toFixed(6) : '',
+            store?.location_id ?? ''
+          ].join(':');
+        })
+        .join('|');
+      const markerSetChanged = markerSignatureRef.current !== nextMarkerSignature;
+      markerSignatureRef.current = nextMarkerSignature;
+      const normalizedViewportSignal = String(viewportSignal || '').trim();
+      const viewportSignalChanged = lastViewportSignalRef.current !== normalizedViewportSignal;
+      lastViewportSignalRef.current = normalizedViewportSignal;
+      const userLocationSignature = userLocation?.latitude != null && userLocation?.longitude != null
+        ? `${Number(userLocation.latitude).toFixed(6)}:${Number(userLocation.longitude).toFixed(6)}`
+        : '';
+      const userLocationChanged = lastViewportLocationSignatureRef.current !== userLocationSignature;
+      lastViewportLocationSignatureRef.current = userLocationSignature;
+
+      const retainedPopupKeys = new Set();
       const retainedPopups = [];
       popupsRef.current.forEach((popup) => {
         const isOpen = typeof popup?.isOpen === 'function'
           ? popup.isOpen()
           : Boolean(popup?.node?.isConnected);
-        if (isOpen) {
+        if (!markerSetChanged && isOpen) {
+          const popupMarkerKey = String(popup?.__dgfyMarkerKey || '').trim();
+          if (popupMarkerKey) {
+            retainedPopupKeys.add(popupMarkerKey);
+          }
           retainedPopups.push(popup);
           return;
         }
@@ -1822,7 +1788,6 @@ function StoresMap({
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
 
-      const rows = Array.isArray(stores) ? stores : [];
       const uniqueRows = [];
       const seenMarkerKeys = new Set();
       rows.forEach((store) => {
@@ -1838,6 +1803,11 @@ function StoresMap({
       });
       const bounds = [];
       const autoOpenCallbacks = [];
+      const highlightedKeySet = new Set(
+        (Array.isArray(highlightedKeys) ? highlightedKeys : [])
+          .map((key) => String(key || '').trim())
+          .filter(Boolean)
+      );
       const coordinateGroups = uniqueRows.reduce((acc, store) => {
       const lat = Number(store?.latitude);
       const lng = Number(store?.longitude);
@@ -1864,15 +1834,18 @@ function StoresMap({
       const clusterSelected = selectedKey
         ? group.some((entry) => String(getDiscoveryMarkerKey(entry) || '') === String(selectedKey))
         : group.some((entry) => entry?.is_primary_storefront === true);
+      const clusterHighlighted = group.some((entry) => highlightedKeySet.has(String(getDiscoveryMarkerKey(entry) || '')))
+        || clusterSelected;
 
       if (group.length > 1) {
-        const clusterElement = makeClusterElement(group.length, clusterSelected, `${group.length} storefronts at this location`);
+        const clusterElement = makeClusterElement(group.length, clusterHighlighted, `${group.length} storefronts at this location`);
         const clusterPopup = new maplibregl.Popup({
           anchor: 'bottom',
-          offset: { bottom: [0, -14], top: [0, 12], left: [12, 0], right: [-12, 0] },
+          offset: STORE_MARKER_POPUP_OFFSET,
           closeOnClick: false,
           focusAfterOpen: false
         });
+        clusterPopup.__dgfyMarkerKey = coordinateKey;
         popupsRef.current.push(clusterPopup);
         const clusterNode = createSharedCoordinatePreviewNode(group, {
           onSelect: (selectedStorefront) => {
@@ -1911,29 +1884,33 @@ function StoresMap({
             openClusterPopup(event);
           }
         });
-        const clusterMarker = new maplibregl.Marker({ element: clusterElement, anchor: 'center' })
+        clusterElement.style.zIndex = '30';
+        const clusterMarker = new maplibregl.Marker({ element: clusterElement, anchor: 'bottom' })
           .setLngLat([lng, lat])
           .addTo(map);
         markersRef.current.push(clusterMarker);
         bounds.push([lng, lat]);
+        if (autoOpenPopups && clusterHighlighted) {
+          autoOpenCallbacks.push({ key: coordinateKey, open: openClusterPopup });
+        }
         return;
       }
 
       const [singleStore] = group;
       const markerKey = getDiscoveryMarkerKey(singleStore) || `${lat}:${lng}`;
-      const highlighted = selectedKey
-        ? markerKey === String(selectedKey)
-        : singleStore.is_primary_storefront === true;
+      const highlighted = highlightedKeySet.has(markerKey)
+        || (selectedKey ? markerKey === String(selectedKey) : singleStore.is_primary_storefront === true);
       const branchName = String(singleStore?.location_name || singleStore?.nearest_location_name || 'Main');
       const tenantName = String(singleStore?.tenant_name || 'Storefront');
       const markerAriaLabel = `Preview ${tenantName} at ${branchName}`;
       const el = makePinElement(singleStore.workflow_mode || singleStore.business_mode, highlighted, markerAriaLabel);
         const popup = new maplibregl.Popup({
           anchor: 'bottom',
-          offset: { bottom: [0, -14], top: [0, 12], left: [12, 0], right: [-12, 0] },
+          offset: STORE_MARKER_POPUP_OFFSET,
           closeOnClick: false,
           focusAfterOpen: false
         });
+        popup.__dgfyMarkerKey = markerKey;
         popupsRef.current.push(popup);
       let closeTimer = null;
       let markerHovered = false;
@@ -2035,6 +2012,7 @@ function StoresMap({
           schedulePopupClose();
         });
       }
+        el.style.zIndex = highlighted ? '40' : '30';
         const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
           .setLngLat([lng, lat])
           .addTo(map);
@@ -2054,7 +2032,8 @@ function StoresMap({
       const uLng = Number(userLocation.longitude);
       if (Number.isFinite(uLat) && Number.isFinite(uLng)) {
         const el = makeUserLocationElement();
-        userMarkerRef.current = new maplibregl.Marker({ element: el })
+        el.style.zIndex = '5';
+        userMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat([uLng, uLat])
           .setPopup(new maplibregl.Popup({ offset: 25 }).setHTML('<strong>Your location</strong>'))
           .addTo(map);
@@ -2062,14 +2041,22 @@ function StoresMap({
       }
     }
 
-      if (bounds.length === 1) map.flyTo({ center: bounds[0], zoom: autoOpenPopups ? 14 : 15 });
-      if (bounds.length > 1) {
+      const shouldFitViewport = viewportPolicy !== 'search-stable'
+        || !viewportHasFitRef.current
+        || viewportSignalChanged
+        || userLocationChanged;
+      if (shouldFitViewport && bounds.length === 1) {
+        map.flyTo({ center: bounds[0], zoom: autoOpenPopups ? 14 : 15 });
+        viewportHasFitRef.current = true;
+      }
+      if (shouldFitViewport && bounds.length > 1) {
         const lngs = bounds.map((b) => b[0]);
         const lats = bounds.map((b) => b[1]);
         map.fitBounds(
           [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
           { padding: autoOpenPopups ? 56 : 24, maxZoom: autoOpenPopups ? 13.5 : 14 }
         );
+        viewportHasFitRef.current = true;
       }
         if (autoOpenCallbacks.length > 0 && typeof window !== 'undefined') {
           autoOpenFrameRef.current = window.requestAnimationFrame(() => {
@@ -2078,7 +2065,7 @@ function StoresMap({
             const openedMarkerKeys = new Set();
             autoOpenCallbacks.forEach((entry) => {
               const markerKey = String(entry?.key || '');
-              if (!markerKey || openedMarkerKeys.has(markerKey)) return;
+              if (!markerKey || retainedPopupKeys.has(markerKey) || openedMarkerKeys.has(markerKey)) return;
               openedMarkerKeys.add(markerKey);
               entry?.open?.();
             });
@@ -2090,7 +2077,7 @@ function StoresMap({
           autoOpenFrameRef.current = null;
         }
       };
-    }, [stores, selectedKey, userLocation, autoOpenPopups, openPopupOnHover]);
+    }, [stores, selectedKey, highlightedKeys, userLocation, autoOpenPopups, openPopupOnHover, viewportPolicy, viewportSignal]);
 
   if (mapUnavailable) {
     return (
@@ -2332,6 +2319,35 @@ function StoreCatalogEmptyState({ mode = 'setup_pending', searchQuery = '', onRe
   );
 }
 
+function StoreCatalogErrorState({ message = '', guidance = '', onRefreshTenantPage }) {
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        border: '1px solid #fecaca',
+        borderRadius: 14,
+        background: 'linear-gradient(180deg,#fff7f7 0%,#ffffff 100%)',
+        padding: 16
+      }}
+    >
+      <div style={{ fontSize: 18, fontWeight: 800, color: '#991b1b' }}>Storefront catalog could not load</div>
+      <p style={{ margin: '8px 0 0 0', color: '#7f1d1d', fontSize: 14 }}>{message || 'Failed to load tenant storefront catalog.'}</p>
+      {guidance && (
+        <p style={{ margin: '8px 0 0 0', color: '#475569', fontSize: 14 }}>{guidance}</p>
+      )}
+      <div style={{ marginTop: 12 }}>
+        <button
+          type="button"
+          onClick={onRefreshTenantPage}
+          style={{ borderRadius: 10, border: '1px solid #b91c1c', background: '#fff', color: '#991b1b', padding: '8px 12px', fontWeight: 700 }}
+        >
+          Retry Catalog
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const STYLES = {
   colors: {
     brand: '#ea580c',
@@ -2405,8 +2421,6 @@ const STOREFRONT_INFO_ROW_GAP = 12;
 const STOREFRONT_INFO_ICON_COLUMN = 20;
 const MAX_STOREFRONT_CONTACT_ROWS = 4;
 const MAX_STOREFRONT_WHY_CHOOSE_US = 4;
-const DGFY_HEADER_LOGO_URL = dgfyHeaderLogo;
-const DGFY_LOGO_ICON_URL = dgfySymbolLogo;
 
 const StorefrontHeroShell = ({
   fullBleed = false,
@@ -2507,8 +2521,6 @@ const FnbHero = ({
   selectedLocationId,
   handleBranchMenuSelection,
   storeLocations,
-  catalogSearch,
-  setCatalogSearch,
   isBrandingImageBlocked,
   markBrandingImageError,
   selectedLocation,
@@ -2520,8 +2532,7 @@ const FnbHero = ({
   followEnabled,
   shareEnabled,
   followState,
-  handleFollowAction,
-  handleShareAction
+  handleFollowAction
 }) => {
   const [isExpandedMapOpen, setIsExpandedMapOpen] = useState(false);
   const heroTheme = modeAdapter.heroTheme || {};
@@ -2530,7 +2541,6 @@ const FnbHero = ({
   const galleryImages = Array.isArray(heroSectionModel.galleryPreview) ? heroSectionModel.galleryPreview.filter(Boolean) : [];
   const aboutText = String(heroSectionModel.aboutText || '').trim();
   const hasAboutToggle = aboutText.length > 180;
-  const hasAddress = Boolean(addressText);
   const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
     && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
   const whyChooseUs = Array.isArray(heroSectionModel.whyChooseUs) && heroSectionModel.whyChooseUs.length > 0
@@ -2931,13 +2941,10 @@ const FnbProductCard = ({
   const heroTheme = modeAdapter.heroTheme || {};
   const sectionVisualMeta = item.sectionVisualMeta || {};
   const accent = heroTheme.accent || '#c96a2b';
-  const accentSoft = sectionVisualMeta.accentSoft || heroTheme.accentSoft || '#fff7ed';
   const accentDeep = heroTheme.accentDark || '#7c2d12';
   const cardSurface = '#ffffff';
-  const cardSurfaceInset = heroTheme.surfaceMuted || '#fff8f0';
   const cardBorder = heroTheme.borderSoft || '#edd4bc';
   const cardTextPrimary = heroTheme.textPrimary || '#2f1f16';
-  const cardTextMuted = heroTheme.textMuted || '#7c6757';
   const buttonTextOnAccent = heroTheme.buttonTextOnAccent || '#fffdf9';
   const CategoryIcon = FNB_CATEGORY_ICON_MAP[sectionVisualMeta.iconToken] || Sparkles;
   const [isHovered, setIsHovered] = useState(false);
@@ -2950,8 +2957,6 @@ const FnbProductCard = ({
   const imageHeight = isMobileViewport ? 190 : 214;
   const actionHeight = isMobileViewport ? 44 : 46;
   const cartButtonWidth = isMobileViewport ? 62 : 70;
-  const availabilityTone = item.availabilityMeta?.tone || (available ? 'ready' : 'sold_out');
-  const availabilityColor = availabilityTone === 'sold_out' ? '#be123c' : availabilityTone === 'limited' ? '#b45309' : '#047857';
   const descriptionLineClamp = 2;
 
   return (
@@ -3215,12 +3220,9 @@ const ServicesHero = ({
   selectedLocationId,
   handleBranchMenuSelection,
   storeLocations,
-  catalogSearch,
-  setCatalogSearch,
   goDiscovery,
   hasServiceCart,
   goStoreBookingPage,
-  cartCount,
   modeAdapter,
   isBrandingImageBlocked,
   markBrandingImageError,
@@ -3245,7 +3247,6 @@ const ServicesHero = ({
   const previewImages = isServiceGalleryExpanded ? galleryImages : galleryImages.slice(0, 4);
   const aboutText = String(serviceHeroModel.aboutText || '').trim();
   const hasAboutToggle = aboutText.length > 180;
-  const hasAddress = Boolean(addressText);
   const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
     && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
   const visibleWhyChooseUs = Array.isArray(serviceHeroModel.whyChooseUs) ? serviceHeroModel.whyChooseUs.slice(0, MAX_STOREFRONT_WHY_CHOOSE_US) : [];
@@ -3845,8 +3846,6 @@ const SimpleHero = ({
   selectedLocationId,
   handleBranchMenuSelection,
   storeLocations,
-  catalogSearch,
-  setCatalogSearch,
   goDiscovery,
   cartCount,
   setIsCheckoutOpen,
@@ -3859,7 +3858,6 @@ const SimpleHero = ({
   openAccountPanel,
   isStorefrontAccountAuthenticated,
   activeCustomerOrderCount,
-  followEnabled = false,
   shareEnabled = true
 }) => {
   const [isExpandedMapOpen, setIsExpandedMapOpen] = useState(false);
@@ -3867,7 +3865,6 @@ const SimpleHero = ({
   const addressText = String(simpleHeroModel.addressLine || simpleHeroModel.locationLabel || '').trim();
   const aboutText = String(simpleHeroModel.aboutText || '').trim();
   const hasAboutToggle = aboutText.length > 180;
-  const hasAddress = Boolean(addressText);
   const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
     && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
   const visibleWhyChooseUs = Array.isArray(simpleHeroModel.whyChooseUs) ? simpleHeroModel.whyChooseUs.slice(0, MAX_STOREFRONT_WHY_CHOOSE_US) : [];
@@ -4171,6 +4168,7 @@ const SimpleHero = ({
 export default function StorefrontApp() {
   const [routeSlug, setRouteSlug] = useState(() => readRouteSlug());
   const [routeSubpage, setRouteSubpage] = useState(() => readStoreSubpage());
+  const [routeLocationId, setRouteLocationId] = useState(() => readRouteLocationId());
   const [routeServiceItemId, setRouteServiceItemId] = useState(() => readStoreServiceItemId());
   const [routeItemId, setRouteItemId] = useState(() => readStoreItemId());
   const [routeReviewToken, setRouteReviewToken] = useState(() => readStoreReviewToken());
@@ -4192,11 +4190,11 @@ export default function StorefrontApp() {
   const featuredCategoryRailRef = useRef(null);
   const featuredSectionRef = useRef(null);
   const discoveryFilterToolbarRef = useRef(null);
-  const [discoveryResultMode, setDiscoveryResultMode] = useState('union');
-  const [discoveryStockFilter, setDiscoveryStockFilter] = useState('include_out_of_stock');
+  const [discoveryResultMode] = useState('union');
+  const [discoveryStockFilter] = useState('include_out_of_stock');
   const [discoveryPinScope, setDiscoveryPinScope] = useState('tenant_primary');
-  const [discoveryIncludeMatchMeta, setDiscoveryIncludeMatchMeta] = useState(true);
-  const [discoveryAppliedFilters, setDiscoveryAppliedFilters] = useState(null);
+  const [discoveryIncludeMatchMeta] = useState(true);
+  const [, setDiscoveryAppliedFilters] = useState(null);
   const [isDiscoverySearchFocused, setIsDiscoverySearchFocused] = useState(false);
   const [hasDiscoveryExplorationStarted, setHasDiscoveryExplorationStarted] = useState(false);
   const [isDiscoveryNoMatchToastActive, setIsDiscoveryNoMatchToastActive] = useState(false);
@@ -4206,7 +4204,7 @@ export default function StorefrontApp() {
   const [hasDesktopCategoryOverflow, setHasDesktopCategoryOverflow] = useState(false);
   const [showDesktopCategoryOverflowCue, setShowDesktopCategoryOverflowCue] = useState(false);
   const [mobileCategoryGroupIndex, setMobileCategoryGroupIndex] = useState(0);
-  const [selectedMapPin, setSelectedMapPin] = useState(null);
+  const [, setSelectedMapPin] = useState(null);
   const [isStoreListVisible, setIsStoreListVisible] = useState(false);
   const [isMobileResultsCollapsed, setIsMobileResultsCollapsed] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
@@ -4231,6 +4229,7 @@ export default function StorefrontApp() {
   const isBookingSubpage = routeSubpage === STORE_BOOKING_SUBPAGE;
   const isOrderSubpage = routeSubpage === STORE_ORDER_SUBPAGE;
   const isTrackSubpage = routeSubpage === STORE_TRACK_SUBPAGE;
+  const isAccountSubpage = routeSubpage === STORE_ACCOUNT_SUBPAGE || currentPathSubpage === STORE_ACCOUNT_SUBPAGE;
   const isServiceDetailsSubpage = routeSubpage === STORE_SERVICE_SUBPAGE;
   const isFnbDetailsSubpage = routeSubpage === STORE_ITEM_SUBPAGE;
   const isResolvedOrderSubpage = isOrderSubpage || isTrackSubpage || currentPathSubpage === STORE_ORDER_SUBPAGE || currentPathSubpage === STORE_TRACK_SUBPAGE;
@@ -4274,7 +4273,7 @@ export default function StorefrontApp() {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     const serviceItemId = String(service?.item_id || '').trim();
     if (!normalized || !serviceItemId || typeof window === 'undefined') return;
-    const target = storePath(normalized, STORE_SERVICE_SUBPAGE, `?service=${encodeURIComponent(serviceItemId)}`);
+    const target = storePath(normalized, STORE_SERVICE_SUBPAGE, `?service=${encodeURIComponent(serviceItemId)}`, selectedLocationId);
     if (`${window.location.pathname}${window.location.search}` !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_SERVICE_SUBPAGE, serviceItemId }, '', target);
     }
@@ -4288,7 +4287,7 @@ export default function StorefrontApp() {
     setRouteServiceItemId(null);
     goStoreCatalogPage();
   };
-  const openFnbDetail = (item, options = {}) => {
+  const openFnbDetail = useCallback((item, options = {}) => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     const itemId = String(item?.item_id || '').trim();
     if (!normalized || !itemId || typeof window === 'undefined') return;
@@ -4299,7 +4298,7 @@ export default function StorefrontApp() {
       params.set('review_token', reviewToken);
       params.set('review', '1');
     }
-    const target = storePath(normalized, STORE_ITEM_SUBPAGE, `?${params.toString()}`);
+    const target = storePath(normalized, STORE_ITEM_SUBPAGE, `?${params.toString()}`, routeLocationId);
     if (`${window.location.pathname}${window.location.search}` !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_ITEM_SUBPAGE, itemId, reviewToken }, '', target);
     }
@@ -4311,7 +4310,7 @@ export default function StorefrontApp() {
     setRouteItemId(itemId);
     setRouteReviewToken(reviewToken);
     setIsCheckoutOpen(false);
-  };
+  }, [routeLocationId, routeSlug, selectedStore?.slug]);
   const closeFnbDetail = () => {
     setSelectedFnbDetail(null);
     setSelectedFnbDetailQuantity(1);
@@ -4345,7 +4344,7 @@ export default function StorefrontApp() {
   const [discoveryCoords, setDiscoveryCoords] = useState(null);
   const discoveryCoordsRef = useRef(discoveryCoords);
   const [discoveryLocationMap, setDiscoveryLocationMap] = useState({});
-  const [loadingDiscoveryLocations, setLoadingDiscoveryLocations] = useState(false);
+  const [, setLoadingDiscoveryLocations] = useState(false);
   const [highlightedDiscoveryMarkerKey, setHighlightedDiscoveryMarkerKey] = useState('');
   const [storeLocations, setStoreLocations] = useState([]);
   const [primaryLocationId, setPrimaryLocationId] = useState(null);
@@ -4360,7 +4359,7 @@ export default function StorefrontApp() {
 
   const [orderMethod, setOrderMethod] = useState('delivery');
   const [cart, setCart] = useState([]);
-  const [catalogImageErrors, setCatalogImageErrors] = useState(() => new Set());
+  const [, setCatalogImageErrors] = useState(() => new Set());
   const [cartImageErrors, setCartImageErrors] = useState(() => new Set());
   const [brandingImageErrors, setBrandingImageErrors] = useState(() => new Set());
   const [customerName, setCustomerName] = useState('');
@@ -4404,7 +4403,7 @@ export default function StorefrontApp() {
   const [trackingPinInput, setTrackingPinInput] = useState('');
   const [trackingResult, setTrackingResult] = useState(null);
   const [trackingError, setTrackingError] = useState('');
-  const [isTrackingRefreshing, setIsTrackingRefreshing] = useState(false);
+  const [, setIsTrackingRefreshing] = useState(false);
   const [guestTrackedOrders, setGuestTrackedOrders] = useState([]);
   const [expandedGuestDrawerPin, setExpandedGuestDrawerPin] = useState(null);
   const [selectedTrackingPin, setSelectedTrackingPin] = useState('');
@@ -4413,10 +4412,15 @@ export default function StorefrontApp() {
   const [isGuestTrackingDrawerOpen, setIsGuestTrackingDrawerOpen] = useState(false);
   const [isAccountDrawerOpen, setIsAccountDrawerOpen] = useState(false);
   const [accountPanel, setAccountPanel] = useState(EMPTY_ACCOUNT_PANEL);
+  const [accountOrderActionReference, setAccountOrderActionReference] = useState('');
+  const [accountAddressActionId, setAccountAddressActionId] = useState('');
+  const [pendingAccountReorder, setPendingAccountReorder] = useState(null);
   const [trackedCustomerActivity, setTrackedCustomerActivity] = useState(null);
   const [customerTrackLoadingReference, setCustomerTrackLoadingReference] = useState('');
   const [customerTrackError, setCustomerTrackError] = useState('');
   const [dgfyAuthTokenState, setDgfyAuthTokenState] = useState(() => readDgfyAuthToken());
+  const [hasDgfyCookieSession, setHasDgfyCookieSession] = useState(false);
+  const dgfyCookieRehydrateAttemptedRef = useRef(false);
   const [customerAuthMode, setCustomerAuthMode] = useState('sign_in');
   const [customerAuthSubmitting, setCustomerAuthSubmitting] = useState(false);
   const [customerAuthError, setCustomerAuthError] = useState('');
@@ -4456,8 +4460,7 @@ export default function StorefrontApp() {
   const {
     viewportMode: discoveryViewportMode,
     isMobileViewport: isDiscoveryMobileViewport,
-    isTabletViewport: isDiscoveryTabletViewport,
-    isDesktopViewport: isDiscoveryDesktopViewport
+    isTabletViewport: isDiscoveryTabletViewport
   } = discoveryViewport;
   const discoveryLayout = useMemo(() => getDiscoveryLayoutTokens(discoveryViewportMode), [discoveryViewportMode]);
   useEffect(() => {
@@ -4482,7 +4485,9 @@ export default function StorefrontApp() {
     };
   }, [isCategoryRowExpanded, isDiscoveryMobileViewport]);
   const discoveryRequestSequenceRef = useRef(0);
+  const discoveryAbortControllerRef = useRef(null);
   const discoveryIntentSequenceRef = useRef(0);
+  const initialDiscoveryGeolocationAttemptedRef = useRef(false);
   const storeLoadRequestSequenceRef = useRef(0);
   const locationCatalogRequestSequenceRef = useRef(0);
   const lastImmediateDiscoveryRequestRef = useRef({ search: '', at: 0 });
@@ -4508,6 +4513,7 @@ export default function StorefrontApp() {
     isServicesMode,
     isFnbMode,
     isSimpleMode,
+    isHospitalityMode,
     modeAdapter,
     servicesViewModel,
     fnbViewModel,
@@ -4520,8 +4526,8 @@ export default function StorefrontApp() {
   const isStandaloneTrackingPage = isTrackSubpage || (isOrderSubpage && checkoutTab === 'track');
   const storeAuthToken = readStoreAuthToken();
   const dgfyAuthToken = String(dgfyAuthTokenState || '').trim();
-  const isDgfyCustomerSignedIn = Boolean(dgfyAuthToken);
-  const isStorefrontAccountAuthenticated = Boolean(storeAuthToken || dgfyAuthToken);
+  const isDgfyCustomerSignedIn = Boolean(dgfyAuthToken || hasDgfyCookieSession);
+  const isStorefrontAccountAuthenticated = Boolean(storeAuthToken || dgfyAuthToken || hasDgfyCookieSession);
   const isGuestStorefrontUser = !isStorefrontAccountAuthenticated;
   const trackingMode = isFnbMode ? 'fnb' : (isServicesMode ? 'services' : 'simple');
   const trackingAdapterRegistry = useMemo(
@@ -4570,8 +4576,6 @@ export default function StorefrontApp() {
   const servicesPrimaryBorder = `${servicesPrimary}33`;
   const servicesPrimaryShadow = 'rgba(15,118,110,0.24)';
   const servicesPrimaryShadowStrong = 'rgba(15,118,110,0.32)';
-  const servicesHighlight = '#f59e0b';
-  const servicesHighlightSoft = '#fffbeb';
   const maskedSavedCustomerPreview = useMemo(() => {
     if (!savedCustomerDetails) return '';
     const previewParts = [];
@@ -4625,11 +4629,6 @@ export default function StorefrontApp() {
     return initials || 'GU';
   }, [accountDisplayName]);
   const isGuestAccountDrawerState = !isStorefrontAccountAuthenticated;
-  const accountDrawerTitle = isGuestAccountDrawerState ? 'DGFY Account' : 'My Account';
-  const accountDrawerSubtitle = isGuestAccountDrawerState
-    ? 'Orders, tracking, profile, addresses, loyalty, and company invitations.'
-    : 'Manage your bookings, orders, tickets and more.';
-  const accountPrimaryDescription = 'View and manage your saved bookings, orders, tickets, receipts, and the latest linked transaction.';
   const activeCustomerOrders = useMemo(() => {
     const activeStatuses = new Set(['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery']);
     return (Array.isArray(accountPanel.orders) ? accountPanel.orders : []).filter((order) => (
@@ -4666,6 +4665,93 @@ export default function StorefrontApp() {
       setDgfyLegalTermsLoading(false);
     }
   }, [dgfyLegalTerms, dgfyLegalTermsLoading]);
+
+  const handleLoadAccountPanel = useCallback(async () => {
+    const dgfyToken = readDgfyAuthToken();
+    const storeToken = readStoreAuthToken();
+    const shouldLoadDgfyAccount = Boolean(dgfyToken || hasDgfyCookieSession || !storeToken);
+    setAccountPanel((prev) => ({ ...prev, loading: true, error: '' }));
+    try {
+      if (shouldLoadDgfyAccount) {
+        const meData = await requestJson('/api/v1/dgfy/auth/me', { authToken: dgfyToken, cache: 'no-store' });
+        const [dashboardData, activitiesData, loyaltyData] = await Promise.all([
+          requestJson('/api/v1/dgfy/customer/dashboard', { authToken: dgfyToken, cache: 'no-store' }),
+          requestJson('/api/v1/dgfy/customer/activities?limit=25', { authToken: dgfyToken, cache: 'no-store' }).catch(() => ({ activities: [] })),
+          requestJson('/api/v1/dgfy/customer/loyalty', { authToken: dgfyToken, cache: 'no-store' }).catch(() => null)
+        ]);
+        setAccountPanel({
+          loading: false,
+          error: '',
+          me: meData?.account || dashboardData?.account || meData || null,
+          activities: Array.isArray(activitiesData?.activities) && activitiesData.activities.length
+            ? activitiesData.activities
+            : (Array.isArray(dashboardData?.activities) ? dashboardData.activities : []),
+          orders: Array.isArray(dashboardData?.orders) ? dashboardData.orders : [],
+          bookings: Array.isArray(dashboardData?.bookings) ? dashboardData.bookings : [],
+          addresses: Array.isArray(dashboardData?.addresses) ? dashboardData.addresses : [],
+          loyalty: loyaltyData?.loyalty || dashboardData?.loyalty || null
+        });
+        setHasDgfyCookieSession(true);
+        return;
+      }
+
+      if (!selectedStore?.slug) {
+        setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: 'Select a storefront to view tenant-specific account activity.' });
+        return;
+      }
+
+      const [me, ordersData, bookingsData] = await Promise.all([
+        requestJson('/api/v1/store/auth/me', { storeSlug: selectedStore.slug, authToken: storeToken }),
+        requestJson('/api/v1/store/orders?limit=25', { storeSlug: selectedStore.slug, authToken: storeToken }),
+        requestJson('/api/v1/store/services/bookings?limit=25', { storeSlug: selectedStore.slug, authToken: storeToken }).catch(() => ({ bookings: [] }))
+      ]);
+      setAccountPanel({
+        loading: false,
+        error: '',
+        me: me?.customer || me || null,
+        activities: [],
+        orders: Array.isArray(ordersData?.orders) ? ordersData.orders : [],
+        bookings: Array.isArray(bookingsData?.bookings) ? bookingsData.bookings : [],
+        addresses: [],
+        loyalty: null
+      });
+    } catch (error) {
+      if (shouldLoadDgfyAccount && isUnauthorizedRequestError(error)) {
+        clearDgfyAuthToken();
+        setDgfyAuthTokenState('');
+        setHasDgfyCookieSession(false);
+        if (storeToken && selectedStore?.slug) {
+          try {
+            const [me, ordersData, bookingsData] = await Promise.all([
+              requestJson('/api/v1/store/auth/me', { storeSlug: selectedStore.slug, authToken: storeToken }),
+              requestJson('/api/v1/store/orders?limit=25', { storeSlug: selectedStore.slug, authToken: storeToken }),
+              requestJson('/api/v1/store/services/bookings?limit=25', { storeSlug: selectedStore.slug, authToken: storeToken }).catch(() => ({ bookings: [] }))
+            ]);
+            setAccountPanel({
+              loading: false,
+              error: '',
+              me: me?.customer || me || null,
+              activities: [],
+              orders: Array.isArray(ordersData?.orders) ? ordersData.orders : [],
+              bookings: Array.isArray(bookingsData?.bookings) ? bookingsData.bookings : [],
+              addresses: [],
+              loyalty: null
+            });
+            return;
+          } catch (fallbackError) {
+            setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: normalizeStorefrontErrorMessage(fallbackError, 'Unable to load account.') });
+            return;
+          }
+        }
+        if (!storeToken) {
+          setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: 'Sign in to view your DGFY account.' });
+          setCustomerAuthMode('sign_in');
+          return;
+        }
+      }
+      setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: normalizeStorefrontErrorMessage(error, 'Unable to load account.') });
+    }
+  }, [hasDgfyCookieSession, selectedStore?.slug]);
 
   const handleCustomerSignInFieldChange = useCallback((field, value) => {
     setCustomerSignInForm((previous) => ({ ...previous, [field]: value }));
@@ -4706,6 +4792,32 @@ export default function StorefrontApp() {
     </div>
   );
 
+  const markDiscoveryLocationPermissionGranted = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(DISCOVERY_LOCATION_PERMISSION_STORAGE_KEY, 'granted');
+    } catch {
+      // Location permission remembering is opportunistic and must not block discovery.
+    }
+  }, []);
+
+  const clearDiscoveryLocationPermissionHint = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.removeItem(DISCOVERY_LOCATION_PERMISSION_STORAGE_KEY);
+    } catch {
+      // Location permission remembering is opportunistic and must not block discovery.
+    }
+  }, []);
+
+  const hasDiscoveryLocationPermissionHint = useCallback(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return window.localStorage.getItem(DISCOVERY_LOCATION_PERMISSION_STORAGE_KEY) === 'granted';
+    } catch {
+      return false;
+    }
+  }, []);
 
   const loadStores = useCallback(async (coords = undefined, options = {}) => {
     const useImmediateSearch = options?.useImmediateSearch === true;
@@ -4717,6 +4829,9 @@ export default function StorefrontApp() {
     }
     const requestSequence = discoveryRequestSequenceRef.current + 1;
     discoveryRequestSequenceRef.current = requestSequence;
+    discoveryAbortControllerRef.current?.abort?.();
+    const discoveryController = typeof AbortController === 'function' ? new AbortController() : null;
+    discoveryAbortControllerRef.current = discoveryController;
     setLoadingStores(true);
     setStoresError('');
     try {
@@ -4750,17 +4865,21 @@ export default function StorefrontApp() {
         setDiscoveryCoords(null);
       }
       q.set('limit', '100');
-      const data = await requestJson(`/api/v1/storefront/discovery?${q.toString()}`);
+      const data = await requestJson(`/api/v1/storefront/discovery?${q.toString()}`, discoveryController ? { signal: discoveryController.signal } : undefined);
       if (requestSequence === discoveryRequestSequenceRef.current) {
         setStores(Array.isArray(data?.stores) ? data.stores : []);
         setDiscoveryAppliedFilters(data?.applied_filters || null);
       }
     } catch (error) {
+      if (error?.name === 'AbortError') return;
       if (requestSequence === discoveryRequestSequenceRef.current) {
         setDiscoveryAppliedFilters(null);
         setStoresError(error.message || 'Failed to load discovery stores.');
       }
     } finally {
+      if (discoveryAbortControllerRef.current === discoveryController) {
+        discoveryAbortControllerRef.current = null;
+      }
       if (requestSequence === discoveryRequestSequenceRef.current) {
         setLoadingStores(false);
       }
@@ -4794,18 +4913,25 @@ export default function StorefrontApp() {
       }
       if (requestSequence !== storeLoadRequestSequenceRef.current) return;
 
-      if (profile?.slug && toSlug(profile.slug) !== normalized && typeof window !== 'undefined') {
+      const isLegacyStorefrontPath = typeof window !== 'undefined'
+        && (
+          window.location.pathname.toLowerCase().startsWith(`${LEGACY_TENANT_STORE_BASE_PATH}/`)
+          || window.location.pathname.toLowerCase().startsWith(`${LEGACY_STORE_BASE_PATH}/`)
+        );
+      if (profile?.slug && (toSlug(profile.slug) !== normalized || isLegacyStorefrontPath) && typeof window !== 'undefined') {
         const canonicalPath = routeSubpage === STORE_BOOKING_SUBPAGE
-          ? storePath(profile.slug, STORE_BOOKING_SUBPAGE)
+          ? storePath(profile.slug, STORE_BOOKING_SUBPAGE, '', routeLocationId)
           : routeSubpage === STORE_TRACK_SUBPAGE
-            ? storePath(profile.slug, STORE_TRACK_SUBPAGE)
+            ? storePath(profile.slug, STORE_TRACK_SUBPAGE, '', routeLocationId)
           : routeSubpage === STORE_ORDER_SUBPAGE
-            ? storePath(profile.slug, STORE_ORDER_SUBPAGE)
+            ? storePath(profile.slug, STORE_ORDER_SUBPAGE, '', routeLocationId)
           : routeSubpage === STORE_SERVICE_SUBPAGE && routeServiceItemId
-            ? storePath(profile.slug, STORE_SERVICE_SUBPAGE, `?service=${encodeURIComponent(routeServiceItemId)}`)
+            ? storePath(profile.slug, STORE_SERVICE_SUBPAGE, `?service=${encodeURIComponent(routeServiceItemId)}`, routeLocationId)
           : routeSubpage === STORE_ITEM_SUBPAGE && routeItemId
-            ? storePath(profile.slug, STORE_ITEM_SUBPAGE, `?item=${encodeURIComponent(routeItemId)}`)
-          : storePath(profile.slug);
+            ? storePath(profile.slug, STORE_ITEM_SUBPAGE, `?item=${encodeURIComponent(routeItemId)}`, routeLocationId)
+          : routeSubpage === STORE_ACCOUNT_SUBPAGE || currentPathSubpage === STORE_ACCOUNT_SUBPAGE
+            ? storePath(profile.slug, STORE_ACCOUNT_SUBPAGE, '', routeLocationId)
+          : storePath(profile.slug, null, '', routeLocationId);
         if (`${window.location.pathname}${window.location.search}` !== canonicalPath) {
           window.history.replaceState({ storeSlug: profile.slug, storeSubpage: routeSubpage }, '', canonicalPath);
         }
@@ -4827,6 +4953,9 @@ export default function StorefrontApp() {
         setStoreLocations(locations);
         setPrimaryLocationId(nextPrimaryLocationId);
         if (locations.length > 0) {
+          const urlLocation = routeLocationId == null
+            ? null
+            : (locations.find((location) => Number(location.location_id) === Number(routeLocationId)) || null);
           const preferredLocationId = (
             preferredStoreLocationSelection?.slug
             && toSlug(preferredStoreLocationSelection.slug) === toSlug(profile.slug)
@@ -4841,7 +4970,8 @@ export default function StorefrontApp() {
             : (locations.find((location) => Number(location.location_id) === Number(nextPrimaryLocationId)) || null);
           const firstOpenLocation = locations.find((location) => location?.is_open !== false) || null;
           const fallbackLocationId = (
-            preferredLocation?.location_id
+            urlLocation?.location_id
+            ?? preferredLocation?.location_id
             ?? firstOpenLocation?.location_id
             ?? primaryLocation?.location_id
             ?? locations[0]?.location_id
@@ -4855,10 +4985,13 @@ export default function StorefrontApp() {
         }
       } catch {
         const fallbackPrimaryLocationId = profileLocations.find((location) => location.is_primary_storefront)?.location_id ?? profile.location_id ?? null;
+        const fallbackRouteLocation = routeLocationId == null
+          ? null
+          : (profileLocations.find((location) => Number(location.location_id) === Number(routeLocationId)) || null);
         setStoreLocations(profileLocations);
         setPrimaryLocationId(fallbackPrimaryLocationId);
-        resolvedCatalogLocationId = fallbackPrimaryLocationId;
-        setSelectedLocationId(fallbackPrimaryLocationId);
+        resolvedCatalogLocationId = fallbackRouteLocation?.location_id ?? fallbackPrimaryLocationId;
+        setSelectedLocationId(resolvedCatalogLocationId);
       }
 
       const catalogQuery = resolvedCatalogLocationId == null
@@ -4874,7 +5007,6 @@ export default function StorefrontApp() {
     } catch (error) {
       if (requestSequence !== storeLoadRequestSequenceRef.current) return;
       const normalizedError = classifyStoreCatalogError(error, 'Failed to load tenant storefront page.');
-      setSelectedStore(null);
       setStoreLocations([]);
       setCatalog([]);
       setCatalogError(normalizedError.message);
@@ -4884,7 +5016,7 @@ export default function StorefrontApp() {
         setLoadingCatalog(false);
       }
     }
-  }, [preferredStoreLocationSelection, routeServiceItemId, routeSubpage]);
+  }, [currentPathSubpage, preferredStoreLocationSelection, routeItemId, routeLocationId, routeServiceItemId, routeSubpage]);
 
   const refreshStorePageForTenantSetup = useCallback(() => {
     if (!routeSlug) return;
@@ -4909,6 +5041,51 @@ export default function StorefrontApp() {
     }
     loadStores();
   }, [loadStores, debouncedDiscoverySearch]);
+
+  useEffect(() => {
+    if (initialDiscoveryGeolocationAttemptedRef.current) return undefined;
+    if (typeof navigator === 'undefined' || !navigator?.geolocation) return undefined;
+    initialDiscoveryGeolocationAttemptedRef.current = true;
+    let cancelled = false;
+    const requestInitialLocation = () => {
+      if (cancelled) return;
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          if (cancelled) return;
+          markDiscoveryLocationPermissionGranted();
+          loadStores({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          }, { pinScope: 'tenant_primary' });
+        },
+        (error) => {
+          if (Number(error?.code || 0) === 1) {
+            clearDiscoveryLocationPermissionHint();
+          }
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 8000
+        }
+      );
+    };
+
+    if (navigator?.permissions?.query) {
+      navigator.permissions.query({ name: 'geolocation' }).then((permissionStatus) => {
+        if (cancelled || permissionStatus?.state !== 'granted') return;
+        requestInitialLocation();
+      }).catch(() => {
+        if (hasDiscoveryLocationPermissionHint()) {
+          requestInitialLocation();
+        }
+      });
+    } else if (hasDiscoveryLocationPermissionHint()) {
+      requestInitialLocation();
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [clearDiscoveryLocationPermissionHint, hasDiscoveryLocationPermissionHint, loadStores, markDiscoveryLocationPermissionGranted]);
 
   useEffect(() => {
     discoveryCoordsRef.current = discoveryCoords;
@@ -5037,12 +5214,21 @@ export default function StorefrontApp() {
     const onPopState = () => {
       setRouteSlug(readRouteSlug());
       setRouteSubpage(readStoreSubpage());
+      setRouteLocationId(readRouteLocationId());
       setRouteServiceItemId(readStoreServiceItemId());
       setRouteItemId(readStoreItemId());
       setRouteReviewToken(readStoreReviewToken());
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const normalizedPath = window.location.pathname.toLowerCase();
+    if (normalizedPath === LEGACY_TENANT_STORE_BASE_PATH || normalizedPath === `${LEGACY_TENANT_STORE_BASE_PATH}/`) {
+      window.history.replaceState({}, '', DISCOVERY_BASE_PATH);
+    }
   }, []);
 
   useEffect(() => {
@@ -5120,7 +5306,35 @@ export default function StorefrontApp() {
   }, [customerAuthMode, dgfyLegalTerms, dgfyLegalTermsLoading, isAccountDrawerOpen, isStorefrontAccountAuthenticated, loadDgfyLegalTerms]);
 
   useEffect(() => {
-    if (!dgfyAuthToken || accountPanel.loading) return;
+    if (dgfyCookieRehydrateAttemptedRef.current || dgfyAuthToken || storeAuthToken || hasDgfyCookieSession) return;
+    dgfyCookieRehydrateAttemptedRef.current = true;
+    let cancelled = false;
+    requestJson('/api/v1/dgfy/auth/me', { cache: 'no-store' })
+      .then((meData) => {
+        if (cancelled) return;
+        const account = meData?.account || meData || null;
+        if (!account) return;
+        setHasDgfyCookieSession(true);
+        setAccountPanel((previous) => (
+          previous?.me
+            ? previous
+            : {
+              ...previous,
+              error: '',
+              me: account
+            }
+        ));
+      })
+      .catch(() => {
+        if (!cancelled) setHasDgfyCookieSession(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dgfyAuthToken, hasDgfyCookieSession, storeAuthToken]);
+
+  useEffect(() => {
+    if (!isAccountSubpage || accountPanel.loading) return;
     const hasLoadedAccountData = Boolean(
       accountPanel.me
       || (Array.isArray(accountPanel.orders) && accountPanel.orders.length > 0)
@@ -5131,7 +5345,21 @@ export default function StorefrontApp() {
     );
     if (hasLoadedAccountData) return;
     handleLoadAccountPanel();
-  }, [accountPanel.addresses, accountPanel.bookings, accountPanel.error, accountPanel.loading, accountPanel.loyalty, accountPanel.me, accountPanel.orders, dgfyAuthToken]);
+  }, [accountPanel.addresses, accountPanel.bookings, accountPanel.error, accountPanel.loading, accountPanel.loyalty, accountPanel.me, accountPanel.orders, handleLoadAccountPanel, isAccountSubpage]);
+
+  useEffect(() => {
+    if (!isDgfyCustomerSignedIn || accountPanel.loading) return;
+    const hasLoadedAccountData = Boolean(
+      accountPanel.me
+      || (Array.isArray(accountPanel.orders) && accountPanel.orders.length > 0)
+      || (Array.isArray(accountPanel.bookings) && accountPanel.bookings.length > 0)
+      || (Array.isArray(accountPanel.addresses) && accountPanel.addresses.length > 0)
+      || accountPanel.loyalty
+      || accountPanel.error
+    );
+    if (hasLoadedAccountData) return;
+    handleLoadAccountPanel();
+  }, [accountPanel.addresses, accountPanel.bookings, accountPanel.error, accountPanel.loading, accountPanel.loyalty, accountPanel.me, accountPanel.orders, handleLoadAccountPanel, isDgfyCustomerSignedIn]);
 
   useEffect(() => {
     if (!isAccountDrawerOpen) {
@@ -5246,12 +5474,14 @@ export default function StorefrontApp() {
       slug: normalized,
       locationId: Number(locationId)
     });
-    const target = storePath(normalized);
-    if (window.location.pathname !== target) {
+    const targetLocationId = locationId == null ? null : Number(locationId);
+    const target = storePath(normalized, null, '', targetLocationId);
+    if (`${window.location.pathname}${window.location.search}` !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: null }, '', target);
     }
     setRouteSlug(normalized);
     setRouteSubpage(null);
+    setRouteLocationId(targetLocationId);
     setRouteServiceItemId(null);
     setRouteItemId(null);
   };
@@ -5266,12 +5496,14 @@ export default function StorefrontApp() {
       locationId: Number(locationId)
     });
     const targetSubpage = STORE_ORDER_SUBPAGE;
-    const target = storePath(normalized, targetSubpage);
+    const targetLocationId = locationId == null ? null : Number(locationId);
+    const target = storePath(normalized, targetSubpage, '', targetLocationId);
     if (`${window.location.pathname}${window.location.search}` !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: targetSubpage }, '', target);
     }
     setRouteSlug(normalized);
     setRouteSubpage(targetSubpage);
+    setRouteLocationId(targetLocationId);
     setRouteServiceItemId(null);
     setRouteItemId(null);
     setPendingOrderInitialTab(resolvedInitialTab);
@@ -5288,12 +5520,13 @@ export default function StorefrontApp() {
   const goStoreBookingPage = ({ preserveSelectedService = false } = {}) => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     if (!normalized || typeof window === 'undefined') return;
-    const target = storePath(normalized, STORE_BOOKING_SUBPAGE);
+    const target = storePath(normalized, STORE_BOOKING_SUBPAGE, '', selectedLocationId);
     if (`${window.location.pathname}${window.location.search}` !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_BOOKING_SUBPAGE }, '', target);
     }
     setRouteSlug(normalized);
     setRouteSubpage(STORE_BOOKING_SUBPAGE);
+    setRouteLocationId(selectedLocationId);
     setRouteServiceItemId(null);
     setRouteItemId(null);
     if (!preserveSelectedService) {
@@ -5306,12 +5539,13 @@ export default function StorefrontApp() {
     if (!normalized || typeof window === 'undefined') return;
     const persistedTrackedOrders = readTrackedOrdersForStore(normalized).filter((entry) => !TERMINAL_TRACKING_STATUSES.has(String(entry.status || '').trim().toLowerCase()));
     const resolvedInitialTab = initialTab || 'checkout';
-    const target = storePath(normalized, STORE_ORDER_SUBPAGE);
+    const target = storePath(normalized, STORE_ORDER_SUBPAGE, '', selectedLocationId);
     if (`${window.location.pathname}${window.location.search}` !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_ORDER_SUBPAGE }, '', target);
     }
     setRouteSlug(normalized);
     setRouteSubpage(STORE_ORDER_SUBPAGE);
+    setRouteLocationId(selectedLocationId);
     setRouteServiceItemId(null);
     setRouteItemId(null);
     setPendingOrderInitialTab(resolvedInitialTab);
@@ -5332,13 +5566,14 @@ export default function StorefrontApp() {
     if (!normalized || typeof window === 'undefined') return;
     const normalizedPin = String(pin || selectedTrackingPin || trackingPinInput || readLastTrackingPinForStore(normalized) || '').trim().toUpperCase();
     const target = normalizedPin
-      ? `${storePath(normalized, STORE_TRACK_SUBPAGE)}?pin=${encodeURIComponent(normalizedPin)}`
-      : storePath(normalized, STORE_TRACK_SUBPAGE);
+      ? storePath(normalized, STORE_TRACK_SUBPAGE, `?pin=${encodeURIComponent(normalizedPin)}`, selectedLocationId)
+      : storePath(normalized, STORE_TRACK_SUBPAGE, '', selectedLocationId);
     if (`${window.location.pathname}${window.location.search}` !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_TRACK_SUBPAGE }, '', target);
     }
     setRouteSlug(normalized);
     setRouteSubpage(STORE_TRACK_SUBPAGE);
+    setRouteLocationId(selectedLocationId);
     setRouteServiceItemId(null);
     setRouteItemId(null);
     setPendingOrderInitialTab('track');
@@ -5352,15 +5587,51 @@ export default function StorefrontApp() {
     setCheckoutTab('track');
     setIsCheckoutOpen(false);
   };
+  const goStoreAccountPage = useCallback(() => {
+    const normalized = toSlug(selectedStore?.slug || routeSlug);
+    if (!normalized || typeof window === 'undefined') return;
+    const target = storePath(normalized, STORE_ACCOUNT_SUBPAGE, '', selectedLocationId);
+    if (`${window.location.pathname}${window.location.search}` !== target) {
+      window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_ACCOUNT_SUBPAGE }, '', target);
+    }
+    setRouteSlug(normalized);
+    setRouteSubpage(STORE_ACCOUNT_SUBPAGE);
+    setRouteLocationId(selectedLocationId);
+    setRouteServiceItemId(null);
+    setRouteItemId(null);
+    setIsCheckoutOpen(false);
+    setIsGuestTrackingDrawerOpen(false);
+    setIsAccountDrawerOpen(false);
+    handleLoadAccountPanel();
+  }, [handleLoadAccountPanel, routeSlug, selectedLocationId, selectedStore?.slug]);
+  const goDiscoveryAccountPage = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    if (`${window.location.pathname}${window.location.search}` !== DISCOVERY_ACCOUNT_PATH) {
+      window.history.pushState({ storeSlug: null, storeSubpage: STORE_ACCOUNT_SUBPAGE }, '', DISCOVERY_ACCOUNT_PATH);
+    }
+    setRouteSlug(null);
+    setRouteSubpage(STORE_ACCOUNT_SUBPAGE);
+    setRouteLocationId(null);
+    setRouteServiceItemId(null);
+    setRouteItemId(null);
+    setSelectedStore(null);
+    setIsCheckoutOpen(false);
+    setIsGuestTrackingDrawerOpen(false);
+    setIsAccountDrawerOpen(false);
+    setIsDiscoveryNavMenuOpen(false);
+    setActiveDiscoveryNavItem('Explore');
+    handleLoadAccountPanel();
+  }, [handleLoadAccountPanel]);
   const goStoreCatalogPage = () => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     if (!normalized || typeof window === 'undefined') return;
-    const target = storePath(normalized);
+    const target = storePath(normalized, null, '', selectedLocationId);
     if (`${window.location.pathname}${window.location.search}` !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: null }, '', target);
     }
     setRouteSlug(normalized);
     setRouteSubpage(null);
+    setRouteLocationId(selectedLocationId);
     setRouteServiceItemId(null);
     setRouteItemId(null);
     setFnbOrderStep(2);
@@ -5368,9 +5639,10 @@ export default function StorefrontApp() {
   };
 
   const goDiscovery = () => {
-    if (window.location.pathname !== TENANT_STORE_BASE_PATH) window.history.pushState({}, '', TENANT_STORE_BASE_PATH);
+    if (`${window.location.pathname}${window.location.search}` !== DISCOVERY_BASE_PATH) window.history.pushState({}, '', DISCOVERY_BASE_PATH);
     setRouteSlug(null);
     setRouteSubpage(null);
+    setRouteLocationId(null);
     setRouteServiceItemId(null);
     setRouteItemId(null);
     setSelectedStore(null);
@@ -5416,8 +5688,24 @@ export default function StorefrontApp() {
   const handleBranchMenuSelection = useCallback((nextValue) => {
     const nextLocationId = nextValue ? Number(nextValue) : null;
     setSelectedLocationId(nextLocationId);
+    setRouteLocationId(nextLocationId);
+    const normalized = toSlug(selectedStore?.slug || routeSlug);
+    if (normalized && typeof window !== 'undefined') {
+      const currentSubpage = readStoreSubpage();
+      const params = new URLSearchParams(window.location.search || '');
+      if (nextLocationId == null) {
+        params.delete('location_id');
+      } else {
+        params.set('location_id', String(nextLocationId));
+      }
+      const query = params.toString() ? `?${params.toString()}` : '';
+      const target = storePath(normalized, currentSubpage, query);
+      if (`${window.location.pathname}${window.location.search}` !== target) {
+        window.history.replaceState({ storeSlug: normalized, storeSubpage: currentSubpage }, '', target);
+      }
+    }
     setHasSelectedBranchFromMenu(true);
-  }, []);
+  }, [routeSlug, selectedStore?.slug]);
 
   const cartTotal = useMemo(() => cart.reduce((sum, line) => sum + (Number(line.quantity) * Number(line.price)), 0), [cart]);
   const cartCount = useMemo(() => cart.reduce((sum, line) => sum + Number(line.quantity || 0), 0), [cart]);
@@ -5451,17 +5739,19 @@ export default function StorefrontApp() {
         const primaryLocation = pins.find((location) => Number(location.location_id) === Number(locationBundle.primary_location_id))
           || pins.find((location) => location?.is_primary_storefront === true)
           || null;
+        const indexedCoordinate = getIndexedDiscoveryCoordinate(store);
+        const indexedLocation = getLocationMatchingIndexedRow(store, pins);
         const preferredMatchingLocation = discoveryPinScope === 'all_matching_branches'
           ? nearestMatchingLocation
           : null;
-        const fallbackLocation = preferredMatchingLocation || primaryLocation || nearestMatchingLocation || pins[0] || null;
+        const fallbackLocation = indexedLocation || preferredMatchingLocation || primaryLocation || nearestMatchingLocation || pins[0] || null;
         const fallbackLat = toNumberOrNull(store?.latitude);
         const fallbackLng = toNumberOrNull(store?.longitude);
         const hasStoreCoordinate = fallbackLat != null
           && fallbackLng != null
           && !isKnownProvisionedPlaceholderCoordinate(fallbackLat, fallbackLng);
-        const anchorLatitude = fallbackLocation?.latitude ?? (hasStoreCoordinate ? fallbackLat : null);
-        const anchorLongitude = fallbackLocation?.longitude ?? (hasStoreCoordinate ? fallbackLng : null);
+        const anchorLatitude = indexedCoordinate?.latitude ?? fallbackLocation?.latitude ?? (hasStoreCoordinate ? fallbackLat : null);
+        const anchorLongitude = indexedCoordinate?.longitude ?? fallbackLocation?.longitude ?? (hasStoreCoordinate ? fallbackLng : null);
         const nearestPinWithDistance = hasDiscoveryLocation
           ? pins
             .map((location) => ({
@@ -5508,22 +5798,7 @@ export default function StorefrontApp() {
       });
   }, [stores, discoveryCoords, discoveryLocationMap, discoveryPinScope]);
   const discoveryResultStores = useMemo(() => {
-    const hasDiscoveryLocation = discoveryCoords?.latitude != null && discoveryCoords?.longitude != null;
-    const searcherRadiusKm = 0.1;
-    const radiusScoped = hasDiscoverySearch && hasDiscoveryLocation
-      ? storesWithNearestBranch.filter((store) => {
-          const distanceKm = Number(store?.nearest_distance_km);
-          if (!Number.isFinite(distanceKm) || distanceKm > searcherRadiusKm) return false;
-
-          // Also honor each business-configured delivery radius when present.
-          const deliveryRadiusKm = Number(store?.delivery_radius_km);
-          if (Number.isFinite(deliveryRadiusKm) && deliveryRadiusKm > 0) {
-            return distanceKm <= deliveryRadiusKm;
-          }
-          return true;
-        })
-      : storesWithNearestBranch;
-    const sorted = [...radiusScoped];
+    const sorted = [...storesWithNearestBranch];
     sorted.sort((a, b) => {
       if (discoverySortBy === 'open') {
         if (Boolean(a?.storefront_open) !== Boolean(b?.storefront_open)) return a?.storefront_open ? -1 : 1;
@@ -5546,7 +5821,7 @@ export default function StorefrontApp() {
       return String(a?.tenant_name || '').localeCompare(String(b?.tenant_name || ''));
     });
     return sorted;
-  }, [storesWithNearestBranch, hasDiscoverySearch, discoveryCoords, discoverySortBy]);
+  }, [storesWithNearestBranch, discoverySortBy]);
   const filteredDiscoveryStores = useMemo(() => {
     return discoveryResultStores.filter((store) => {
       const categories = normalizeStorefrontCategories(store?.storefront_categories).map((entry) => String(entry || '').trim().toLowerCase());
@@ -5613,6 +5888,24 @@ export default function StorefrontApp() {
       const nearestMatchingLocation = Number.isInteger(nearestMatchingLocationId)
         ? (activeWithCoords.find((location) => Number(location.location_id) === nearestMatchingLocationId) || null)
         : null;
+      const indexedCoordinate = getIndexedDiscoveryCoordinate(store);
+      const indexedLocation = getLocationMatchingIndexedRow(store, activeWithCoords);
+      const indexedDistanceKm = hasDiscoveryLocation && indexedCoordinate
+        ? haversineDistanceKm(discoveryLat, discoveryLng, indexedCoordinate.latitude, indexedCoordinate.longitude)
+        : null;
+      const shouldUseIndexedPrimaryPin = Boolean(indexedCoordinate)
+        && (discoveryPinScope === 'tenant_primary' || !hasSearchQuery);
+      if (shouldUseIndexedPrimaryPin) {
+        const indexedPin = buildIndexedDiscoveryPin({
+          store,
+          slug,
+          markerSuffix: 'indexed',
+          location: indexedLocation,
+          distanceKm: indexedDistanceKm
+        });
+        if (indexedPin) pins.push(indexedPin);
+        if (discoveryPinScope === 'tenant_primary') return;
+      }
       if (activeWithCoords.length === 0) {
         const lat = toNumberOrNull(store?.latitude);
         const lng = toNumberOrNull(store?.longitude);
@@ -5694,7 +5987,7 @@ export default function StorefrontApp() {
         if (pin?.location_name) score += 1;
         return score;
       };
-      pins.forEach((pin, index) => {
+      pins.forEach((pin) => {
         if (!pin) return;
         const numericLocationId = Number(pin.location_id);
         const dedupeKey = Number.isInteger(numericLocationId) && numericLocationId > 0
@@ -5768,6 +6061,21 @@ export default function StorefrontApp() {
           longitude: toNumberOrNull(location?.longitude)
         }))
         .filter((location) => location.latitude != null && location.longitude != null);
+      const indexedCoordinate = getIndexedDiscoveryCoordinate(store);
+      if (indexedCoordinate) {
+        const indexedLocation = getLocationMatchingIndexedRow(store, activeLocations);
+        const indexedPin = buildIndexedDiscoveryPin({
+          store,
+          slug,
+          markerSuffix: 'hero-indexed',
+          location: indexedLocation,
+          distanceKm: hasDiscoveryLocation
+            ? haversineDistanceKm(discoveryLat, discoveryLng, indexedCoordinate.latitude, indexedCoordinate.longitude)
+            : null
+        });
+        if (indexedPin) pins.push(indexedPin);
+        return;
+      }
 
       if (activeLocations.length === 0) {
         const lat = toNumberOrNull(store?.latitude);
@@ -5863,41 +6171,32 @@ export default function StorefrontApp() {
   const searchedDiscoveryMapPins = hasDiscoverySearch && filteredDiscoveryStores.length > 0
     ? discoveryMapPins
     : persistentDiscoveryMapPins;
-  const discoveryResultsMapKey = useMemo(() => {
-    const searchKey = String(search || '').trim().toLowerCase();
-    const pinKey = (Array.isArray(searchedDiscoveryMapPins) ? searchedDiscoveryMapPins : [])
-      .map((pin) => String(
-        pin?.marker_key
-        || `${toSlug(pin?.slug || pin?.tenant_name)}:${pin?.location_id ?? `${pin?.latitude}:${pin?.longitude}`}`
-      ))
-      .join('|');
-    return `discovery-results-map:${searchKey}:${filteredDiscoveryStores.length}:${pinKey}`;
-  }, [searchedDiscoveryMapPins, filteredDiscoveryStores.length, search]);
-  const discoverySummary = useMemo(() => {
-    const totalStores = filteredDiscoveryStores.length;
-    const openStores = filteredDiscoveryStores.filter((store) => store.storefront_open).length;
-    const totalCatalogItems = filteredDiscoveryStores.reduce((sum, store) => sum + Number(store.catalog_count || 0), 0);
-    const waitTotals = filteredDiscoveryStores.reduce((sum, store) => sum + Number(store.estimated_wait_minutes || 0), 0);
-    const avgWait = totalStores > 0 ? Math.round(waitTotals / totalStores) : 0;
-    return {
-      totalStores,
-      openStores,
-      totalCatalogItems,
-      avgWait
-    };
-  }, [filteredDiscoveryStores]);
-  const nearestDistanceKm = useMemo(() => {
-    const withDistance = filteredDiscoveryStores
-      .map((store) => Number(store?.nearest_distance_km))
-      .filter((distance) => Number.isFinite(distance));
-    if (withDistance.length === 0) return null;
-    return Math.min(...withDistance);
-  }, [filteredDiscoveryStores]);
-  const highlightedStore = useMemo(() => {
-    if (!filteredDiscoveryStores.length) return null;
-    if (!highlightedStoreSlug) return filteredDiscoveryStores[0];
-    return filteredDiscoveryStores.find((store) => store.slug === highlightedStoreSlug) || filteredDiscoveryStores[0];
-  }, [filteredDiscoveryStores, highlightedStoreSlug]);
+  const highlightedDiscoveryMarkerKeys = useMemo(() => {
+    if (hasDiscoverySearch) {
+      return (Array.isArray(searchedDiscoveryMapPins) ? searchedDiscoveryMapPins : [])
+        .map((pin) => getDiscoveryMarkerKey(pin))
+        .filter(Boolean);
+    }
+    return highlightedDiscoveryMarkerKey ? [highlightedDiscoveryMarkerKey] : [];
+  }, [hasDiscoverySearch, searchedDiscoveryMapPins, highlightedDiscoveryMarkerKey]);
+  const discoveryViewportSignal = useMemo(() => ([
+    hasDiscoverySearch ? `search:${debouncedDiscoverySearch.trim().toLowerCase()}` : 'browse',
+    `category:${discoveryCategoryFilter}`,
+    `distance:${discoveryDistanceFilter}`,
+    `open:${discoveryOpenFilter}`,
+    `rating:${discoveryRatingFilter}`,
+    `availability:${discoveryAvailabilityFilter}`,
+    `pin:${discoveryPinScope}`
+  ].join('|')), [
+    hasDiscoverySearch,
+    debouncedDiscoverySearch,
+    discoveryCategoryFilter,
+    discoveryDistanceFilter,
+    discoveryOpenFilter,
+    discoveryRatingFilter,
+    discoveryAvailabilityFilter,
+    discoveryPinScope
+  ]);
   useEffect(() => {
     return () => {
       if (discoveryNoMatchToastTimerRef.current) {
@@ -6248,10 +6547,10 @@ export default function StorefrontApp() {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
     const resolvedItemId = String(itemId || '').trim();
     if (!normalized || !resolvedItemId || typeof window === 'undefined') return;
-    const target = storePath(normalized, STORE_ITEM_SUBPAGE, `?item=${encodeURIComponent(resolvedItemId)}`);
+    const target = storePath(normalized, STORE_ITEM_SUBPAGE, `?item=${encodeURIComponent(resolvedItemId)}`, selectedLocationId);
     window.history.replaceState({ storeSlug: normalized, storeSubpage: STORE_ITEM_SUBPAGE, itemId: resolvedItemId }, '', target);
     setRouteReviewToken('');
-  }, [routeItemId, routeSlug, selectedStore?.slug]);
+  }, [routeItemId, routeSlug, selectedLocationId, selectedStore?.slug]);
   const loadFnbItemReviews = useCallback(async (itemId) => {
     const tenantId = String(selectedStore?.tenant_id || '').trim();
     const normalizedStoreSlug = toSlug(selectedStore?.slug || routeSlug);
@@ -6478,7 +6777,7 @@ export default function StorefrontApp() {
   ]);
   const hasCatalogSearchQuery = catalogSearch.trim().length > 0;
   const catalogState = useMemo(() => {
-    if (loadingCatalog && catalog.length === 0) return 'empty_setup';
+    if (loadingCatalog && catalog.length === 0) return 'loading';
     if (loadingCatalog) return 'loading';
     if (catalogError) return 'error';
     if (!hasCatalogSearchQuery && filteredCatalog.length === 0) return 'empty_setup';
@@ -6591,13 +6890,6 @@ export default function StorefrontApp() {
     if (checkoutAllowed) return 'Ready to checkout';
     return 'Review order';
   }, [cartCount, storefrontClosedByHours, hasStockViolation, quoteResult, quoteNeedsRefresh, checkoutAllowed]);
-  const fnbCartActionLabel = useMemo(() => {
-    if (cartCount === 0) return 'Browse menu';
-    if (isCheckoutOpen) return 'Close cart';
-    if (hasStockViolation) return 'Review cart';
-    if (!quoteResult || quoteNeedsRefresh) return 'Review and quote';
-    return isMobileViewport ? 'Checkout' : 'View cart and checkout';
-  }, [cartCount, hasStockViolation, isCheckoutOpen, isMobileViewport, quoteResult, quoteNeedsRefresh]);
   const fnbDrawerSupportLabel = useMemo(() => {
     if (cartCount === 0) return 'Add menu items to start an order.';
     if (storefrontClosedByHours) {
@@ -6792,7 +7084,7 @@ export default function StorefrontApp() {
     if (activeBookingService) {
       setServiceBookingStep(1);
     }
-  }, [isBookingSubpage, hasServiceCart, activeBookingService?.item_id]);
+  }, [isBookingSubpage, activeBookingService]);
   useEffect(() => {
     if (bookingFieldPlan.customerNameField?.id) {
       setServiceIntakeResponses((previous) => (
@@ -7096,23 +7388,31 @@ export default function StorefrontApp() {
     setIsGuestTrackingDrawerOpen(false);
     goStoreTrackPage({ pin: normalizedPin });
   };
-  const openAccountPanel = () => {
-    setIsCheckoutOpen(false);
+  const openAccountPanel = useCallback(() => {
+    goStoreAccountPage();
+  }, [goStoreAccountPage]);
+  const openCustomerAuthDrawer = () => {
     setIsGuestTrackingDrawerOpen(false);
     setIsAccountDrawerOpen(true);
-    handleLoadAccountPanel();
   };
-  const beginServiceBooking = (serviceItem) => {
-    if (!serviceItem) return;
-    setSelectedServiceDetail(serviceItem);
-    setCheckoutError('');
-    setQuoteError('');
-    setCheckoutResult(null);
-    if (isServicesMode) {
-      goStoreBookingPage({ preserveSelectedService: true });
-      return;
+  const openBusinessRegistrationFromDgfyAccount = async () => {
+    const dgfyToken = readDgfyAuthToken();
+    let handoffToken = '';
+    if (dgfyToken) {
+      try {
+        const handoff = await requestJson('/api/v1/dgfy/auth/handoff', {
+          method: 'POST',
+          authToken: dgfyToken,
+          cache: 'no-store'
+        });
+        handoffToken = String(handoff?.handoff_token || '').trim();
+      } catch (error) {
+        toast.error(normalizeStorefrontErrorMessage(error, 'Unable to prepare your DGFY business handoff. Sign in again on the registration page.'));
+      }
     }
-    openServiceBookingPanel('review');
+    if (typeof window !== 'undefined') {
+      window.location.href = buildBusinessRegistrationUrl(handoffToken);
+    }
   };
   const saveServiceBookingDraft = (serviceItem = selectedServiceDetail, nextTab = 'review') => {
     if (!serviceItem) return;
@@ -7271,9 +7571,6 @@ export default function StorefrontApp() {
   ]), [savedPinnedLocations]);
 
   const activePinnedDeliveryAddress = String(resolvedDeliveryAddress || customerAddress || buildPinnedDeliveryAddress(customerPin) || '').trim();
-  const activeSavedDeliveryLocation = useMemo(() => (
-    deliverySavedLocations.find((location) => String(location.id) === String(selectedSavedLocationId)) || null
-  ), [deliverySavedLocations, selectedSavedLocationId]);
   const hasPinnedDeliveryLocation = Number.isFinite(Number(customerPin?.latitude)) && Number.isFinite(Number(customerPin?.longitude));
   const canAddPinnedLocation = isDeliveryOrder
     && hasPinnedDeliveryLocation
@@ -7314,7 +7611,7 @@ export default function StorefrontApp() {
       });
     }
     toast.success('Saved address applied to checkout.');
-  }, [toast]);
+  }, []);
 
   const handleAddPinnedLocation = useCallback(() => {
     if (!canAddPinnedLocation || !hasPinnedDeliveryLocation) return;
@@ -7330,7 +7627,7 @@ export default function StorefrontApp() {
     setSelectedSavedLocationId(newLocation.id);
     setDeliveryLocationAction('saved');
     toast.success('Saved location added.');
-  }, [activePinnedDeliveryAddress, canAddPinnedLocation, customerPin, hasPinnedDeliveryLocation, toast]);
+  }, [activePinnedDeliveryAddress, canAddPinnedLocation, customerPin, hasPinnedDeliveryLocation]);
 
   useEffect(() => {
     if (!isFnbMode || !isDeliveryOrder) return;
@@ -7391,7 +7688,7 @@ export default function StorefrontApp() {
     const loadFollowStatus = async () => {
       setFollowState((prev) => ({ ...prev, loading: true }));
       try {
-        const token = readStoreAuthToken();
+        const token = readStorefrontCustomerAuthToken();
         const status = await requestJson(`/api/v1/store/follow/status?storefront_slug=${encodeURIComponent(slug)}&visitor_id=${encodeURIComponent(storefrontVisitorId)}`, {
           method: 'GET',
           storeSlug: slug,
@@ -7421,7 +7718,7 @@ export default function StorefrontApp() {
     const nextIsFollowing = !followState.isFollowing;
     setFollowState((prev) => ({ ...prev, loading: true, error: '' }));
     try {
-      const token = readStoreAuthToken();
+      const token = readStorefrontCustomerAuthToken();
       const response = await requestJson('/api/v1/store/follow', {
         method: nextIsFollowing ? 'POST' : 'DELETE',
         storeSlug: slug,
@@ -7586,7 +7883,7 @@ export default function StorefrontApp() {
       const data = await requestJson('/api/v1/store/cart/quote', {
         method: 'POST',
         storeSlug: selectedStore.slug,
-        authToken: readStoreAuthToken(),
+        authToken: readStorefrontCustomerAuthToken(),
         body: checkoutPayload()
       });
       setQuoteResult(data);
@@ -7684,7 +7981,10 @@ export default function StorefrontApp() {
     const cartSnapshot = cart.map((line) => ({ ...line }));
     setCheckoutLoading(true);
     try {
-      const authToken = readStoreAuthToken();
+      const authToken = readStorefrontCustomerAuthToken();
+      const shouldCreateQrphPaymentSession = !hasServiceCart
+        && !(isServicesMode && serviceBookingLine)
+        && fnbPaymentType === 'qrph';
       const data = (hasServiceCart || (isServicesMode && serviceBookingLine))
         ? await requestJson('/api/v1/store/services/bookings', {
           method: 'POST',
@@ -7708,14 +8008,14 @@ export default function StorefrontApp() {
             ].filter(Boolean).join('\n')
           }
         })
-        : await requestJson('/api/v1/store/checkout', {
+        : await requestJson(shouldCreateQrphPaymentSession ? '/api/v1/store/checkout/payment-sessions' : '/api/v1/store/checkout', {
           method: 'POST',
           storeSlug: selectedStore.slug,
           authToken,
           body: {
             ...checkoutPayload(),
             idempotency_key: window.crypto?.randomUUID?.() || `store-${Date.now()}`,
-            payment_type: fnbPaymentType
+            payment_type: shouldCreateQrphPaymentSession ? 'qrph' : fnbPaymentType
           }
         });
       setCheckoutResult({
@@ -7769,6 +8069,11 @@ export default function StorefrontApp() {
       setServicePaymentPreviewMethod('qr');
       setServicePaymentPreviewCard({ cardholder: '', cardNumber: '', expiry: '', cvv: '' });
       setServicePaymentPreviewReceiptName('');
+      if (authToken) {
+        handleLoadAccountPanel().catch((error) => {
+          console.warn('[StorefrontApp] Failed to refresh DGFY account after checkout', error);
+        });
+      }
       setFnbOrderStep(4);
       if (isSimpleMode) {
         setSimpleOrderStep(4);
@@ -7784,7 +8089,7 @@ export default function StorefrontApp() {
           orderSuccessAnimationTimerRef.current = null;
         }, 1200);
       }
-      toast.success(hasServiceCart ? 'Booking created.' : 'Checkout completed.');
+      toast.success(shouldCreateQrphPaymentSession ? 'QR Ph payment session created.' : (hasServiceCart ? 'Booking created.' : 'Checkout completed.'));
     } catch (error) {
       const violation = extractStockViolation(error);
       if (violation) {
@@ -7930,7 +8235,7 @@ export default function StorefrontApp() {
     if (!selectedTrackingPin && firstPin) {
       setSelectedTrackingPin(firstPin);
     }
-  }, [routeSlug, selectedStore?.slug]);
+  }, [routeSlug, selectedStore?.slug, selectedTrackingPin, trackingPinInput]);
 
   useEffect(() => {
     if (!(checkoutTab === 'track' && isFnbOrderSubpage) || !selectedStore?.slug) return;
@@ -7988,63 +8293,8 @@ export default function StorefrontApp() {
       if (selectedTimerId) window.clearInterval(selectedTimerId);
       if (backgroundTimerId) window.clearInterval(backgroundTimerId);
     };
-  }, [checkoutTab, fetchTrackingPayload, guestTrackedOrders, isFnbOrderSubpage, selectedTrackingPin, syncTrackedOrderSnapshot, toTrackingViewState, trackingPinInput]);
+  }, [checkoutTab, fetchTrackingPayload, guestTrackedOrders, isFnbOrderSubpage, selectedStore?.slug, selectedTrackingPin, syncTrackedOrderSnapshot, toTrackingViewState, trackingPinInput]);
 
-  const handleLoadAccountPanel = async () => {
-    const dgfyToken = readDgfyAuthToken();
-    const storeToken = readStoreAuthToken();
-    if (!dgfyToken && !storeToken) {
-      setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: '' });
-      return;
-    }
-    setAccountPanel((prev) => ({ ...prev, loading: true, error: '' }));
-    try {
-      if (dgfyToken) {
-        const [meData, dashboardData, activitiesData, loyaltyData] = await Promise.all([
-          requestJson('/api/v1/dgfy/auth/me', { authToken: dgfyToken, cache: 'no-store' }),
-          requestJson('/api/v1/dgfy/customer/dashboard', { authToken: dgfyToken, cache: 'no-store' }),
-          requestJson('/api/v1/dgfy/customer/activities?limit=25', { authToken: dgfyToken, cache: 'no-store' }).catch(() => ({ activities: [] })),
-          requestJson('/api/v1/dgfy/customer/loyalty', { authToken: dgfyToken, cache: 'no-store' }).catch(() => null)
-        ]);
-        setAccountPanel({
-          loading: false,
-          error: '',
-          me: meData?.account || dashboardData?.account || meData || null,
-          activities: Array.isArray(activitiesData?.activities) && activitiesData.activities.length
-            ? activitiesData.activities
-            : (Array.isArray(dashboardData?.activities) ? dashboardData.activities : []),
-          orders: Array.isArray(dashboardData?.orders) ? dashboardData.orders : [],
-          bookings: Array.isArray(dashboardData?.bookings) ? dashboardData.bookings : [],
-          addresses: Array.isArray(dashboardData?.addresses) ? dashboardData.addresses : [],
-          loyalty: loyaltyData?.loyalty || dashboardData?.loyalty || null
-        });
-        return;
-      }
-
-      if (!selectedStore?.slug) {
-        setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: 'Select a storefront to view tenant-specific account activity.' });
-        return;
-      }
-
-      const [me, ordersData, bookingsData] = await Promise.all([
-        requestJson('/api/v1/store/auth/me', { storeSlug: selectedStore.slug, authToken: storeToken }),
-        requestJson('/api/v1/store/orders?limit=25', { storeSlug: selectedStore.slug, authToken: storeToken }),
-        requestJson('/api/v1/store/services/bookings?limit=25', { storeSlug: selectedStore.slug, authToken: storeToken }).catch(() => ({ bookings: [] }))
-      ]);
-      setAccountPanel({
-        loading: false,
-        error: '',
-        me: me?.customer || me || null,
-        activities: [],
-        orders: Array.isArray(ordersData?.orders) ? ordersData.orders : [],
-        bookings: Array.isArray(bookingsData?.bookings) ? bookingsData.bookings : [],
-        addresses: [],
-        loyalty: null
-      });
-    } catch (error) {
-      setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: normalizeStorefrontErrorMessage(error, 'Unable to load account.') });
-    }
-  };
   const handleTrackCustomerReference = useCallback(async (reference) => {
     const normalizedReference = String(reference || '').trim().toUpperCase();
     if (!normalizedReference) return;
@@ -8070,12 +8320,248 @@ export default function StorefrontApp() {
       setCustomerTrackLoadingReference('');
     }
   }, []);
+
+  const handleCancelAccountOrder = useCallback(async (order = {}) => {
+    const normalizedReference = String(order?.reference || '').trim().toUpperCase();
+    const dgfyToken = readDgfyAuthToken();
+    if (!normalizedReference || !dgfyToken) {
+      toast.error('Sign in to cancel account-linked orders.');
+      return;
+    }
+    if (order?.allowed_actions?.cancel === false) {
+      toast.error('This order can no longer be cancelled.');
+      return;
+    }
+    setAccountOrderActionReference(normalizedReference);
+    try {
+      await requestJson(`/api/v1/dgfy/customer/orders/${encodeURIComponent(normalizedReference)}/cancel`, {
+        method: 'POST',
+        authToken: dgfyToken,
+        cache: 'no-store'
+      });
+      toast.success('Order cancelled.');
+      await handleLoadAccountPanel();
+      if (trackedCustomerActivity?.reference === normalizedReference) {
+        await handleTrackCustomerReference(normalizedReference);
+      }
+    } catch (error) {
+      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to cancel this order.'));
+    } finally {
+      setAccountOrderActionReference('');
+    }
+  }, [handleLoadAccountPanel, handleTrackCustomerReference, trackedCustomerActivity?.reference]);
+
+  const buildAccountReorderCartLines = useCallback((lines = [], reference = '') => (Array.isArray(lines) ? lines : [])
+    .map((line) => {
+      const item = (Array.isArray(catalog) ? catalog : []).find((entry) => Number(entry?.item_id) === Number(line?.item_id));
+      if (!item) return null;
+      const maxStock = isItemAvailable(item) ? Number.POSITIVE_INFINITY : 0;
+      return {
+        item_id: item.item_id,
+        cart_line_id: `reorder:${reference || 'account'}:${item.item_id}`,
+        name: item.name,
+        variantName: item.variantName || '',
+        category: isServiceCatalogItem(item) ? 'service' : String(item.category || '').trim().toLowerCase(),
+        service_detail: item.service_detail || null,
+        quantity: Math.max(1, Number(line.quantity || 1)),
+        price: Number(item.default_sale_price ?? line.price ?? 0),
+        image_url: withAssetOrigin(item.image_url) || null,
+        unit_of_measure: item.unit_of_measure || line.unit_of_measure || '',
+        max_stock: maxStock,
+        serviceAreaLabel: item.serviceAreaLabel || '',
+        durationLabel: item.durationLabel || '',
+        line_modifiers: []
+      };
+    })
+    .filter(Boolean), [catalog]);
+
+  const getUnavailableReorderLineNames = useCallback((lines = []) => (Array.isArray(lines) ? lines : [])
+    .filter((line) => !(Array.isArray(catalog) ? catalog : []).some((entry) => Number(entry?.item_id) === Number(line?.item_id)))
+    .map((line) => String(line?.name || line?.item_name || `Item #${line?.item_id || ''}`).trim())
+    .filter(Boolean)
+    .slice(0, 4), [catalog]);
+
+  const handleReorderAccountOrder = useCallback(async (order = {}) => {
+    const normalizedReference = String(order?.reference || '').trim().toUpperCase();
+    const dgfyToken = readDgfyAuthToken();
+    if (!normalizedReference || !dgfyToken) {
+      toast.error('Sign in to reorder account-linked orders.');
+      return;
+    }
+    if (order?.allowed_actions?.reorder === false) {
+      toast.error('This order cannot be reordered.');
+      return;
+    }
+    setAccountOrderActionReference(normalizedReference);
+    try {
+      const payload = await requestJson(`/api/v1/dgfy/customer/orders/${encodeURIComponent(normalizedReference)}/reorder`, {
+        method: 'POST',
+        authToken: dgfyToken,
+        cache: 'no-store'
+      });
+      const targetSlug = toSlug(payload?.store_slug || order?.store_slug || selectedStore?.slug || routeSlug);
+      const currentSlug = toSlug(selectedStore?.slug || routeSlug);
+      if (targetSlug && currentSlug && targetSlug !== currentSlug && typeof window !== 'undefined') {
+        setPendingAccountReorder({
+          storeSlug: targetSlug,
+          reference: normalizedReference,
+          lines: Array.isArray(payload?.cart_lines) ? payload.cart_lines : []
+        });
+        window.history.pushState({ storeSlug: targetSlug, storeSubpage: null }, '', storePath(targetSlug));
+        setRouteSlug(targetSlug);
+        setRouteSubpage(null);
+        setRouteLocationId(null);
+        setRouteItemId(null);
+        setRouteServiceItemId(null);
+        setIsCheckoutOpen(false);
+        toast.info('Opened the original storefront. Reorder items will load when the catalog is ready.');
+        return;
+      }
+
+      const reusableLines = Array.isArray(payload?.cart_lines) ? payload.cart_lines : [];
+      const nextCart = buildAccountReorderCartLines(reusableLines, normalizedReference);
+      if (nextCart.length === 0) {
+        const unavailableNames = getUnavailableReorderLineNames(reusableLines);
+        toast.error(unavailableNames.length > 0
+          ? `No reorderable items are currently available. Missing from catalog: ${unavailableNames.join(', ')}.`
+          : 'No reorderable items are currently available in this storefront catalog.');
+        return;
+      }
+      const unavailableNames = getUnavailableReorderLineNames(reusableLines);
+      if (unavailableNames.length > 0) {
+        toast.warning(`Some previous items are unavailable and were not added: ${unavailableNames.join(', ')}.`);
+      }
+      setCart(nextCart);
+      setCheckoutResult(null);
+      setQuoteResult(null);
+      setQuoteNeedsRefresh(true);
+      setCheckoutTab(isFnbMode ? 'cart' : 'checkout');
+      setIsCheckoutOpen(true);
+      toast.success('Order items added to cart. Checkout will revalidate current pricing and stock.');
+    } catch (error) {
+      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to prepare this reorder.'));
+    } finally {
+      setAccountOrderActionReference('');
+    }
+  }, [buildAccountReorderCartLines, getUnavailableReorderLineNames, isFnbMode, routeSlug, selectedStore?.slug]);
+
+  useEffect(() => {
+    if (!pendingAccountReorder) return;
+    const targetSlug = toSlug(pendingAccountReorder.storeSlug);
+    const currentSlug = toSlug(selectedStore?.slug || routeSlug);
+    if (!targetSlug || targetSlug !== currentSlug || loadingCatalog) return;
+    const nextCart = buildAccountReorderCartLines(pendingAccountReorder.lines, pendingAccountReorder.reference);
+    setPendingAccountReorder(null);
+    if (nextCart.length === 0) {
+      const unavailableNames = getUnavailableReorderLineNames(pendingAccountReorder.lines);
+      toast.error(unavailableNames.length > 0
+        ? `No reorderable items are currently available. Missing from catalog: ${unavailableNames.join(', ')}.`
+        : 'No reorderable items are currently available in this storefront catalog.');
+      return;
+    }
+    const unavailableNames = getUnavailableReorderLineNames(pendingAccountReorder.lines);
+    if (unavailableNames.length > 0) {
+      toast.warning(`Some previous items are unavailable and were not added: ${unavailableNames.join(', ')}.`);
+    }
+    setCart(nextCart);
+    setCheckoutResult(null);
+    setQuoteResult(null);
+    setQuoteNeedsRefresh(true);
+    setCheckoutTab(isFnbMode ? 'cart' : 'checkout');
+    setIsCheckoutOpen(true);
+    toast.success('Reorder items added to cart. Checkout will revalidate current pricing and stock.');
+  }, [buildAccountReorderCartLines, getUnavailableReorderLineNames, isFnbMode, loadingCatalog, pendingAccountReorder, routeSlug, selectedStore?.slug]);
+
+  const handleSaveAccountAddress = useCallback(async (draft = {}, existingAddress = null) => {
+    const dgfyToken = readDgfyAuthToken();
+    if (!dgfyToken) {
+      toast.error('Sign in to manage saved addresses.');
+      return false;
+    }
+    const addressLine = String(draft.address_line || '').trim();
+    if (!addressLine) {
+      toast.error('Enter an address before saving.');
+      return false;
+    }
+    const addressId = existingAddress?.address_id;
+    const actionId = addressId ? String(addressId) : 'new';
+    setAccountAddressActionId(actionId);
+    try {
+      await requestJson(addressId
+        ? `/api/v1/dgfy/customer/addresses/${encodeURIComponent(addressId)}`
+        : '/api/v1/dgfy/customer/addresses', {
+        method: addressId ? 'PUT' : 'POST',
+        authToken: dgfyToken,
+        cache: 'no-store',
+        body: {
+          label: String(draft.label || 'Address').trim() || 'Address',
+          address_line: addressLine,
+          is_default: draft.is_default === true
+        }
+      });
+      toast.success(addressId ? 'Address updated.' : 'Address saved.');
+      await handleLoadAccountPanel();
+      return true;
+    } catch (error) {
+      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to save this address.'));
+      return false;
+    } finally {
+      setAccountAddressActionId('');
+    }
+  }, [handleLoadAccountPanel]);
+
+  const handleSetDefaultAccountAddress = useCallback(async (address = {}) => {
+    const dgfyToken = readDgfyAuthToken();
+    const addressId = address?.address_id;
+    if (!dgfyToken || !addressId) {
+      toast.error('Sign in to manage saved addresses.');
+      return;
+    }
+    setAccountAddressActionId(String(addressId));
+    try {
+      await requestJson(`/api/v1/dgfy/customer/addresses/${encodeURIComponent(addressId)}/default`, {
+        method: 'PATCH',
+        authToken: dgfyToken,
+        cache: 'no-store'
+      });
+      toast.success('Default address updated.');
+      await handleLoadAccountPanel();
+    } catch (error) {
+      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to update the default address.'));
+    } finally {
+      setAccountAddressActionId('');
+    }
+  }, [handleLoadAccountPanel]);
+
+  const handleDeleteAccountAddress = useCallback(async (address = {}) => {
+    const dgfyToken = readDgfyAuthToken();
+    const addressId = address?.address_id;
+    if (!dgfyToken || !addressId) {
+      toast.error('Sign in to manage saved addresses.');
+      return;
+    }
+    setAccountAddressActionId(String(addressId));
+    try {
+      await requestJson(`/api/v1/dgfy/customer/addresses/${encodeURIComponent(addressId)}`, {
+        method: 'DELETE',
+        authToken: dgfyToken,
+        cache: 'no-store'
+      });
+      toast.success('Address deleted.');
+      await handleLoadAccountPanel();
+    } catch (error) {
+      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to delete this address.'));
+    } finally {
+      setAccountAddressActionId('');
+    }
+  }, [handleLoadAccountPanel]);
+
   const closeAccountDrawer = useCallback(() => {
     setIsAccountDrawerOpen(false);
   }, []);
   const handleStorefrontSignOut = useCallback(async () => {
     const dgfyToken = readDgfyAuthToken();
-    if (dgfyToken) {
+    if (dgfyToken || hasDgfyCookieSession || accountPanel.me) {
       try {
         await requestJson('/api/v1/dgfy/auth/logout', { method: 'POST', authToken: dgfyToken, cache: 'no-store' });
       } catch {
@@ -8085,6 +8571,7 @@ export default function StorefrontApp() {
     clearDgfyAuthToken();
     clearStoreAuthToken();
     setDgfyAuthTokenState('');
+    setHasDgfyCookieSession(false);
     setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: '' });
     setTrackedCustomerActivity(null);
     setCustomerTrackLoadingReference('');
@@ -8092,7 +8579,7 @@ export default function StorefrontApp() {
     setCustomerAuthMode('sign_in');
     setCustomerAuthError('');
     toast.success('Signed out.');
-  }, []);
+  }, [accountPanel.me, hasDgfyCookieSession]);
 
   const handleCustomerAuthSubmit = useCallback(async (formDrafts = null) => {
     if (customerAuthSubmitting) return;
@@ -8113,9 +8600,13 @@ export default function StorefrontApp() {
         if (!token) throw new Error('Missing customer auth token.');
         writeDgfyAuthToken(token);
         setDgfyAuthTokenState(token);
+        setHasDgfyCookieSession(true);
         setCustomerSignInForm({ email: '', password: '' });
       } else {
         const registerForm = formDrafts?.register || customerRegisterForm;
+        if (!/^\d{6}$/.test(String(registerForm.email_otp_code || '').trim())) {
+          throw new Error('Enter the 6-digit verification code sent to your DGFY email.');
+        }
         const legalTerms = dgfyLegalTerms || await loadDgfyLegalTerms();
         const snapshot = legalTerms?.flows?.account_registration?.snapshot || {};
         const payload = await requestJson('/api/v1/dgfy/auth/register', {
@@ -8133,6 +8624,7 @@ export default function StorefrontApp() {
         if (!token) throw new Error('Missing customer auth token.');
         writeDgfyAuthToken(token);
         setDgfyAuthTokenState(token);
+        setHasDgfyCookieSession(true);
         setCustomerRegisterForm({
           first_name: '',
           middle_name: '',
@@ -8145,12 +8637,29 @@ export default function StorefrontApp() {
         });
       }
       await handleLoadAccountPanel();
+      closeAccountDrawer();
+      openAccountPanel();
     } catch (error) {
       setCustomerAuthError(normalizeStorefrontErrorMessage(error, customerAuthMode === 'sign_in' ? 'Unable to sign in.' : 'Unable to create your DGFY account.'));
     } finally {
       setCustomerAuthSubmitting(false);
     }
-  }, [customerAuthMode, customerAuthSubmitting, customerRegisterForm, customerSignInForm, dgfyLegalTerms, loadDgfyLegalTerms]);
+  }, [closeAccountDrawer, customerAuthMode, customerAuthSubmitting, customerRegisterForm, customerSignInForm, dgfyLegalTerms, handleLoadAccountPanel, loadDgfyLegalTerms, openAccountPanel]);
+
+  const handleRequestDgfyRegistrationEmailOtp = useCallback(async (email) => {
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    if (!normalizedEmail) {
+      throw new Error('Email is required before requesting a verification code.');
+    }
+    await requestJson('/api/v1/auth/email-otp/request', {
+      method: 'POST',
+      cache: 'no-store',
+      body: {
+        purpose: 'dgfy_account_verification',
+        email: normalizedEmail
+      }
+    });
+  }, []);
 
   const handleNearMe = () => {
     const currentSearch = String(searchRef.current || search || '').trim();
@@ -8168,14 +8677,18 @@ export default function StorefrontApp() {
     navigator.geolocation.getCurrentPosition(
       (position) => {
         if (intentSequence !== discoveryIntentSequenceRef.current) return;
+        markDiscoveryLocationPermissionGranted();
         setDebouncedDiscoverySearch(currentSearch);
         loadStores({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude
         }, { useImmediateSearch: true, pinScope: 'nearest_matching_branch', intentSequence });
       },
-      () => {
+      (error) => {
         if (intentSequence !== discoveryIntentSequenceRef.current) return;
+        if (Number(error?.code || 0) === 1) {
+          clearDiscoveryLocationPermissionHint();
+        }
         setDebouncedDiscoverySearch(currentSearch);
         loadStores(undefined, { useImmediateSearch: true, pinScope: 'nearest_matching_branch', intentSequence });
       },
@@ -8196,27 +8709,7 @@ export default function StorefrontApp() {
     setSelectedMapPin(null);
     lastImmediateDiscoveryRequestRef.current = { search: currentSearch, at: Date.now() };
     setDebouncedDiscoverySearch(currentSearch);
-    if (!navigator?.geolocation) {
-      loadStores(undefined, { useImmediateSearch: true, intentSequence });
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        if (intentSequence !== discoveryIntentSequenceRef.current) return;
-        loadStores({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude
-        }, { useImmediateSearch: true, intentSequence });
-      },
-      () => {
-        if (intentSequence !== discoveryIntentSequenceRef.current) return;
-        loadStores(undefined, { useImmediateSearch: true, intentSequence });
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 8000
-      }
-    );
+    loadStores(null, { useImmediateSearch: true, intentSequence, pinScope: 'tenant_primary' });
   };
   const handlePopularDiscoveryCategory = (query) => {
     const normalized = String(query || '').trim();
@@ -8842,11 +9335,14 @@ export default function StorefrontApp() {
               className={`discovery-results-stage__map ${isDiscoveryMobileViewport ? `discovery-results-stage__map--mobile-fullbleed ${isResultsPanelVisible ? 'is-results-visible' : 'is-results-hidden'}` : ''}`}
               style={{ position: 'relative', zIndex: 20, flex: '1 1 auto', minWidth: 0, height: discoveryStageMapHeight }}
             >
-              {!loadingStores && !storesError && (searchedDiscoveryMapPins.length > 0 || (hasDiscoverySearch && filteredDiscoveryStores.length === 0)) ? (
+              {!storesError && (
+                searchedDiscoveryMapPins.length > 0
+                || (!loadingStores && hasDiscoverySearch && filteredDiscoveryStores.length === 0)
+              ) ? (
                 <StoresMap
-                  key={discoveryResultsMapKey}
                   stores={searchedDiscoveryMapPins}
                   selectedKey={highlightedDiscoveryMarkerKey || null}
+                  highlightedKeys={highlightedDiscoveryMarkerKeys}
                   userLocation={discoveryCoords}
                   height="100%"
                     onSelectStore={(pin) => {
@@ -8863,6 +9359,8 @@ export default function StorefrontApp() {
                   }}
                   autoOpenPopups={filteredDiscoveryStores.length > 0}
                   openPopupOnHover={true}
+                  viewportPolicy="search-stable"
+                  viewportSignal={discoveryViewportSignal}
                 />
               ) : (
                 <div style={{ height: '100%', background: '#f8fafc', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>
@@ -9292,6 +9790,43 @@ export default function StorefrontApp() {
     );
   };
 
+  if (isAccountSubpage && (isStorePage || !routeSlug)) {
+    return (
+      <main style={{ fontFamily: STYLES.fonts.body, background: '#ffffff', minHeight: '100vh', color: '#0f172a', overflowX: 'clip' }}>
+        <DgfyCustomerAccountPage
+          presentation="page"
+          isMobileViewport={isMobileViewport}
+          onClose={isStorePage ? goStoreCatalogPage : goDiscovery}
+          onRefresh={handleLoadAccountPanel}
+          onTrackReference={handleTrackCustomerReference}
+          onCancelOrder={handleCancelAccountOrder}
+          onReorderOrder={handleReorderAccountOrder}
+          onSignOut={handleStorefrontSignOut}
+          onHelp={() => toast.info('Help center is not connected yet.', { duration: 2200, closeButton: true })}
+          onRegisterBusiness={openBusinessRegistrationFromDgfyAccount}
+          onClearSavedDetails={clearSavedCustomerDetailsForDevice}
+          onUseAddressForCheckout={useAccountAddressForCheckout}
+          onSaveAddress={handleSaveAccountAddress}
+          onDeleteAddress={handleDeleteAccountAddress}
+          onSetDefaultAddress={handleSetDefaultAccountAddress}
+          accountIdentityInitials={accountIdentityInitials}
+          accountIdentityName={accountIdentityName}
+          accountIdentityContact={accountIdentityContact}
+          accountPanel={accountPanel}
+          hasSavedCustomerDetails={hasSavedCustomerDetails}
+          maskedSavedCustomerPreview={maskedSavedCustomerPreview}
+          activeOrders={activeCustomerOrders}
+          activeOrderCount={activeCustomerOrderCount}
+          trackedCustomerActivity={trackedCustomerActivity}
+          customerTrackLoadingReference={customerTrackLoadingReference}
+          customerTrackError={customerTrackError}
+          accountOrderActionReference={accountOrderActionReference}
+          accountAddressActionId={accountAddressActionId}
+        />
+      </main>
+    );
+  }
+
   return (
     <main style={{ fontFamily: isFnbMode ? "'Trebuchet MS', 'Segoe UI', sans-serif" : (isServicesMode ? servicesBodyFont : STYLES.fonts.body), background: isStorePage ? 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)' : '#ffffff', minHeight: '100vh', color: '#0f172a', overflowX: 'clip' }}>
       <div style={{
@@ -9321,15 +9856,15 @@ export default function StorefrontApp() {
               onItemClick={handleDiscoveryNavItemClick}
               onAuthClick={() => {
                 setIsDiscoveryNavMenuOpen(false);
+                if (isDgfyCustomerSignedIn) {
+                  goDiscoveryAccountPage();
+                  return;
+                }
                 setCustomerAuthError('');
                 setCustomerAuthMode('sign_in');
-                openAccountPanel();
+                openCustomerAuthDrawer();
               }}
-              onBusinessClick={() => {
-                if (typeof window !== 'undefined') {
-                  window.location.href = 'https://skupervisor.dgfy.ph/register-company?source=dgfy&auth=login#dgfy-profile';
-                }
-              }}
+              onBusinessClick={openBusinessRegistrationFromDgfyAccount}
             />
             {activeDiscoveryNavItem === 'Solutions' ? (
               <SolutionsPage
@@ -10005,7 +10540,7 @@ export default function StorefrontApp() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  if (typeof window !== 'undefined') window.location.href = 'https://skupervisor.dgfy.ph/register-company';
+                                  if (typeof window !== 'undefined') window.location.href = buildBusinessRegistrationUrl();
                                 }}
                                 style={{ marginTop: 22, width: '100%', minHeight: 52, borderRadius: 16, border: '1px solid #1a4586', background: 'linear-gradient(180deg, #1a4e8d 0%, #1a4586 100%)', color: '#fff', fontSize: 15, fontWeight: 800, boxShadow: '0 14px 28px rgba(26, 78, 141, .28)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer' }}
                               >
@@ -10475,7 +11010,7 @@ export default function StorefrontApp() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  if (typeof window !== 'undefined') window.location.href = 'https://skupervisor.dgfy.ph/register-company';
+                                  if (typeof window !== 'undefined') window.location.href = buildBusinessRegistrationUrl();
                                 }}
                                 style={{ marginTop: 22, width: '100%', minHeight: 52, borderRadius: 16, border: '1px solid #1a4586', background: 'linear-gradient(180deg, #1a4e8d 0%, #1a4586 100%)', color: '#fff', fontSize: 15, fontWeight: 800, boxShadow: '0 14px 28px rgba(26, 78, 141, .28)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer' }}
                               >
@@ -10625,7 +11160,7 @@ export default function StorefrontApp() {
                             {
                               title: 'For Business',
                               links: [
-                                { label: 'Register Your Business', href: 'https://skupervisor.dgfy.ph/register-company' },
+                                { label: 'Register Your Business', href: buildBusinessRegistrationUrl() },
                                 { label: 'Business Login', href: 'https://skupervisor.dgfy.ph/login' }
                               ]
                             },
@@ -10701,6 +11236,7 @@ export default function StorefrontApp() {
                         <StoresMap
                           stores={activeDiscoveryMapPins}
                           selectedKey={highlightedDiscoveryMarkerKey || null}
+                          highlightedKeys={highlightedDiscoveryMarkerKeys}
                           userLocation={discoveryCoords}
                           height="100%"
                           onSelectStore={(pin) => {
@@ -11475,7 +12011,17 @@ export default function StorefrontApp() {
                 <StoresMap
                   stores={storeLocations.length > 0 ? storeLocations.map(l => ({ ...l, tenant_name: selectedStore?.tenant_name })) : [selectedStore]}
                   selectedKey={selectedLocationId != null ? `loc-${selectedLocationId}` : null}
-                  onSelectStore={(l) => l?.location_id && setSelectedLocationId(l.location_id)}
+                  onSelectStore={(l) => l?.location_id && handleBranchMenuSelection(l.location_id)}
+                />
+              </section>
+            )}
+
+            {isHospitalityMode && selectedStore && (
+              <section style={{ marginBottom: 24 }}>
+                <HospitalityBookingPanel
+                  selectedStore={selectedStore}
+                  selectedLocationId={selectedLocationId}
+                  isMobileViewport={isMobileViewport}
                 />
               </section>
             )}
@@ -11615,13 +12161,10 @@ export default function StorefrontApp() {
                 const reviewHighlights = Array.isArray(serviceHeroModel?.reviewHighlights) ? serviceHeroModel.reviewHighlights.filter(Boolean) : [];
                 const reviewSummary = serviceHeroModel?.reviewSummary || null;
                 const reviewScore = Number(reviewSummary?.score);
-                const reviewCount = Number(reviewSummary?.total_count ?? reviewSummary?.totalCount ?? reviewHighlights.length);
                 const hasReviewSummary = Number.isFinite(reviewScore) && reviewScore > 0;
-                const reviewGridColumns = isMobileViewport ? '1fr' : viewportWidth < 1024 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))';
                 const resolvedServicesLayoutMode = String(serviceHeroModel?.servicesLayoutMode || servicesLayoutMode || 'directory').trim().toLowerCase();
                 const isLeadGenLayout = resolvedServicesLayoutMode === 'lead_gen';
                 const isBookingHeavyLayout = resolvedServicesLayoutMode === 'booking_heavy';
-                const isDirectoryLayout = !isLeadGenLayout && !isBookingHeavyLayout;
                 const controlRadius = 18;
                 const serviceCategoryOptions = [
                   {
@@ -11639,7 +12182,6 @@ export default function StorefrontApp() {
                 ];
                 const detailPageServiceItem = selectedServiceDetail || (routeServiceItemId ? catalog.find((item) => String(item?.item_id) === String(routeServiceItemId)) || null : null);
                 const detailPagePaymentOptions = buildServicePaymentOptions(detailPageServiceItem?.service_detail?.payment_policy || 'customer_choice');
-                const detailPageIntakeFields = normalizeServiceFormFields(detailPageServiceItem?.service_detail?.intake_form_schema);
                 const servicesSectionTitle = isLeadGenLayout
                   ? 'Service Highlights'
                   : isBookingHeavyLayout
@@ -11820,7 +12362,6 @@ export default function StorefrontApp() {
                   );
                 }
                 if (isBookingSubpage) {
-                  const currentStep = serviceBookingStep;
                   const supportHref = String(serviceHeroModel?.actions?.messageHref || serviceHeroModel?.actions?.callHref || '').trim();
                   const bookingConfirmation = checkoutResult?.booking || null;
                   const confirmationLine = Array.isArray(checkoutResult?.cart_lines) ? checkoutResult.cart_lines[0] || null : null;
@@ -12362,14 +12903,14 @@ export default function StorefrontApp() {
                                               {servicePaymentTiming === 'deposit' ? 'Deposit payment preview' : 'Pay now preview'}
                                             </div>
                                             <div style={{ fontSize: 13, lineHeight: 1.7, color: '#9a3412' }}>
-                                              This is a temporary storefront payment UI. The current services backend still completes the actual payment handoff after the booking is submitted and returns a secure checkout link.
+                                              This is a temporary storefront payment UI. PayMongo QR Ph for services remains disabled until hold-bound payment sessions are implemented, so the current services backend still completes any payment handoff after the booking is submitted.
                                             </div>
                                           </div>
 
                                           <div style={{ display: 'grid', gap: 14, padding: isMobileViewport ? 16 : 18, borderRadius: 22, border: '1px solid #dbe5ee', background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)', boxShadow: '0 14px 36px rgba(15, 23, 42, 0.06)' }}>
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                                               {[
-                                                { value: 'qr', label: 'QR Payment' },
+                                                { value: 'qr', label: 'Manual payment preview' },
                                                 { value: 'card', label: 'Card Details' }
                                               ].map((option) => {
                                                 const isActive = servicePaymentPreviewMethod === option.value;
@@ -12406,9 +12947,9 @@ export default function StorefrontApp() {
                                                     </div>
                                                   </div>
                                                   <div style={{ display: 'grid', gap: 10 }}>
-                                                    <div style={{ fontSize: 16, fontWeight: 900, color: STYLES.colors.dark }}>QR payment preview</div>
+                                                    <div style={{ fontSize: 16, fontWeight: 900, color: STYLES.colors.dark }}>Manual payment preview</div>
                                                     <div style={{ fontSize: 13, lineHeight: 1.7, color: '#475569' }}>
-                                                      Use this area later for bank transfer, e-wallet, or generated QR payment instructions. For now, the final payment link still appears only after the booking is submitted.
+                                                      Use this area later for bank transfer, e-wallet, or hold-bound generated QR payment instructions. For now, QR Ph checkout is available only for product/F&B cart orders.
                                                     </div>
                                                     <div style={{ display: 'grid', gap: 8 }}>
                                                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '12px 14px', borderRadius: 16, background: '#ffffff', border: '1px solid #e2e8f0' }}>
@@ -13443,7 +13984,6 @@ return (
                 const toolbarAccentDark = fnbTheme.accentDark || '#6f3415';
                 const toolbarAccentSoft = fnbTheme.accentSoft || '#fff0e2';
                 const toolbarSurface = '#ffffff';
-                const toolbarSurfaceInset = fnbTheme.surfaceInset || '#fff3e8';
                 const toolbarBorder = fnbTheme.borderSoft || '#edd4bc';
                 const toolbarTextPrimary = fnbTheme.textPrimary || '#2f1f16';
                 const toolbarTextMuted = fnbTheme.textMuted || '#7c6757';
@@ -13870,13 +14410,23 @@ return (
           </div>
         )}
 
+        {catalogState === 'error' && (
+          <div style={{ maxWidth: 1320, margin: `${isMobileViewport ? 18 : 24}px auto 0`, width: '100%', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
+            <StoreCatalogErrorState
+              message={catalogError}
+              guidance={catalogErrorGuidance}
+              onRefreshTenantPage={refreshStorePageForTenantSetup}
+            />
+          </div>
+        )}
+
         {catalogState === 'empty_search_on_zero' && (
           <div style={{ maxWidth: 1320, margin: `${isMobileViewport ? 18 : 24}px auto 0`, width: '100%', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
             <StoreCatalogEmptyState mode="search_on_empty" searchQuery={catalogSearch.trim()} onRefreshTenantPage={refreshStorePageForTenantSetup} />
           </div>
         )}
 
-        {isServicesMode && filteredCatalog.length === 0 && !catalogError && (
+        {isServicesMode && filteredCatalog.length === 0 && !loadingCatalog && !catalogError && (
           <div style={{ maxWidth: 1320, margin: `${isMobileViewport ? 18 : 24}px auto 0`, width: '100%', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
             <StoreCatalogEmptyState
               mode={hasCatalogSearchQuery ? 'search_on_empty' : 'setup_pending'}
@@ -14128,7 +14678,7 @@ return (
                     Fulfillment Location
                     <select
                       value={selectedLocationId ?? ''}
-                      onChange={(event) => setSelectedLocationId(event.target.value ? Number(event.target.value) : null)}
+                      onChange={(event) => handleBranchMenuSelection(event.target.value || null)}
                       style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
                     >
                       {storeLocations.map((location) => (
@@ -14328,9 +14878,19 @@ return (
           {simpleOrderStep === 4 && checkoutResult && (
             <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.45fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
               <section style={{ border: '1px solid #99f6e4', borderRadius: 16, background: '#ecfeff', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 12 }}>
-                <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Confirmed</div>
-                <div style={{ fontSize: isMobileViewport ? 24 : 30, fontWeight: 900, color: '#0f172a', lineHeight: 1.1, fontFamily: servicesDisplayFont }}>Your order is now in the storefront queue.</div>
-                <div style={{ fontSize: 14, color: '#475569' }}>Reference: <strong>{checkoutResult?.tracking_pin || 'Pending'}</strong></div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{checkoutResult?.payment_session ? 'Payment Pending' : 'Order Confirmed'}</div>
+                <div style={{ fontSize: isMobileViewport ? 24 : 30, fontWeight: 900, color: '#0f172a', lineHeight: 1.1, fontFamily: servicesDisplayFont }}>{checkoutResult?.payment_session ? 'Scan the QR Ph code to finish checkout.' : 'Your order is now in the storefront queue.'}</div>
+                <div style={{ fontSize: 14, color: '#475569' }}>Reference: <strong>{checkoutResult?.tracking_pin || checkoutResult?.payment_session?.public_reference || 'Pending'}</strong></div>
+                {checkoutResult?.payment_session?.qr_code_image_url && (
+                  <div style={{ display: 'grid', gap: 10, border: '1px solid #fed7aa', borderRadius: 14, background: '#fff7ed', padding: 14, maxWidth: 360 }}>
+                    <div style={{ fontSize: 14, fontWeight: 900, color: '#9a3412' }}>Scan to pay with QR Ph</div>
+                    <img src={checkoutResult.payment_session.qr_code_image_url} alt="QR Ph payment code" style={{ width: 220, maxWidth: '100%', borderRadius: 12, background: '#fff', padding: 8 }} />
+                    <div style={{ fontSize: 12, color: '#9a3412' }}>
+                      Amount: <strong>{money(checkoutResult.payment_session.total_amount)}</strong>
+                      {checkoutResult.payment_session.expires_at ? ` · Expires ${new Date(checkoutResult.payment_session.expires_at).toLocaleTimeString()}` : ''}
+                    </div>
+                  </div>
+                )}
                 <div style={{ display: 'grid', gap: 8 }}>
                   {(Array.isArray(checkoutResult?.cart_lines) ? checkoutResult.cart_lines : []).map((line) => (
                     <div key={`simple-confirm-line-${line.item_id}`} style={{ border: '1px solid #b6f2e9', borderRadius: 12, background: '#fff', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13 }}>
@@ -14340,8 +14900,8 @@ return (
                   ))}
                 </div>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  {checkoutResult?.payment?.checkout_url && (
-                    <a href={checkoutResult.payment.checkout_url} target="_blank" rel="noreferrer" style={{ minHeight: 42, borderRadius: 12, border: 'none', background: '#ea580c', color: '#fff', padding: '0 14px', fontWeight: 800, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                  {(checkoutResult?.payment?.checkout_url || checkoutResult?.payment_session?.checkout_url) && (
+                    <a href={checkoutResult?.payment?.checkout_url || checkoutResult?.payment_session?.checkout_url} target="_blank" rel="noreferrer" style={{ minHeight: 42, borderRadius: 12, border: 'none', background: '#ea580c', color: '#fff', padding: '0 14px', fontWeight: 800, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
                       Pay Now
                     </a>
                   )}
@@ -14357,7 +14917,7 @@ return (
                 <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Receipt Snapshot</div>
                 <div style={{ fontSize: 38, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{money(checkoutResult?.totals?.total_amount ?? totalsForDisplay.total_amount)}</div>
                 <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Tracking PIN</span><strong>{checkoutResult?.tracking_pin || 'Pending'}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Tracking PIN</span><strong>{checkoutResult?.tracking_pin || checkoutResult?.payment_session?.public_reference || 'Pending'}</strong></div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Payment</span><strong>{String(fnbPaymentType || 'cash').replace('_', ' ').toUpperCase()}</strong></div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Fulfillment</span><strong>{isDeliveryOrder ? 'Delivery' : 'Pickup'}</strong></div>
                 </div>
@@ -14892,7 +15452,7 @@ return (
                   </span>
                 </button>
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 999, padding: '3px 8px', boxShadow: '0 6px 16px rgba(15,23,42,.08)' }}>
-                  {followState.followersCount} follower(s)
+                  {formatFollowersLabel(followState.followersCount)}
                 </span>
               </div>
             )}
@@ -16321,7 +16881,7 @@ return (
                           onChange={(nextValue) => setFnbPaymentType(String(nextValue))}
                           options={[
                             { value: 'cash', label: 'Cash on delivery/pickup' },
-                            { value: 'online', label: 'Online payment' }
+                            { value: 'qrph', label: 'QR Ph online payment' }
                           ]}
                           triggerStyle={{ minHeight: 44, borderRadius: 12 }}
                         />
@@ -16401,8 +16961,9 @@ return (
 
                 {fnbOrderStep === 4 && checkoutResult && (
                   <section style={{ border: '1px solid #dbe5ee', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 12 }}>
-                      <div style={{ fontSize: 12, fontWeight: 800, color: fnbOrderBrand, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Confirmation</div>
-                    <div style={{ fontSize: 24, fontWeight: 900, color: '#1e293b' }}>Order submitted successfully</div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: fnbOrderBrand, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{checkoutResult?.payment_session ? 'Payment Pending' : 'Order Confirmation'}</div>
+                    <div style={{ fontSize: 24, fontWeight: 900, color: '#1e293b' }}>{checkoutResult?.payment_session ? 'Scan the QR Ph code to finish checkout' : 'Order submitted successfully'}</div>
+                    {!checkoutResult?.payment_session && (
                       <div style={{ display: 'grid', gap: 8, border: `1px solid ${fnbOrderBrandSoft}`, background: fnbOrderBrandTint, borderRadius: 14, padding: '12px 14px' }}>
                         <div style={{ fontSize: 13, fontWeight: 800, color: fnbOrderBrandDark, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Fulfillment Handoff</div>
                         <div style={{ fontSize: 14, color: fnbOrderMutedBlueText, lineHeight: 1.6 }}>
@@ -16414,11 +16975,22 @@ return (
                         Next update: Confirmed by store
                       </div>
                     </div>
+                    )}
                     <div style={{ display: 'grid', gap: 6, fontSize: 14, color: '#334155' }}>
-                      <div>Reference: <strong>{checkoutResult?.tracking_pin || 'Pending'}</strong></div>
+                      <div>Reference: <strong>{checkoutResult?.tracking_pin || checkoutResult?.payment_session?.public_reference || 'Pending'}</strong></div>
                       <div>Payment: <strong>{String(fnbPaymentType || 'cash').toUpperCase()}</strong></div>
                       <div>Total: <strong>{money(checkoutResult?.totals?.total_amount ?? totalsForDisplay.total_amount)}</strong></div>
                     </div>
+                    {checkoutResult?.payment_session?.qr_code_image_url && (
+                      <div style={{ display: 'grid', gap: 10, border: '1px solid #fed7aa', borderRadius: 14, background: '#fff7ed', padding: 14, maxWidth: 360 }}>
+                        <div style={{ fontSize: 14, fontWeight: 900, color: '#9a3412' }}>Scan to pay with QR Ph</div>
+                        <img src={checkoutResult.payment_session.qr_code_image_url} alt="QR Ph payment code" style={{ width: 220, maxWidth: '100%', borderRadius: 12, background: '#fff', padding: 8 }} />
+                        <div style={{ fontSize: 12, color: '#9a3412' }}>
+                          Amount: <strong>{money(checkoutResult.payment_session.total_amount)}</strong>
+                          {checkoutResult.payment_session.expires_at ? ` · Expires ${new Date(checkoutResult.payment_session.expires_at).toLocaleTimeString()}` : ''}
+                        </div>
+                      </div>
+                    )}
                     <div style={{ display: 'grid', gap: 8, maxHeight: 220, overflowY: 'auto', paddingRight: 2 }}>
                       {(Array.isArray(checkoutResult?.cart_lines) ? checkoutResult.cart_lines : []).map((line) => (
                         <div key={`fnb-confirm-line-${line.item_id}`} style={{ border: '1px solid #e2e8f0', borderRadius: 12, background: '#fff', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13 }}>
@@ -16741,7 +17313,7 @@ return (
                           Fulfillment Location
                           <select
                             value={selectedLocationId ?? ''}
-                            onChange={(e) => setSelectedLocationId(e.target.value ? Number(e.target.value) : null)}
+                            onChange={(e) => handleBranchMenuSelection(e.target.value || null)}
                             style={{ width: '100%', marginTop: 6, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }}
                           >
                             {storeLocations.map((location) => (
@@ -17090,7 +17662,7 @@ return (
                     <ArrowLeft size={18} />
                   </button>
                   <a
-                    href={storePath(toSlug(selectedStore?.slug || routeSlug))}
+                    href={storePath(toSlug(selectedStore?.slug || routeSlug), null, '', selectedLocationId)}
                     onClick={(e) => { e.preventDefault(); goStoreCatalogPage(); }}
                     style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, textDecoration: 'none', cursor: 'pointer' }}
                   >
@@ -17168,12 +17740,6 @@ return (
                     || selectedStore?.locationLabel
                     || ''
                   ).trim();
-                  const completionItems = Array.isArray(trackingResult.items) ? trackingResult.items : [];
-                  const completionPreviewItems = completionItems
-                    .filter((item) => String(item?.name || '').trim())
-                    .slice(0, 3)
-                    .map((item) => `${item.name} x ${Math.max(1, Number(item.qty || 1))}`)
-                    .join(', ');
                   if (activeStatus === 'completed' && showCompletedTrackingCard) {
                     const storeLogoUrl = withAssetOrigin(selectedStore?.storefront_profile_image_url);
                     const storeDisplayName = selectedStore?.tenant_name || 'Storefront';
@@ -17786,7 +18352,7 @@ return (
       )}
     </>
   )}
-      {isAccountDrawerOpen && (isGuestAccountDrawerState ? (
+      {isAccountDrawerOpen && isGuestAccountDrawerState ? (
         <DgfyCustomerAuthModal
           isMobileViewport={isMobileViewport}
           onClose={closeAccountDrawer}
@@ -17809,6 +18375,7 @@ return (
           onSignInFieldChange={handleCustomerSignInFieldChange}
           onRegisterFieldChange={handleCustomerRegisterFieldChange}
           onSubmit={handleCustomerAuthSubmit}
+          onRequestRegisterEmailOtp={handleRequestDgfyRegistrationEmailOtp}
           onContinueAsGuest={() => {
             if (hasSavedCustomerDetails) {
               applySavedCustomerDetails();
@@ -17818,34 +18385,7 @@ return (
           onClearSavedDetails={clearSavedCustomerDetailsForDevice}
           onForgotPassword={() => toast.info('Password recovery is not connected yet.')}
         />
-      ) : (
-        <DgfyCustomerAccountPage
-          isMobileViewport={isMobileViewport}
-          onClose={closeAccountDrawer}
-          onRefresh={handleLoadAccountPanel}
-          onTrackReference={handleTrackCustomerReference}
-          onSignOut={handleStorefrontSignOut}
-          onHelp={() => toast.info('Help center is not connected yet.')}
-          onRegisterBusiness={() => {
-            if (typeof window !== 'undefined') {
-              window.location.href = 'https://skupervisor.dgfy.ph/register-company?source=dgfy&auth=login#dgfy-profile';
-            }
-          }}
-          onClearSavedDetails={clearSavedCustomerDetailsForDevice}
-          onUseAddressForCheckout={useAccountAddressForCheckout}
-          accountIdentityInitials={accountIdentityInitials}
-          accountIdentityName={accountIdentityName}
-          accountIdentityContact={accountIdentityContact}
-          accountPanel={accountPanel}
-          hasSavedCustomerDetails={hasSavedCustomerDetails}
-          maskedSavedCustomerPreview={maskedSavedCustomerPreview}
-          activeOrders={activeCustomerOrders}
-          activeOrderCount={activeCustomerOrderCount}
-          trackedCustomerActivity={trackedCustomerActivity}
-          customerTrackLoadingReference={customerTrackLoadingReference}
-          customerTrackError={customerTrackError}
-        />
-      ))}
+      ) : null}
       {isGuestTrackingDrawerOpen && isGuestStorefrontUser && !isStandaloneTrackingPage && (
         <>
           <button
@@ -17913,14 +18453,9 @@ return (
               {guestTrackedOrders.map((entry) => {
                 const entryPin = String(entry.tracking_pin || '').trim().toUpperCase();
                 const statusLabel = String(entry.status_label || entry.status || 'In progress').trim() || 'In progress';
-                const itemName = String(entry.item_name || 'Order item').trim() || 'Order item';
-
                 const entryMethod = String(entry.order_method || 'delivery').trim().toLowerCase();
                 const isPickup = entryMethod === 'pickup';
                 const badgeText = isPickup ? 'Pickup' : 'Delivery';
-                const badgeBg = '#EEF6FD'; // DGFY Light Blue
-                const badgeBorder = '#8CB4D9';
-                const badgeColor = '#1A4E8D'; // DGFY Ocean Blue
 
                 const isExpanded = expandedGuestDrawerPin === entryPin;
                 const trackingSteps = getTrackingFlowForOrderMethod(entryMethod);
@@ -17984,7 +18519,6 @@ return (
                              const isCompleted = idx < activeStepIndex;
                              const isActive = idx === activeStepIndex || (entry.status === 'completed' && idx === trackingSteps.length - 1);
                              const isFuture = !isCompleted && !isActive;
-                             const circleColor = isActive ? '#1A4E8D' : (isCompleted ? '#16a34a' : '#cbd5e1');
                              const circleBg = isActive ? '#1A4E8D' : (isCompleted ? '#16a34a' : '#fff');
                              const circleBorder = isActive ? '#1A4E8D' : (isCompleted ? '#16a34a' : '#94a3b8');
                              const textColor = isFuture ? '#64748b' : '#0f172a';

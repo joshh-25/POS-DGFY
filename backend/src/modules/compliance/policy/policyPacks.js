@@ -17,7 +17,12 @@ const POLICY_PACKS = [
                     'bir.software_accreditation_valid_until',
                     'bir.tax_classification_controls_confirmed',
                     'bir.non_resettable_grand_total_enabled',
-                    'bir.mandatory_receipt_fields_confirmed'
+                    'bir.mandatory_receipt_fields_confirmed',
+                    'bir.rmo_24_2023_filing_verified',
+                    'bir.fiscal_document_content_reviewed',
+                    'bir.terminal_registration_controls_confirmed',
+                    'bir.ejournal_integrity_controls_confirmed',
+                    'bir.esales_reporting_controls_confirmed'
                 ],
                 required_artifacts: [
                     'bir_accreditation_certificate',

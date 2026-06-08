@@ -1,36 +1,44 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   bulkCreateOnboardingItems,
   completeOnboarding,
   saveOnboardingStep,
   trackOnboardingEvent
-} from '@/services/onboardingService.js';
-import { uploadStorefrontAsset } from '@/services/settingsService.js';
+} from '../../../services/onboardingService.js';
+import { getAllSettings, uploadStorefrontAsset } from '../../../services/settingsService.js';
 import {
   createTenantLocation,
   listTenantLocations,
   updateTenantLocation
-} from '@/src/services/tenantLocationService.js';
-import { uploadStorefrontCatalogImage } from '@/src/services/storefrontCatalogService.js';
+} from '../../../services/tenantLocationService.js';
+import { uploadStorefrontCatalogImage, uploadStorefrontCatalogImages } from '../../../services/storefrontCatalogService.js';
 import {
   DEFAULT_WORKFLOW_MODE,
   getWorkflowModeLabel,
   isHospitalityWorkflowMode,
   normalizeWorkflowMode
-} from '@/src/features/settings/workflowMode.js';
+} from '../../settings/workflowMode.js';
+import {
+  STOREFRONT_BUSINESS_DAY_OPTIONS,
+  createDefaultStorefrontBusinessHours,
+  formatStorefrontBusinessHoursDisplay,
+  normalizeStorefrontBusinessHours,
+  serializeStorefrontBusinessHours
+} from '../../settings/storefrontBusinessHours.js';
 import {
   getDefaultItemPreset,
   resolveModeItemTaxonomy
-} from '@/src/features/settings/modeItemTaxonomy.js';
+} from '../../settings/modeItemTaxonomy.js';
 import {
   createHospitalityRoom,
   createHospitalityRoomType
-} from '@/src/features/hospitality/api/hospitalityApi.js';
-import MapPinPicker from '@/src/components/maps/MapPinPicker.jsx';
+} from '../../hospitality/api/hospitalityApi.js';
 
 const WIZARD_STEPS = Object.freeze(['brand_assets', 'primary_location', 'bulk_items']);
 const HOSPITALITY_WIZARD_STEPS = Object.freeze(['brand_assets', 'primary_location', 'hospitality_rooms']);
+const MAX_ITEM_IMAGE_FILES = 10;
+const MapPinPicker = React.lazy(() => import('../../../components/maps/MapPinPicker.jsx'));
 
 const getProgress = (onboarding) => {
   const snapshot = onboarding?.tenant_onboarding_progress?.checklist_snapshot;
@@ -86,6 +94,7 @@ const buildEmptyItemRow = (workflowMode) => {
     cost_per_unit: '',
     current_stock: '',
     image_file: null,
+    image_files: [],
     status: 'idle',
     errors: [],
     created_item: null
@@ -107,12 +116,29 @@ const normalizeLocationForm = (currentUser) => ({
   address_line: '',
   latitude: '',
   longitude: '',
-  delivery_radius_km: 5
+  delivery_radius_km: 5,
+  business_hours: createDefaultStorefrontBusinessHours()
 });
 
 const isCreatedRow = (row) => ['created', 'created_with_image_error'].includes(row?.status);
 
 const getCreatedItemId = (row) => row?.created_item?.item_id || row?.created_item?.id || null;
+
+const getItemImageFiles = (row) => {
+  if (Array.isArray(row?.image_files) && row.image_files.length > 0) {
+    return row.image_files.filter(Boolean).slice(0, MAX_ITEM_IMAGE_FILES);
+  }
+  return row?.image_file ? [row.image_file] : [];
+};
+
+const uploadItemImages = async (itemId, imageFiles) => {
+  if (!itemId || imageFiles.length === 0) return;
+  if (imageFiles.length > 1) {
+    await uploadStorefrontCatalogImages(itemId, imageFiles);
+    return;
+  }
+  await uploadStorefrontCatalogImage(itemId, imageFiles[0]);
+};
 
 export function OnboardingReminderBanner({ onboarding, onOpenWizard }) {
   const progress = getProgress(onboarding);
@@ -158,6 +184,7 @@ export default function OnboardingSetupModal({
   const [coverFile, setCoverFile] = useState(null);
   const [locationsLoading, setLocationsLoading] = useState(false);
   const [locationForm, setLocationForm] = useState(() => normalizeLocationForm(currentUser));
+  const [publicStorefrontVisible, setPublicStorefrontVisible] = useState(false);
   const [primaryLocationId, setPrimaryLocationId] = useState(null);
   const [itemRows, setItemRows] = useState(() => [buildEmptyItemRow(normalizedWorkflowMode)]);
   const [hospitalityRoomTypeForm, setHospitalityRoomTypeForm] = useState({
@@ -209,11 +236,23 @@ export default function OnboardingSetupModal({
       });
       setHospitalityRoomTypeId(null);
       setHospitalityRoomRows([buildEmptyHospitalityRoomRow()]);
-      setLocationForm(normalizeLocationForm(currentUser));
+      const savedPrimaryLocationPayload = onboarding?.tenant_onboarding_progress?.step_payloads?.primary_location || {};
+      const savedBusinessHours = savedPrimaryLocationPayload?.business_hours;
+      setPublicStorefrontVisible(savedPrimaryLocationPayload?.public_storefront_visible === true);
+      setLocationForm({
+        ...normalizeLocationForm(currentUser),
+        business_hours: normalizeStorefrontBusinessHours(savedBusinessHours)
+      });
       setPrimaryLocationId(null);
       setLocationsLoading(true);
-      listTenantLocations({ include_inactive: true })
-        .then((locations) => {
+      Promise.all([
+        listTenantLocations({ include_inactive: true }),
+        getAllSettings({ force: true }).catch(() => null)
+      ])
+        .then(([locations, settings]) => {
+          if (settings?.store_is_visible) {
+            setPublicStorefrontVisible(settings.store_is_visible.value === true);
+          }
           const rows = Array.isArray(locations) ? locations : [];
           const primary = rows.find((location) => location?.is_primary_storefront === true)
             || rows.find((location) => location?.is_active === true);
@@ -225,7 +264,8 @@ export default function OnboardingSetupModal({
             address_line: primary.address_line || '',
             latitude: primary.latitude ?? '',
             longitude: primary.longitude ?? '',
-            delivery_radius_km: primary.delivery_radius_km ?? 5
+            delivery_radius_km: primary.delivery_radius_km ?? 5,
+            business_hours: normalizeStorefrontBusinessHours(savedBusinessHours)
           });
         })
         .catch(() => {
@@ -233,7 +273,7 @@ export default function OnboardingSetupModal({
         })
         .finally(() => setLocationsLoading(false));
     }
-  }, [currentUser, normalizedWorkflowMode, open]);
+  }, [currentUser, normalizedWorkflowMode, onboarding, open]);
 
   if (!open) return null;
 
@@ -243,7 +283,7 @@ export default function OnboardingSetupModal({
   const missingRequirements = progress.missing_requirements;
   const serverHasPrimaryLocation = !missingRequirements.includes('has_primary_storefront_location');
   const serverHasPricedStarterItem = !missingRequirements.includes('has_priced_starter_item');
-  const hasCompletionLocation = Boolean(primaryLocationId) || serverHasPrimaryLocation;
+  const hasCompletionLocation = publicStorefrontVisible === false || Boolean(primaryLocationId) || serverHasPrimaryLocation;
   const hasCompletionStarterItem = isHospitalityMode
     ? Boolean(hospitalityRoomTypeId) && hospitalityRoomRows.some((row) => row.created_room)
     : itemRows.some((row) => (
@@ -310,32 +350,39 @@ export default function OnboardingSetupModal({
       is_primary_storefront: true
     };
 
-    if (!payload.name || !payload.address_line || !Number.isFinite(payload.latitude) || !Number.isFinite(payload.longitude)) {
+    if (publicStorefrontVisible && (!payload.name || !payload.address_line || !Number.isFinite(payload.latitude) || !Number.isFinite(payload.longitude))) {
       toast.error('Location name, address, latitude, and longitude are required.');
       return;
     }
 
     setSaving(true);
     try {
-      const saved = locationForm.location_id
-        ? await updateTenantLocation(locationForm.location_id, payload)
-        : await createTenantLocation(payload);
+      let saved = null;
+      if (publicStorefrontVisible) {
+        saved = locationForm.location_id
+          ? await updateTenantLocation(locationForm.location_id, payload)
+          : await createTenantLocation(payload);
+      }
       const savedLocationId = saved?.location_id || locationForm.location_id || null;
-      setPrimaryLocationId(savedLocationId);
+      if (savedLocationId) {
+        setPrimaryLocationId(savedLocationId);
+      }
 
       await saveOnboardingStep({
         stepKey: 'primary_location',
         payload: {
           location_id: savedLocationId,
           name: saved?.name || payload.name,
-          is_primary_storefront: true
+          is_primary_storefront: true,
+          public_storefront_visible: publicStorefrontVisible === true,
+          business_hours: serializeStorefrontBusinessHours(locationForm.business_hours)
         }
       });
       await trackOnboardingEvent({
         eventKey: 'primary_location_saved',
         metadata: { surface: 'modal' }
       });
-      toast.success('Primary storefront location saved.');
+      toast.success(publicStorefrontVisible ? 'Primary storefront location saved.' : 'Public storefront hidden.');
       await onRefreshUser?.();
       goToNextStep();
     } catch (error) {
@@ -346,11 +393,51 @@ export default function OnboardingSetupModal({
   };
 
   const handleLocationPinChange = ({ latitude, longitude }) => {
+    const formatCoordinate = (value) => {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric.toFixed(6) : String(value || '');
+    };
     setLocationForm((prev) => ({
       ...prev,
-      latitude: String(latitude),
-      longitude: String(longitude)
+      latitude: formatCoordinate(latitude),
+      longitude: formatCoordinate(longitude)
     }));
+  };
+
+  const handleBusinessHoursDayChange = (dayKey, patch) => {
+    setLocationForm((prev) => {
+      const current = normalizeStorefrontBusinessHours(prev.business_hours);
+      return {
+        ...prev,
+        business_hours: {
+          ...current,
+          weekly: {
+            ...current.weekly,
+            [dayKey]: {
+              ...current.weekly[dayKey],
+              ...patch
+            }
+          }
+        }
+      };
+    });
+  };
+
+  const copyMondayBusinessHoursToAllDays = () => {
+    setLocationForm((prev) => {
+      const current = normalizeStorefrontBusinessHours(prev.business_hours);
+      const monday = current.weekly.mon;
+      return {
+        ...prev,
+        business_hours: {
+          ...current,
+          weekly: STOREFRONT_BUSINESS_DAY_OPTIONS.reduce((acc, day) => {
+            acc[day.key] = { ...monday };
+            return acc;
+          }, {})
+        }
+      };
+    });
   };
 
   const updateItemRow = (clientRowId, patch) => {
@@ -465,16 +552,21 @@ export default function OnboardingSetupModal({
       const result = await bulkCreateOnboardingItems({ rows: rowsForApi });
       const resultByRow = new Map((result?.results || []).map((row) => [row.client_row_id, row]));
 
-      const nextRows = await Promise.all(itemRows.map(async (row) => {
-        if (isCreatedRow(row)) return row;
+      const nextRows = [];
+      for (const row of itemRows) {
+        if (isCreatedRow(row)) {
+          nextRows.push(row);
+          continue;
+        }
         const rowResult = resultByRow.get(row.client_row_id);
         if (!rowResult || rowResult.status !== 'created') {
-          return {
+          nextRows.push({
             ...row,
             status: 'failed',
             errors: rowResult?.errors || ['Unable to create this row.'],
             created_item: null
-          };
+          });
+          continue;
         }
 
         const createdItem = rowResult.item || null;
@@ -485,19 +577,21 @@ export default function OnboardingSetupModal({
           errors: [],
           created_item: createdItem
         };
-        if (itemId && row.image_file) {
+        const imageFiles = getItemImageFiles(row);
+        if (itemId && imageFiles.length > 0) {
           try {
-            await uploadStorefrontCatalogImage(itemId, row.image_file);
+            await uploadItemImages(itemId, imageFiles);
           } catch (error) {
-            return {
+            nextRows.push({
               ...nextRow,
               status: 'created_with_image_error',
               errors: [error?.response?.data?.message || 'Item created, but image upload failed.']
-            };
+            });
+            continue;
           }
         }
-        return nextRow;
-      }));
+        nextRows.push(nextRow);
+      }
 
       setItemRows(nextRows);
       await saveOnboardingStep({
@@ -530,20 +624,21 @@ export default function OnboardingSetupModal({
   const handleRetryImageUpload = async (clientRowId) => {
     const row = itemRows.find((entry) => entry.client_row_id === clientRowId);
     const itemId = getCreatedItemId(row);
-    if (!row?.image_file || !itemId) {
-      toast.error('Choose an image before retrying upload.');
+    const imageFiles = getItemImageFiles(row);
+    if (imageFiles.length === 0 || !itemId) {
+      toast.error('Choose one or more images before retrying upload.');
       return;
     }
 
     setSaving(true);
     try {
-      await uploadStorefrontCatalogImage(itemId, row.image_file);
+      await uploadItemImages(itemId, imageFiles);
       setItemRows((rows) => rows.map((entry) => (
         entry.client_row_id === clientRowId
           ? { ...entry, status: 'created', errors: [] }
           : entry
       )));
-      toast.success('Storefront image uploaded.');
+      toast.success(imageFiles.length > 1 ? 'Item gallery uploaded.' : 'Item image uploaded.');
     } catch (error) {
       setItemRows((rows) => rows.map((entry) => (
         entry.client_row_id === clientRowId
@@ -616,35 +711,107 @@ export default function OnboardingSetupModal({
           {step === 'primary_location' && (
             <section className="rounded-lg border border-slate-200 p-4">
               <h3 className="text-sm font-semibold text-slate-900">2) Main Storefront Location</h3>
+              <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                <label className="flex items-start justify-between gap-3">
+                  <span>
+                    <span className="block text-xs font-semibold text-slate-900">Show company on DGFY map and public storefront</span>
+                    <span className="mt-1 block text-xs text-slate-500">
+                      When off, shoppers cannot find this company in discovery and the public storefront page is hidden.
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4"
+                    checked={publicStorefrontVisible === true}
+                    disabled={locationsLoading}
+                    onChange={(event) => setPublicStorefrontVisible(event.target.checked)}
+                  />
+                </label>
+              </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <label className="text-xs text-slate-700">
                   Location name
-                  <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.name} onChange={(event) => setLocationForm((prev) => ({ ...prev, name: event.target.value }))} disabled={locationsLoading} />
+                  <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.name} onChange={(event) => setLocationForm((prev) => ({ ...prev, name: event.target.value }))} disabled={locationsLoading || publicStorefrontVisible !== true} />
                 </label>
                 <label className="text-xs text-slate-700">
                   Delivery radius (km)
-                  <input type="number" min={0} max={100} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.delivery_radius_km} onChange={(event) => setLocationForm((prev) => ({ ...prev, delivery_radius_km: event.target.value }))} disabled={locationsLoading} />
+                  <input type="number" min={0} max={100} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.delivery_radius_km} onChange={(event) => setLocationForm((prev) => ({ ...prev, delivery_radius_km: event.target.value }))} disabled={locationsLoading || publicStorefrontVisible !== true} />
                 </label>
                 <label className="text-xs text-slate-700 sm:col-span-2">
                   Address
-                  <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.address_line} onChange={(event) => setLocationForm((prev) => ({ ...prev, address_line: event.target.value }))} disabled={locationsLoading} />
+                  <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.address_line} onChange={(event) => setLocationForm((prev) => ({ ...prev, address_line: event.target.value }))} disabled={locationsLoading || publicStorefrontVisible !== true} />
                 </label>
                 <div className="sm:col-span-2">
-                  <MapPinPicker
-                    latitude={locationForm.latitude}
-                    longitude={locationForm.longitude}
-                    deliveryRadiusKm={locationForm.delivery_radius_km}
-                    onChange={handleLocationPinChange}
-                  />
+                  <Suspense fallback={<div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs font-semibold text-slate-500">Loading map picker...</div>}>
+                    <MapPinPicker
+                      latitude={locationForm.latitude}
+                      longitude={locationForm.longitude}
+                      deliveryRadiusKm={locationForm.delivery_radius_km}
+                      onChange={publicStorefrontVisible ? handleLocationPinChange : undefined}
+                    />
+                  </Suspense>
                 </div>
                 <label className="text-xs text-slate-700">
                   Latitude
-                  <input type="number" step="any" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.latitude} onChange={(event) => setLocationForm((prev) => ({ ...prev, latitude: event.target.value }))} disabled={locationsLoading} />
+                  <input type="number" step="any" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.latitude} onChange={(event) => setLocationForm((prev) => ({ ...prev, latitude: event.target.value }))} disabled={locationsLoading || publicStorefrontVisible !== true} />
                 </label>
                 <label className="text-xs text-slate-700">
                   Longitude
-                  <input type="number" step="any" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.longitude} onChange={(event) => setLocationForm((prev) => ({ ...prev, longitude: event.target.value }))} disabled={locationsLoading} />
+                  <input type="number" step="any" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.longitude} onChange={(event) => setLocationForm((prev) => ({ ...prev, longitude: event.target.value }))} disabled={locationsLoading || publicStorefrontVisible !== true} />
                 </label>
+                <div className="sm:col-span-2 rounded-md border border-slate-200 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold text-slate-900">Business hours</p>
+                      <p className="mt-1 text-xs text-slate-500">Used on the public storefront and to prevent checkout outside operating hours. Times use Asia/Manila.</p>
+                      <p className="mt-1 text-xs font-semibold text-slate-700">Preview: {formatStorefrontBusinessHoursDisplay(locationForm.business_hours)}</p>
+                    </div>
+                    <button type="button" onClick={copyMondayBusinessHoursToAllDays} disabled={locationsLoading} className="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-60">
+                      Copy Mon
+                    </button>
+                  </div>
+                  <div className="mt-3 grid gap-2">
+                    {STOREFRONT_BUSINESS_DAY_OPTIONS.map((day) => {
+                      const dayHours = normalizeStorefrontBusinessHours(locationForm.business_hours).weekly[day.key];
+                      const isAllDay = dayHours.enabled && dayHours.open === dayHours.close;
+                      return (
+                        <div key={day.key} className="grid grid-cols-[42px_1fr_1fr_auto_auto] items-center gap-2 rounded-md bg-slate-50 px-2 py-2">
+                          <span className="text-xs font-semibold text-slate-700">{day.label}</span>
+                          <input
+                            type="time"
+                            className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+                            value={dayHours.open}
+                            disabled={!dayHours.enabled || locationsLoading}
+                            onChange={(event) => handleBusinessHoursDayChange(day.key, { open: event.target.value })}
+                          />
+                          <input
+                            type="time"
+                            className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+                            value={dayHours.close}
+                            disabled={!dayHours.enabled || locationsLoading}
+                            onChange={(event) => handleBusinessHoursDayChange(day.key, { close: event.target.value })}
+                          />
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4"
+                            checked={dayHours.enabled}
+                            disabled={locationsLoading}
+                            onChange={(event) => handleBusinessHoursDayChange(day.key, { enabled: event.target.checked })}
+                            aria-label={`${day.label} open`}
+                          />
+                          <button
+                            type="button"
+                            className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-60"
+                            disabled={locationsLoading}
+                            onClick={() => handleBusinessHoursDayChange(day.key, isAllDay ? { open: '09:00', close: '18:00' } : { enabled: true, open: '00:00', close: '00:00' })}
+                          >
+                            {isAllDay ? '24h' : (dayHours.enabled ? 'Set 24h' : 'Closed')}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button type="button" onClick={handleSaveLocation} disabled={saving || locationsLoading} className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">
@@ -691,8 +858,26 @@ export default function OnboardingSetupModal({
                         <input type="number" min={0} step="0.01" className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm" value={row.current_stock} onChange={(event) => updateItemRow(row.client_row_id, { current_stock: event.target.value })} disabled={isCreatedRow(row) || saving} />
                       </label>
                       <label className="text-xs text-slate-700 md:col-span-3">
-                        Storefront image
-                        <input type="file" accept="image/*" className="mt-1 block w-full text-xs" onChange={(event) => updateItemRow(row.client_row_id, { image_file: event.target.files?.[0] || null })} disabled={isCreatedRow(row) || saving} />
+                        Item image
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="mt-1 block w-full text-xs"
+                          onChange={(event) => {
+                            const selectedFiles = Array.from(event.target.files || []);
+                            const files = selectedFiles.slice(0, MAX_ITEM_IMAGE_FILES);
+                            if (selectedFiles.length > MAX_ITEM_IMAGE_FILES) {
+                              toast.error(`Only the first ${MAX_ITEM_IMAGE_FILES} item images will be uploaded.`);
+                            }
+                            updateItemRow(row.client_row_id, {
+                              image_file: files[0] || null,
+                              image_files: files
+                            });
+                          }}
+                          disabled={isCreatedRow(row) || saving}
+                        />
+                        <span className="mt-1 block text-[11px] text-slate-500">Up to {MAX_ITEM_IMAGE_FILES} images per item.</span>
                       </label>
                       <div className="flex items-end text-xs text-slate-500">Row {index + 1}</div>
                     </div>
@@ -700,7 +885,7 @@ export default function OnboardingSetupModal({
                     {row.status === 'created_with_image_error' && (
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <p className="text-xs font-semibold text-amber-700">{row.errors.join(' ')}</p>
-                        <button type="button" onClick={() => handleRetryImageUpload(row.client_row_id)} disabled={saving || !row.image_file} className="rounded-md border border-amber-300 px-2 py-1 text-xs font-semibold text-amber-800 disabled:opacity-50">
+                        <button type="button" onClick={() => handleRetryImageUpload(row.client_row_id)} disabled={saving || !(row.image_file || row.image_files?.length)} className="rounded-md border border-amber-300 px-2 py-1 text-xs font-semibold text-amber-800 disabled:opacity-50">
                           Retry Image Upload
                         </button>
                       </div>

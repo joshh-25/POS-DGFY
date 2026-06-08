@@ -10,6 +10,14 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         where: (locationId) => ({ location_id: locationId })
     },
     {
+        key: 'storefrontLocationItemOverrides',
+        label: 'storefront branch item overrides',
+        modelName: 'StorefrontLocationItemOverride',
+        association: 'StorefrontLocationItemOverride.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
         key: 'fifoBatches',
         label: 'FIFO batches',
         modelName: 'FIFOBatch',
@@ -36,6 +44,14 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         label: 'POS transactions',
         modelName: 'PosTransaction',
         association: 'PosTransaction.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        key: 'posFiscalTerminalRegistrations',
+        label: 'POS fiscal terminal registrations',
+        modelName: 'PosFiscalTerminalRegistration',
+        association: 'PosFiscalTerminalRegistration.location',
         foreignKeys: ['location_id'],
         where: (locationId) => ({ location_id: locationId })
     },

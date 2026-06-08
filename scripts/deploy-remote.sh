@@ -31,7 +31,7 @@ DEPLOY_REQUIRE_LIVE_PAYPAL="${DEPLOY_REQUIRE_LIVE_PAYPAL:-0}"
 DEPLOY_REQUIRE_LIVE_PAYMONGO="${DEPLOY_REQUIRE_LIVE_PAYMONGO:-0}"
 DEPLOY_VERIFY_PUBLIC_ENDPOINTS="${DEPLOY_VERIFY_PUBLIC_ENDPOINTS:-1}"
 DEPLOY_STRICT_LEGACY_AUDIT="${DEPLOY_STRICT_LEGACY_AUDIT:-0}"
-DEPLOY_STORE_BASE_PATH="${DEPLOY_STORE_BASE_PATH:-/tenant-store/}"
+DEPLOY_STORE_BASE_PATH="${DEPLOY_STORE_BASE_PATH:-/}"
 DEPLOY_IMS_URL="${DEPLOY_IMS_URL:-https://skupervisor.dgfy.ph}"
 DEPLOY_POS_URL="${DEPLOY_POS_URL:-https://pos.dgfy.ph}"
 DEPLOY_STOREFRONT_URL="${DEPLOY_STOREFRONT_URL:-https://dgfy.ph}"
@@ -106,6 +106,19 @@ load_env_file_if_present() {
 # Load non-secret defaults then optional local secrets override source.
 load_env_file_if_present "$QA_ENV_FILE"
 load_env_file_if_present "$QA_SECRETS_FILE"
+
+host_path() {
+    local path_value="$1"
+    if command -v cygpath >/dev/null 2>&1; then
+        cygpath -m -a "$path_value"
+        return 0
+    fi
+    if pwd -W >/dev/null 2>&1; then
+        printf '%s/%s\n' "$(pwd -W)" "$path_value"
+        return 0
+    fi
+    printf '%s\n' "$path_value"
+}
 
 echo -e "\n${CYAN}Remote Deployment Trigger${NC}"
 echo -e "   Target: ${YELLOW}$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR${NC}"
@@ -229,15 +242,21 @@ echo -e "${GREEN}Push successful.${NC}"
 # Step 5: Enforce no-staging release hard gate
 # ------------------------------------------
 if [[ "$DEPLOY_ENFORCE_NO_STAGING_GATE" == "1" ]]; then
-    QA_DEPLOY_SUMMARY_FILE_EFFECTIVE="${QA_DEPLOY_SUMMARY_FILE:-.tmp/release-gates/${LOCAL_COMMIT}/qa_deploy_summary.txt}"
+    QA_DEPLOY_SUMMARY_FILE_EFFECTIVE="${QA_DEPLOY_SUMMARY_FILE:-$(host_path ".tmp/release-gates/${LOCAL_COMMIT}/qa_deploy_summary.txt")}"
+    RELEASE_VERDICT_FILE_EFFECTIVE="${RELEASE_VERDICT_FILE:-$(host_path ".tmp/release-gates/${LOCAL_COMMIT}/release_verdict.json")}"
     if [[ ! -f "$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" ]]; then
         echo -e "\n${YELLOW}QA deploy summary not found locally. Attempting fetch over SSH evidence path...${NC}"
         RELEASE_TARGET_SHA="$LOCAL_COMMIT" QA_DEPLOY_SUMMARY_FILE="$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" npm run evidence:qa:deploy-summary
+        if [[ ! -f "$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" ]]; then
+            echo -e "${RED}QA deploy summary fetch did not create expected file: ${QA_DEPLOY_SUMMARY_FILE_EFFECTIVE}${NC}"
+            exit 1
+        fi
         echo -e "${GREEN}Fetched QA deploy summary: ${QA_DEPLOY_SUMMARY_FILE_EFFECTIVE}${NC}"
     fi
 
     echo -e "\n${YELLOW}Running no-staging release gate for commit ${LOCAL_COMMIT}...${NC}"
-    RELEASE_TARGET_SHA="$LOCAL_COMMIT" npm run gate:release:no-staging
+    RELEASE_TARGET_SHA="$LOCAL_COMMIT" QA_DEPLOY_SUMMARY_FILE="$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" RELEASE_VERDICT_FILE="$RELEASE_VERDICT_FILE_EFFECTIVE" npm run gate:release:no-staging
+    RELEASE_TARGET_SHA="$LOCAL_COMMIT" node scripts/verify-release-verdict.js --file "$RELEASE_VERDICT_FILE_EFFECTIVE" --sha "$LOCAL_COMMIT" --require-pass true
     echo -e "${GREEN}No-staging release gate passed.${NC}"
 else
     echo -e "${YELLOW}No-staging release gate skipped (DEPLOY_ENFORCE_NO_STAGING_GATE=$DEPLOY_ENFORCE_NO_STAGING_GATE).${NC}"

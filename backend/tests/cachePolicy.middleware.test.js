@@ -52,6 +52,25 @@ describe('cachePolicy middleware contracts', () => {
         expect(vary).toContain('Origin');
     });
 
+    it('setReadCacheControl can vary cached reads by tenant context headers', () => {
+        const middleware = setReadCacheControl({
+            maxAgeSeconds: 30,
+            sMaxAgeSeconds: 30,
+            varyHeaders: ['X-Store-Slug']
+        });
+        const req = { method: 'GET' };
+        const res = createResponseDouble();
+        const next = jest.fn();
+
+        middleware(req, res, next);
+
+        expect(next).toHaveBeenCalledTimes(1);
+        const vary = String(res.readHeader('vary') || '');
+        expect(vary).toContain('Accept-Encoding');
+        expect(vary).toContain('Origin');
+        expect(vary).toContain('X-Store-Slug');
+    });
+
     it('setReadCacheControl skips non-read methods', () => {
         const middleware = setReadCacheControl();
         const req = { method: 'POST' };

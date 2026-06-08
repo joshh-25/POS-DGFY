@@ -5,7 +5,7 @@ import tenantConnector from '../../../utils/TenantConnector.js';
 import { getTenantModels } from '../../../utils/tenantModelFactory.js';
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode, isDomainError } from '../../shared/contracts/domainErrors.js';
-import { buildPhoneLookupVariants, dgfyCustomerRepository, hashTrackingRecoveryLookup } from '../repositories/dgfyCustomerRepository.js';
+import { buildPhoneLookupVariants, dgfyCustomerRepository, hashReviewInviteToken, hashTrackingRecoveryLookup } from '../repositories/dgfyCustomerRepository.js';
 import { dgfyEmailDeliveryRepository } from '../repositories/dgfyEmailDeliveryRepository.js';
 import { recordDgfyOrderActivity } from '../utils/customerActivityRecorder.js';
 
@@ -25,9 +25,9 @@ const ACTIVITY_COUNT_KEYS = {
     hospitality_booking: 'hospitality_booking_count',
     fnb_order: 'fnb_order_count'
 };
-const ORDER_ACTIVITY_TYPES = new Set(['order', 'fnb_order']);
 const BOOKING_ACTIVITY_TYPES = new Set(['service_booking', 'hospitality_booking']);
 const REVIEW_TARGET_TYPES = new Set(['product', 'service', 'hospitality_booking', 'fnb_order', 'fnb_item']);
+const REVIEW_CHANNEL_TYPES = new Set(['account', 'tracking', 'order_success', 'qr', 'receipt']);
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const normalizeReference = (value) => String(value || '').trim().toUpperCase();
@@ -166,6 +166,21 @@ const mapError = (error, fallbackMessage) => {
         statusCode: error?.statusCode || 500,
         details: error?.details || null
     });
+};
+
+const buildReviewerName = ({ anonymous = false, reviewerName = '', account = null } = {}) => {
+    if (anonymous) return 'Anonymous';
+    const direct = String(reviewerName || '').trim();
+    if (direct) return direct.slice(0, 255);
+    const fullName = [account?.first_name, account?.last_name].map((value) => String(value || '').trim()).filter(Boolean).join(' ').trim();
+    if (fullName) return fullName.slice(0, 255);
+    return String(account?.username || account?.email || 'Customer').trim().slice(0, 255) || 'Customer';
+};
+
+const buildReviewerInitials = (value = '') => {
+    const parts = String(value || '').trim().split(/\s+/).filter(Boolean);
+    const initials = parts.slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join('');
+    return initials || 'CU';
 };
 
 const withTenantContext = async (tenantId, callback) => {
@@ -908,6 +923,11 @@ export const buildSubmitDgfyCustomerReviewUseCase = ({ repository = dgfyCustomer
             rating,
             comment: String(body.comment || '').trim().slice(0, 2000) || null,
             anonymous: body.anonymous === true,
+            reviewer_name: buildReviewerName({ anonymous: body.anonymous === true, reviewerName: body.reviewer_name || body.name, account: dgfyAccount }),
+            reviewer_initials: buildReviewerInitials(buildReviewerName({ anonymous: body.anonymous === true, reviewerName: body.reviewer_name || body.name, account: dgfyAccount })),
+            verified_purchase: true,
+            submission_channel: REVIEW_CHANNEL_TYPES.has(String(body.submission_channel || '').trim()) ? String(body.submission_channel).trim() : 'account',
+            media_json: Array.isArray(body.media) ? body.media.slice(0, 4) : null,
             status: 'pending'
         });
         return ok({ review });
@@ -922,8 +942,8 @@ export const buildListPublicDgfyCustomerReviewsUseCase = ({ repository = dgfyCus
         const itemId = parsePositiveInt(query.item_id);
         const targetType = String(query.target_type || '').trim().toLowerCase() || null;
         const targetId = parsePositiveInt(query.target_id);
-        if (!tenantId && !itemId && !targetType) {
-            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'tenant_id, item_id, or target_type is required.', { statusCode: 422 });
+        if (!tenantId || (!itemId && !(targetType && targetId))) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'tenant_id and item_id or explicit target_type/target_id are required.', { statusCode: 422 });
         }
         const result = await repository.listPublicReviews({
             tenantId: tenantId || null,
@@ -935,6 +955,93 @@ export const buildListPublicDgfyCustomerReviewsUseCase = ({ repository = dgfyCus
         return ok({ reviews: result.rows || [], summary: result.summary || { average_rating: null, total_count: 0 } });
     } catch (error) {
         return fail(mapError(error, 'Failed to load public DGFY reviews'));
+    }
+};
+
+export const buildValidateDgfyReviewInviteUseCase = ({ repository = dgfyCustomerRepository } = {}) => async ({ token }) => {
+    try {
+        const normalizedToken = String(token || '').trim();
+        if (!normalizedToken) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'review invite token is required.', { statusCode: 422 });
+        }
+        const invite = await repository.findReviewInviteByTokenHash(hashReviewInviteToken(normalizedToken));
+        if (!invite || ['revoked', 'expired', 'submitted'].includes(String(invite.status || '').trim().toLowerCase())) {
+            throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Review invite is invalid or unavailable.', { statusCode: 404 });
+        }
+        if (invite.expires_at && new Date(invite.expires_at).getTime() <= Date.now()) {
+            throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Review invite has expired.', { statusCode: 403 });
+        }
+        await repository.markReviewInviteOpened(invite.invite_id);
+        return ok({
+            invite: {
+                invite_id: invite.invite_id,
+                tenant_id: invite.tenant_id,
+                tracking_pin: invite.tracking_pin,
+                target_type: invite.target_type,
+                target_id: invite.target_id,
+                item_name: invite.item_name,
+                delivery_channel: invite.delivery_channel,
+                expires_at: invite.expires_at,
+                activity_id: invite.activity_id || null
+            }
+        });
+    } catch (error) {
+        return fail(mapError(error, 'Failed to validate DGFY review invite'));
+    }
+};
+
+export const buildSubmitDgfyGuestReviewInviteUseCase = ({ repository = dgfyCustomerRepository } = {}) => async ({ token, body = {} }) => {
+    try {
+        const normalizedToken = String(token || '').trim();
+        if (!normalizedToken || !isPlainObject(body)) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'review invite token and payload are required.', { statusCode: 422 });
+        }
+        const invite = await repository.findReviewInviteByTokenHash(hashReviewInviteToken(normalizedToken));
+        if (!invite || ['revoked', 'expired', 'submitted'].includes(String(invite.status || '').trim().toLowerCase())) {
+            throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Review invite is invalid or unavailable.', { statusCode: 404 });
+        }
+        if (invite.expires_at && new Date(invite.expires_at).getTime() <= Date.now()) {
+            throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Review invite has expired.', { statusCode: 403 });
+        }
+        const rating = Number.parseInt(body.rating, 10);
+        if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'rating 1-5 is required.', { statusCode: 422 });
+        }
+        const existing = await repository.findReviewByTrackingActivityTarget({
+            tenantId: invite.tenant_id,
+            activityId: invite.activity_id || null,
+            targetType: invite.target_type,
+            targetId: invite.target_id
+        });
+        if (existing) {
+            throw new DomainError(DomainErrorCode.CONFLICT, 'A review already exists for this activity target.', { statusCode: 409 });
+        }
+        const reviewerName = buildReviewerName({
+            anonymous: body.anonymous === true,
+            reviewerName: body.reviewer_name || body.name,
+            account: null
+        });
+        const review = await repository.createReview({
+            dgfy_account_id: null,
+            activity_id: invite.activity_id || null,
+            tenant_id: invite.tenant_id,
+            item_id: invite.target_type === 'fnb_item' ? invite.target_id : null,
+            target_type: invite.target_type,
+            target_id: invite.target_id,
+            rating,
+            comment: String(body.comment || '').trim().slice(0, 2000) || null,
+            anonymous: body.anonymous === true,
+            reviewer_name: reviewerName,
+            reviewer_initials: buildReviewerInitials(reviewerName),
+            verified_purchase: true,
+            submission_channel: REVIEW_CHANNEL_TYPES.has(String(body.submission_channel || '').trim()) ? String(body.submission_channel).trim() : 'tracking',
+            media_json: Array.isArray(body.media) ? body.media.slice(0, 4) : null,
+            status: 'pending'
+        });
+        await repository.markReviewInviteSubmitted({ inviteId: invite.invite_id, reviewId: review.review_id });
+        return ok({ review });
+    } catch (error) {
+        return fail(mapError(error, 'Failed to submit DGFY guest review'));
     }
 };
 
@@ -1265,6 +1372,8 @@ export default {
     buildManageDgfyCustomerAddressesUseCases,
     buildGetDgfyCustomerLoyaltyUseCase,
     buildSubmitDgfyCustomerReviewUseCase,
+    buildValidateDgfyReviewInviteUseCase,
+    buildSubmitDgfyGuestReviewInviteUseCase,
     buildListPublicDgfyCustomerReviewsUseCase,
     buildListDgfyCustomerReviewsForModerationUseCase,
     buildModerateDgfyCustomerReviewUseCase,

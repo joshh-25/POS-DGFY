@@ -40,6 +40,7 @@ describe('cache policy route contracts', () => {
     });
 
     it('applies explicit read-cache middleware to public storefront reads', () => {
+        expect(storeRoutes).toContain("varyHeaders: ['X-Store-Slug']");
         expectRouteContract({
             source: storeRoutes,
             method: 'get',

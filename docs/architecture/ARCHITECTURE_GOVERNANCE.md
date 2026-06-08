@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-03-06
+last_reviewed: 2026-05-21
 applies_to: implementation_process
 topic: architecture_governance
 ---
@@ -39,6 +39,24 @@ Target flow:
 - tests for changed behavior
 - rollback notes for risky changes
 6. Merge only when CI architecture gates pass.
+
+## Implementation Hardening Contract
+Every implementation that changes authentication, registration, invitations, account lifecycle, payment, checkout, tenant provisioning, or other cross-boundary user workflows must include a final hardening phase before it is considered done.
+
+The hardening phase must address these common risks:
+
+1. Replay and reuse risk: short-lived tokens, handoff artifacts, OTPs, invite links, and recovery codes must be single-use when the business action is single-use. Tests must prove replay rejection, not only successful first use.
+2. Lifecycle completeness: when a flow introduces or depends on an account identity, it must cover the minimum expected account lifecycle for that surface, including profile update, password change or reset, logout/session cleanup, and explicitly deferred items.
+3. Deferred verification honesty: if phone, email, identity, compliance, or permission verification is intentionally deferred, the contract must name the deferred field or behavior, state that it must not be treated as verified, and identify the future rollout path.
+4. Submit-boundary safety: UI actions with different business effects must have separate form or action boundaries. Profile/password/settings mutations must not be nested inside create/register/checkout forms where accidental submits can perform the wrong mutation.
+5. Backend boundary proof: controllers stay transport-only, business logic stays in use cases, persistence stays in repositories, and migrations/models are additive unless an ADR explicitly accepts destructive change.
+6. Backend behavior proof: tests must cover success, validation failure, duplicate/conflict paths, replay/reuse attempts, and the persistence side effect that makes the behavior durable.
+7. Frontend behavior proof: tests must cover the expected user-facing state, labels/copy that changed, disabled or gated states, and at least one negative proof that an adjacent form/action was not submitted accidentally.
+8. Rendered UI proof: for user-facing React changes, run a local rendered check of the affected route with the in-app browser when available, or Playwright screenshot/DOM evidence as fallback. The check must include page identity, nonblank content, no framework overlay, console health for the target page, one primary interaction, and at least desktop plus one mobile viewport when practical.
+9. Build-surface proof: run the build for every app surface affected by shared code or route ownership, not only the app where the file was edited.
+10. Documentation closure: update the authoritative ADR or governed feature doc with the final hardening obligations, deferred risks, and validation commands so future similar work starts from the hardened contract instead of rediscovering it.
+
+The final response or PR evidence must state which hardening items passed, which were intentionally deferred, and which residual risks remain.
 
 ## Guardrails (Automated)
 1. `backend/scripts/check-architecture-guardrails.js`

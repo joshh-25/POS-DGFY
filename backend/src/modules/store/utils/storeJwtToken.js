@@ -20,11 +20,13 @@ export const normalizeTenantIdentifier = (value) => {
     const raw = String(value).trim();
     if (!raw) return null;
 
-    const asInt = parsePositiveInt(raw);
-    if (asInt) return String(asInt);
-
     if (TENANT_UUID_PATTERN.test(raw)) {
         return raw.toLowerCase();
+    }
+
+    if (/^\d+$/.test(raw)) {
+        const asInt = parsePositiveInt(raw);
+        if (asInt) return String(asInt);
     }
 
     return null;

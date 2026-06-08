@@ -14,8 +14,10 @@ import {
     reorderDgfyCustomerOrderUseCase,
     requestDgfyTrackingRecoveryUseCase,
     submitDgfyCustomerReviewUseCase,
+    submitDgfyGuestReviewInviteUseCase,
     trackDgfyCustomerReferenceUseCase,
     updateDgfyCustomerAddressUseCase,
+    validateDgfyReviewInviteUseCase,
     verifyDgfyTrackingRecoveryUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
@@ -175,6 +177,25 @@ export const submitDgfyCustomerReview = async (req, res, next) => {
 export const listPublicDgfyCustomerReviews = async (req, res, next) => {
     try {
         return send(res, await listPublicDgfyCustomerReviewsUseCase({ query: req.query }));
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const validateDgfyReviewInvite = async (req, res, next) => {
+    try {
+        return send(res, await validateDgfyReviewInviteUseCase({ token: req.params.token }));
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const submitDgfyGuestReviewInvite = async (req, res, next) => {
+    try {
+        return send(res, await submitDgfyGuestReviewInviteUseCase({ token: req.params.token, body: req.body }), {
+            status: 201,
+            message: 'Review submitted for approval'
+        });
     } catch (error) {
         next(error);
     }

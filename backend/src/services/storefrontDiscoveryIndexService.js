@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { Tenant, StorefrontDiscoveryIndex } from '../models/index.js';
+import { Tenant, StorefrontDiscoveryIndex, StorefrontHandleReservation } from '../models/index.js';
 import tenantConnector from '../utils/TenantConnector.js';
 import { getTenantModels } from '../utils/tenantModelFactory.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
@@ -132,6 +132,55 @@ const isMissingItemLocationStockSchemaError = (error) => {
         return true;
     }
     return false;
+};
+
+const reserveStorefrontHandleForTenant = async ({ tenantId, handle, source = 'discovery_sync' } = {}) => {
+    const normalizedTenantId = String(tenantId || '').trim();
+    const normalizedHandle = String(handle || '').trim().toLowerCase();
+    if (!normalizedTenantId || !normalizedHandle || typeof StorefrontHandleReservation?.findOne !== 'function') return;
+
+    try {
+        const existingByHandle = await StorefrontHandleReservation.findOne({
+            where: { handle: normalizedHandle }
+        });
+        if (existingByHandle) {
+            const payload = existingByHandle.toJSON ? existingByHandle.toJSON() : existingByHandle;
+            if (String(payload.tenant_id || '') !== normalizedTenantId) {
+                logger.warn('[StorefrontDiscoveryIndex] Storefront handle reservation conflict during sync', {
+                    event_type: 'storefront_handle_reservation_conflict',
+                    tenantId: normalizedTenantId,
+                    conflictingTenantId: payload.tenant_id || null,
+                    handle: normalizedHandle
+                });
+            }
+            return;
+        }
+
+        const existingByTenant = await StorefrontHandleReservation.findOne({
+            where: { tenant_id: normalizedTenantId }
+        });
+        if (existingByTenant) {
+            await existingByTenant.update({
+                handle: normalizedHandle,
+                source
+            });
+            return;
+        }
+
+        await StorefrontHandleReservation.create({
+            tenant_id: normalizedTenantId,
+            handle: normalizedHandle,
+            source
+        });
+    } catch (error) {
+        if (isMissingTableError(error, 'storefront_handle_reservations')) return;
+        logger.warn('[StorefrontDiscoveryIndex] Failed to reserve storefront handle during sync', {
+            event_type: 'storefront_handle_reservation_failed',
+            tenantId: normalizedTenantId,
+            handle: normalizedHandle,
+            error: error?.message || 'unknown_error'
+        });
+    }
 };
 
 const mapWithConcurrency = async (items = [], limit = 4, worker) => {
@@ -303,6 +352,7 @@ const buildTenantSnapshot = async (tenant) => {
         Item,
         PosCatalogOverride,
         StorefrontCatalogOverride,
+        StorefrontLocationItemOverride,
         ServiceItemDetail,
         ItemLocationStock
     } = getTenantModels(tenantConnection);
@@ -314,6 +364,11 @@ const buildTenantSnapshot = async (tenant) => {
     });
     const settings = toSettingsMap(settingsRows || []);
     const slug = deriveStoreSlug(tenant, settings.store_tenant_slug);
+    await reserveStorefrontHandleForTenant({
+        tenantId: tenant?.id,
+        handle: slug,
+        source: 'discovery_sync'
+    });
     const isVisible = parseBoolean(settings.store_is_visible, true);
 
     if (!isVisible) {
@@ -524,6 +579,40 @@ const buildTenantSnapshot = async (tenant) => {
         stockByItemId.set(itemId, bucket);
     });
 
+    const disabledLocationIdsByItemId = new Map();
+    if (StorefrontLocationItemOverride && visibleItemIds.length > 0 && activeLocationIds.length > 0) {
+        try {
+            const overrideRows = await StorefrontLocationItemOverride.findAll({
+                where: {
+                    item_id: { [Op.in]: visibleItemIds },
+                    location_id: { [Op.in]: activeLocationIds },
+                    storefront_available: false
+                },
+                attributes: ['item_id', 'location_id']
+            });
+            (overrideRows || []).forEach((row) => {
+                const plain = toLocationPlain(row);
+                const itemId = Number(plain.item_id);
+                const locationId = Number(plain.location_id);
+                if (!Number.isInteger(itemId) || itemId <= 0 || !Number.isInteger(locationId) || locationId <= 0) {
+                    return;
+                }
+                const bucket = disabledLocationIdsByItemId.get(itemId) || new Set();
+                bucket.add(locationId);
+                disabledLocationIdsByItemId.set(itemId, bucket);
+            });
+        } catch (error) {
+            if (!isMissingTableError(error, 'storefront_location_item_overrides')) {
+                throw error;
+            }
+            logger.warn('[StorefrontDiscoveryIndex] storefront_location_item_overrides unavailable; indexing without branch availability overrides', {
+                event_type: 'storefront_discovery_location_item_override_fallback',
+                tenantId: tenant?.id || null,
+                tenantName: tenant?.name || null
+            });
+        }
+    }
+
     const customerAccessFeatureEnabled = isCustomerAccessModesEnabled({
         tenantId: tenant?.id,
         companyToken: tenant?.company_token,
@@ -543,22 +632,27 @@ const buildTenantSnapshot = async (tenant) => {
         .map((row) => {
             const itemId = Number(row.item_id);
             const stockBucket = stockByItemId.get(itemId);
+            const disabledLocationIds = disabledLocationIdsByItemId.get(itemId) || new Set();
             const matchingLocationIds = stockBucket
-                ? Array.from(stockBucket.matchingLocationIds)
-                : activeLocationIds;
+                ? Array.from(stockBucket.matchingLocationIds).filter((locationId) => !disabledLocationIds.has(Number(locationId)))
+                : activeLocationIds.filter((locationId) => !disabledLocationIds.has(Number(locationId)));
             const isServiceItem = String(row.category || '').trim().toLowerCase() === 'service';
             const inStockLocationIds = isServiceItem
                 ? matchingLocationIds
                 : (stockBucket
-                    ? Array.from(stockBucket.inStockLocationIds)
-                    : (Number(row.current_stock || 0) > 0 && Number.isInteger(fallbackPrimaryLocationId) && fallbackPrimaryLocationId > 0
+                    ? Array.from(stockBucket.inStockLocationIds).filter((locationId) => !disabledLocationIds.has(Number(locationId)))
+                    : (Number(row.current_stock || 0) > 0
+                        && Number.isInteger(fallbackPrimaryLocationId)
+                        && fallbackPrimaryLocationId > 0
+                        && !disabledLocationIds.has(Number(fallbackPrimaryLocationId))
                     ? [fallbackPrimaryLocationId]
                     : []));
             const text = buildItemSearchText(row);
-            if (!text) return null;
+            if (!text || matchingLocationIds.length === 0) return null;
             return {
                 item_id: itemId,
                 item_name: row.name || null,
+                category: row.category || null,
                 text,
                 matching_location_ids: matchingLocationIds,
                 in_stock_location_ids: inStockLocationIds
@@ -655,7 +749,7 @@ const buildTenantSnapshot = async (tenant) => {
         storefront_about: toTrimmedString(settings.storefront_about, 1000),
         storefront_phone: toTrimmedString(settings.storefront_phone, 50),
         storefront_email: toTrimmedString(settings.storefront_email, 120),
-        storefront_hours: formatStorefrontBusinessHoursDisplay(settings.storefront_hours),
+        storefront_hours: toTrimmedString(formatStorefrontBusinessHoursDisplay(settings.storefront_hours), 120),
         storefront_why_choose_us: storefrontWhyChooseUs,
         storefront_social_links: storefrontSocialLinks,
         storefront_review_highlights: storefrontReviewHighlights,

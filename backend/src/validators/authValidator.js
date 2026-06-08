@@ -55,8 +55,8 @@ export const loginSchema = Joi.object({
 });
 
 export const refreshTokenSchema = Joi.object({
-  refreshToken: Joi.string().required().messages({
-    'any.required': 'Refresh token is required'
+  refreshToken: Joi.string().optional().allow('').messages({
+    'string.base': 'Refresh token must be a string'
   })
 });
 
@@ -96,14 +96,14 @@ export const validateInviteTokenSchema = Joi.object({
 
 export const emailOtpRequestSchema = Joi.object({
   purpose: Joi.string()
-    .valid('company_registration', 'tenant_user_registration', 'invitation_acceptance')
+    .valid('company_registration', 'tenant_user_registration', 'invitation_acceptance', 'dgfy_account_verification')
     .required()
     .messages({
-      'any.only': 'purpose must be one of: company_registration, tenant_user_registration, invitation_acceptance',
+      'any.only': 'purpose must be one of: company_registration, tenant_user_registration, invitation_acceptance, dgfy_account_verification',
       'any.required': 'purpose is required'
     }),
   email: Joi.string().pattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/).when('purpose', {
-    is: Joi.valid('company_registration', 'tenant_user_registration'),
+    is: Joi.valid('company_registration', 'tenant_user_registration', 'dgfy_account_verification'),
     then: Joi.required(),
     otherwise: Joi.optional()
   }).messages({
@@ -274,4 +274,3 @@ export const validateEmailOtpRequest = (req, res, next) => {
   req.validatedData = value;
   next();
 };
-

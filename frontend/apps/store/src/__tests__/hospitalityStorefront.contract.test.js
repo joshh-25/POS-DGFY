@@ -26,11 +26,9 @@ describe('Hospitality storefront contract', () => {
     const app = readSource('StorefrontApp.jsx');
     const panel = readSource('HospitalityBookingPanel.jsx');
 
-    expect(app).toContain('/api/v1/store/hospitality/availability?');
-    expect(app).toContain('/api/v1/store/hospitality/quote');
-    expect(app).toContain('/api/v1/store/hospitality/booking-holds');
-    expect(app).toContain('/api/v1/store/hospitality/bookings');
+    expect(app).toContain('HospitalityBookingPanel');
     expect(panel).toContain("const API_BASE = '/api/v1/store/hospitality'");
+    expect(panel).toContain('requestJson(`/availability?');
     expect(panel).toContain("requestJson('/quote'");
     expect(panel).toContain("requestJson('/booking-holds'");
     expect(panel).toContain("requestJson('/bookings'");
@@ -57,9 +55,9 @@ describe('Hospitality storefront contract', () => {
     expect(panel).toContain('Load Stay History');
     expect(panel).toContain('Save to My Stays');
     expect(panel).toContain('online card capture is not enabled');
-    expect(app).toContain('isHospitalityMode || isServicesCartDrawerMode');
-    expect(app).toContain('!isHospitalityMode && !(isSimpleMode && isResolvedOrderSubpage)');
-    expect(app).toContain('!isServicesMode && !isFnbMode && !isSimpleMode && !isHospitalityMode');
+    expect(app).toContain('HospitalityBookingPanel');
+    expect(app).toContain('workflow_mode');
+    expect(app).toContain('!isFnbMode && !isSimpleMode');
   });
 
   it('keeps the shared empty catalog state free of discovery-only viewport refs', () => {

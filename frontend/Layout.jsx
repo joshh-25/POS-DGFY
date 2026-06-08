@@ -167,8 +167,7 @@ export default function Layout({ children, currentPageName }) {
           {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </button>
         <div className="flex items-center gap-3 ml-4">
-          <img src="/logo-icon.png" alt="SKUpervisor" className="h-8 w-8" />
-          <span className="font-semibold text-slate-900">SKUpervisor</span>
+          <img src="/dgfy-horizontal_logo-removebg-preview.png" alt="DGFY.PH" className="h-8 w-auto max-w-[150px] object-contain" />
         </div>
       </div>
 
@@ -188,7 +187,7 @@ export default function Layout({ children, currentPageName }) {
       )}>
         <div className="p-6">
           <div className="flex flex-col gap-1">
-            <img src="/logo.png" alt="SKUpervisor" className="h-10" />
+            <img src="/dgfy-horizontal_logo-removebg-preview.png" alt="DGFY.PH" className="h-11 w-auto max-w-[220px] object-contain" />
             <p className="text-xs text-slate-500 ml-1">Inventory Management System</p>
           </div>
         </div>

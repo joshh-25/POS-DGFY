@@ -22,6 +22,10 @@ import { buildUpdatePricingSettingsUseCase } from './usecases/updatePricingSetti
 import { buildUpdateTenantUseCase } from './usecases/updateTenantUseCase.js';
 import { buildDeleteTenantUseCase } from './usecases/deleteTenantUseCase.js';
 import { buildResubmitRegistrationUseCase } from './usecases/resubmitRegistrationUseCase.js';
+import { buildUpdateTenantCapabilitiesUseCase } from './usecases/updateTenantCapabilitiesUseCase.js';
+import { buildListTenantCapabilityAuditLogsUseCase } from './usecases/listTenantCapabilityAuditLogsUseCase.js';
+import { readTenantCapabilities } from './usecases/tenantCapabilitySettings.js';
+import tenantConnector from '../../utils/TenantConnector.js';
 
 export const registerCompanyRequestUseCase = buildRegisterCompanyRequestUseCase({
     tenantAdminRepository,
@@ -38,6 +42,8 @@ export const registerCompanyRequestUseCase = buildRegisterCompanyRequestUseCase(
 
 export const listTenantsUseCase = buildListTenantsUseCase({
     tenantAdminRepository,
+    tenantConnector,
+    readTenantCapabilities,
     logger
 });
 
@@ -73,6 +79,18 @@ export const updateTenantUseCase = buildUpdateTenantUseCase({
     tenantAdminRepository,
     provisionTenant,
     emailService,
+    logger
+});
+
+export const updateTenantCapabilitiesUseCase = buildUpdateTenantCapabilitiesUseCase({
+    tenantAdminRepository,
+    tenantConnector,
+    syncStorefrontDiscoveryIndexForTenant,
+    logger
+});
+
+export const listTenantCapabilityAuditLogsUseCase = buildListTenantCapabilityAuditLogsUseCase({
+    tenantAdminRepository,
     logger
 });
 

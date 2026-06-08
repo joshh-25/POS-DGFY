@@ -217,7 +217,7 @@ describe('registerCompanyRequestUseCase approval mode', () => {
         expect(deps.tenantAdminRepository.createTenant).not.toHaveBeenCalled();
     });
 
-    it('rejects unverified DGFY accounts before creating a tenant', async () => {
+    it('auto-provisions from an authenticated DGFY account without a separate email-verification gate', async () => {
         const { deps, useCase } = createUseCase();
 
         const result = await useCase({
@@ -226,13 +226,15 @@ describe('registerCompanyRequestUseCase approval mode', () => {
                 ...dgfyAccount,
                 email_verified_at: null
             },
-            correlationId: 'req-unverified-dgfy'
+            correlationId: 'req-authenticated-dgfy'
         });
 
-        expect(result.success).toBe(false);
-        expect(result.error.statusCode).toBe(403);
-        expect(result.error.message).toBe('Verify your DGFY email before registering a company.');
-        expect(deps.tenantAdminRepository.createTenant).not.toHaveBeenCalled();
+        expect(result.success).toBe(true);
+        expect(deps.tenantAdminRepository.createTenant).toHaveBeenCalledWith(expect.objectContaining({
+            admin_email: dgfyAccount.email,
+            admin_phone: dgfyAccount.phone
+        }), { transaction: 'tx-company' });
+        expect(deps.provisionTenant).toHaveBeenCalled();
     });
 
     it('auto-provisions standard registration when auto_standard mode is explicitly configured', async () => {

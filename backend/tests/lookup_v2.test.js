@@ -4,6 +4,7 @@ import db from '../src/models/index.js';
 import sequelize from '../src/config/database.js';
 import { Op } from 'sequelize';
 import { generateDgfyToken } from '../src/modules/dgfy/usecases/dgfyAuthUseCases.js';
+import { DGFY_LEGAL_TERM_VERSIONS } from '../src/modules/shared/utils/dgfyLegalTerms.js';
 
 // Shared email prefix so afterAll can sweep up anything this suite touches
 // regardless of which individual test created it.
@@ -37,13 +38,17 @@ const baseData = (label) => ({
     name: `Lookup V2 Test Corp [${label}] ${ts}`,
     plan: 'standard',
     complianceMode: 'non_compliant',
-    workflowMode: 'msme'
+    workflowMode: 'msme',
+    accepted_company_terms: true,
+    company_terms_version: DGFY_LEGAL_TERM_VERSIONS.companyTerms,
+    marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
 });
 
 // ─── Cleanup ────────────────────────────────────────────────────────────────
-beforeAll(() => {
+beforeAll(async () => {
     previousApprovalMode = process.env.TENANT_REGISTRATION_APPROVAL_MODE;
     process.env.TENANT_REGISTRATION_APPROVAL_MODE = 'manual';
+    await db.DgfyLegalAcknowledgement.sync();
 });
 
 // Pattern-based: catches orphans even if a test fails mid-way.
@@ -168,23 +173,13 @@ describe('Company Token Lookup — full coverage', () => {
             const reg1 = await request(app)
                 .post('/api/v1/admin/tenants/register')
                 .set('Authorization', `Bearer ${token}`)
-                .send({
-                    name: `Multi Corp A ${ts}`,
-                    plan: 'standard',
-                    complianceMode: 'non_compliant',
-                    workflowMode: 'msme'
-                })
+                .send(baseData('multi-a'))
                 .expect(201);
 
             const reg2 = await request(app)
                 .post('/api/v1/admin/tenants/register')
                 .set('Authorization', `Bearer ${token}`)
-                .send({
-                    name: `Multi Corp B ${ts}`,
-                    plan: 'standard',
-                    complianceMode: 'non_compliant',
-                    workflowMode: 'msme'
-                })
+                .send(baseData('multi-b'))
                 .expect(201);
 
             const tokenA = reg1.body.data.company_token;

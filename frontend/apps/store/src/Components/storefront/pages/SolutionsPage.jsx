@@ -8,6 +8,7 @@ import {
   ArrowRight,
   Zap
 } from 'lucide-react';
+import { buildBusinessLoginUrl, buildBusinessRegistrationUrl } from '../../../businessRegistrationUrl.js';
 
 // Lightweight viewport observer hook for high-performance scroll triggers
 const useIntersection = (ref, options = {}) => {
@@ -76,7 +77,7 @@ function InventoryChartBar({ targetHeight, delay, isHighlight }) {
 export function SolutionsPage({ logoSrc, onExploreClick }) {
   const handleRegisterRedirect = () => {
     if (typeof window !== 'undefined') {
-      window.location.href = 'https://skupervisor.dgfy.ph/register-company';
+      window.location.href = buildBusinessRegistrationUrl();
     }
   };
 
@@ -875,8 +876,8 @@ export function SolutionsPage({ logoSrc, onExploreClick }) {
               {
                 title: 'For Business',
                 links: [
-                  { label: 'Register Your Business', href: 'https://skupervisor.dgfy.ph/register-company' },
-                  { label: 'Business Login', href: 'https://skupervisor.dgfy.ph/login' }
+                  { label: 'Register Your Business', href: buildBusinessRegistrationUrl() },
+                  { label: 'Business Login', href: buildBusinessLoginUrl() }
                 ]
               },
               {

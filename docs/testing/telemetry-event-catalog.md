@@ -225,9 +225,16 @@ Shared top-level fields used by newer events:
 ### `paypal_webhook_invalid_signature`
 - Producer: `handleWebhookUseCase`
 - Source: `payments.webhook`
-- Trigger: Signature verification failed
+- Trigger: PayPal signature verification failed
 - Classification: terminal blocked outcome
-- Meaning: The webhook was rejected before business processing
+- Meaning: The PayPal webhook was rejected before business processing
+
+### `paymongo_webhook_invalid_signature`
+- Producer: `handleWebhookUseCase`
+- Source: `payments.webhook`
+- Trigger: PayMongo signature verification failed
+- Classification: terminal blocked outcome
+- Meaning: The PayMongo webhook was rejected before business processing
 
 ### `paypal_webhook_replayed`
 - Producer: `handleWebhookUseCase`

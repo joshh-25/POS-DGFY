@@ -64,6 +64,14 @@ const isMissingStorefrontCatalogOverrideTableError = (error) => {
     return code === 'ER_NO_SUCH_TABLE' && message.includes('storefront_catalog_overrides');
 };
 
+const isMissingStorefrontCatalogGalleryColumnError = (error) => {
+    if (!error) return false;
+    const code = error.original?.code || error.parent?.code || error.code;
+    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
+    return code === 'ER_BAD_FIELD_ERROR'
+        && message.includes('storefrontCatalogOverride.storefront_image_gallery');
+};
+
 const isMissingServiceItemDetailTableError = (error) => {
     if (!error) return false;
     const code = error.original?.code || error.parent?.code || error.code;
@@ -84,7 +92,7 @@ const isMissingOptionalCatalogIncludeTableError = (error) => {
         || message.includes('fnb_modifier_groups')
         || message.includes('fnb_modifier_options')
         || message.includes('fnb_item_modifier_groups')
-    );
+    ) || isMissingStorefrontCatalogGalleryColumnError(error);
 };
 
 const isMissingItemLocationStockSchemaError = (error) => {
@@ -103,6 +111,13 @@ const isMissingItemLocationStockSchemaError = (error) => {
         return true;
     }
     return false;
+};
+
+const isMissingStorefrontLocationItemOverrideTableError = (error) => {
+    if (!error) return false;
+    const code = error.original?.code || error.parent?.code || error.code;
+    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
+    return code === 'ER_NO_SUCH_TABLE' && message.includes('storefront_location_item_overrides');
 };
 
 const loadLocationStockMap = async (itemIds = [], locationId = null, options = {}) => {
@@ -171,13 +186,80 @@ const applyLocationStock = (rows = [], stockMap = new Map()) => (
     })
 );
 
-const buildStorefrontOverrideInclude = (StorefrontCatalogOverride, PosCatalogOverride, { includeLegacyPosFallback = false } = {}) => {
+const loadStorefrontLocationAvailabilityMap = async (itemIds = [], locationId = null, options = {}) => {
+    const normalizedLocationId = Number.parseInt(locationId, 10);
+    if (!Number.isInteger(normalizedLocationId) || normalizedLocationId <= 0) {
+        return {
+            availabilityMap: new Map(),
+            locationAvailabilityResolved: false
+        };
+    }
+    const normalizedItemIds = [...new Set((Array.isArray(itemIds) ? itemIds : [])
+        .map((itemId) => Number.parseInt(itemId, 10))
+        .filter((itemId) => Number.isInteger(itemId) && itemId > 0))];
+    if (normalizedItemIds.length === 0) {
+        return {
+            availabilityMap: new Map(),
+            locationAvailabilityResolved: true
+        };
+    }
+
+    let StorefrontLocationItemOverride = null;
+    try {
+        StorefrontLocationItemOverride = dbStore.get('StorefrontLocationItemOverride');
+    } catch {
+        // Optional tenant model; older schemas may not expose branch-level overrides.
+    }
+    if (!StorefrontLocationItemOverride?.findAll) {
+        return {
+            availabilityMap: new Map(),
+            locationAvailabilityResolved: false
+        };
+    }
+
+    try {
+        const rows = await StorefrontLocationItemOverride.findAll({
+            where: {
+                location_id: normalizedLocationId,
+                item_id: { [Op.in]: normalizedItemIds }
+            },
+            attributes: ['item_id', 'storefront_available'],
+            transaction: options.transaction
+        });
+        return {
+            availabilityMap: new Map(rows.map((row) => {
+                const payload = toPlain(row);
+                return [Number(payload.item_id), payload.storefront_available !== false];
+            })),
+            locationAvailabilityResolved: true
+        };
+    } catch (error) {
+        if (isMissingStorefrontLocationItemOverrideTableError(error)) {
+            return {
+                availabilityMap: new Map(),
+                locationAvailabilityResolved: false
+            };
+        }
+        throw error;
+    }
+};
+
+const applyStorefrontLocationAvailability = (rows = [], availabilityMap = new Map()) => (
+    (Array.isArray(rows) ? rows : [])
+        .filter((row) => availabilityMap.get(Number(row?.item_id)) !== false)
+);
+
+const buildStorefrontOverrideInclude = (StorefrontCatalogOverride, PosCatalogOverride, { includeLegacyPosFallback = false, includeGallery = true } = {}) => {
     const includes = [];
     if (StorefrontCatalogOverride) {
         includes.push({
             model: StorefrontCatalogOverride,
             as: 'storefrontCatalogOverride',
-            attributes: ['storefront_visible', 'storefront_image_url'],
+            attributes: [
+                'storefront_visible',
+                'storefront_image_url',
+                ...(includeGallery ? ['storefront_image_gallery'] : [])
+            ],
             required: false
         });
     }
@@ -197,6 +279,7 @@ const buildStorefrontCatalogDetailIncludes = () => {
     const ServiceItemDetail = dbStore.get('ServiceItemDetail');
     const ItemNutrition = dbStore.get('ItemNutrition');
     const ItemAllergen = dbStore.get('ItemAllergen');
+    const ItemFolder = dbStore.get('ItemFolder');
     const FnbModifierGroup = dbStore.get('FnbModifierGroup');
     const FnbModifierOption = dbStore.get('FnbModifierOption');
 
@@ -220,6 +303,15 @@ const buildStorefrontCatalogDetailIncludes = () => {
         includes.push({
             model: ItemAllergen,
             as: 'allergens',
+            required: false
+        });
+    }
+
+    if (ItemFolder) {
+        includes.push({
+            model: ItemFolder,
+            as: 'folder',
+            attributes: ['folder_id', 'name'],
             required: false
         });
     }
@@ -260,6 +352,51 @@ const mapStorefrontCatalogImageUrl = (row = {}, { allowLegacyPosFallback = false
     || (allowLegacyPosFallback ? row?.posCatalogOverride?.pos_image_url : null)
     || null
 );
+
+const normalizeStorefrontImageGallery = (value) => {
+    const source = typeof value === 'string'
+        ? (() => {
+            try {
+                return JSON.parse(value);
+            } catch {
+                return [];
+            }
+        })()
+        : value;
+    return (Array.isArray(source) ? source : [])
+        .map((entry, index) => ({
+            path: entry?.path || null,
+            url: entry?.url || null,
+            is_primary: entry?.is_primary === true,
+            sort_order: Number.isFinite(Number(entry?.sort_order)) ? Number(entry.sort_order) : index
+        }))
+        .filter((entry) => entry.url || entry.path)
+        .sort((a, b) => {
+            if (a.is_primary !== b.is_primary) return a.is_primary ? -1 : 1;
+            return a.sort_order - b.sort_order;
+        })
+        .map((entry, index) => ({
+            ...entry,
+            is_primary: index === 0,
+            sort_order: index
+        }));
+};
+
+const mapStorefrontCatalogImageGallery = (row = {}, options = {}) => {
+    const primaryUrl = mapStorefrontCatalogImageUrl(row, options);
+    const normalized = normalizeStorefrontImageGallery(row?.storefrontCatalogOverride?.storefront_image_gallery || []);
+    const hasPrimaryInGallery = normalized.some((entry) => entry.url === primaryUrl);
+    const gallery = primaryUrl && !hasPrimaryInGallery
+        ? [{ path: null, url: primaryUrl, is_primary: true, sort_order: 0 }, ...normalized]
+        : normalized;
+    return gallery
+        .filter((entry) => entry.url)
+        .map((entry, index) => ({
+            url: entry.url,
+            is_primary: index === 0,
+            sort_order: index
+        }));
+};
 
 const warnStorefrontOverrideFallback = (error) => {
     logger.warn('[StoreRepository] Falling back to POS-derived storefront catalog visibility while storefront override table is unavailable', {
@@ -388,8 +525,10 @@ export const storeRepository = {
             attributes: [
                 'item_id',
                 'name',
+                'description',
                 'category',
                 'product_type',
+                'product_folder',
                 'unit_of_measure',
                 'current_stock',
                 'default_sale_price',
@@ -413,14 +552,22 @@ export const storeRepository = {
             const catalogRows = rows
                 .map(toPlain)
                 .filter((row) => mapStorefrontCatalogVisibility(row));
-            const locationStock = await loadLocationStockMap(
+            const locationAvailability = await loadStorefrontLocationAvailabilityMap(
                 catalogRows.map((row) => Number(row.item_id)),
                 normalizedLocationId,
                 options
             );
-            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationStock.locationScopeResolved
-                ? applyLocationStock(catalogRows, locationStock.stockMap)
+            const branchAvailableRows = Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationAvailability.locationAvailabilityResolved
+                ? applyStorefrontLocationAvailability(catalogRows, locationAvailability.availabilityMap)
                 : catalogRows;
+            const locationStock = await loadLocationStockMap(
+                branchAvailableRows.map((row) => Number(row.item_id)),
+                normalizedLocationId,
+                options
+            );
+            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationStock.locationScopeResolved
+                ? applyLocationStock(branchAvailableRows, locationStock.stockMap)
+                : branchAvailableRows;
         } catch (error) {
             if (!isMissingOptionalCatalogIncludeTableError(error)) {
                 throw error;
@@ -438,14 +585,22 @@ export const storeRepository = {
             const catalogRows = rows
                 .map(toPlain)
                 .filter((row) => isCatalogItemVisible(row) && hasExplicitSalePrice(row));
-            const locationStock = await loadLocationStockMap(
+            const locationAvailability = await loadStorefrontLocationAvailabilityMap(
                 catalogRows.map((row) => Number(row.item_id)),
                 normalizedLocationId,
                 options
             );
-            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationStock.locationScopeResolved
-                ? applyLocationStock(catalogRows, locationStock.stockMap)
+            const branchAvailableRows = Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationAvailability.locationAvailabilityResolved
+                ? applyStorefrontLocationAvailability(catalogRows, locationAvailability.availabilityMap)
                 : catalogRows;
+            const locationStock = await loadLocationStockMap(
+                branchAvailableRows.map((row) => Number(row.item_id)),
+                normalizedLocationId,
+                options
+            );
+            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationStock.locationScopeResolved
+                ? applyLocationStock(branchAvailableRows, locationStock.stockMap)
+                : branchAvailableRows;
         }
     },
 
@@ -476,8 +631,10 @@ export const storeRepository = {
             attributes: [
                 'item_id',
                 'name',
+                'description',
                 'category',
                 'product_type',
+                'product_folder',
                 'unit_of_measure',
                 'current_stock',
                 'default_sale_price',
@@ -497,13 +654,16 @@ export const storeRepository = {
             .map((row) => ({
                 item_id: row.item_id,
                 name: row.name,
+                description: row.description,
                 category: row.category,
+                folder_name: row.product_folder || row?.folder?.name || null,
                 unit_of_measure: row.unit_of_measure,
                 current_stock: isStockExemptServiceItem(row) ? 0 : row.current_stock,
                 default_sale_price: row.default_sale_price,
                 cost_per_unit: row.cost_per_unit,
                 vat_type: row.vat_type,
                 image_url: mapStorefrontCatalogImageUrl(row, { allowLegacyPosFallback }),
+                image_gallery: mapStorefrontCatalogImageGallery(row, { allowLegacyPosFallback }),
                 service_detail: row?.serviceDetail || null,
                 nutrition: row?.nutrition || null,
                 allergens: Array.isArray(row?.allergens) ? row.allergens : [],
@@ -519,14 +679,22 @@ export const storeRepository = {
                 ]
             });
             const catalogRows = mapCatalogRows(rows);
-            const locationStock = await loadLocationStockMap(
+            const locationAvailability = await loadStorefrontLocationAvailabilityMap(
                 catalogRows.map((row) => Number(row.item_id)),
                 normalizedLocationId,
                 options
             );
+            const branchAvailableRows = Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationAvailability.locationAvailabilityResolved
+                ? applyStorefrontLocationAvailability(catalogRows, locationAvailability.availabilityMap)
+                : catalogRows;
+            const locationStock = await loadLocationStockMap(
+                branchAvailableRows.map((row) => Number(row.item_id)),
+                normalizedLocationId,
+                options
+            );
             return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationStock.locationScopeResolved
-                ? applyLocationStock(catalogRows, locationStock.stockMap)
-                : catalogRows.map((row) => {
+                ? applyLocationStock(branchAvailableRows, locationStock.stockMap)
+                : branchAvailableRows.map((row) => {
                     const isServiceItem = isStockExemptServiceItem(row);
                     return {
                         ...row,
@@ -555,7 +723,8 @@ export const storeRepository = {
                     PosCatalogOverride,
                     {
                         includeLegacyPosFallback: isMissingStorefrontCatalogOverrideTableError(error)
-                            && !isMissingPosCatalogOverrideTableError(error)
+                            && !isMissingPosCatalogOverrideTableError(error),
+                        includeGallery: !isMissingStorefrontCatalogGalleryColumnError(error)
                     }
                 ),
                 ...optionalDetailIncludes
@@ -567,14 +736,22 @@ export const storeRepository = {
             const catalogRows = mapCatalogRows(rows, {
                 allowLegacyPosFallback: isMissingStorefrontCatalogOverrideTableError(error)
             });
-            const locationStock = await loadLocationStockMap(
+            const locationAvailability = await loadStorefrontLocationAvailabilityMap(
                 catalogRows.map((row) => Number(row.item_id)),
                 normalizedLocationId,
                 options
             );
+            const branchAvailableRows = Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationAvailability.locationAvailabilityResolved
+                ? applyStorefrontLocationAvailability(catalogRows, locationAvailability.availabilityMap)
+                : catalogRows;
+            const locationStock = await loadLocationStockMap(
+                branchAvailableRows.map((row) => Number(row.item_id)),
+                normalizedLocationId,
+                options
+            );
             return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationStock.locationScopeResolved
-                ? applyLocationStock(catalogRows, locationStock.stockMap)
-                : catalogRows.map((row) => {
+                ? applyLocationStock(branchAvailableRows, locationStock.stockMap)
+                : branchAvailableRows.map((row) => {
                     const isServiceItem = isStockExemptServiceItem(row);
                     return {
                         ...row,
@@ -665,6 +842,7 @@ export const storeRepository = {
                         default_sale_price: item.default_sale_price,
                         vat_type: item.vat_type,
                         image_url: mapStorefrontCatalogImageUrl(item),
+                        image_gallery: mapStorefrontCatalogImageGallery(item),
                         service_detail: item.serviceDetail || null
                     },
                     storefront_visible: storefrontVisible
@@ -685,7 +863,17 @@ export const storeRepository = {
             }
         }
 
-        const itemIds = Array.from(new Set(visibleMatches.map((entry) => Number(entry.item.item_id))));
+        const normalizedLocationId = Number.parseInt(location_id, 10);
+        const locationAvailability = await loadStorefrontLocationAvailabilityMap(
+            visibleMatches.map((entry) => Number(entry.item.item_id)),
+            normalizedLocationId,
+            options
+        );
+        const branchVisibleMatches = Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationAvailability.locationAvailabilityResolved
+            ? visibleMatches.filter((entry) => locationAvailability.availabilityMap.get(Number(entry.item.item_id)) !== false)
+            : visibleMatches;
+
+        const itemIds = Array.from(new Set(branchVisibleMatches.map((entry) => Number(entry.item.item_id))));
         if (itemIds.length > 1) {
             return {
                 status: 'conflict',
@@ -693,7 +881,7 @@ export const storeRepository = {
                 normalized_code: normalizedCode
             };
         }
-        if (visibleMatches.length === 0) {
+        if (branchVisibleMatches.length === 0) {
             return {
                 status: 'blocked',
                 reason_code: 'NOT_STOREFRONT_VISIBLE',
@@ -701,8 +889,7 @@ export const storeRepository = {
             };
         }
 
-        const [match] = visibleMatches;
-        const normalizedLocationId = Number.parseInt(location_id, 10);
+        const [match] = branchVisibleMatches;
         const locationStock = await loadLocationStockMap(
             [Number(match.item.item_id)],
             normalizedLocationId,

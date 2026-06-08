@@ -70,11 +70,6 @@ htdocs/.htaccess
 /dist-apps/
 /frontend/apps/store/src/scratch/
 /frontend/apps/store/.tmp-store-build/
-/android/imin-wrapper/.gradle/
-/android/imin-wrapper/app/build/
-/android/imin-wrapper/build/
-/android/imin-wrapper/local.properties
-/android/imin-wrapper/.idea/
 
 nul
 

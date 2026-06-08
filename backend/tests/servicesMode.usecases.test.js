@@ -42,6 +42,16 @@ const serviceItem = {
     }
 };
 
+const nextDateForWeekday = (targetWeekday) => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    const daysUntilTarget = (targetWeekday - date.getDay() + 7) % 7;
+    date.setDate(date.getDate() + daysUntilTarget + 7);
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${date.getFullYear()}-${month}-${day}`;
+};
+
 const registeredTransactionSettings = () => [
     { setting_key: 'customer_access_mode', setting_value: 'transaction' },
     {
@@ -154,33 +164,60 @@ describe('Services Mode use cases', () => {
     });
 
     it('normalizes service intake form schemas for storefront catalog consumers', async () => {
+        const listServiceCatalog = jest.fn(async () => ([{
+            ...serviceItem,
+            sku_code: 'SVC-001',
+            description: 'Consultation service',
+            unit_of_measure: 'service',
+            cost_per_unit: 250,
+            status: 'active',
+            serviceDetail: {
+                ...serviceItem.serviceDetail,
+                visible_in_storefront: true,
+                visible_in_pos: true,
+                intake_form_schema: JSON.stringify([
+                    { key: 'concern', label: 'Concern', required: true }
+                ])
+            }
+        }]));
         const useCase = buildListServiceCatalogUseCase({
             serviceRepository: {
-                listServiceCatalog: jest.fn(async () => ([{
-                    ...serviceItem,
-                    sku_code: 'SVC-001',
-                    description: 'Consultation service',
-                    unit_of_measure: 'service',
-                    cost_per_unit: 250,
-                    status: 'active',
-                    serviceDetail: {
-                        ...serviceItem.serviceDetail,
-                        visible_in_storefront: true,
-                        visible_in_pos: true,
-                        intake_form_schema: JSON.stringify([
-                            { key: 'concern', label: 'Concern', required: true }
-                        ])
-                    }
-                }]))
+                listServiceCatalog
             }
         });
 
-        const result = await useCase({ query: { limit: 20 }, storefrontOnly: true });
+        const result = await useCase({ query: { limit: 20, location_id: 3 }, storefrontOnly: true });
 
         expect(result.success).toBe(true);
+        expect(listServiceCatalog).toHaveBeenCalledWith(expect.objectContaining({
+            storefrontOnly: true,
+            location_id: 3
+        }));
         expect(result.data.services[0].service_detail.intake_form_schema).toEqual({
             fields: [{ key: 'concern', label: 'Concern', required: true }]
         });
+    });
+
+    it('returns not-found for public service availability when the service is disabled at the requested branch', async () => {
+        const findServiceItemById = jest.fn(async () => null);
+        const useCase = buildGetServiceAvailabilityUseCase({
+            serviceRepository: {
+                findServiceItemById
+            }
+        });
+
+        const result = await useCase({
+            query: {
+                service_item_id: 10,
+                date: nextDateForWeekday(1),
+                location_id: 3
+            },
+            storefrontOnly: true
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe('RESOURCE_NOT_FOUND');
+        expect(findServiceItemById).toHaveBeenCalledWith(10, { storefrontLocationId: 3 });
     });
 
     it('rejects invalid booking status jumps', async () => {
@@ -241,6 +278,39 @@ describe('Services Mode use cases', () => {
         expect(result.success).toBe(false);
         expect(result.error.code).toBe('CONFLICT');
         expect(result.error.message).toContain('blacked out');
+        expect(tx.rollback).toHaveBeenCalled();
+    });
+
+    it('blocks storefront bookings when the service is disabled at the requested branch', async () => {
+        const tx = transaction();
+        const findServiceItemById = jest.fn(async () => null);
+        const useCase = buildCreateServiceBookingUseCase({
+            serviceRepository: {
+                beginTransaction: jest.fn(async () => tx),
+                getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
+                findServiceItemById
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                service_item_id: 10,
+                location_id: 3,
+                start_at: `${nextDateForWeekday(2)}T09:00:00+08:00`,
+                customer_name: 'Guest',
+                customer_email: 'guest@example.com',
+                idempotency_key: 'svc-branch-disabled-1'
+            },
+            source: 'storefront'
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe('RESOURCE_NOT_FOUND');
+        expect(findServiceItemById).toHaveBeenCalledWith(10, expect.objectContaining({
+            transaction: tx,
+            lock: true,
+            storefrontLocationId: 3
+        }));
         expect(tx.rollback).toHaveBeenCalled();
     });
 
@@ -486,6 +556,7 @@ describe('Services Mode use cases', () => {
     });
 
     it('returns public service availability only when resource capacity can satisfy quantity', async () => {
+        const monday = nextDateForWeekday(1);
         const useCase = buildGetServiceAvailabilityUseCase({
             serviceRepository: {
                 findServiceItemById: jest.fn(async () => serviceItem),
@@ -503,8 +574,8 @@ describe('Services Mode use cases', () => {
                     booking_id: 44,
                     resource_id: 7,
                     quantity: 1,
-                    start_at: new Date('2026-06-01T09:00:00'),
-                    end_at: new Date('2026-06-01T10:00:00'),
+                    start_at: new Date(`${monday}T09:00:00`),
+                    end_at: new Date(`${monday}T10:00:00`),
                     status: 'confirmed'
                 }])
             }
@@ -513,7 +584,7 @@ describe('Services Mode use cases', () => {
         const result = await useCase({
             query: {
                 service_item_id: 10,
-                date: '2026-06-01',
+                date: monday,
                 location_id: 1,
                 quantity: 2,
                 slot_interval_minutes: 60
@@ -534,6 +605,7 @@ describe('Services Mode use cases', () => {
     });
 
     it('returns no public service availability when quantity exceeds location-only capacity', async () => {
+        const monday = nextDateForWeekday(1);
         const useCase = buildGetServiceAvailabilityUseCase({
             serviceRepository: {
                 findServiceItemById: jest.fn(async () => serviceItem),
@@ -545,7 +617,7 @@ describe('Services Mode use cases', () => {
         const result = await useCase({
             query: {
                 service_item_id: 10,
-                date: '2026-06-01',
+                date: monday,
                 location_id: 1,
                 quantity: 2,
                 slot_interval_minutes: 60
@@ -562,6 +634,7 @@ describe('Services Mode use cases', () => {
     });
 
     it('builds public service availability from resource weekly windows, not only fallback hours', async () => {
+        const monday = nextDateForWeekday(1);
         const useCase = buildGetServiceAvailabilityUseCase({
             serviceRepository: {
                 findServiceItemById: jest.fn(async () => serviceItem),
@@ -582,7 +655,7 @@ describe('Services Mode use cases', () => {
         const result = await useCase({
             query: {
                 service_item_id: 10,
-                date: '2026-06-01',
+                date: monday,
                 location_id: 1,
                 quantity: 1,
                 slot_interval_minutes: 60
@@ -597,6 +670,7 @@ describe('Services Mode use cases', () => {
     });
 
     it('returns availability diagnostics for fully booked generated slots', async () => {
+        const monday = nextDateForWeekday(1);
         const useCase = buildGetServiceAvailabilityUseCase({
             serviceRepository: {
                 findServiceItemById: jest.fn(async () => serviceItem),
@@ -614,8 +688,8 @@ describe('Services Mode use cases', () => {
                     booking_id: 44,
                     resource_id: 7,
                     quantity: 1,
-                    start_at: new Date('2026-06-01T09:00:00'),
-                    end_at: new Date('2026-06-01T11:00:00'),
+                    start_at: new Date(`${monday}T09:00:00`),
+                    end_at: new Date(`${monday}T11:00:00`),
                     status: 'confirmed'
                 }])
             }
@@ -624,7 +698,7 @@ describe('Services Mode use cases', () => {
         const result = await useCase({
             query: {
                 service_item_id: 10,
-                date: '2026-06-01',
+                date: monday,
                 location_id: 1,
                 quantity: 1,
                 slot_interval_minutes: 60

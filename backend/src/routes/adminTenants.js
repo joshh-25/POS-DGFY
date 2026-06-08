@@ -8,6 +8,8 @@ import {
     getPricingSettings,
     updatePricingSettings,
     updateTenant,
+    updateTenantCapabilities,
+    listTenantCapabilityAuditLogs,
     deleteTenant,
     setupPayPalRecurring,
     adminChangePlan,
@@ -41,6 +43,10 @@ import {
     validateFinalReviewDocumentIdParam,
     validateFinalReviewDocumentReview
 } from '../validators/complianceValidator.js';
+import {
+    validateTenantCapabilityAuditLogQuery,
+    validateTenantCapabilityPatch
+} from '../validators/adminTenantValidator.js';
 
 const router = express.Router();
 
@@ -89,6 +95,10 @@ router.post('/:id/compliance/final-review/documents/:document_id/review', authen
 
 // ADMIN: Update tenant details (status, plan)
 router.put('/:id', authenticateAdmin, updateTenant);
+
+// ADMIN: Update tenant product capability switches
+router.patch('/:id/capabilities', authenticateAdmin, validateTenantCapabilityPatch, updateTenantCapabilities);
+router.get('/:id/capabilities/audit-logs', authenticateAdmin, validateTenantCapabilityAuditLogQuery, listTenantCapabilityAuditLogs);
 
 // ADMIN: Permanently delete tenant
 router.delete('/:id', authenticateAdmin, deleteTenant);

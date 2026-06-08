@@ -1,7 +1,7 @@
 /**
  * DGFY Brand Standards & Design System
  * Version 1.0
- *
+ * 
  * Official source of truth for DGFY branding and frontend implementation.
  */
 
@@ -31,7 +31,7 @@ export const dgfyTheme = {
     primaryDark: '#1A4586',  // Darker Ocean Blue
     secondaryLight: '#AEE8F4' // Lighter Ice Blue
   },
-
+  
   typography: {
     fontFamily: "'Poppins', sans-serif",
     weights: {
@@ -52,7 +52,7 @@ export const dgfyTheme = {
       caption: { fontSize: '12px', fontWeight: 400 }
     }
   },
-
+  
   layout: {
     desktop: { columns: 12, maxWidth: '1440px', contentWidth: '1280px' },
     tablet: { columns: 8 },

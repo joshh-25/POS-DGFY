@@ -24,10 +24,12 @@ import {
     validateStoreCatalogQuery,
     validateStoreQuote,
     validateStoreCheckout,
+    validateStoreCheckoutPaymentSession,
     validateStoreCreateAddress,
     validateStoreUpdateAddress,
     validateStoreAddressIdParam,
     validateStoreTrackingPinParam,
+    validateStorePaymentSessionParam,
     validateStoreCancelOrder,
     validateStoreClaimOrder,
     validateStoreOrderHistoryQuery,
@@ -54,21 +56,24 @@ const catalogReadCacheControl = setReadCacheControl({
     sMaxAgeSeconds: 45,
     staleWhileRevalidateSeconds: 90,
     staleIfErrorSeconds: 180,
-    scope: 'public'
+    scope: 'public',
+    varyHeaders: ['X-Store-Slug']
 });
 const locationsReadCacheControl = setReadCacheControl({
     maxAgeSeconds: 30,
     sMaxAgeSeconds: 30,
     staleWhileRevalidateSeconds: 60,
     staleIfErrorSeconds: 120,
-    scope: 'public'
+    scope: 'public',
+    varyHeaders: ['X-Store-Slug']
 });
 const trackingReadCacheControl = setReadCacheControl({
     maxAgeSeconds: 5,
     sMaxAgeSeconds: 5,
     staleWhileRevalidateSeconds: 10,
     staleIfErrorSeconds: 20,
-    scope: 'private'
+    scope: 'private',
+    varyHeaders: ['X-Store-Slug']
 });
 
 router.get('/catalog', catalogReadCacheControl, validateStoreCatalogQuery, storeController.listStoreCatalog);
@@ -86,6 +91,8 @@ router.patch('/addresses/:id/default', setNoStoreCacheControl, authenticateStore
 router.delete('/addresses/:id', setNoStoreCacheControl, authenticateStoreCustomer, validateStoreAddressIdParam, storeController.deleteStoreCustomerAddress);
 
 router.post('/cart/quote', setNoStoreCacheControl, optionalStoreCustomer, validateStoreQuote, storeController.cartQuote);
+router.post('/checkout/payment-sessions', setNoStoreCacheControl, optionalStoreCustomer, validateStoreCheckoutPaymentSession, storeController.createCheckoutPaymentSession);
+router.get('/checkout/payment-sessions/:payment_session_id', setNoStoreCacheControl, optionalStoreCustomer, validateStorePaymentSessionParam, storeController.getCheckoutPaymentSession);
 router.post('/checkout', setNoStoreCacheControl, optionalStoreCustomer, validateStoreCheckout, storeController.checkout);
 router.get('/services/bookings', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, authenticateStoreCustomer, validateServiceBookingQuery, listPublicServiceBookings);
 router.post('/services/bookings', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, optionalStoreCustomer, validateCreateServiceBooking, createPublicServiceBooking);

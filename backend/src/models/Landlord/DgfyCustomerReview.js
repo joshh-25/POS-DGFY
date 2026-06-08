@@ -11,7 +11,7 @@ export default (sequelize) => {
         },
         dgfy_account_id: {
             type: DataTypes.UUID,
-            allowNull: false
+            allowNull: true
         },
         activity_id: {
             type: DataTypes.INTEGER,
@@ -40,6 +40,28 @@ export default (sequelize) => {
         },
         comment: {
             type: DataTypes.TEXT,
+            allowNull: true
+        },
+        reviewer_name: {
+            type: DataTypes.STRING(255),
+            allowNull: true
+        },
+        reviewer_initials: {
+            type: DataTypes.STRING(12),
+            allowNull: true
+        },
+        verified_purchase: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: true
+        },
+        submission_channel: {
+            type: DataTypes.ENUM('account', 'tracking', 'order_success', 'qr', 'receipt'),
+            allowNull: false,
+            defaultValue: 'account'
+        },
+        media_json: {
+            type: DataTypes.JSON,
             allowNull: true
         },
         status: {

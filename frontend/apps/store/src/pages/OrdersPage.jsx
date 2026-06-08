@@ -6,7 +6,7 @@ export function OrdersPage({ orders = [], loading = false }) {
   const navigate = useNavigate();
 
   const handleBack = () => {
-    navigate(`/tenant-store/${slug}`);
+    navigate(`/${slug}`);
   };
 
   if (loading) {

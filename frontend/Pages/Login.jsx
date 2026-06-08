@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronDown, ChevronUp, Loader2, AlertTriangle, Send, ArrowRight } from 'lucide-react';
+import { ChevronDown, ChevronUp, Loader2, AlertTriangle, Send, ArrowRight, Eye, EyeOff } from 'lucide-react';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -22,6 +22,7 @@ export default function Login() {
   });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   // New state for email lookup
   const [showTokenField, setShowTokenField] = useState(false);
@@ -278,18 +279,29 @@ export default function Login() {
 
             <div>
               <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                placeholder="Enter your password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                required
-                disabled={isLoading}
-                className="mt-1"
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  name="password"
+                  type={passwordVisible ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  placeholder="Enter your password"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  required
+                  disabled={isLoading}
+                  className="mt-1 pr-11"
+                />
+                <button
+                  type="button"
+                  onClick={() => setPasswordVisible((current) => !current)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-800"
+                  aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+                  disabled={isLoading}
+                >
+                  {passwordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
 
             {/* Company Token Field - Conditionally shown */}

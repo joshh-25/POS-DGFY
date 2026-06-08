@@ -86,12 +86,6 @@ DB_AUTO_SYNC=false
 # - longitude: -180 to 180
 # - delivery radius: 0.1 to 100 (km)
 # - wait minutes: 0 to 240
-STOREFRONT_DEFAULT_LOCATION_NAME=Main Branch
-STOREFRONT_DEFAULT_LOCATION_ADDRESS=Iloilo City
-STOREFRONT_DEFAULT_LATITUDE=10.699817
-STOREFRONT_DEFAULT_LONGITUDE=122.559893
-STOREFRONT_DEFAULT_DELIVERY_RADIUS_KM=5
-STOREFRONT_DEFAULT_WAIT_MINUTES=15
 # Subscription/payment system toggle (default-off).
 # Set to true only when subscription workflows are intentionally re-enabled.
 PAYMENTS_ENABLED=false
@@ -195,9 +189,9 @@ VITE_API_BASE_URL=http://127.0.0.1:5000
 # Subscription/payment UI toggles (default-off; must stay aligned with backend PAYMENTS_ENABLED)
 VITE_PAYMENTS_ENABLED=false
 VITE_SUBSCRIPTIONS_ENABLED=false
-# Store app path-base override. Use /tenant-store/ for apex-domain path hosting.
+# Store app path-base override. Use / for canonical root-handle storefront hosting.
 # Keep / in local dev.
-# VITE_STORE_BASE_PATH=/tenant-store/
+# VITE_STORE_BASE_PATH=/
 # Optional build label shown on tenant storefront page for cache/runtime verification.
 # If omitted, the store build uses current ISO build timestamp.
 # VITE_BUILD_STAMP=2026-03-31T00:00:00.000Z
@@ -207,8 +201,8 @@ VITE_SUBSCRIPTIONS_ENABLED=false
 
 - IMS app: `http://localhost:5173/`
 - POS app (dedicated): `http://localhost:5174/`
-- Storefront app (discovery): `http://localhost:5175/tenant-store`
-- Tenant storefront page: `http://localhost:5175/tenant-store/<slug>`
+- Storefront app (discovery): `http://localhost:5175/map-dgfy`
+- Tenant storefront page: `http://localhost:5175/<slug>`
 
 All frontend surfaces share the same backend API, while storefront tenant resolution uses the store-specific tenant context contract.
 

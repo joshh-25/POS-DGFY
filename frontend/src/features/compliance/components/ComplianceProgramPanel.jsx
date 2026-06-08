@@ -31,7 +31,12 @@ const PROFILE_DEFAULT = {
     ptu_certificate_number: '',
     tax_classification_controls_confirmed: false,
     non_resettable_grand_total_enabled: false,
-    mandatory_receipt_fields_confirmed: false
+    mandatory_receipt_fields_confirmed: false,
+    rmo_24_2023_filing_verified: false,
+    fiscal_document_content_reviewed: false,
+    terminal_registration_controls_confirmed: false,
+    ejournal_integrity_controls_confirmed: false,
+    esales_reporting_controls_confirmed: false
   },
   npc: {
     dpo_name: '',
@@ -59,6 +64,11 @@ const PROFILE_LABELS = {
   'bir.tax_classification_controls_confirmed': 'Tax classification controls confirmed',
   'bir.non_resettable_grand_total_enabled': 'Non-resettable grand total enabled',
   'bir.mandatory_receipt_fields_confirmed': 'Mandatory receipt fields confirmed',
+  'bir.rmo_24_2023_filing_verified': 'RMO 24-2023 filing evidence verified',
+  'bir.fiscal_document_content_reviewed': 'Fiscal document content reviewed',
+  'bir.terminal_registration_controls_confirmed': 'Terminal registration controls confirmed',
+  'bir.ejournal_integrity_controls_confirmed': 'E-journal integrity controls confirmed',
+  'bir.esales_reporting_controls_confirmed': 'eSales reporting controls confirmed',
   'npc.dpo_name': 'DPO name',
   'npc.dpo_email': 'DPO email',
   'npc.dps_registration_number': 'DPS registration number',
@@ -144,6 +154,36 @@ const FINAL_REVIEW_REQUIREMENTS = [
     requirementCode: 'evidence_encryption_verification',
     checklistCode: 'submission.encryption_verification_evidence',
     label: 'Latest encryption verification evidence',
+    requiresFreshness: true
+  },
+  {
+    requirementCode: 'rmo_24_2023_control_matrix',
+    checklistCode: 'rmo.control_matrix',
+    label: 'RMO 24-2023 control matrix',
+    requiresFreshness: false
+  },
+  {
+    requirementCode: 'rmo_24_2023_filing_authority_decision',
+    checklistCode: 'rmo.filing_authority_decision',
+    label: 'RMO filing authority and responsibility decision',
+    requiresFreshness: false
+  },
+  {
+    requirementCode: 'rmo_24_2023_receipt_sample_pack',
+    checklistCode: 'rmo.receipt_sample_pack',
+    label: 'RMO fiscal receipt/invoice sample pack',
+    requiresFreshness: false
+  },
+  {
+    requirementCode: 'rmo_24_2023_fiscal_integrity_evidence',
+    checklistCode: 'rmo.fiscal_integrity_evidence',
+    label: 'RMO fiscal event integrity evidence',
+    requiresFreshness: true
+  },
+  {
+    requirementCode: 'rmo_24_2023_esales_reporting_plan',
+    checklistCode: 'rmo.esales_reporting_plan',
+    label: 'RMO eSales reporting plan and rehearsal evidence',
     requiresFreshness: true
   }
 ];
@@ -296,6 +336,21 @@ const buildProfileErrors = (profileForm = {}) => {
   if (profileForm?.bir?.mandatory_receipt_fields_confirmed !== true) {
     errors['bir.mandatory_receipt_fields_confirmed'] = 'Confirm mandatory receipt fields control.';
   }
+  if (profileForm?.bir?.rmo_24_2023_filing_verified !== true) {
+    errors['bir.rmo_24_2023_filing_verified'] = 'Confirm RMO 24-2023 filing evidence verification.';
+  }
+  if (profileForm?.bir?.fiscal_document_content_reviewed !== true) {
+    errors['bir.fiscal_document_content_reviewed'] = 'Confirm fiscal document content review.';
+  }
+  if (profileForm?.bir?.terminal_registration_controls_confirmed !== true) {
+    errors['bir.terminal_registration_controls_confirmed'] = 'Confirm terminal registration controls.';
+  }
+  if (profileForm?.bir?.ejournal_integrity_controls_confirmed !== true) {
+    errors['bir.ejournal_integrity_controls_confirmed'] = 'Confirm e-journal integrity controls.';
+  }
+  if (profileForm?.bir?.esales_reporting_controls_confirmed !== true) {
+    errors['bir.esales_reporting_controls_confirmed'] = 'Confirm eSales reporting controls.';
+  }
   if (!String(profileForm?.npc?.dpo_name || '').trim()) {
     errors['npc.dpo_name'] = 'DPO name is required.';
   }
@@ -323,6 +378,11 @@ const PROFILE_ERROR_FIELD_ORDER = [
   'bir.tax_classification_controls_confirmed',
   'bir.non_resettable_grand_total_enabled',
   'bir.mandatory_receipt_fields_confirmed',
+  'bir.rmo_24_2023_filing_verified',
+  'bir.fiscal_document_content_reviewed',
+  'bir.terminal_registration_controls_confirmed',
+  'bir.ejournal_integrity_controls_confirmed',
+  'bir.esales_reporting_controls_confirmed',
   'npc.dpo_name',
   'npc.dpo_email',
   'npc.dps_registration_number',
@@ -821,7 +881,7 @@ export default function ComplianceProgramPanel({ isMasterAdmin = false }) {
                     : 'Compliant mode is active. Review any remaining final-review blockers below.'}
               </p>
             )}
-            <div className="rounded-md border border-slate-200 bg-white p-3 space-y-3">
+            <div id="section-rmo-filing-readiness" className="rounded-md border border-slate-200 bg-white p-3 space-y-3">
               <p className="text-sm font-semibold text-slate-900">Submission Documents</p>
               <p className="text-xs text-slate-600">Auto-valid now; subject to platform review. Platform admin may revoke documentary validity.</p>
               {FINAL_REVIEW_REQUIREMENTS.map((requirement) => {
@@ -979,7 +1039,12 @@ export default function ComplianceProgramPanel({ isMasterAdmin = false }) {
                   ptu_certificate_number: (profileForm?.bir?.ptu_certificate_number || '').trim(),
                   tax_classification_controls_confirmed: profileForm?.bir?.tax_classification_controls_confirmed === true,
                   non_resettable_grand_total_enabled: profileForm?.bir?.non_resettable_grand_total_enabled === true,
-                  mandatory_receipt_fields_confirmed: profileForm?.bir?.mandatory_receipt_fields_confirmed === true
+                  mandatory_receipt_fields_confirmed: profileForm?.bir?.mandatory_receipt_fields_confirmed === true,
+                  rmo_24_2023_filing_verified: profileForm?.bir?.rmo_24_2023_filing_verified === true,
+                  fiscal_document_content_reviewed: profileForm?.bir?.fiscal_document_content_reviewed === true,
+                  terminal_registration_controls_confirmed: profileForm?.bir?.terminal_registration_controls_confirmed === true,
+                  ejournal_integrity_controls_confirmed: profileForm?.bir?.ejournal_integrity_controls_confirmed === true,
+                  esales_reporting_controls_confirmed: profileForm?.bir?.esales_reporting_controls_confirmed === true
                 },
                 npc: {
                   dpo_name: (profileForm?.npc?.dpo_name || '').trim(),
@@ -1086,6 +1151,31 @@ export default function ComplianceProgramPanel({ isMasterAdmin = false }) {
               {profileErrors['bir.mandatory_receipt_fields_confirmed'] && (
                 <p className="text-xs text-red-600">{profileErrors['bir.mandatory_receipt_fields_confirmed']}</p>
               )}
+              {[
+                ['rmo_24_2023_filing_verified', 'RMO 24-2023 filing evidence verified'],
+                ['fiscal_document_content_reviewed', 'Fiscal document content reviewed'],
+                ['terminal_registration_controls_confirmed', 'Terminal registration controls confirmed'],
+                ['ejournal_integrity_controls_confirmed', 'E-journal integrity controls confirmed'],
+                ['esales_reporting_controls_confirmed', 'eSales reporting controls confirmed']
+              ].map(([field, label]) => {
+                const key = `bir.${field}`;
+                return (
+                  <div key={field}>
+                    <label className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={profileForm?.bir?.[field] === true}
+                        onChange={(event) => setProfileField('bir', field, event.target.checked)}
+                        data-profile-error-key={key}
+                      />
+                      {label}
+                    </label>
+                    {profileErrors[key] && (
+                      <p className="text-xs text-red-600">{profileErrors[key]}</p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             <div className="rounded-lg border border-slate-200 p-3 space-y-3">

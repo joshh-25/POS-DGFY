@@ -12,6 +12,7 @@ jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
             if (name === 'ServiceItemDetail') return {};
             if (name === 'ItemNutrition') return null;
             if (name === 'ItemAllergen') return null;
+            if (name === 'ItemFolder') return {};
             if (name === 'FnbModifierGroup') return null;
             if (name === 'FnbModifierOption') return null;
             if (name === 'ItemLocationStock') return { findAll: itemLocationStockFindAllMock };
@@ -47,6 +48,14 @@ const missingStorefrontCatalogOverrideTableError = () => ({
     }
 });
 
+const missingStorefrontCatalogGalleryColumnError = () => ({
+    name: 'SequelizeDatabaseError',
+    original: {
+        code: 'ER_BAD_FIELD_ERROR',
+        sqlMessage: "Unknown column 'storefrontCatalogOverride.storefront_image_gallery' in 'field list'"
+    }
+});
+
 const missingServiceItemDetailsTableError = () => ({
     name: 'SequelizeDatabaseError',
     original: {
@@ -58,8 +67,10 @@ const missingServiceItemDetailsTableError = () => ({
 const buildCatalogRow = (overrides = {}) => ({
     item_id: overrides.item_id || 10,
     name: overrides.name || 'Test Item',
+    description: overrides.description || 'Test item description',
     category: 'product',
     product_type: 'finished_goods',
+    product_folder: overrides.product_folder || 'Rocket Fuel',
     unit_of_measure: 'pc',
     current_stock: overrides.current_stock ?? 7,
     default_sale_price: 25,
@@ -97,6 +108,8 @@ describe('storeRepository location-stock schema fallback', () => {
         expect(result).toHaveLength(1);
         expect(result[0]).toEqual(expect.objectContaining({
             item_id: 100,
+            description: 'Test item description',
+            folder_name: 'Rocket Fuel',
             current_stock: 5,
             is_available: true,
             availability_status: 'in_stock'
@@ -215,6 +228,37 @@ describe('storeRepository location-stock schema fallback', () => {
         });
 
         expect(result).toEqual([]);
+    });
+
+    it('listStoreCatalog retries without gallery when storefront override gallery column is missing', async () => {
+        itemFindAllMock
+            .mockRejectedValueOnce(missingStorefrontCatalogGalleryColumnError())
+            .mockResolvedValueOnce([
+                buildCatalogRow({
+                    item_id: 650,
+                    storefrontCatalogOverride: {
+                        storefront_visible: true,
+                        storefront_image_url: '/uploads/storefront/visible.png'
+                    }
+                })
+            ]);
+        itemLocationStockFindAllMock.mockResolvedValue([]);
+
+        const result = await storeRepository.listStoreCatalog({
+            search: '',
+            limit: 60,
+            location_id: null
+        });
+
+        expect(result).toHaveLength(1);
+        expect(result[0]).toEqual(expect.objectContaining({
+            item_id: 650,
+            image_url: '/uploads/storefront/visible.png',
+            image_gallery: [{ url: '/uploads/storefront/visible.png', is_primary: true, sort_order: 0 }]
+        }));
+        const retryQuery = itemFindAllMock.mock.calls[1][0];
+        const storefrontInclude = retryQuery.include.find((entry) => entry.as === 'storefrontCatalogOverride');
+        expect(storefrontInclude.attributes).toEqual(['storefront_visible', 'storefront_image_url']);
     });
 
     it('listStoreCatalog retries without service details when that optional table is unavailable', async () => {

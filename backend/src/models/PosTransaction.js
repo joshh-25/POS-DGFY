@@ -88,6 +88,18 @@ const PosTransaction = sequelize.define('PosTransaction', {
         type: DataTypes.STRING(255),
         allowNull: true
     },
+    buyer_tin: {
+        type: DataTypes.STRING(40),
+        allowNull: true
+    },
+    buyer_business_style: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
+    buyer_address: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
     delivery_address: {
         type: DataTypes.TEXT,
         allowNull: true
@@ -131,9 +143,30 @@ const PosTransaction = sequelize.define('PosTransaction', {
         allowNull: true
     },
     payment_type: {
-        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer'),
+        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph'),
         allowNull: false,
         defaultValue: 'cash'
+    },
+    payment_status: {
+        type: DataTypes.ENUM('unpaid', 'payment_pending', 'paid', 'failed', 'refund_pending', 'partial_refunded', 'refunded'),
+        allowNull: false,
+        defaultValue: 'paid'
+    },
+    payment_reference: {
+        type: DataTypes.STRING(120),
+        allowNull: true
+    },
+    payment_checkout_url: {
+        type: DataTypes.STRING(1000),
+        allowNull: true
+    },
+    payment_provider: {
+        type: DataTypes.STRING(40),
+        allowNull: true
+    },
+    payment_session_reference: {
+        type: DataTypes.STRING(40),
+        allowNull: true
     },
     subtotal_amount: {
         type: DataTypes.DECIMAL(14, 4),
@@ -250,6 +283,36 @@ const PosTransaction = sequelize.define('PosTransaction', {
     voided_by: {
         type: DataTypes.INTEGER,
         allowNull: true
+    },
+    void_reason: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
+    fiscal_lifecycle_state: {
+        type: DataTypes.STRING(40),
+        allowNull: false,
+        defaultValue: 'original'
+    },
+    fiscal_reprint_count: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0
+    },
+    fiscal_void_event_hash: {
+        type: DataTypes.STRING(64),
+        allowNull: true
+    },
+    fiscal_document_template_version: {
+        type: DataTypes.STRING(40),
+        allowNull: true
+    },
+    fiscal_document_hash: {
+        type: DataTypes.STRING(64),
+        allowNull: true
+    },
+    fiscal_document_snapshot: {
+        type: DataTypes.JSON,
+        allowNull: true
     }
 }, {
     tableName: 'pos_transactions',
@@ -264,13 +327,18 @@ const PosTransaction = sequelize.define('PosTransaction', {
         { fields: ['tracking_pin'] },
         { fields: ['order_source'] },
         { fields: ['fulfillment_status'] },
+        { fields: ['payment_status'] },
+        { fields: ['payment_session_reference'] },
         { fields: ['location_id'] },
         { fields: ['store_customer_id'] },
+        { fields: ['buyer_tin'] },
         { fields: ['fnb_check_id'] },
         { fields: ['fnb_table_id'] },
         { fields: ['fnb_server_id'] },
         { fields: ['cashier_id'] },
         { fields: ['shift_id'] },
+        { fields: ['fiscal_document_hash'] },
+        { fields: ['fiscal_lifecycle_state'] },
         { fields: ['created_at'] },
         { fields: ['status'] }
     ]

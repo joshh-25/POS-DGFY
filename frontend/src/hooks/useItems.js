@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import * as itemService from '../services/itemService.js';
 import { registerClientCacheResetter } from '../services/cacheRegistry.js';
 import { getAuthEpoch } from '../services/sessionCleanup.js';
+import { getCompanyToken } from '../services/browserSession.js';
 
 // Module-level cache: deduplicates identical concurrent fetches across all hook instances.
 // Key = session-scoped params signature, value = { promise, data, error, ts }
@@ -15,7 +16,7 @@ registerClientCacheResetter('useItems', clearItemsCache);
 
 export const buildItemsCacheScope = (params) => JSON.stringify({
   params,
-  companyToken: localStorage.getItem('companyToken') || '',
+  companyToken: getCompanyToken() || '',
   authEpoch: getAuthEpoch()
 });
 

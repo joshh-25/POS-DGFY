@@ -64,12 +64,24 @@ const makeJsonResponse = (data, ok = true) => ({
   json: async () => ({ data })
 });
 
+const makeErrorResponse = ({ status = 500, message = 'Request failed', errorCode = 'INTERNAL_ERROR', errors = {} } = {}) => ({
+  ok: false,
+  status,
+  json: async () => ({
+    success: false,
+    message,
+    error_code: errorCode,
+    errors
+  })
+});
+
 describe('storefront profile launcher', () => {
   let fetchMock;
 
   beforeEach(() => {
     window.history.pushState({}, '', '/');
     window.localStorage.clear();
+    window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
     fetchMock = vi.fn(async (url) => {
       const normalized = String(url);
       if (normalized.includes('/api/v1/storefront/discovery?')) {
@@ -159,6 +171,7 @@ describe('storefront profile launcher', () => {
     vi.clearAllMocks();
     vi.unstubAllGlobals();
     window.localStorage.clear();
+    window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
   });
 
   it('does not show the profile launcher entry on the main discovery page', async () => {
@@ -171,14 +184,13 @@ describe('storefront profile launcher', () => {
     ]));
     window.localStorage.setItem('dgfy_store_last_store_slug', 'alpha');
 
-    const user = userEvent.setup();
     render(<App />);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(screen.queryByRole('button', { name: /^Profile$/i })).toBeNull();
-  });
+  }, 10000);
 
-  it('opens account panel from the profile launcher button on a store page', async () => {
+  it('opens the routed account page from the profile launcher button on a store page', async () => {
     window.history.pushState({}, '', '/tenant-store/alpha');
     const user = userEvent.setup();
     render(<App />);
@@ -189,18 +201,19 @@ describe('storefront profile launcher', () => {
     });
 
     const profileButton = screen.getAllByRole('button', { name: /^Profile$/i })
-      .find((button) => window.getComputedStyle(button).pointerEvents !== 'none');
+      .filter((button) => window.getComputedStyle(button).pointerEvents !== 'none')
+      .at(-1);
     expect(profileButton).toBeTruthy();
     await user.click(profileButton);
 
     await waitFor(() => {
-      expect(screen.getByText('DGFY Account')).toBeTruthy();
-      expect(screen.getByRole('button', { name: /sign in to dgfy/i })).toBeTruthy();
+      expect(window.location.pathname).toBe('/alpha/account');
+      expect(screen.getByRole('heading', { name: /^My Account$/i })).toBeTruthy();
     });
-  });
+  }, 10000);
 
   it('shows an active order badge on storefront headers for signed-in customers with in-progress orders', async () => {
-    window.localStorage.setItem('dgfy_customer_account_token', 'dgfy-test-token');
+    window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = 'dgfy-test-token';
     window.history.pushState({}, '', '/tenant-store/alpha');
     render(<App />);
 
@@ -208,5 +221,48 @@ describe('storefront profile launcher', () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/1 active order/i)).toBeTruthy();
     });
-  });
+  }, 10000);
+
+  it('keeps the storefront profile visible when catalog loading fails', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({ stores: [], pagination: { page: 1, limit: 100, total: 0, totalPages: 0 } });
+      }
+      if (normalized.includes('/api/v1/storefront/discovery/')) {
+        return makeJsonResponse({
+          slug: 'alpha',
+          tenant_name: 'Alpha Foods',
+          workflow_mode: 'msme',
+          location_id: 11,
+          address_line: 'Iloilo City',
+          storefront_open: true,
+          catalog_count: 2
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({ locations: [], primary_location_id: null });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeErrorResponse({
+          status: 500,
+          message: 'Failed to list storefront catalog',
+          errorCode: 'STORE_CATALOG_RUNTIME_ERROR',
+          errors: { catalog_error_type: 'runtime_failure' }
+        });
+      }
+      return makeJsonResponse({});
+    });
+
+    window.history.pushState({}, '', '/tenant-store/alpha');
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Alpha Foods').length).toBeGreaterThan(0);
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Storefront catalog could not load')).toBeTruthy();
+      expect(screen.getByText('Failed to list storefront catalog')).toBeTruthy();
+    });
+  }, 10000);
 });

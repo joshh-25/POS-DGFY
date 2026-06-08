@@ -37,6 +37,11 @@ const BOOLEAN_PROFILE_FIELD_PATHS = new Set([
     'bir.tax_classification_controls_confirmed',
     'bir.non_resettable_grand_total_enabled',
     'bir.mandatory_receipt_fields_confirmed',
+    'bir.rmo_24_2023_filing_verified',
+    'bir.fiscal_document_content_reviewed',
+    'bir.terminal_registration_controls_confirmed',
+    'bir.ejournal_integrity_controls_confirmed',
+    'bir.esales_reporting_controls_confirmed',
     'npc.breach_notification_procedure_confirmed',
     'bsp.ops_registration_required',
     'bsp.payment_control_reviewed',
@@ -217,6 +222,11 @@ const PROFILE_FIELD_LABELS = Object.freeze({
     'bir.tax_classification_controls_confirmed': 'Tax classification controls confirmed',
     'bir.non_resettable_grand_total_enabled': 'Non-resettable grand total enabled',
     'bir.mandatory_receipt_fields_confirmed': 'Mandatory receipt fields confirmed',
+    'bir.rmo_24_2023_filing_verified': 'RMO 24-2023 filing evidence verified',
+    'bir.fiscal_document_content_reviewed': 'Fiscal document content reviewed',
+    'bir.terminal_registration_controls_confirmed': 'Terminal registration controls confirmed',
+    'bir.ejournal_integrity_controls_confirmed': 'E-journal integrity controls confirmed',
+    'bir.esales_reporting_controls_confirmed': 'eSales reporting controls confirmed',
     'npc.dpo_name': 'Data protection officer name',
     'npc.dpo_email': 'Data protection officer email',
     'npc.dps_registration_number': 'NPC DPS registration number',
@@ -256,7 +266,9 @@ const CONTROL_LABELS = Object.freeze({
     audit_log_append_only: 'Append-only compliance audit log enforcement',
     payment_handoff_policy: 'External payment handoff policy enforcement',
     encryption_policy_prerequisites: 'Encryption policy prerequisites',
-    documentary_readiness: 'Submission documentary readiness'
+    documentary_readiness: 'Submission documentary readiness',
+    rmo_filing_readiness: 'RMO 24-2023 filing readiness',
+    fiscal_terminal_registration: 'Verified fiscal terminal registration'
 });
 
 const asUniqueList = (values = []) => [...new Set(values)];
@@ -354,6 +366,14 @@ export const evaluateComplianceChecklist = ({
         : [];
     const submissionArtifactsReady = evidence?.submission_artifacts?.ready !== false;
     const encryptionPolicyPrerequisitesReady = evidence?.encryption_policy_prerequisites_ready !== false;
+    const rmoFilingReadiness = evidence?.rmo_filing_readiness && typeof evidence.rmo_filing_readiness === 'object'
+        ? evidence.rmo_filing_readiness
+        : {};
+    const rmoFilingReadinessReady = rmoFilingReadiness.ready === true;
+    const fiscalTerminalRegistration = evidence?.fiscal_terminal_registration && typeof evidence.fiscal_terminal_registration === 'object'
+        ? evidence.fiscal_terminal_registration
+        : {};
+    const fiscalTerminalRegistrationReady = fiscalTerminalRegistration.ready === true;
 
     const validArtifacts = new Set(
         (artifacts || [])
@@ -458,6 +478,20 @@ export const evaluateComplianceChecklist = ({
             status: submissionArtifactsReady ? 'complete' : 'missing',
             actionTarget: '/settings?tab=compliance#section-final-review'
         }),
+        buildRequirement({
+            code: 'control.rmo_filing_readiness',
+            label: CONTROL_LABELS.rmo_filing_readiness,
+            section: 'final_review',
+            status: rmoFilingReadinessReady ? 'complete' : 'missing',
+            actionTarget: '/settings?tab=compliance#section-rmo-filing-readiness'
+        }),
+        buildRequirement({
+            code: 'control.fiscal_terminal_registration',
+            label: CONTROL_LABELS.fiscal_terminal_registration,
+            section: 'settings',
+            status: fiscalTerminalRegistrationReady ? 'complete' : 'missing',
+            actionTarget: fiscalTerminalRegistration.action_target || '/settings?tab=pos#fiscal-terminal-registration'
+        }),
         ...submissionArtifacts.map((artifact) => buildRequirement({
             code: artifact?.code || `submission.${String(artifact?.relative_path || 'artifact').replace(/[^\w.-]+/g, '_')}`,
             label: artifact?.label || artifact?.relative_path || 'Submission artifact',
@@ -551,6 +585,25 @@ export const evaluateComplianceChecklist = ({
                 : '/settings?tab=compliance#section-final-review'
         });
     }
+    if (!rmoFilingReadinessReady) {
+        const firstMissingRmoItem = Array.isArray(rmoFilingReadiness.items)
+            ? rmoFilingReadiness.items.find((item) => item?.ready !== true)
+            : null;
+        activationBlockers.push({
+            code: COMPLIANCE_REASON_CODE.RMO_FILING_EVIDENCE_REQUIRED,
+            section: 'final_review',
+            message: 'RMO 24-2023 filing evidence is incomplete or not verified. Complete RMO filing readiness before fiscal activation.',
+            action_target: firstMissingRmoItem?.action_target || '/settings?tab=compliance#section-rmo-filing-readiness'
+        });
+    }
+    if (!fiscalTerminalRegistrationReady) {
+        activationBlockers.push({
+            code: COMPLIANCE_REASON_CODE.FISCAL_TERMINAL_REGISTRATION_REQUIRED,
+            section: 'settings',
+            message: 'At least one fiscal terminal must be verified before compliant fiscal activation.',
+            action_target: fiscalTerminalRegistration.action_target || '/settings?tab=pos#fiscal-terminal-registration'
+        });
+    }
 
     const sectionProgress = buildSectionProgress(requirements);
     const nextBlockingStep = activationBlockers[0]?.section || null;
@@ -600,6 +653,19 @@ export const evaluateComplianceChecklist = ({
                 total: Number.parseInt(evidence?.submission_artifacts?.total || 0, 10) || 0,
                 missing: Number.parseInt(evidence?.submission_artifacts?.missing || 0, 10) || 0,
                 items: submissionArtifacts
+            },
+            rmo_filing_readiness: {
+                ready: rmoFilingReadinessReady,
+                complete: Number.parseInt(rmoFilingReadiness?.complete || 0, 10) || 0,
+                total: Number.parseInt(rmoFilingReadiness?.total || 0, 10) || 0,
+                missing: Number.parseInt(rmoFilingReadiness?.missing || 0, 10) || 0,
+                items: Array.isArray(rmoFilingReadiness?.items) ? rmoFilingReadiness.items : []
+            },
+            fiscal_terminal_registration: {
+                ready: fiscalTerminalRegistrationReady,
+                verified_count: Number.parseInt(fiscalTerminalRegistration?.verified_count || 0, 10) || 0,
+                total_count: Number.parseInt(fiscalTerminalRegistration?.total_count || 0, 10) || 0,
+                action_target: fiscalTerminalRegistration.action_target || '/settings?tab=pos#fiscal-terminal-registration'
             }
         },
         ready_for_compliant_activation: (
@@ -613,6 +679,8 @@ export const evaluateComplianceChecklist = ({
             && paymentHandoffPolicyReady
             && encryptionPolicyPrerequisitesReady
             && submissionArtifactsReady
+            && rmoFilingReadinessReady
+            && fiscalTerminalRegistrationReady
         )
     };
 };

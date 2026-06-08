@@ -154,7 +154,7 @@ npm run dev:store
 
 - Skupervisor: `http://localhost:5173/`
 - POS: `http://localhost:5174/`
-- Storefront discovery: `http://localhost:5175/tenant-store`
+- Storefront discovery: `http://localhost:5175/map-dgfy`
 - Backend health: `http://localhost:5000/health`
 
 ### 10. Verify Login/API Readiness
@@ -245,12 +245,6 @@ APP_URL=http://localhost:5173
 FRONTEND_URL=http://localhost:5173
 
 # Storefront defaults for newly activated tenants
-STOREFRONT_DEFAULT_LOCATION_NAME=Main Branch
-STOREFRONT_DEFAULT_LOCATION_ADDRESS=Iloilo City
-STOREFRONT_DEFAULT_LATITUDE=10.699817
-STOREFRONT_DEFAULT_LONGITUDE=122.559893
-STOREFRONT_DEFAULT_DELIVERY_RADIUS_KM=5
-STOREFRONT_DEFAULT_WAIT_MINUTES=15
 
 # Payments are off by default for local development
 PAYMENTS_ENABLED=false
@@ -265,13 +259,13 @@ CUSTOMER_ACCESS_MODES_ENABLED_TENANTS=
 
 # PayMongo test/sandbox values from the local development env
 PAYMONGO_MODE=test
-PAYMONGO_PUBLIC_KEY=pk_test_your_public_key_here
-PAYMONGO_SECRET_KEY=sk_test_your_secret_key_here
-PAYMONGO_WEBHOOK_SECRET=whsk_your_webhook_secret_here
+PAYMONGO_PUBLIC_KEY=pk_test_92M4xczP1CrP5kjuA1dKdRM6
+PAYMONGO_SECRET_KEY=sk_test_w9HdQZVpYd6H5u2FTWk2GQkc
+PAYMONGO_WEBHOOK_SECRET=whsk_uLpjZvdYrZ1myDX5rJsU8u8b
 PAYMONGO_STANDARD_PLAN_ID=source_xxx_standard
 PAYMONGO_PREMIUM_PLAN_ID=source_xxx_premium
-PAYMONGO_TEST_PUBLIC_KEY=pk_test_your_public_key_here
-PAYMONGO_TEST_SECRET_KEY=sk_test_your_secret_key_here
+PAYMONGO_TEST_PUBLIC_KEY=pk_test_92M4xczP1CrP5kjuA1dKdRM6
+PAYMONGO_TEST_SECRET_KEY=sk_test_w9HdQZVpYd6H5u2FTWk2GQkc
 ```
 
 Generate stronger local JWT secrets if preferred:
@@ -416,8 +410,8 @@ Local URLs:
 - Backend API: `http://localhost:5000/api/v1`
 - Skupervisor app: `http://localhost:5173/`
 - POS app: `http://localhost:5174/`
-- Storefront discovery: `http://localhost:5175/tenant-store`
-- Tenant storefront page: `http://localhost:5175/tenant-store/<slug>`
+- Storefront discovery: `http://localhost:5175/map-dgfy`
+- Tenant storefront page: `http://localhost:5175/<slug>`
 
 ## Current Feature Flags And Rollout Defaults
 

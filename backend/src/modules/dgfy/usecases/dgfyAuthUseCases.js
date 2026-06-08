@@ -91,7 +91,9 @@ export const generateDgfyHandoffToken = (account, jti) => jwt.sign({
 
 export const buildRegisterDgfyAccountUseCase = ({
     repository,
-    hashPassword
+    hashPassword,
+    verifyEmailOtp,
+    emailOtpPurposes = DEFAULT_EMAIL_OTP_PURPOSES
 }) => async ({ body, metadata = {} }) => {
     const firstName = normalizeName(body?.first_name || body?.firstName);
     const middleName = normalizeName(body?.middle_name || body?.middleName);
@@ -100,6 +102,7 @@ export const buildRegisterDgfyAccountUseCase = ({
     const phone = normalizePhoneNumber(body?.phone);
     const password = String(body?.password || '');
     const confirmPassword = String(body?.confirm_password || body?.confirmPassword || '');
+    const emailOtpCode = String(body?.email_otp_code || body?.emailOtpCode || '').trim();
 
     if (!firstName || !lastName || !email || !phone || !password) {
         return fail(new DomainError(
@@ -149,6 +152,32 @@ export const buildRegisterDgfyAccountUseCase = ({
         return fail(new DomainError(DomainErrorCode.CONFLICT, 'A DGFY account already exists with this phone number.', { statusCode: 409 }));
     }
 
+    if (typeof verifyEmailOtp !== 'function') {
+        return fail(new DomainError(
+            DomainErrorCode.INTERNAL_ERROR,
+            'DGFY account email verification is unavailable.',
+            {
+                statusCode: 500,
+                details: { error_code: 'DGFY_EMAIL_VERIFICATION_UNAVAILABLE' }
+            }
+        ));
+    }
+
+    try {
+        await verifyEmailOtp({
+            purpose: emailOtpPurposes.DGFY_ACCOUNT_VERIFICATION,
+            email,
+            code: emailOtpCode,
+            tenantId: null
+        });
+    } catch (error) {
+        return fail(new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            error.message || 'DGFY email verification failed.',
+            { statusCode: error.statusCode || 422, cause: error }
+        ));
+    }
+
     let account;
     try {
         account = await repository.transaction(async (transaction) => {
@@ -159,7 +188,8 @@ export const buildRegisterDgfyAccountUseCase = ({
                 username: firstName,
                 email,
                 phone,
-                password_hash: await hashPassword(password)
+                password_hash: await hashPassword(password),
+                email_verified_at: new Date()
             }, { transaction });
 
             await repository.mirrorPendingInvitationsForAccount?.(createdAccount, { transaction });
@@ -545,7 +575,20 @@ export const buildCreateDgfyHandoffUseCase = ({ repository }) => async ({ accoun
 
 export const buildExchangeDgfyHandoffUseCase = ({ repository }) => async ({ body }) => {
     const handoffToken = String(body?.handoff_token || body?.handoffToken || '').trim();
+    const softFail = body?.soft_fail === true || body?.softFail === true;
+    const invalidHandoffPayload = () => ok({
+        payload: {
+            success: true,
+            data: {
+                status: 'invalid',
+                reason: 'expired_or_consumed'
+            },
+            message: 'DGFY handoff token is invalid or expired.'
+        }
+    });
+
     if (!handoffToken) {
+        if (softFail) return invalidHandoffPayload();
         return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'DGFY handoff token is required.', { statusCode: 400 }));
     }
 
@@ -581,6 +624,7 @@ export const buildExchangeDgfyHandoffUseCase = ({ repository }) => async ({ body
             }
         });
     } catch (error) {
+        if (softFail) return invalidHandoffPayload();
         return fail(new DomainError(
             DomainErrorCode.AUTHENTICATION_FAILED,
             'DGFY handoff token is invalid or expired.',
@@ -663,6 +707,42 @@ export const buildAcceptDgfyInvitationUseCase = ({ repository }) => async ({ acc
             DomainErrorCode.INTERNAL_ERROR,
             'Failed to accept DGFY invitation.',
             { statusCode: 500, cause: error }
+        ));
+    }
+};
+
+export const buildStartDgfyTenantSessionUseCase = ({
+    createTenantSessionForDgfyAccount
+}) => async ({ account, body }) => {
+    const tenantId = String(body?.tenant_id || body?.tenantId || '').trim();
+    const companyToken = String(body?.company_token || body?.companyToken || '').trim();
+
+    if (!tenantId && !companyToken) {
+        return fail(new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'Company identity is required to start a SKUpervisor session.',
+            { statusCode: 400 }
+        ));
+    }
+
+    try {
+        const session = await createTenantSessionForDgfyAccount({
+            account,
+            tenantId,
+            companyToken
+        });
+        return ok({
+            payload: {
+                success: true,
+                data: session,
+                message: 'SKUpervisor session started.'
+            }
+        });
+    } catch (error) {
+        return fail(new DomainError(
+            error?.statusCode === 401 ? DomainErrorCode.AUTHENTICATION_FAILED : DomainErrorCode.AUTHORIZATION_FAILED,
+            error.message || 'Unable to start a SKUpervisor session for this DGFY account.',
+            { statusCode: error?.statusCode || 403, cause: error }
         ));
     }
 };

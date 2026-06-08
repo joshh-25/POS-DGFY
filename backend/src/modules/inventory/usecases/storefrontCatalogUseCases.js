@@ -58,6 +58,22 @@ const createBulkImageSummary = () => ({
   blocked_readiness: 0
 });
 
+const normalizeStoredGalleryEntries = (entries = []) => (Array.isArray(entries) ? entries : [])
+  .map((entry, index) => ({
+    path: entry?.path || null,
+    url: entry?.url || null,
+    is_primary: index === 0,
+    sort_order: index
+  }))
+  .filter((entry) => entry.path || entry.url);
+
+const normalizeGalleryPayloadEntries = (entries = []) => normalizeStoredGalleryEntries(entries)
+  .map((entry, index) => ({
+    ...entry,
+    is_primary: index === 0,
+    sort_order: index
+  }));
+
 const storefrontReadinessError = ({ item, itemId, cause = null }) => new DomainError(
   DomainErrorCode.VALIDATION_FAILED,
   'Cannot enable Storefront visibility until readiness requirements are completed.',
@@ -120,14 +136,67 @@ export const buildUpdateStorefrontCatalogOverrideUseCase = ({ itemRepository }) 
       throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, `Item ${normalizedItemId} was not found`, { statusCode: 404 });
     }
 
+    const hasStorefrontVisiblePatch = typeof payload.storefront_visible === 'boolean';
+    const hasLocationAvailabilityPatch = Array.isArray(payload.location_availability);
+
+    if (!hasStorefrontVisiblePatch && !hasLocationAvailabilityPatch) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'storefront_visible or location_availability is required',
+        { statusCode: 400 }
+      );
+    }
+
     if (payload.storefront_visible === true) {
       assertStorefrontPriceReady(item, normalizedItemId, 'Storefront visibility');
     }
 
-    const data = await itemRepository.upsertStorefrontCatalogOverride(normalizedItemId, {
-      storefront_visible: payload.storefront_visible
-    });
-    return toSerializable(data);
+    const shouldUseTransaction = hasStorefrontVisiblePatch
+      && hasLocationAvailabilityPatch
+      && typeof itemRepository.beginTransaction === 'function';
+    const transaction = shouldUseTransaction ? await itemRepository.beginTransaction() : null;
+
+    try {
+      const repositoryOptions = transaction ? { transaction } : {};
+      const data = hasStorefrontVisiblePatch
+        ? await itemRepository.upsertStorefrontCatalogOverride(
+          normalizedItemId,
+          { storefront_visible: payload.storefront_visible },
+          ...(transaction ? [repositoryOptions] : [])
+        )
+        : await itemRepository.findStorefrontCatalogOverrideByItemId(
+          normalizedItemId,
+          ...(transaction ? [repositoryOptions] : [])
+        );
+
+      if (hasLocationAvailabilityPatch) {
+        await itemRepository.upsertStorefrontItemLocationAvailability(
+          normalizedItemId,
+          payload.location_availability,
+          ...(transaction ? [repositoryOptions] : [])
+        );
+      }
+
+      const availabilityByItemId = typeof itemRepository.listStorefrontItemLocationAvailability === 'function'
+        ? await itemRepository.listStorefrontItemLocationAvailability(
+          [normalizedItemId],
+          ...(transaction ? [repositoryOptions] : [])
+        )
+        : new Map();
+
+      if (transaction) await transaction.commit();
+
+      return {
+        ...toSerializable(data || { item_id: normalizedItemId }),
+        item_id: normalizedItemId,
+        location_availability: availabilityByItemId.get(normalizedItemId) || []
+      };
+    } catch (error) {
+      if (transaction && !transaction.finished) {
+        await transaction.rollback();
+      }
+      throw error;
+    }
   };
 };
 
@@ -286,6 +355,98 @@ export const buildUploadStorefrontCatalogImageUseCase = ({ itemRepository, image
           // Ignore temp cleanup errors.
         }
       }
+      throw error;
+    }
+  };
+};
+
+export const buildUploadStorefrontCatalogGalleryImagesUseCase = ({ itemRepository, imageStorage }) => {
+  return async ({ itemId, files = [], user }) => {
+    const normalizedItemId = parsePositiveInt(itemId);
+    const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+    const storedImages = [];
+    let storedCommitted = false;
+
+    if (!normalizedItemId) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'itemId must be a positive integer', { statusCode: 400 });
+    }
+    if (normalizedFiles.length === 0) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'images must contain at least one file', { statusCode: 400 });
+    }
+    if (normalizedFiles.length > 10) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'images cannot exceed 10 files per item', { statusCode: 400 });
+    }
+
+    try {
+      assertCanEditItems(user, 'upload images for');
+
+      const item = await itemRepository.getItemById(normalizedItemId);
+      if (!item) {
+        throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, `Item ${normalizedItemId} was not found`, { statusCode: 404 });
+      }
+
+      const existing = await itemRepository.findStorefrontCatalogOverrideByItemId(normalizedItemId);
+      const effective = existing
+        ? { storefront_visible: existing.storefront_visible !== false }
+        : await itemRepository.getStorefrontCatalogReadinessByItemId(normalizedItemId);
+
+      if (effective?.storefront_visible !== false) {
+        assertStorefrontPriceReady(item, normalizedItemId, 'Storefront image visibility');
+      }
+
+      for (const file of normalizedFiles) {
+        const fileValidation = await validateImageUploadFile({
+          file,
+          allowedMimeTypes: SAFE_IMAGE_MIME_TYPES,
+          maxBytes: STOREFRONT_CATALOG_IMAGE_MAX_BYTES
+        });
+        if (!fileValidation.ok) {
+          logger.warn('[StorefrontCatalogUseCases] Rejected storefront catalog gallery upload due to file validation failure', {
+            event_type: 'security_signal',
+            signal_code: 'storefront_catalog_gallery_upload_rejected',
+            reason: fileValidation.reason,
+            reported_mime: String(file?.mimetype || '').trim().toLowerCase() || null,
+            original_name: String(file?.originalname || '').slice(0, 180) || null
+          });
+          throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'Only image files are allowed for storefront catalog uploads.',
+            { statusCode: 422 }
+          );
+        }
+
+        const stored = await imageStorage.store({
+          itemId: normalizedItemId,
+          originalName: file.originalname,
+          tempPath: file.path
+        });
+        storedImages.push(stored);
+      }
+
+      const existingGallery = normalizeStoredGalleryEntries(existing?.storefront_image_gallery || []);
+      const gallery = normalizeStoredGalleryEntries([...existingGallery, ...storedImages]);
+      const primary = gallery[0] || null;
+      const data = await itemRepository.updateStorefrontCatalogImage(normalizedItemId, {
+        path: primary?.path || null,
+        url: primary?.url || null,
+        gallery
+      }, {
+        keepVisible: effective?.storefront_visible !== false
+      });
+      storedCommitted = true;
+
+      return toSerializable(data);
+    } catch (error) {
+      if (!storedCommitted) {
+        await Promise.all(storedImages.map(async (stored) => {
+          try {
+            await imageStorage.remove({ path: stored.path });
+          } catch {
+            // Ignore stored upload cleanup errors.
+          }
+        }));
+      }
+      await Promise.all(normalizedFiles.map((file) => cleanupTempFile(file)));
       throw error;
     }
   };
@@ -469,6 +630,97 @@ export const buildUploadBulkStorefrontCatalogImagesUseCase = ({ itemRepository, 
   };
 };
 
+export const buildUpdateStorefrontCatalogGalleryUseCase = ({ itemRepository, imageStorage }) => {
+  return async ({ itemId, payload = {}, user }) => {
+    assertCanEditItems(user, 'update images for');
+    const normalizedItemId = parsePositiveInt(itemId);
+    if (!normalizedItemId) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'itemId must be a positive integer', { statusCode: 400 });
+    }
+
+    const item = await itemRepository.getItemById(normalizedItemId);
+    if (!item) {
+      throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, `Item ${normalizedItemId} was not found`, { statusCode: 404 });
+    }
+
+    const existing = await itemRepository.findStorefrontCatalogOverrideByItemId(normalizedItemId);
+    const existingGallery = normalizeStoredGalleryEntries(existing?.storefront_image_gallery || []);
+    const requestedGallery = normalizeGalleryPayloadEntries(payload.gallery || payload.storefront_image_gallery || []);
+    if (requestedGallery.length === 0) {
+      const paths = [
+        existing?.storefront_image_path,
+        ...existingGallery.map((entry) => entry.path)
+      ].filter(Boolean);
+      await Promise.all([...new Set(paths)].map((path) => imageStorage.remove({ path })));
+      const data = await itemRepository.clearStorefrontCatalogImage(normalizedItemId);
+      return toSerializable(data);
+    }
+
+    const existingKeys = new Set(existingGallery.map((entry) => entry.path || entry.url).filter(Boolean));
+    const containsUnknownEntry = requestedGallery.some((entry) => !existingKeys.has(entry.path || entry.url));
+    if (containsUnknownEntry) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'Gallery updates can only reorder or remove existing storefront images.',
+        { statusCode: 422 }
+      );
+    }
+
+    const primary = requestedGallery[0] || null;
+    const data = await itemRepository.upsertStorefrontCatalogOverride(normalizedItemId, {
+      storefront_image_path: primary?.path || null,
+      storefront_image_url: primary?.url || null,
+      storefront_image_gallery: requestedGallery
+    });
+
+    const requestedPaths = new Set(requestedGallery.map((entry) => entry.path).filter(Boolean));
+    const removedPaths = [
+      existing?.storefront_image_path,
+      ...existingGallery.map((entry) => entry.path)
+    ].filter((path) => path && !requestedPaths.has(path));
+    await Promise.all([...new Set(removedPaths)].map((path) => imageStorage.remove({ path })));
+
+    return toSerializable(data);
+  };
+};
+
+export const buildDeleteStorefrontCatalogGalleryImageUseCase = ({ itemRepository, imageStorage }) => {
+  return async ({ itemId, imageIndex, user }) => {
+    assertCanEditItems(user, 'delete images for');
+    const normalizedItemId = parsePositiveInt(itemId);
+    const normalizedImageIndex = Number.parseInt(imageIndex, 10);
+    if (!normalizedItemId) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'itemId must be a positive integer', { statusCode: 400 });
+    }
+    if (!Number.isInteger(normalizedImageIndex) || normalizedImageIndex < 0) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'imageIndex must be a non-negative integer', { statusCode: 400 });
+    }
+
+    const existing = await itemRepository.findStorefrontCatalogOverrideByItemId(normalizedItemId);
+    const existingGallery = normalizeStoredGalleryEntries(existing?.storefront_image_gallery || []);
+    if (normalizedImageIndex >= existingGallery.length) {
+      throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Storefront gallery image was not found', { statusCode: 404 });
+    }
+
+    const removed = existingGallery[normalizedImageIndex];
+    const nextGallery = normalizeStoredGalleryEntries(existingGallery.filter((_, index) => index !== normalizedImageIndex));
+    const primary = nextGallery[0] || null;
+    const data = nextGallery.length > 0
+      ? await itemRepository.upsertStorefrontCatalogOverride(normalizedItemId, {
+        storefront_image_path: primary?.path || null,
+        storefront_image_url: primary?.url || null,
+        storefront_image_gallery: nextGallery
+      })
+      : await itemRepository.clearStorefrontCatalogImage(normalizedItemId);
+
+    if (removed?.path) {
+      await imageStorage.remove({ path: removed.path });
+    }
+
+    return toSerializable(data);
+  };
+};
+
 export const buildDeleteStorefrontCatalogImageUseCase = ({ itemRepository, imageStorage }) => {
   return async ({ itemId, user }) => {
     assertCanEditItems(user, 'delete images for');
@@ -478,9 +730,12 @@ export const buildDeleteStorefrontCatalogImageUseCase = ({ itemRepository, image
     }
 
     const existing = await itemRepository.findStorefrontCatalogOverrideByItemId(normalizedItemId);
-    if (existing?.storefront_image_path) {
-      await imageStorage.remove({ path: existing.storefront_image_path });
-    }
+    const existingGallery = normalizeStoredGalleryEntries(existing?.storefront_image_gallery || []);
+    const paths = [
+      existing?.storefront_image_path,
+      ...existingGallery.map((entry) => entry.path)
+    ].filter(Boolean);
+    await Promise.all([...new Set(paths)].map((path) => imageStorage.remove({ path })));
 
     const data = await itemRepository.clearStorefrontCatalogImage(normalizedItemId);
     return toSerializable(data);

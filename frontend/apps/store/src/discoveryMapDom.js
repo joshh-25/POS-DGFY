@@ -4,7 +4,10 @@ export const makeClusterElement = (count, selected = false, ariaLabel = 'Shared 
   el.setAttribute('role', 'button');
   el.setAttribute('tabindex', '0');
   el.setAttribute('aria-label', ariaLabel);
-  el.textContent = String(count);
+  const visual = document.createElement('span');
+  visual.className = 'discovery-result-cluster-visual';
+  visual.textContent = String(count);
+  el.appendChild(visual);
   return el;
 };
 

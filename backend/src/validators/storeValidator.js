@@ -1,7 +1,7 @@
 import Joi from 'joi';
 
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
-const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer'];
+const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph'];
 const FULFILLMENT_STATUSES = ['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected'];
 const TRACKING_PIN_PATTERN = /^SK-(?:[A-Z0-9]{4}|[A-Z0-9]{6})$/;
 
@@ -81,6 +81,10 @@ const storeTrackingPinParamSchema = Joi.object({
     })
 });
 
+const storePaymentSessionParamSchema = Joi.object({
+    payment_session_id: Joi.string().trim().uppercase().pattern(/^CPS-[A-Z0-9]{10}$/).required()
+});
+
 const storeCancelOrderSchema = Joi.object({
     cancel_proof: Joi.string().trim().max(2048).optional()
 });
@@ -142,10 +146,14 @@ export const validateStoreRegister = validateSchema(storeRegisterSchema, 'body',
 export const validateStoreLogin = validateSchema(storeLoginSchema, 'body', 'validatedData');
 export const validateStoreQuote = validateSchema(storeQuoteSchema, 'body', 'validatedData');
 export const validateStoreCheckout = validateSchema(storeCheckoutSchema, 'body', 'validatedData');
+export const validateStoreCheckoutPaymentSession = validateSchema(storeCheckoutSchema.keys({
+    payment_type: Joi.string().valid('qrph').default('qrph')
+}), 'body', 'validatedData');
 export const validateStoreCreateAddress = validateSchema(storeAddressCreateSchema, 'body', 'validatedData');
 export const validateStoreUpdateAddress = validateSchema(storeAddressUpdateSchema, 'body', 'validatedData');
 export const validateStoreAddressIdParam = validateSchema(storeAddressIdParamSchema, 'params', 'validatedParams');
 export const validateStoreTrackingPinParam = validateSchema(storeTrackingPinParamSchema, 'params', 'validatedParams');
+export const validateStorePaymentSessionParam = validateSchema(storePaymentSessionParamSchema, 'params', 'validatedParams');
 export const validateStoreCancelOrder = validateSchema(storeCancelOrderSchema, 'body', 'validatedData');
 export const validateStoreClaimOrder = validateSchema(storeClaimOrderSchema, 'body', 'validatedData');
 export const validateStoreOrderHistoryQuery = validateSchema(storeOrderHistoryQuerySchema, 'query', 'validatedQuery');

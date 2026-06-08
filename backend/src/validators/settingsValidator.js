@@ -277,7 +277,10 @@ export const updateSettingsSchema = Joi.object({
   min_stock_threshold_percent: Joi.number().min(0).max(100).optional(),
   purchase_allowance_percent: Joi.number().min(0).max(100).optional(),
   // POS setup settings (tenant scoped)
+  pos_registered_name: Joi.string().trim().min(2).max(150).allow('').optional(),
   pos_business_name: Joi.string().trim().min(2).max(150).allow('').optional(),
+  pos_business_style: Joi.string().trim().max(150).allow('').optional(),
+  pos_taxpayer_type: Joi.string().trim().max(40).allow('').optional(),
   pos_tin_branch: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).allow('').optional().messages({
     'string.pattern.base': 'POS TIN/Branch contains invalid characters'
   }),
@@ -291,6 +294,10 @@ export const updateSettingsSchema = Joi.object({
   pos_accreditation_number: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).allow('').optional().messages({
     'string.pattern.base': 'Accreditation number contains invalid characters'
   }),
+  pos_software_name: Joi.string().trim().max(120).allow('').optional(),
+  pos_software_version: Joi.string().trim().max(80).allow('').optional(),
+  pos_software_serial_number: Joi.string().trim().max(120).allow('').optional(),
+  pos_fiscal_buyer_details_required: Joi.boolean().optional(),
   pos_receipt_footer_message: Joi.string().trim().max(300).allow('').optional(),
   pos_discount_profiles: posDiscountProfilesSchema.optional(),
   pos_order_method_fees: posOrderMethodFeesSchema.optional(),
@@ -414,7 +421,10 @@ export const validateUpdateSingleSetting = (req, res, next) => {
 
   const settingKey = String(req?.params?.key || '').trim();
   const singleSettingSchemaByKey = {
+    pos_registered_name: Joi.string().trim().min(2).max(150).allow(''),
     pos_business_name: Joi.string().trim().min(2).max(150).allow(''),
+    pos_business_style: Joi.string().trim().max(150).allow(''),
+    pos_taxpayer_type: Joi.string().trim().max(40).allow(''),
     pos_tin_branch: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).allow('').messages({
       'string.pattern.base': 'POS TIN/Branch contains invalid characters'
     }),
@@ -428,6 +438,10 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     pos_accreditation_number: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).allow('').messages({
       'string.pattern.base': 'Accreditation number contains invalid characters'
     }),
+    pos_software_name: Joi.string().trim().max(120).allow(''),
+    pos_software_version: Joi.string().trim().max(80).allow(''),
+    pos_software_serial_number: Joi.string().trim().max(120).allow(''),
+    pos_fiscal_buyer_details_required: Joi.boolean(),
     pos_receipt_footer_message: Joi.string().trim().max(300).allow(''),
     pos_discount_profiles: posDiscountProfilesSchema,
     pos_order_method_fees: posOrderMethodFeesSchema,

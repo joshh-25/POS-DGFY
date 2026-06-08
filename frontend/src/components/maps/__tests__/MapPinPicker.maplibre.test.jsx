@@ -70,6 +70,10 @@ const maplibreMocks = vi.hoisted(() => {
       this.layers.push(layer);
     }
 
+    getLayer(layerId) {
+      return this.layers.find((layer) => layer.id === layerId);
+    }
+
     getCanvas() {
       return this.canvas;
     }
@@ -169,6 +173,7 @@ describe('MapPinPicker MapLibre behavior', () => {
   afterEach(() => {
     cleanup();
     delete navigator.geolocation;
+    delete globalThis.ResizeObserver;
   });
 
   it('initializes MapLibre as a flat draggable location picker', async () => {
@@ -179,8 +184,20 @@ describe('MapPinPicker MapLibre behavior', () => {
       bearing: 0,
       pitch: 0,
       minZoom: 4,
-      maxZoom: 18
+      maxZoom: 18,
+      trackResize: false
     }));
+    expect(maplibreMocks.Map.mock.calls[0][0]).not.toHaveProperty('maxBounds');
+    expect(maplibreMocks.Map.mock.calls[0][0].style).toEqual(expect.objectContaining({
+      version: 8,
+      sources: expect.objectContaining({
+        'storefront-location-raster': expect.objectContaining({
+          type: 'raster',
+          tiles: expect.arrayContaining([expect.stringMatching(/(?:\/osm|tile\.openstreetmap\.org)\/\{z\}\/\{x\}\/\{y\}\.png/)])
+        })
+      })
+    }));
+    expect(maplibreMocks.Map.mock.calls[0][0].style.sources['storefront-location-raster'].tiles[0]).not.toContain('tiles.openfreemap.org');
     expect(maplibreMocks.maps[0].dragRotate.disable).toHaveBeenCalled();
     expect(maplibreMocks.maps[0].touchZoomRotate.disableRotation).toHaveBeenCalled();
     expect(await screen.findByLabelText(/Map location picker/i)).toBeTruthy();
@@ -215,5 +232,55 @@ describe('MapPinPicker MapLibre behavior', () => {
       longitude: 120.9842456
     });
     expect(maplibreMocks.Marker).toHaveBeenCalledWith(expect.objectContaining({ anchor: 'bottom' }));
+  });
+
+  it('keeps the MapLibre picker usable when tile requests emit a resource error', async () => {
+    render(<MapPinPicker latitude={10.7202} longitude={122.5621} deliveryRadiusKm={5} onChange={vi.fn()} />);
+
+    await waitFor(() => expect(maplibreMocks.maps[0]).toBeTruthy());
+    await waitFor(() => expect(screen.queryByText(/Loading map/i)).toBeNull());
+
+    act(() => {
+      maplibreMocks.maps[0].handlers.error?.({ error: new Error('tile failed') });
+    });
+
+    expect(screen.queryByText(/Map failed to load/i)).toBeNull();
+    expect(screen.getByText(/Some map tiles could not load/i)).toBeTruthy();
+    expect(screen.getByLabelText(/Map location picker/i)).toBeTruthy();
+    expect(screen.getByText(/Pinned: 10.720200, 122.562100/i)).toBeTruthy();
+  });
+
+  it('ignores late MapLibre cleanup failures while closing the picker', async () => {
+    const { unmount } = render(<MapPinPicker latitude={10.7202} longitude={122.5621} deliveryRadiusKm={5} onChange={vi.fn()} />);
+    await waitFor(() => expect(maplibreMocks.maps[0]).toBeTruthy());
+    maplibreMocks.maps[0].remove.mockImplementationOnce(() => {
+      throw new TypeError('late resize after close');
+    });
+
+    expect(() => unmount()).not.toThrow();
+  });
+
+  it('skips unsafe MapLibre resize when the container is not measurable', async () => {
+    let resizeCallback;
+    globalThis.ResizeObserver = vi.fn(function ResizeObserver(callback) {
+      resizeCallback = callback;
+      return {
+        observe: vi.fn(),
+        disconnect: vi.fn()
+      };
+    });
+    const getBoundingClientRectSpy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue({ width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0 });
+
+    render(<MapPinPicker latitude="" longitude="" deliveryRadiusKm={5} onChange={vi.fn()} />);
+    await waitFor(() => expect(maplibreMocks.maps[0]).toBeTruthy());
+
+    act(() => {
+      resizeCallback?.();
+    });
+
+    expect(maplibreMocks.maps[0].resize).not.toHaveBeenCalled();
+    getBoundingClientRectSpy.mockRestore();
   });
 });

@@ -9,7 +9,7 @@ const createResponse = () => {
 };
 
 describe('checkAnyPermission middleware', () => {
-  it('allows a user with the mode-native permission', () => {
+  it('allows a user with the mode-native permission', async () => {
     const req = {
       user: {
         permissions: ['services:bookings:manage'],
@@ -19,13 +19,13 @@ describe('checkAnyPermission middleware', () => {
     const res = createResponse();
     const next = jest.fn();
 
-    checkAnyPermission(['services:bookings:manage', 'pos:transact'])(req, res, next);
+    await checkAnyPermission(['services:bookings:manage', 'pos:transact'])(req, res, next);
 
     expect(next).toHaveBeenCalledTimes(1);
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  it('allows temporary generic fallback permissions', () => {
+  it('allows temporary generic fallback permissions', async () => {
     const req = {
       user: {
         permissions: ['pos:transact'],
@@ -35,13 +35,13 @@ describe('checkAnyPermission middleware', () => {
     const res = createResponse();
     const next = jest.fn();
 
-    checkAnyPermission(['fnb:checks:manage', 'pos:transact'])(req, res, next);
+    await checkAnyPermission(['fnb:checks:manage', 'pos:transact'])(req, res, next);
 
     expect(next).toHaveBeenCalledTimes(1);
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  it('denies unrelated permissions and returns the accepted list', () => {
+  it('denies unrelated permissions and returns the accepted list', async () => {
     const req = {
       user: {
         permissions: ['items:view'],
@@ -51,7 +51,7 @@ describe('checkAnyPermission middleware', () => {
     const res = createResponse();
     const next = jest.fn();
 
-    checkAnyPermission(['fnb:checks:manage', 'pos:transact'])(req, res, next);
+    await checkAnyPermission(['fnb:checks:manage', 'pos:transact'])(req, res, next);
 
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(403);
@@ -60,7 +60,7 @@ describe('checkAnyPermission middleware', () => {
     }));
   });
 
-  it('keeps master-admin bypass behavior', () => {
+  it('keeps master-admin bypass behavior', async () => {
     const req = {
       user: {
         permissions: [],
@@ -70,7 +70,7 @@ describe('checkAnyPermission middleware', () => {
     const res = createResponse();
     const next = jest.fn();
 
-    checkAnyPermission(['services:dashboard:view'])(req, res, next);
+    await checkAnyPermission(['services:dashboard:view'])(req, res, next);
 
     expect(next).toHaveBeenCalledTimes(1);
   });

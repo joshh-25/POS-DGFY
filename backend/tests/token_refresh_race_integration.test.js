@@ -34,6 +34,23 @@ runSuite('Token Refresh Race Condition — Integration (Real Redis)', () => {
   const PASSWORD = 'TestPassword123!';
 
   let baseRefreshToken;
+  let baseSessionCookies;
+  let baseCsrfToken;
+
+  const extractCookieValue = (cookies = [], name) => {
+    const rawCookie = cookies.find((cookie) => cookie.startsWith(`${name}=`));
+    if (!rawCookie) return '';
+    return decodeURIComponent(rawCookie.split(';')[0].split('=').slice(1).join('='));
+  };
+
+  const extractSession = (res) => {
+    const cookies = res.headers['set-cookie'] || [];
+    return {
+      cookies,
+      refreshToken: extractCookieValue(cookies, 'sku_refresh_token'),
+      csrfToken: extractCookieValue(cookies, 'sku_csrf_token')
+    };
+  };
 
   const cleanup = async () => {
     await db.User.destroy({ where: { email: EMAIL } }).catch(() => {});
@@ -84,7 +101,10 @@ runSuite('Token Refresh Race Condition — Integration (Real Redis)', () => {
       .set('x-company-token', COMPANY_TOKEN)
       .send({ email: EMAIL, password: PASSWORD })
       .expect(200);
-    baseRefreshToken = loginRes.body.data.refreshToken;
+    const session = extractSession(loginRes);
+    baseRefreshToken = session.refreshToken;
+    baseSessionCookies = session.cookies;
+    baseCsrfToken = session.csrfToken;
   });
 
   // -------------------------------------------------------------------------
@@ -109,8 +129,9 @@ runSuite('Token Refresh Race Condition — Integration (Real Redis)', () => {
     const calls = Array.from({ length: CONCURRENCY }, () =>
       request(app)
         .post('/api/v1/auth/refresh-token')
-        .set('x-company-token', COMPANY_TOKEN)
-        .send({ refreshToken: baseRefreshToken })
+        .set('Cookie', baseSessionCookies)
+        .set('x-csrf-token', baseCsrfToken)
+        .send({})
     );
 
     const settled = await Promise.allSettled(calls);
@@ -132,7 +153,8 @@ runSuite('Token Refresh Race Condition — Integration (Real Redis)', () => {
     successes.forEach(r => {
       expect(r.body.success).toBe(true);
       expect(r.body.data.token.split('.').length).toBe(3);
-      expect(r.body.data.refreshToken.split('.').length).toBe(3);
+      expect(r.body.data.refreshToken).toBeUndefined();
+      expect(extractSession(r).refreshToken.split('.').length).toBe(3);
       expect(r.body.data.expiresIn).toBe(86400);
     });
   });
@@ -148,20 +170,22 @@ runSuite('Token Refresh Race Condition — Integration (Real Redis)', () => {
     // First refresh: rt1 → rt2
     const firstRes = await request(app)
       .post('/api/v1/auth/refresh-token')
-      .set('x-company-token', COMPANY_TOKEN)
-      .send({ refreshToken: rt1 })
+      .set('Cookie', baseSessionCookies)
+      .set('x-csrf-token', baseCsrfToken)
+      .send({})
       .expect(200);
 
     expect(firstRes.body.success).toBe(true);
-    const rt2 = firstRes.body.data.refreshToken;
+    const rt2 = extractSession(firstRes).refreshToken;
     expect(rt2).toBeDefined();
     expect(rt2.split('.').length).toBe(3);
 
     // Reusing rt1 must return 401 — the backend blacklisted it during the refresh
     const reuseRes = await request(app)
       .post('/api/v1/auth/refresh-token')
-      .set('x-company-token', COMPANY_TOKEN)
-      .send({ refreshToken: rt1 });
+      .set('Cookie', baseSessionCookies)
+      .set('x-csrf-token', baseCsrfToken)
+      .send({});
 
     expect(reuseRes.status).toBe(401);
     expect(reuseRes.body.success).toBe(false);

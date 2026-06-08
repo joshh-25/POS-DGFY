@@ -58,6 +58,38 @@ describe('onboarding use-cases application result contract', () => {
     expect(result.data.storefront_sync.ok).toBe(true);
   });
 
+  it('saveOnboardingStep refreshes storefront discovery when public storefront visibility is saved', async () => {
+    const syncStorefrontDiscoveryWithReliability = jest.fn().mockResolvedValue({ ok: true, attempts: 1 });
+    const useCase = buildSaveOnboardingStepUseCase({
+      onboardingRepository: {
+        saveStep: jest.fn().mockResolvedValue({
+          step_key: 'primary_location',
+          step_payloads: {
+            primary_location: {
+              public_storefront_visible: false
+            }
+          }
+        })
+      },
+      syncStorefrontDiscoveryWithReliability
+    });
+
+    const result = await useCase({
+      tenantId: 'tenant-1',
+      stepKey: 'primary_location',
+      payload: {
+        public_storefront_visible: false
+      }
+    });
+
+    expect(result.success).toBe(true);
+    expect(syncStorefrontDiscoveryWithReliability).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      source: 'tenant_onboarding_primary_location'
+    });
+    expect(result.data.storefront_sync.ok).toBe(true);
+  });
+
   it('completeOnboarding maps readiness failures', async () => {
     const useCase = buildCompleteOnboardingUseCase({
       onboardingRepository: {

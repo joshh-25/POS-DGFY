@@ -38,7 +38,12 @@ import PosInvoiceCounter from './PosInvoiceCounter.js';
 import PosZReadingSnapshot from './PosZReadingSnapshot.js';
 import PosOperationReplay from './PosOperationReplay.js';
 import PosCatalogOverride from './PosCatalogOverride.js';
+import PosFiscalTerminalRegistration from './PosFiscalTerminalRegistration.js';
+import PosFiscalEvent from './PosFiscalEvent.js';
+import PosFiscalPrintEvent from './PosFiscalPrintEvent.js';
+import PosESalesReport from './PosESalesReport.js';
 import StorefrontCatalogOverride from './StorefrontCatalogOverride.js';
+import StorefrontLocationItemOverride from './StorefrontLocationItemOverride.js';
 import PosTerminalShift from './PosTerminalShift.js';
 import PosCashDrawerEvent from './PosCashDrawerEvent.js';
 import PosShiftLocationTransition from './PosShiftLocationTransition.js';
@@ -100,6 +105,7 @@ import EmailOtpFactory from './Landlord/EmailOtp.js';
 import DgfyAccountFactory from './Landlord/DgfyAccount.js';
 import DgfyAccountTenantMembershipFactory from './Landlord/DgfyAccountTenantMembership.js';
 import DgfyAccountHandoffFactory from './Landlord/DgfyAccountHandoff.js';
+import DgfyAccountAdminAuditLogFactory from './Landlord/DgfyAccountAdminAuditLog.js';
 import DgfyLegalAcknowledgementFactory from './Landlord/DgfyLegalAcknowledgement.js';
 import DgfyCustomerActivityFactory from './Landlord/DgfyCustomerActivity.js';
 import DgfyCustomerAddressFactory from './Landlord/DgfyCustomerAddress.js';
@@ -107,16 +113,22 @@ import DgfyCustomerBackfillRunFactory from './Landlord/DgfyCustomerBackfillRun.j
 import DgfyCustomerReviewFactory from './Landlord/DgfyCustomerReview.js';
 import DgfyLoyaltyTransactionFactory from './Landlord/DgfyLoyaltyTransaction.js';
 import DgfyTrackingRecoveryCodeFactory from './Landlord/DgfyTrackingRecoveryCode.js';
+import DgfyReviewInviteFactory from './Landlord/DgfyReviewInvite.js';
 import PaymentFactory from './Landlord/Payment.js';
 import WebhookLogFactory from './Landlord/WebhookLog.js';
 import EngagementEventFactory from './Landlord/EngagementEvent.js';
 import StorefrontDiscoveryIndexFactory from './Landlord/StorefrontDiscoveryIndex.js';
+import StorefrontHandleReservationFactory from './Landlord/StorefrontHandleReservation.js';
 import TenantComplianceArtifactFactory from './Landlord/TenantComplianceArtifact.js';
 import TenantCompliancePeripheralFactory from './Landlord/TenantCompliancePeripheral.js';
 import TenantComplianceAuditLogFactory from './Landlord/TenantComplianceAuditLog.js';
 import TenantComplianceAuditFailureFactory from './Landlord/TenantComplianceAuditFailure.js';
 import TenantComplianceFinalReviewDocumentFactory from './Landlord/TenantComplianceFinalReviewDocument.js';
 import TenantComplianceFinalReviewSignoffFactory from './Landlord/TenantComplianceFinalReviewSignoff.js';
+import TenantAdminAuditLogFactory from './Landlord/TenantAdminAuditLog.js';
+import TenantPaymentAccountFactory from './Landlord/TenantPaymentAccount.js';
+import CommercePaymentSessionFactory from './Landlord/CommercePaymentSession.js';
+import CommercePaymentRefundFactory from './Landlord/CommercePaymentRefund.js';
 const Tenant = TenantFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const UserInvitation = UserInvitationFactory(sequelize);
@@ -124,6 +136,7 @@ const EmailOtp = EmailOtpFactory(sequelize);
 const DgfyAccount = DgfyAccountFactory(sequelize);
 const DgfyAccountTenantMembership = DgfyAccountTenantMembershipFactory(sequelize);
 const DgfyAccountHandoff = DgfyAccountHandoffFactory(sequelize);
+const DgfyAccountAdminAuditLog = DgfyAccountAdminAuditLogFactory(sequelize);
 const DgfyLegalAcknowledgement = DgfyLegalAcknowledgementFactory(sequelize);
 const DgfyCustomerActivity = DgfyCustomerActivityFactory(sequelize);
 const DgfyCustomerAddress = DgfyCustomerAddressFactory(sequelize);
@@ -131,16 +144,22 @@ const DgfyCustomerBackfillRun = DgfyCustomerBackfillRunFactory(sequelize);
 const DgfyCustomerReview = DgfyCustomerReviewFactory(sequelize);
 const DgfyLoyaltyTransaction = DgfyLoyaltyTransactionFactory(sequelize);
 const DgfyTrackingRecoveryCode = DgfyTrackingRecoveryCodeFactory(sequelize);
+const DgfyReviewInvite = DgfyReviewInviteFactory(sequelize);
 const Payment = PaymentFactory(sequelize);
 const WebhookLog = WebhookLogFactory(sequelize);
 const EngagementEvent = EngagementEventFactory(sequelize);
 const StorefrontDiscoveryIndex = StorefrontDiscoveryIndexFactory(sequelize);
+const StorefrontHandleReservation = StorefrontHandleReservationFactory(sequelize);
 const TenantComplianceArtifact = TenantComplianceArtifactFactory(sequelize);
 const TenantCompliancePeripheral = TenantCompliancePeripheralFactory(sequelize);
 const TenantComplianceAuditLog = TenantComplianceAuditLogFactory(sequelize);
 const TenantComplianceAuditFailure = TenantComplianceAuditFailureFactory(sequelize);
 const TenantComplianceFinalReviewDocument = TenantComplianceFinalReviewDocumentFactory(sequelize);
 const TenantComplianceFinalReviewSignoff = TenantComplianceFinalReviewSignoffFactory(sequelize);
+const TenantAdminAuditLog = TenantAdminAuditLogFactory(sequelize);
+const TenantPaymentAccount = TenantPaymentAccountFactory(sequelize);
+const CommercePaymentSession = CommercePaymentSessionFactory(sequelize);
+const CommercePaymentRefund = CommercePaymentRefundFactory(sequelize);
 
 // Landlord Models
 import AiUsageLogFactory from './Landlord/AiUsageLog.js';
@@ -161,10 +180,14 @@ Tenant.hasMany(EngagementEvent, { foreignKey: 'tenant_id', as: 'engagementEvents
 EngagementEvent.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasOne(StorefrontDiscoveryIndex, { foreignKey: 'tenant_id', as: 'storefrontDiscoveryIndex' });
 StorefrontDiscoveryIndex.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasOne(StorefrontHandleReservation, { foreignKey: 'tenant_id', as: 'storefrontHandleReservation' });
+StorefrontHandleReservation.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 DgfyAccount.hasMany(DgfyAccountTenantMembership, { foreignKey: 'dgfy_account_id', as: 'tenantMemberships' });
 DgfyAccountTenantMembership.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
 DgfyAccount.hasMany(DgfyAccountHandoff, { foreignKey: 'dgfy_account_id', as: 'handoffs' });
 DgfyAccountHandoff.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
+DgfyAccount.hasMany(DgfyAccountAdminAuditLog, { foreignKey: 'dgfy_account_id', as: 'adminAuditLogs' });
+DgfyAccountAdminAuditLog.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
 Tenant.hasMany(DgfyLegalAcknowledgement, { foreignKey: 'tenant_id', as: 'legalAcknowledgements' });
 DgfyLegalAcknowledgement.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 DgfyAccount.hasMany(DgfyLegalAcknowledgement, { foreignKey: 'dgfy_account_id', as: 'legalAcknowledgements' });
@@ -177,10 +200,20 @@ Tenant.hasMany(TenantCompliancePeripheral, { foreignKey: 'tenant_id', as: 'compl
 TenantCompliancePeripheral.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(TenantComplianceAuditLog, { foreignKey: 'tenant_id', as: 'complianceAuditLogs' });
 TenantComplianceAuditLog.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(TenantAdminAuditLog, { foreignKey: 'tenant_id', as: 'adminAuditLogs' });
+TenantAdminAuditLog.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(TenantComplianceFinalReviewDocument, { foreignKey: 'tenant_id', as: 'complianceFinalReviewDocuments' });
 TenantComplianceFinalReviewDocument.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasOne(TenantComplianceFinalReviewSignoff, { foreignKey: 'tenant_id', as: 'complianceFinalReviewSignoff' });
 TenantComplianceFinalReviewSignoff.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasOne(TenantPaymentAccount, { foreignKey: 'tenant_id', as: 'paymentAccount' });
+TenantPaymentAccount.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(CommercePaymentSession, { foreignKey: 'tenant_id', as: 'commercePaymentSessions' });
+CommercePaymentSession.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(CommercePaymentRefund, { foreignKey: 'tenant_id', as: 'commercePaymentRefunds' });
+CommercePaymentRefund.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+CommercePaymentSession.hasMany(CommercePaymentRefund, { foreignKey: 'payment_session_id', as: 'refunds' });
+CommercePaymentRefund.belongsTo(CommercePaymentSession, { foreignKey: 'payment_session_id', as: 'paymentSession' });
 
 // User associations
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
@@ -330,8 +363,13 @@ PosTransaction.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'locat
 PosTransaction.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
 PosTransaction.belongsTo(User, { foreignKey: 'fnb_server_id', as: 'fnbServer' });
 PosTransaction.hasMany(PosTransactionLine, { foreignKey: 'pos_transaction_id', as: 'lines' });
+PosTransaction.hasMany(PosFiscalEvent, { foreignKey: 'pos_transaction_id', as: 'fiscalEvents' });
+PosTransaction.hasMany(PosFiscalPrintEvent, { foreignKey: 'pos_transaction_id', as: 'fiscalPrintEvents' });
 PosTransactionLine.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
 PosTransactionLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+PosFiscalEvent.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
+PosFiscalPrintEvent.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
+PosFiscalTerminalRegistration.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 User.hasMany(PosTransaction, { foreignKey: 'cashier_id', as: 'posTransactions' });
 User.hasMany(PosTransaction, { foreignKey: 'accepted_by', as: 'acceptedPosTransactions' });
 Item.hasMany(PosTransactionLine, { foreignKey: 'item_id', as: 'posTransactionLines' });
@@ -341,6 +379,8 @@ Item.hasOne(PosCatalogOverride, { foreignKey: 'item_id', as: 'posCatalogOverride
 PosCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 Item.hasOne(StorefrontCatalogOverride, { foreignKey: 'item_id', as: 'storefrontCatalogOverride' });
 StorefrontCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+Item.hasMany(StorefrontLocationItemOverride, { foreignKey: 'item_id', as: 'storefrontLocationItemOverrides' });
+StorefrontLocationItemOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 PosTerminalShift.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
 PosTerminalShift.belongsTo(User, { foreignKey: 'closed_by', as: 'closedByUser' });
 PosTerminalShift.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
@@ -365,11 +405,13 @@ User.hasMany(PosShiftLocationTransition, { foreignKey: 'actor_user_id', as: 'pos
 TenantLocation.hasMany(PosTransaction, { foreignKey: 'location_id', as: 'posTransactions' });
 TenantLocation.hasMany(PosTerminalShift, { foreignKey: 'location_id', as: 'posTerminalShifts' });
 TenantLocation.hasMany(ItemLocationStock, { foreignKey: 'location_id', as: 'itemLocationStocks' });
+TenantLocation.hasMany(StorefrontLocationItemOverride, { foreignKey: 'location_id', as: 'storefrontItemOverrides' });
 TenantLocation.hasMany(FIFOBatch, { foreignKey: 'location_id', as: 'fifoBatches' });
 TenantLocation.hasMany(StockMovement, { foreignKey: 'location_id', as: 'stockMovements' });
 TenantLocation.hasMany(StockMovement, { foreignKey: 'source_location_id', as: 'sourceStockMovements' });
 TenantLocation.hasMany(StockMovement, { foreignKey: 'destination_location_id', as: 'destinationStockMovements' });
 ItemLocationStock.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+StorefrontLocationItemOverride.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 User.belongsToMany(TenantLocation, {
   through: UserLocationGrant,
   foreignKey: 'user_id',
@@ -592,7 +634,13 @@ const db = {
   PosZReadingSnapshot,
   PosOperationReplay,
   PosCatalogOverride,
+  PosFiscalTerminalRegistration,
+  PosFiscalEvent,
+  PosFiscalPrintEvent,
+  PosESalesReport,
   StorefrontCatalogOverride,
+  StorefrontLocationItemOverride,
+  StorefrontHandleReservation,
   PosTerminalShift,
   PosCashDrawerEvent,
   PosShiftLocationTransition,
@@ -652,6 +700,7 @@ const db = {
   DgfyAccount,
   DgfyAccountTenantMembership,
   DgfyAccountHandoff,
+  DgfyAccountAdminAuditLog,
   DgfyLegalAcknowledgement,
   DgfyCustomerActivity,
   DgfyCustomerAddress,
@@ -659,6 +708,7 @@ const db = {
   DgfyCustomerReview,
   DgfyLoyaltyTransaction,
   DgfyTrackingRecoveryCode,
+  DgfyReviewInvite,
   Payment,
   WebhookLog,
   EngagementEvent,
@@ -669,7 +719,11 @@ const db = {
   TenantComplianceAuditLog,
   TenantComplianceAuditFailure,
   TenantComplianceFinalReviewDocument,
-  TenantComplianceFinalReviewSignoff
+  TenantComplianceFinalReviewSignoff,
+  TenantAdminAuditLog,
+  TenantPaymentAccount,
+  CommercePaymentSession,
+  CommercePaymentRefund
 };
 
 export default db;
@@ -714,7 +768,13 @@ export {
   PosZReadingSnapshot,
   PosOperationReplay,
   PosCatalogOverride,
+  PosFiscalTerminalRegistration,
+  PosFiscalEvent,
+  PosFiscalPrintEvent,
+  PosESalesReport,
   StorefrontCatalogOverride,
+  StorefrontLocationItemOverride,
+  StorefrontHandleReservation,
   PosTerminalShift,
   PosCashDrawerEvent,
   PosShiftLocationTransition,
@@ -774,6 +834,7 @@ export {
   DgfyAccount,
   DgfyAccountTenantMembership,
   DgfyAccountHandoff,
+  DgfyAccountAdminAuditLog,
   DgfyLegalAcknowledgement,
   DgfyCustomerActivity,
   DgfyCustomerAddress,
@@ -781,6 +842,7 @@ export {
   DgfyCustomerReview,
   DgfyLoyaltyTransaction,
   DgfyTrackingRecoveryCode,
+  DgfyReviewInvite,
   Payment,
   WebhookLog,
   EngagementEvent,
@@ -792,6 +854,10 @@ export {
   TenantComplianceAuditFailure,
   TenantComplianceFinalReviewDocument,
   TenantComplianceFinalReviewSignoff,
+  TenantAdminAuditLog,
+  TenantPaymentAccount,
+  CommercePaymentSession,
+  CommercePaymentRefund,
   GeoItem,
   GeoStoreItem,
   GeoItemAlias

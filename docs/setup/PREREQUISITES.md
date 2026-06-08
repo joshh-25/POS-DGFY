@@ -8,7 +8,7 @@ This document outlines the prerequisites for running the SKU Inventory Manager i
 
 | Component | Local (Windows/XAMPP) | Hosting Server (Linux) |
 |-----------|----------------------|------------------------|
-| **Node.js** | 18+ | 18+ |
+| **Node.js** | 20.19+ recommended for frontend builds; backend runtime remains compatible with 18+ | 20.19+ recommended for frontend artifact builds; backend runtime remains compatible with 18+ |
 | **npm** | 9+ | 9+ |
 | **MySQL** | 8.0+ (XAMPP or standalone) | 8.0+ |
 | **Redis** | Optional (Memurai/Docker) | 7.x (systemd) |
@@ -22,9 +22,9 @@ This document outlines the prerequisites for running the SKU Inventory Manager i
 
 ### Required Software
 
-#### 1. Node.js (v18+)
+#### 1. Node.js
 - **Download**: https://nodejs.org/
-- **Verify**: `node -v` should show v18.x or higher
+- **Verify**: `node -v` should show v20.19+ when building frontend assets with the current Vite 8 toolchain. Backend-only local work can still run on Node 18+.
 - Includes npm (v9+)
 
 #### 2. MySQL (v8.0+)
@@ -127,10 +127,10 @@ VITE_API_URL=http://localhost:5000/api/v1
 - Linux (Ubuntu 20.04+ recommended)
 - SSH access (`ssh root@hermes-cloud`)
 
-#### 2. Node.js (v18+)
+#### 2. Node.js
 ```bash
 # Install via NodeSource
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs
 
 # Verify
@@ -435,4 +435,4 @@ pm2 logs sku-backend --lines 20
 
 ---
 
-*Last updated: January 10, 2026*
+*Last updated: May 31, 2026*

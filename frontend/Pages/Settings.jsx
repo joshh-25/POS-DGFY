@@ -36,12 +36,20 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn } from "../src/lib/utils.js";
 import useStore from '../src/store/useStore.js';
 import * as userService from '../src/services/userService.js';
 import * as settingsService from '../src/services/settingsService.js';
 import * as paymentService from '../src/services/paymentService.js';
 import * as tenantLocationService from '../src/services/tenantLocationService.js';
+import {
+  fetchESalesReports,
+  fetchFiscalLedgerIntegrity,
+  fetchFiscalTerminalRegistrations,
+  generateESalesReport,
+  saveFiscalTerminalRegistration,
+  updateESalesReportStatus
+} from '../src/features/pos/services/posService.js';
 import UserManagementModal from '../Components/users/UserManagementModal.jsx';
 import MapPinPicker from '../src/components/maps/MapPinPicker.jsx';
 import ComplianceProgramPanel from '../src/features/compliance/components/ComplianceProgramPanel.jsx';
@@ -60,6 +68,13 @@ import {
   WORKFLOW_MODE_LABELS,
   WORKFLOW_MODE_SELECT_VALUES
 } from '../src/features/settings/workflowMode.js';
+import {
+  STOREFRONT_BUSINESS_DAY_OPTIONS,
+  createDefaultStorefrontBusinessHours,
+  formatStorefrontBusinessHoursDisplay,
+  normalizeStorefrontBusinessHours,
+  serializeStorefrontBusinessHours
+} from '../src/features/settings/storefrontBusinessHours.js';
 import resolveAssetUrl from '../src/utils/assetUrl.js';
 import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../src/utils/phoneNumber.js';
 import { generateReadablePassword, isPasswordLongEnough } from '../src/utils/passwordPolicy.js';
@@ -109,6 +124,28 @@ const toPositiveInt = (value) => {
   return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
 };
 
+const createDefaultFiscalTerminalForm = () => ({
+  terminal_id: '',
+  location_id: '',
+  min_number: '',
+  machine_serial_number: '',
+  software_version: '',
+  software_serial_number: '',
+  ptu_number: '',
+  permit_issued_at: '',
+  permit_effective_at: '',
+  permit_expires_at: '',
+  receipt_printer_binding: '',
+  cash_drawer_binding: '',
+  accreditation_status: 'draft',
+  evidence_ref: ''
+});
+
+const currentMonthValue = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+};
+
 const formatLocationDeleteErrors = (error) => {
   const details = error?.response?.data?.errors || error?.response?.data?.details || {};
   const counts = details?.reference_counts || {};
@@ -133,12 +170,19 @@ const createDefaultSettings = ({ workflowMode = DEFAULT_WORKFLOW_MODE } = {}) =>
   procurementReminderDay: 1,
   qualityThreshold: 3.5,
   autoCalculateThresholds: true,
+  posRegisteredName: '',
   posBusinessName: '',
+  posBusinessStyle: '',
+  posTaxpayerType: '',
   posTinBranch: '',
   posAddress: '',
   posPtuNumber: '',
   posMinNumber: '',
   posAccreditationNumber: '',
+  posSoftwareName: '',
+  posSoftwareVersion: '',
+  posSoftwareSerialNumber: '',
+  posFiscalBuyerDetailsRequired: false,
   posReceiptFooterMessage: '',
   posDiscountProfiles: [],
   posTerminalRegistry: [],
@@ -149,7 +193,7 @@ const createDefaultSettings = ({ workflowMode = DEFAULT_WORKFLOW_MODE } = {}) =>
   opsWorkflowMode: workflowMode,
   storeDeliveryFee: 0,
   storeTenantSlug: '',
-  storeIsVisible: true,
+  storeIsVisible: false,
   posOpenStatus: true,
   posWaitTimeMinutes: 15,
   customerAccessMode: 'catalog',
@@ -161,7 +205,7 @@ const createDefaultSettings = ({ workflowMode = DEFAULT_WORKFLOW_MODE } = {}) =>
   storefrontAbout: '',
   storefrontPhone: '',
   storefrontEmail: '',
-  storefrontHours: '',
+  storefrontHours: createDefaultStorefrontBusinessHours(),
   storefrontWhyChooseUs: [''],
   storefrontSocialMessenger: '',
   storefrontSocialFacebook: '',
@@ -243,12 +287,19 @@ const SETTINGS_FIELD_LABELS = {
   currentPassword: 'Current Password',
   newPassword: 'New Password',
   confirmPassword: 'Confirm Password',
+  pos_registered_name: 'Registered Name',
   pos_business_name: 'Business Name',
+  pos_business_style: 'Business Style',
+  pos_taxpayer_type: 'Taxpayer Type',
   pos_tin_branch: 'TIN / Branch',
   pos_address: 'Business Address',
   pos_ptu_number: 'PTU Number',
   pos_min_number: 'MIN Number',
   pos_accreditation_number: 'Accreditation Number',
+  pos_software_name: 'Software Name',
+  pos_software_version: 'Software Version',
+  pos_software_serial_number: 'Software Serial Number',
+  pos_fiscal_buyer_details_required: 'Fiscal Buyer Details Required',
   pos_receipt_footer_message: 'Receipt Footer Message',
   pos_terminal_registry_mode: 'Terminal Registry Mode',
   pos_terminal_location_binding_enforced: 'Strict Location Binding',
@@ -547,6 +598,20 @@ export default function Settings() {
   });
   const [assetUploadingType, setAssetUploadingType] = useState('');
   const [assetDeletingType, setAssetDeletingType] = useState('');
+  const [fiscalTerminalRegistrations, setFiscalTerminalRegistrations] = useState([]);
+  const [fiscalTerminalLoading, setFiscalTerminalLoading] = useState(false);
+  const [fiscalTerminalSaving, setFiscalTerminalSaving] = useState(false);
+  const [fiscalTerminalForm, setFiscalTerminalForm] = useState(createDefaultFiscalTerminalForm());
+  const [esalesReports, setESalesReports] = useState([]);
+  const [esalesLoading, setESalesLoading] = useState(false);
+  const [esalesSaving, setESalesSaving] = useState(false);
+  const [esalesForm, setESalesForm] = useState({
+    report_month: currentMonthValue(),
+    evidence_ref: ''
+  });
+  const [esalesStatusForm, setESalesStatusForm] = useState({});
+  const [fiscalLedgerIntegrity, setFiscalLedgerIntegrity] = useState(null);
+  const [fiscalLedgerLoading, setFiscalLedgerLoading] = useState(false);
   const normalizedCurrentUserPermissions = useMemo(
     () => normalizeUserPermissions(currentUser?.permissions),
     [currentUser?.permissions]
@@ -570,6 +635,28 @@ export default function Settings() {
     }
     return normalizedCurrentUserPermissions.includes('settings:storefront_branding_edit');
   }, [currentUser?.is_master_admin, currentUser?.role, normalizedCurrentUserPermissions]);
+  const canManageFiscalTerminals = currentUser?.is_master_admin === true
+    || normalizedCurrentUserPermissions.includes('pos:fiscal_terminals:manage');
+  const canManageESalesReports = currentUser?.is_master_admin === true
+    || normalizedCurrentUserPermissions.includes('pos:esales:manage');
+  const fiscalTerminalReadiness = useMemo(() => {
+    const registrations = Array.isArray(fiscalTerminalRegistrations) ? fiscalTerminalRegistrations : [];
+    const verified = registrations.filter((registration) => registration?.accreditation_status === 'verified');
+    const blocked = registrations.filter((registration) => {
+      if (registration?.accreditation_status === 'verified') return false;
+      return !registration?.min_number
+        || !registration?.machine_serial_number
+        || !registration?.software_serial_number
+        || !registration?.ptu_number
+        || !registration?.evidence_ref;
+    });
+    return {
+      total: registrations.length,
+      verified: verified.length,
+      blocked: blocked.length,
+      ready: verified.length > 0
+    };
+  }, [fiscalTerminalRegistrations]);
 
   const setSettingsTab = useCallback((nextTab, { replace = false, preserveHash = true } = {}) => {
     const resolvedTab = resolveSettingsTab(nextTab, { subscriptionEnabled: subscriptionFeaturesEnabled });
@@ -600,6 +687,159 @@ export default function Settings() {
       if (!silent) {
         setLocationsLoading(false);
       }
+    }
+  };
+
+  const loadFiscalTerminalRegistrations = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setFiscalTerminalLoading(true);
+    try {
+      const data = await fetchFiscalTerminalRegistrations();
+      setFiscalTerminalRegistrations(Array.isArray(data?.registrations) ? data.registrations : []);
+    } catch (error) {
+      if (!silent) {
+        toast.error(error?.response?.data?.message || 'Failed to load fiscal terminal registrations.');
+      }
+    } finally {
+      if (!silent) setFiscalTerminalLoading(false);
+    }
+  }, []);
+
+  const loadESalesReports = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setESalesLoading(true);
+    try {
+      const data = await fetchESalesReports();
+      setESalesReports(Array.isArray(data?.reports) ? data.reports : []);
+    } catch (error) {
+      if (!silent) {
+        toast.error(error?.response?.data?.message || 'Failed to load eSales reports.');
+      }
+    } finally {
+      if (!silent) setESalesLoading(false);
+    }
+  }, []);
+
+  const loadFiscalLedgerIntegrity = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setFiscalLedgerLoading(true);
+    try {
+      const data = await fetchFiscalLedgerIntegrity();
+      setFiscalLedgerIntegrity(data || null);
+    } catch (error) {
+      if (!silent) {
+        toast.error(error?.response?.data?.message || 'Failed to verify fiscal ledger integrity.');
+      }
+    } finally {
+      if (!silent) setFiscalLedgerLoading(false);
+    }
+  }, []);
+
+  const setFiscalTerminalField = (field, value) => {
+    setFiscalTerminalForm((current) => ({
+      ...current,
+      [field]: field === 'terminal_id' ? sanitizeTerminalRegistryId(value) : value
+    }));
+  };
+
+  const editFiscalTerminalRegistration = (registration) => {
+    setFiscalTerminalForm({
+      terminal_id: registration?.terminal_id || '',
+      location_id: registration?.location_id || '',
+      min_number: registration?.min_number || '',
+      machine_serial_number: registration?.machine_serial_number || '',
+      software_version: registration?.software_version || '',
+      software_serial_number: registration?.software_serial_number || '',
+      ptu_number: registration?.ptu_number || '',
+      permit_issued_at: String(registration?.permit_issued_at || '').slice(0, 10),
+      permit_effective_at: String(registration?.permit_effective_at || '').slice(0, 10),
+      permit_expires_at: String(registration?.permit_expires_at || '').slice(0, 10),
+      receipt_printer_binding: registration?.receipt_printer_binding || '',
+      cash_drawer_binding: registration?.cash_drawer_binding || '',
+      accreditation_status: registration?.accreditation_status || 'draft',
+      evidence_ref: registration?.evidence_ref || ''
+    });
+  };
+
+  const saveFiscalTerminal = async () => {
+    const terminalId = sanitizeTerminalRegistryId(fiscalTerminalForm.terminal_id);
+    if (!terminalId || !TERMINAL_ID_PATTERN.test(terminalId)) {
+      toast.error('Fiscal terminal ID must be 2-100 characters and use letters, numbers, dot, underscore, or hyphen.');
+      return;
+    }
+    if (fiscalTerminalForm.accreditation_status === 'verified') {
+      const missing = [
+        ['min_number', 'MIN number'],
+        ['machine_serial_number', 'Machine serial number'],
+        ['software_serial_number', 'Software serial number'],
+        ['ptu_number', 'PTU number']
+      ].filter(([key]) => !String(fiscalTerminalForm[key] || '').trim());
+      if (missing.length > 0) {
+        toast.error(`Verified terminals require: ${missing.map(([, label]) => label).join(', ')}.`);
+        return;
+      }
+    }
+    setFiscalTerminalSaving(true);
+    try {
+      await saveFiscalTerminalRegistration({
+        ...fiscalTerminalForm,
+        terminal_id: terminalId,
+        location_id: fiscalTerminalForm.location_id ? Number(fiscalTerminalForm.location_id) : null
+      });
+      toast.success('Fiscal terminal registration saved.');
+      setFiscalTerminalForm(createDefaultFiscalTerminalForm());
+      await loadFiscalTerminalRegistrations({ silent: true });
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to save fiscal terminal registration.');
+    } finally {
+      setFiscalTerminalSaving(false);
+    }
+  };
+
+  const generateESales = async () => {
+    if (!/^\d{4}-\d{2}$/.test(String(esalesForm.report_month || '').trim())) {
+      toast.error('Report month must use YYYY-MM.');
+      return;
+    }
+    setESalesSaving(true);
+    try {
+      await generateESalesReport(esalesForm);
+      toast.success('eSales report package generated.');
+      await loadESalesReports({ silent: true });
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to generate eSales report.');
+    } finally {
+      setESalesSaving(false);
+    }
+  };
+
+  const setESalesStatusDraft = (reportId, field, value) => {
+    setESalesStatusForm((current) => ({
+      ...current,
+      [reportId]: {
+        status: 'submitted',
+        status_evidence_ref: '',
+        status_note: '',
+        ...(current?.[reportId] || {}),
+        [field]: value
+      }
+    }));
+  };
+
+  const saveESalesStatus = async (report) => {
+    const reportId = report?.pos_esales_report_id;
+    const draft = esalesStatusForm?.[reportId] || {};
+    if (!reportId) return;
+    setESalesSaving(true);
+    try {
+      await updateESalesReportStatus(reportId, {
+        status: draft.status || 'submitted',
+        status_evidence_ref: draft.status_evidence_ref || '',
+        status_note: draft.status_note || ''
+      });
+      toast.success('eSales report status updated.');
+      await loadESalesReports({ silent: true });
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to update eSales report status.');
+    } finally {
+      setESalesSaving(false);
     }
   };
 
@@ -660,12 +900,19 @@ export default function Settings() {
           procurementReminderDay: systemSettings.alert_frequency_hours?.value || 24,
           qualityThreshold: systemSettings.supplier_rating_threshold?.value || 3.5,
           autoCalculateThresholds: systemSettings.enable_auto_reorder?.value ?? true,
+          posRegisteredName: systemSettings.pos_registered_name?.value || '',
           posBusinessName: systemSettings.pos_business_name?.value || '',
+          posBusinessStyle: systemSettings.pos_business_style?.value || '',
+          posTaxpayerType: systemSettings.pos_taxpayer_type?.value || '',
           posTinBranch: systemSettings.pos_tin_branch?.value || '',
           posAddress: systemSettings.pos_address?.value || '',
           posPtuNumber: systemSettings.pos_ptu_number?.value || '',
           posMinNumber: systemSettings.pos_min_number?.value || '',
           posAccreditationNumber: systemSettings.pos_accreditation_number?.value || '',
+          posSoftwareName: systemSettings.pos_software_name?.value || '',
+          posSoftwareVersion: systemSettings.pos_software_version?.value || '',
+          posSoftwareSerialNumber: systemSettings.pos_software_serial_number?.value || '',
+          posFiscalBuyerDetailsRequired: systemSettings.pos_fiscal_buyer_details_required?.value === true,
           posReceiptFooterMessage: systemSettings.pos_receipt_footer_message?.value || '',
           posDiscountProfiles: normalizeDiscountProfiles(systemSettings.pos_discount_profiles?.value),
           posTerminalRegistry: normalizeTerminalRegistry(systemSettings.pos_terminal_registry?.value),
@@ -678,7 +925,7 @@ export default function Settings() {
           opsWorkflowMode: normalizedWorkflowMode,
           storeDeliveryFee: Number(systemSettings.store_delivery_fee?.value ?? 0) || 0,
           storeTenantSlug: String(systemSettings.store_tenant_slug?.value || ''),
-          storeIsVisible: systemSettings.store_is_visible?.value ?? true,
+          storeIsVisible: systemSettings.store_is_visible?.value === true,
           posOpenStatus: systemSettings.pos_open_status?.value ?? true,
           posWaitTimeMinutes: Number(systemSettings.pos_wait_time_minutes?.value ?? 15) || 15,
           customerAccessMode: normalizeCustomerAccessMode(systemSettings.customer_access_mode?.value || 'catalog'),
@@ -690,7 +937,7 @@ export default function Settings() {
           storefrontAbout: String(systemSettings.storefront_about?.value || ''),
           storefrontPhone: String(systemSettings.storefront_phone?.value || ''),
           storefrontEmail: String(systemSettings.storefront_email?.value || ''),
-          storefrontHours: String(systemSettings.storefront_hours?.value || ''),
+          storefrontHours: normalizeStorefrontBusinessHours(systemSettings.storefront_hours?.value),
           storefrontWhyChooseUs: normalizeStringList(systemSettings.storefront_why_choose_us?.value, 6, 120).length > 0
             ? normalizeStringList(systemSettings.storefront_why_choose_us?.value, 6, 120)
             : [''],
@@ -768,7 +1015,12 @@ export default function Settings() {
       fetchBillingHistory();
       fetchPendingPlan();
     }
-  }, [currentTab, searchParams, setSettingsTab, subscriptionFeaturesEnabled]);
+    if (currentTab === 'pos') {
+      loadFiscalTerminalRegistrations({ silent: true });
+      loadESalesReports({ silent: true });
+      loadFiscalLedgerIntegrity({ silent: true });
+    }
+  }, [currentTab, loadESalesReports, loadFiscalLedgerIntegrity, loadFiscalTerminalRegistrations, searchParams, setSettingsTab, subscriptionFeaturesEnabled]);
 
   useEffect(() => {
     if (!settingsDeepLink.normalizedHash) {
@@ -842,6 +1094,42 @@ export default function Settings() {
       const next = Array.isArray(prev.storefrontWhyChooseUs) ? [...prev.storefrontWhyChooseUs] : [''];
       next[index] = String(value || '');
       return { ...prev, storefrontWhyChooseUs: next };
+    });
+  };
+
+  const handleStorefrontHoursDayChange = (dayKey, patch) => {
+    setSettings((prev) => {
+      const current = normalizeStorefrontBusinessHours(prev.storefrontHours);
+      return {
+        ...prev,
+        storefrontHours: {
+          ...current,
+          weekly: {
+            ...current.weekly,
+            [dayKey]: {
+              ...current.weekly[dayKey],
+              ...patch
+            }
+          }
+        }
+      };
+    });
+  };
+
+  const copyStorefrontHoursToAllDays = (sourceDayKey = 'mon') => {
+    setSettings((prev) => {
+      const current = normalizeStorefrontBusinessHours(prev.storefrontHours);
+      const source = current.weekly[sourceDayKey] || current.weekly.mon;
+      return {
+        ...prev,
+        storefrontHours: {
+          ...current,
+          weekly: STOREFRONT_BUSINESS_DAY_OPTIONS.reduce((acc, day) => {
+            acc[day.key] = { ...source };
+            return acc;
+          }, {})
+        }
+      };
     });
   };
 
@@ -1568,12 +1856,19 @@ export default function Settings() {
         enable_auto_reorder: settings.autoCalculateThresholds,
         min_stock_threshold_percent: settings.defaultMinThreshold,
         purchase_allowance_percent: settings.defaultPurchaseAllowance,
+        pos_registered_name: settings.posRegisteredName,
         pos_business_name: settings.posBusinessName,
+        pos_business_style: settings.posBusinessStyle,
+        pos_taxpayer_type: settings.posTaxpayerType,
         pos_tin_branch: settings.posTinBranch,
         pos_address: settings.posAddress,
         pos_ptu_number: settings.posPtuNumber,
         pos_min_number: settings.posMinNumber,
         pos_accreditation_number: settings.posAccreditationNumber,
+        pos_software_name: settings.posSoftwareName,
+        pos_software_version: settings.posSoftwareVersion,
+        pos_software_serial_number: settings.posSoftwareSerialNumber,
+        pos_fiscal_buyer_details_required: settings.posFiscalBuyerDetailsRequired === true,
         pos_receipt_footer_message: settings.posReceiptFooterMessage,
         pos_discount_profiles: posDiscountProfiles,
         pos_terminal_registry: posTerminalRegistry,
@@ -1593,7 +1888,7 @@ export default function Settings() {
         storefront_about: String(settings.storefrontAbout || '').trim(),
         storefront_phone: String(settings.storefrontPhone || '').trim(),
         storefront_email: String(settings.storefrontEmail || '').trim(),
-        storefront_hours: String(settings.storefrontHours || '').trim(),
+        storefront_hours: serializeStorefrontBusinessHours(settings.storefrontHours),
         storefront_why_choose_us: storefrontWhyChooseUs,
         storefront_social_links: {
           messenger: String(settings.storefrontSocialMessenger || '').trim(),
@@ -1793,6 +2088,8 @@ export default function Settings() {
   };
 
   const primaryStorefrontLocation = tenantLocations.find((location) => location?.is_primary_storefront === true) || null;
+  const hasActivePrimaryStorefrontLocation = primaryStorefrontLocation?.is_active === true;
+  const publicVisibilityMissingPrimary = settings.storeIsVisible === true && !hasActivePrimaryStorefrontLocation;
   const primaryStorefrontLastSyncAt = (
     primaryStorefrontLocation?.storefront_last_synced_at
     || tenantLocations.find((location) => Boolean(location?.storefront_last_synced_at))?.storefront_last_synced_at
@@ -2137,24 +2434,6 @@ export default function Settings() {
                     </Button>
                   </div>
                 </div>
-                <div className="p-3 bg-teal-50 rounded-lg border border-teal-100">
-                  <Label className="text-xs uppercase text-teal-600">Company Join Link</Label>
-                  <p className="text-xs text-slate-500 mt-0.5 mb-2">Share this link with new team members — the company token is pre-filled.</p>
-                  <div className="flex items-center gap-2">
-                    <code className="bg-white px-2 py-1 rounded border flex-1 text-xs truncate">
-                      {`${window.location.origin}/register?token=${companyInfo.company_token}`}
-                    </code>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Copy company join link"
-                      onClick={() => copyToClipboard(`${window.location.origin}/register?token=${companyInfo.company_token}`, 'Invite link copied!')}
-                    >
-                      <Copy className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
               </CardContent>
             </Card>
           ) : (
@@ -2218,7 +2497,7 @@ export default function Settings() {
                 Storefront Visibility & Ordering
               </CardTitle>
               <CardDescription>
-                Control the public store URL, discovery visibility, buyer-facing open status, wait time, and delivery fee.
+                Control the public store URL, public map/page visibility, buyer-facing open status, wait time, and delivery fee.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -2232,7 +2511,7 @@ export default function Settings() {
                     maxLength={80}
                   />
                   <p className="text-xs text-slate-500">
-                    Used for the public storefront URL path: `/store/:slug`.
+                    Used for the public storefront URL path: `/:slug`.
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -2247,14 +2526,20 @@ export default function Settings() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Public Store Visibility</Label>
+                  <Label>Public Map and Storefront Page</Label>
                   <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
-                    <span className="text-sm text-slate-600">Show this tenant in general store discovery</span>
+                    <span className="text-sm text-slate-600">Show this company on the DGFY map and public storefront page</span>
                     <Switch
+                      aria-label="Show company on DGFY map and public storefront page"
                       checked={settings.storeIsVisible === true}
                       onCheckedChange={(v) => handleChange('storeIsVisible', v)}
                     />
                   </div>
+                  {publicVisibilityMissingPrimary && (
+                    <p className="text-xs text-amber-700">
+                      Public visibility is on, but this company will not publish until an active primary storefront pin is saved below.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Storefront Open Status</Label>
@@ -2661,16 +2946,60 @@ export default function Settings() {
                   <Input value={settings.storefrontTagline} onChange={(e) => handleChange('storefrontTagline', e.target.value)} placeholder="Grilled to perfection. Made with love." />
                 </div>
                 <div className="space-y-2">
-                  <Label>Store Hours</Label>
-                  <Input value={settings.storefrontHours} onChange={(e) => handleChange('storefrontHours', e.target.value)} placeholder="10:00 AM - 10:00 PM Daily" />
-                </div>
-                <div className="space-y-2">
                   <Label>Phone</Label>
                   <Input value={settings.storefrontPhone} onChange={(e) => handleChange('storefrontPhone', e.target.value)} placeholder="0917 123 4567" />
                 </div>
                 <div className="space-y-2">
                   <Label>Email</Label>
                   <Input value={settings.storefrontEmail} onChange={(e) => handleChange('storefrontEmail', e.target.value)} placeholder="store@email.com" />
+                </div>
+              </div>
+              <div className="space-y-3 rounded-lg border border-slate-200 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <Label>Business Hours</Label>
+                    <p className="mt-1 text-xs text-slate-500">These hours appear on the storefront and gate checkout availability. Times use Asia/Manila.</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-700">Preview: {formatStorefrontBusinessHoursDisplay(settings.storefrontHours)}</p>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={() => copyStorefrontHoursToAllDays('mon')}>
+                    <Copy className="w-4 h-4 mr-1" />Copy Mon
+                  </Button>
+                </div>
+                <div className="grid gap-2">
+                  {STOREFRONT_BUSINESS_DAY_OPTIONS.map((day) => {
+                    const dayHours = normalizeStorefrontBusinessHours(settings.storefrontHours).weekly[day.key];
+                    const isAllDay = dayHours.enabled && dayHours.open === dayHours.close;
+                    return (
+                      <div key={day.key} className="grid grid-cols-[48px_1fr_1fr_auto_auto] items-center gap-2 rounded-md bg-slate-50 px-3 py-2">
+                        <span className="text-xs font-semibold text-slate-700">{day.label}</span>
+                        <Input
+                          type="time"
+                          value={dayHours.open}
+                          disabled={!dayHours.enabled}
+                          onChange={(e) => handleStorefrontHoursDayChange(day.key, { open: e.target.value })}
+                          className="h-9"
+                        />
+                        <Input
+                          type="time"
+                          value={dayHours.close}
+                          disabled={!dayHours.enabled}
+                          onChange={(e) => handleStorefrontHoursDayChange(day.key, { close: e.target.value })}
+                          className="h-9"
+                        />
+                        <Switch
+                          checked={dayHours.enabled}
+                          onCheckedChange={(checked) => handleStorefrontHoursDayChange(day.key, { enabled: checked === true })}
+                        />
+                        <button
+                          type="button"
+                          className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
+                          onClick={() => handleStorefrontHoursDayChange(day.key, isAllDay ? { open: '09:00', close: '18:00' } : { enabled: true, open: '00:00', close: '00:00' })}
+                        >
+                          {isAllDay ? '24h' : (dayHours.enabled ? 'Set 24h' : 'Closed')}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
               <div className="space-y-2">
@@ -2815,6 +3144,318 @@ export default function Settings() {
                   <Input value={settings.storefrontPromoSubtitle} onChange={(e) => handleChange('storefrontPromoSubtitle', e.target.value)} placeholder="All BBQ items, min order ₱100" className="md:col-span-2" />
                   <Input value={settings.storefrontPromoValidityText} onChange={(e) => handleChange('storefrontPromoValidityText', e.target.value)} placeholder="Valid today only" className="md:col-span-2" />
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card id="fiscal-terminal-registration">
+            <CardHeader>
+              <CardTitle className={SETTINGS_CARD_TITLE_CLASS}>
+                <CreditCard className="w-5 h-5 text-teal-600" />
+                Fiscal Terminal Registration
+              </CardTitle>
+              <CardDescription>
+                Register terminal-specific MIN, machine, software, PTU, and evidence data required before fiscal invoice checkout.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className={cn(
+                'grid gap-3 rounded-md border p-3 text-sm md:grid-cols-3',
+                fiscalTerminalReadiness.ready
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-amber-200 bg-amber-50 text-amber-800'
+              )}>
+                <div>
+                  <p className="text-xs font-semibold uppercase">Activation readiness</p>
+                  <p className="font-semibold">{fiscalTerminalReadiness.ready ? 'Verified terminal available' : 'Verified terminal required'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase">Verified terminals</p>
+                  <p className="font-semibold">{fiscalTerminalReadiness.verified} of {fiscalTerminalReadiness.total}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase">Records needing evidence</p>
+                  <p className="font-semibold">{fiscalTerminalReadiness.blocked}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="md:col-span-3 space-y-1">
+                  <Label className="text-xs text-slate-500">Terminal ID</Label>
+                  <Input value={fiscalTerminalForm.terminal_id} onChange={(event) => setFiscalTerminalField('terminal_id', event.target.value)} placeholder="COUNTER-01" />
+                </div>
+                <div className="md:col-span-3 space-y-1">
+                  <Label className="text-xs text-slate-500">Location</Label>
+                  <select
+                    value={fiscalTerminalForm.location_id || ''}
+                    onChange={(event) => setFiscalTerminalField('location_id', event.target.value)}
+                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                  >
+                    <option value="">Unassigned</option>
+                    {terminalLocationOptions.map((location) => (
+                      <option key={`fiscal-terminal-location-${location.location_id}`} value={location.location_id}>
+                        {location.name}{location.is_primary_storefront === true ? ' (Primary)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="md:col-span-3 space-y-1">
+                  <Label className="text-xs text-slate-500">Accreditation Status</Label>
+                  <select
+                    value={fiscalTerminalForm.accreditation_status}
+                    onChange={(event) => setFiscalTerminalField('accreditation_status', event.target.value)}
+                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
+                  >
+                    <option value="draft">Draft</option>
+                    <option value="pending_review">Pending Review</option>
+                    <option value="verified">Verified</option>
+                    <option value="revoked">Revoked</option>
+                  </select>
+                </div>
+                <div className="md:col-span-3 space-y-1">
+                  <Label className="text-xs text-slate-500">Evidence Reference</Label>
+                  <Input value={fiscalTerminalForm.evidence_ref} onChange={(event) => setFiscalTerminalField('evidence_ref', event.target.value)} placeholder="Filing artifact or approval ref" />
+                </div>
+                <div className="md:col-span-3 space-y-1">
+                  <Label className="text-xs text-slate-500">MIN Number</Label>
+                  <Input value={fiscalTerminalForm.min_number} onChange={(event) => setFiscalTerminalField('min_number', event.target.value)} />
+                </div>
+                <div className="md:col-span-3 space-y-1">
+                  <Label className="text-xs text-slate-500">Machine Serial</Label>
+                  <Input value={fiscalTerminalForm.machine_serial_number} onChange={(event) => setFiscalTerminalField('machine_serial_number', event.target.value)} />
+                </div>
+                <div className="md:col-span-3 space-y-1">
+                  <Label className="text-xs text-slate-500">Software Version</Label>
+                  <Input value={fiscalTerminalForm.software_version} onChange={(event) => setFiscalTerminalField('software_version', event.target.value)} />
+                </div>
+                <div className="md:col-span-3 space-y-1">
+                  <Label className="text-xs text-slate-500">Software Serial</Label>
+                  <Input value={fiscalTerminalForm.software_serial_number} onChange={(event) => setFiscalTerminalField('software_serial_number', event.target.value)} />
+                </div>
+                <div className="md:col-span-3 space-y-1">
+                  <Label className="text-xs text-slate-500">PTU Number</Label>
+                  <Input value={fiscalTerminalForm.ptu_number} onChange={(event) => setFiscalTerminalField('ptu_number', event.target.value)} />
+                </div>
+                <div className="md:col-span-3 space-y-1">
+                  <Label className="text-xs text-slate-500">Permit Issued</Label>
+                  <Input type="date" value={fiscalTerminalForm.permit_issued_at} onChange={(event) => setFiscalTerminalField('permit_issued_at', event.target.value)} />
+                </div>
+                <div className="md:col-span-3 space-y-1">
+                  <Label className="text-xs text-slate-500">Permit Effective</Label>
+                  <Input type="date" value={fiscalTerminalForm.permit_effective_at} onChange={(event) => setFiscalTerminalField('permit_effective_at', event.target.value)} />
+                </div>
+                <div className="md:col-span-3 space-y-1">
+                  <Label className="text-xs text-slate-500">Permit Expires</Label>
+                  <Input type="date" value={fiscalTerminalForm.permit_expires_at} onChange={(event) => setFiscalTerminalField('permit_expires_at', event.target.value)} />
+                </div>
+                <div className="md:col-span-4 space-y-1">
+                  <Label className="text-xs text-slate-500">Receipt Printer Binding</Label>
+                  <Input value={fiscalTerminalForm.receipt_printer_binding} onChange={(event) => setFiscalTerminalField('receipt_printer_binding', event.target.value)} />
+                </div>
+                <div className="md:col-span-4 space-y-1">
+                  <Label className="text-xs text-slate-500">Cash Drawer Binding</Label>
+                  <Input value={fiscalTerminalForm.cash_drawer_binding} onChange={(event) => setFiscalTerminalField('cash_drawer_binding', event.target.value)} />
+                </div>
+                <div className="md:col-span-4 flex items-end gap-2">
+                  <Button type="button" onClick={saveFiscalTerminal} disabled={!canManageFiscalTerminals || fiscalTerminalSaving}>
+                    {fiscalTerminalSaving ? 'Saving...' : 'Save Fiscal Terminal'}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setFiscalTerminalForm(createDefaultFiscalTerminalForm())}>
+                    Clear
+                  </Button>
+                </div>
+              </div>
+              {!canManageFiscalTerminals && (
+                <p className="text-xs text-amber-700">You need fiscal terminal management permission to save terminal accreditation records.</p>
+              )}
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Terminal</th>
+                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2">MIN</th>
+                      <th className="px-3 py-2">PTU</th>
+                      <th className="px-3 py-2">Evidence</th>
+                      <th className="px-3 py-2">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fiscalTerminalRegistrations.map((registration) => (
+                      <tr key={registration.pos_fiscal_terminal_registration_id || registration.terminal_id} className="border-t border-slate-100">
+                        <td className="px-3 py-2 font-semibold text-slate-900">{registration.terminal_id}</td>
+                        <td className="px-3 py-2">{registration.accreditation_status}</td>
+                        <td className="px-3 py-2">{registration.min_number || '-'}</td>
+                        <td className="px-3 py-2">{registration.ptu_number || '-'}</td>
+                        <td className="px-3 py-2">{registration.evidence_ref || '-'}</td>
+                        <td className="px-3 py-2">
+                          <Button type="button" variant="outline" size="sm" onClick={() => editFiscalTerminalRegistration(registration)}>
+                            Edit
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                    {!fiscalTerminalLoading && fiscalTerminalRegistrations.length === 0 && (
+                      <tr>
+                        <td className="px-3 py-4 text-slate-500" colSpan={6}>No fiscal terminal registrations yet.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card id="fiscal-ledger-integrity">
+            <CardHeader>
+              <CardTitle className={SETTINGS_CARD_TITLE_CLASS}>
+                {fiscalLedgerIntegrity?.ready ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                ) : (
+                  <AlertTriangle className="w-5 h-5 text-amber-600" />
+                )}
+                Fiscal Ledger Integrity
+              </CardTitle>
+              <CardDescription>
+                Verify event sequence continuity, previous-hash linkage, and event hash recomputation for the fiscal event ledger.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className={cn(
+                'grid gap-3 rounded-md border p-3 text-sm md:grid-cols-4',
+                fiscalLedgerIntegrity?.ready
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-amber-200 bg-amber-50 text-amber-800'
+              )}>
+                <div>
+                  <p className="text-xs font-semibold uppercase">Status</p>
+                  <p className="font-semibold">{fiscalLedgerIntegrity?.ready ? 'Verified' : 'Needs review'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase">Events checked</p>
+                  <p className="font-semibold">{fiscalLedgerIntegrity?.checked_event_count ?? 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase">Issues</p>
+                  <p className="font-semibold">{fiscalLedgerIntegrity?.issue_count ?? 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase">Latest sequence</p>
+                  <p className="font-semibold">{fiscalLedgerIntegrity?.latest_event_sequence || '-'}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="button" variant="outline" onClick={() => loadFiscalLedgerIntegrity()} disabled={fiscalLedgerLoading}>
+                  {fiscalLedgerLoading ? 'Verifying...' : 'Verify Fiscal Ledger'}
+                </Button>
+                <span className="text-xs text-slate-500">
+                  Last verified: {fiscalLedgerIntegrity?.verified_at ? new Date(fiscalLedgerIntegrity.verified_at).toLocaleString() : 'Not verified in this session'}
+                </span>
+              </div>
+              {Array.isArray(fiscalLedgerIntegrity?.issues) && fiscalLedgerIntegrity.issues.length > 0 && (
+                <div className="overflow-x-auto rounded-lg border border-amber-200">
+                  <table className="min-w-full text-left text-xs">
+                    <thead className="bg-amber-50 uppercase text-amber-700">
+                      <tr>
+                        <th className="px-3 py-2">Sequence</th>
+                        <th className="px-3 py-2">Event</th>
+                        <th className="px-3 py-2">Issue</th>
+                        <th className="px-3 py-2">Invoice</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fiscalLedgerIntegrity.issues.slice(0, 10).map((issue, index) => (
+                        <tr key={`${issue.code}-${issue.event_sequence}-${index}`} className="border-t border-amber-100">
+                          <td className="px-3 py-2">{issue.event_sequence || '-'}</td>
+                          <td className="px-3 py-2">{issue.event_type || '-'}</td>
+                          <td className="px-3 py-2 font-semibold">{issue.code}</td>
+                          <td className="px-3 py-2">{issue.invoice_number || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card id="esales-reporting">
+            <CardHeader>
+              <CardTitle className={SETTINGS_CARD_TITLE_CLASS}>
+                <History className="w-5 h-5 text-teal-600" />
+                eSales Reporting Packages
+              </CardTitle>
+              <CardDescription>
+                Generate monthly fiscal sales packages, retain checksum evidence, and track submission acknowledgement status.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="md:col-span-3 space-y-1">
+                  <Label className="text-xs text-slate-500">Report Month</Label>
+                  <Input type="month" value={esalesForm.report_month} onChange={(event) => setESalesForm((current) => ({ ...current, report_month: event.target.value }))} />
+                </div>
+                <div className="md:col-span-6 space-y-1">
+                  <Label className="text-xs text-slate-500">Generation Evidence Reference</Label>
+                  <Input value={esalesForm.evidence_ref} onChange={(event) => setESalesForm((current) => ({ ...current, evidence_ref: event.target.value }))} placeholder="Dry run, filing packet, or checksum manifest ref" />
+                </div>
+                <div className="md:col-span-3 flex items-end">
+                  <Button type="button" onClick={generateESales} disabled={!canManageESalesReports || esalesSaving}>
+                    {esalesSaving ? 'Working...' : 'Generate eSales Package'}
+                  </Button>
+                </div>
+              </div>
+              {!canManageESalesReports && (
+                <p className="text-xs text-amber-700">You need eSales report management permission to generate or update report status.</p>
+              )}
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Month</th>
+                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2">Checksum</th>
+                      <th className="px-3 py-2">Evidence</th>
+                      <th className="px-3 py-2">Update</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {esalesReports.map((report) => {
+                      const reportId = report.pos_esales_report_id;
+                      const draft = esalesStatusForm?.[reportId] || {};
+                      return (
+                        <tr key={reportId || report.report_month} className="border-t border-slate-100 align-top">
+                          <td className="px-3 py-2 font-semibold text-slate-900">{report.report_month}</td>
+                          <td className="px-3 py-2">{report.status}</td>
+                          <td className="px-3 py-2 font-mono text-xs">{String(report.payload_hash || '').slice(0, 16)}...</td>
+                          <td className="px-3 py-2">{report.evidence_ref || report.status_evidence_ref || '-'}</td>
+                          <td className="px-3 py-2">
+                            <div className="grid min-w-[360px] grid-cols-1 gap-2 md:grid-cols-4">
+                              <select
+                                value={draft.status || 'submitted'}
+                                onChange={(event) => setESalesStatusDraft(reportId, 'status', event.target.value)}
+                                className="rounded-md border border-slate-200 px-2 py-1 text-xs"
+                              >
+                                <option value="submitted">Submitted</option>
+                                <option value="accepted">Accepted</option>
+                                <option value="rejected">Rejected</option>
+                              </select>
+                              <Input className="h-8 text-xs md:col-span-2" value={draft.status_evidence_ref || ''} onChange={(event) => setESalesStatusDraft(reportId, 'status_evidence_ref', event.target.value)} placeholder="Acknowledgement ref" />
+                              <Button type="button" variant="outline" size="sm" disabled={!canManageESalesReports || esalesSaving} onClick={() => saveESalesStatus(report)}>
+                                Save
+                              </Button>
+                              <Input className="h-8 text-xs md:col-span-4" value={draft.status_note || ''} onChange={(event) => setESalesStatusDraft(reportId, 'status_note', event.target.value)} placeholder="Optional status note" />
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {!esalesLoading && esalesReports.length === 0 && (
+                      <tr>
+                        <td className="px-3 py-4 text-slate-500" colSpan={5}>No eSales reports generated yet.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </CardContent>
           </Card>
@@ -3100,11 +3741,35 @@ export default function Settings() {
             <CardContent className="space-y-4">
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
+                  <Label>Registered Name</Label>
+                  <Input
+                    value={settings.posRegisteredName}
+                    onChange={(e) => handleChange('posRegisteredName', e.target.value)}
+                    placeholder="BIR registered name"
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label>Business Name</Label>
                   <Input
                     value={settings.posBusinessName}
                     onChange={(e) => handleChange('posBusinessName', e.target.value)}
                     placeholder="Registered business name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Business Style</Label>
+                  <Input
+                    value={settings.posBusinessStyle}
+                    onChange={(e) => handleChange('posBusinessStyle', e.target.value)}
+                    placeholder="Trade name or business style"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Taxpayer Type</Label>
+                  <Input
+                    value={settings.posTaxpayerType}
+                    onChange={(e) => handleChange('posTaxpayerType', e.target.value)}
+                    placeholder="VAT or non-VAT"
                   />
                 </div>
                 <div className="space-y-2">
@@ -3146,6 +3811,40 @@ export default function Settings() {
                     onChange={(e) => handleChange('posAccreditationNumber', e.target.value)}
                     placeholder="BIR accreditation reference"
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label>Software Name</Label>
+                  <Input
+                    value={settings.posSoftwareName}
+                    onChange={(e) => handleChange('posSoftwareName', e.target.value)}
+                    placeholder="Software product name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Software Version</Label>
+                  <Input
+                    value={settings.posSoftwareVersion}
+                    onChange={(e) => handleChange('posSoftwareVersion', e.target.value)}
+                    placeholder="Installed fiscal version"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Software Serial Number</Label>
+                  <Input
+                    value={settings.posSoftwareSerialNumber}
+                    onChange={(e) => handleChange('posSoftwareSerialNumber', e.target.value)}
+                    placeholder="Software/license serial"
+                  />
+                </div>
+                <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <label className="flex items-center justify-between gap-3 text-sm font-medium text-slate-700">
+                    <span>Require buyer fiscal details on fiscal invoices</span>
+                    <input
+                      type="checkbox"
+                      checked={settings.posFiscalBuyerDetailsRequired === true}
+                      onChange={(e) => handleChange('posFiscalBuyerDetailsRequired', e.target.checked)}
+                    />
+                  </label>
                 </div>
                 <div className="space-y-2">
                   <Label>Receipt Footer Message</Label>

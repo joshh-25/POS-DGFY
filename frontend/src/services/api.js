@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { clearClientSession } from './sessionCleanup.js';
+import { getAccessToken, getAuthHeaders, refreshBrowserSession, setBrowserSession } from './browserSession.js';
 import { emitGlobalApiError } from '../utils/errorHandler.js';
 
 const isTestEnvironment = (() => {
@@ -49,11 +50,6 @@ const resolveApiBaseUrl = () => {
 const API_BASE_URL = resolveApiBaseUrl();
 
 const getSessionExpiredRedirect = () => {
-  const appSurface = String(import.meta.env.VITE_APP_SURFACE || '').trim().toLowerCase();
-  if (appSurface === 'pos') {
-    return '/?reason=session_expired';
-  }
-
   const pathname =
     typeof window !== 'undefined' && typeof window?.location?.pathname === 'string'
       ? window.location.pathname
@@ -74,6 +70,13 @@ const isAlreadyOnPhoneCompletionRoute = () => {
   return pathname === '/settings' && new URLSearchParams(search).get('tab') === 'profile';
 };
 
+const shouldAttemptTenantRefresh = (requestConfig = {}) => {
+  const requestUrl = String(requestConfig?.url || '');
+  if (/\/dgfy(\/|$)/i.test(requestUrl)) return false;
+  if (/\/auth\/(login|register|refresh-token|logout|email-otp|validate-invite|accept-invite)\b/i.test(requestUrl)) return false;
+  return true;
+};
+
 const dispatchSessionExpiredEvent = () => {
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
     return;
@@ -92,6 +95,7 @@ const dispatchSessionExpiredEvent = () => {
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 60000,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -138,11 +142,11 @@ if (authChannel) {
     }
     if (data.type === 'token-refresh-success') {
       // Another tab completed the refresh — adopt the new tokens and drain our queue.
-      localStorage.setItem('authToken', data.token);
-      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
       if (isRefreshing) {
-        processQueue(null, data.token);
-        isRefreshing = false;
+        refreshBrowserSession()
+          .then((token) => processQueue(null, token))
+          .catch((err) => processQueue(err, null))
+          .finally(() => { isRefreshing = false; });
       }
     }
     if (data.type === 'session-expired' || data.type === 'auth:logout') {
@@ -171,17 +175,24 @@ if (typeof window !== 'undefined') {
 
 // Request interceptor - Add JWT token to headers
 api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('authToken');
-    const companyToken = localStorage.getItem('companyToken');
-
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+  async (config) => {
+    const method = String(config.method || 'get').toLowerCase();
+    if (!getAccessToken() && shouldAttemptTenantRefresh(config)) {
+      await refreshBrowserSession().catch(() => '');
     }
-    // Only add stored companyToken if request doesn't already have one set
-    // This allows login/register to use a different token than what's stored
-    if (companyToken && !config.headers['x-company-token']) {
-      config.headers['x-company-token'] = companyToken;
+
+    const sessionHeaders = getAuthHeaders({
+      includeCsrf: !['get', 'head', 'options'].includes(method)
+    });
+
+    if (sessionHeaders.Authorization && !config.headers.Authorization) {
+      config.headers.Authorization = sessionHeaders.Authorization;
+    }
+    if (sessionHeaders['x-company-token'] && !config.headers['x-company-token']) {
+      config.headers['x-company-token'] = sessionHeaders['x-company-token'];
+    }
+    if (sessionHeaders['x-csrf-token'] && !config.headers['x-csrf-token']) {
+      config.headers['x-csrf-token'] = sessionHeaders['x-csrf-token'];
     }
     if (config.data instanceof FormData) {
       delete config.headers['Content-Type'];
@@ -199,21 +210,7 @@ api.interceptors.response.use(
     const originalRequest = error.config;
 
     // Handle 401 errors (unauthorized)
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      const storedRefreshToken = localStorage.getItem('refreshToken');
-
-      // No refresh token at all — immediate logout, no attempt
-      if (!storedRefreshToken) {
-        authChannel?.postMessage({ type: 'session-expired' });
-        clearClientSession({
-          reason: 'session_expired',
-          broadcast: false,
-          emitAuthEvents: false,
-          redirectTo: getSessionExpiredRedirect()
-        });
-        return Promise.reject(error);
-      }
-
+    if (error.response?.status === 401 && !originalRequest._retry && shouldAttemptTenantRefresh(originalRequest)) {
       // A refresh is already in-flight (either started by this tab or by another tab
       // that broadcast 'token-refresh-started') — queue this request so it retries
       // with the new token once the single refresh completes.
@@ -228,10 +225,7 @@ api.interceptors.response.use(
         }).then(token => {
           originalRequest._retry = true; // prevent double-refresh if this retry also gets a 401
           originalRequest.headers.Authorization = `Bearer ${token}`;
-          if (!originalRequest.headers['x-company-token']) {
-            const ct = localStorage.getItem('companyToken');
-            if (ct) originalRequest.headers['x-company-token'] = ct;
-          }
+          Object.assign(originalRequest.headers, getAuthHeaders({ includeCsrf: true }));
           return api(originalRequest);
         });
       }
@@ -243,7 +237,7 @@ api.interceptors.response.use(
       authChannel?.postMessage({ type: 'token-refresh-started' }); // tell other tabs to queue
 
       return new Promise((resolve, reject) => {
-        const companyToken = localStorage.getItem('companyToken');
+        const companyToken = '';
         const refreshConfig = companyToken
           ? { headers: { 'x-company-token': companyToken } }
           : {};
@@ -252,22 +246,19 @@ api.interceptors.response.use(
 
         axios.post(
           `${API_BASE_URL}/auth/refresh-token`,
-          { refreshToken: storedRefreshToken },
-          { ...refreshConfig, timeout: 15000 } // bare axios has no timeout — enforce one so .finally() always runs
+          {},
+          { ...refreshConfig, withCredentials: true, timeout: 15000, headers: getAuthHeaders({ includeCsrf: true }) }
         )
           .then(({ data }) => {
-            const { token, refreshToken: newRefreshToken } = data.data;
-            localStorage.setItem('authToken', token);
-            if (newRefreshToken) localStorage.setItem('refreshToken', newRefreshToken);
+            const { token } = data.data;
+            setBrowserSession({ token });
 
             // Broadcast success BEFORE draining the local queue so that other tabs
             // adopt the new token and drain their own queues concurrently.
-            authChannel?.postMessage({ type: 'token-refresh-success', token, refreshToken: newRefreshToken });
+            authChannel?.postMessage({ type: 'token-refresh-success' });
 
             originalRequest.headers.Authorization = `Bearer ${token}`;
-            if (companyToken && !originalRequest.headers['x-company-token']) {
-              originalRequest.headers['x-company-token'] = companyToken;
-            }
+            Object.assign(originalRequest.headers, getAuthHeaders({ includeCsrf: true }));
 
             processQueue(null, token); // unblock all queued requests with new token
             resolve(api(originalRequest));
@@ -300,7 +291,7 @@ api.interceptors.response.use(
     if (error.response?.status === 404 &&
       (error.response?.data?.message?.includes('Tenant') || error.response?.data?.message?.includes('company token'))) {
       logWarn('⚠️ [Auth] Stale company token detected, clearing...');
-      localStorage.removeItem('companyToken');
+      setBrowserSession({ companyToken: '' });
       // Don't necessarily redirect to login here, just clear the token
       // Most protected routes will redirect if they need a tenant
     }

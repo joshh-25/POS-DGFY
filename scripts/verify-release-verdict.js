@@ -35,6 +35,7 @@ const args = parseArgs(process.argv.slice(2));
 const verdictFile = args.file || process.env.RELEASE_VERDICT_FILE || path.join('.tmp', 'release-gates', 'release_verdict.json');
 const expectedSha = (args.sha || process.env.RELEASE_TARGET_SHA || process.env.GITHUB_SHA || '').toLowerCase();
 const allowMissing = (args['allow-missing'] || process.env.RELEASE_VERDICT_ALLOW_MISSING || '0') === '1' || (args['allow-missing'] || '') === 'true';
+const requirePass = (args['require-pass'] || process.env.RELEASE_VERDICT_REQUIRE_PASS || '0') === '1' || (args['require-pass'] || '') === 'true';
 
 if (!fs.existsSync(verdictFile)) {
   if (allowMissing) {
@@ -68,6 +69,9 @@ if (!Array.isArray(payload.gates) || payload.gates.length === 0) {
 }
 if (expectedSha && payload.target_sha.toLowerCase() !== expectedSha) {
   fail(`target_sha mismatch: verdict=${payload.target_sha} expected=${expectedSha}`);
+}
+if (requirePass && !['pass', 'bypassed'].includes(payload.verdict)) {
+  fail(`Release verdict is not deployable: verdict=${payload.verdict}; failed_gate_count=${payload.failed_gate_count ?? 'unknown'}`);
 }
 
 ok(`Validated release verdict file: ${verdictFile}`);

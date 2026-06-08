@@ -1,5 +1,6 @@
 import useStore from '../store/useStore.js';
 import { clearAllClientCaches } from './cacheRegistry.js';
+import { clearBrowserSession } from './browserSession.js';
 
 const AUTH_EPOCH_KEY = 'authEpoch';
 
@@ -28,6 +29,7 @@ export const clearClientSession = ({
 
   isClearing = true;
   try {
+    clearBrowserSession();
     localStorage.removeItem('authToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('companyToken');

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -189,7 +189,9 @@ export default function ItemFormModal({
   onUploadPosImage,
   onDeletePosImage,
   onToggleStorefrontVisibility,
+  onToggleStorefrontLocationAvailability,
   onUploadStorefrontImage,
+  onSetPrimaryStorefrontImage,
   onDeleteStorefrontImage,
   onOpenBulkPosSetup
 }) {
@@ -239,6 +241,60 @@ export default function ItemFormModal({
     () => resolveBusinessModeItemDefaults(workflowMode),
     [workflowMode]
   );
+  const { locations, loading: loadingLocations } = useLocations();
+  const activeLocations = useMemo(
+    () => (Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : []),
+    [locations]
+  );
+  const [draftStorefrontLocationAvailability, setDraftStorefrontLocationAvailability] = useState([]);
+  const storefrontGallery = useMemo(() => {
+    const entries = Array.isArray(storefrontConfig?.storefront_image_gallery)
+      ? storefrontConfig.storefront_image_gallery
+      : [];
+    const gallery = entries
+      .map((entry, index) => ({
+        path: entry?.path || null,
+        url: entry?.url || entry?.image_url || entry,
+        is_primary: index === 0,
+        sort_order: index
+      }))
+      .filter((entry) => entry.path || entry.url);
+    const primaryUrl = storefrontConfig?.storefront_image_url || null;
+    if (primaryUrl && !gallery.some((entry) => entry.url === primaryUrl)) {
+      gallery.unshift({
+        path: storefrontConfig?.storefront_image_path || null,
+        url: primaryUrl,
+        is_primary: true,
+        sort_order: 0
+      });
+    }
+    return gallery.map((entry, index) => ({
+      ...entry,
+      is_primary: index === 0,
+      sort_order: index
+    }));
+  }, [storefrontConfig]);
+  const configuredStorefrontLocationAvailability = useMemo(() => {
+    const configuredRows = Array.isArray(storefrontConfig?.location_availability)
+      ? storefrontConfig.location_availability
+      : [];
+    const configuredByLocationId = new Map(configuredRows.map((row) => [
+      String(row?.location_id),
+      row
+    ]));
+    return activeLocations.map((location) => {
+      const configured = configuredByLocationId.get(String(location?.location_id));
+      return {
+        location_id: location.location_id,
+        name: location.name,
+        is_primary_storefront: location.is_primary_storefront === true,
+        storefront_available: configured?.storefront_available !== false
+      };
+    });
+  }, [activeLocations, storefrontConfig]);
+  const storefrontLocationAvailability = item
+    ? configuredStorefrontLocationAvailability
+    : draftStorefrontLocationAvailability;
   const modeItemTaxonomy = useMemo(
     () => resolveModeItemTaxonomy(workflowMode),
     [workflowMode]
@@ -263,11 +319,6 @@ export default function ItemFormModal({
     storefrontVisible: storefrontConfig?.storefront_visible === true,
     serviceCostTrackingEnabled: trackServiceCost
   }), [currentItemPreset, formData, posConfig?.pos_visible, storefrontConfig?.storefront_visible, trackServiceCost, workflowMode]);
-  const { locations, loading: loadingLocations } = useLocations();
-  const activeLocations = useMemo(
-    () => (Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : []),
-    [locations]
-  );
   const [stockBaseline, setStockBaseline] = useState(0);
   const itemLocationStockMap = useMemo(() => {
     const rows = Array.isArray(item?.item_location_stocks) ? item.item_location_stocks : [];
@@ -288,9 +339,24 @@ export default function ItemFormModal({
   const [initialFormData, setInitialFormData] = useState(null);
   const [isDirty, setIsDirty] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [savingAction, setSavingAction] = useState(null);
+  const savingActionRef = useRef(null);
   const [skuManuallyEdited, setSkuManuallyEdited] = useState(false);
   const [lastSuggestedSku, setLastSuggestedSku] = useState('');
   const isEditingDraft = item?.status === 'draft';
+  const isSaving = Boolean(savingAction);
+
+  const runSaveAction = async (action, operation) => {
+    if (savingActionRef.current) return;
+    savingActionRef.current = action;
+    setSavingAction(action);
+    try {
+      await operation();
+    } finally {
+      savingActionRef.current = null;
+      setSavingAction(null);
+    }
+  };
 
   const fetchSuppliers = async () => {
     if (!msmeMode) return;
@@ -311,6 +377,11 @@ export default function ItemFormModal({
       fetchSuppliers();
     }
   }, [msmeMode, open]);
+
+  useEffect(() => {
+    if (!open || item) return;
+    setDraftStorefrontLocationAvailability(configuredStorefrontLocationAvailability);
+  }, [configuredStorefrontLocationAvailability, item, open]);
 
   useEffect(() => {
     if (item && open) {
@@ -714,7 +785,37 @@ export default function ItemFormModal({
     });
   };
 
+  const handleStorefrontLocationAvailabilityChange = (locationId, checked) => {
+    const normalizedLocationId = Number.parseInt(locationId, 10);
+    if (!Number.isInteger(normalizedLocationId) || normalizedLocationId <= 0) return;
+
+    if (item) {
+      onToggleStorefrontLocationAvailability?.(item, normalizedLocationId, checked);
+      return;
+    }
+
+    setDraftStorefrontLocationAvailability((previous) => {
+      const sourceRows = previous.length > 0 ? previous : configuredStorefrontLocationAvailability;
+      const hasLocationRow = sourceRows.some((row) => Number(row?.location_id) === normalizedLocationId);
+      if (hasLocationRow) {
+        return sourceRows.map((row) => (
+          Number(row?.location_id) === normalizedLocationId
+            ? { ...row, storefront_available: Boolean(checked) }
+            : row
+        ));
+      }
+      return [
+        ...sourceRows,
+        {
+          location_id: normalizedLocationId,
+          storefront_available: Boolean(checked)
+        }
+      ];
+    });
+  };
+
   const handleClose = () => {
+    if (savingActionRef.current) return;
     if (isDirty && !item) {
       setShowConfirmation(true);
     } else {
@@ -722,24 +823,28 @@ export default function ItemFormModal({
     }
   };
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     const draftData = {
       ...formData,
       status: 'draft'
     };
     if (onSaveDraft) {
-      onSaveDraft(draftData);
+      try {
+        await onSaveDraft(draftData);
+      } catch {
+        return;
+      }
     }
     setIsDirty(false);
     onClose();
   };
 
-  const handleFinalize = () => {
+  const handleFinalize = async () => {
     // For editing drafts, finalize means saving with full validation
-    handleSubmit(false);
+    await handleSubmit(false);
   };
 
-  const handleSubmit = (isDraft = false) => {
+  const handleSubmit = async (isDraft = false) => {
     // Convert empty strings to null for financial fields so hidden service cost stays unset.
     const cleanedData = {
       ...formData,
@@ -892,17 +997,37 @@ export default function ItemFormModal({
       ? {
         ...submitPayload,
         supplier_links: normalizedSupplierLinks,
-        supplier_links_dirty: !areSupplierLinksEqual(normalizedSupplierLinks, item?.suppliers || [])
+        supplier_links_dirty: !areSupplierLinksEqual(normalizedSupplierLinks, item?.suppliers || []),
+        storefront_location_availability: storefrontLocationAvailability
       }
-      : submitPayload;
+      : {
+        ...submitPayload,
+        storefront_location_availability: storefrontLocationAvailability
+      };
 
-    if (isDraft && onSaveDraft) {
-      onSaveDraft(finalPayload);
+    if (isDraft && onSaveDraft && !item) {
+      try {
+        await onSaveDraft(finalPayload);
+      } catch {
+        return;
+      }
     } else {
-      onSave(finalPayload);
+      try {
+        await onSave(finalPayload);
+      } catch {
+        return;
+      }
     }
     setIsDirty(false);
     onClose();
+  };
+
+  const handleSaveAndExit = async () => {
+    if (item?.status === 'draft' || !item) {
+      await handleSubmit(true);
+      return;
+    }
+    await handleSubmit(false);
   };
 
   const parsedMarginPercent = Number.parseFloat(marginPercent);
@@ -1322,7 +1447,7 @@ export default function ItemFormModal({
                 <div>
                   <Label>Storefront Catalog (Optional)</Label>
                   <p className="text-xs text-slate-500">
-                    Configure customer-facing catalog visibility and image independently from POS.
+                    Configure customer-facing catalog visibility and item image independently from POS.
                   </p>
                 </div>
                 {item && (
@@ -1338,28 +1463,94 @@ export default function ItemFormModal({
                 )}
               </div>
 
+              {storefrontLocationAvailability.length > 0 && (
+                <div className="rounded-md border border-slate-200 bg-white p-3">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Branch availability</p>
+                      <p className="text-xs text-slate-500">Controls where this item appears inside the tenant store.</p>
+                    </div>
+                    <Badge variant="outline">
+                      {storefrontLocationAvailability.filter((row) => row.storefront_available !== false).length}/{storefrontLocationAvailability.length}
+                    </Badge>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {storefrontLocationAvailability.map((location) => (
+                      <div key={location.location_id} className="flex items-center justify-between gap-3 rounded-md border border-slate-100 px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-800">{location.name || `Location ${location.location_id}`}</p>
+                          <p className="text-xs text-slate-500">{location.is_primary_storefront ? 'Main branch' : 'Branch'}</p>
+                        </div>
+                        <Switch
+                          checked={location.storefront_available !== false}
+                          onCheckedChange={(checked) => handleStorefrontLocationAvailabilityChange(location.location_id, checked)}
+                          disabled={item ? !onToggleStorefrontLocationAvailability : false}
+                          aria-label={`Toggle storefront availability for ${location.name || location.location_id}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {item ? (
                 <div className="space-y-3">
-                  {storefrontConfig?.storefront_image_url ? (
-                    <img
-                      src={resolveAssetUrl(storefrontConfig.storefront_image_url)}
-                      alt={`${item.name} storefront catalog`}
-                      className="h-28 w-40 rounded-md border border-slate-200 object-cover"
-                    />
+                  {storefrontGallery.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {storefrontGallery.map((entry, index) => (
+                        <div key={`${entry.url || entry.path}-${index}`} className="rounded-md border border-slate-200 bg-white p-2">
+                          <div className="relative">
+                            <img
+                              src={resolveAssetUrl(entry.url || entry.path)}
+                              alt={`${item.name} storefront image ${index + 1}`}
+                              className="h-24 w-full rounded-md object-cover"
+                            />
+                            {index === 0 && (
+                              <Badge className="absolute left-2 top-2 bg-emerald-600 text-white hover:bg-emerald-600">
+                                Primary
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {index > 0 && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => onSetPrimaryStorefrontImage && onSetPrimaryStorefrontImage(item, index)}
+                                disabled={!onSetPrimaryStorefrontImage}
+                              >
+                                Set first
+                              </Button>
+                            )}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => onDeleteStorefrontImage && onDeleteStorefrontImage(item, index)}
+                              disabled={!onDeleteStorefrontImage}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   ) : (
-                    <p className="text-sm text-slate-500">No storefront image uploaded yet.</p>
+                    <p className="text-sm text-slate-500">No item image uploaded yet.</p>
                   )}
                   <div className="flex flex-wrap gap-2">
                     <label className="cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100">
-                      Upload Storefront Image
+                      Add Item Images
                       <input
                         type="file"
                         accept="image/*"
+                        multiple
                         className="hidden"
                         onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          if (file && onUploadStorefrontImage) {
-                            onUploadStorefrontImage(item, file);
+                          const files = Array.from(event.target.files || []);
+                          if (files.length && onUploadStorefrontImage) {
+                            onUploadStorefrontImage(item, files);
                           }
                           event.target.value = '';
                         }}
@@ -1369,15 +1560,15 @@ export default function ItemFormModal({
                       type="button"
                       variant="outline"
                       onClick={() => onDeleteStorefrontImage && onDeleteStorefrontImage(item)}
-                      disabled={!storefrontConfig?.storefront_image_url || !onDeleteStorefrontImage}
+                      disabled={storefrontGallery.length === 0 || !onDeleteStorefrontImage}
                     >
-                      Remove Storefront Image
+                      Remove All Item Images
                     </Button>
                   </div>
                 </div>
               ) : (
                 <p className="text-sm text-slate-500">
-                  Save the item first, then reopen it to complete storefront catalog setup.
+                  Save the item first, then reopen it to complete item image setup.
                 </p>
               )}
             </div>
@@ -1605,20 +1796,32 @@ export default function ItemFormModal({
             )}
           </div>
 
-          <DialogFooter className="wizard-footer pt-8 flex flex-col sm:flex-row gap-2">
-            <Button variant="outline" onClick={handleClose}>Cancel</Button>
-            {!item && onSaveDraft && (
-              <Button variant="outline" onClick={() => handleSubmit(true)}>
-                Save as Draft
+          <DialogFooter className="wizard-footer pt-8 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+            <Button variant="outline" onClick={handleClose} disabled={isSaving}>Cancel</Button>
+            {((item && item.status !== 'draft') || onSaveDraft) && (
+              <Button
+                variant="outline"
+                onClick={() => runSaveAction('save-exit', handleSaveAndExit)}
+                disabled={isSaving}
+              >
+                {savingAction === 'save-exit' ? 'Saving...' : 'Save and exit'}
               </Button>
             )}
             {isEditingDraft ? (
-              <Button onClick={handleFinalize} className="bg-teal-600 hover:bg-teal-700">
-                Finalize Item
+              <Button
+                onClick={() => runSaveAction('finalize', handleFinalize)}
+                className="bg-teal-600 hover:bg-teal-700"
+                disabled={isSaving}
+              >
+                {savingAction === 'finalize' ? 'Saving...' : 'Finalize Item'}
               </Button>
             ) : (
-              <Button onClick={() => handleSubmit(false)} className="bg-teal-600 hover:bg-teal-700">
-                {item ? 'Update Item' : 'Create Item'}
+              <Button
+                onClick={() => runSaveAction('submit', () => handleSubmit(false))}
+                className="bg-teal-600 hover:bg-teal-700"
+                disabled={isSaving}
+              >
+                {savingAction === 'submit' ? 'Saving...' : (item ? 'Update Item' : 'Create Item')}
               </Button>
             )}
           </DialogFooter>
@@ -1675,7 +1878,7 @@ export default function ItemFormModal({
         onOpenChange={setShowConfirmation}
         title="Save Draft?"
         message="You have unsaved changes. Would you like to save them as a draft?"
-        onSaveDraft={handleSaveDraft}
+        onSaveDraft={() => runSaveAction('save-draft', handleSaveDraft)}
         onDiscard={() => {
           setIsDirty(false);
           onClose();

@@ -2,6 +2,7 @@ import { jest } from '@jest/globals';
 import { buildRegisterCompanyRequestUseCase } from '../src/modules/tenants/usecases/registerCompanyRequestUseCase.js';
 import { buildUpgradeToPremiumUseCase } from '../src/modules/payments/usecases/upgradeToPremiumUseCase.js';
 import { buildHandleWebhookUseCase } from '../src/modules/payments/usecases/handleWebhookUseCase.js';
+import { DGFY_LEGAL_TERM_VERSIONS } from '../src/modules/shared/utils/dgfyLegalTerms.js';
 
 const makeLogger = () => ({
     info: jest.fn(),
@@ -16,6 +17,7 @@ const getEventTypes = (trackEngagementEvent) => (
 describe('billing funnel telemetry hardening', () => {
     describe('registerCompanyRequestUseCase', () => {
         const baseTenantAdminRepository = () => ({
+            transaction: jest.fn(async (callback) => callback('tx-company')),
             findTenantByName: jest.fn().mockResolvedValue(null),
             createTenant: jest.fn()
         });
@@ -25,6 +27,29 @@ describe('billing funnel telemetry hardening', () => {
             sendCompanyApprovedEmail: jest.fn()
         });
 
+        const baseDgfyAccountRepository = () => ({
+            recordLegalAcknowledgement: jest.fn().mockResolvedValue({ acknowledgement_id: 'ack-1' }),
+            upsertFounderMembership: jest.fn().mockResolvedValue({ membership_id: 'membership-1' })
+        });
+
+        const validDgfyAccount = {
+            id: 'dgfy-account-1',
+            first_name: 'Owner',
+            username: 'Owner',
+            email: 'owner@example.com',
+            phone: '+639123456789',
+            password_hash: 'hashed-password',
+            email_verified_at: new Date('2026-05-21T00:00:00.000Z')
+        };
+
+        const validRegistrationBody = {
+            name: 'Acme',
+            workflowMode: 'msme',
+            accepted_company_terms: true,
+            company_terms_version: DGFY_LEGAL_TERM_VERSIONS.companyTerms,
+            marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
+        };
+
         it('emits a terminal failed event for missing required fields', async () => {
             const trackEngagementEvent = jest.fn().mockResolvedValue({ created: true });
             const tenantAdminRepository = baseTenantAdminRepository();
@@ -33,9 +58,9 @@ describe('billing funnel telemetry hardening', () => {
                 paypalService: { verifySubscription: jest.fn() },
                 trackEngagementEvent,
                 addEmailTenantMapping: jest.fn(),
+                dgfyAccountRepository: baseDgfyAccountRepository(),
                 provisionTenant: jest.fn(),
                 emailService: baseEmailService(),
-                hashPassword: jest.fn(),
                 idGenerator: jest.fn(),
                 logger: makeLogger()
             });
@@ -45,6 +70,7 @@ describe('billing funnel telemetry hardening', () => {
                     name: 'Acme',
                     adminEmail: 'owner@example.com'
                 },
+                dgfyAccount: null,
                 correlationId: 'req-register-missing-fields'
             });
 
@@ -59,9 +85,10 @@ describe('billing funnel telemetry hardening', () => {
             expect(failedEvent.metadata.failure_code).toBe('validation_failed');
             expect(failedEvent.metadata.failure_reason).toBe('missing_required_fields');
             expect(failedEvent.metadata.missing_fields).toEqual([
+                'dgfyAccount',
+                'adminEmail',
                 'adminPhone',
-                'adminPassword',
-                'complianceMode',
+                'adminPasswordHash',
                 'workflowMode'
             ]);
         });
@@ -76,22 +103,16 @@ describe('billing funnel telemetry hardening', () => {
                 paypalService: { verifySubscription: jest.fn() },
                 trackEngagementEvent,
                 addEmailTenantMapping: jest.fn(),
+                dgfyAccountRepository: baseDgfyAccountRepository(),
                 provisionTenant: jest.fn(),
                 emailService: baseEmailService(),
-                hashPassword: jest.fn(),
                 idGenerator: jest.fn(),
                 logger: makeLogger()
             });
 
             const result = await useCase({
-                body: {
-                    name: 'Acme',
-                    adminEmail: 'owner@example.com',
-                    adminPhone: '+63 912 345 6789',
-                    adminPassword: 'Password123!',
-                    complianceMode: 'non_compliant',
-                    workflowMode: 'msme'
-                },
+                body: validRegistrationBody,
+                dgfyAccount: validDgfyAccount,
                 correlationId: 'req-register-conflict'
             });
 
@@ -131,23 +152,24 @@ describe('billing funnel telemetry hardening', () => {
                 },
                 trackEngagementEvent,
                 addEmailTenantMapping: jest.fn().mockResolvedValue(undefined),
+                dgfyAccountRepository: baseDgfyAccountRepository(),
                 provisionTenant: jest.fn().mockRejectedValue(new Error('provisioning exploded')),
                 emailService: baseEmailService(),
-                hashPassword: jest.fn().mockResolvedValue('hashed'),
                 idGenerator: jest.fn().mockReturnValue('11111111-2222-3333-4444-555555555555'),
                 logger: makeLogger()
             });
 
             const result = await useCase({
                 body: {
+                    ...validRegistrationBody,
                     name: 'Premium Co',
-                    adminEmail: 'paid@premium.test',
-                    adminPhone: '+63 912 345 6789',
-                    adminPassword: 'Password123!',
                     plan: 'premium',
                     subscriptionId: 'I-PREMIUM-001',
-                    complianceMode: 'non_compliant',
                     workflowMode: 'food_manufacturing'
+                },
+                dgfyAccount: {
+                    ...validDgfyAccount,
+                    email: 'paid@premium.test'
                 },
                 correlationId: 'req-register-provision-fail'
             });

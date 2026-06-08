@@ -135,7 +135,8 @@ describe('Settings deep-linking and action wiring', () => {
 
     mocks.settingsServiceMock.getAllSettings.mockResolvedValue({
       storefront_cover_image_url: { value: '/uploads/storefront-assets/t1/cover.png' },
-      storefront_profile_image_url: { value: '/uploads/storefront-assets/t1/profile.png' }
+      storefront_profile_image_url: { value: '/uploads/storefront-assets/t1/profile.png' },
+      store_is_visible: { value: false, data_type: 'boolean' }
     });
     mocks.settingsServiceMock.getCompanyInfo.mockResolvedValue({ company_token: 'TOKEN-123' });
     mocks.settingsServiceMock.updateSettings.mockResolvedValue({});
@@ -216,6 +217,44 @@ describe('Settings deep-linking and action wiring', () => {
 
     expect(await screen.findByText(/Runtime enforcement: Enforced/i)).toBeTruthy();
     expect(screen.getByText(/Public Storefront access-mode enforcement is active for this tenant/i)).toBeTruthy();
+  });
+
+  it('persists public map and storefront page visibility from Settings', async () => {
+    const user = userEvent.setup();
+
+    renderSettings('/settings?tab=storefront');
+    const visibilitySwitch = await screen.findByRole('switch', {
+      name: /Show company on DGFY map and public storefront page/i
+    });
+
+    expect(visibilitySwitch.getAttribute('aria-checked')).toBe('false');
+
+    await user.click(visibilitySwitch);
+    await user.click(screen.getByRole('button', { name: /Save Changes/i }));
+
+    await waitFor(() => {
+      expect(mocks.settingsServiceMock.updateSettings).toHaveBeenCalled();
+    });
+    const latestPayload = mocks.settingsServiceMock.updateSettings.mock.calls.at(-1)?.[0] || {};
+    expect(latestPayload.store_is_visible).toBe(true);
+  });
+
+  it('warns when public visibility is enabled without an active primary storefront pin', async () => {
+    mocks.settingsServiceMock.getAllSettings.mockResolvedValueOnce({
+      storefront_cover_image_url: { value: '/uploads/storefront-assets/t1/cover.png' },
+      storefront_profile_image_url: { value: '/uploads/storefront-assets/t1/profile.png' },
+      store_is_visible: { value: true, data_type: 'boolean' }
+    });
+    mocks.tenantLocationServiceMock.listTenantLocationsWithMeta.mockResolvedValueOnce({
+      rows: [
+        { location_id: 13, name: 'Old Popup Pin', is_active: false, is_primary_storefront: true }
+      ],
+      meta: {}
+    });
+
+    renderSettings('/settings?tab=storefront');
+
+    expect(await screen.findByText(/will not publish until an active primary storefront pin is saved/i)).toBeTruthy();
   });
 
   it('shows Customer Access Mode rollback status when the backend runtime flag is disabled', async () => {

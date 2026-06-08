@@ -8,6 +8,59 @@ const toPlain = (row) => (
         : row
 );
 
+const toPositiveInt = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const isMissingStorefrontLocationItemOverrideTableError = (error) => {
+    if (!error) return false;
+    const code = error.original?.code || error.parent?.code || error.code;
+    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
+    return code === 'ER_NO_SUCH_TABLE' && message.includes('storefront_location_item_overrides');
+};
+
+const loadStorefrontLocationAvailabilityMap = async (itemIds = [], locationId = null, options = {}) => {
+    const normalizedLocationId = toPositiveInt(locationId);
+    const normalizedItemIds = [...new Set((Array.isArray(itemIds) ? itemIds : [])
+        .map((itemId) => toPositiveInt(itemId))
+        .filter(Boolean))];
+    if (!normalizedLocationId || normalizedItemIds.length === 0) return new Map();
+
+    const StorefrontLocationItemOverride = dbStore.get('StorefrontLocationItemOverride');
+    if (!StorefrontLocationItemOverride?.findAll) return new Map();
+
+    try {
+        const rows = await StorefrontLocationItemOverride.findAll({
+            where: {
+                item_id: { [Op.in]: normalizedItemIds },
+                location_id: normalizedLocationId
+            },
+            attributes: ['item_id', 'storefront_available'],
+            transaction: options.transaction
+        });
+        return new Map((rows || []).map((row) => {
+            const payload = toPlain(row);
+            return [Number(payload.item_id), payload.storefront_available !== false];
+        }));
+    } catch (error) {
+        if (isMissingStorefrontLocationItemOverrideTableError(error)) return new Map();
+        throw error;
+    }
+};
+
+const applyStorefrontLocationAvailability = async (rows = [], locationId = null, options = {}) => {
+    const normalizedLocationId = toPositiveInt(locationId);
+    if (!normalizedLocationId || !Array.isArray(rows) || rows.length === 0) return rows;
+
+    const availabilityMap = await loadStorefrontLocationAvailabilityMap(
+        rows.map((row) => Number(row?.item_id)),
+        normalizedLocationId,
+        options
+    );
+    return rows.filter((row) => availabilityMap.get(Number(row?.item_id)) !== false);
+};
+
 const serviceItemInclude = () => ([
     {
         model: dbStore.get('ServiceItemDetail'),
@@ -152,7 +205,7 @@ export const serviceRepository = {
         return rows.map(toPlain);
     },
 
-    async listServiceCatalog({ search = '', storefrontOnly = false, posOnly = false, limit = 200 } = {}, options = {}) {
+    async listServiceCatalog({ search = '', storefrontOnly = false, posOnly = false, limit = 200, location_id = null } = {}, options = {}) {
         const Item = dbStore.get('Item');
         const where = buildVisibleWhere(
             { category: 'service' },
@@ -199,7 +252,10 @@ export const serviceRepository = {
             transaction: options.transaction
         });
 
-        return rows.map(toPlain);
+        const plainRows = rows.map(toPlain);
+        return storefrontOnly
+            ? applyStorefrontLocationAvailability(plainRows, location_id, options)
+            : plainRows;
     },
 
     async findServiceItemById(itemId, options = {}) {
@@ -213,7 +269,26 @@ export const serviceRepository = {
             transaction: options.transaction,
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
         });
-        return toPlain(row);
+        const payload = toPlain(row);
+        if (!payload || !options.storefrontLocationId) return payload;
+
+        const availableRows = await applyStorefrontLocationAvailability(
+            [payload],
+            options.storefrontLocationId,
+            options
+        );
+        return availableRows[0] || null;
+    },
+    async isServiceItemAvailableForStorefrontLocation(itemId, locationId, options = {}) {
+        const normalizedItemId = toPositiveInt(itemId);
+        const normalizedLocationId = toPositiveInt(locationId);
+        if (!normalizedItemId || !normalizedLocationId) return true;
+        const availableRows = await applyStorefrontLocationAvailability(
+            [{ item_id: normalizedItemId }],
+            normalizedLocationId,
+            options
+        );
+        return availableRows.length > 0;
     },
 
     async createServiceItem(payload = {}, options = {}) {

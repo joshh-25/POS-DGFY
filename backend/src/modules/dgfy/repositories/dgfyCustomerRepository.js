@@ -7,6 +7,7 @@ import {
     DgfyCustomerBackfillRun,
     DgfyCustomerReview,
     DgfyLoyaltyTransaction,
+    DgfyReviewInvite,
     DgfyTrackingRecoveryCode,
     Tenant
 } from '../../../models/index.js';
@@ -48,6 +49,13 @@ export const hashTrackingRecoveryLookup = (value) => (
     crypto
         .createHash('sha256')
         .update(`${String(value || '').trim().toLowerCase()}:${process.env.EMAIL_OTP_SECRET || process.env.JWT_SECRET || 'dgfy_recovery_local_fallback'}`)
+        .digest('hex')
+);
+
+export const hashReviewInviteToken = (value) => (
+    crypto
+        .createHash('sha256')
+        .update(`${String(value || '').trim()}:${process.env.EMAIL_OTP_SECRET || process.env.JWT_SECRET || 'dgfy_review_invite_local_fallback'}`)
         .digest('hex')
 );
 
@@ -365,18 +373,29 @@ export const dgfyCustomerRepository = {
             }),
             DgfyCustomerReview.findAll({
                 where,
-                attributes: ['rating']
+                attributes: ['rating', 'verified_purchase']
             })
         ]);
         const ratings = allRows.map((row) => Number(row.rating || 0)).filter((rating) => rating > 0);
         const average = ratings.length
             ? Math.round((ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length) * 100) / 100
             : null;
+        const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+        let verifiedCount = 0;
+        allRows.forEach((row) => {
+            const rating = Number(row.rating || 0);
+            if (Number.isInteger(rating) && distribution[rating] !== undefined) {
+                distribution[rating] += 1;
+            }
+            if (row.verified_purchase === true) verifiedCount += 1;
+        });
         return {
             rows: rows.map(toPlain),
             summary: {
                 average_rating: average,
-                total_count: ratings.length
+                total_count: ratings.length,
+                verified_count: verifiedCount,
+                distribution
             }
         };
     },
@@ -438,6 +457,91 @@ export const dgfyCustomerRepository = {
             }
         });
         return toPlain(row);
+    },
+
+    async findActivityByTenantReference({ tenantId, reference }) {
+        const row = await DgfyCustomerActivity.findOne({
+            where: {
+                tenant_id: String(tenantId || '').trim(),
+                reference: String(reference || '').trim().toUpperCase()
+            }
+        });
+        return toPlain(row);
+    },
+
+    async findReviewByTrackingActivityTarget({ tenantId, activityId = null, targetType, targetId }) {
+        const where = {
+            tenant_id: String(tenantId || '').trim(),
+            target_type: targetType,
+            target_id: Number.parseInt(targetId, 10)
+        };
+        if (activityId) where.activity_id = Number.parseInt(activityId, 10);
+        const row = await DgfyCustomerReview.findOne({ where });
+        return toPlain(row);
+    },
+
+    async findActiveReviewInvite({ tenantId, trackingPin, targetType, targetId }) {
+        const row = await DgfyReviewInvite.findOne({
+            where: {
+                tenant_id: String(tenantId || '').trim(),
+                tracking_pin: String(trackingPin || '').trim().toUpperCase(),
+                target_type: String(targetType || '').trim(),
+                target_id: Number.parseInt(targetId, 10),
+                status: { [Op.in]: ['issued', 'opened'] },
+                expires_at: { [Op.gt]: new Date() }
+            },
+            order: [['invite_id', 'DESC']]
+        });
+        return toPlain(row);
+    },
+
+    async createReviewInvite(payload = {}) {
+        const row = await DgfyReviewInvite.create(payload);
+        return toPlain(row);
+    },
+
+    async revokeActiveReviewInvites({ tenantId, trackingPin, targetType, targetId }) {
+        await DgfyReviewInvite.update(
+            { status: 'revoked' },
+            {
+                where: {
+                    tenant_id: String(tenantId || '').trim(),
+                    tracking_pin: String(trackingPin || '').trim().toUpperCase(),
+                    target_type: String(targetType || '').trim(),
+                    target_id: Number.parseInt(targetId, 10),
+                    status: { [Op.in]: ['issued', 'opened'] }
+                }
+            }
+        );
+    },
+
+    async findReviewInviteByTokenHash(tokenHash) {
+        const row = await DgfyReviewInvite.findOne({
+            where: { token_hash: tokenHash }
+        });
+        return toPlain(row);
+    },
+
+    async markReviewInviteOpened(inviteId) {
+        const row = await DgfyReviewInvite.findByPk(inviteId);
+        if (!row) return null;
+        if (!row.opened_at) {
+            await row.update({
+                opened_at: new Date(),
+                status: row.status === 'issued' ? 'opened' : row.status
+            });
+        }
+        return toPlain(await row.reload());
+    },
+
+    async markReviewInviteSubmitted({ inviteId, reviewId }) {
+        const row = await DgfyReviewInvite.findByPk(inviteId);
+        if (!row) return null;
+        await row.update({
+            status: 'submitted',
+            submitted_review_id: reviewId || null
+        });
+        return toPlain(await row.reload());
     },
 
     async createRecoveryCode(payload = {}) {

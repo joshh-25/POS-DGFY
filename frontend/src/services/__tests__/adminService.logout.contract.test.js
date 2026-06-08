@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { adminApi, logout } from '../adminService.js';
+import { adminApi, login, logout } from '../adminService.js';
 
 const sessionStorageMock = (() => {
   const store = {};
@@ -25,9 +25,12 @@ describe('adminService logout contract', () => {
     vi.restoreAllMocks();
   });
 
-  it('posts best-effort admin revoke then clears local token', () => {
-    sessionStorage.setItem('admin_token', 'admin-jwt-token');
-    const postSpy = vi.spyOn(adminApi, 'post').mockResolvedValue({ data: {} });
+  it('posts best-effort admin revoke then clears memory token', async () => {
+    const postSpy = vi.spyOn(adminApi, 'post')
+      .mockResolvedValueOnce({ data: { success: true, token: 'admin-jwt-token' } })
+      .mockResolvedValueOnce({ data: {} });
+
+    await login('admin', 'password');
 
     logout();
 

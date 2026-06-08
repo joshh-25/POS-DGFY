@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import api from '../src/services/api.js';
+import { setBrowserSession } from '../src/services/browserSession.js';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,11 +15,6 @@ export default function AcceptInvite() {
 
   // Get token from URL query param
   const tokenFromUrl = searchParams.get('token') || '';
-  const companyTokenFromUrl =
-    searchParams.get('company') ||
-    searchParams.get('companyToken') ||
-    '';
-
   const [formData, setFormData] = useState({
     username: '',
     phoneNumber: '',
@@ -52,10 +48,7 @@ export default function AcceptInvite() {
       setTokenError('');
 
       try {
-        const config = companyTokenFromUrl
-          ? { headers: { 'x-company-token': companyTokenFromUrl } }
-          : {};
-        const response = await api.get(`/auth/validate-invite/${tokenFromUrl}`, config);
+        const response = await api.get(`/auth/validate-invite/${tokenFromUrl}`);
         setInvitationData(response.data.data);
         setTokenValid(true);
       } catch (err) {
@@ -72,7 +65,7 @@ export default function AcceptInvite() {
     };
 
     validateToken();
-  }, [tokenFromUrl, companyTokenFromUrl]);
+  }, [tokenFromUrl]);
 
   // Password validation rules
   const passwordValidations = {
@@ -82,12 +75,6 @@ export default function AcceptInvite() {
   const isPasswordValid = Object.values(passwordValidations).every(v => v);
   const passwordsMatch = formData.password === formData.confirmPassword;
   const isEmailOtpValid = /^\d{6}$/.test(String(formData.emailOtpCode || '').trim());
-
-  const buildTenantConfig = () => (
-    companyTokenFromUrl
-      ? { headers: { 'x-company-token': companyTokenFromUrl } }
-      : {}
-  );
 
   const handleRequestEmailOtp = async () => {
     setError('');
@@ -101,7 +88,7 @@ export default function AcceptInvite() {
       await api.post('/auth/email-otp/request', {
         purpose: 'invitation_acceptance',
         invitation_token: tokenFromUrl
-      }, buildTenantConfig());
+      });
       setOtpSentAt(new Date());
       setFormData((current) => ({ ...current, emailOtpCode: '' }));
     } catch (err) {
@@ -147,13 +134,11 @@ export default function AcceptInvite() {
         phone_number: normalizePhoneNumber(formData.phoneNumber),
         password: formData.password,
         email_otp_code: String(formData.emailOtpCode || '').trim()
-      }, buildTenantConfig());
+      });
 
       const data = response.data?.data || {};
-      if (data.token) localStorage.setItem('authToken', data.token);
-      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
-      const resolvedCompanyToken = data.company?.token || companyTokenFromUrl;
-      if (resolvedCompanyToken) localStorage.setItem('companyToken', resolvedCompanyToken);
+      const resolvedCompanyToken = data.company?.token || null;
+      setBrowserSession({ token: data.token, companyToken: resolvedCompanyToken });
       window.dispatchEvent(new CustomEvent('auth:login'));
       navigate('/');
     } catch (err) {

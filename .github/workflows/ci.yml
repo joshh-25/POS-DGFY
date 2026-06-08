@@ -27,6 +27,27 @@ jobs:
       - name: Validate release verdict contract when present
         run: node scripts/verify-release-verdict.js --file .tmp/release-gates/release_verdict.json --sha "${GITHUB_SHA}" --allow-missing true
 
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Install root dependencies
+        run: npm ci
+      - name: Install backend dependencies
+        run: npm --prefix backend ci
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+      - name: Validate production env fixtures
+        run: npm run check:production-env
+      - name: Audit production dependency trees
+        run: npm run audit:dependencies:prod
+      - name: Audit full dependency trees
+        run: npm run audit:dependencies
+
   test-backend:
     runs-on: ubuntu-latest
     defaults:
@@ -81,9 +102,10 @@ jobs:
           JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
           REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
       
-      - name: Run tests
-        run: npm test
+      - name: Run backend test matrix
+        run: node ../scripts/run-backend-test-matrix.js
         env:
+          NODE_OPTIONS: --max-old-space-size=4096
           NODE_ENV: test
           DB_HOST: localhost
           DB_PORT: 3306
@@ -95,19 +117,14 @@ jobs:
           JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
           REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
 
-      - name: Run open handle diagnostics
-        run: npm test -- --detectOpenHandles
-        env:
-          NODE_ENV: test
-          DB_HOST: localhost
-          DB_PORT: 3306
-          DB_NAME: sku_inventory_manager_test
-          DB_NAME_TEST: sku_inventory_manager_test
-          DB_USER: root
-          DB_PASSWORD: testpassword
-          REDIS_URL: redis://localhost:6379
-          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
-          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+      - name: Upload backend test matrix artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-matrix-${{ github.sha }}
+          path: .tmp/release-gates/${{ github.sha }}/backend-test-matrix/**
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Run migrations for schema audit
         run: npx sequelize-cli db:migrate --env development --config src/config/sequelize.config.cjs --migrations-path migrations
@@ -168,7 +185,7 @@ jobs:
   journey-e2e-release-gate:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/'))
-    needs: [lint-docs, test-backend, test-frontend]
+    needs: [lint-docs, dependency-audit, test-backend, test-frontend]
     services:
       mysql:
         image: mysql:8.0
@@ -289,7 +306,7 @@ jobs:
 
   preflight-namecheap-shared:
     runs-on: ubuntu-latest
-    needs: [lint-docs, test-backend]
+    needs: [lint-docs, dependency-audit, test-backend]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v6
@@ -317,8 +334,11 @@ jobs:
           JWT_SECRET=ci_shared_jwt_secret_value_12345678901234567890
           REFRESH_TOKEN_SECRET=ci_shared_refresh_secret_value_12345678901234
           CORS_ORIGIN=https://skupervisor.dgfy.ph,https://pos.dgfy.ph,https://dgfy.ph,https://store.dgfy.ph
+          SESSION_COOKIE_SECURE=true
           AUTH_BLACKLIST_FAILURE_MODE=fail_open
           TEMP_FILE_STORAGE=local
+          RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS=3600000
+          RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS=5
           DB_AUTO_SYNC=false
           STOREFRONT_CACHE_ENABLED=false
           ENV
@@ -330,7 +350,7 @@ jobs:
 
   package-namecheap-backend:
     runs-on: ubuntu-latest
-    needs: [test-backend, preflight-namecheap-shared]
+    needs: [dependency-audit, test-backend, preflight-namecheap-shared]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v6
@@ -364,7 +384,7 @@ jobs:
 
   package-namecheap-frontends:
     runs-on: ubuntu-latest
-    needs: [test-frontend]
+    needs: [dependency-audit, test-frontend]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v6
@@ -451,7 +471,7 @@ jobs:
           retention-days: 14
 
   build:
-    needs: [lint-docs, release-verdict-contract, test-backend, test-frontend, journey-e2e-release-gate]
+    needs: [lint-docs, release-verdict-contract, dependency-audit, test-backend, test-frontend, journey-e2e-release-gate]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     

@@ -8,8 +8,8 @@ import { PermissionProvider } from './store/PermissionContext.jsx'
 import { WorkflowModeProvider } from './features/settings/WorkflowModeContext.jsx'
 import WorkflowModeRouteGate from './features/settings/components/WorkflowModeRouteGate.jsx'
 import { getPageNameFromPath } from '../utils.js'
-import api from './services/api.js'
-import { clearClientSession } from './services/sessionCleanup.js'
+import { refreshBrowserSession, setBrowserSession } from './services/browserSession.js'
+import { shouldRefreshBrowserSessionForPath } from './services/publicRoutePolicy.js'
 import ErrorBoundary from './components/common/ErrorBoundary.jsx' // Fix 10.3
 import GlobalApiErrorListener from './components/common/GlobalApiErrorListener.jsx'
 import { Toaster } from '@/components/ui/sonner'
@@ -55,6 +55,7 @@ const Settings = lazy(() => import('../Pages/Settings.jsx'))
 const Login = lazy(() => import('../Pages/Login.jsx'))
 const Register = lazy(() => import('../Pages/Register.jsx'))
 const RegisterCompany = lazy(() => import('../Pages/RegisterCompany.jsx'))
+const LegalDocument = lazy(() => import('../Pages/LegalDocument.jsx'))
 const AcceptInvite = lazy(() => import('../Pages/AcceptInvite.jsx'))
 const Reactivate = lazy(() => import('../Pages/Reactivate.jsx'))
 const MobileReceive = lazy(() => import('../Pages/MobileReceive.jsx'))
@@ -66,6 +67,8 @@ const SalesPage = lazy(() => import('./features/sales/pages/SalesPage.jsx'))
 const FeedbackViewer = lazy(() => import('../Pages/FeedbackViewer.jsx'))
 const FeedbackDashboard = lazy(() => import('../Pages/admin/FeedbackDashboard.jsx'))
 const TenantManager = lazy(() => import('../Pages/admin/TenantManager.jsx'))
+const DgfyAccountManager = lazy(() => import('../Pages/admin/DgfyAccountManager.jsx'))
+const PaymentOperations = lazy(() => import('../Pages/admin/PaymentOperations.jsx'))
 const AdminPricing = lazy(() => import('../Pages/admin/AdminPricing.jsx'))
 const HostingStatus = lazy(() => import('../Pages/admin/HostingStatus.jsx'))
 
@@ -73,45 +76,14 @@ function App() {
   const location = useLocation()
   const currentPageName = getPageNameFromPath(location.pathname)
 
-
   /* 
    * Authentication is handled by ProtectedRoute components. 
    * Global auth check can be added here if needed in future.
    */
   useEffect(() => {
-    const validateCompanyToken = async () => {
-      const authToken = localStorage.getItem('authToken');
-      const refreshToken = localStorage.getItem('refreshToken');
-      const companyToken = localStorage.getItem('companyToken');
-
-      if ((authToken || refreshToken) && !companyToken) {
-        clearClientSession({
-          reason: 'tenant_context_missing',
-          broadcast: true,
-          emitAuthEvents: true,
-          redirectTo: '/login?reason=tenant_context_missing'
-        });
-        return;
-      }
-
-      if (!companyToken) return;
-
-      try {
-        await api.get(`/auth/validate-token/${companyToken}`);
-      } catch (error) {
-        if (error.response?.status === 404 || error.response?.status === 400) {
-          clearClientSession({
-            reason: 'tenant_context_invalid',
-            broadcast: true,
-            emitAuthEvents: true,
-            redirectTo: '/login?reason=tenant_context_invalid'
-          });
-        }
-      }
-    };
-
-    validateCompanyToken();
-  }, []);
+    if (!shouldRefreshBrowserSessionForPath(location.pathname)) return;
+    refreshBrowserSession().catch(() => {});
+  }, [location.pathname]);
 
   return (
     <Suspense fallback={<div className="flex items-center justify-center h-screen text-gray-400">Loading...</div>}>
@@ -120,6 +92,8 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/register-company" element={<RegisterCompany />} />
+        <Route path="/legal/:slug" element={<LegalDocument />} />
+        <Route path="/privacy" element={<LegalDocument />} />
         <Route path="/accept-invite" element={<AcceptInvite />} />
         <Route path="/reactivate" element={<Reactivate />} />
 
@@ -257,6 +231,8 @@ function App() {
           <Route index element={<Navigate to="/admin/tenants" replace />} />
           <Route path="feedback" element={<FeedbackDashboard />} />
           <Route path="tenants" element={<TenantManager />} />
+          <Route path="dgfy-accounts" element={<DgfyAccountManager />} />
+          <Route path="payments" element={<PaymentOperations />} />
           <Route path="pricing" element={<AdminPricing />} />
           <Route path="hosting" element={<HostingStatus />} />
         </Route>
@@ -319,9 +295,7 @@ if (import.meta.env.DEV) {
       const body = await resp.json().catch(() => null);
       if (resp.ok && body?.success && body?.data?.token) {
         try {
-          localStorage.setItem('companyToken', COMPANY_TOKEN);
-          localStorage.setItem('authToken', body.data.token);
-          if (body.data.refreshToken) localStorage.setItem('refreshToken', body.data.refreshToken);
+          setBrowserSession({ token: body.data.token, companyToken: COMPANY_TOKEN });
           localStorage.setItem('pos_terminal_identity_v1', TERMINAL_ID);
           // dispatch auth event so PermissionContext picks up new session
           window.dispatchEvent(new CustomEvent('auth:login'))

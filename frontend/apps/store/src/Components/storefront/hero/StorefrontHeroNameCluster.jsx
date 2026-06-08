@@ -70,61 +70,82 @@ export function StorefrontHeroNameCluster({
   followState,
   handleFollowAction
 }) {
+  const followError = String(followState?.error || '').trim();
   return (
-    <div
-      style={{
-        position: 'relative',
-        display: 'inline-block',
-        width: 'fit-content',
-        maxWidth: '100%',
-        minWidth: 0,
-        paddingRight: followEnabled ? 28 : 0
-      }}
-    >
-      <h1
+    <div style={{ display: 'grid', gap: followError ? 6 : 0, justifyItems: 'start', maxWidth: '100%' }}>
+      <div
         style={{
-          margin: 0,
-          color: textColor,
-          fontSize,
-          fontWeight: 900,
-          lineHeight: 1.05,
-          letterSpacing: '-0.03em',
-          fontFamily,
-          display: 'inline',
+          position: 'relative',
+          display: 'inline-block',
+          width: 'fit-content',
+          maxWidth: '100%',
           minWidth: 0,
-          overflowWrap: 'anywhere',
-          wordBreak: 'break-word'
+          paddingRight: followEnabled ? 28 : 0
         }}
       >
-        {name}
-      </h1>
-      {followEnabled && (
-        <button
-          type="button"
-          aria-label={followState.isFollowing ? 'Unfollow this storefront' : 'Follow this storefront'}
-          title={followState.isFollowing ? 'Following' : 'Follow'}
-          disabled={followState.loading}
-          onClick={handleFollowAction}
+        <h1
           style={{
-            position: 'absolute',
-            right: 0,
-            bottom: '0.16em',
-            border: 'none',
-            background: 'transparent',
             color: textColor,
-            minHeight: 24,
-            minWidth: 24,
-            width: 24,
-            padding: 0,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: followState.loading ? 0.72 : 1,
-            cursor: followState.loading ? 'not-allowed' : 'pointer'
+            display: 'inline',
+            fontFamily,
+            fontSize,
+            fontWeight: 900,
+            letterSpacing: '-0.03em',
+            lineHeight: 1.05,
+            margin: 0,
+            minWidth: 0,
+            overflowWrap: 'anywhere',
+            wordBreak: 'break-word'
           }}
         >
-          <StoreFollowGlyph isFollowing={followState.isFollowing} size={18} tone={textColor} badgeSize={13} badgeTextSize={9} />
-        </button>
+          {name}
+        </h1>
+        {followEnabled && (
+          <button
+            type="button"
+            aria-label={followState.isFollowing ? 'Unfollow this storefront' : 'Follow this storefront'}
+            title={followState.isFollowing ? 'Following' : 'Follow'}
+            disabled={followState.loading}
+            onClick={handleFollowAction}
+            style={{
+              position: 'absolute',
+              right: 0,
+              bottom: '0.16em',
+              border: 'none',
+              background: 'transparent',
+              color: textColor,
+              minHeight: 24,
+              minWidth: 24,
+              width: 24,
+              padding: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: followState.loading ? 0.72 : 1,
+              cursor: followState.loading ? 'not-allowed' : 'pointer'
+            }}
+          >
+            <StoreFollowGlyph isFollowing={followState.isFollowing} size={18} tone={textColor} badgeSize={13} badgeTextSize={9} />
+          </button>
+        )}
+      </div>
+      {followEnabled && followError && (
+        <span
+          role="status"
+          style={{
+            background: 'rgba(255, 255, 255, 0.92)',
+            border: '1px solid rgba(248, 113, 113, 0.45)',
+            borderRadius: 8,
+            color: '#991b1b',
+            fontSize: 12,
+            fontWeight: 800,
+            lineHeight: 1.35,
+            maxWidth: 'min(360px, 100%)',
+            padding: '5px 8px'
+          }}
+        >
+          {followError}
+        </span>
       )}
     </div>
   );

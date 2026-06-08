@@ -2,6 +2,14 @@ import bcrypt from 'bcryptjs';
 import { dgfyAccountRepository } from './repositories/dgfyAccountRepository.js';
 import { buildGetDgfyLegalTermsUseCase } from './usecases/dgfyLegalUseCases.js';
 import {
+    buildGetAdminDgfyAccountUseCase,
+    buildDeleteAdminDgfyAccountUseCase,
+    buildListAdminDgfyAccountsUseCase,
+    buildReactivateAdminDgfyAccountUseCase,
+    buildSuspendAdminDgfyAccountUseCase,
+    buildUpdateAdminDgfyAccountProfileUseCase
+} from './usecases/dgfyAdminAccountUseCases.js';
+import {
     buildAcceptDgfyInvitationUseCase,
     buildChangeDgfyPasswordUseCase,
     buildCompleteDgfyPasswordResetUseCase,
@@ -11,6 +19,7 @@ import {
     buildLoginDgfyAccountUseCase,
     buildRequestDgfyPasswordResetUseCase,
     buildRequestDgfyEmailVerificationUseCase,
+    buildStartDgfyTenantSessionUseCase,
     buildUpdateDgfyProfileUseCase,
     buildVerifyDgfyEmailUseCase,
     buildRegisterDgfyAccountUseCase
@@ -28,14 +37,21 @@ import {
     buildReorderDgfyCustomerOrderUseCase,
     buildRequestDgfyTrackingRecoveryUseCase,
     buildSubmitDgfyCustomerReviewUseCase,
+    buildSubmitDgfyGuestReviewInviteUseCase,
     buildTrackDgfyCustomerReferenceUseCase,
+    buildValidateDgfyReviewInviteUseCase,
     buildVerifyDgfyTrackingRecoveryUseCase
 } from './usecases/dgfyCustomerUseCases.js';
 import { requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
+import { createTenantSessionForDgfyAccount } from '../../services/dgfyTenantSessionService.js';
 
 export const registerDgfyAccountUseCase = buildRegisterDgfyAccountUseCase({
     repository: dgfyAccountRepository,
-    hashPassword: (password) => bcrypt.hash(password, 10)
+    hashPassword: (password) => bcrypt.hash(password, 10),
+    verifyEmailOtp,
+    emailOtpPurposes: {
+        DGFY_ACCOUNT_VERIFICATION: 'dgfy_account_verification'
+    }
 });
 
 export const getDgfyLegalTermsUseCase = buildGetDgfyLegalTermsUseCase();
@@ -103,6 +119,34 @@ export const acceptDgfyInvitationUseCase = buildAcceptDgfyInvitationUseCase({
     repository: dgfyAccountRepository
 });
 
+export const startDgfyTenantSessionUseCase = buildStartDgfyTenantSessionUseCase({
+    createTenantSessionForDgfyAccount
+});
+
+export const listAdminDgfyAccountsUseCase = buildListAdminDgfyAccountsUseCase({
+    repository: dgfyAccountRepository
+});
+
+export const getAdminDgfyAccountUseCase = buildGetAdminDgfyAccountUseCase({
+    repository: dgfyAccountRepository
+});
+
+export const updateAdminDgfyAccountProfileUseCase = buildUpdateAdminDgfyAccountProfileUseCase({
+    repository: dgfyAccountRepository
+});
+
+export const suspendAdminDgfyAccountUseCase = buildSuspendAdminDgfyAccountUseCase({
+    repository: dgfyAccountRepository
+});
+
+export const reactivateAdminDgfyAccountUseCase = buildReactivateAdminDgfyAccountUseCase({
+    repository: dgfyAccountRepository
+});
+
+export const deleteAdminDgfyAccountUseCase = buildDeleteAdminDgfyAccountUseCase({
+    repository: dgfyAccountRepository
+});
+
 export const getDgfyCustomerDashboardUseCase = buildGetDgfyCustomerDashboardUseCase();
 export const listDgfyCustomerActivitiesUseCase = buildListDgfyCustomerActivitiesUseCase();
 export const listDgfyCustomerOrdersUseCase = (args = {}) => listDgfyCustomerActivitiesUseCase({ ...args, type: 'order' });
@@ -117,6 +161,8 @@ export const updateDgfyCustomerAddressUseCase = addressUseCases.update;
 export const deleteDgfyCustomerAddressUseCase = addressUseCases.remove;
 export const getDgfyCustomerLoyaltyUseCase = buildGetDgfyCustomerLoyaltyUseCase();
 export const submitDgfyCustomerReviewUseCase = buildSubmitDgfyCustomerReviewUseCase();
+export const validateDgfyReviewInviteUseCase = buildValidateDgfyReviewInviteUseCase();
+export const submitDgfyGuestReviewInviteUseCase = buildSubmitDgfyGuestReviewInviteUseCase();
 export const listPublicDgfyCustomerReviewsUseCase = buildListPublicDgfyCustomerReviewsUseCase();
 export const listDgfyCustomerReviewsForModerationUseCase = buildListDgfyCustomerReviewsForModerationUseCase();
 export const moderateDgfyCustomerReviewUseCase = buildModerateDgfyCustomerReviewUseCase();

@@ -5,6 +5,14 @@ const mockScanPosBarcodeUseCase = jest.fn();
 const mockCheckoutPosUseCase = jest.fn();
 const mockListPosTransactionsUseCase = jest.fn();
 const mockGetPosTransactionByIdUseCase = jest.fn();
+const mockRecordFiscalPrintEventUseCase = jest.fn();
+const mockVoidPosTransactionUseCase = jest.fn();
+const mockGenerateESalesReportUseCase = jest.fn();
+const mockListESalesReportsUseCase = jest.fn();
+const mockVerifyFiscalEventLedgerUseCase = jest.fn();
+const mockUpdateESalesReportStatusUseCase = jest.fn();
+const mockUpsertFiscalTerminalRegistrationUseCase = jest.fn();
+const mockListFiscalTerminalRegistrationsUseCase = jest.fn();
 const mockCloseDayZReadingUseCase = jest.fn();
 const mockGetDailyZReadingUseCase = jest.fn();
 const mockGetCurrentXReadingUseCase = jest.fn();
@@ -31,6 +39,14 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     checkoutPosUseCase: mockCheckoutPosUseCase,
     listPosTransactionsUseCase: mockListPosTransactionsUseCase,
     getPosTransactionByIdUseCase: mockGetPosTransactionByIdUseCase,
+    recordFiscalPrintEventUseCase: mockRecordFiscalPrintEventUseCase,
+    voidPosTransactionUseCase: mockVoidPosTransactionUseCase,
+    generateESalesReportUseCase: mockGenerateESalesReportUseCase,
+    listESalesReportsUseCase: mockListESalesReportsUseCase,
+    verifyFiscalEventLedgerUseCase: mockVerifyFiscalEventLedgerUseCase,
+    updateESalesReportStatusUseCase: mockUpdateESalesReportStatusUseCase,
+    upsertFiscalTerminalRegistrationUseCase: mockUpsertFiscalTerminalRegistrationUseCase,
+    listFiscalTerminalRegistrationsUseCase: mockListFiscalTerminalRegistrationsUseCase,
     closeDayZReadingUseCase: mockCloseDayZReadingUseCase,
     getDailyZReadingUseCase: mockGetDailyZReadingUseCase,
     getCurrentXReadingUseCase: mockGetCurrentXReadingUseCase,

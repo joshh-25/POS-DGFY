@@ -3,6 +3,7 @@ import { verifyToken, isTokenBlacklisted } from '../services/authService.js';
 import { normalizeTenantIdentifier, verifyStoreToken } from '../modules/store/utils/storeJwtToken.js';
 import { dgfyAccountRepository } from '../modules/dgfy/index.js';
 import logger from '../config/logger.js';
+import { getCookie, SESSION_COOKIE_NAMES } from '../utils/browserSessionCookies.js';
 
 const timestamp = () => new Date().toISOString();
 const DGFY_LINKED_STORE_PASSWORD_HASH = '$2a$10$7EqJtq98hPqEX7fNZaFWoO.WIVbt6rp2ZYkRIzxqVqvla0ZCqXa.G';
@@ -146,11 +147,13 @@ const tryAuthenticateDgfyStoreCustomer = async (token, req, res, next) => {
 export const authenticateStoreCustomer = async (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        const token = authHeader?.startsWith('Bearer ')
+            ? authHeader.slice(7)
+            : getCookie(req, SESSION_COOKIE_NAMES.storefront);
+        if (!token) {
             return unauthorized(res, 'Store authentication required');
         }
 
-        const token = authHeader.slice(7);
         let decoded;
         try {
             decoded = verifyStoreToken(token);
@@ -210,7 +213,8 @@ export const authenticateStoreCustomer = async (req, res, next) => {
 export const optionalStoreCustomer = async (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        const cookieToken = getCookie(req, SESSION_COOKIE_NAMES.storefront);
+        if ((!authHeader || !authHeader.startsWith('Bearer ')) && !cookieToken) {
             return next();
         }
 

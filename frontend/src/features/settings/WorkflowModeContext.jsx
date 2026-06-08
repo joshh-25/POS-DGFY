@@ -6,13 +6,10 @@ import {
   WORKFLOW_MODE_SETTING_KEY,
   normalizeWorkflowMode
 } from './workflowMode.js';
+import { getAccessToken, refreshBrowserSession } from '@/services/browserSession.js';
+import { shouldRefreshBrowserSessionForPath } from '@/services/publicRoutePolicy.js';
 
 const WorkflowModeContext = createContext(null);
-
-const hasTenantSession = () => (
-  Boolean(localStorage.getItem('authToken'))
-  && Boolean(localStorage.getItem('companyToken'))
-);
 
 const extractWorkflowModeFromSettings = (settings) => (
   normalizeWorkflowMode(settings?.[WORKFLOW_MODE_SETTING_KEY]?.value)
@@ -36,7 +33,14 @@ export function WorkflowModeProvider({ children }) {
   const workflowModeRef = useRef(DEFAULT_WORKFLOW_MODE);
 
   const refreshWorkflowMode = useCallback(async ({ force = false } = {}) => {
-    if (!hasTenantSession()) {
+    if (!shouldRefreshBrowserSessionForPath(window.location.pathname)) {
+      setWorkflowMode(DEFAULT_WORKFLOW_MODE);
+      setLoading(false);
+      return DEFAULT_WORKFLOW_MODE;
+    }
+
+    const token = getAccessToken() || await refreshBrowserSession().catch(() => '');
+    if (!token) {
       setWorkflowMode(DEFAULT_WORKFLOW_MODE);
       setLoading(false);
       return DEFAULT_WORKFLOW_MODE;

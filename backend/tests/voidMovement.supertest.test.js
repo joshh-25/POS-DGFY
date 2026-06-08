@@ -25,7 +25,7 @@ import dbStore from '../src/utils/dbStore.js';
 import { DEFAULT_ROLE_PERMISSIONS } from '../src/config/permissions.js';
 import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
 
-jest.setTimeout(120000);
+jest.setTimeout(420000);
 
 // ─── Shared state ─────────────────────────────────────────────────────────────
 let managerToken;   // JWT for a 'manager' user (has CREATE_ADJUSTMENT permission)

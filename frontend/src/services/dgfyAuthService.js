@@ -1,32 +1,36 @@
 import api from './api.js';
+import { setBrowserSession } from './browserSession.js';
 
-const DGFY_TOKEN_KEY = 'dgfyAccountToken';
-const DGFY_ACCOUNT_KEY = 'dgfyAccount';
+let dgfyToken = '';
+let dgfyAccount = null;
+
+const dgfyRequestConfig = (token = getStoredDgfyToken()) => {
+  const normalizedToken = String(token || '').trim();
+  return normalizedToken
+    ? {
+      headers: {
+        Authorization: `Bearer ${normalizedToken}`
+      }
+    }
+    : {};
+};
 
 export const getStoredDgfyToken = () => {
-  if (typeof localStorage === 'undefined') return '';
-  return localStorage.getItem(DGFY_TOKEN_KEY) || '';
+  return dgfyToken;
 };
 
 export const getStoredDgfyAccount = () => {
-  if (typeof localStorage === 'undefined') return null;
-  try {
-    return JSON.parse(localStorage.getItem(DGFY_ACCOUNT_KEY) || 'null');
-  } catch {
-    return null;
-  }
+  return dgfyAccount;
 };
 
 export const storeDgfySession = ({ token, account }) => {
-  if (typeof localStorage === 'undefined') return;
-  if (token) localStorage.setItem(DGFY_TOKEN_KEY, token);
-  if (account) localStorage.setItem(DGFY_ACCOUNT_KEY, JSON.stringify(account));
+  if (token) dgfyToken = String(token || '').trim();
+  if (account) dgfyAccount = account;
 };
 
 export const clearDgfySession = () => {
-  if (typeof localStorage === 'undefined') return;
-  localStorage.removeItem(DGFY_TOKEN_KEY);
-  localStorage.removeItem(DGFY_ACCOUNT_KEY);
+  dgfyToken = '';
+  dgfyAccount = null;
 };
 
 export const registerDgfyAccount = async (payload) => {
@@ -34,6 +38,14 @@ export const registerDgfyAccount = async (payload) => {
   const data = response.data.data;
   storeDgfySession(data);
   return data;
+};
+
+export const requestDgfyRegistrationEmailVerification = async (email) => {
+  const response = await api.post('/auth/email-otp/request', {
+    purpose: 'dgfy_account_verification',
+    email
+  });
+  return response.data.data;
 };
 
 export const fetchDgfyLegalTerms = async () => {
@@ -49,14 +61,11 @@ export const loginDgfyAccount = async (payload) => {
 };
 
 export const fetchDgfyMe = async (token = getStoredDgfyToken()) => {
-  if (!token) return null;
-  const response = await api.get('/dgfy/auth/me', {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  });
+  const normalizedToken = String(token || '').trim();
+  const response = await api.get('/dgfy/auth/me', dgfyRequestConfig(normalizedToken));
   const data = response.data.data;
-  if (data?.account) storeDgfySession({ token, account: data.account });
+  if (data?.account) storeDgfySession({ token: normalizedToken, account: data.account });
+  if (data?.token) storeDgfySession(data);
   return data;
 };
 
@@ -112,33 +121,24 @@ export const completeDgfyPasswordReset = async (payload) => {
 
 export const logoutDgfyAccount = async (token = getStoredDgfyToken()) => {
   try {
-    if (token) {
-      await api.post('/dgfy/auth/logout', {}, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-    }
+    await api.post('/dgfy/auth/logout', {}, dgfyRequestConfig(token));
   } finally {
     clearDgfySession();
   }
 };
 
 export const createDgfyHandoff = async (token = getStoredDgfyToken()) => {
-  const response = await api.post('/dgfy/auth/handoff', {}, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  });
+  const response = await api.post('/dgfy/auth/handoff', {}, dgfyRequestConfig(token));
   return response.data.data;
 };
 
-export const exchangeDgfyHandoff = async (handoffToken) => {
+export const exchangeDgfyHandoff = async (handoffToken, { softFail = false } = {}) => {
   const response = await api.post('/dgfy/auth/handoff/exchange', {
-    handoff_token: handoffToken
+    handoff_token: handoffToken,
+    ...(softFail ? { soft_fail: true } : {})
   });
   const data = response.data.data;
-  storeDgfySession(data);
+  if (data?.token) storeDgfySession(data);
   return data;
 };
 
@@ -149,6 +149,22 @@ export const acceptDgfyInvitation = async (membershipId, token = getStoredDgfyTo
     }
   });
   return response.data.data;
+};
+
+export const startDgfyTenantSession = async ({
+  tenantId,
+  companyToken
+} = {}, token = getStoredDgfyToken()) => {
+  const response = await api.post('/dgfy/auth/tenant-session', {
+    tenant_id: tenantId,
+    company_token: companyToken
+  }, dgfyRequestConfig(token));
+  const data = response.data.data;
+  setBrowserSession({
+    token: data?.token,
+    companyToken: data?.company?.token || companyToken
+  });
+  return data;
 };
 
 export const dgfyAuthHeader = () => {

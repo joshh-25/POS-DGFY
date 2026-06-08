@@ -39,6 +39,23 @@ describe('Token Refresh Race Condition (Backend RTR Invariant)', () => {
   const PASSWORD = 'TestPassword123!';
 
   let baseRefreshToken;
+  let baseSessionCookies;
+  let baseCsrfToken;
+
+  const extractCookieValue = (cookies = [], name) => {
+    const rawCookie = cookies.find((cookie) => cookie.startsWith(`${name}=`));
+    if (!rawCookie) return '';
+    return decodeURIComponent(rawCookie.split(';')[0].split('=').slice(1).join('='));
+  };
+
+  const extractSession = (res) => {
+    const cookies = res.headers['set-cookie'] || [];
+    return {
+      cookies,
+      refreshToken: extractCookieValue(cookies, 'sku_refresh_token'),
+      csrfToken: extractCookieValue(cookies, 'sku_csrf_token')
+    };
+  };
 
   const cleanup = async () => {
     await db.User.destroy({ where: { email: EMAIL } }).catch(() => {});
@@ -71,7 +88,10 @@ describe('Token Refresh Race Condition (Backend RTR Invariant)', () => {
       .set('x-company-token', COMPANY_TOKEN)
       .send({ email: EMAIL, password: PASSWORD })
       .expect(200);
-    baseRefreshToken = loginRes.body.data.refreshToken;
+    const session = extractSession(loginRes);
+    baseRefreshToken = session.refreshToken;
+    baseSessionCookies = session.cookies;
+    baseCsrfToken = session.csrfToken;
   });
 
   // -------------------------------------------------------------------------
@@ -86,8 +106,9 @@ describe('Token Refresh Race Condition (Backend RTR Invariant)', () => {
     const calls = Array.from({ length: CONCURRENCY }, () =>
       request(app)
         .post('/api/v1/auth/refresh-token')
-        .set('x-company-token', COMPANY_TOKEN)
-        .send({ refreshToken: baseRefreshToken })
+        .set('Cookie', baseSessionCookies)
+        .set('x-csrf-token', baseCsrfToken)
+        .send({})
     );
 
     const settled = await Promise.allSettled(calls);
@@ -106,7 +127,8 @@ describe('Token Refresh Race Condition (Backend RTR Invariant)', () => {
       expect(r.body.data.token).toBeDefined();
       expect(typeof r.body.data.token).toBe('string');
       expect(r.body.data.token.split('.').length).toBe(3); // valid JWT
-      expect(r.body.data.refreshToken).toBeDefined();
+      expect(r.body.data.refreshToken).toBeUndefined();
+      expect(extractSession(r).refreshToken).not.toBe('');
       expect(r.body.data.expiresIn).toBeDefined();
     });
 
@@ -115,16 +137,17 @@ describe('Token Refresh Race Condition (Backend RTR Invariant)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 1.2 — Invalid refresh token returns 401 (JWT verification — Redis independent)
+  // 1.2 — Body refresh token is ignored; browser refresh authority must be cookie-backed
   // -------------------------------------------------------------------------
-  it('1.2 — invalid refresh token returns 401 with success: false', async () => {
+  it('1.2 — body-only refresh token returns 400 with success: false', async () => {
     const res = await request(app)
       .post('/api/v1/auth/refresh-token')
       .set('x-company-token', COMPANY_TOKEN)
       .send({ refreshToken: 'this-is-not-a-valid-token' });
 
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
+    expect(res.body.message).toBe('Refresh token is required');
   });
 
   // -------------------------------------------------------------------------
@@ -133,18 +156,19 @@ describe('Token Refresh Race Condition (Backend RTR Invariant)', () => {
   it('1.3 — sequential refresh call returns a valid token structure', async () => {
     const res = await request(app)
       .post('/api/v1/auth/refresh-token')
-      .set('x-company-token', COMPANY_TOKEN)
-      .send({ refreshToken: baseRefreshToken })
+      .set('Cookie', baseSessionCookies)
+      .set('x-csrf-token', baseCsrfToken)
+      .send({})
       .expect(200);
 
     expect(res.body.success).toBe(true);
     expect(res.body.data.token).toBeDefined();
-    expect(res.body.data.refreshToken).toBeDefined();
+    expect(res.body.data.refreshToken).toBeUndefined();
     expect(res.body.data.expiresIn).toBe(86400); // 24h in seconds
 
     // Returned tokens must be valid JWTs
     expect(res.body.data.token.split('.').length).toBe(3);
-    expect(res.body.data.refreshToken.split('.').length).toBe(3);
+    expect(extractSession(res).refreshToken.split('.').length).toBe(3);
   });
 
   // -------------------------------------------------------------------------

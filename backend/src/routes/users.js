@@ -1,6 +1,6 @@
 import express from 'express';
 import * as userController from '../controllers/userController.js';
-import { authenticate, checkPermission } from '../middleware/auth.js';
+import { authenticate, checkPermission, requireTenantCapability } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import {
   emailOtpLimiter,
@@ -25,6 +25,7 @@ router.put('/me', authenticate, validateUpdateProfile, userController.updateProf
 router.put('/me/password', authenticate, validateChangePassword, userController.changePassword);
 
 // Admin-only user management endpoints
+router.use(requireTenantCapability('tenant_ims_enabled', 'IMS'));
 router.get('/', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.VIEW_USERS), userController.getAllUsers);
 router.get('/role-catalog', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.VIEW_USERS), userController.getRoleCatalog);
 router.put('/:user_id/role', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateUpdateUserRole, userController.updateUserRole);

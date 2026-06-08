@@ -68,7 +68,9 @@ const createComplianceHarness = () => {
     peripherals: [],
     auditLogs: [],
     artifactSeq: 1,
-    peripheralSeq: 1
+    peripheralSeq: 1,
+    rmoFilingReady: false,
+    fiscalTerminalReady: false
   };
 
   let settingsSnapshot = buildRequiredSettingsSnapshot();
@@ -159,6 +161,29 @@ const createComplianceHarness = () => {
     async listAuditLogsByTenantId(tenantId) {
       if (tenantId !== state.tenant.id) return [];
       return clone(state.auditLogs);
+    },
+    async getRmoFilingReadiness() {
+      return {
+        ready: state.rmoFilingReady === true,
+        complete: state.rmoFilingReady === true ? 5 : 0,
+        total: 5,
+        missing: state.rmoFilingReady === true ? 0 : 5,
+        items: [
+          { code: 'rmo.control_matrix', ready: state.rmoFilingReady === true },
+          { code: 'rmo.filing_authority_decision', ready: state.rmoFilingReady === true },
+          { code: 'rmo.receipt_sample_pack', ready: state.rmoFilingReady === true },
+          { code: 'rmo.fiscal_integrity_evidence', ready: state.rmoFilingReady === true },
+          { code: 'rmo.esales_reporting_plan', ready: state.rmoFilingReady === true }
+        ]
+      };
+    },
+    async getFiscalTerminalRegistrationReadiness() {
+      return {
+        ready: state.fiscalTerminalReady === true,
+        verified_count: state.fiscalTerminalReady === true ? 1 : 0,
+        total_count: state.fiscalTerminalReady === true ? 1 : 0,
+        action_target: '/settings?tab=pos#fiscal-terminal-registration'
+      };
     }
   };
 
@@ -192,6 +217,7 @@ const createComplianceHarness = () => {
       state.auditLogs = [];
       state.artifactSeq = 1;
       state.peripheralSeq = 1;
+      state.rmoFilingReady = false;
       settingsSnapshot = buildRequiredSettingsSnapshot();
     },
     usecases: {
@@ -324,7 +350,12 @@ describe('compliance activation readiness e2e transport flow', () => {
           ptu_certificate_number: 'PTU-REF-999',
           tax_classification_controls_confirmed: true,
           non_resettable_grand_total_enabled: true,
-          mandatory_receipt_fields_confirmed: true
+          mandatory_receipt_fields_confirmed: true,
+          rmo_24_2023_filing_verified: true,
+          fiscal_document_content_reviewed: true,
+          terminal_registration_controls_confirmed: true,
+          ejournal_integrity_controls_confirmed: true,
+          esales_reporting_controls_confirmed: true
         },
         npc: {
           dpo_name: 'John Compliance Doe',
@@ -383,6 +414,9 @@ describe('compliance activation readiness e2e transport flow', () => {
         .send({ action: 'verify', verification_note: 'e2e readiness verification' });
       expect(verifyPeripheralResponse.status).toBe(200);
     }
+
+    harness.state.rmoFilingReady = true;
+    harness.state.fiscalTerminalReady = true;
 
     const checklistReadyResponse = await request(app).get('/api/v1/compliance/checklist');
     expect(checklistReadyResponse.status).toBe(200);

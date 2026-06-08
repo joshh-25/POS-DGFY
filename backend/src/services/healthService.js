@@ -108,6 +108,10 @@ export const buildHealthResponse = async ({
         ? getRateLimiterStoreModeFn()
         : (redisConnected ? 'redis' : (redisConfigured ? 'memory_fallback' : 'memory'));
 
+    const tokenBlacklistMode = getTokenBlacklistFailureMode();
+    const tokenBlacklistRequiresRedis = tokenBlacklistMode === 'fail_closed';
+    const tokenBlacklistHealthy = !tokenBlacklistRequiresRedis || (redisConfigured && redisConnected);
+
     health.capabilities = {
         hostingProfile,
         redis: {
@@ -117,7 +121,12 @@ export const buildHealthResponse = async ({
             status: redisConnected ? 'available' : (redisRequired ? 'degraded' : 'optional_unavailable')
         },
         tokenBlacklist: {
-            mode: getTokenBlacklistFailureMode()
+            mode: tokenBlacklistMode,
+            requiresRedis: tokenBlacklistRequiresRedis,
+            status: tokenBlacklistHealthy ? 'healthy' : 'degraded',
+            message: tokenBlacklistHealthy
+                ? 'Token blacklist policy is satisfiable by the current runtime.'
+                : 'Token blacklist is fail-closed but Redis is not configured and connected; authenticated APIs will return 503.'
         },
         tempFileStorage: {
             mode: resolveTempFileStorageMode({ cacheAvailable: redisConnected })
@@ -129,6 +138,10 @@ export const buildHealthResponse = async ({
             mode: resolveSchedulerLockMode({ redisConnected })
         }
     };
+
+    if (!tokenBlacklistHealthy) {
+        health.success = false;
+    }
 
     // Tenant connection pool stats
     try {

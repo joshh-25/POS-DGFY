@@ -1,4 +1,5 @@
 import api from './api.js';
+import { getCompanyToken } from './browserSession.js';
 
 const SETTINGS_CACHE_TTL_MS = 30 * 1000;
 let cachedSettings = null;
@@ -7,7 +8,7 @@ let cachedSettingsScope = null;
 let inFlightSettingsRequest = null;
 
 const getSettingsScope = () => {
-  const companyToken = localStorage.getItem('companyToken') || 'default';
+  const companyToken = getCompanyToken() || 'default';
   const authEpoch = localStorage.getItem('authEpoch') || '0';
   return `${companyToken}:${authEpoch}`;
 };

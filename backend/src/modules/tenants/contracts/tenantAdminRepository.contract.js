@@ -12,6 +12,8 @@
  * - destroyTenant(tenant)
  * - findSystemSettings(keys)
  * - updateSystemSetting(key, value)
+ * - createTenantAdminAuditLog(payload)
+ * - listTenantAdminAuditLogs(tenantId, options)
  */
 export const TenantAdminRepositoryContract = Object.freeze([
     'transaction',
@@ -23,7 +25,9 @@ export const TenantAdminRepositoryContract = Object.freeze([
     'removeTenantDependencies',
     'destroyTenant',
     'findSystemSettings',
-    'updateSystemSetting'
+    'updateSystemSetting',
+    'createTenantAdminAuditLog',
+    'listTenantAdminAuditLogs'
 ]);
 
 export const assertTenantAdminRepositoryContract = (repository) => {
