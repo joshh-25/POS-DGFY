@@ -1617,7 +1617,6 @@ const getOrCreateStorefrontVisitorId = () => {
 
 const makePinElement = (mode, selected = false, ariaLabel = 'Store marker', glow = false) => {
   const el = document.createElement('div');
-  el.style.cssText = `width:${selected ? 38 : 34}px;height:${selected ? 48 : 44}px;display:flex;align-items:center;justify-content:center;cursor:pointer;`;
   el.setAttribute('role', 'button');
   el.setAttribute('tabindex', '0');
   el.setAttribute('aria-label', ariaLabel);

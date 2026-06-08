@@ -250,6 +250,12 @@
 
 .discovery-result-pin {
   position: relative;
+  width: 38px;
+  height: 48px;
+  display: block;
+  cursor: pointer;
+  box-sizing: border-box;
+  overflow: visible;
   z-index: 1;
 }
 
@@ -380,7 +386,10 @@
 }
 
 .discovery-result-pin-visual {
-  position: relative;
+  position: absolute;
+  inset: 0;
+  width: 38px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;

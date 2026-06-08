@@ -89,7 +89,7 @@ Storefront routing and branch scoping were hardened without changing public API 
 4. The "main branch" for discovery means the active tenant location flagged `is_primary_storefront=true`. Default discovery uses `pin_scope=tenant_primary`, so searching a company name shows the primary Storefront pin unless the customer explicitly uses a nearest/matching-branch flow.
 5. Storefront tenant URLs may carry `location_id`. Branch resolution order is URL `location_id`, discovery-selected branch, active/open fallback, primary Storefront branch, then first active branch. Catalog, quote, checkout, booking, QR, and reorder reads must stay scoped to the selected branch.
 6. Inventory item setup now supports branch-level Storefront availability through tenant-local `storefront_location_item_overrides`. Missing rows default to available for additive rollout compatibility; explicit `storefront_available=false` hides the item from that branch before stock labels and checkout validation are applied.
-7. Storefront marker animations must keep the MapLibre-owned marker root at the stored coordinate. Presentation scaling is anchored at the pin tip and must not mutate coordinates or introduce pixel offsets that make pins appear detached during zoom.
+7. Storefront marker animations must keep the MapLibre-owned marker root at the stored coordinate. Custom marker DOM must use a fixed-size root anchor box whose bottom center is the coordinate point. Presentation effects may render outside that box, but must not resize, translate, or replace the root anchor in a way that makes pins appear detached during zoom.
 
 ## Addendum (2026-06-07): Durable Handles and Branch-Scoped Services
 The June 6 root-handle and branch-scoping decision is amended as follows:
@@ -112,5 +112,5 @@ Platform-admin Tenant Manager may update active tenants' Storefront publication 
 
 The June root-handle and branch-scoping implementation is hardened as follows:
 
-1. Search-active Storefront marker glow remains presentation-only. The MapLibre marker root and the visible marker body must stay anchored to the stored latitude/longitude; pulse/glow effects may animate surrounding pseudo-elements or filter only, but must not scale or translate the marker body in a way that makes the pin appear to drift during zoom.
+1. Search-active Storefront marker glow remains presentation-only. The MapLibre marker root and the visible marker body must stay anchored to the stored latitude/longitude. Storefront pins use a fixed `38px` by `48px` root anchor box with the visual marker absolutely positioned inside it; pulse/glow effects may animate surrounding pseudo-elements or filter only, but must not scale, resize, or translate the root or marker body in a way that makes the pin appear to drift during zoom.
 2. IMS item and product draft saves must preserve `storefront_location_item_overrides` when branch availability toggles are submitted. Draft behavior remains separate from final Storefront visibility and sale-readiness decisions, but a draft save must not silently drop branch-level Storefront availability choices.
