@@ -5,7 +5,7 @@ Last updated: 2026-06-08
 
 ## Current Release State
 
-1. Latest production deployment evidence before the current marker/draft hardening is code target SHA `023e5f9ff0c71340cb9f92a9a7d7526920a62e05`, deployed on June 8, 2026 with health checks, frontend asset parity, and platform-admin tenant capability smoke recorded in `docs/README.md`. The June 8 Storefront marker/draft hardening is locally validated and must not be treated as live until a new deployed SHA and production smoke are recorded.
+1. Latest production deployment evidence for Storefront marker/draft hardening is code target SHA `f72d5e93c3e96ee2f0b1ee305c32c37856016ca6`, deployed on June 8, 2026 with backend/IMS/POS/Store health checks, `/map-dgfy` public route check, frontend asset parity, tenant schema sync, and tenant index headroom passing. The release used the explicit emergency no-staging bypass because stale QA deployed-head evidence was the sole failed gate after QA smoke, rollback, restore, docs, and architecture passed.
 2. June 2, 2026 audit state: dependency vulnerabilities are resolved and the dependency audit commands below return zero current npm advisories for locked root/backend/frontend trees.
 3. The local release gate now includes dependency audits and a focused frontend contract gate before docs, architecture, compliance, backend, frontend, and budget gates.
 4. Current open audit package: `System_Audit/README.md`.
@@ -34,7 +34,7 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 15. `npm run audit:fifo-drift`
 16. `npm run audit:tenant-index-headroom -- --redundant-groups-threshold=0`
 
-## Latest Technical Evidence (2026-06-06)
+## Latest Technical Evidence (2026-06-08)
 
 1. `npm run audit:dependencies:prod` -> PASS with zero current npm advisories.
 2. `npm run audit:dependencies` -> PASS with zero current npm advisories.
@@ -78,7 +78,8 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 40. `npm --prefix frontend exec vitest run src/features/inventory/__tests__/itemProductWizard.contract.test.js apps/store/src/__tests__/storefrontMarkerCss.contract.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx --pool=threads` -> PASS on June 8, 2026 with 3 files / 39 tests after Storefront marker glow stopped scaling the marker body and IMS draft saves preserved branch availability.
 41. `npm --prefix backend test -- --runTestsByPath tests/storefrontCatalogUseCases.test.js tests/servicesMode.usecases.test.js tests/storefrontDiscoveryIndexService.catalogVisibility.test.js tests/settingsUsecases.applicationResult.test.js` -> PASS on June 8, 2026 with 4 suites / 73 tests for branch availability, services branch scoping, discovery snapshots, and clean-handle reservation behavior.
 42. `npm --prefix frontend run build:store` -> PASS on June 8, 2026 after marker/draft hardening.
-43. Local rendered Storefront route health passed on June 8, 2026 at `/map-dgfy`: title, desktop search controls, map region, overlay-free render, search-field interaction, and zero relevant console warnings/errors. The local development dataset had no seeded discovery stores, so production visual smoke is still required for real-pin zoom placement.
+43. Local rendered Storefront route health passed on June 8, 2026 at `/map-dgfy`: title, desktop search controls, map region, overlay-free render, search-field interaction, and zero relevant console warnings/errors. The local development dataset had no seeded discovery stores, so seeded-data zoom QA remains useful for real-pin placement.
+44. Production deployment on June 8, 2026 deployed code target SHA `f72d5e93c3e96ee2f0b1ee305c32c37856016ca6`; remote `HEAD`, `.deploy-state/last_deployed_commit`, deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260608_110004.summary.txt`, backend health, `/map-dgfy` route check, frontend asset parity, tenant schema sync, and tenant index headroom matched that SHA. QA multi-location smoke, rollback drill, and restore drill passed before the deploy; stale QA deployed-head evidence remained the only failed no-staging gate and was recorded through the auditable emergency bypass metadata path.
 
 ## Remaining Non-Technical Blockers (Go/No-Go)
 

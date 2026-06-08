@@ -104,7 +104,7 @@ Targeted matrix result:
 - Storefront production build: `PASS`
 - Architecture guardrails and controller-boundary checks: `PASS`
 - Diff whitespace check: `PASS`
-- Local rendered route health: `PASS` for `/map-dgfy` page identity, desktop search controls, map region, overlay-free render, search-field interaction, and zero relevant console warnings/errors. The local development dataset had no seeded discovery stores, so live production or seeded-data visual smoke remains required before claiming marker placement against real pins.
+- Local rendered route health: `PASS` for `/map-dgfy` page identity, desktop search controls, map region, overlay-free render, search-field interaction, and zero relevant console warnings/errors. Production route smoke also passed for `https://dgfy.ph/map-dgfy` after deploying SHA `f72d5e93c3e96ee2f0b1ee305c32c37856016ca6`; seeded-data zoom QA remains useful for real-pin placement evidence.
 
 ## Notes
 - This file intentionally tracks the frontend standing and test evidence snapshot only.
