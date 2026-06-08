@@ -1640,11 +1640,12 @@ const makePinElement = (mode, selected = false, ariaLabel = 'Store marker', glow
 const makeUserLocationElement = () => {
   const el = document.createElement('div');
   el.style.cssText = 'width:20px;height:20px;border-radius:999px;background:#1a4e8d;border:3px solid #fff;box-shadow:0 6px 14px rgba(15,23,42,.35);';
+  el.className = 'storefront-user-location-marker';
   return el;
 };
 
 const EMPTY_HIGHLIGHTED_MARKER_KEYS = [];
-const STORE_MARKER_POPUP_OFFSET = { bottom: [0, -18], top: [0, 14], left: [14, 0], right: [-14, 0] };
+const STORE_MARKER_POPUP_OFFSET = { bottom: [0, -58], top: [0, 58], left: [58, 0], right: [-58, 0] };
 const DISCOVERY_LOCATION_PERMISSION_STORAGE_KEY = 'dgfy_storefront_discovery_location_permission_v1';
 
 function StoresMap({
@@ -1883,7 +1884,8 @@ function StoresMap({
             openClusterPopup(event);
           }
         });
-        const clusterMarker = new maplibregl.Marker({ element: clusterElement, anchor: 'center' })
+        clusterElement.style.zIndex = '30';
+        const clusterMarker = new maplibregl.Marker({ element: clusterElement, anchor: 'bottom' })
           .setLngLat([lng, lat])
           .addTo(map);
         markersRef.current.push(clusterMarker);
@@ -2010,6 +2012,7 @@ function StoresMap({
           schedulePopupClose();
         });
       }
+        el.style.zIndex = highlighted ? '40' : '30';
         const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
           .setLngLat([lng, lat])
           .addTo(map);
@@ -2029,7 +2032,8 @@ function StoresMap({
       const uLng = Number(userLocation.longitude);
       if (Number.isFinite(uLat) && Number.isFinite(uLng)) {
         const el = makeUserLocationElement();
-        userMarkerRef.current = new maplibregl.Marker({ element: el })
+        el.style.zIndex = '5';
+        userMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat([uLng, uLat])
           .setPopup(new maplibregl.Popup({ offset: 25 }).setHTML('<strong>Your location</strong>'))
           .addTo(map);

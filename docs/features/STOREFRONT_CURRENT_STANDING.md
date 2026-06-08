@@ -38,7 +38,7 @@ This is a frontend capability/status reference, not a new architecture decision.
 - Catalog and checkout visibility are controlled by customer access and inventory display policy.
 - Tenant profile/cover branding, branch selection, and map marker previews are active.
 - Duplicate-coordinate location pins render as a single exact-coordinate cluster marker. The cluster opens a compact selectable list that shows all entries with internal scrolling for dense same-coordinate locations; stored IMS coordinates remain the only marker, popup, and map-bounds source.
-- Storefront map pins use a fixed MapLibre root anchor box, with the marker visual and glow positioned inside/outside that stable box. The stored coordinate remains the bottom-center anchor during zoom while glow/ripple effects stay presentation-only.
+- Storefront map pins and shared-coordinate cluster pins use the same fixed MapLibre root anchor box and bottom-center coordinate anchor. Marker cards use the same above-pin popup offset for normal and shared pins, while the customer "your location" marker renders below storefront pins so overlapping store pins remain clickable.
 - Pin clicks/taps synchronously select the pin, open or keep the Discover Nearby panel visible, and show the marker preview. Store navigation remains an explicit card/list action.
 - Empty-state guidance for tenants without storefront-ready sellable items is active.
 - Storefront follow/share controls are available where tenant flags enable them.
@@ -91,7 +91,7 @@ Targeted Storefront discovery/account commands:
 - `npm --prefix frontend exec vitest run apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/discoveryMapDom.test.js apps/store/src/__tests__/storefrontMarkerPreview.test.js apps/store/src/__tests__/discoveryPresentation.test.js --pool=threads`
 - `npm --prefix backend test -- --runTestsByPath tests/storefrontDiscoveryRepository.test.js tests/storefrontDiscoveryMapPins.usecase.test.js`
 - `npm --prefix frontend exec vitest run src/features/inventory/__tests__/itemProductWizard.contract.test.js apps/store/src/__tests__/storefrontMarkerCss.contract.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx --pool=threads`
-- `npm --prefix frontend exec vitest run apps/store/src/__tests__/storefrontMarkerCss.contract.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx --pool=threads`
+- `npm --prefix frontend exec vitest run apps/store/src/__tests__/storefrontMarkerCss.contract.test.js apps/store/src/__tests__/discoveryMapDom.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx --pool=threads`
 - `npm --prefix backend test -- --runTestsByPath tests/storefrontCatalogUseCases.test.js tests/servicesMode.usecases.test.js tests/storefrontDiscoveryIndexService.catalogVisibility.test.js tests/settingsUsecases.applicationResult.test.js`
 - `npm --prefix frontend run build:store`
 - `npm run check:architecture`
@@ -100,6 +100,7 @@ Targeted Storefront discovery/account commands:
 Targeted matrix result:
 - June 8 marker/draft hardening frontend slice: `PASS` (`39/39` targeted tests). npm printed the existing unknown `--pool` warning but executed the suites.
 - June 8 fixed-anchor marker follow-up slice: `PASS` (`29/29` targeted tests). Coverage includes the fixed `38px` by `48px` MapLibre marker root anchor box, absolutely positioned marker visual, and the existing discovery flow behavior.
+- June 8 marker/card consistency follow-up slice: `PASS` (`32/32` targeted tests). Coverage includes shared-coordinate cluster markers using the same bottom anchor as normal pins, consistent above-pin popup offsets, and user-location marker layering below storefront pins.
 - June 8 backend branch catalog/services/handle slice: `PASS` (`73/73` targeted tests).
 - Storefront discovery flow, map DOM, marker preview, and presentation suites: `PASS` (`42/42` targeted tests). npm printed the existing unknown `--pool` warning but executed the suites.
 - Backend Storefront discovery repository and map-pin use-case suites: `PASS` (`19/19` targeted tests), including union store/item matching, out-of-stock inclusion, nearest matching branches, and degraded snapshot behavior.
@@ -119,7 +120,7 @@ Targeted matrix result:
 - Single-result searches auto-focus the exact pin and preview; multi-result searches fit the exact unique marker coordinates.
 - Pin click opens/keeps the Discover Nearby results panel and marker preview synchronously. Store navigation is an explicit card/list action.
 - Duplicate-coordinate cluster previews now show all same-coordinate storefronts in a bounded scrollable card rather than hiding overflow entries.
-- Storefront pins keep a fixed MapLibre root anchor box and unscaled marker body so zooming does not resize or shift the coordinate-owned DOM anchor.
+- Storefront pins and shared-coordinate cluster pins keep a fixed MapLibre root anchor box and bottom-center anchor, and marker cards use one above-pin offset so zooming does not resize or shift the coordinate-owned DOM anchor.
 - Storefront discovery index reconciliation is part of the guarded production deploy path by default, with a dry-run CLI for preflight impact review.
 
 ## Discovery Map Availability Standing (2026-05-28)
