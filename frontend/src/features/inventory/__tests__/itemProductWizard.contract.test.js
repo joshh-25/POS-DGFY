@@ -112,6 +112,18 @@ describe('Item/Product wizard contracts', () => {
     expect(itemsPageSource).toContain('throw error;');
   });
 
+  it('preserves Storefront branch availability when saving item and product drafts', () => {
+    const itemsPageSource = readFrontendFile('src/features/inventory/pages/ItemsPage.jsx');
+
+    expect(itemsPageSource).toContain('const applyStorefrontLocationAvailabilityPatch = async (item, rows = []) =>');
+    expect(itemsPageSource).toContain('storefront_location_availability: storefrontLocationAvailabilityPatch = []');
+    expect(itemsPageSource).toContain('savedProduct = await createItemDraft(productPayload);');
+    expect(itemsPageSource).toContain('await applyStorefrontLocationAvailabilityPatch(savedProduct || editingProduct, storefrontLocationAvailabilityPatch);');
+    expect(itemsPageSource).toContain('const savedDraft = await createItemDraft(draftPayload);');
+    expect(itemsPageSource).toContain('await applyStorefrontLocationAvailabilityPatch(savedDraft, storefrontLocationAvailabilityPatch);');
+    expect(itemsPageSource).not.toContain('delete draftPayload.storefront_location_availability;');
+  });
+
   it('guards save actions and keeps wizard footers responsive', () => {
     const itemFormSource = readFrontendFile('Components/items/ItemFormModal.jsx');
     const productWizardSource = readFrontendFile('Components/products/ProductCreateWizard.jsx');

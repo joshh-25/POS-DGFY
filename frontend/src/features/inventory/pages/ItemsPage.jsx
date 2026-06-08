@@ -1273,16 +1273,18 @@ export default function Items() {
   const handleProductSaveDraft = async (productData) => {
     try {
       const {
-        storefront_location_availability: _storefrontLocationAvailabilityPatch = [],
+        storefront_location_availability: storefrontLocationAvailabilityPatch = [],
         ...productPayload
       } = productData || {};
+      let savedProduct = null;
       if (editingProduct) {
-        await updateItem(editingProduct.item_id, productPayload);
+        savedProduct = await updateItem(editingProduct.item_id, productPayload);
         toast.success('Product draft updated successfully');
       } else {
-        await createItemDraft(productPayload);
+        savedProduct = await createItemDraft(productPayload);
         toast.success('Product draft saved successfully');
       }
+      await applyStorefrontLocationAvailabilityPatch(savedProduct || editingProduct, storefrontLocationAvailabilityPatch);
       refetch();
       setShowProductWizard(false);
       setEditingProduct(null);
@@ -1390,11 +1392,14 @@ export default function Items() {
 
   const handleSaveDraft = async (itemData) => {
     try {
-      const draftPayload = { ...(itemData || {}) };
-      delete draftPayload.supplier_links;
-      delete draftPayload.supplier_links_dirty;
-      delete draftPayload.storefront_location_availability;
-      await createItemDraft(draftPayload);
+      const {
+        supplier_links: _supplierLinks = [],
+        supplier_links_dirty: _supplierLinksDirty = false,
+        storefront_location_availability: storefrontLocationAvailabilityPatch = [],
+        ...draftPayload
+      } = itemData || {};
+      const savedDraft = await createItemDraft(draftPayload);
+      await applyStorefrontLocationAvailabilityPatch(savedDraft, storefrontLocationAvailabilityPatch);
       toast.success('Item draft saved successfully');
       refetch();
       setShowFormModal(false);

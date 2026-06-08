@@ -388,8 +388,8 @@
 }
 
 .discovery-result-pin-visual.is-glowing {
-  animation: discoveryPinMarkerBreath 2.1s ease-in-out infinite;
-  will-change: transform, filter;
+  animation: discoveryPinMarkerGlow 2.1s ease-in-out infinite;
+  will-change: filter;
 }
 
 .discovery-result-pin-visual.is-glowing::before {
@@ -422,17 +422,14 @@
   animation: discoveryPinRipple 2s ease-out infinite;
 }
 
-@keyframes discoveryPinMarkerBreath {
+@keyframes discoveryPinMarkerGlow {
   0% {
-    transform: translateZ(0) scale(1);
     filter: drop-shadow(0 0 0 rgba(var(--pin-glow-rgb, 174, 232, 244), 0.00));
   }
   50% {
-    transform: translateZ(0) scale(1.075);
     filter: drop-shadow(0 0 18px rgba(var(--pin-glow-rgb, 174, 232, 244), 0.95));
   }
   100% {
-    transform: translateZ(0) scale(1);
     filter: drop-shadow(0 0 0 rgba(var(--pin-glow-rgb, 174, 232, 244), 0.00));
   }
 }
