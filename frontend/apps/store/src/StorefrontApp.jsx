@@ -9338,7 +9338,7 @@ export default function StorefrontApp() {
                     setSelectedMapPin(matched || pin || null);
                     goStore(pin.slug, pin.location_id ?? null);
                   }}
-                  autoOpenPopups={filteredDiscoveryStores.length > 0}
+                  autoOpenPopups={false}
                   openPopupOnHover={true}
                   viewportPolicy="search-stable"
                   viewportSignal={discoveryViewportSignal}

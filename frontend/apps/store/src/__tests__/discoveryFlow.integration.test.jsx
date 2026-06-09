@@ -923,7 +923,16 @@ describe('storefront discovery integration flow', () => {
     expect(getMapViewportCallCount()).toBeGreaterThan(firstSearchViewportCalls);
   });
 
-  it('renders match badges and opens store with preferred matching location id', async () => {
+  it('keeps searched marker previews hover-owned and opens store with preferred matching location id', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: true,
+      media: '(hover: hover)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    })));
     fetchMock.mockImplementation(async (url) => {
       const normalized = String(url);
       if (normalized.includes('/api/v1/storefront/discovery?')) {
@@ -990,11 +999,14 @@ describe('storefront discovery integration flow', () => {
     await waitFor(() => expect(screen.getAllByText('Alpha Foods').length).toBeGreaterThan(0));
     await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'alpha');
     await user.click(screen.getByRole('button', { name: /^Search$/i }));
-    await waitFor(() => expect(screen.getAllByText('Store + Item match').length).toBeGreaterThan(0));
-    expect(screen.getAllByText('In-stock match').length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getAllByText('Alpha Foods').length).toBeGreaterThan(0));
     const features = await waitForDiscoveryPinFeatures(1);
     expect(features.some((feature) => feature.properties?.highlighted === true)).toBe(true);
+    expect(screen.queryByRole('dialog', { name: /Alpha Foods location preview/i })).toBeNull();
+    emitDiscoveryPinMouseEnter(features[0]);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Open storefront' })).toBeTruthy());
+    emitDiscoveryPinMouseLeave(features[0]);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Alpha Foods location preview/i })).toBeNull());
     expect(maplibregl.Popup.mock.calls.some(([options]) => (
       options?.anchor === 'bottom'
       && options?.offset?.bottom?.[1] === -58
