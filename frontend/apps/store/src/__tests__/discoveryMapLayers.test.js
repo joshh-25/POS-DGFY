@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  DISCOVERY_NEAR_CLUSTER_RADIUS_METERS,
   DISCOVERY_PIN_HALO_LAYER_ID,
   DISCOVERY_PIN_LAYER_ID,
   DISCOVERY_PIN_SOURCE_ID,
@@ -8,6 +9,7 @@ import {
   buildDiscoveryPinLayerModel,
   buildUserLocationSourceData,
   ensureDiscoveryMapLayers,
+  getDistanceMeters,
   getDiscoveryPinIconId,
   setGeoJsonSourceData
 } from '../discoveryMapLayers.js';
@@ -77,6 +79,55 @@ describe('discovery map layer helpers', () => {
       count: 2,
       selected: true
     }));
+  });
+
+  it('groups storefront pins within the 13 meter near-cluster radius', () => {
+    const model = buildDiscoveryPinLayerModel({
+      stores: [
+        { slug: 'alpha', location_id: 1, latitude: 10.700000, longitude: 122.500000, workflow_mode: 'services' },
+        { slug: 'beta', location_id: 2, latitude: 10.700080, longitude: 122.500000, workflow_mode: 'retail' },
+        { slug: 'gamma', location_id: 3, latitude: 10.700220, longitude: 122.500000, workflow_mode: 'retail' }
+      ]
+    });
+
+    expect(DISCOVERY_NEAR_CLUSTER_RADIUS_METERS).toBe(13);
+    expect(getDistanceMeters(
+      { latitude: 10.700000, longitude: 122.500000 },
+      { latitude: 10.700080, longitude: 122.500000 }
+    )).toBeLessThan(13);
+    expect(model.sourceData.features).toHaveLength(2);
+    expect(model.sourceData.features[0].properties).toMatchObject({
+      count: 2,
+      type: 'cluster',
+      nearCluster: true
+    });
+    expect(model.sourceData.features[1].properties).toMatchObject({
+      count: 1,
+      type: 'store'
+    });
+  });
+
+  it('renders multiple placeholder-coordinate storefronts as a count cluster but hides a single placeholder pin', () => {
+    const single = buildDiscoveryPinLayerModel({
+      stores: [
+        { slug: 'alpha', location_id: 1, latitude: 10.699817, longitude: 122.559893, workflow_mode: 'services' }
+      ]
+    });
+    expect(single.sourceData.features).toHaveLength(0);
+
+    const grouped = buildDiscoveryPinLayerModel({
+      stores: [
+        { slug: 'alpha', location_id: 1, latitude: 10.699817, longitude: 122.559893, workflow_mode: 'services' },
+        { slug: 'beta', location_id: 1, latitude: 10.699817, longitude: 122.559893, workflow_mode: 'retail' }
+      ]
+    });
+
+    expect(grouped.sourceData.features).toHaveLength(1);
+    expect(grouped.sourceData.features[0].properties).toMatchObject({
+      count: 2,
+      type: 'cluster',
+      placeholderCluster: true
+    });
   });
 
   it('adds user location below pin halo and pin symbol layers', () => {

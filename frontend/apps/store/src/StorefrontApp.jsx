@@ -1837,8 +1837,8 @@ function StoresMap({
 
       let closeTimer = null;
       let markerHovered = false;
-      let previewHovered = false;
       let popupOpening = false;
+      let popupOpenMode = 'idle';
       const clearCloseTimer = () => {
         if (closeTimer) {
           window.clearTimeout(closeTimer);
@@ -1848,29 +1848,34 @@ function StoresMap({
       const schedulePopupClose = () => {
         clearCloseTimer();
         closeTimer = window.setTimeout(() => {
-          if (popupGenerationRef.current === generation && !markerHovered && !previewHovered) {
+          if (popupGenerationRef.current === generation && popupOpenMode === 'hover' && !markerHovered) {
+            popupOpenMode = 'idle';
             popup.remove();
           }
         }, 120);
       };
       const bindPreviewHover = (node) => {
         node.addEventListener('mouseenter', () => {
-          previewHovered = true;
-          clearCloseTimer();
+          if (popupOpenMode === 'click') {
+            clearCloseTimer();
+          }
         });
         node.addEventListener('mouseleave', () => {
-          previewHovered = false;
-          schedulePopupClose();
+          if (popupOpenMode === 'hover') {
+            schedulePopupClose();
+          }
         });
         node.addEventListener('focusin', () => {
-          previewHovered = true;
-          clearCloseTimer();
+          if (popupOpenMode === 'click') {
+            clearCloseTimer();
+          }
         });
         node.addEventListener('focusout', (event) => {
           const nextFocused = event.relatedTarget;
           if (nextFocused && node.contains(nextFocused)) return;
-          previewHovered = false;
-          schedulePopupClose();
+          if (popupOpenMode === 'hover') {
+            schedulePopupClose();
+          }
         });
       };
       if (isCluster) {
@@ -1881,6 +1886,7 @@ function StoresMap({
               onAction: () => onSelectStoreRef.current?.(selectedStorefront),
               onClose: () => {
                 clearCloseTimer();
+                popupOpenMode = 'idle';
                 popup.remove();
               }
             });
@@ -1888,6 +1894,7 @@ function StoresMap({
             previewNode.addEventListener('keydown', (event) => {
               if (event.key === 'Escape') {
                 event.preventDefault();
+                popupOpenMode = 'idle';
                 popup.remove();
               }
             });
@@ -1895,6 +1902,7 @@ function StoresMap({
           },
           onClose: () => {
             clearCloseTimer();
+            popupOpenMode = 'idle';
             popup.remove();
           }
         });
@@ -1907,8 +1915,8 @@ function StoresMap({
           onAction: () => onSelectStoreRef.current?.(singleStore),
           onClose: () => {
             markerHovered = false;
-            previewHovered = false;
             clearCloseTimer();
+            popupOpenMode = 'idle';
             popup.remove();
           }
         });
@@ -1916,12 +1924,14 @@ function StoresMap({
         previewNode.addEventListener('keydown', (event) => {
           if (event.key === 'Escape') {
             event.preventDefault();
+            popupOpenMode = 'idle';
             popup.remove();
           }
         });
         popup.setDOMContent(previewNode);
       }
-      const open = () => {
+      const open = (mode = 'click') => {
+        popupOpenMode = mode === 'click' || popupOpenMode === 'click' ? 'click' : 'hover';
         clearCloseTimer();
         const popupAlreadyOpen = typeof popup.isOpen === 'function' ? popup.isOpen() : false;
         if (popupOpening || popupAlreadyOpen) return;
@@ -1940,7 +1950,7 @@ function StoresMap({
           markerHovered = Boolean(value);
           if (markerHovered) {
             clearCloseTimer();
-          } else {
+          } else if (popupOpenMode === 'hover') {
             schedulePopupClose();
           }
         }
@@ -1958,7 +1968,7 @@ function StoresMap({
     const clickHandler = (event) => {
       event?.preventDefault?.();
       const entry = getEventEntry(event);
-      entry?.open?.();
+      entry?.open?.('click');
     };
     const hoverPreviewEnabled = openPopupOnHover
       && typeof window !== 'undefined'
@@ -1970,7 +1980,7 @@ function StoresMap({
       if (!hoverPreviewEnabled) return;
       const entry = getEventEntry(event);
       entry?.setMarkerHovered?.(true);
-      entry?.open?.();
+      entry?.open?.('hover');
     };
     const mouseLeaveHandler = (event) => {
       if (typeof map.getCanvas === 'function') {

@@ -10,6 +10,8 @@ export const DISCOVERY_USER_LAYER_ID = 'dgfy-discovery-user-location';
 const PROVISIONED_PLACEHOLDER_COORDINATES = [
   { latitude: 10.699817, longitude: 122.559893 }
 ];
+export const DISCOVERY_NEAR_CLUSTER_RADIUS_METERS = 13;
+const EARTH_RADIUS_METERS = 6371000;
 
 export const isKnownProvisionedPlaceholderCoordinate = (latitude, longitude) => (
   PROVISIONED_PLACEHOLDER_COORDINATES.some((coordinate) => (
@@ -28,6 +30,23 @@ export const getDiscoveryPinIconId = ({ type = 'store', mode = 'food_manufacturi
   return `dgfy-pin-${normalizeBusinessMode(mode)}-${selected ? 'selected' : 'normal'}`;
 };
 
+const toRadians = (degrees) => Number(degrees) * (Math.PI / 180);
+
+export const getDistanceMeters = (left, right) => {
+  const leftLat = Number(left?.latitude);
+  const leftLng = Number(left?.longitude);
+  const rightLat = Number(right?.latitude);
+  const rightLng = Number(right?.longitude);
+  if (![leftLat, leftLng, rightLat, rightLng].every(Number.isFinite)) return Number.POSITIVE_INFINITY;
+  const deltaLat = toRadians(rightLat - leftLat);
+  const deltaLng = toRadians(rightLng - leftLng);
+  const a = Math.sin(deltaLat / 2) ** 2
+    + Math.cos(toRadians(leftLat)) * Math.cos(toRadians(rightLat)) * Math.sin(deltaLng / 2) ** 2;
+  return 2 * EARTH_RADIUS_METERS * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const getCoordinateKey = (latitude, longitude) => `${Number(latitude).toFixed(6)}:${Number(longitude).toFixed(6)}`;
+
 const buildCoordinateGroups = (rows) => {
   const uniqueRows = [];
   const seenMarkerKeys = new Set();
@@ -43,18 +62,80 @@ const buildCoordinateGroups = (rows) => {
     uniqueRows.push(store);
   });
 
-  const coordinateGroups = uniqueRows.reduce((acc, store) => {
-    const lat = Number(store?.latitude);
-    const lng = Number(store?.longitude);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return acc;
-    const key = `${lat.toFixed(6)}:${lng.toFixed(6)}`;
-    if (!Array.isArray(acc[key])) acc[key] = [];
-    acc[key].push(store);
+  const validRows = uniqueRows
+    .map((store) => {
+      const lat = Number(store?.latitude);
+      const lng = Number(store?.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      return {
+        store,
+        latitude: lat,
+        longitude: lng,
+        coordinateKey: getCoordinateKey(lat, lng),
+        isPlaceholder: isKnownProvisionedPlaceholderCoordinate(lat, lng)
+      };
+    })
+    .filter(Boolean);
+
+  const groups = [];
+  validRows.forEach((entry) => {
+    const matchingGroup = groups.find((group) => (
+      group.entries.some((existing) => existing.coordinateKey === entry.coordinateKey)
+      || group.entries.some((existing) => getDistanceMeters(existing, entry) <= DISCOVERY_NEAR_CLUSTER_RADIUS_METERS)
+    ));
+    if (matchingGroup) {
+      matchingGroup.entries.push(entry);
+      return;
+    }
+    groups.push({ entries: [entry] });
+  });
+
+  const coordinateGroups = groups.reduce((acc, group, index) => {
+    const groupEntries = group.entries;
+    if (!Array.isArray(groupEntries) || groupEntries.length === 0) return acc;
+    const exactCoordinateKey = groupEntries.every((entry) => entry.coordinateKey === groupEntries[0].coordinateKey)
+      ? groupEntries[0].coordinateKey
+      : '';
+    const latitude = exactCoordinateKey
+      ? groupEntries[0].latitude
+      : groupEntries.reduce((sum, entry) => sum + entry.latitude, 0) / groupEntries.length;
+    const longitude = exactCoordinateKey
+      ? groupEntries[0].longitude
+      : groupEntries.reduce((sum, entry) => sum + entry.longitude, 0) / groupEntries.length;
+    const key = exactCoordinateKey || `near:${index}:${getCoordinateKey(latitude, longitude)}`;
+    acc[key] = {
+      coordinateKey: key,
+      displayLatitude: latitude,
+      displayLongitude: longitude,
+      exactCoordinateKey,
+      isPlaceholderGroup: groupEntries.every((entry) => entry.isPlaceholder),
+      stores: groupEntries.map((entry) => entry.store)
+    };
     return acc;
   }, {});
 
-  return { uniqueRows, coordinateGroups };
+  const rowGroupKeys = validRows.reduce((acc, entry) => {
+    const groupKey = Object.keys(coordinateGroups).find((key) => (
+      coordinateGroups[key].stores.includes(entry.store)
+    ));
+    if (groupKey) acc.set(entry.store, groupKey);
+    return acc;
+  }, new Map());
+
+  return { uniqueRows, coordinateGroups, rowGroupKeys };
 };
+
+const buildExactCoordinateGroups = (uniqueRows) => (
+  uniqueRows.reduce((acc, store) => {
+    const lat = Number(store?.latitude);
+    const lng = Number(store?.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return acc;
+    const key = getCoordinateKey(lat, lng);
+    if (!Array.isArray(acc[key])) acc[key] = [];
+    acc[key].push(store);
+    return acc;
+  }, {})
+);
 
 export const buildDiscoveryPinLayerModel = ({
   stores = [],
@@ -68,7 +149,8 @@ export const buildDiscoveryPinLayerModel = ({
       .map((key) => String(key || '').trim())
       .filter(Boolean)
   );
-  const { uniqueRows, coordinateGroups } = buildCoordinateGroups(rows);
+  const { uniqueRows, coordinateGroups, rowGroupKeys } = buildCoordinateGroups(rows);
+  const exactCoordinateGroups = buildExactCoordinateGroups(uniqueRows);
   const renderedCoordinateGroups = new Set();
   const groups = [];
   const features = [];
@@ -79,12 +161,15 @@ export const buildDiscoveryPinLayerModel = ({
     const lat = Number(store?.latitude);
     const lng = Number(store?.longitude);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-    if (isKnownProvisionedPlaceholderCoordinate(lat, lng)) return;
-    const coordinateKey = `${lat.toFixed(6)}:${lng.toFixed(6)}`;
+    const rowCoordinateKey = getCoordinateKey(lat, lng);
+    const coordinateKey = rowGroupKeys.get(store) || rowCoordinateKey;
     if (renderedCoordinateGroups.has(coordinateKey)) return;
     renderedCoordinateGroups.add(coordinateKey);
-    const group = Array.isArray(coordinateGroups[coordinateKey]) ? coordinateGroups[coordinateKey] : [];
+    const coordinateGroup = coordinateGroups[coordinateKey];
+    const group = Array.isArray(coordinateGroup?.stores) ? coordinateGroup.stores : [];
     if (group.length === 0) return;
+    const isPlaceholderGroup = coordinateGroup?.isPlaceholderGroup === true;
+    if (isPlaceholderGroup && group.length < 2) return;
 
     const selected = selectedMarkerKey
       ? group.some((entry) => String(getDiscoveryMarkerKey(entry) || '') === selectedMarkerKey)
@@ -109,22 +194,28 @@ export const buildDiscoveryPinLayerModel = ({
       coordinateKey,
       group,
       isCluster,
-      lat,
-      lng,
+      lat: Number(coordinateGroup?.displayLatitude ?? lat),
+      lng: Number(coordinateGroup?.displayLongitude ?? lng),
       markerKey,
       highlighted
     });
-    bounds.push([lng, lat]);
+    bounds.push([Number(coordinateGroup?.displayLongitude ?? lng), Number(coordinateGroup?.displayLatitude ?? lat)]);
     features.push({
       type: 'Feature',
-      geometry: { type: 'Point', coordinates: [lng, lat] },
+      geometry: {
+        type: 'Point',
+        coordinates: [Number(coordinateGroup?.displayLongitude ?? lng), Number(coordinateGroup?.displayLatitude ?? lat)]
+      },
       properties: {
         coordinateKey,
         iconId,
         markerKey,
         type: isCluster ? 'cluster' : 'store',
         count: group.length,
-        highlighted
+        highlighted,
+        nearCluster: !coordinateGroup?.exactCoordinateKey,
+        placeholderCluster: isPlaceholderGroup,
+        exactCoordinateCount: Array.isArray(exactCoordinateGroups[rowCoordinateKey]) ? exactCoordinateGroups[rowCoordinateKey].length : 1
       }
     });
   });

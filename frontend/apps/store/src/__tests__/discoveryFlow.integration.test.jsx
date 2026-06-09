@@ -220,6 +220,16 @@ const emitDiscoveryPinClick = (feature) => {
   mapApi?.__emitLayer('click', 'dgfy-discovery-pin-symbols', feature);
 };
 
+const emitDiscoveryPinMouseEnter = (feature) => {
+  const mapApi = getLatestMapApi();
+  mapApi?.__emitLayer('mouseenter', 'dgfy-discovery-pin-symbols', feature);
+};
+
+const emitDiscoveryPinMouseLeave = (feature) => {
+  const mapApi = getLatestMapApi();
+  mapApi?.__emitLayer('mouseleave', 'dgfy-discovery-pin-symbols', feature);
+};
+
 describe('storefront discovery integration flow', () => {
   let fetchMock;
 
@@ -1210,6 +1220,67 @@ describe('storefront discovery integration flow', () => {
     getMapApis()[0]?.__emitLayer?.('mouseleave', 'dgfy-discovery-pin-symbols', alphaFeature);
     await new Promise((resolve) => window.setTimeout(resolve, 220));
     expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy();
+  });
+
+  it('collapses hover-open marker previews when the pointer leaves the marker', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: true,
+      media: '(hover: hover)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    })));
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Alpha Foods',
+              slug: 'alpha',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              latitude: 10.72,
+              longitude: 122.56,
+              catalog_count: 2,
+              storefront_cover_image_url: '/uploads/storefront-assets/t1/cover.png',
+              storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png'
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Main', address_line: 'Main Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    const [alphaFeature] = await waitForDiscoveryPinFeatures(1);
+
+    emitDiscoveryPinMouseEnter(alphaFeature);
+    await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
+
+    emitDiscoveryPinMouseLeave(alphaFeature);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Alpha Foods location preview/i })).toBeNull());
   });
 
   it('renders duplicate-coordinate map pins as one exact-coordinate cluster marker', async () => {

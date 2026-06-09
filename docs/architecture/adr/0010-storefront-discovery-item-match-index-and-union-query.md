@@ -124,3 +124,12 @@ The Storefront discovery map marker contract is further hardened:
 2. Normal store pins, shared-coordinate count pins, highlighted/search-active halos, and the customer "your location" dot use explicit layer order. The user-location layer renders below storefront pins; storefront symbol layers render above the halo and user layers so overlapping store coordinates remain clickable.
 3. The source feature geometry must use the unmodified indexed longitude/latitude selected by the active `pin_scope`. The client may fit the viewport with padding large enough to keep the full bottom-anchored icon visible, but it must not shift feature coordinates or apply per-result coordinate offsets.
 4. Marker preview cards remain DOM popups anchored to the same feature coordinates. Popup retention and auto-open behavior may be driven by layer click/hover events, but card position must derive from the feature geometry rather than a detached marker element.
+
+## Addendum (2026-06-09): Hover Previews and 13-Meter Count Clustering
+
+The renderer-owned marker contract is amended for production map usability:
+
+1. Hover-opened marker preview cards are temporary previews. They must collapse when the pointer leaves the Storefront pin layer. Click-opened previews remain intentional cards and keep the close action.
+2. Exact-coordinate Storefront pins still cluster into a shared count pin. Storefront pins within `13` meters of an existing visible pin may also cluster into one count pin so near-overlapping Philippine storefront coordinates do not visually stack as separate unreadable pins.
+3. Individual non-cluster Storefront pins must still use their stored/indexed coordinates. A near-coordinate count cluster may use the small cluster centroid as its count-pin geometry, but only for the aggregate count feature and not as a mutation of any branch/store coordinate.
+4. A single known provisioned/default placeholder coordinate must not render as an accurate standalone Storefront pin. Multiple storefronts at that placeholder coordinate may render as a shared count cluster so customers can discover the available storefronts without treating the coordinate as a verified exact storefront location.
