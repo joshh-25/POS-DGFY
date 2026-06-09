@@ -1,11 +1,11 @@
 # Release Go/No-Go Checklist (Current)
 
 Status: reference  
-Last updated: 2026-06-08
+Last updated: 2026-06-09
 
 ## Current Release State
 
-1. Latest production deployment evidence for Storefront marker/draft hardening is code target SHA `f72d5e93c3e96ee2f0b1ee305c32c37856016ca6`, deployed on June 8, 2026 with backend/IMS/POS/Store health checks, `/map-dgfy` public route check, frontend asset parity, tenant schema sync, and tenant index headroom passing. The release used the explicit emergency no-staging bypass because stale QA deployed-head evidence was the sole failed gate after QA smoke, rollback, restore, docs, and architecture passed.
+1. Latest production deployment evidence for the non-PayMongo frontend polish slice is code target SHA `9cab0803a9bdf7e0d7238f94c9db255d9df30146`, deployed on June 9, 2026 with backend/IMS/POS/Store health checks, public IMS/POS/Storefront/Tenant Store endpoint checks, tenant-store asset integrity, frontend asset parity, tenant schema sync, tenant schema sync regression gate, tenant index headroom, permission backfill, and Storefront discovery index reconciliation passing. The release used the explicit emergency no-staging bypass because stale QA deployed-head evidence was the sole failed gate after QA smoke, rollback, restore, docs, and architecture passed.
 2. June 2, 2026 audit state: dependency vulnerabilities are resolved and the dependency audit commands below return zero current npm advisories for locked root/backend/frontend trees.
 3. The local release gate now includes dependency audits and a focused frontend contract gate before docs, architecture, compliance, backend, frontend, and budget gates.
 4. Current open audit package: `System_Audit/README.md`.
@@ -34,7 +34,7 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 15. `npm run audit:fifo-drift`
 16. `npm run audit:tenant-index-headroom -- --redundant-groups-threshold=0`
 
-## Latest Technical Evidence (2026-06-08)
+## Latest Technical Evidence (2026-06-09)
 
 1. `npm run audit:dependencies:prod` -> PASS with zero current npm advisories.
 2. `npm run audit:dependencies` -> PASS with zero current npm advisories.
@@ -80,6 +80,11 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 42. `npm --prefix frontend run build:store` -> PASS on June 8, 2026 after marker/draft hardening.
 43. Local rendered Storefront route health passed on June 8, 2026 at `/map-dgfy`: title, desktop search controls, map region, overlay-free render, search-field interaction, and zero relevant console warnings/errors. The local development dataset had no seeded discovery stores, so seeded-data zoom QA remains useful for real-pin placement.
 44. Production deployment on June 8, 2026 deployed code target SHA `f72d5e93c3e96ee2f0b1ee305c32c37856016ca6`; remote `HEAD`, `.deploy-state/last_deployed_commit`, deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260608_110004.summary.txt`, backend health, `/map-dgfy` route check, frontend asset parity, tenant schema sync, and tenant index headroom matched that SHA. QA multi-location smoke, rollback drill, and restore drill passed before the deploy; stale QA deployed-head evidence remained the only failed no-staging gate and was recorded through the auditable emergency bypass metadata path.
+45. `npm --prefix frontend run test -- --run src/store/__tests__/PermissionContext.publicRoutes.test.jsx src/features/inventory/__tests__/itemProductWizard.contract.test.js apps/store/src/__tests__/discoveryFlow.integration.test.jsx` -> PASS on June 9, 2026 with 3 files / 42 tests for route-aware permission reload, fixed item modal dimensions, and Storefront results-panel collapse behavior.
+46. `npm --prefix frontend run build:skupervisor` and `npm --prefix frontend run build:store` -> PASS on June 9, 2026 for the non-PayMongo frontend polish slice. Vite reported existing large-chunk/plugin-timing warnings only.
+47. `npm run lint:docs`, `npm run check:architecture`, and `git diff --cached --check` -> PASS on June 9, 2026 before commit `9cab0803a9bdf7e0d7238f94c9db255d9df30146`.
+48. No-staging release gate for target SHA `9cab0803a9bdf7e0d7238f94c9db255d9df30146` passed with explicit emergency-bypass metadata after QA multi-location smoke, rollback drill, restore drill, docs lint, and architecture passed. The only failed gate was stale QA deploy-summary parity: `deployed_head=c361dc83eb1ba492056091154996ebbb17f2f662` while `target_sha=9cab0803a9bdf7e0d7238f94c9db255d9df30146`; verdict artifact `.tmp/release-gates/9cab0803a9bdf7e0d7238f94c9db255d9df30146/release_verdict.json` records the bypass.
+49. Production deployment on June 9, 2026 deployed code target SHA `9cab0803a9bdf7e0d7238f94c9db255d9df30146`; deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260609_180115.summary.txt` reported backend health, IMS runtime, POS runtime, Store runtime, public IMS/POS/Storefront/Tenant Store endpoints, tenant-store asset integrity, frontend asset parity, tenant schema sync, tenant schema sync regression gate, tenant index headroom, permission backfill, Storefront discovery index reconciliation, and PM2 reload passing. PayMongo/payment-provider validation stayed skipped because production `PAYMENTS_ENABLED` is not true, and PayMongo code changes were not included in the deployed commit.
 
 ## Remaining Non-Technical Blockers (Go/No-Go)
 

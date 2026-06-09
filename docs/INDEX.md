@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-06-04
+last_reviewed: 2026-06-09
 applies_to: docs_navigation
 topic: docs_index
 ---
@@ -77,6 +77,7 @@ Canonical planning entry:
 - Compliance activation readiness browser E2E and startup regression guardrails are under `docs/testing/README.md`.
 - Frontend release-hardening budgets are documented in `docs/testing/README.md`; `npm run check:frontend-budgets` owns the multi-app build by default, requires fresh SKUpervisor/POS/Store artifacts or explicit timestamped prebuilt proof, writes budget reports, governs route chunks, and keeps lazy MapLibre isolated under its dedicated ceiling.
 - No-staging release promotion requires exact QA deploy parity. `docs/ops/NO_STAGING_RELEASE_STANDARD.md` defines the hard gate that rejects stale `qa_deploy_summary.txt` evidence when `deployed_head` does not match `RELEASE_TARGET_SHA`.
+- Current production runtime evidence is tracked in `docs/testing/release-go-no-go-checklist.md` and `System_Audit/README.md`. As of June 9, 2026, deployed SHA `9cab0803a9bdf7e0d7238f94c9db255d9df30146` contains the non-PayMongo frontend polish slice; PayMongo/payment changes remain excluded from that deployment.
 - Historical compliance remediation packets are archived under `docs/archive/compliance/2026-04-07`.
 - Historical exploratory testing packets are archived under `docs/archive/testing/`.
 - Historical SKU expansion/storefront planning snapshots are archived under `docs/archive/reference/2026-03/`.
