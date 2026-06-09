@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Package, Folder } from 'lucide-react';
+import { Plus, Trash2, Package, Folder, X } from 'lucide-react';
 import { Switch } from "@/components/ui/switch";
 import { dummyItems } from '@/components/data/dummyData';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
@@ -1050,14 +1050,28 @@ export default function ItemFormModal({
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography h-[90vh] max-h-[90vh] w-[95vw] max-w-5xl overflow-hidden flex flex-col pb-0">
           <DialogHeader className="flex-shrink-0">
-            <DialogTitle className="wizard-title flex items-center gap-2">
-              {item ? 'Edit Item' : 'Create New Item'}
-              {isEditingDraft && (
-                <Badge variant="outline" className="bg-slate-100 text-slate-700">
-                  Draft
-                </Badge>
-              )}
-            </DialogTitle>
+            <div className="flex items-start justify-between gap-4">
+              <DialogTitle className="wizard-title flex items-center gap-2">
+                {item ? 'Edit Item' : 'Create New Item'}
+                {isEditingDraft && (
+                  <Badge variant="outline" className="bg-slate-100 text-slate-700">
+                    Draft
+                  </Badge>
+                )}
+              </DialogTitle>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 shrink-0 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                onClick={handleClose}
+                disabled={isSaving}
+                aria-label={item ? 'Close edit item modal' : 'Close create item modal'}
+                title="Close"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
             {msmeMode && !item && (
               <p className="text-xs text-slate-500">
                 Item type: {createPreset === MSME_ITEM_PRESET.SELLABLE_POS ? 'Sell in POS (auto-show)' : 'Inventory only'}.

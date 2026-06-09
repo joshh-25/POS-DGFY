@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, ArrowRight, ArrowLeft, Package, FileEdit } from 'lucide-react';
+import { Check, ArrowRight, ArrowLeft, Package, FileEdit, X } from 'lucide-react';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { validateComposition, showValidationErrors } from '../utils/compositionValidation';
 import { useLocations } from '@/src/hooks/useLocations.js';
@@ -583,16 +583,30 @@ export default function ProductCreateWizard({
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography h-[90vh] max-h-[90vh] w-[95vw] max-w-5xl overflow-hidden flex flex-col">
           <DialogHeader className="flex-shrink-0">
-            <DialogTitle className="wizard-title flex items-center gap-2">
-              <Package className="w-5 h-5 text-teal-600" />
-              {product ? 'Edit Product' : 'Create New Product'}
-              {isEditingDraft && (
-                <Badge variant="outline" className="bg-slate-100 text-slate-700 border-slate-200 ml-2">
-                  <FileEdit className="w-3 h-3 mr-1" />
-                  Draft
-                </Badge>
-              )}
-            </DialogTitle>
+            <div className="flex items-start justify-between gap-4">
+              <DialogTitle className="wizard-title flex items-center gap-2">
+                <Package className="w-5 h-5 text-teal-600" />
+                {product ? 'Edit Product' : 'Create New Product'}
+                {isEditingDraft && (
+                  <Badge variant="outline" className="bg-slate-100 text-slate-700 border-slate-200 ml-2">
+                    <FileEdit className="w-3 h-3 mr-1" />
+                    Draft
+                  </Badge>
+                )}
+              </DialogTitle>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 shrink-0 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                onClick={() => handleClose(false)}
+                disabled={isSaving}
+                aria-label={product ? 'Close edit product modal' : 'Close create product modal'}
+                title="Close"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
             {isEditingDraft && initialStep > 1 && (
               <p className="text-sm text-slate-500 mt-2">
                 Resuming from Step {initialStep}
