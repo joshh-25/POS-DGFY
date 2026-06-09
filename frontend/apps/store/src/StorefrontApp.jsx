@@ -10387,7 +10387,7 @@ export default function StorefrontApp() {
 
 
                   {/* -- STATIC HERO MAP -- */}
-                  {!hasDiscoverySearch && (
+                  {!hasDiscoverySearch && !isClusterResultsActive && (
                     <>
                       <DiscoveryMapCard viewportMode={discoveryViewportMode}>
                       <div

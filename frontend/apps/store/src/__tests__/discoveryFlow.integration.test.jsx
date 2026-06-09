@@ -1367,6 +1367,7 @@ describe('storefront discovery integration flow', () => {
 
     emitDiscoveryPinClick(clusterFeature);
     await waitFor(() => expect(screen.getByText('Stores At This Pin')).toBeTruthy());
+    await waitFor(() => expect(getMapApis().filter((api) => api?.container?.isConnected).length).toBe(1));
     expect(screen.getByText('2 Stores Found')).toBeTruthy();
     expect(screen.getAllByText('Alpha Foods').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Beta Foods').length).toBeGreaterThan(0);
