@@ -24,6 +24,8 @@ export function AppRouter() {
     <Suspense fallback={<LoadingFallback />}>
       <Routes>
         <Route path="/" element={<Navigate to="/store-template" replace />} />
+        <Route path="/map-dgfy/account" element={<Navigate to="/store-template?dgfy_account=1" replace />} />
+        <Route path="/tenant-store/account" element={<Navigate to="/store-template?dgfy_account=1" replace />} />
         <Route path="/store-template" element={<StorePage />} />
         <Route path="/storefront-template" element={<StorePage />} />
         <Route path="/tenant-store/:slug/orders" element={<OrdersPage />} />

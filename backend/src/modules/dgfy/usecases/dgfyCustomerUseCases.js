@@ -5,7 +5,7 @@ import tenantConnector from '../../../utils/TenantConnector.js';
 import { getTenantModels } from '../../../utils/tenantModelFactory.js';
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode, isDomainError } from '../../shared/contracts/domainErrors.js';
-import { buildPhoneLookupVariants, dgfyCustomerRepository, hashReviewInviteToken, hashTrackingRecoveryLookup } from '../repositories/dgfyCustomerRepository.js';
+import { dgfyCustomerRepository, hashReviewInviteToken, hashTrackingRecoveryLookup } from '../repositories/dgfyCustomerRepository.js';
 import { dgfyEmailDeliveryRepository } from '../repositories/dgfyEmailDeliveryRepository.js';
 import { recordDgfyOrderActivity } from '../utils/customerActivityRecorder.js';
 
@@ -14,10 +14,8 @@ const TRACKING_REFERENCE_PATTERN = /^[A-Z]{2,4}-[A-Z0-9]{4,16}$/;
 const RECOVERY_TTL_MINUTES = Number.parseInt(process.env.DGFY_TRACKING_RECOVERY_TTL_MINUTES || '10', 10);
 const RECOVERY_MAX_ATTEMPTS = Number.parseInt(process.env.DGFY_TRACKING_RECOVERY_MAX_ATTEMPTS || '5', 10);
 const RECOVERY_COOLDOWN_SECONDS = Number.parseInt(process.env.DGFY_TRACKING_RECOVERY_COOLDOWN_SECONDS || '60', 10);
-const ACTIVITY_BACKFILL_TENANT_LIMIT = Number.parseInt(process.env.DGFY_ACTIVITY_BACKFILL_TENANT_LIMIT || '20', 10);
 const HISTORICAL_BACKFILL_TENANT_PAGE_SIZE = Number.parseInt(process.env.DGFY_HISTORICAL_BACKFILL_TENANT_PAGE_SIZE || '100', 10);
 const HISTORICAL_BACKFILL_ORDER_BATCH_SIZE = Number.parseInt(process.env.DGFY_HISTORICAL_BACKFILL_ORDER_BATCH_SIZE || '200', 10);
-const HISTORICAL_BACKFILL_ACCOUNT_PAGE_SIZE = Number.parseInt(process.env.DGFY_HISTORICAL_BACKFILL_ACCOUNT_PAGE_SIZE || '500', 10);
 const ACTIVITY_COUNT_KEYS = {
     order: 'order_count',
     pos_order: 'order_count',
@@ -201,131 +199,15 @@ const withTenantContext = async (tenantId, callback) => {
     return dbStore.run(context, () => callback({ tenant, sequelize }));
 };
 
-const syncRecentTenantOrderActivitiesForAccount = async ({ account, repository = dgfyCustomerRepository } = {}) => {
-    if (!account?.id || typeof repository.listActiveTenants !== 'function') return { synced: 0 };
-    const email = normalizeEmail(account.email);
-    const phoneVariants = buildPhoneLookupVariants(account.phone);
-    if (!email && !phoneVariants.length) return { synced: 0 };
-
-    const tenants = await repository.listActiveTenants(ACTIVITY_BACKFILL_TENANT_LIMIT);
-    let synced = 0;
-    for (const tenant of tenants || []) {
-        try {
-            const count = await withTenantContext(tenant.id, async ({ sequelize }) => {
-                const PosTransaction = dbStore.get('PosTransaction');
-                const PosTransactionLine = dbStore.get('PosTransactionLine');
-                const StoreCustomer = dbStore.get('StoreCustomer');
-                const Item = dbStore.get('Item');
-                if (!PosTransaction) return 0;
-                const transactionAttributes = await existingModelAttributes(sequelize, PosTransaction);
-                if (!transactionAttributes.includes('pos_transaction_id') || !transactionAttributes.includes('tracking_pin')) return 0;
-                const or = [];
-                if (email && transactionAttributes.includes('customer_email')) or.push({ customer_email: email });
-                if (transactionAttributes.includes('customer_phone')) {
-                    phoneVariants.forEach((phone) => or.push({ customer_phone: phone }));
-                }
-                if (!or.length) return 0;
-                const include = [];
-                if (StoreCustomer) {
-                    const storeCustomerAttributes = await existingModelAttributes(sequelize, StoreCustomer);
-                    if (storeCustomerAttributes.length) {
-                        include.push({ model: StoreCustomer, as: 'storeCustomer', required: false, attributes: storeCustomerAttributes });
-                    }
-                }
-                if (PosTransactionLine) {
-                    const lineAttributes = await existingModelAttributes(sequelize, PosTransactionLine);
-                    const itemAttributes = Item ? await existingModelAttributes(sequelize, Item) : [];
-                    if (lineAttributes.length) include.push({
-                        model: PosTransactionLine,
-                        as: 'lines',
-                        required: false,
-                        attributes: lineAttributes,
-                        ...(Item && itemAttributes.length ? { include: [{ model: Item, as: 'item', required: false, attributes: itemAttributes }] } : {})
-                    });
-                }
-                const rows = await PosTransaction.findAll({
-                    where: or.length ? { [Op.or]: or } : {},
-                    include,
-                    attributes: transactionAttributes,
-                    order: [[transactionAttributes.includes('created_at') ? 'created_at' : 'pos_transaction_id', 'DESC']],
-                    limit: 20
-                });
-                let tenantSynced = 0;
-                for (const row of rows || []) {
-                    const plain = typeof row.toJSON === 'function' ? row.toJSON() : row;
-                    const storeCustomer = plain.storeCustomer || {};
-                    await recordDgfyOrderActivity({
-                        tenantId: tenant.id,
-                        order: plain,
-                        storeCustomer: {
-                            customer_id: plain.store_customer_id || storeCustomer.customer_id || null,
-                            dgfy_account_id: account.id,
-                            email: plain.customer_email || storeCustomer.email || email,
-                            phone: plain.customer_phone || storeCustomer.phone || account.phone
-                        }
-                    });
-                    tenantSynced += 1;
-                }
-                return tenantSynced;
-            });
-            synced += count;
-        } catch {
-            // Backfill is opportunistic; dashboard loading must not fail because one tenant is stale.
-        }
-    }
-    return { synced };
-};
-
-const buildAccountLookup = async ({ repository = dgfyCustomerRepository, pageSize = HISTORICAL_BACKFILL_ACCOUNT_PAGE_SIZE } = {}) => {
-    const byEmail = new Map();
-    const byPhone = new Map();
-    let offset = 0;
-    const limit = safeLimit(pageSize, HISTORICAL_BACKFILL_ACCOUNT_PAGE_SIZE, 1000);
-    while (typeof repository.listDgfyAccountsForBackfill === 'function') {
-        const accounts = await repository.listDgfyAccountsForBackfill({ limit, offset });
-        if (!Array.isArray(accounts) || accounts.length === 0) break;
-        for (const account of accounts) {
-            const email = normalizeEmail(account.email);
-            if (email && !byEmail.has(email)) byEmail.set(email, account);
-            for (const phone of buildPhoneLookupVariants(account.phone)) {
-                if (phone && !byPhone.has(phone)) byPhone.set(phone, account);
-            }
-        }
-        if (accounts.length < limit) break;
-        offset += accounts.length;
-    }
-    return { byEmail, byPhone, size: new Set([...byEmail.values(), ...byPhone.values()].map((entry) => entry.id)).size };
-};
-
-const matchAccountForOrder = (order = {}, lookup = {}) => {
+const matchAccountForOrder = (order = {}) => {
     const storeCustomer = order.storeCustomer || {};
     if (storeCustomer.dgfy_account_id) return { id: storeCustomer.dgfy_account_id };
-    const email = normalizeEmail(order.customer_email || storeCustomer.email);
-    if (email && lookup.byEmail?.has(email)) return lookup.byEmail.get(email);
-    const phones = [
-        ...buildPhoneLookupVariants(order.customer_phone),
-        ...buildPhoneLookupVariants(storeCustomer.phone)
-    ];
-    for (const phone of phones) {
-        if (lookup.byPhone?.has(phone)) return lookup.byPhone.get(phone);
-    }
     return null;
 };
 
-const matchAccountForCustomerRecord = (record = {}, lookup = {}) => {
+const matchAccountForCustomerRecord = (record = {}) => {
     const storeCustomer = record.storeCustomer || {};
-    const guestProfile = record.guestProfile || {};
     if (storeCustomer.dgfy_account_id) return { id: storeCustomer.dgfy_account_id };
-    const email = normalizeEmail(record.customer_email || storeCustomer.email || guestProfile.email);
-    if (email && lookup.byEmail?.has(email)) return lookup.byEmail.get(email);
-    const phones = [
-        ...buildPhoneLookupVariants(record.customer_phone),
-        ...buildPhoneLookupVariants(storeCustomer.phone),
-        ...buildPhoneLookupVariants(guestProfile.phone)
-    ];
-    for (const phone of phones) {
-        if (lookup.byPhone?.has(phone)) return lookup.byPhone.get(phone);
-    }
     return null;
 };
 
@@ -652,7 +534,6 @@ const generateRecoveryCode = () => String(crypto.randomInt(0, 1_000_000)).padSta
 export const buildGetDgfyCustomerDashboardUseCase = ({ repository = dgfyCustomerRepository } = {}) => async ({ account }) => {
     try {
         const dgfyAccount = ensureAccount(account);
-        await syncRecentTenantOrderActivitiesForAccount({ account: dgfyAccount, repository }).catch(() => null);
         const [activityResult, addresses, loyalty] = await Promise.all([
             repository.listActivitiesForAccount(dgfyAccount.id, { limit: 10 }),
             repository.listAddresses(dgfyAccount.id),
@@ -1135,8 +1016,7 @@ export const buildDgfyHistoricalBackfillUseCase = ({
                 });
             }
         }
-        const accountLookup = await buildAccountLookup({ repository, pageSize: options.accountPageSize });
-        summary.account_lookup_count = accountLookup.size;
+        summary.account_lookup_count = 0;
 
         let offset = 0;
         while (typeof repository.listTenantsForBackfill === 'function') {
@@ -1165,7 +1045,7 @@ export const buildDgfyHistoricalBackfillUseCase = ({
                     for (const order of activityRows.orders || []) {
                         summary.transaction_count += 1;
                         summary.order_count += 1;
-                        const account = matchAccountForOrder(order, accountLookup);
+                        const account = matchAccountForOrder(order);
                         if (account?.id) summary.matched_account_count += 1;
                         else summary.unmatched_account_count += 1;
                         if (!dryRun) {
@@ -1190,7 +1070,7 @@ export const buildDgfyHistoricalBackfillUseCase = ({
                     for (const booking of activityRows.serviceBookings || []) {
                         summary.transaction_count += 1;
                         summary.service_booking_count += 1;
-                        const account = matchAccountForCustomerRecord(booking, accountLookup);
+                        const account = matchAccountForCustomerRecord(booking);
                         if (account?.id) summary.matched_account_count += 1;
                         else summary.unmatched_account_count += 1;
                         if (!dryRun) {
@@ -1201,7 +1081,7 @@ export const buildDgfyHistoricalBackfillUseCase = ({
                     for (const reservation of activityRows.hospitalityReservations || []) {
                         summary.transaction_count += 1;
                         summary.hospitality_booking_count += 1;
-                        const account = matchAccountForCustomerRecord(reservation, accountLookup);
+                        const account = matchAccountForCustomerRecord(reservation);
                         if (account?.id) summary.matched_account_count += 1;
                         else summary.unmatched_account_count += 1;
                         if (!dryRun) {
@@ -1212,7 +1092,7 @@ export const buildDgfyHistoricalBackfillUseCase = ({
                     for (const fnbOrder of activityRows.fnbOrders || []) {
                         summary.transaction_count += 1;
                         summary.fnb_order_count += 1;
-                        const account = matchAccountForOrder(fnbOrder.posTransaction || fnbOrder, accountLookup);
+                        const account = matchAccountForOrder(fnbOrder.posTransaction || fnbOrder);
                         if (account?.id) summary.matched_account_count += 1;
                         else summary.unmatched_account_count += 1;
                         if (!dryRun) {

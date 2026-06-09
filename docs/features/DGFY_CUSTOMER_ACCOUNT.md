@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-06-03
+last_reviewed: 2026-06-08
 applies_to: dgfy_customer_account, storefront_account, customer_tracking
 topic: dgfy_customer_account
 ---
@@ -11,10 +11,12 @@ topic: dgfy_customer_account
 
 ## Current Contract
 
-The public DGFY surface has two account-related entry points:
+The public DGFY surface now has one canonical authentication route plus a launcher entry point:
 
-1. **Log in / Sign up** opens the front-facing DGFY customer account experience.
-2. **Register Your Business** routes to company registration and must not be used as the general customer login path.
+1. **Log in / Sign up** from discovery or storefront opens a lightweight customer-account launcher.
+2. The launcher routes create-account and sign-in actions to the canonical `/dgfy/auth` route.
+3. **Register Your Business** routes to company registration and must not be used as the general customer login path.
+4. Password recovery lives on the dedicated `/dgfy/reset-password` route and returns the user to the same customer or business intent after completion.
 
 Tenant storefront headers expose **Log in / Sign up** directly so customers can authenticate or create an account without waiting until checkout. On a tenant storefront, **My Account** / profile actions route to the standalone `/tenant-store/:slug/account` page instead of opening the account dashboard as a modal. On the discovery page, signed-in DGFY customers use the global `/tenant-store/account` page for cross-store orders, bookings, saved addresses, loyalty activity, and business registration. Signed-out discovery users still get the authentication dialog.
 
@@ -31,7 +33,7 @@ Guest users can:
 - Track a known reference.
 - Request tracking recovery with an email or phone lookup. Production responses are always generic and do not expose whether a match or delivery channel exists.
 - Submit a fulfilled-order guest review only when the completed tracking response returns a valid review invite. Guest review invites are token-scoped, single-use, and separate from signed-in DGFY account history.
-- Create or sign in to a DGFY account from the customer account surface. Registration collects Last Name, First Name, Optional Middle Name, email, contact number, password, and confirm password, with password visibility toggles.
+- Create or sign in to a DGFY account from the canonical `/dgfy/auth` route after launching from the storefront or discovery customer-account surface. Registration collects Last Name, First Name, Optional Middle Name, email, contact number, password, and confirm password, with password visibility toggles.
 
 ## Signed-In DGFY Users
 
@@ -39,8 +41,8 @@ Signed-in DGFY users can:
 
 - View their DGFY profile, email, phone, unified cross-store history, tickets, addresses, and loyalty summary.
 - Use their DGFY JWT on storefront routes; the backend links or creates the tenant-local store customer row.
-- See cross-store customer activity through `/api/v1/dgfy/customer/dashboard` and the canonical paginated `/api/v1/dgfy/customer/activities` endpoint. The activities endpoint supports `type`, `tenant_id`, `store_slug`, `status`, `payment_status`, `date_from`, `date_to`, `page`, and `limit` filters and returns normalized activity cards with store, reference, status, total, summary lines, allowed actions, and typed review targets.
-- Operators can run a full historical customer activity backfill with `npm run backfill:dgfy-customer-activity:apply`. Apply mode runs landlord migrations first, then scans customer-facing activity across tenant databases. The dry-run command is `npm run backfill:dgfy-customer-activity -- ...`; it pages all DGFY accounts and tenants without writing activity rows. Historical backfill covers POS customer orders, F&B checks linked through POS transactions, Services bookings, and Hospitality reservations, writes a `dgfy_customer_backfill_runs` audit row in apply mode, and supports `--fail-fast`, `--include-inactive-tenants`, `--tenant-page-size`, `--order-batch-size`, `--account-page-size`, `--transaction-limit-per-tenant`, and `--require-activity-types=order,service_booking,hospitality_booking,fnb_order`. Use the required activity type gate in production dry-runs when the release must prove all customer-facing modes exist before apply. Dry-run may continue without a run-log row when the audit table is not present, but apply mode is schema-strict after migration.
+- See cross-store customer activity through `/api/v1/dgfy/customer/dashboard` and the canonical paginated `/api/v1/dgfy/customer/activities` endpoint. The activities endpoint supports `type`, `tenant_id`, `store_slug`, `status`, `payment_status`, `date_from`, `date_to`, `page`, and `limit` filters and returns normalized activity cards with store, reference, status, total, summary lines, allowed actions, and typed review targets. Only activity explicitly linked to the signed-in DGFY account is shown; guest orders or bookings are not adopted into a newly created account by email or phone matching.
+- Operators can run a full historical customer activity backfill with `npm run backfill:dgfy-customer-activity:apply`. Apply mode runs landlord migrations first, then scans customer-facing activity across tenant databases. The dry-run command is `npm run backfill:dgfy-customer-activity -- ...`; it pages all DGFY accounts and tenants without writing activity rows. Historical backfill covers POS customer orders, F&B checks linked through POS transactions, Services bookings, and Hospitality reservations, writes a `dgfy_customer_backfill_runs` audit row in apply mode, and supports `--fail-fast`, `--include-inactive-tenants`, `--tenant-page-size`, `--order-batch-size`, `--account-page-size`, `--transaction-limit-per-tenant`, and `--require-activity-types=order,service_booking,hospitality_booking,fnb_order`. Historical imports preserve explicit `dgfy_account_id` linkage only; they must not infer account ownership from guest email or phone values. Use the required activity type gate in production dry-runs when the release must prove all customer-facing modes are present before apply. Dry-run may continue without a run-log row when the audit table is not present, but apply mode is schema-strict after migration.
 - Track account-linked references through `/api/v1/dgfy/customer/track`.
 - Cancel eligible account-linked orders while the order is `placed` or `confirmed`.
 - Request reorder cart lines for an eligible prior order. Checkout still revalidates current price, stock, visibility, Customer Access Mode, and fulfillment rules.
@@ -54,7 +56,7 @@ Signed-in DGFY users can:
 - Use saved addresses from checkout/booking forms or the account panel. Saving the current checkout address writes a global DGFY saved address and includes the current delivery pin coordinates when the map pin is available.
 - View read-only loyalty balance and recent transactions. The balance is calculated from all DGFY loyalty transactions, not only the visible recent row limit.
 - See company memberships and invitations through the existing DGFY account contract.
-- Launch **Register Your Business** from the DGFY account surface. Storefront-originated business registration creates a short-lived DGFY handoff token, routes to `/register-company?source=dgfy&auth=login&handoff_token=<token>#business-registration`, exchanges the token on SKUpervisor, removes the one-time `handoff_token` from the URL, and focuses the company-registration form. If the handoff is expired or already consumed, the registration page keeps the user on DGFY sign-in and still focuses the business-registration area after successful sign-in. Public DGFY registration routes do not invoke tenant-session `/auth/refresh-token` recovery. The business form collects only company name and Business Industry as business data, remains gated by current company and marketplace terms acknowledgement, and after active tenant provisioning the confirmation page's **Proceed to SKUpervisor** button starts the normal IMS session without asking for SKUpervisor credentials again.
+- Launch **Register Your Business** from the DGFY account launcher or signed-in account surface. Storefront-originated business registration creates a short-lived DGFY handoff token when possible, routes to `/register-company?source=dgfy&auth=login&handoff_token=<token>#business-registration`, exchanges the token on SKUpervisor, removes the one-time `handoff_token` from the URL, and focuses the company-registration form. If no valid DGFY session exists, the storefront routes the user to `/dgfy/auth?intent=register-business&return_to=/register-company#business-registration` first. If the handoff is expired or already consumed, the registration page returns the user to `/dgfy/auth` and still focuses the business-registration area after successful sign-in. Public DGFY registration routes do not invoke tenant-session `/auth/refresh-token` recovery. The business form collects only company name and Business Industry as business data, remains gated by current company and marketplace terms acknowledgement, and after active tenant provisioning the confirmation page's **Proceed to SKUpervisor** button starts the normal IMS session without asking for SKUpervisor credentials again.
 
 ## Checkout And Booking Account Actions
 
@@ -104,7 +106,7 @@ Global customer endpoints:
 - Public display and moderation management supports typed review targets at the API level; richer merchant/admin UX remains incremental work.
 - Guest invite review submission is limited to fulfilled tracking targets and remains pending moderation. Merchant/admin moderation UX can expand later without changing the token contract.
 - Tracking recovery currently sends email when an order email is available; phone OTP delivery remains future work. Phone lookup accepts common Philippine formats for matching only.
-- The dashboard's request-time recent backfill remains intentionally bounded for latency safety. Full historical completeness for POS orders, F&B checks, Services bookings, and Hospitality reservations is handled by the explicit operator backfill command, not by broad request-time scans.
+- The dashboard no longer performs request-time guest-activity adoption. Full historical completeness for POS orders, F&B checks, Services bookings, and Hospitality reservations is handled by the explicit operator backfill command, and that import preserves only explicit DGFY account linkage.
 - Full phone OTP verification, loyalty redemption, and DGFY email-change flows remain separate governed work.
 
 ## Validation
