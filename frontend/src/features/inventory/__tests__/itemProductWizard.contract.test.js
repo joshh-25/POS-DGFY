@@ -77,13 +77,26 @@ describe('Item/Product wizard contracts', () => {
     expect(indexCssSource).toContain('.wizard-core-typography .wizard-footer button');
   });
 
-  it('keeps item create/edit modal dimensions fixed to the largest wizard frame', () => {
+  it('keeps item and product create/edit modal dimensions fixed to the largest wizard frame', () => {
     const itemFormSource = readFrontendFile('Components/items/ItemFormModal.jsx');
+    const productWizardSource = readFrontendFile('Components/products/ProductCreateWizard.jsx');
+    const indexCssSource = readFrontendFile('src/index.css');
 
-    expect(itemFormSource).toContain('wizard-core-typography h-[90vh] max-h-[90vh] w-[95vw] max-w-5xl overflow-hidden flex flex-col');
+    expect(itemFormSource).toContain('DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography pb-0"');
+    expect(productWizardSource).toContain('DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography"');
     expect(itemFormSource).toContain('DialogHeader className="flex-shrink-0"');
+    expect(productWizardSource).toContain('DialogHeader className="flex-shrink-0"');
     expect(itemFormSource).toContain('wizard-step-content flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6');
+    expect(productWizardSource).toContain('wizard-step-content flex-1 overflow-y-auto py-4');
     expect(itemFormSource).toContain('wizard-footer flex-shrink-0 border-t border-slate-200 pt-4 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end');
+    expect(productWizardSource).toContain('wizard-footer flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between');
+    expect(indexCssSource).toContain('width: min(95vw, 1100px) !important;');
+    expect(indexCssSource).toContain('max-width: min(95vw, 1100px) !important;');
+    expect(indexCssSource).toContain('height: 90vh;');
+    expect(indexCssSource).toContain('max-height: 90vh !important;');
+    expect(indexCssSource).toContain('@media (max-width: 640px)');
+    expect(itemFormSource).not.toContain('w-[95vw]');
+    expect(productWizardSource).not.toContain('w-[95vw]');
     expect(itemFormSource).not.toContain('max-h-[90vh] max-w-4xl overflow-y-auto pb-6');
   });
 

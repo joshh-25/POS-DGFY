@@ -581,7 +581,7 @@ export default function ProductCreateWizard({
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography h-[90vh] max-h-[90vh] w-[95vw] max-w-5xl overflow-hidden flex flex-col">
+        <DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography">
           <DialogHeader className="flex-shrink-0">
             <div className="flex items-start justify-between gap-4">
               <DialogTitle className="wizard-title flex items-center gap-2">

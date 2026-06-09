@@ -26,7 +26,21 @@ body {
 
 /* Wizard consistency: keep create/edit flows visually compact and aligned. */
 .wizard-modal-shell {
-  width: min(95vw, 1100px);
+  width: min(95vw, 1100px) !important;
+  max-width: min(95vw, 1100px) !important;
+  height: 90vh;
+  max-height: 90vh !important;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 640px) {
+  .wizard-modal-shell {
+    width: calc(100vw - 1rem) !important;
+    max-width: calc(100vw - 1rem) !important;
+    height: 90vh;
+  }
 }
 
 .wizard-modal-compact .space-y-6 {
