@@ -65,7 +65,6 @@ import {
   updateBulkStorefrontCatalogOverrides,
   uploadStorefrontCatalogImages,
   updateStorefrontCatalogGallery,
-  deleteStorefrontCatalogGalleryImage,
   uploadBulkStorefrontCatalogImages,
   deleteStorefrontCatalogImage
 } from '@/services/storefrontCatalogService.js';
@@ -84,6 +83,7 @@ const MSME_ITEM_PRESET = Object.freeze({
 });
 
 const MSME_RESTRICTED_CATEGORY_FILTERS = new Set(['raw_material', 'packaging', 'finished_goods', 'work_in_progress']);
+const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
 
 export default function Items() {
   const navigate = useNavigate();
@@ -501,14 +501,24 @@ export default function Items() {
     const itemId = item?.item_id || item?.id;
     const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : (files ? [files] : []);
     if (!itemId || normalizedFiles.length === 0 || !canConfigureStorefrontCatalog) return;
+    const currentGallery = normalizeStorefrontGallery(resolveStorefrontConfig(item));
+    const remainingSlots = STOREFRONT_ITEM_IMAGE_MAX_COUNT - currentGallery.length;
+    if (remainingSlots <= 0) {
+      toast.error(`Item image gallery is limited to ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images per item.`);
+      return;
+    }
+    const filesToUpload = normalizedFiles.slice(0, remainingSlots);
+    if (normalizedFiles.length > remainingSlots) {
+      toast.error(`Only ${remainingSlots} more item image${remainingSlots === 1 ? '' : 's'} can be uploaded. Galleries are limited to ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images.`);
+    }
 
     try {
-      const updated = await uploadStorefrontCatalogImages(itemId, normalizedFiles);
+      const updated = await uploadStorefrontCatalogImages(itemId, filesToUpload);
       setStorefrontCatalogOverrides((prev) => ({
         ...prev,
         [itemId]: { ...(prev[itemId] || {}), ...updated }
       }));
-      toast.success(normalizedFiles.length > 1 ? `Item gallery updated for ${item.name}` : `Item image updated for ${item.name}`);
+      toast.success(filesToUpload.length > 1 ? `Item gallery updated for ${item.name}` : `Item image updated for ${item.name}`);
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to upload item image');
     }
@@ -566,16 +576,28 @@ export default function Items() {
 
     try {
       const normalizedImageIndex = Number.parseInt(imageIndex, 10);
-      const updated = Number.isInteger(normalizedImageIndex) && normalizedImageIndex >= 0
-        ? await deleteStorefrontCatalogGalleryImage(itemId, normalizedImageIndex)
-        : await deleteStorefrontCatalogImage(itemId);
+      const isSingleImageDelete = Number.isInteger(normalizedImageIndex) && normalizedImageIndex >= 0;
+      let updated = null;
+      if (isSingleImageDelete) {
+        const currentGallery = normalizeStorefrontGallery(resolveStorefrontConfig(item));
+        if (normalizedImageIndex >= currentGallery.length) {
+          toast.error('This item image is no longer available. Reopen the item and try again.');
+          return;
+        }
+        const nextGallery = currentGallery
+          .filter((_, index) => index !== normalizedImageIndex)
+          .map((entry, index) => ({ ...entry, is_primary: index === 0, sort_order: index }));
+        updated = await updateStorefrontCatalogGallery(itemId, nextGallery);
+      } else {
+        updated = await deleteStorefrontCatalogImage(itemId);
+      }
       setStorefrontCatalogOverrides((prev) => ({
         ...prev,
-        [itemId]: Number.isInteger(normalizedImageIndex) && normalizedImageIndex >= 0
+        [itemId]: isSingleImageDelete
           ? { ...(prev[itemId] || {}), ...(updated || {}) }
           : { ...(prev[itemId] || {}), ...(updated || {}), storefront_image_url: null, storefront_image_gallery: null }
       }));
-      toast.success(Number.isInteger(normalizedImageIndex) ? `Item gallery image removed for ${item.name}` : `Item image removed for ${item.name}`);
+      toast.success(isSingleImageDelete ? `Item gallery image removed for ${item.name}` : `Item image removed for ${item.name}`);
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to remove item image');
     }

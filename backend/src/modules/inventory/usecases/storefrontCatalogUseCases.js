@@ -10,6 +10,7 @@ import logger from '../../../config/logger.js';
 
 const PERMISSION_EDIT_ITEMS = 'items:edit';
 const STOREFRONT_CATALOG_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const STOREFRONT_CATALOG_GALLERY_MAX_IMAGES = 5;
 const BULK_CATALOG_MAX_ITEM_IDS = 500;
 const BULK_CATALOG_MAX_IMAGE_FILES = 50;
 
@@ -391,8 +392,8 @@ export const buildUploadStorefrontCatalogGalleryImagesUseCase = ({ itemRepositor
     if (normalizedFiles.length === 0) {
       throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'images must contain at least one file', { statusCode: 400 });
     }
-    if (normalizedFiles.length > 10) {
-      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'images cannot exceed 10 files per item', { statusCode: 400 });
+    if (normalizedFiles.length > STOREFRONT_CATALOG_GALLERY_MAX_IMAGES) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `Item images cannot exceed ${STOREFRONT_CATALOG_GALLERY_MAX_IMAGES} files per item.`, { statusCode: 422 });
     }
 
     try {
@@ -404,6 +405,22 @@ export const buildUploadStorefrontCatalogGalleryImagesUseCase = ({ itemRepositor
       }
 
       const existing = await itemRepository.findStorefrontCatalogOverrideByItemId(normalizedItemId);
+      const existingGallery = normalizeExistingStorefrontGallery(existing);
+      if (existingGallery.length + normalizedFiles.length > STOREFRONT_CATALOG_GALLERY_MAX_IMAGES) {
+        throw new DomainError(
+          DomainErrorCode.VALIDATION_FAILED,
+          `Item image gallery is limited to ${STOREFRONT_CATALOG_GALLERY_MAX_IMAGES} images per item.`,
+          {
+            statusCode: 422,
+            details: {
+              reason_code: 'STOREFRONT_GALLERY_LIMIT_EXCEEDED',
+              max_images: STOREFRONT_CATALOG_GALLERY_MAX_IMAGES,
+              existing_count: existingGallery.length,
+              requested_count: normalizedFiles.length
+            }
+          }
+        );
+      }
       const effective = existing
         ? { storefront_visible: existing.storefront_visible !== false }
         : await itemRepository.getStorefrontCatalogReadinessByItemId(normalizedItemId);
@@ -441,7 +458,6 @@ export const buildUploadStorefrontCatalogGalleryImagesUseCase = ({ itemRepositor
         storedImages.push(stored);
       }
 
-      const existingGallery = normalizeExistingStorefrontGallery(existing);
       const gallery = normalizeStoredGalleryEntries([...existingGallery, ...storedImages]);
       const primary = gallery[0] || null;
       const data = await itemRepository.updateStorefrontCatalogImage(normalizedItemId, {

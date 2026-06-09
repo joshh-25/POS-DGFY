@@ -37,7 +37,7 @@ import {
 
 const WIZARD_STEPS = Object.freeze(['brand_assets', 'primary_location', 'bulk_items']);
 const HOSPITALITY_WIZARD_STEPS = Object.freeze(['brand_assets', 'primary_location', 'hospitality_rooms']);
-const MAX_ITEM_IMAGE_FILES = 10;
+const MAX_ITEM_IMAGE_FILES = 5;
 const MapPinPicker = React.lazy(() => import('../../../components/maps/MapPinPicker.jsx'));
 
 const getProgress = (onboarding) => {

@@ -1168,7 +1168,7 @@ Upload/replace the Storefront catalog primary image override. This endpoint rema
 Append images to the ordered Storefront catalog image gallery for one item.
 
 **Permission**: `items:edit`
-**Request**: `multipart/form-data` with up to 10 `images` file fields.
+**Request**: `multipart/form-data` with up to 5 `images` file fields.
 
 **Notes**
 - If no gallery exists, the first accepted image becomes the primary `storefront_image_url`.

@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 
+const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
+
 export default function POSSetupStep({
   data = {},
   updateData,
@@ -295,7 +297,10 @@ export default function POSSetupStep({
               <p className="text-sm text-slate-500">No item image uploaded yet.</p>
             )}
             <div className="flex flex-wrap gap-2">
-              <label className="cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100">
+              <label
+                className={`rounded-md border border-slate-300 px-3 py-2 text-sm ${storefrontGallery.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT ? 'cursor-not-allowed bg-slate-100 text-slate-400' : 'cursor-pointer bg-white hover:bg-slate-100'}`}
+                aria-disabled={storefrontGallery.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT}
+              >
                 Add Item Images
                 <input
                   type="file"
@@ -303,14 +308,19 @@ export default function POSSetupStep({
                   multiple
                   className="hidden"
                   onChange={(event) => {
-                    const files = Array.from(event.target.files || []);
+                    const remainingSlots = STOREFRONT_ITEM_IMAGE_MAX_COUNT - storefrontGallery.length;
+                    const files = Array.from(event.target.files || []).slice(0, Math.max(remainingSlots, 0));
                     if (files.length && onUploadStorefrontImage) {
                       onUploadStorefrontImage(productItem, files);
                     }
                     event.target.value = '';
                   }}
+                  disabled={storefrontGallery.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT}
                 />
               </label>
+              <p className="basis-full text-xs text-slate-500">
+                {Math.max(STOREFRONT_ITEM_IMAGE_MAX_COUNT - storefrontGallery.length, 0)} of {STOREFRONT_ITEM_IMAGE_MAX_COUNT} image slots remaining.
+              </p>
               <Button
                 type="button"
                 variant="outline"

@@ -327,16 +327,16 @@ describe('OnboardingSetupModal behavior', () => {
 
     await user.type(screen.getByLabelText(/Item name/i), 'Starter Bread');
     await user.type(screen.getByLabelText(/Selling price/i), '25');
-    const files = Array.from({ length: 11 }, (_, index) => (
+    const files = Array.from({ length: 6 }, (_, index) => (
       new File([`image-${index}`], `starter-${index}.png`, { type: 'image/png' })
     ));
     await user.upload(screen.getByLabelText(/Item image/i), files);
     await user.click(screen.getByRole('button', { name: /Save Items/i }));
 
     await waitFor(() => {
-      expect(mocks.toastMock.error).toHaveBeenCalledWith('Only the first 10 item images will be uploaded.');
+      expect(mocks.toastMock.error).toHaveBeenCalledWith('Only the first 5 item images will be uploaded.');
       expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages).toHaveBeenCalledTimes(1);
-      expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages.mock.calls[0][1]).toHaveLength(10);
+      expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages.mock.calls[0][1]).toHaveLength(5);
     });
   });
 

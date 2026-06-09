@@ -41,6 +41,8 @@ const MSME_ITEM_PRESET = Object.freeze({
   INVENTORY_ONLY: 'inventory_only'
 });
 
+const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
+
 const MSME_VISIBLE_UPDATE_FIELDS = Object.freeze([
   'sku_code',
   'name',
@@ -1540,7 +1542,10 @@ export default function ItemFormModal({
                     <p className="text-sm text-slate-500">No item image uploaded yet.</p>
                   )}
                   <div className="flex flex-wrap gap-2">
-                    <label className="cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100">
+                    <label
+                      className={`rounded-md border border-slate-300 px-3 py-2 text-sm ${storefrontGallery.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT ? 'cursor-not-allowed bg-slate-100 text-slate-400' : 'cursor-pointer bg-white hover:bg-slate-100'}`}
+                      aria-disabled={storefrontGallery.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT}
+                    >
                       Add Item Images
                       <input
                         type="file"
@@ -1548,14 +1553,23 @@ export default function ItemFormModal({
                         multiple
                         className="hidden"
                         onChange={(event) => {
-                          const files = Array.from(event.target.files || []);
+                          const remainingSlots = STOREFRONT_ITEM_IMAGE_MAX_COUNT - storefrontGallery.length;
+                          const selectedFiles = Array.from(event.target.files || []);
+                          const files = selectedFiles.slice(0, Math.max(remainingSlots, 0));
+                          if (selectedFiles.length > files.length) {
+                            toast.error(`Only ${Math.max(remainingSlots, 0)} more item image${remainingSlots === 1 ? '' : 's'} can be uploaded. Galleries are limited to ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images.`);
+                          }
                           if (files.length && onUploadStorefrontImage) {
                             onUploadStorefrontImage(item, files);
                           }
                           event.target.value = '';
                         }}
+                        disabled={storefrontGallery.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT}
                       />
                     </label>
+                    <p className="basis-full text-xs text-slate-500">
+                      {Math.max(STOREFRONT_ITEM_IMAGE_MAX_COUNT - storefrontGallery.length, 0)} of {STOREFRONT_ITEM_IMAGE_MAX_COUNT} image slots remaining.
+                    </p>
                     <Button
                       type="button"
                       variant="outline"

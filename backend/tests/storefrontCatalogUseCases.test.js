@@ -651,6 +651,46 @@ describe('storefront catalog use cases', () => {
         await fs.rm(tempPath, { force: true });
     });
 
+    it('uploadStorefrontCatalogGalleryImages rejects requests that exceed five total item images', async () => {
+        const store = jest.fn();
+        const updateStorefrontCatalogImage = jest.fn();
+        const useCase = buildUploadStorefrontCatalogGalleryImagesUseCase({
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({
+                    item_id: 93,
+                    name: 'Gallery capped item',
+                    default_sale_price: 125
+                }),
+                findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue({
+                    item_id: 93,
+                    storefront_visible: true,
+                    storefront_image_path: 'storefront-catalog/tenant/one.png',
+                    storefront_image_url: '/uploads/one.png',
+                    storefront_image_gallery: [
+                        { path: 'storefront-catalog/tenant/one.png', url: '/uploads/one.png', is_primary: true, sort_order: 0 },
+                        { path: 'storefront-catalog/tenant/two.png', url: '/uploads/two.png', is_primary: false, sort_order: 1 },
+                        { path: 'storefront-catalog/tenant/three.png', url: '/uploads/three.png', is_primary: false, sort_order: 2 },
+                        { path: 'storefront-catalog/tenant/four.png', url: '/uploads/four.png', is_primary: false, sort_order: 3 }
+                    ]
+                }),
+                updateStorefrontCatalogImage
+            },
+            imageStorage: { store, remove: jest.fn() }
+        });
+
+        await expect(useCase({
+            itemId: 93,
+            files: [
+                { mimetype: 'image/png', originalname: 'five.png', size: PNG_BYTES.length },
+                { mimetype: 'image/png', originalname: 'six.png', size: PNG_BYTES.length }
+            ],
+            user: editableUser
+        })).rejects.toThrow('Item image gallery is limited to 5 images per item.');
+
+        expect(store).not.toHaveBeenCalled();
+        expect(updateStorefrontCatalogImage).not.toHaveBeenCalled();
+    });
+
     it('updateStorefrontCatalogGallery reorders an existing gallery and removes omitted files', async () => {
         const upsertStorefrontCatalogOverride = jest.fn().mockResolvedValue({
             item_id: 90,
