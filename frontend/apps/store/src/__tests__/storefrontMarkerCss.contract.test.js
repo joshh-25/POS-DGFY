@@ -46,11 +46,17 @@ describe('Storefront marker CSS contract', () => {
     const css = readStoreCss();
     const glowRule = css.match(/\.discovery-result-pin-visual\.is-glowing\s*\{[^}]+\}/)?.[0] || '';
     const markerGlowKeyframes = css.match(/@keyframes discoveryPinMarkerGlow\s*\{[\s\S]*?\n\}/)?.[0] || '';
+    const resultsTogglePulseRule = css.match(/\.discovery-results-toggle--pulse\s*\{[^}]+\}/)?.[0] || '';
+    const resultsTogglePulseKeyframes = css.match(/@keyframes discoveryResultsTogglePulse\s*\{[\s\S]*?\n\}/)?.[0] || '';
 
     expect(glowRule).toContain('discoveryPinMarkerGlow');
     expect(glowRule).not.toContain('scale(');
     expect(markerGlowKeyframes).toContain('filter: drop-shadow');
     expect(markerGlowKeyframes).not.toContain('scale(');
+    expect(resultsTogglePulseRule).toContain('discoveryResultsTogglePulse');
+    expect(resultsTogglePulseRule).not.toContain('scale(');
+    expect(resultsTogglePulseKeyframes).toContain('filter: drop-shadow');
+    expect(resultsTogglePulseKeyframes).not.toContain('scale(');
     expect(css).not.toContain('discoveryPinMarkerBreath');
   });
 });

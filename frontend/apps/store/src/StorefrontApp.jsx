@@ -87,7 +87,7 @@ import {
   getAccessCapabilities
 } from './customerAccess.js';
 import { getFoodBeverageStorefrontViewModel } from './fnbStorefrontViewModel.js';
-import { createSharedCoordinatePreviewNode, getDiscoveryMarkerKey } from './discoveryMapDom.js';
+import { getDiscoveryMarkerKey } from './discoveryMapDom.js';
 import {
   DISCOVERY_PIN_LAYER_ID,
   DISCOVERY_PIN_SOURCE_ID,
@@ -1646,6 +1646,7 @@ function StoresMap({
   height = 360,
   autoOpenPopups = false,
   openPopupOnHover = false,
+  onSelectCluster = null,
   viewportPolicy = 'auto',
   viewportSignal = ''
 }) {
@@ -1656,6 +1657,7 @@ function StoresMap({
   const userMarkerRef = useRef(null);
   const layerEventCleanupRef = useRef(null);
   const onSelectStoreRef = useRef(onSelectStore);
+  const onSelectClusterRef = useRef(onSelectCluster);
   const autoOpenFrameRef = useRef(null);
   const popupGenerationRef = useRef(0);
   const markerSignatureRef = useRef('');
@@ -1668,6 +1670,10 @@ function StoresMap({
   useEffect(() => {
     onSelectStoreRef.current = onSelectStore;
   }, [onSelectStore]);
+
+  useEffect(() => {
+    onSelectClusterRef.current = onSelectCluster;
+  }, [onSelectCluster]);
 
   useEffect(() => {
     if (!ref.current || mapRef.current) return;
@@ -1822,10 +1828,27 @@ function StoresMap({
     }
 
     const popupEntries = new Map();
+    let activeHoverEntry = null;
     const createPopupForEntry = (entry) => {
       const existing = popupEntries.get(entry.coordinateKey);
       if (existing) return existing;
       const { group, isCluster, lat, lng, markerKey } = entry;
+      if (isCluster) {
+        const clusterEntry = {
+          markerKey,
+          coordinateKey: entry.coordinateKey,
+          highlighted: entry.highlighted,
+          isCluster: true,
+          group,
+          open: (mode = 'click') => {
+            if (mode !== 'click') return;
+            onSelectClusterRef.current?.(group, entry);
+          },
+          setMarkerHovered: () => {}
+        };
+        popupEntries.set(entry.coordinateKey, clusterEntry);
+        return clusterEntry;
+      }
       const popup = new maplibregl.Popup({
         anchor: 'bottom',
         offset: STORE_MARKER_POPUP_OFFSET,
@@ -1839,20 +1862,28 @@ function StoresMap({
       let markerHovered = false;
       let popupOpening = false;
       let popupOpenMode = 'idle';
+      let previewNodeRef = null;
       const clearCloseTimer = () => {
         if (closeTimer) {
           window.clearTimeout(closeTimer);
           closeTimer = null;
         }
       };
+      const closeHoverPopup = () => {
+        if (popupGenerationRef.current !== generation || popupOpenMode !== 'hover') return;
+        markerHovered = false;
+        popupOpenMode = 'idle';
+        clearCloseTimer();
+        if (previewNodeRef?.style) {
+          previewNodeRef.style.pointerEvents = '';
+        }
+        popup.remove();
+      };
       const schedulePopupClose = () => {
         clearCloseTimer();
         closeTimer = window.setTimeout(() => {
-          if (popupGenerationRef.current === generation && popupOpenMode === 'hover' && !markerHovered) {
-            popupOpenMode = 'idle';
-            popup.remove();
-          }
-        }, 120);
+          if (!markerHovered) closeHoverPopup();
+        }, 40);
       };
       const bindPreviewHover = (node) => {
         node.addEventListener('mouseenter', () => {
@@ -1878,61 +1909,39 @@ function StoresMap({
           }
         });
       };
-      if (isCluster) {
-        const clusterNode = createSharedCoordinatePreviewNode(group, {
-          onSelect: (selectedStorefront) => {
-            const previewNode = createStoreMarkerPreviewNode(selectedStorefront, {
-              resolveAssetUrl: withAssetOrigin,
-              onAction: () => onSelectStoreRef.current?.(selectedStorefront),
-              onClose: () => {
-                clearCloseTimer();
-                popupOpenMode = 'idle';
-                popup.remove();
-              }
-            });
-            bindPreviewHover(previewNode);
-            previewNode.addEventListener('keydown', (event) => {
-              if (event.key === 'Escape') {
-                event.preventDefault();
-                popupOpenMode = 'idle';
-                popup.remove();
-              }
-            });
-            popup.setDOMContent(previewNode).setLngLat([lng, lat]).addTo(map);
-          },
-          onClose: () => {
-            clearCloseTimer();
-            popupOpenMode = 'idle';
-            popup.remove();
+      const [singleStore] = group;
+      const previewNode = createStoreMarkerPreviewNode(singleStore, {
+        resolveAssetUrl: withAssetOrigin,
+        onAction: () => onSelectStoreRef.current?.(singleStore),
+        onClose: () => {
+          markerHovered = false;
+          clearCloseTimer();
+          popupOpenMode = 'idle';
+          if (previewNodeRef?.style) {
+            previewNodeRef.style.pointerEvents = '';
           }
-        });
-        bindPreviewHover(clusterNode);
-        popup.setDOMContent(clusterNode);
-      } else {
-        const [singleStore] = group;
-        const previewNode = createStoreMarkerPreviewNode(singleStore, {
-          resolveAssetUrl: withAssetOrigin,
-          onAction: () => onSelectStoreRef.current?.(singleStore),
-          onClose: () => {
-            markerHovered = false;
-            clearCloseTimer();
-            popupOpenMode = 'idle';
-            popup.remove();
+          popup.remove();
+        }
+      });
+      previewNodeRef = previewNode;
+      bindPreviewHover(previewNode);
+      previewNode.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          popupOpenMode = 'idle';
+          if (previewNodeRef?.style) {
+            previewNodeRef.style.pointerEvents = '';
           }
-        });
-        bindPreviewHover(previewNode);
-        previewNode.addEventListener('keydown', (event) => {
-          if (event.key === 'Escape') {
-            event.preventDefault();
-            popupOpenMode = 'idle';
-            popup.remove();
-          }
-        });
-        popup.setDOMContent(previewNode);
-      }
+          popup.remove();
+        }
+      });
+      popup.setDOMContent(previewNode);
       const open = (mode = 'click') => {
         popupOpenMode = mode === 'click' || popupOpenMode === 'click' ? 'click' : 'hover';
         clearCloseTimer();
+        if (previewNodeRef?.style) {
+          previewNodeRef.style.pointerEvents = popupOpenMode === 'hover' ? 'none' : '';
+        }
         const popupAlreadyOpen = typeof popup.isOpen === 'function' ? popup.isOpen() : false;
         if (popupOpening || popupAlreadyOpen) return;
         popupOpening = true;
@@ -1944,8 +1953,11 @@ function StoresMap({
       };
       popupEntries.set(entry.coordinateKey, {
         markerKey,
+        coordinateKey: entry.coordinateKey,
         highlighted: entry.highlighted,
+        isCluster: false,
         open,
+        closeHoverPopup,
         setMarkerHovered: (value) => {
           markerHovered = Boolean(value);
           if (markerHovered) {
@@ -1979,6 +1991,10 @@ function StoresMap({
       }
       if (!hoverPreviewEnabled) return;
       const entry = getEventEntry(event);
+      if (activeHoverEntry && activeHoverEntry !== entry) {
+        activeHoverEntry.closeHoverPopup?.();
+      }
+      activeHoverEntry = entry || null;
       entry?.setMarkerHovered?.(true);
       entry?.open?.('hover');
     };
@@ -1988,12 +2004,29 @@ function StoresMap({
       }
       if (!hoverPreviewEnabled) return;
       const entry = getEventEntry(event);
+      if (activeHoverEntry === entry) {
+        activeHoverEntry = null;
+      }
       entry?.setMarkerHovered?.(false);
+    };
+    const mapMouseMoveHandler = (event) => {
+      if (!hoverPreviewEnabled || !activeHoverEntry || typeof map.queryRenderedFeatures !== 'function') return;
+      const renderedFeatures = map.queryRenderedFeatures(event?.point, { layers: [DISCOVERY_PIN_LAYER_ID] }) || [];
+      const stillOnActiveMarker = renderedFeatures.some((feature) => (
+        String(feature?.properties?.coordinateKey || '').trim() === activeHoverEntry.coordinateKey
+      ));
+      if (stillOnActiveMarker) return;
+      activeHoverEntry.setMarkerHovered?.(false);
+      activeHoverEntry = null;
+      if (typeof map.getCanvas === 'function') {
+        map.getCanvas().style.cursor = '';
+      }
     };
     if (layerReady && typeof map.on === 'function') {
       map.on('click', DISCOVERY_PIN_LAYER_ID, clickHandler);
       map.on('mouseenter', DISCOVERY_PIN_LAYER_ID, mouseEnterHandler);
       map.on('mouseleave', DISCOVERY_PIN_LAYER_ID, mouseLeaveHandler);
+      map.on('mousemove', mapMouseMoveHandler);
       layerEventCleanupRef.current = () => {
         if (typeof map.off !== 'function') return;
         try { map.off('click', DISCOVERY_PIN_LAYER_ID, clickHandler); } catch {
@@ -2003,6 +2036,9 @@ function StoresMap({
           // Cleanup is best-effort across mocked and real maps.
         }
         try { map.off('mouseleave', DISCOVERY_PIN_LAYER_ID, mouseLeaveHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
+        }
+        try { map.off('mousemove', mapMouseMoveHandler); } catch {
           // Cleanup is best-effort across mocked and real maps.
         }
       };
@@ -4188,6 +4224,7 @@ export default function StorefrontApp() {
   const [, setSelectedMapPin] = useState(null);
   const [isStoreListVisible, setIsStoreListVisible] = useState(false);
   const [isMobileResultsCollapsed, setIsMobileResultsCollapsed] = useState(false);
+  const [clusterResultContext, setClusterResultContext] = useState(null);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [viewMode, setViewMode] = useState('list');
   const [discoveryResultsPage, setDiscoveryResultsPage] = useState(1);
@@ -8801,6 +8838,41 @@ export default function StorefrontApp() {
     const startIndex = (discoveryResultsPage - 1) * discoveryResultsPerPage;
     return filteredDiscoveryStores.slice(startIndex, startIndex + discoveryResultsPerPage);
   }, [filteredDiscoveryStores, discoveryResultsPage, discoveryResultsPerPage]);
+  const clusterResultStores = useMemo(() => {
+    const clusterStores = Array.isArray(clusterResultContext?.stores) ? clusterResultContext.stores : [];
+    if (clusterStores.length === 0) return [];
+    const byMarkerKey = new globalThis.Map();
+    const bySlug = new globalThis.Map();
+    [
+      ...(Array.isArray(filteredDiscoveryStores) ? filteredDiscoveryStores : []),
+      ...(Array.isArray(discoveryResultStores) ? discoveryResultStores : []),
+      ...(Array.isArray(storesWithNearestBranch) ? storesWithNearestBranch : [])
+    ].forEach((store) => {
+      if (!store) return;
+      const slug = toSlug(store?.slug || store?.tenant_name);
+      if (slug && !bySlug.has(slug)) bySlug.set(slug, store);
+      const markerKey = getDiscoveryMarkerKey(store);
+      if (markerKey && !byMarkerKey.has(markerKey)) byMarkerKey.set(markerKey, store);
+    });
+    const seen = new Set();
+    return clusterStores
+      .map((pin) => {
+        const markerKey = getDiscoveryMarkerKey(pin);
+        const slug = toSlug(pin?.slug || pin?.tenant_name);
+        const matched = (markerKey && byMarkerKey.get(markerKey)) || (slug && bySlug.get(slug)) || null;
+        const store = {
+          ...(matched || {}),
+          ...pin,
+          slug: pin?.slug || matched?.slug || slug
+        };
+        const identity = getDiscoveryMarkerKey(store) || `${toSlug(store?.slug || store?.tenant_name)}:${store?.location_id ?? ''}`;
+        if (!identity || seen.has(identity)) return null;
+        seen.add(identity);
+        return store;
+      })
+      .filter(Boolean);
+  }, [clusterResultContext, filteredDiscoveryStores, discoveryResultStores, storesWithNearestBranch]);
+  const isClusterResultsActive = clusterResultStores.length > 0;
   const hasActiveDiscoveryFilters = (
     discoverySortBy !== 'nearest'
     || discoveryCategoryFilter !== 'all'
@@ -8842,6 +8914,19 @@ export default function StorefrontApp() {
     discoveryAvailabilityFilter
   ]);
   useEffect(() => {
+    setClusterResultContext(null);
+  }, [
+    search,
+    debouncedDiscoverySearch,
+    discoverySortBy,
+    discoveryCategoryFilter,
+    discoveryDistanceFilter,
+    discoveryOpenFilter,
+    discoveryRatingFilter,
+    discoveryAvailabilityFilter,
+    discoveryPinScope
+  ]);
+  useEffect(() => {
     setDiscoveryResultsPage((currentPage) => Math.min(currentPage, discoveryTotalPages));
   }, [discoveryTotalPages]);
   const resetDiscoveryResultsView = () => {
@@ -8869,12 +8954,34 @@ export default function StorefrontApp() {
     items.push(discoveryTotalPages);
     return items;
   }, [discoveryResultsPage, discoveryTotalPages]);
+  const handleDiscoveryClusterSelect = useCallback((clusterStores, clusterEntry) => {
+    const storesAtCluster = Array.isArray(clusterStores) ? clusterStores.filter(Boolean) : [];
+    if (storesAtCluster.length === 0) return;
+    setHasDiscoveryExplorationStarted(true);
+    setClusterResultContext({
+      coordinateKey: String(clusterEntry?.coordinateKey || ''),
+      stores: storesAtCluster
+    });
+    setDiscoveryResultsPage(1);
+    setIsStoreListVisible(true);
+    setIsMobileResultsCollapsed(false);
+    setHighlightedStoreSlug('');
+    setHighlightedDiscoveryMarkerKey(getDiscoveryMarkerKey(storesAtCluster[0]) || '');
+    setSelectedMapPin(null);
+  }, []);
   const renderDiscoveryResultsStage = () => {
     const cityLabel = discoveryCoords ? 'your selected area' : 'Iloilo City';
-    const resultCountLabel = `${filteredDiscoveryStores.length} ${filteredDiscoveryStores.length === 1 ? 'Store' : 'Stores'} Found`;
-    const resultsSubtitle = hasDiscoverySearch && String(search || '').trim()
+    const isResultsPanelVisible = isDiscoveryMobileViewport ? !isMobileResultsCollapsed : isStoreListVisible;
+    const panelStores = isClusterResultsActive ? clusterResultStores : paginatedDiscoveryStores;
+    const panelTotalCount = isClusterResultsActive ? clusterResultStores.length : filteredDiscoveryStores.length;
+    const resultCountLabel = `${panelTotalCount} ${panelTotalCount === 1 ? 'Store' : 'Stores'} Found`;
+    const resultsTitle = isClusterResultsActive ? 'Stores At This Pin' : 'Best Shops Today';
+    const resultsSubtitle = isClusterResultsActive
+      ? 'Showing the storefronts grouped inside the selected clustered pin.'
+      : hasDiscoverySearch && String(search || '').trim()
       ? `Showing businesses related to "${String(search || '').trim()}" near ${cityLabel}`
       : `Showing businesses within your selected area near ${cityLabel}`;
+      const shouldPulseResultsToggle = hasDiscoverySearch && filteredDiscoveryStores.length > 0 && !isResultsPanelVisible;
       const viewButtonStyle = (mode) => ({
         minHeight: isDiscoveryMobileViewport ? 36 : 34,
         minWidth: isDiscoveryMobileViewport ? 40 : 96,
@@ -9293,7 +9400,6 @@ export default function StorefrontApp() {
           )
         );
       };
-        const isResultsPanelVisible = isDiscoveryMobileViewport ? !isMobileResultsCollapsed : isStoreListVisible;
           const desktopResultsPanelWidth = isDiscoveryMobileViewport
             ? '100%'
             : isDiscoveryTabletViewport
@@ -9310,7 +9416,7 @@ export default function StorefrontApp() {
         >
           <div
             className={`discovery-results-stage ${isDiscoveryMobileViewport ? 'discovery-results-stage--mobile discovery-results-stage--mobile-fullbleed-map' : (isDiscoveryTabletViewport ? 'discovery-results-stage--tablet' : 'discovery-results-stage--desktop')}`}
-            style={{ display: 'flex', flexDirection: isDiscoveryMobileViewport || isDiscoveryTabletViewport ? 'column' : 'row', alignItems: 'stretch', position: 'relative', overflow: isDiscoveryMobileViewport ? 'visible' : 'hidden', transition: 'all 350ms cubic-bezier(0.4,0,0.2,1)' }}
+            style={{ display: 'flex', flexDirection: isDiscoveryMobileViewport || isDiscoveryTabletViewport ? 'column' : 'row', alignItems: 'stretch', position: 'relative', overflow: isDiscoveryMobileViewport ? 'visible' : 'hidden' }}
           >
             <div
               className={`discovery-results-stage__map ${isDiscoveryMobileViewport ? `discovery-results-stage__map--mobile-fullbleed ${isResultsPanelVisible ? 'is-results-visible' : 'is-results-hidden'}` : ''}`}
@@ -9340,6 +9446,7 @@ export default function StorefrontApp() {
                   }}
                   autoOpenPopups={false}
                   openPopupOnHover={true}
+                  onSelectCluster={handleDiscoveryClusterSelect}
                   viewportPolicy="search-stable"
                   viewportSignal={discoveryViewportSignal}
                 />
@@ -9352,7 +9459,7 @@ export default function StorefrontApp() {
                 <button
                   type="button"
                   onClick={() => setIsMobileResultsCollapsed((v) => !v)}
-                  className="discovery-results-stage__mobile-toggle"
+                  className={`discovery-results-stage__mobile-toggle ${shouldPulseResultsToggle ? 'discovery-results-toggle--pulse' : ''}`}
                   style={{
                     position: 'absolute',
                     left: '50%',
@@ -9380,10 +9487,11 @@ export default function StorefrontApp() {
                     : `View Results${filteredDiscoveryStores.length >= 0 ? ` (${filteredDiscoveryStores.length})` : ''}`}
                 </button>
               )}
-              {!isDiscoveryMobileViewport && <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 11 }}>
+              {!isDiscoveryMobileViewport && <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 45 }}>
                 <button
                   type="button"
                   onClick={() => setIsStoreListVisible((value) => !value)}
+                  className={shouldPulseResultsToggle ? 'discovery-results-toggle--pulse' : ''}
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -9414,18 +9522,25 @@ export default function StorefrontApp() {
                 display: 'grid',
                 gridTemplateRows: 'auto 1fr auto',
                 overflow: 'hidden',
-                position: 'static',
-                zIndex: 10,
-                  width: isResultsPanelVisible ? desktopResultsPanelWidth : '0px',
+                position: 'absolute',
+                top: isDiscoveryMobileViewport ? 'auto' : 0,
+                right: 0,
+                bottom: 0,
+                left: isDiscoveryMobileViewport || isDiscoveryTabletViewport ? 0 : 'auto',
+                zIndex: 30,
+                  width: desktopResultsPanelWidth,
                 minWidth: 0,
-                  maxHeight: isDiscoveryMobileViewport ? (isResultsPanelVisible ? 'calc(100vh - 220px)' : '0px') : discoveryLayout.resultsPanelMaxHeight,
+                  maxHeight: isDiscoveryMobileViewport ? 'calc(100vh - 220px)' : discoveryLayout.resultsPanelMaxHeight,
                   opacity: isResultsPanelVisible ? 1 : 0,
-                  transition: 'width 350ms cubic-bezier(0.4,0,0.2,1), opacity 300ms ease, border-color 350ms, max-height 280ms ease, transform 280ms ease',
-                  marginTop: isDiscoveryMobileViewport ? -20 : 0,
+                  visibility: isResultsPanelVisible ? 'visible' : 'hidden',
+                  transition: `transform 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease, border-color 180ms ease, visibility 0s linear ${isResultsPanelVisible ? '0s' : '260ms'}`,
+                  marginTop: 0,
                 borderTopLeftRadius: isDiscoveryMobileViewport ? 26 : 0,
                 borderTopRightRadius: isDiscoveryMobileViewport ? 26 : 0,
-                  boxShadow: isDiscoveryMobileViewport ? '0 -8px 24px rgba(15,23,42,.12)' : 'none',
-                  transform: isDiscoveryMobileViewport ? (isResultsPanelVisible ? 'translateY(0)' : 'translateY(14px)') : 'none',
+                  boxShadow: isDiscoveryMobileViewport ? '0 -8px 24px rgba(15,23,42,.12)' : '0 0 0 1px rgba(226,232,240,.65), -16px 0 32px rgba(15,23,42,.10)',
+                  transform: isResultsPanelVisible
+                    ? 'translate3d(0, 0, 0)'
+                    : (isDiscoveryMobileViewport ? 'translate3d(0, calc(100% + 18px), 0)' : 'translate3d(24px, 0, 0)'),
                   pointerEvents: isResultsPanelVisible ? 'auto' : 'none'
                 }}
               >
@@ -9433,7 +9548,7 @@ export default function StorefrontApp() {
                   <div style={{ display: 'flex', alignItems: isDiscoveryMobileViewport ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 11, fontWeight: 800, color: '#1a4e8d', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Discover Nearby</div>
-                      <h2 style={{ margin: '6px 0 0', fontSize: isDiscoveryMobileViewport ? 24 : 29, lineHeight: 1.08, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.03em' }}>Best Shops Today</h2>
+                      <h2 style={{ margin: '6px 0 0', fontSize: isDiscoveryMobileViewport ? 24 : 29, lineHeight: 1.08, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.03em' }}>{resultsTitle}</h2>
                       <p
                         style={{
                           margin: '8px 0 0',
@@ -9701,7 +9816,7 @@ export default function StorefrontApp() {
 
                 <div style={{ minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', padding: isDiscoveryMobileViewport ? '14px 14px 18px' : viewMode === 'grid' ? '18px 22px 24px' : '16px 18px 22px' }}>
                 {loadingStores && <div style={{ padding: 24, color: '#94a3b8', fontSize: 14, textAlign: 'center' }}>Loading stores...</div>}
-                {!loadingStores && filteredDiscoveryStores.length === 0 && (
+                {!loadingStores && panelTotalCount === 0 && (
                   <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#f8fbff', padding: 18, display: 'grid', gap: 8 }}>
                     <div style={{ fontSize: 24, color: '#0f172a', fontWeight: 800 }}>{getDiscoveryEmptyStateMessage(search)}</div>
                     <div style={{ color: '#64748b', fontSize: 14, lineHeight: 1.5 }}>Try changing your search keyword or category.</div>
@@ -9713,11 +9828,11 @@ export default function StorefrontApp() {
                   </div>
                 )}
                     <div style={{ display: 'grid', gap: viewMode === 'grid' ? (isDiscoveryMobileViewport ? 14 : isDiscoveryTabletViewport ? 18 : 20) : (isDiscoveryMobileViewport ? 14 : 18), gridTemplateColumns: viewMode === 'grid' ? (isDiscoveryMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))') : '1fr' }}>
-                    {paginatedDiscoveryStores.map(renderDiscoveryStoreCard)}
+                    {panelStores.map(renderDiscoveryStoreCard)}
                   </div>
               </div>
 
-              {filteredDiscoveryStores.length > 0 && discoveryTotalPages > 1 && (
+              {!isClusterResultsActive && filteredDiscoveryStores.length > 0 && discoveryTotalPages > 1 && (
                 <div style={{ padding: '0 18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <button
                     type="button"
@@ -10288,9 +10403,10 @@ export default function StorefrontApp() {
                         stores={stableHeroDiscoveryMapPins}
                         selectedKey={highlightedDiscoveryMarkerKey || null}
                         userLocation={discoveryCoords}
-                        height={discoveryLayout.heroMapHeight}
-                        openPopupOnHover={true}
-                        onSelectStore={(pin) => {
+                          height={discoveryLayout.heroMapHeight}
+                          openPopupOnHover={true}
+                          onSelectCluster={handleDiscoveryClusterSelect}
+                          onSelectStore={(pin) => {
                           setHasDiscoveryExplorationStarted(true);
                           setHighlightedStoreSlug(pin.slug);
                           setHighlightedDiscoveryMarkerKey(getDiscoveryMarkerKey(pin) || '');
@@ -10452,7 +10568,7 @@ export default function StorefrontApp() {
                         </DiscoveryMapCard>
                     </>
                   )}
-                {hasDiscoverySearch && renderDiscoveryResultsStage()}
+                {(hasDiscoverySearch || isClusterResultsActive) && renderDiscoveryResultsStage()}
               </div>
               </div>
             </section>

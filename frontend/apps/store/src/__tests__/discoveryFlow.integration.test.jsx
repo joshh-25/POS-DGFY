@@ -1291,6 +1291,7 @@ describe('storefront discovery integration flow', () => {
     emitDiscoveryPinMouseEnter(alphaFeature);
     await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
 
+    fireEvent.mouseEnter(screen.getByRole('dialog', { name: /Alpha Foods location preview/i }));
     emitDiscoveryPinMouseLeave(alphaFeature);
     await waitFor(() => expect(screen.queryByRole('dialog', { name: /Alpha Foods location preview/i })).toBeNull());
   });
@@ -1362,19 +1363,15 @@ describe('storefront discovery integration flow', () => {
     expect(maplibregl.Marker).not.toHaveBeenCalledWith(expect.objectContaining({
       anchor: 'bottom'
     }));
-    expect(maplibregl.Popup.mock.calls.some(([options]) => (
-      options?.anchor === 'bottom'
-      && options?.offset?.bottom?.[0] === 0
-      && options?.offset?.bottom?.[1] === -58
-    ))).toBe(true);
+    expect(maplibregl.Popup).not.toHaveBeenCalled();
 
     emitDiscoveryPinClick(clusterFeature);
-    await waitFor(() => expect(screen.getByRole('button', { name: /Select Alpha Foods at Main Branch/i })).toBeTruthy());
-    expect(screen.getByRole('button', { name: /Select Beta Foods at Main Branch/i })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: /Select Alpha Foods at Main Branch/i }));
-    await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
-    expect(screen.getByRole('button', { name: 'Open storefront' })).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('Stores At This Pin')).toBeTruthy());
+    expect(screen.getByText('2 Stores Found')).toBeTruthy();
+    expect(screen.getAllByText('Alpha Foods').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Beta Foods').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /Select Alpha Foods at Main Branch/i })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: /Alpha Foods location preview/i })).toBeNull();
   });
 
   it('keeps indexed discovery coordinates when tenant location enrichment is reused from another store', async () => {
@@ -1617,8 +1614,11 @@ describe('storefront discovery integration flow', () => {
     });
 
     emitDiscoveryPinClick(clusterFeature);
-    await waitFor(() => expect(screen.getByText('Showing all 10 storefronts at this exact pin')).toBeTruthy());
-    expect(screen.getByRole('button', { name: /Select Store 10 at Main Branch/i })).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('Stores At This Pin')).toBeTruthy());
+    expect(screen.getByText('10 Stores Found')).toBeTruthy();
+    expect(screen.getAllByText('Store 10').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Showing all 10 storefronts at this exact pin')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Select Store 10 at Main Branch/i })).toBeNull();
   });
 
   it('updates featured local merchants pagination dots when carousel arrows are clicked', async () => {
