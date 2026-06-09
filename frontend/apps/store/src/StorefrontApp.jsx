@@ -87,8 +87,17 @@ import {
   getAccessCapabilities
 } from './customerAccess.js';
 import { getFoodBeverageStorefrontViewModel } from './fnbStorefrontViewModel.js';
-import { getBusinessModePinMeta, renderBusinessModePinSvg } from './businessModePins.js';
-import { createSharedCoordinatePreviewNode, getDiscoveryMarkerKey, makeClusterElement } from './discoveryMapDom.js';
+import { createSharedCoordinatePreviewNode, getDiscoveryMarkerKey } from './discoveryMapDom.js';
+import {
+  DISCOVERY_PIN_LAYER_ID,
+  DISCOVERY_PIN_SOURCE_ID,
+  DISCOVERY_USER_SOURCE_ID,
+  buildDiscoveryPinLayerModel,
+  buildUserLocationSourceData,
+  ensureDiscoveryMapLayers,
+  ensureMapImage,
+  setGeoJsonSourceData
+} from './discoveryMapLayers.js';
 import { normalizeStorefrontPageModel } from './normalizeStorefrontPageModel.js';
 import { createStoreMarkerPreviewNode } from './storefrontMarkerPreview.js';
 import {
@@ -1615,28 +1624,6 @@ const getOrCreateStorefrontVisitorId = () => {
   return generated;
 };
 
-const makePinElement = (mode, selected = false, ariaLabel = 'Store marker', glow = false) => {
-  const el = document.createElement('div');
-  el.setAttribute('role', 'button');
-  el.setAttribute('tabindex', '0');
-  el.setAttribute('aria-label', ariaLabel);
-  el.classList.add('discovery-result-pin');
-  const visual = document.createElement('div');
-  visual.className = (selected || glow) ? 'discovery-result-pin-visual is-glowing' : 'discovery-result-pin-visual';
-  const pinHex = String(getBusinessModePinMeta(mode)?.color || '#1a4e8d').trim();
-  const hex = pinHex.startsWith('#') ? pinHex.slice(1) : pinHex;
-  const normalizedHex = hex.length === 3 ? hex.split('').map((char) => `${char}${char}`).join('') : hex;
-  if (/^[0-9a-fA-F]{6}$/.test(normalizedHex)) {
-    const r = Number.parseInt(normalizedHex.slice(0, 2), 16);
-    const g = Number.parseInt(normalizedHex.slice(2, 4), 16);
-    const b = Number.parseInt(normalizedHex.slice(4, 6), 16);
-    visual.style.setProperty('--pin-glow-rgb', `${r}, ${g}, ${b}`);
-  }
-  visual.innerHTML = renderBusinessModePinSvg(mode, selected);
-  el.appendChild(visual);
-  return el;
-};
-
 const makeUserLocationElement = () => {
   const el = document.createElement('div');
   el.style.cssText = 'width:20px;height:20px;border-radius:999px;background:#1a4e8d;border:3px solid #fff;box-shadow:0 6px 14px rgba(15,23,42,.35);';
@@ -1646,6 +1633,8 @@ const makeUserLocationElement = () => {
 
 const EMPTY_HIGHLIGHTED_MARKER_KEYS = [];
 const STORE_MARKER_POPUP_OFFSET = { bottom: [0, -58], top: [0, 58], left: [58, 0], right: [-58, 0] };
+const STORE_MARKER_FIT_PADDING = { top: 76, right: 76, bottom: 104, left: 76 };
+const STORE_MARKER_AUTO_OPEN_FIT_PADDING = { top: 96, right: 96, bottom: 120, left: 96 };
 const DISCOVERY_LOCATION_PERMISSION_STORAGE_KEY = 'dgfy_storefront_discovery_location_permission_v1';
 
 function StoresMap({
@@ -1665,6 +1654,7 @@ function StoresMap({
   const markersRef = useRef([]);
   const popupsRef = useRef([]);
   const userMarkerRef = useRef(null);
+  const layerEventCleanupRef = useRef(null);
   const onSelectStoreRef = useRef(onSelectStore);
   const autoOpenFrameRef = useRef(null);
   const popupGenerationRef = useRef(0);
@@ -1673,6 +1663,7 @@ function StoresMap({
   const lastViewportLocationSignatureRef = useRef('');
   const lastViewportSignalRef = useRef('');
   const [mapUnavailable, setMapUnavailable] = useState(false);
+  const [mapStyleReady, setMapStyleReady] = useState(false);
 
   useEffect(() => {
     onSelectStoreRef.current = onSelectStore;
@@ -1700,10 +1691,28 @@ function StoresMap({
 
     map.on('error', (e) => console.error('[MapLibre error]', e));
     map.on('tileerror', (e) => console.error('[MapLibre] tile error', e));
+    const markReady = () => setMapStyleReady(true);
+    if (typeof map.isStyleLoaded === 'function') {
+      if (map.isStyleLoaded()) {
+        markReady();
+      } else if (typeof map.once === 'function') {
+        map.once('load', markReady);
+      } else {
+        map.on('load', markReady);
+      }
+    } else {
+      markReady();
+    }
 
     return () => {
+      if (typeof map.off === 'function') {
+        try { map.off('load', markReady); } catch {
+          // MapLibre cleanup is best-effort across mocked and real maps.
+        }
+      }
       map.remove();
       mapRef.current = null;
+      setMapStyleReady(false);
     };
   }, []);
   useEffect(() => () => {
@@ -1723,6 +1732,10 @@ function StoresMap({
       }
     });
     markersRef.current = [];
+    if (typeof layerEventCleanupRef.current === 'function') {
+      layerEventCleanupRef.current();
+      layerEventCleanupRef.current = null;
+    }
     if (userMarkerRef.current) {
       try { userMarkerRef.current.remove?.(); } catch {
         // Cleanup is best-effort when MapLibre has already detached the user marker.
@@ -1731,187 +1744,97 @@ function StoresMap({
     }
   }, []);
 
-    useEffect(() => {
-      const map = mapRef.current;
-      if (!map) return;
-      const generation = popupGenerationRef.current + 1;
-      popupGenerationRef.current = generation;
-      if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
-        window.cancelAnimationFrame(autoOpenFrameRef.current);
-        autoOpenFrameRef.current = null;
-      }
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapStyleReady) return undefined;
+    const generation = popupGenerationRef.current + 1;
+    popupGenerationRef.current = generation;
+    let cancelled = false;
+    if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
+      window.cancelAnimationFrame(autoOpenFrameRef.current);
+      autoOpenFrameRef.current = null;
+    }
 
-      const rows = Array.isArray(stores) ? stores : [];
-      const nextMarkerSignature = rows
-        .map((store) => {
-          const markerKey = getDiscoveryMarkerKey(store);
-          const lat = Number(store?.latitude);
-          const lng = Number(store?.longitude);
-          return [
-            markerKey || toSlug(store?.slug || store?.tenant_name),
-            Number.isFinite(lat) ? lat.toFixed(6) : '',
-            Number.isFinite(lng) ? lng.toFixed(6) : '',
-            store?.location_id ?? ''
-          ].join(':');
-        })
-        .join('|');
-      const markerSetChanged = markerSignatureRef.current !== nextMarkerSignature;
-      markerSignatureRef.current = nextMarkerSignature;
-      const normalizedViewportSignal = String(viewportSignal || '').trim();
-      const viewportSignalChanged = lastViewportSignalRef.current !== normalizedViewportSignal;
-      lastViewportSignalRef.current = normalizedViewportSignal;
-      const userLocationSignature = userLocation?.latitude != null && userLocation?.longitude != null
-        ? `${Number(userLocation.latitude).toFixed(6)}:${Number(userLocation.longitude).toFixed(6)}`
-        : '';
-      const userLocationChanged = lastViewportLocationSignatureRef.current !== userLocationSignature;
-      lastViewportLocationSignatureRef.current = userLocationSignature;
-
-      const retainedPopupKeys = new Set();
-      const retainedPopups = [];
-      popupsRef.current.forEach((popup) => {
-        const isOpen = typeof popup?.isOpen === 'function'
-          ? popup.isOpen()
-          : Boolean(popup?.node?.isConnected);
-        if (!markerSetChanged && isOpen) {
-          const popupMarkerKey = String(popup?.__dgfyMarkerKey || '').trim();
-          if (popupMarkerKey) {
-            retainedPopupKeys.add(popupMarkerKey);
-          }
-          retainedPopups.push(popup);
-          return;
-        }
-        try { popup?.remove?.(); } catch {
-          // Cleanup is best-effort when MapLibre has already detached the popup.
-        }
-      });
-      popupsRef.current = retainedPopups;
-      markersRef.current.forEach((m) => m.remove());
-      markersRef.current = [];
-
-      const uniqueRows = [];
-      const seenMarkerKeys = new Set();
-      rows.forEach((store) => {
-        if (!store) return;
+    const rows = Array.isArray(stores) ? stores : [];
+    const nextMarkerSignature = rows
+      .map((store) => {
         const markerKey = getDiscoveryMarkerKey(store);
-        if (!markerKey) {
-          uniqueRows.push(store);
-          return;
-        }
-        if (seenMarkerKeys.has(markerKey)) return;
-        seenMarkerKeys.add(markerKey);
-        uniqueRows.push(store);
-      });
-      const bounds = [];
-      const autoOpenCallbacks = [];
-      const highlightedKeySet = new Set(
-        (Array.isArray(highlightedKeys) ? highlightedKeys : [])
-          .map((key) => String(key || '').trim())
-          .filter(Boolean)
-      );
-      const coordinateGroups = uniqueRows.reduce((acc, store) => {
-      const lat = Number(store?.latitude);
-      const lng = Number(store?.longitude);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return acc;
-      const key = `${lat.toFixed(6)}:${lng.toFixed(6)}`;
-      if (!Array.isArray(acc[key])) {
-        acc[key] = [];
-      }
-      acc[key].push(store);
-      return acc;
-    }, {});
-    const renderedCoordinateGroups = new Set();
+        const lat = Number(store?.latitude);
+        const lng = Number(store?.longitude);
+        return [
+          markerKey || toSlug(store?.slug || store?.tenant_name),
+          Number.isFinite(lat) ? lat.toFixed(6) : '',
+          Number.isFinite(lng) ? lng.toFixed(6) : '',
+          store?.location_id ?? ''
+        ].join(':');
+      })
+      .join('|');
+    const markerSetChanged = markerSignatureRef.current !== nextMarkerSignature;
+    markerSignatureRef.current = nextMarkerSignature;
+    const normalizedViewportSignal = String(viewportSignal || '').trim();
+    const viewportSignalChanged = lastViewportSignalRef.current !== normalizedViewportSignal;
+    lastViewportSignalRef.current = normalizedViewportSignal;
+    const userLocationSignature = userLocation?.latitude != null && userLocation?.longitude != null
+      ? `${Number(userLocation.latitude).toFixed(6)}:${Number(userLocation.longitude).toFixed(6)}`
+      : '';
+    const userLocationChanged = lastViewportLocationSignatureRef.current !== userLocationSignature;
+    lastViewportLocationSignatureRef.current = userLocationSignature;
 
-      uniqueRows.forEach((store) => {
-      if (!store) return;
-      const lat = Number(store?.latitude);
-      const lng = Number(store?.longitude);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      const coordinateKey = `${lat.toFixed(6)}:${lng.toFixed(6)}`;
-      if (renderedCoordinateGroups.has(coordinateKey)) return;
-      renderedCoordinateGroups.add(coordinateKey);
-      const group = Array.isArray(coordinateGroups[coordinateKey]) ? coordinateGroups[coordinateKey] : [];
-      if (group.length === 0) return;
-      const clusterSelected = selectedKey
-        ? group.some((entry) => String(getDiscoveryMarkerKey(entry) || '') === String(selectedKey))
-        : group.some((entry) => entry?.is_primary_storefront === true);
-      const clusterHighlighted = group.some((entry) => highlightedKeySet.has(String(getDiscoveryMarkerKey(entry) || '')))
-        || clusterSelected;
-
-      if (group.length > 1) {
-        const clusterElement = makeClusterElement(group.length, clusterHighlighted, `${group.length} storefronts at this location`);
-        const clusterPopup = new maplibregl.Popup({
-          anchor: 'bottom',
-          offset: STORE_MARKER_POPUP_OFFSET,
-          closeOnClick: false,
-          focusAfterOpen: false
-        });
-        clusterPopup.__dgfyMarkerKey = coordinateKey;
-        popupsRef.current.push(clusterPopup);
-        const clusterNode = createSharedCoordinatePreviewNode(group, {
-          onSelect: (selectedStorefront) => {
-            const previewNode = createStoreMarkerPreviewNode(selectedStorefront, {
-              resolveAssetUrl: withAssetOrigin,
-              onAction: () => onSelectStoreRef.current?.(selectedStorefront),
-              onClose: () => {
-                clusterPopup.remove();
-              }
-            });
-            previewNode.addEventListener('keydown', (event) => {
-              if (event.key === 'Escape') {
-                event.preventDefault();
-                clusterPopup.remove();
-                clusterElement.focus();
-              }
-            });
-            clusterPopup.setDOMContent(previewNode).setLngLat([lng, lat]).addTo(map);
-          },
-          onClose: () => {
-            clusterPopup.remove();
-          }
-        });
-        clusterPopup.setDOMContent(clusterNode);
-        const openClusterPopup = (event) => {
-          event?.preventDefault?.();
-          event?.stopPropagation?.();
-          clusterPopup.setLngLat([lng, lat]).addTo(map);
-        };
-        clusterElement.addEventListener('click', openClusterPopup);
-        clusterElement.addEventListener('pointerup', openClusterPopup);
-        clusterElement.addEventListener('touchend', openClusterPopup, { passive: false });
-        clusterElement.addEventListener('keydown', (event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            openClusterPopup(event);
-          }
-        });
-        clusterElement.style.zIndex = '30';
-        const clusterMarker = new maplibregl.Marker({ element: clusterElement, anchor: 'bottom' })
-          .setLngLat([lng, lat])
-          .addTo(map);
-        markersRef.current.push(clusterMarker);
-        bounds.push([lng, lat]);
-        if (autoOpenPopups && clusterHighlighted) {
-          autoOpenCallbacks.push({ key: coordinateKey, open: openClusterPopup });
-        }
+    const retainedPopupKeys = new Set();
+    const retainedPopups = [];
+    popupsRef.current.forEach((popup) => {
+      const isOpen = typeof popup?.isOpen === 'function'
+        ? popup.isOpen()
+        : Boolean(popup?.node?.isConnected);
+      if (!markerSetChanged && isOpen) {
+        const popupMarkerKey = String(popup?.__dgfyMarkerKey || '').trim();
+        if (popupMarkerKey) retainedPopupKeys.add(popupMarkerKey);
+        retainedPopups.push(popup);
         return;
       }
+      try { popup?.remove?.(); } catch {
+        // Cleanup is best-effort when MapLibre has already detached the popup.
+      }
+    });
+    popupsRef.current = retainedPopups;
+    markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
+    if (userMarkerRef.current) {
+      try { userMarkerRef.current.remove?.(); } catch {
+        // Cleanup is best-effort when migrating user location to map layers.
+      }
+      userMarkerRef.current = null;
+    }
+    if (typeof layerEventCleanupRef.current === 'function') {
+      layerEventCleanupRef.current();
+      layerEventCleanupRef.current = null;
+    }
 
-      const [singleStore] = group;
-      const markerKey = getDiscoveryMarkerKey(singleStore) || `${lat}:${lng}`;
-      const highlighted = highlightedKeySet.has(markerKey)
-        || (selectedKey ? markerKey === String(selectedKey) : singleStore.is_primary_storefront === true);
-      const branchName = String(singleStore?.location_name || singleStore?.nearest_location_name || 'Main');
-      const tenantName = String(singleStore?.tenant_name || 'Storefront');
-      const markerAriaLabel = `Preview ${tenantName} at ${branchName}`;
-      const el = makePinElement(singleStore.workflow_mode || singleStore.business_mode, highlighted, markerAriaLabel);
-        const popup = new maplibregl.Popup({
-          anchor: 'bottom',
-          offset: STORE_MARKER_POPUP_OFFSET,
-          closeOnClick: false,
-          focusAfterOpen: false
-        });
-        popup.__dgfyMarkerKey = markerKey;
-        popupsRef.current.push(popup);
+    const layerModel = buildDiscoveryPinLayerModel({ stores: rows, selectedKey, highlightedKeys });
+    const userSourceData = buildUserLocationSourceData(userLocation);
+    const userFeature = userSourceData.features[0];
+    const bounds = [...layerModel.bounds];
+    if (userFeature) bounds.push(userFeature.geometry.coordinates);
+
+    const layerReady = ensureDiscoveryMapLayers(map);
+    if (layerReady) {
+      setGeoJsonSourceData(map, DISCOVERY_USER_SOURCE_ID, userSourceData);
+    }
+
+    const popupEntries = new Map();
+    const createPopupForEntry = (entry) => {
+      const existing = popupEntries.get(entry.coordinateKey);
+      if (existing) return existing;
+      const { group, isCluster, lat, lng, markerKey } = entry;
+      const popup = new maplibregl.Popup({
+        anchor: 'bottom',
+        offset: STORE_MARKER_POPUP_OFFSET,
+        closeOnClick: false,
+        focusAfterOpen: false
+      });
+      popup.__dgfyMarkerKey = markerKey;
+      popupsRef.current.push(popup);
+
       let closeTimer = null;
       let markerHovered = false;
       let previewHovered = false;
@@ -1922,7 +1845,83 @@ function StoresMap({
           closeTimer = null;
         }
       };
-      const openPopup = () => {
+      const schedulePopupClose = () => {
+        clearCloseTimer();
+        closeTimer = window.setTimeout(() => {
+          if (popupGenerationRef.current === generation && !markerHovered && !previewHovered) {
+            popup.remove();
+          }
+        }, 120);
+      };
+      const bindPreviewHover = (node) => {
+        node.addEventListener('mouseenter', () => {
+          previewHovered = true;
+          clearCloseTimer();
+        });
+        node.addEventListener('mouseleave', () => {
+          previewHovered = false;
+          schedulePopupClose();
+        });
+        node.addEventListener('focusin', () => {
+          previewHovered = true;
+          clearCloseTimer();
+        });
+        node.addEventListener('focusout', (event) => {
+          const nextFocused = event.relatedTarget;
+          if (nextFocused && node.contains(nextFocused)) return;
+          previewHovered = false;
+          schedulePopupClose();
+        });
+      };
+      if (isCluster) {
+        const clusterNode = createSharedCoordinatePreviewNode(group, {
+          onSelect: (selectedStorefront) => {
+            const previewNode = createStoreMarkerPreviewNode(selectedStorefront, {
+              resolveAssetUrl: withAssetOrigin,
+              onAction: () => onSelectStoreRef.current?.(selectedStorefront),
+              onClose: () => {
+                clearCloseTimer();
+                popup.remove();
+              }
+            });
+            bindPreviewHover(previewNode);
+            previewNode.addEventListener('keydown', (event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                popup.remove();
+              }
+            });
+            popup.setDOMContent(previewNode).setLngLat([lng, lat]).addTo(map);
+          },
+          onClose: () => {
+            clearCloseTimer();
+            popup.remove();
+          }
+        });
+        bindPreviewHover(clusterNode);
+        popup.setDOMContent(clusterNode);
+      } else {
+        const [singleStore] = group;
+        const previewNode = createStoreMarkerPreviewNode(singleStore, {
+          resolveAssetUrl: withAssetOrigin,
+          onAction: () => onSelectStoreRef.current?.(singleStore),
+          onClose: () => {
+            markerHovered = false;
+            previewHovered = false;
+            clearCloseTimer();
+            popup.remove();
+          }
+        });
+        bindPreviewHover(previewNode);
+        previewNode.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            popup.remove();
+          }
+        });
+        popup.setDOMContent(previewNode);
+      }
+      const open = () => {
         clearCloseTimer();
         const popupAlreadyOpen = typeof popup.isOpen === 'function' ? popup.isOpen() : false;
         if (popupOpening || popupAlreadyOpen) return;
@@ -1933,151 +1932,123 @@ function StoresMap({
           popupOpening = false;
         }
       };
-      const schedulePopupClose = () => {
-        clearCloseTimer();
-        closeTimer = window.setTimeout(() => {
-          if (popupGenerationRef.current === generation && !markerHovered && !previewHovered) {
-            popup.remove();
+      popupEntries.set(entry.coordinateKey, {
+        markerKey,
+        highlighted: entry.highlighted,
+        open,
+        setMarkerHovered: (value) => {
+          markerHovered = Boolean(value);
+          if (markerHovered) {
+            clearCloseTimer();
+          } else {
+            schedulePopupClose();
           }
-        }, 120);
-      };
-      const previewNode = createStoreMarkerPreviewNode(singleStore, {
-        resolveAssetUrl: withAssetOrigin,
-        onAction: () => onSelectStoreRef.current?.(singleStore),
-        onClose: () => {
-          markerHovered = false;
-          previewHovered = false;
-          clearCloseTimer();
-          popup.remove();
         }
       });
-      previewNode.addEventListener('mouseenter', () => {
-        previewHovered = true;
-        clearCloseTimer();
-      });
-      previewNode.addEventListener('mouseleave', () => {
-        previewHovered = false;
-        schedulePopupClose();
-      });
-      previewNode.addEventListener('focusin', () => {
-        previewHovered = true;
-        clearCloseTimer();
-      });
-      previewNode.addEventListener('focusout', (event) => {
-        const nextFocused = event.relatedTarget;
-        if (nextFocused && previewNode.contains(nextFocused)) return;
-        previewHovered = false;
-        schedulePopupClose();
-      });
-      previewNode.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          popup.remove();
-          el.focus();
-        }
-      });
-      popup.setDOMContent(previewNode);
-      const hoverPreviewEnabled = openPopupOnHover
-        && typeof window !== 'undefined'
-        && window.matchMedia?.('(hover: hover)').matches;
-      const openPopupFromPointer = (event) => {
-        event?.preventDefault?.();
-        event?.stopPropagation?.();
-        openPopup();
-      };
-      el.addEventListener('click', openPopupFromPointer);
-      el.addEventListener('pointerup', openPopupFromPointer);
-      el.addEventListener('touchend', openPopupFromPointer, { passive: false });
-      el.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          openPopup();
-        }
-      });
-      if (hoverPreviewEnabled) {
-        el.addEventListener('mouseenter', () => {
-          markerHovered = true;
-          openPopup();
-        });
-        el.addEventListener('mouseleave', () => {
-          markerHovered = false;
-          schedulePopupClose();
-        });
-        el.addEventListener('focus', () => {
-          markerHovered = true;
-          openPopup();
-        });
-        el.addEventListener('blur', () => {
-          markerHovered = false;
-          schedulePopupClose();
-        });
-      }
-        el.style.zIndex = highlighted ? '40' : '30';
-        const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
-          .setLngLat([lng, lat])
-          .addTo(map);
-        if (autoOpenPopups) {
-          autoOpenCallbacks.push({ key: markerKey, open: openPopup });
-        }
-        markersRef.current.push(marker);
-        bounds.push([lng, lat]);
-    });
+      return popupEntries.get(entry.coordinateKey);
+    };
 
-    if (userMarkerRef.current) {
-      userMarkerRef.current.remove();
-      userMarkerRef.current = null;
-    }
-    if (userLocation?.latitude != null && userLocation?.longitude != null) {
-      const uLat = Number(userLocation.latitude);
-      const uLng = Number(userLocation.longitude);
-      if (Number.isFinite(uLat) && Number.isFinite(uLng)) {
-        const el = makeUserLocationElement();
-        el.style.zIndex = '5';
-        userMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'center' })
-          .setLngLat([uLng, uLat])
-          .setPopup(new maplibregl.Popup({ offset: 25 }).setHTML('<strong>Your location</strong>'))
-          .addTo(map);
-        bounds.push([uLng, uLat]);
+    layerModel.groups.forEach((entry) => createPopupForEntry(entry));
+
+    const getEventEntry = (event) => {
+      const feature = Array.isArray(event?.features) ? event.features[0] : null;
+      const coordinateKey = String(feature?.properties?.coordinateKey || '').trim();
+      return coordinateKey ? popupEntries.get(coordinateKey) : null;
+    };
+    const clickHandler = (event) => {
+      event?.preventDefault?.();
+      const entry = getEventEntry(event);
+      entry?.open?.();
+    };
+    const hoverPreviewEnabled = openPopupOnHover
+      && typeof window !== 'undefined'
+      && window.matchMedia?.('(hover: hover)').matches;
+    const mouseEnterHandler = (event) => {
+      if (typeof map.getCanvas === 'function') {
+        map.getCanvas().style.cursor = 'pointer';
       }
+      if (!hoverPreviewEnabled) return;
+      const entry = getEventEntry(event);
+      entry?.setMarkerHovered?.(true);
+      entry?.open?.();
+    };
+    const mouseLeaveHandler = (event) => {
+      if (typeof map.getCanvas === 'function') {
+        map.getCanvas().style.cursor = '';
+      }
+      if (!hoverPreviewEnabled) return;
+      const entry = getEventEntry(event);
+      entry?.setMarkerHovered?.(false);
+    };
+    if (layerReady && typeof map.on === 'function') {
+      map.on('click', DISCOVERY_PIN_LAYER_ID, clickHandler);
+      map.on('mouseenter', DISCOVERY_PIN_LAYER_ID, mouseEnterHandler);
+      map.on('mouseleave', DISCOVERY_PIN_LAYER_ID, mouseLeaveHandler);
+      layerEventCleanupRef.current = () => {
+        if (typeof map.off !== 'function') return;
+        try { map.off('click', DISCOVERY_PIN_LAYER_ID, clickHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
+        }
+        try { map.off('mouseenter', DISCOVERY_PIN_LAYER_ID, mouseEnterHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
+        }
+        try { map.off('mouseleave', DISCOVERY_PIN_LAYER_ID, mouseLeaveHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
+        }
+      };
     }
 
-      const shouldFitViewport = viewportPolicy !== 'search-stable'
-        || !viewportHasFitRef.current
-        || viewportSignalChanged
-        || userLocationChanged;
-      if (shouldFitViewport && bounds.length === 1) {
-        map.flyTo({ center: bounds[0], zoom: autoOpenPopups ? 14 : 15 });
-        viewportHasFitRef.current = true;
-      }
-      if (shouldFitViewport && bounds.length > 1) {
-        const lngs = bounds.map((b) => b[0]);
-        const lats = bounds.map((b) => b[1]);
-        map.fitBounds(
-          [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-          { padding: autoOpenPopups ? 56 : 24, maxZoom: autoOpenPopups ? 13.5 : 14 }
-        );
-        viewportHasFitRef.current = true;
-      }
-        if (autoOpenCallbacks.length > 0 && typeof window !== 'undefined') {
-          autoOpenFrameRef.current = window.requestAnimationFrame(() => {
-            autoOpenFrameRef.current = null;
-            if (popupGenerationRef.current !== generation) return;
-            const openedMarkerKeys = new Set();
-            autoOpenCallbacks.forEach((entry) => {
-              const markerKey = String(entry?.key || '');
-              if (!markerKey || retainedPopupKeys.has(markerKey) || openedMarkerKeys.has(markerKey)) return;
-              openedMarkerKeys.add(markerKey);
-              entry?.open?.();
-            });
-          });
+    Promise.all(layerModel.requiredImages.map(({ id, svg }) => ensureMapImage(map, id, svg)))
+      .then(() => {
+        if (cancelled || popupGenerationRef.current !== generation) return;
+        if (layerReady) {
+          setGeoJsonSourceData(map, DISCOVERY_PIN_SOURCE_ID, layerModel.sourceData);
         }
-      return () => {
-        if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
-          window.cancelAnimationFrame(autoOpenFrameRef.current);
-          autoOpenFrameRef.current = null;
-        }
-      };
-    }, [stores, selectedKey, highlightedKeys, userLocation, autoOpenPopups, openPopupOnHover, viewportPolicy, viewportSignal]);
+      });
+
+    const shouldFitViewport = viewportPolicy !== 'search-stable'
+      || !viewportHasFitRef.current
+      || viewportSignalChanged
+      || userLocationChanged;
+    if (shouldFitViewport && bounds.length === 1) {
+      map.flyTo({ center: bounds[0], zoom: autoOpenPopups ? 14 : 15 });
+      viewportHasFitRef.current = true;
+    }
+    if (shouldFitViewport && bounds.length > 1) {
+      const lngs = bounds.map((b) => b[0]);
+      const lats = bounds.map((b) => b[1]);
+      map.fitBounds(
+        [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+        { padding: autoOpenPopups ? STORE_MARKER_AUTO_OPEN_FIT_PADDING : STORE_MARKER_FIT_PADDING, maxZoom: autoOpenPopups ? 13.5 : 14 }
+      );
+      viewportHasFitRef.current = true;
+    }
+    const autoOpenEntries = Array.from(popupEntries.values()).filter((entry) => entry.highlighted);
+    if (autoOpenPopups && autoOpenEntries.length > 0 && typeof window !== 'undefined') {
+      autoOpenFrameRef.current = window.requestAnimationFrame(() => {
+        autoOpenFrameRef.current = null;
+        if (popupGenerationRef.current !== generation) return;
+        const openedMarkerKeys = new Set();
+        autoOpenEntries.forEach((entry) => {
+          const markerKey = String(entry?.markerKey || '');
+          if (!markerKey || retainedPopupKeys.has(markerKey) || openedMarkerKeys.has(markerKey)) return;
+          openedMarkerKeys.add(markerKey);
+          entry?.open?.();
+        });
+      });
+    }
+    return () => {
+      cancelled = true;
+      if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
+        window.cancelAnimationFrame(autoOpenFrameRef.current);
+        autoOpenFrameRef.current = null;
+      }
+      if (typeof layerEventCleanupRef.current === 'function') {
+        layerEventCleanupRef.current();
+        layerEventCleanupRef.current = null;
+      }
+    };
+  }, [stores, selectedKey, highlightedKeys, userLocation, autoOpenPopups, openPopupOnHover, viewportPolicy, viewportSignal, mapStyleReady]);
 
   if (mapUnavailable) {
     return (

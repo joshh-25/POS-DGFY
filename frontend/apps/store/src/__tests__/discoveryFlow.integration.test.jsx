@@ -63,16 +63,72 @@ vi.mock('maplibre-gl', () => {
     return api;
   }
   function MapApi(options = {}) {
-    return {
+    const sources = new Map();
+    const layers = new Map();
+    const images = new Set();
+    const layerHandlers = {};
+    const sourceApi = (source = {}) => {
+      const sourceInstance = { ...source };
+      sourceInstance.setData = vi.fn((data) => {
+        sourceInstance.data = data;
+      });
+      return sourceInstance;
+    };
+    const api = {
       container: options.container,
-      on: vi.fn().mockReturnThis(),
-      off: vi.fn().mockReturnThis(),
+      on: vi.fn((eventName, layerOrHandler, maybeHandler) => {
+        if (typeof layerOrHandler === 'string' && typeof maybeHandler === 'function') {
+          const key = `${eventName}:${layerOrHandler}`;
+          layerHandlers[key] = layerHandlers[key] || [];
+          layerHandlers[key].push(maybeHandler);
+        }
+        return api;
+      }),
+      once: vi.fn((eventName, handler) => {
+        if (typeof handler === 'function') handler();
+        return api;
+      }),
+      off: vi.fn((eventName, layerOrHandler, maybeHandler) => {
+        if (typeof layerOrHandler === 'string' && typeof maybeHandler === 'function') {
+          const key = `${eventName}:${layerOrHandler}`;
+          layerHandlers[key] = (layerHandlers[key] || []).filter((entry) => entry !== maybeHandler);
+        }
+        return api;
+      }),
       flyTo: vi.fn().mockReturnThis(),
       fitBounds: vi.fn().mockReturnThis(),
       getZoom: vi.fn(() => 13),
       resize: vi.fn(),
       remove: vi.fn(),
-      getCanvas: vi.fn(() => ({ style: {} }))
+      getCanvas: vi.fn(() => ({ style: {} })),
+      isStyleLoaded: vi.fn(() => true),
+      addSource: vi.fn((id, source) => {
+        sources.set(id, sourceApi(source));
+        return api;
+      }),
+      getSource: vi.fn((id) => sources.get(id)),
+      addLayer: vi.fn((layer) => {
+        layers.set(layer.id, layer);
+        return api;
+      }),
+      getLayer: vi.fn((id) => layers.get(id)),
+      hasImage: vi.fn((id) => images.has(id)),
+      addImage: vi.fn((id) => {
+        images.add(id);
+        return api;
+      }),
+      __sources: sources,
+      __layers: layers,
+      __emitLayer: (eventName, layerId, feature) => {
+        const key = `${eventName}:${layerId}`;
+        (layerHandlers[key] || []).forEach((handler) => handler({
+          preventDefault: vi.fn(),
+          features: feature ? [feature] : []
+        }));
+      }
+    };
+    return {
+      ...api
     };
   }
   return {
@@ -142,11 +198,48 @@ const getMapViewportCallCount = () => getMapApis().reduce((total, mapApi) => (
   total + (mapApi.flyTo?.mock?.calls?.length || 0) + (mapApi.fitBounds?.mock?.calls?.length || 0)
 ), 0);
 
+const getLatestMapApi = () => getMapApis().at(-1);
+
+const getDiscoveryPinFeatures = () => {
+  const source = getLatestMapApi()?.getSource?.('dgfy-discovery-pins');
+  return source?.data?.features || [];
+};
+
+const getDiscoveryUserFeatures = () => {
+  const source = getLatestMapApi()?.getSource?.('dgfy-discovery-user-location');
+  return source?.data?.features || [];
+};
+
+const waitForDiscoveryPinFeatures = async (count) => {
+  await waitFor(() => expect(getDiscoveryPinFeatures().length).toBe(count));
+  return getDiscoveryPinFeatures();
+};
+
+const emitDiscoveryPinClick = (feature) => {
+  const mapApi = getLatestMapApi();
+  mapApi?.__emitLayer('click', 'dgfy-discovery-pin-symbols', feature);
+};
+
 describe('storefront discovery integration flow', () => {
   let fetchMock;
 
   beforeEach(() => {
     window.history.pushState({}, '', '/');
+    const MockImage = class {
+      constructor(width, height) {
+        this.width = width;
+        this.height = height;
+      }
+      set src(_value) {
+        this._src = _value;
+        setTimeout(() => this.onload?.(), 0);
+      }
+      get src() {
+        return this._src;
+      }
+    };
+    vi.stubGlobal('Image', MockImage);
+    window.Image = MockImage;
     fetchMock = vi.fn(async (url) => {
       const normalized = String(url);
       if (normalized.includes('/api/v1/storefront/discovery?')) {
@@ -710,9 +803,8 @@ describe('storefront discovery integration flow', () => {
     await user.click(screen.getByRole('button', { name: /^Search$/i }));
 
     await waitFor(() => expect(screen.getAllByText('A/C Innovative Solutions').length).toBeGreaterThan(0));
-    await waitFor(() => {
-      expect(document.querySelectorAll('.discovery-result-pin-visual.is-glowing').length).toBeGreaterThan(0);
-    });
+    const features = await waitForDiscoveryPinFeatures(1);
+    expect(features.some((feature) => feature.properties?.highlighted === true)).toBe(true);
     const params = getLastDiscoveryParams(fetchMock);
     expect(params.get('search')).toBe('aircon');
     expect(params.get('pin_scope')).toBe('tenant_primary');
@@ -890,14 +982,13 @@ describe('storefront discovery integration flow', () => {
     await user.click(screen.getByRole('button', { name: /^Search$/i }));
     await waitFor(() => expect(screen.getAllByText('Store + Item match').length).toBeGreaterThan(0));
     expect(screen.getAllByText('In-stock match').length).toBeGreaterThan(0);
-    await waitFor(() => {
-      expect(document.querySelectorAll('.discovery-result-pin-visual.is-glowing').length).toBeGreaterThan(0);
-      expect(screen.getByRole('button', { name: 'Open storefront' })).toBeTruthy();
-    });
+    const features = await waitForDiscoveryPinFeatures(1);
+    expect(features.some((feature) => feature.properties?.highlighted === true)).toBe(true);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Open storefront' })).toBeTruthy());
     expect(maplibregl.Popup.mock.calls.some(([options]) => (
       options?.anchor === 'bottom'
-      && options?.offset?.bottom?.[1] === -18
-      && options?.offset?.top?.[1] === 14
+      && options?.offset?.bottom?.[1] === -58
+      && options?.offset?.top?.[1] === 58
     ))).toBe(true);
 
     await user.click(screen.getAllByRole('button', { name: 'View Store' })[0]);
@@ -978,17 +1069,13 @@ describe('storefront discovery integration flow', () => {
 
     const user = userEvent.setup();
     render(<App />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Main/i }).length).toBeGreaterThan(0));
-    const alphaMarkerCall = maplibregl.Marker.mock.calls.find(([options]) => (
-      options?.element?.getAttribute?.('aria-label') || ''
-    ).includes('Preview Alpha Foods at Main'));
-    expect(alphaMarkerCall?.[0]?.anchor).toBe('bottom');
-    const alphaMarkerElement = alphaMarkerCall?.[0]?.element;
-    expect(alphaMarkerElement).toBeTruthy();
+    const [alphaFeature] = await waitForDiscoveryPinFeatures(1);
+    expect(alphaFeature.properties?.markerKey).toContain('alpha');
+    expect(alphaFeature.geometry.coordinates).toEqual([122.56, 10.72]);
 
-    await user.click(alphaMarkerElement);
+    emitDiscoveryPinClick(alphaFeature);
     await waitFor(() => expect(screen.getAllByText('Main').length).toBeGreaterThan(0));
-    expect(screen.getAllByText('Iloilo City').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Open storefront' })).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: 'Open storefront' }));
     await waitFor(() => {
@@ -1051,14 +1138,12 @@ describe('storefront discovery integration flow', () => {
     });
 
     render(<App />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Main/i }).length).toBeGreaterThan(0));
+    const [alphaFeature] = await waitForDiscoveryPinFeatures(1);
 
-    const marker = screen.getAllByRole('button', { name: /Preview Alpha Foods at Main/i })[0];
-    fireEvent.click(marker);
+    emitDiscoveryPinClick(alphaFeature);
     await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
 
     const action = screen.getByRole('button', { name: 'Open storefront' });
-    fireEvent.blur(marker, { relatedTarget: action });
     fireEvent.focusIn(action);
     await new Promise((resolve) => window.setTimeout(resolve, 220));
 
@@ -1116,15 +1201,13 @@ describe('storefront discovery integration flow', () => {
       return makeJsonResponse({});
     });
 
-    const user = userEvent.setup();
     render(<App />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Main/i }).length).toBeGreaterThan(0));
+    const [alphaFeature] = await waitForDiscoveryPinFeatures(1);
 
-    const marker = screen.getAllByRole('button', { name: /Preview Alpha Foods at Main/i })[0];
-    await user.click(marker);
+    emitDiscoveryPinClick(alphaFeature);
     await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
 
-    fireEvent.pointerLeave(marker, { relatedTarget: document.body });
+    getMapApis()[0]?.__emitLayer?.('mouseleave', 'dgfy-discovery-pin-symbols', alphaFeature);
     await new Promise((resolve) => window.setTimeout(resolve, 220));
     expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy();
   });
@@ -1186,16 +1269,23 @@ describe('storefront discovery integration flow', () => {
     });
 
     render(<App />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /2 storefronts at this location/i }).length).toBeGreaterThan(0));
+    const [clusterFeature] = await waitForDiscoveryPinFeatures(1);
+    expect(clusterFeature.geometry.coordinates).toEqual([122.56, 10.72]);
+    expect(clusterFeature.properties).toMatchObject({
+      coordinateKey: '10.720000:122.560000',
+      count: 2,
+      type: 'cluster'
+    });
+    expect(maplibregl.Marker).not.toHaveBeenCalledWith(expect.objectContaining({
+      anchor: 'bottom'
+    }));
+    expect(maplibregl.Popup.mock.calls.some(([options]) => (
+      options?.anchor === 'bottom'
+      && options?.offset?.bottom?.[0] === 0
+      && options?.offset?.bottom?.[1] === -58
+    ))).toBe(true);
 
-    const clusterCallIndex = maplibregl.Marker.mock.calls.findIndex(([options]) => (
-      options?.element?.classList?.contains('discovery-result-cluster')
-    ));
-    expect(clusterCallIndex).toBeGreaterThanOrEqual(0);
-    expect(maplibregl.Marker.mock.calls[clusterCallIndex]?.[0]?.anchor).toBe('center');
-    expect(maplibregl.Marker.mock.results[clusterCallIndex]?.value?.setLngLat).toHaveBeenCalledWith([122.56, 10.72]);
-
-    fireEvent.click(screen.getAllByRole('button', { name: /2 storefronts at this location/i })[0]);
+    emitDiscoveryPinClick(clusterFeature);
     await waitFor(() => expect(screen.getByRole('button', { name: /Select Alpha Foods at Main Branch/i })).toBeTruthy());
     expect(screen.getByRole('button', { name: /Select Beta Foods at Main Branch/i })).toBeTruthy();
 
@@ -1272,22 +1362,10 @@ describe('storefront discovery integration flow', () => {
     });
 
     expect(screen.queryByRole('button', { name: /2 storefronts at this location/i })).toBeNull();
-    const markerAtAlphaCoordinate = maplibregl.Marker.mock.results.some((result) => (
-      result?.value?.setLngLat?.mock?.calls?.some(([coordinate]) => (
-        Array.isArray(coordinate)
-        && Number(coordinate[0]).toFixed(6) === '122.505141'
-        && Number(coordinate[1]).toFixed(6) === '10.726869'
-      ))
-    ));
-    const markerAtBetaCoordinate = maplibregl.Marker.mock.results.some((result) => (
-      result?.value?.setLngLat?.mock?.calls?.some(([coordinate]) => (
-        Array.isArray(coordinate)
-        && Number(coordinate[0]).toFixed(6) === '122.562100'
-        && Number(coordinate[1]).toFixed(6) === '10.720200'
-      ))
-    ));
-    expect(markerAtAlphaCoordinate).toBe(true);
-    expect(markerAtBetaCoordinate).toBe(true);
+    const features = await waitForDiscoveryPinFeatures(2);
+    const coordinates = features.map((feature) => feature.geometry.coordinates.map((value) => Number(value).toFixed(6)));
+    expect(coordinates).toContainEqual(['122.505141', '10.726869']);
+    expect(coordinates).toContainEqual(['122.562100', '10.720200']);
   });
 
   it('does not cluster storefronts at the default center when coordinate data is missing', async () => {
@@ -1334,14 +1412,7 @@ describe('storefront discovery integration flow', () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText(/Coordinate Missing A/i)).toBeTruthy());
 
-    const markerAtDefaultCenter = maplibregl.Marker.mock.results.some((result) => (
-      result?.value?.setLngLat?.mock?.calls?.some(([coordinate]) => (
-        Array.isArray(coordinate)
-        && Number(coordinate[0]).toFixed(6) === '122.562100'
-        && Number(coordinate[1]).toFixed(6) === '10.720200'
-      ))
-    ));
-    expect(markerAtDefaultCenter).toBe(false);
+    await waitForDiscoveryPinFeatures(0);
   });
 
   it('does not render provisioned placeholder storefront coordinates as authoritative map pins', async () => {
@@ -1408,22 +1479,14 @@ describe('storefront discovery integration flow', () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText(/Placeholder A/i)).toBeTruthy());
 
-    const markerAtProvisionedDefault = maplibregl.Marker.mock.results.some((result) => (
-      result?.value?.setLngLat?.mock?.calls?.some(([coordinate]) => (
-        Array.isArray(coordinate)
-        && Number(coordinate[0]).toFixed(6) === '122.559893'
-        && Number(coordinate[1]).toFixed(6) === '10.699817'
-      ))
-    ));
-    expect(markerAtProvisionedDefault).toBe(false);
-    const markerAtConfiguredCoordinate = maplibregl.Marker.mock.results.some((result) => (
-      result?.value?.setLngLat?.mock?.calls?.some(([coordinate]) => (
-        Array.isArray(coordinate)
-        && Number(coordinate[0]).toFixed(6) === '122.562309'
-        && Number(coordinate[1]).toFixed(6) === '10.700194'
-      ))
-    ));
-    expect(markerAtConfiguredCoordinate).toBe(true);
+    await waitFor(() => {
+      const coordinates = getDiscoveryPinFeatures().map((feature) => feature.geometry.coordinates.map((value) => Number(value).toFixed(6)));
+      expect(coordinates).not.toContainEqual(['122.559893', '10.699817']);
+      expect(coordinates).toContainEqual(['122.562309', '10.700194']);
+    });
+    const coordinates = getDiscoveryPinFeatures().map((feature) => feature.geometry.coordinates.map((value) => Number(value).toFixed(6)));
+    expect(coordinates).not.toContainEqual(['122.559893', '10.699817']);
+    expect(coordinates).toContainEqual(['122.562309', '10.700194']);
   });
 
   it('discloses cluster overflow when more than eight storefronts share coordinates', async () => {
@@ -1464,9 +1527,13 @@ describe('storefront discovery integration flow', () => {
     });
 
     render(<App />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /10 storefronts at this location/i }).length).toBeGreaterThan(0));
+    const [clusterFeature] = await waitForDiscoveryPinFeatures(1);
+    expect(clusterFeature.properties).toMatchObject({
+      count: 10,
+      type: 'cluster'
+    });
 
-    fireEvent.click(screen.getAllByRole('button', { name: /10 storefronts at this location/i })[0]);
+    emitDiscoveryPinClick(clusterFeature);
     await waitFor(() => expect(screen.getByText('Showing all 10 storefronts at this exact pin')).toBeTruthy());
     expect(screen.getByRole('button', { name: /Select Store 10 at Main Branch/i })).toBeTruthy();
   });
@@ -1609,6 +1676,11 @@ describe('storefront discovery integration flow', () => {
       expect(params.get('longitude')).toBe('122.5');
       expect(params.get('pin_scope')).toBe('nearest_matching_branch');
     });
+    await waitFor(() => expect(getDiscoveryUserFeatures()).toHaveLength(1));
+    expect(getDiscoveryUserFeatures()[0].geometry.coordinates).toEqual([122.5, 10.7]);
+    const mapApi = getMapApis()[0];
+    expect(mapApi.getLayer('dgfy-discovery-user-location')).toBeTruthy();
+    expect(mapApi.getLayer('dgfy-discovery-pin-symbols')).toBeTruthy();
   });
 
   it('Near Me failure falls back to discovery without coordinates', async () => {

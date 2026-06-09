@@ -51,6 +51,66 @@ const iconPath = (icon) => {
   }
 };
 
+const normalizePinHex = (value, fallback = '#1a4e8d') => {
+  const raw = String(value || fallback).trim();
+  const hex = raw.startsWith('#') ? raw.slice(1) : raw;
+  const normalized = hex.length === 3 ? hex.split('').map((char) => `${char}${char}`).join('') : hex;
+  return /^[0-9a-fA-F]{6}$/.test(normalized) ? `#${normalized}` : fallback;
+};
+
+export const renderBusinessModePinSpriteSvg = (mode, selected = false) => {
+  const meta = getBusinessModePinMeta(mode);
+  const color = normalizePinHex(meta.color);
+  const circleSize = selected ? 38 : 34;
+  const circleX = 19;
+  const circleY = selected ? 19 : 17;
+  const radius = circleSize / 2 - 2;
+  const shadowOpacity = selected ? '0.38' : '0.28';
+  const shadowY = selected ? '7' : '6';
+  const tailTop = selected ? 38 : 35;
+  const paths = iconPath(meta.icon);
+  return `
+    <svg xmlns="http://www.w3.org/2000/svg" width="38" height="48" viewBox="0 0 38 48">
+      <defs>
+        <filter id="pinShadow" x="-40%" y="-30%" width="180%" height="180%" color-interpolation-filters="sRGB">
+          <feDropShadow dx="0" dy="${shadowY}" stdDeviation="4" flood-color="#0f172a" flood-opacity="${shadowOpacity}"/>
+        </filter>
+      </defs>
+      <g filter="url(#pinShadow)">
+        <circle cx="${circleX}" cy="${circleY}" r="${radius}" fill="${color}" stroke="#fff" stroke-width="3"/>
+        <path d="M12 ${tailTop} L19 47 L26 ${tailTop} Z" fill="${color}"/>
+        <svg x="8.5" y="${circleY - 10.5}" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          ${paths}
+        </svg>
+      </g>
+    </svg>
+  `.trim();
+};
+
+export const renderClusterPinSpriteSvg = (count, selected = false) => {
+  const displayCount = Number.isFinite(Number(count)) ? Math.max(1, Math.min(99, Number(count))) : 1;
+  const circleSize = selected ? 38 : 34;
+  const circleY = selected ? 19 : 17;
+  const radius = circleSize / 2 - 2;
+  const shadowOpacity = selected ? '0.38' : '0.28';
+  const tailTop = selected ? 38 : 35;
+  const fontSize = displayCount > 9 ? 15 : 18;
+  return `
+    <svg xmlns="http://www.w3.org/2000/svg" width="38" height="48" viewBox="0 0 38 48">
+      <defs>
+        <filter id="clusterShadow" x="-40%" y="-30%" width="180%" height="180%" color-interpolation-filters="sRGB">
+          <feDropShadow dx="0" dy="7" stdDeviation="4" flood-color="#0f172a" flood-opacity="${shadowOpacity}"/>
+        </filter>
+      </defs>
+      <g filter="url(#clusterShadow)">
+        <circle cx="19" cy="${circleY}" r="${radius}" fill="#1a4e8d" stroke="#fff" stroke-width="3"/>
+        <path d="M12 ${tailTop} L19 47 L26 ${tailTop} Z" fill="#1a4e8d"/>
+        <text x="19" y="${circleY + 6}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}" font-weight="800" fill="#fff">${displayCount}</text>
+      </g>
+    </svg>
+  `.trim();
+};
+
 export const renderBusinessModePinSvg = (mode, selected = false) => {
   const meta = getBusinessModePinMeta(mode);
   const color = meta.color;

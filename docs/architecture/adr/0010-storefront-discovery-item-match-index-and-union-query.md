@@ -115,3 +115,12 @@ The June root-handle and branch-scoping implementation is hardened as follows:
 1. Search-active Storefront marker glow remains presentation-only. The MapLibre marker root and the visible marker body must stay anchored to the stored latitude/longitude. Storefront pins use a fixed `38px` by `48px` root anchor box with the visual marker absolutely positioned inside it; pulse/glow effects may animate surrounding pseudo-elements or filter only, but must not scale, resize, or translate the root or marker body in a way that makes the pin appear to drift during zoom.
 2. IMS item and product draft saves must preserve `storefront_location_item_overrides` when branch availability toggles are submitted. Draft behavior remains separate from final Storefront visibility and sale-readiness decisions, but a draft save must not silently drop branch-level Storefront availability choices.
 3. Normal Storefront pins and shared-coordinate cluster pins must use the same bottom-center coordinate anchor and the same popup offset contract so marker cards keep consistent spacing above the pin across zoom levels. The customer "your location" marker must render below storefront pins so overlapping coordinates remain clickable for the storefront pin.
+
+## Addendum (2026-06-08): Renderer-Owned Discovery Pins
+
+The Storefront discovery map marker contract is further hardened:
+
+1. Customer-facing Storefront discovery pins must render from a MapLibre GeoJSON source and MapLibre style layers, not DOM `Marker` overlays. The visual pin icon is a sprite image owned by the map renderer with `icon-anchor=bottom`, so zoom and pan transforms are applied by the same renderer that owns the map tiles.
+2. Normal store pins, shared-coordinate count pins, highlighted/search-active halos, and the customer "your location" dot use explicit layer order. The user-location layer renders below storefront pins; storefront symbol layers render above the halo and user layers so overlapping store coordinates remain clickable.
+3. The source feature geometry must use the unmodified indexed longitude/latitude selected by the active `pin_scope`. The client may fit the viewport with padding large enough to keep the full bottom-anchored icon visible, but it must not shift feature coordinates or apply per-result coordinate offsets.
+4. Marker preview cards remain DOM popups anchored to the same feature coordinates. Popup retention and auto-open behavior may be driven by layer click/hover events, but card position must derive from the feature geometry rather than a detached marker element.
