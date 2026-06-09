@@ -63,7 +63,6 @@ import {
   getStorefrontCatalogOverrides,
   updateStorefrontCatalogOverride,
   updateBulkStorefrontCatalogOverrides,
-  uploadStorefrontCatalogImage,
   uploadStorefrontCatalogImages,
   updateStorefrontCatalogGallery,
   deleteStorefrontCatalogGalleryImage,
@@ -504,9 +503,7 @@ export default function Items() {
     if (!itemId || normalizedFiles.length === 0 || !canConfigureStorefrontCatalog) return;
 
     try {
-      const updated = normalizedFiles.length > 1
-        ? await uploadStorefrontCatalogImages(itemId, normalizedFiles)
-        : await uploadStorefrontCatalogImage(itemId, normalizedFiles[0]);
+      const updated = await uploadStorefrontCatalogImages(itemId, normalizedFiles);
       setStorefrontCatalogOverrides((prev) => ({
         ...prev,
         [itemId]: { ...(prev[itemId] || {}), ...updated }

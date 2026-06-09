@@ -27,9 +27,6 @@ export const uploadStorefrontCatalogImage = async (itemId, file) => {
 
 export const uploadStorefrontCatalogImages = async (itemId, files = []) => {
   const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
-  if (normalizedFiles.length === 1) {
-    return uploadStorefrontCatalogImage(itemId, normalizedFiles[0]);
-  }
   const formData = new FormData();
   normalizedFiles.forEach((file) => formData.append('images', file));
   const response = await api.post(`/items/${itemId}/storefront-images`, formData);

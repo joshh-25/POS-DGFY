@@ -275,7 +275,7 @@ describe('OnboardingSetupModal behavior', () => {
 
   it('retries optional item image upload without resubmitting the created item', async () => {
     const user = userEvent.setup();
-    mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImage
+    mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages
       .mockRejectedValueOnce({ response: { data: { message: 'Upload failed.' } } })
       .mockResolvedValueOnce({});
 
@@ -304,7 +304,8 @@ describe('OnboardingSetupModal behavior', () => {
 
     await waitFor(() => {
       expect(mocks.onboardingServiceMock.bulkCreateOnboardingItems).toHaveBeenCalledTimes(1);
-      expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImage).toHaveBeenCalledTimes(2);
+      expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages).toHaveBeenCalledTimes(2);
+      expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages.mock.calls[0][1]).toHaveLength(1);
       expect(mocks.toastMock.success).toHaveBeenCalledWith('Item image uploaded.');
     });
   });

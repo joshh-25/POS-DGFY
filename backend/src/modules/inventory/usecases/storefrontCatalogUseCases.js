@@ -74,6 +74,24 @@ const normalizeGalleryPayloadEntries = (entries = []) => normalizeStoredGalleryE
     sort_order: index
   }));
 
+const normalizeExistingStorefrontGallery = (override = {}) => {
+  const gallery = normalizeStoredGalleryEntries(override?.storefront_image_gallery || []);
+  const primaryUrl = override?.storefront_image_url || null;
+  const primaryPath = override?.storefront_image_path || null;
+  const hasPrimary = primaryUrl || primaryPath;
+  if (!hasPrimary) return gallery;
+
+  const containsPrimary = gallery.some((entry) => (
+    (primaryPath && entry.path === primaryPath)
+    || (primaryUrl && entry.url === primaryUrl)
+  ));
+  const nextGallery = containsPrimary
+    ? gallery
+    : [{ path: primaryPath, url: primaryUrl }, ...gallery];
+
+  return normalizeStoredGalleryEntries(nextGallery);
+};
+
 const storefrontReadinessError = ({ item, itemId, cause = null }) => new DomainError(
   DomainErrorCode.VALIDATION_FAILED,
   'Cannot enable Storefront visibility until readiness requirements are completed.',
@@ -423,7 +441,7 @@ export const buildUploadStorefrontCatalogGalleryImagesUseCase = ({ itemRepositor
         storedImages.push(stored);
       }
 
-      const existingGallery = normalizeStoredGalleryEntries(existing?.storefront_image_gallery || []);
+      const existingGallery = normalizeExistingStorefrontGallery(existing);
       const gallery = normalizeStoredGalleryEntries([...existingGallery, ...storedImages]);
       const primary = gallery[0] || null;
       const data = await itemRepository.updateStorefrontCatalogImage(normalizedItemId, {
@@ -644,7 +662,7 @@ export const buildUpdateStorefrontCatalogGalleryUseCase = ({ itemRepository, ima
     }
 
     const existing = await itemRepository.findStorefrontCatalogOverrideByItemId(normalizedItemId);
-    const existingGallery = normalizeStoredGalleryEntries(existing?.storefront_image_gallery || []);
+    const existingGallery = normalizeExistingStorefrontGallery(existing);
     const requestedGallery = normalizeGalleryPayloadEntries(payload.gallery || payload.storefront_image_gallery || []);
     if (requestedGallery.length === 0) {
       const paths = [
@@ -697,7 +715,7 @@ export const buildDeleteStorefrontCatalogGalleryImageUseCase = ({ itemRepository
     }
 
     const existing = await itemRepository.findStorefrontCatalogOverrideByItemId(normalizedItemId);
-    const existingGallery = normalizeStoredGalleryEntries(existing?.storefront_image_gallery || []);
+    const existingGallery = normalizeExistingStorefrontGallery(existing);
     if (normalizedImageIndex >= existingGallery.length) {
       throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Storefront gallery image was not found', { statusCode: 404 });
     }
@@ -730,7 +748,7 @@ export const buildDeleteStorefrontCatalogImageUseCase = ({ itemRepository, image
     }
 
     const existing = await itemRepository.findStorefrontCatalogOverrideByItemId(normalizedItemId);
-    const existingGallery = normalizeStoredGalleryEntries(existing?.storefront_image_gallery || []);
+    const existingGallery = normalizeExistingStorefrontGallery(existing);
     const paths = [
       existing?.storefront_image_path,
       ...existingGallery.map((entry) => entry.path)
