@@ -7,6 +7,18 @@ import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 
 const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
 
+const parseStorefrontImageGallery = (value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 export default function POSSetupStep({
   data = {},
   updateData,
@@ -29,9 +41,7 @@ export default function POSSetupStep({
     ? posConfig.pos_readiness.missing_requirements
     : [];
   const storefrontGallery = React.useMemo(() => {
-    const entries = Array.isArray(storefrontConfig?.storefront_image_gallery)
-      ? storefrontConfig.storefront_image_gallery
-      : [];
+    const entries = parseStorefrontImageGallery(storefrontConfig?.storefront_image_gallery);
     const gallery = entries
       .map((entry, index) => ({
         path: entry?.path || null,

@@ -261,6 +261,41 @@ describe('storeRepository location-stock schema fallback', () => {
         expect(storefrontInclude.attributes).toEqual(['storefront_visible', 'storefront_image_url']);
     });
 
+    it('listStoreCatalog exposes full item gallery when the JSON column is returned as text', async () => {
+        itemFindAllMock.mockResolvedValue([
+            buildCatalogRow({
+                item_id: 660,
+                storefrontCatalogOverride: {
+                    storefront_visible: true,
+                    storefront_image_url: '/uploads/storefront/primary.png',
+                    storefront_image_gallery: JSON.stringify([
+                        { url: '/uploads/storefront/primary.png', is_primary: true, sort_order: 0 },
+                        { url: '/uploads/storefront/second.png', is_primary: false, sort_order: 1 },
+                        { url: '/uploads/storefront/third.png', is_primary: false, sort_order: 2 }
+                    ])
+                }
+            })
+        ]);
+        itemLocationStockFindAllMock.mockResolvedValue([]);
+
+        const result = await storeRepository.listStoreCatalog({
+            search: '',
+            limit: 60,
+            location_id: null
+        });
+
+        expect(result).toHaveLength(1);
+        expect(result[0]).toEqual(expect.objectContaining({
+            item_id: 660,
+            image_url: '/uploads/storefront/primary.png',
+            image_gallery: [
+                { url: '/uploads/storefront/primary.png', is_primary: true, sort_order: 0 },
+                { url: '/uploads/storefront/second.png', is_primary: false, sort_order: 1 },
+                { url: '/uploads/storefront/third.png', is_primary: false, sort_order: 2 }
+            ]
+        }));
+    });
+
     it('listStoreCatalog retries without service details when that optional table is unavailable', async () => {
         itemFindAllMock
             .mockRejectedValueOnce(missingServiceItemDetailsTableError())

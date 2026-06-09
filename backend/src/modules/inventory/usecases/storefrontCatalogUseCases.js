@@ -59,7 +59,19 @@ const createBulkImageSummary = () => ({
   blocked_readiness: 0
 });
 
-const normalizeStoredGalleryEntries = (entries = []) => (Array.isArray(entries) ? entries : [])
+const parseGalleryEntries = (entries = []) => {
+  if (Array.isArray(entries)) return entries;
+  if (typeof entries !== 'string') return [];
+
+  try {
+    const parsed = JSON.parse(entries);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const normalizeStoredGalleryEntries = (entries = []) => parseGalleryEntries(entries)
   .map((entry, index) => ({
     path: entry?.path || null,
     url: entry?.url || null,

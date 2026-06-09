@@ -85,6 +85,18 @@ const MSME_ITEM_PRESET = Object.freeze({
 const MSME_RESTRICTED_CATEGORY_FILTERS = new Set(['raw_material', 'packaging', 'finished_goods', 'work_in_progress']);
 const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
 
+const parseStorefrontImageGallery = (value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 export default function Items() {
   const navigate = useNavigate();
   const { items, loading, error, refetch } = useInventoryItems({ limit: 1000 });
@@ -342,7 +354,7 @@ export default function Items() {
       storefront_visible: override ? override.storefront_visible !== false : getDefaultStorefrontVisibility(item),
       storefront_image_path: override?.storefront_image_path || null,
       storefront_image_url: resolveAssetUrl(override?.storefront_image_url) || null,
-      storefront_image_gallery: Array.isArray(override?.storefront_image_gallery) ? override.storefront_image_gallery : [],
+      storefront_image_gallery: parseStorefrontImageGallery(override?.storefront_image_gallery),
       location_availability: Array.isArray(override?.location_availability) ? override.location_availability : []
     };
   }, [getDefaultStorefrontVisibility, storefrontCatalogOverrides]);
@@ -525,9 +537,7 @@ export default function Items() {
   };
 
   const normalizeStorefrontGallery = (storefrontConfig = {}) => {
-    const entries = Array.isArray(storefrontConfig?.storefront_image_gallery)
-      ? storefrontConfig.storefront_image_gallery
-      : [];
+    const entries = parseStorefrontImageGallery(storefrontConfig?.storefront_image_gallery);
     const primaryUrl = storefrontConfig?.storefront_image_url || null;
     const gallery = entries
       .map((entry, index) => ({

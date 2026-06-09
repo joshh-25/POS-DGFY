@@ -651,6 +651,82 @@ describe('storefront catalog use cases', () => {
         await fs.rm(tempPath, { force: true });
     });
 
+    it('uploadStorefrontCatalogGalleryImages appends to database JSON string galleries', async () => {
+        const tempPath = await writeTempUpload({ prefix: 'storefront-gallery-json-string' });
+        const updateStorefrontCatalogImage = jest.fn().mockResolvedValue({
+            item_id: 92,
+            storefront_visible: true,
+            storefront_image_url: '/uploads/primary.png',
+            storefront_image_gallery: [
+                { path: 'storefront-catalog/tenant/primary.png', url: '/uploads/primary.png', is_primary: true, sort_order: 0 },
+                { path: 'storefront-catalog/tenant/second.png', url: '/uploads/second.png', is_primary: false, sort_order: 1 },
+                { path: 'storefront-catalog/tenant/third.png', url: '/uploads/storefront-catalog/tenant/third.png', is_primary: false, sort_order: 2 }
+            ]
+        });
+        const useCase = buildUploadStorefrontCatalogGalleryImagesUseCase({
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({
+                    item_id: 92,
+                    name: 'JSON string gallery item',
+                    default_sale_price: 125
+                }),
+                findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue({
+                    item_id: 92,
+                    storefront_visible: true,
+                    storefront_image_path: 'storefront-catalog/tenant/primary.png',
+                    storefront_image_url: '/uploads/primary.png',
+                    storefront_image_gallery: JSON.stringify([
+                        { path: 'storefront-catalog/tenant/primary.png', url: '/uploads/primary.png', is_primary: true, sort_order: 0 },
+                        { path: 'storefront-catalog/tenant/second.png', url: '/uploads/second.png', is_primary: false, sort_order: 1 }
+                    ])
+                }),
+                updateStorefrontCatalogImage
+            },
+            imageStorage: {
+                store: jest.fn().mockResolvedValue({
+                    path: 'storefront-catalog/tenant/third.png',
+                    url: '/uploads/storefront-catalog/tenant/third.png'
+                }),
+                remove: jest.fn()
+            }
+        });
+
+        await useCase({
+            itemId: 92,
+            files: [{ path: tempPath, mimetype: 'image/png', originalname: 'third.png', size: PNG_BYTES.length }],
+            user: editableUser
+        });
+
+        expect(updateStorefrontCatalogImage).toHaveBeenCalledWith(92, {
+            path: 'storefront-catalog/tenant/primary.png',
+            url: '/uploads/primary.png',
+            gallery: [
+                {
+                    path: 'storefront-catalog/tenant/primary.png',
+                    url: '/uploads/primary.png',
+                    is_primary: true,
+                    sort_order: 0
+                },
+                {
+                    path: 'storefront-catalog/tenant/second.png',
+                    url: '/uploads/second.png',
+                    is_primary: false,
+                    sort_order: 1
+                },
+                {
+                    path: 'storefront-catalog/tenant/third.png',
+                    url: '/uploads/storefront-catalog/tenant/third.png',
+                    is_primary: false,
+                    sort_order: 2
+                }
+            ]
+        }, {
+            keepVisible: true
+        });
+
+        await fs.rm(tempPath, { force: true });
+    });
+
     it('uploadStorefrontCatalogGalleryImages rejects requests that exceed five total item images', async () => {
         const store = jest.fn();
         const updateStorefrontCatalogImage = jest.fn();

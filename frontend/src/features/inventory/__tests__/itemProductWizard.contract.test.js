@@ -180,6 +180,7 @@ describe('Item/Product wizard contracts', () => {
     expect(itemFormSource).toContain('Add Item Images');
     expect(itemFormSource).toContain('Remove All Item Images');
     expect(itemFormSource).toContain('STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5');
+    expect(itemFormSource).toContain('parseStorefrontImageGallery');
     expect(itemFormSource).toContain('image slots remaining');
     expect(itemFormSource).toContain('Set first');
     expect(itemFormSource).toContain('No item image uploaded yet.');
@@ -189,6 +190,7 @@ describe('Item/Product wizard contracts', () => {
     expect(productPosSetupSource).toContain('Add Item Images');
     expect(productPosSetupSource).toContain('Remove All Item Images');
     expect(productPosSetupSource).toContain('STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5');
+    expect(productPosSetupSource).toContain('parseStorefrontImageGallery');
     expect(productPosSetupSource).toContain('image slots remaining');
     expect(productPosSetupSource).toContain('Set first');
     expect(productPosSetupSource).toContain('No item image uploaded yet.');
@@ -198,6 +200,7 @@ describe('Item/Product wizard contracts', () => {
     expect(itemsPageSource).toContain('Item image updated for');
     expect(itemsPageSource).toContain('Primary storefront image updated for');
     expect(itemsPageSource).toContain('STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5');
+    expect(itemsPageSource).toContain('parseStorefrontImageGallery');
     expect(itemsPageSource).toContain('updateStorefrontCatalogGallery(itemId, nextGallery)');
     expect(itemsPageSource).toContain('Failed to upload item image');
   });
