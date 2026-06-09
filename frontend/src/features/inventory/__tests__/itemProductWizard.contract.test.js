@@ -77,6 +77,16 @@ describe('Item/Product wizard contracts', () => {
     expect(indexCssSource).toContain('.wizard-core-typography .wizard-footer button');
   });
 
+  it('keeps item create/edit modal dimensions fixed to the largest wizard frame', () => {
+    const itemFormSource = readFrontendFile('Components/items/ItemFormModal.jsx');
+
+    expect(itemFormSource).toContain('wizard-core-typography h-[90vh] max-h-[90vh] w-[95vw] max-w-5xl overflow-hidden flex flex-col');
+    expect(itemFormSource).toContain('DialogHeader className="flex-shrink-0"');
+    expect(itemFormSource).toContain('wizard-step-content flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6');
+    expect(itemFormSource).toContain('wizard-footer flex-shrink-0 border-t border-slate-200 pt-4 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end');
+    expect(itemFormSource).not.toContain('max-h-[90vh] max-w-4xl overflow-y-auto pb-6');
+  });
+
   it('uses expanded dropdown inventory data as SKU suggestion seed for both item and product wizards', () => {
     const itemsPageSource = readFrontendFile('src/features/inventory/pages/ItemsPage.jsx');
 
@@ -139,7 +149,7 @@ describe('Item/Product wizard contracts', () => {
 
     expect(productWizardSource).toContain('wizard-footer flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between');
     expect(productWizardSource).toContain('flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end');
-    expect(itemFormSource).toContain('wizard-footer pt-8 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end');
+    expect(itemFormSource).toContain('wizard-footer flex-shrink-0 border-t border-slate-200 pt-4 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end');
 
     expect(itemFormSource).toContain('disabled={isSaving}');
     expect(productWizardSource).toContain('disabled={isSaving}');

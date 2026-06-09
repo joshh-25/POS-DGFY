@@ -9546,7 +9546,7 @@ export default function StorefrontApp() {
               >
                 <div style={{ padding: isDiscoveryMobileViewport ? '34px 18px 14px' : '24px 22px 16px', borderBottom: '1px solid #edf2f7', display: 'grid', gap: 14 }}>
                   <div style={{ display: 'flex', alignItems: isDiscoveryMobileViewport ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
-                    <div style={{ minWidth: 0 }}>
+                    <div style={{ minWidth: 0, flex: '1 1 auto' }}>
                       <div style={{ fontSize: 11, fontWeight: 800, color: '#1a4e8d', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Discover Nearby</div>
                       <h2 style={{ margin: '6px 0 0', fontSize: isDiscoveryMobileViewport ? 24 : 29, lineHeight: 1.08, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.03em' }}>{resultsTitle}</h2>
                       <p
@@ -9561,6 +9561,34 @@ export default function StorefrontApp() {
                         {resultsSubtitle}
                       </p>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isDiscoveryMobileViewport) {
+                          setIsMobileResultsCollapsed(true);
+                        } else {
+                          setIsStoreListVisible(false);
+                        }
+                      }}
+                      aria-label="Collapse results panel"
+                      title="Collapse results"
+                      style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 12,
+                        border: '1px solid #dbe5f2',
+                        background: '#ffffff',
+                        color: '#64748b',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        boxShadow: '0 8px 18px rgba(15,23,42,.08)',
+                        flex: '0 0 auto'
+                      }}
+                    >
+                      <X size={16} />
+                    </button>
                   </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'nowrap' }}>

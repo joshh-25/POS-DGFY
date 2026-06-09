@@ -40,7 +40,6 @@ const MSME_ITEM_PRESET = Object.freeze({
   SELLABLE_POS: 'sellable_pos',
   INVENTORY_ONLY: 'inventory_only'
 });
-
 const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
 
 const MSME_VISIBLE_UPDATE_FIELDS = Object.freeze([
@@ -1049,8 +1048,8 @@ export default function ItemFormModal({
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography max-h-[90vh] max-w-4xl overflow-y-auto pb-6">
-          <DialogHeader>
+        <DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography h-[90vh] max-h-[90vh] w-[95vw] max-w-5xl overflow-hidden flex flex-col pb-0">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle className="wizard-title flex items-center gap-2">
               {item ? 'Edit Item' : 'Create New Item'}
               {isEditingDraft && (
@@ -1066,7 +1065,7 @@ export default function ItemFormModal({
             )}
           </DialogHeader>
 
-          <div className="wizard-step-content space-y-4">
+          <div className="wizard-step-content flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
             {/* Basic Info */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
@@ -1810,7 +1809,7 @@ export default function ItemFormModal({
             )}
           </div>
 
-          <DialogFooter className="wizard-footer pt-8 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+          <DialogFooter className="wizard-footer flex-shrink-0 border-t border-slate-200 pt-4 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
             <Button variant="outline" onClick={handleClose} disabled={isSaving}>Cancel</Button>
             {((item && item.status !== 'draft') || onSaveDraft) && (
               <Button

@@ -230,7 +230,7 @@ export default function Login() {
           {/* Logo and Title */}
           <div className="text-center mb-8">
             <div className="flex justify-center mb-4">
-              <img src="/logo.png" alt="SKUpervisor" className="h-16" />
+              <img src="/dgfy-horizontal_logo-removebg-preview.png" alt="DGFY" className="h-16 w-auto object-contain" />
             </div>
             <p className="text-slate-600 mt-2">Sign in to your account</p>
           </div>

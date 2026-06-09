@@ -188,7 +188,7 @@ export default function Layout({ children, currentPageName }) {
         <div className="p-6">
           <div className="flex flex-col gap-1">
             <img src="/dgfy-horizontal_logo-removebg-preview.png" alt="DGFY.PH" className="h-11 w-auto max-w-[220px] object-contain" />
-            <p className="text-xs text-slate-500 ml-1">Inventory Management System</p>
+            <p className="text-xs text-slate-500 ml-1">Business</p>
           </div>
         </div>
 

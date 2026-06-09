@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { getCurrentUser } from '../services/authService';
 import { getAccessToken, refreshBrowserSession } from '../services/browserSession.js';
 import { shouldRefreshBrowserSessionForPath } from '../services/publicRoutePolicy.js';
@@ -6,6 +7,7 @@ import { shouldRefreshBrowserSessionForPath } from '../services/publicRoutePolic
 const PermissionContext = createContext(null);
 
 export const PermissionProvider = ({ children }) => {
+    const location = useLocation();
     const [permissions, setPermissions] = useState([]);
     const [isMasterAdmin, setIsMasterAdmin] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -14,8 +16,8 @@ export const PermissionProvider = ({ children }) => {
 
     // ... ensureCompanyToken ...
 
-    const loadPermissions = async () => {
-        if (!shouldRefreshBrowserSessionForPath(window.location.pathname)) {
+    const loadPermissions = useCallback(async () => {
+        if (!shouldRefreshBrowserSessionForPath(location.pathname)) {
             setPermissions([]);
             setIsMasterAdmin(false);
             setUserRole(null);
@@ -98,7 +100,7 @@ export const PermissionProvider = ({ children }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [location.pathname]);
 
     // Check if user has specific permission
     const can = (permission) => {
@@ -129,7 +131,7 @@ export const PermissionProvider = ({ children }) => {
     // Initial load
     useEffect(() => {
         loadPermissions();
-    }, []);
+    }, [loadPermissions]);
 
     // Listen for custom auth events (login/logout) to reload permissions
     useEffect(() => {
@@ -145,7 +147,7 @@ export const PermissionProvider = ({ children }) => {
             window.removeEventListener('auth:login', handleAuthChange);
             window.removeEventListener('auth:logout', handleAuthChange);
         };
-    }, []);
+    }, [loadPermissions]);
 
     return (
         <PermissionContext.Provider value={{
