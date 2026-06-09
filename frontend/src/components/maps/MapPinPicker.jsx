@@ -4,10 +4,22 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { cn } from '../../lib/utils.js';
 import { Button } from '@/components/ui/button';
 
-const TILE_BASE = 'https://tile.openstreetmap.org';
-const TILE_URL_TEMPLATE = import.meta.env.DEV
-  ? '/osm/{z}/{x}/{y}.png'
-  : (import.meta.env.VITE_TILING_TILE_URL || `${TILE_BASE}/{z}/{x}/{y}.png`);
+const TILE_BASE = import.meta.env.VITE_TILE_BASE || 'https://tiles.openfreemap.org';
+
+const TILING_SERVER = import.meta.env.DEV
+  ? '/openfreemap/styles/positron'
+  : `${TILE_BASE}/styles/positron`;
+
+// In dev the Vite proxy rewrites /openfreemap → tiles.openfreemap.org.
+// In production tile sub-resources are fetched directly from the CDN.
+const tileTransformRequest = import.meta.env.DEV
+  ? (url) => {
+    if (url.startsWith(TILE_BASE)) {
+      return { url: url.replace(TILE_BASE, `${window.location.origin}/openfreemap`) };
+    }
+    return { url };
+  }
+  : undefined;
 
 const DEFAULT_CENTER = { latitude: 10.7202, longitude: 122.5621 };
 const DEFAULT_ZOOM = 12;
@@ -17,24 +29,6 @@ const MAX_ZOOM = 18;
 const RADIUS_SOURCE = 'delivery-radius';
 const MAP_READY_TIMEOUT_MS = 1500;
 
-const buildMapLibreStyle = () => ({
-  version: 8,
-  sources: {
-    'storefront-location-raster': {
-      type: 'raster',
-      tiles: [TILE_URL_TEMPLATE],
-      tileSize: 256,
-      attribution: 'Map data: OpenStreetMap contributors'
-    }
-  },
-  layers: [
-    {
-      id: 'storefront-location-raster',
-      type: 'raster',
-      source: 'storefront-location-raster'
-    }
-  ]
-});
 
 const buildPinSvg = ({ highlighted = false } = {}) => {
   const gradientTop = highlighted ? '#5eead4' : '#14b8a6';
@@ -220,14 +214,15 @@ export default function MapPinPicker({
     try {
       map = new maplibregl.Map({
         container: containerRef.current,
-        style: buildMapLibreStyle(),
+        style: TILING_SERVER,
         center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
         zoom: DEFAULT_ZOOM,
         minZoom: MIN_ZOOM,
         maxZoom: MAX_ZOOM,
         trackResize: false,
         bearing: 0,
-        pitch: 0
+        pitch: 0,
+        transformRequest: tileTransformRequest
       });
       map.dragRotate.disable();
       map.touchZoomRotate.disableRotation();

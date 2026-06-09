@@ -195,8 +195,8 @@ const FNB_RECOMMENDED_LOCATION = Object.freeze({
 const TILE_BASE = import.meta.env.VITE_TILE_BASE || 'https://tiles.openfreemap.org';
 
 const TILING_SERVER = import.meta.env.DEV
-  ? '/openfreemap/styles/liberty'
-  : `${TILE_BASE}/styles/liberty`;
+  ? '/openfreemap/styles/positron'
+  : `${TILE_BASE}/styles/positron`;
 
 const tileTransformRequest = import.meta.env.DEV
   ? (url) => {
