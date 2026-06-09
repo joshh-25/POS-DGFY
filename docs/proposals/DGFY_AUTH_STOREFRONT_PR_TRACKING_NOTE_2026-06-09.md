@@ -4,8 +4,18 @@ Date: June 9, 2026
 
 Purpose:
 - Track the overall DGFY auth, storefront customer account, and business-registration work completed from June 8 to June 9.
-- Give the main developer one merge-oriented note that separates publishable work from POS-later work and local-only work.
+- Give the main developer one merge-oriented note that separates the scoped DGFY publishable work from broader branch history, POS-later work, and local-only work.
 - Capture the current customer registration and email-verification OTP flow end to end.
+
+Branch and review context:
+- Target branch pushed: `origin/codex/storefront-merged-pilot`
+- This branch already contains older work beyond the June 8-9 DGFY scope.
+- For review, treat the files listed under `Publishable Files For This PR` as the source-of-truth scope for this DGFY/customer/business-registration pass.
+- Treat the files listed under `POS Files Changed But Excluded From This PR` and `Local-Only / Do Not Include In PR` as intentionally out of scope.
+
+Primary scoped commits pushed for this pass:
+- `7de1376` `checkpoint: preserve dgfy auth, customer dashboard, and business registration flow`
+- `95a5599` `chore(frontend): add lottie player dependency for dgfy auth hero`
 
 Scope rule for the next PR:
 - Include the DGFY auth, storefront, business-registration, backend customer-account, and related docs/tests work.
@@ -75,14 +85,13 @@ Primary functional outcome:
 `frontend/src/main.jsx`
 - Registers the new DGFY auth/reset/legal route usage in the root frontend app.
 
-`frontend/vite.config.js`
-- Supports the current root frontend runtime/build adjustments needed by the new auth pages.
-
 `frontend/package.json`
 - Package updates needed by the new auth/shared UI work.
+- Adds the Lottie player dependency used by the branded DGFY hero.
 
 `frontend/package-lock.json`
 - Lockfile update for frontend dependency alignment.
+- Captures the Lottie player install for reproducible frontend builds.
 
 ### Frontend DGFY Shared UI
 
@@ -96,6 +105,12 @@ Primary functional outcome:
 
 `frontend/src/features/dgfy/components/DgfyPasswordInput.jsx`
 - Shared password input for DGFY auth/reset forms.
+
+`frontend/src/features/dgfy/assets/dgfyHeroMotion.json`
+- Branded motion payload for the DGFY auth hero.
+
+`frontend/src/features/dgfy/assets/dgfy-ecosystem.png`
+- Decorative DGFY ecosystem illustration fallback/supporting asset for the auth surface.
 
 `frontend/src/assets/dgfy/dgfy-logo.png`
 - Bundled DGFY logo asset used by the new auth flow.
@@ -134,6 +149,10 @@ Primary functional outcome:
 
 `frontend/apps/store/src/__tests__/profileLauncher.integration.test.jsx`
 - Integration coverage for customer launcher/profile entry flow.
+
+`docs/proposals/DGFY_AUTH_STOREFRONT_PR_TRACKING_NOTE_2026-06-09.md`
+- Review and handoff note for this PR scope.
+- Lists the intended publishable files, exclusions, and the current auth/business flow.
 
 ### Documentation
 
@@ -223,6 +242,12 @@ Potentially local-only config/runtime changes that should be reviewed before pub
 
 `frontend/public/bg-modals.png`
 - Root public copy can stay local if the bundled `frontend/src/assets/dgfy/bg-modals.png` is the version intended for publish.
+
+Additional current local exclusions not pushed in this scope:
+
+`frontend/vite.config.js`
+- Local root-frontend runtime adjustment still dirty in working tree.
+- Keep out of this PR unless it is separately reviewed and intentionally scoped.
 
 ## Current Customer Registration Flow
 
@@ -339,6 +364,11 @@ Current fixed behavior:
 - Returning from legal pages should go back to the same DGFY auth create-account flow, not to `/register-company`.
 
 ## Merge Notes For Main Dev
+
+Important review instruction:
+- Do not review this branch by assuming every file in `origin/master..codex/storefront-merged-pilot` belongs to the DGFY auth/dashboard scope.
+- Review this pass against the scoped files above first.
+- The branch contains earlier unrelated history, so use this note as the merge filter.
 
 Recommended PR split:
 
