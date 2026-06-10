@@ -188,16 +188,10 @@ describe('MapPinPicker MapLibre behavior', () => {
       trackResize: false
     }));
     expect(maplibreMocks.Map.mock.calls[0][0]).not.toHaveProperty('maxBounds');
-    expect(maplibreMocks.Map.mock.calls[0][0].style).toEqual(expect.objectContaining({
-      version: 8,
-      sources: expect.objectContaining({
-        'storefront-location-raster': expect.objectContaining({
-          type: 'raster',
-          tiles: expect.arrayContaining([expect.stringMatching(/(?:\/osm|tile\.openstreetmap\.org)\/\{z\}\/\{x\}\/\{y\}\.png/)])
-        })
-      })
-    }));
-    expect(maplibreMocks.Map.mock.calls[0][0].style.sources['storefront-location-raster'].tiles[0]).not.toContain('tiles.openfreemap.org');
+    // Style is now a vector tile URL pointing to OpenFreeMap positron (not a raster style object).
+    expect(typeof maplibreMocks.Map.mock.calls[0][0].style).toBe('string');
+    expect(maplibreMocks.Map.mock.calls[0][0].style).toContain('openfreemap');
+    expect(maplibreMocks.Map.mock.calls[0][0].style).toContain('positron');
     expect(maplibreMocks.maps[0].dragRotate.disable).toHaveBeenCalled();
     expect(maplibreMocks.maps[0].touchZoomRotate.disableRotation).toHaveBeenCalled();
     expect(await screen.findByLabelText(/Map location picker/i)).toBeTruthy();
