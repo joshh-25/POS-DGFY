@@ -72,6 +72,10 @@ const tenantPaymentAccountParamSchema = Joi.object({
   tenant_id: tenantIdSchema.required()
 });
 
+const tenantPayMongoChildAccountActionParamSchema = tenantPaymentAccountParamSchema.keys({
+  action: Joi.string().valid('sync-requirements', 'submit-review', 'activate').required()
+});
+
 const tenantPaymentAccountBodySchema = Joi.object({
   provider_merchant_id: Joi.string().trim().min(3).max(255).required(),
   provider_wallet_id: Joi.string().trim().max(255).allow('', null).optional(),
@@ -86,6 +90,10 @@ const tenantPaymentAccountBodySchema = Joi.object({
   verified_by: Joi.string().trim().max(120).allow('', null).optional(),
   requirements_due: Joi.alternatives().try(Joi.array().items(Joi.string().trim().max(255)), Joi.object()).allow(null).optional(),
   metadata: Joi.object().allow(null).optional()
+});
+
+const tenantPayMongoChildAccountBodySchema = Joi.object({
+  trade_name: Joi.string().trim().min(2).max(120).allow('', null).optional()
 });
 
 const refundSourceSchema = Joi.object({
@@ -107,5 +115,7 @@ export const validateCommercePaymentSessionParam = validateSchema(paymentSession
 export const validateListCommercePaymentSessionsQuery = validateSchema(listPaymentSessionsQuerySchema, 'query', 'validatedQuery');
 export const validateTenantPaymentAccountsQuery = validateSchema(tenantPaymentAccountsQuerySchema, 'query', 'validatedQuery');
 export const validateTenantPaymentAccountParam = validateSchema(tenantPaymentAccountParamSchema, 'params', 'validatedParams');
+export const validateTenantPayMongoChildAccountActionParam = validateSchema(tenantPayMongoChildAccountActionParamSchema, 'params', 'validatedParams');
 export const validateTenantPaymentAccountBody = validateSchema(tenantPaymentAccountBodySchema, 'body', 'validatedBody');
+export const validateTenantPayMongoChildAccountBody = validateSchema(tenantPayMongoChildAccountBodySchema, 'body', 'validatedBody');
 export const validateCommercePaymentRefundBody = validateSchema(refundBodySchema, 'body', 'validatedBody');

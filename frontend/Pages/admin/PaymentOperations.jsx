@@ -49,17 +49,22 @@ const downloadCsv = (rows) => {
 export default function PaymentOperations() {
   const [loading, setLoading] = useState(false);
   const [savingAccount, setSavingAccount] = useState(false);
+  const [creatingChildAccount, setCreatingChildAccount] = useState(false);
   const [submittingRefund, setSubmittingRefund] = useState(false);
   const [retryingReference, setRetryingReference] = useState('');
+  const [providerAction, setProviderAction] = useState('');
   const [sessions, setSessions] = useState([]);
   const [accounts, setAccounts] = useState([]);
+  const [tenants, setTenants] = useState([]);
   const [settlementReport, setSettlementReport] = useState(null);
   const [certification, setCertification] = useState(null);
+  const [onboardingUrl, setOnboardingUrl] = useState('');
   const [expandedSession, setExpandedSession] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [accountForm, setAccountForm] = useState({
     tenant_id: '',
     provider_merchant_id: '',
+    child_trade_name: '',
     provider_wallet_id: '',
     wallet_status: 'unknown',
     wallet_verified_at: new Date().toISOString().slice(0, 10),
@@ -98,16 +103,18 @@ export default function PaymentOperations() {
     setLoading(true);
     try {
       const filters = statusFilter ? { status: statusFilter } : {};
-      const [sessionResponse, accountResponse, settlementResponse, certificationResponse] = await Promise.all([
+      const [sessionResponse, accountResponse, settlementResponse, certificationResponse, tenantResponse] = await Promise.all([
         adminService.listCommercePaymentSessions(filters),
         adminService.listTenantPaymentAccounts(),
         adminService.getCommerceSettlementReport(filters),
-        adminService.getPayMongoSandboxCertification()
+        adminService.getPayMongoSandboxCertification(),
+        adminService.getTenants('all')
       ]);
       setSessions(sessionResponse.data?.payment_sessions || []);
       setAccounts(accountResponse.data?.payment_accounts || []);
       setSettlementReport(settlementResponse.data?.settlement_report || null);
       setCertification(certificationResponse.data?.certification || null);
+      setTenants(tenantResponse.data || []);
     } catch (error) {
       toast.error(error.response?.data?.message || error.message || 'Failed to load payment operations.');
     } finally {
@@ -121,8 +128,8 @@ export default function PaymentOperations() {
 
   const saveAccount = async (event) => {
     event.preventDefault();
-    if (accountForm.onboarding_status === 'active' && (!accountForm.qrph_enabled || !accountForm.split_enabled || !accountForm.charges_enabled)) {
-      toast.error('Active readiness requires QR Ph, split, and charges flags to be enabled.');
+    if (accountForm.onboarding_status === 'active' && !accountForm.qrph_enabled) {
+      toast.error('Active readiness requires QR Ph to be enabled. Split and charge readiness still require separate wallet/capability evidence.');
       return;
     }
     if ((accountForm.split_enabled || accountForm.charges_enabled) && accountForm.wallet_status !== 'enabled') {
@@ -155,6 +162,104 @@ export default function PaymentOperations() {
     } finally {
       setSavingAccount(false);
     }
+  };
+
+  const createChildAccount = async () => {
+    if (!accountForm.tenant_id) {
+      toast.error('Tenant ID is required before creating a PayMongo child account.');
+      return;
+    }
+    const existing = accountByTenant.get(String(accountForm.tenant_id));
+    if (existing?.provider_merchant_id) {
+      toast.info('This tenant already has a PayMongo child merchant ID on record.');
+      return;
+    }
+    setCreatingChildAccount(true);
+    try {
+      const response = await adminService.createTenantPayMongoChildAccount(accountForm.tenant_id, {
+        trade_name: accountForm.child_trade_name || undefined
+      });
+      const paymentAccount = response.data?.payment_account;
+      const childAccount = response.data?.paymongo_child_account;
+      const returnedOnboardingUrl = childAccount?.onboarding_url || paymentAccount?.metadata?.onboarding_url || '';
+      setOnboardingUrl(returnedOnboardingUrl);
+      setAccountForm((form) => ({
+        ...form,
+        provider_merchant_id: paymentAccount?.provider_merchant_id || childAccount?.id || form.provider_merchant_id,
+        provider_wallet_id: paymentAccount?.provider_wallet_id || form.provider_wallet_id,
+        wallet_status: paymentAccount?.wallet_status || form.wallet_status,
+        onboarding_status: paymentAccount?.onboarding_status || form.onboarding_status,
+        qrph_enabled: Boolean(paymentAccount?.qrph_enabled),
+        split_enabled: Boolean(paymentAccount?.split_enabled),
+        charges_enabled: Boolean(paymentAccount?.charges_enabled),
+        verification_reference: paymentAccount?.metadata?.verification_reference || form.verification_reference,
+        verified_at: paymentAccount?.metadata?.verified_at || form.verified_at,
+        verified_by: paymentAccount?.metadata?.verified_by || form.verified_by
+      }));
+      toast.success(childAccount?.onboarding_url
+        ? 'PayMongo child account created. Continue onboarding from the returned PayMongo link.'
+        : 'PayMongo child account created and saved as pending readiness.');
+      await loadData();
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message || 'Failed to create PayMongo child account.');
+    } finally {
+      setCreatingChildAccount(false);
+    }
+  };
+
+  const operateChildAccount = async (action) => {
+    if (!accountForm.tenant_id) {
+      toast.error('Tenant ID is required before using PayMongo child account actions.');
+      return;
+    }
+    setProviderAction(action);
+    try {
+      const response = await adminService.operateTenantPayMongoChildAccount(accountForm.tenant_id, action);
+      const paymentAccount = response.data?.payment_account;
+      setAccountForm((form) => ({
+        ...form,
+        provider_merchant_id: paymentAccount?.provider_merchant_id || form.provider_merchant_id,
+        provider_wallet_id: paymentAccount?.provider_wallet_id || form.provider_wallet_id,
+        wallet_status: paymentAccount?.wallet_status || form.wallet_status,
+        wallet_verified_at: paymentAccount?.wallet_verified_at ? String(paymentAccount.wallet_verified_at).slice(0, 10) : form.wallet_verified_at,
+        onboarding_status: paymentAccount?.onboarding_status || form.onboarding_status,
+        qrph_enabled: Boolean(paymentAccount?.qrph_enabled),
+        split_enabled: Boolean(paymentAccount?.split_enabled),
+        charges_enabled: Boolean(paymentAccount?.charges_enabled),
+        verification_reference: paymentAccount?.metadata?.verification_reference || form.verification_reference,
+        verified_at: paymentAccount?.metadata?.verified_at ? String(paymentAccount.metadata.verified_at).slice(0, 10) : form.verified_at,
+        verified_by: paymentAccount?.metadata?.verified_by || form.verified_by
+      }));
+      const result = response.data?.provider_action;
+      toast.success(`${action.replace('-', ' ')} completed. Wallet evidence: ${result?.wallet_evidence_detected ? 'yes' : 'no'}, split evidence: ${result?.split_evidence_detected ? 'yes' : 'no'}.`);
+      await loadData();
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message || `Failed to run ${action}.`);
+    } finally {
+      setProviderAction('');
+    }
+  };
+
+  const selectTenant = (tenantId) => {
+    const tenant = tenants.find((entry) => String(entry.id) === String(tenantId));
+    const account = accountByTenant.get(String(tenantId));
+    setOnboardingUrl(account?.metadata?.onboarding_url || '');
+    setAccountForm((form) => ({
+      ...form,
+      tenant_id: tenantId,
+      child_trade_name: tenant?.name || form.child_trade_name,
+      provider_merchant_id: account?.provider_merchant_id || '',
+      provider_wallet_id: account?.provider_wallet_id || '',
+      wallet_status: account?.wallet_status || 'unknown',
+      wallet_verified_at: account?.wallet_verified_at ? String(account.wallet_verified_at).slice(0, 10) : form.wallet_verified_at,
+      onboarding_status: account?.onboarding_status || 'pending',
+      qrph_enabled: Boolean(account?.qrph_enabled),
+      split_enabled: Boolean(account?.split_enabled),
+      charges_enabled: Boolean(account?.charges_enabled),
+      verification_reference: account?.metadata?.verification_reference || '',
+      verified_at: account?.metadata?.verified_at ? String(account.metadata.verified_at).slice(0, 10) : form.verified_at,
+      verified_by: account?.metadata?.verified_by || ''
+    }));
   };
 
   const refundSession = async (event) => {
@@ -270,8 +375,21 @@ export default function PaymentOperations() {
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
+              <Label>Tenant</Label>
+              <select className="w-full h-10 rounded-md border border-slate-300 px-3 text-sm" value={accountForm.tenant_id} onChange={(event) => selectTenant(event.target.value)}>
+                <option value="">Select tenant</option>
+                {tenants.map((tenant) => (
+                  <option key={tenant.id} value={tenant.id}>{tenant.name} ({tenant.status})</option>
+                ))}
+              </select>
+            </div>
+            <div>
               <Label>Tenant ID</Label>
               <Input value={accountForm.tenant_id} onChange={(event) => setAccountForm((form) => ({ ...form, tenant_id: event.target.value }))} required />
+            </div>
+            <div>
+              <Label>Child Account Trade Name</Label>
+              <Input value={accountForm.child_trade_name} onChange={(event) => setAccountForm((form) => ({ ...form, child_trade_name: event.target.value }))} placeholder="Defaults to tenant company name" />
             </div>
             <div>
               <Label>Merchant ID</Label>
@@ -324,7 +442,33 @@ export default function PaymentOperations() {
               </label>
             ))}
           </div>
-          <Button type="submit" disabled={savingAccount}>{savingAccount ? 'Saving...' : 'Save readiness'}</Button>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+            <strong>Fee contract:</strong> DGFY 1% is based on item subtotal and charged to the customer as an added platform fee. PayMongo/provider processing and payout fees are shouldered by the tenant company and reduce company net settlement unless the provider contract changes.
+          </div>
+          {onboardingUrl && (
+            <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
+              <div className="font-semibold">PayMongo onboarding link</div>
+              <a className="mt-1 block break-all underline" href={onboardingUrl} target="_blank" rel="noreferrer">{onboardingUrl}</a>
+              <Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => navigator.clipboard?.writeText(onboardingUrl)}>
+                Copy onboarding link
+              </Button>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={createChildAccount} disabled={creatingChildAccount || !accountForm.tenant_id || Boolean(accountByTenant.get(String(accountForm.tenant_id))?.provider_merchant_id)}>
+              {creatingChildAccount ? 'Creating child...' : 'Create PayMongo child'}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => operateChildAccount('sync-requirements')} disabled={Boolean(providerAction) || !accountForm.provider_merchant_id}>
+              {providerAction === 'sync-requirements' ? 'Syncing...' : 'Sync requirements'}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => operateChildAccount('submit-review')} disabled={Boolean(providerAction) || !accountForm.provider_merchant_id}>
+              {providerAction === 'submit-review' ? 'Submitting...' : 'Submit review'}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => operateChildAccount('activate')} disabled={Boolean(providerAction) || !accountForm.provider_merchant_id}>
+              {providerAction === 'activate' ? 'Activating...' : 'Activate account'}
+            </Button>
+            <Button type="submit" disabled={savingAccount}>{savingAccount ? 'Saving...' : 'Save readiness'}</Button>
+          </div>
         </form>
 
         <form onSubmit={refundSession} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">

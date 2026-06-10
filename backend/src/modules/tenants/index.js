@@ -12,6 +12,7 @@ import { trackEngagementEvent } from '../../services/engagementService.js';
 import { getTenantRegistrationApprovalMode } from '../../config/tenantRegistrationApproval.js';
 import { tenantAdminRepository } from './repositories/tenantAdminRepository.js';
 import { dgfyAccountRepository } from '../dgfy/index.js';
+import { createTenantPayMongoChildAccountUseCase } from '../commercePayments/index.js';
 import { buildRegisterCompanyRequestUseCase } from './usecases/registerCompanyRequestUseCase.js';
 import { buildListTenantsUseCase } from './usecases/listTenantsUseCase.js';
 import { buildApproveTenantUseCase } from './usecases/approveTenantUseCase.js';
@@ -27,6 +28,10 @@ import { buildListTenantCapabilityAuditLogsUseCase } from './usecases/listTenant
 import { readTenantCapabilities } from './usecases/tenantCapabilitySettings.js';
 import tenantConnector from '../../utils/TenantConnector.js';
 
+const shouldAutoCreatePayMongoChildAccounts = () => (
+    String(process.env.PAYMONGO_AUTO_CREATE_CHILD_ACCOUNTS || '').toLowerCase() === 'true'
+);
+
 export const registerCompanyRequestUseCase = buildRegisterCompanyRequestUseCase({
     tenantAdminRepository,
     paypalService,
@@ -34,6 +39,8 @@ export const registerCompanyRequestUseCase = buildRegisterCompanyRequestUseCase(
     addEmailTenantMapping: landlordService.addEmailTenantMapping,
     dgfyAccountRepository,
     provisionTenant,
+    createPayMongoChildAccountForTenant: createTenantPayMongoChildAccountUseCase,
+    shouldAutoCreatePayMongoChildAccounts,
     emailService,
     idGenerator: uuidv4,
     getTenantRegistrationApprovalMode: () => getTenantRegistrationApprovalMode(process.env, logger),
@@ -50,6 +57,8 @@ export const listTenantsUseCase = buildListTenantsUseCase({
 export const approveTenantUseCase = buildApproveTenantUseCase({
     tenantAdminRepository,
     provisionTenant,
+    createPayMongoChildAccountForTenant: createTenantPayMongoChildAccountUseCase,
+    shouldAutoCreatePayMongoChildAccounts,
     emailService,
     logger
 });

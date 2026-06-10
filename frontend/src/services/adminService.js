@@ -241,6 +241,20 @@ export const upsertTenantPaymentAccount = async (tenantId, payload) => {
     return response.data;
 };
 
+export const createTenantPayMongoChildAccount = async (tenantId, payload = {}) => {
+    const response = await adminApi.post(`/commerce-payments/admin/tenants/${tenantId}/paymongo-child-account`, payload, {
+        headers: requireAdminHeaders()
+    });
+    return response.data;
+};
+
+export const operateTenantPayMongoChildAccount = async (tenantId, action) => {
+    const response = await adminApi.post(`/commerce-payments/admin/tenants/${tenantId}/paymongo-child-account/${action}`, {}, {
+        headers: requireAdminHeaders()
+    });
+    return response.data;
+};
+
 /**
  * Get feedback statistics
  */

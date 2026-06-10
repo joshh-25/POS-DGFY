@@ -2,6 +2,8 @@ import {
   validateCommercePaymentRefundBody,
   validateCommercePaymentSessionParam,
   validateListCommercePaymentSessionsQuery,
+  validateTenantPayMongoChildAccountActionParam,
+  validateTenantPayMongoChildAccountBody,
   validateTenantPaymentAccountBody,
   validateTenantPaymentAccountParam
 } from '../src/validators/commercePaymentValidator.js';
@@ -85,5 +87,30 @@ describe('commerce payment validators', () => {
     expect(rejected.nextCalled).toBe(false);
     expect(rejected.statusCode).toBe(422);
     expect(accepted.nextCalled).toBe(true);
+  });
+
+  it('sanitizes optional PayMongo child account trade names', async () => {
+    const result = await runMiddleware(validateTenantPayMongoChildAccountBody, {
+      body: {
+        trade_name: ' Tenant Trade ',
+        ignored: 'removed'
+      }
+    });
+
+    expect(result.nextCalled).toBe(true);
+    expect(result.req.validatedBody).toEqual({ trade_name: 'Tenant Trade' });
+  });
+
+  it('only accepts supported PayMongo child account provider actions', async () => {
+    const accepted = await runMiddleware(validateTenantPayMongoChildAccountActionParam, {
+      params: { tenant_id: '550e8400-e29b-41d4-a716-446655440000', action: 'sync-requirements' }
+    });
+    const rejected = await runMiddleware(validateTenantPayMongoChildAccountActionParam, {
+      params: { tenant_id: '550e8400-e29b-41d4-a716-446655440000', action: 'delete-child' }
+    });
+
+    expect(accepted.nextCalled).toBe(true);
+    expect(rejected.nextCalled).toBe(false);
+    expect(rejected.statusCode).toBe(422);
   });
 });

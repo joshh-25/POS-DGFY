@@ -4,10 +4,12 @@ import { commercePaymentRepository } from './repositories/commercePaymentReposit
 import { buildHandlePayMongoCommerceWebhookUseCase } from './usecases/handlePayMongoCommerceWebhookUseCase.js';
 import {
   buildCreateCommercePaymentRefundUseCase,
+  buildCreateTenantPayMongoChildAccountUseCase,
   buildGetCommercePaymentSessionUseCase,
   buildGetCommerceSettlementReportUseCase,
   buildListCommercePaymentSessionsUseCase,
   buildListTenantPaymentAccountsUseCase,
+  buildOperateTenantPayMongoChildAccountUseCase,
   buildRetryCommercePaymentFinalizationUseCase,
   buildUpsertTenantPaymentAccountUseCase
 } from './usecases/commercePaymentAdminUseCases.js';
@@ -36,6 +38,16 @@ export const retryCommercePaymentFinalizationUseCase = buildRetryCommercePayment
 });
 
 export const createCommercePaymentRefundUseCase = buildCreateCommercePaymentRefundUseCase({
+  commercePaymentRepository,
+  paymongoService
+});
+
+export const createTenantPayMongoChildAccountUseCase = buildCreateTenantPayMongoChildAccountUseCase({
+  commercePaymentRepository,
+  paymongoService
+});
+
+export const operateTenantPayMongoChildAccountUseCase = buildOperateTenantPayMongoChildAccountUseCase({
   commercePaymentRepository,
   paymongoService
 });

@@ -30,9 +30,8 @@ const RESOLVED_WEBHOOK_SECRET = PAYMONGO_MODE === 'live'
     ? (PAYMONGO_LIVE_WEBHOOK_SECRET || PAYMONGO_WEBHOOK_SECRET)
     : (PAYMONGO_TEST_WEBHOOK_SECRET || PAYMONGO_WEBHOOK_SECRET);
 
-const BASE_URL = PAYMONGO_MODE === 'live'
-    ? 'https://api.paymongo.com/v1'
-    : 'https://api-sandbox.paymongo.com/v1';
+const BASE_URL = process.env.PAYMONGO_API_BASE_URL || 'https://api.paymongo.com/v1';
+const ACCOUNTS_BASE_URL = process.env.PAYMONGO_ACCOUNTS_API_BASE_URL || 'https://api.paymongo.com/v2';
 
 const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = Number.parseInt(
     process.env.PAYMONGO_WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS || '300',
@@ -52,6 +51,7 @@ const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = Number.parseInt(
 export class PayMongoService {
     constructor() {
         this.baseUrl = BASE_URL;
+        this.accountsBaseUrl = ACCOUNTS_BASE_URL;
         this.publicKey = RESOLVED_PUBLIC_KEY;
         this.secretKey = RESOLVED_SECRET_KEY;
         this.webhookSecret = RESOLVED_WEBHOOK_SECRET;
@@ -69,6 +69,105 @@ export class PayMongoService {
             'Authorization': `Basic ${encoded}`,
             'Content-Type': 'application/json'
         };
+    }
+
+    async createChildMerchant({ tradeName, type = 'merchant', features = ['payment_gateway', 'basic_wallet'], metadata = {} }) {
+        try {
+            const cleanTradeName = String(tradeName || '').trim();
+            if (!cleanTradeName) {
+                throw new Error('tradeName is required to create a PayMongo child merchant');
+            }
+
+            const response = await axios.post(`${this.baseUrl}/merchants/children`, {
+                data: {
+                    attributes: {
+                        type,
+                        trade_name: cleanTradeName,
+                        features,
+                        metadata
+                    }
+                }
+            }, {
+                headers: this.getAuthHeader()
+            });
+
+            logger.info(`PayMongo child merchant created: ${response.data?.data?.id || cleanTradeName}`);
+            return response.data.data;
+        } catch (error) {
+            logger.error('PayMongo Create Child Merchant Error:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    async listChildAccounts(params = {}) {
+        try {
+            const response = await axios.get(`${this.baseUrl}/merchants/child_accounts`, {
+                headers: this.getAuthHeader(),
+                params
+            });
+            return response.data.data;
+        } catch (error) {
+            logger.error('PayMongo List Child Accounts Error:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    async retrieveChildMerchantRequirements(childMerchantId) {
+        try {
+            const cleanChildMerchantId = String(childMerchantId || '').trim();
+            if (!cleanChildMerchantId) {
+                throw new Error('childMerchantId is required to retrieve PayMongo child merchant requirements');
+            }
+
+            const response = await axios.get(`${this.baseUrl}/merchants/children/${cleanChildMerchantId}/requirements`, {
+                headers: this.getAuthHeader()
+            });
+
+            return response.data.data;
+        } catch (error) {
+            logger.error('PayMongo Retrieve Child Merchant Requirements Error:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    async submitChildMerchantForReview(childMerchantId) {
+        try {
+            const cleanChildMerchantId = String(childMerchantId || '').trim();
+            if (!cleanChildMerchantId) {
+                throw new Error('childMerchantId is required to submit PayMongo child merchant for review');
+            }
+
+            const response = await axios.post(`${this.baseUrl}/merchants/children/${cleanChildMerchantId}/submit`, {
+                data: { attributes: {} }
+            }, {
+                headers: this.getAuthHeader()
+            });
+
+            return response.data.data;
+        } catch (error) {
+            logger.error('PayMongo Submit Child Merchant Error:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    async activateAccount(accountId) {
+        try {
+            const cleanAccountId = String(accountId || '').trim();
+            if (!cleanAccountId) {
+                throw new Error('accountId is required to activate PayMongo account');
+            }
+
+            const response = await axios.post(`${this.accountsBaseUrl}/accounts/${cleanAccountId}/activate`, {
+                data: { attributes: {} }
+            }, {
+                headers: this.getAuthHeader()
+            });
+
+            return response.data.data;
+        } catch (error) {
+            logger.error('PayMongo Activate Account Error:', error.response?.data || error.message);
+            throw error;
+        }
     }
 
     /**

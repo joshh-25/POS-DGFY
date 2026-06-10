@@ -3496,6 +3496,11 @@ Create a PayMongo QR Ph payment session for Storefront online checkout. This is 
     "expires_at": "2026-05-19T12:30:00.000Z",
     "service_fee_amount": 10,
     "service_fee_label": "DGFY convenience fee",
+    "fee_policy": {
+      "dgfy_fee_basis": "subtotal",
+      "dgfy_fee_charged_to": "customer",
+      "provider_fee_shoulder": "tenant_company"
+    },
     "total_amount": 1010
   }
 }
@@ -3505,6 +3510,7 @@ Create a PayMongo QR Ph payment session for Storefront online checkout. This is 
 - The Storefront quote remains authoritative for totals.
 - The mandatory DGFY 1% is stored as `service_fee_amount` and sent to PayMongo as a fixed split amount in centavos.
 - The tenant PayMongo child merchant receives the remaining net settlement through `transfer_to`.
+- PayMongo/provider processing, payout, bank, dispute, and related fees are not added to the DGFY 1%; they are shouldered by the tenant company and reduce company net settlement unless a signed provider contract says otherwise.
 - QR Ph sessions finalize the Storefront order only after PayMongo sends `payment.paid`.
 
 ### GET /store/checkout/payment-sessions/:payment_session_id
@@ -3527,7 +3533,7 @@ For local sandbox runs through ngrok, configure PayMongo with:
 https://NGROK-FORWARDING-HOST/api/v1/commerce-payments/paymongo/webhook
 ```
 
-Required events: `payment.paid`, `payment.failed`, `payment.refund.updated`, `payment.refunded`, and `qrph.expired`.
+Required events: `payment.paid`, `payment.failed`, `payment.refund.updated`, `payment.refunded`, `qrph.expired`, and linked-account activation/decline events (`account.*` or `merchant.*` as exposed by the PayMongo Dashboard for the account).
 
 Unsigned manual probes should return `401 Invalid PayMongo webhook signature`. That is expected and confirms the public URL reaches the webhook route while still rejecting forged payloads.
 
@@ -3556,7 +3562,25 @@ The production server must use `PAYMONGO_MODE=live` and `PAYMONGO_LIVE_WEBHOOK_S
 | `POST` | `/payment-sessions/:payment_session_id/retry-finalization` | Retry local order finalization for paid unresolved sessions without creating duplicate orders. |
 | `POST` | `/payment-sessions/:payment_session_id/refunds` | Submit a PayMongo refund for a paid/finalized session. |
 | `GET` | `/tenant-payment-accounts` | List tenant PayMongo child merchant readiness records. Supports `tenant_id`. |
+| `POST` | `/tenants/:tenant_id/paymongo-child-account` | Create a PayMongo merchant child account for an existing tenant and store it as pending readiness. |
+| `POST` | `/tenants/:tenant_id/paymongo-child-account/sync-requirements` | Pull current PayMongo child-merchant onboarding requirements into local readiness metadata. |
+| `POST` | `/tenants/:tenant_id/paymongo-child-account/submit-review` | Submit the PayMongo child merchant for provider review after required tenant/company details are completed. |
+| `POST` | `/tenants/:tenant_id/paymongo-child-account/activate` | Request PayMongo account activation and store only provider-evidenced readiness flags. |
 | `PUT` | `/tenants/:tenant_id/payment-account` | Create/update tenant PayMongo child merchant readiness. |
+
+**Create Tenant PayMongo Child Account Request**
+```json
+{
+  "trade_name": "Tenant Trading Name"
+}
+```
+
+`trade_name` is optional; when omitted the backend uses the tenant company name. The endpoint is idempotent when a tenant already has a `provider_merchant_id`. It stores the returned PayMongo child merchant ID as pending readiness and must not enable QR Ph/split/charges until PayMongo activation and wallet evidence are recorded.
+
+**Child Account Provider Actions**
+- `sync-requirements` stores the provider's current KYC/business requirement status so operators can see what is still missing.
+- `submit-review` asks PayMongo to review the child merchant after the tenant/company finishes the required information.
+- `activate` may mark `onboarding_status=active` and `qrph_enabled=true` only when PayMongo accepts activation. It must not mark wallet, split, or charge readiness unless the provider response contains explicit enabled wallet/capability evidence.
 
 **Tenant Payment Account Request**
 ```json
@@ -4540,10 +4564,10 @@ Clients must fail closed when account registration lacks `terms_version`, `priva
   "data": {
     "provider_clause": "DGFY is an e-marketplace/platform service provider...",
     "versions": {
-      "accountTerms": "dgfy-account-terms-2026-05-26",
-      "privacy": "dgfy-privacy-2026-05-26",
-      "marketplaceTerms": "dgfy-marketplace-provider-2026-05-26",
-      "companyTerms": "dgfy-company-terms-2026-05-26"
+      "accountTerms": "dgfy-account-terms-2026-06-08",
+      "privacy": "dgfy-privacy-2026-06-08",
+      "marketplaceTerms": "dgfy-marketplace-provider-2026-06-08",
+      "companyTerms": "dgfy-company-terms-2026-06-08"
     },
     "flows": {
       "account_registration": {
@@ -4580,9 +4604,9 @@ Create a global DGFY account used for customer account surfaces and business reg
   "confirm_password": "minimum8",
   "email_otp_code": "123456",
   "accepted_terms": true,
-  "terms_version": "dgfy-account-terms-2026-05-26",
-  "privacy_version": "dgfy-privacy-2026-05-26",
-  "marketplace_terms_version": "dgfy-marketplace-provider-2026-05-26"
+  "terms_version": "dgfy-account-terms-2026-06-08",
+  "privacy_version": "dgfy-privacy-2026-06-08",
+  "marketplace_terms_version": "dgfy-marketplace-provider-2026-06-08"
 }
 ```
 
@@ -5025,8 +5049,8 @@ Public company registration derives founder email, phone, username seed, and pas
   "name": "Example Foods",
   "workflowMode": "food_manufacturing",
   "accepted_company_terms": true,
-  "company_terms_version": "dgfy-company-terms-2026-05-26",
-  "marketplace_terms_version": "dgfy-marketplace-provider-2026-05-26"
+  "company_terms_version": "dgfy-company-terms-2026-06-08",
+  "marketplace_terms_version": "dgfy-marketplace-provider-2026-06-08"
 }
 ```
 Submit a public company registration request.
