@@ -22,6 +22,7 @@ const dgfyAuthMock = vi.hoisted(() => ({
   logoutDgfyAccount: vi.fn(),
   registerDgfyAccount: vi.fn(),
   requestDgfyEmailVerification: vi.fn(),
+  requestDgfyRegistrationEmailVerification: vi.fn(),
   requestDgfyPasswordReset: vi.fn(),
   verifyDgfyEmail: vi.fn(),
   startDgfyTenantSession: vi.fn()
@@ -120,6 +121,7 @@ describe('DGFY auth and business registration routes', () => {
     dgfyAuthMock.logoutDgfyAccount.mockReset();
     dgfyAuthMock.registerDgfyAccount.mockReset();
     dgfyAuthMock.requestDgfyEmailVerification.mockReset();
+    dgfyAuthMock.requestDgfyRegistrationEmailVerification.mockReset();
     dgfyAuthMock.verifyDgfyEmail.mockReset();
     dgfyAuthMock.requestDgfyPasswordReset.mockReset();
     dgfyAuthMock.startDgfyTenantSession.mockReset();
@@ -152,12 +154,14 @@ describe('DGFY auth and business registration routes', () => {
 
   it('renders the canonical DGFY create-account route with the required field order and legal acknowledgement', async () => {
     dgfyAuthMock.registerDgfyAccount.mockResolvedValue({ token: 'dgfy-token', account: dgfyAccount });
-    dgfyAuthMock.requestDgfyEmailVerification.mockResolvedValue({});
-    dgfyAuthMock.verifyDgfyEmail.mockResolvedValue({ account: { ...dgfyAccount, is_email_verified: true } });
+    dgfyAuthMock.requestDgfyRegistrationEmailVerification.mockResolvedValue({});
+    dgfyAuthMock.fetchDgfyMe
+      .mockRejectedValueOnce({ response: { status: 401 } })
+      .mockResolvedValueOnce({ token: 'dgfy-token', account: dgfyAccount });
 
     renderRoutes(['/dgfy/auth?intent=customer&mode=create-account&return_to=%2Fdone']);
 
-    const submitButton = await screen.findByRole('button', { name: /^create account$/i });
+    const submitButton = await screen.findByRole('button', { name: /continue to email verification/i });
     const labels = Array.from(submitButton.closest('form').querySelectorAll('label'))
       .map((label) => label.textContent.trim());
     expect(labels.slice(0, 7)).toEqual([
@@ -182,32 +186,32 @@ describe('DGFY auth and business registration routes', () => {
     fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Account Terms/i));
     fireEvent.click(submitButton);
 
+    await waitFor(() => expect(dgfyAuthMock.requestDgfyRegistrationEmailVerification).toHaveBeenCalledWith('ada@example.test'));
+    expect(dgfyAuthMock.registerDgfyAccount).not.toHaveBeenCalled();
+    expect(await screen.findByText(/check your email/i)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('Verification Code'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: /create verified account/i }));
+
     await waitFor(() => expect(dgfyAuthMock.registerDgfyAccount).toHaveBeenCalledWith(expect.objectContaining({
       first_name: 'Ada',
       middle_name: 'Byron',
       last_name: 'Lovelace',
       email: 'ada@example.test',
       phone: '+639123456789',
+      email_otp_code: '123456',
       accepted_terms: true,
       terms_version: 'dgfy-account-terms-2026-06-08',
       privacy_version: 'dgfy-privacy-2026-06-08',
       marketplace_terms_version: 'dgfy-marketplace-provider-2026-06-08'
     })));
-    expect(dgfyAuthMock.requestDgfyEmailVerification).toHaveBeenCalledWith('dgfy-token');
-    expect(await screen.findByText(/check your email/i)).toBeTruthy();
-
-    fireEvent.change(screen.getByLabelText('Verification Code'), { target: { value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: /verify email/i }));
-
-    await waitFor(() => expect(dgfyAuthMock.verifyDgfyEmail).toHaveBeenCalledWith('123456'));
-    expect(await screen.findByRole('button', { name: /^login$/i })).toBeTruthy();
-    expect(screen.getByLabelText('Email Address').value).toBe('ada@example.test');
+    expect(await screen.findByText('Done screen')).toBeTruthy();
   });
 
   it('returns from legal terms to create-account with the filled registration form preserved', async () => {
     renderRoutes(['/dgfy/auth?intent=customer&mode=create-account&return_to=%2Fdone']);
 
-    expect(await screen.findByRole('button', { name: /^create account$/i })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: /continue to email verification/i })).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Last Name'), { target: { value: 'Lovelace' } });
     fireEvent.change(screen.getByLabelText('First Name'), { target: { value: 'Ada' } });
@@ -221,7 +225,7 @@ describe('DGFY auth and business registration routes', () => {
     expect(await screen.findByRole('heading', { name: 'DGFY Account Terms' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('link', { name: /back to registration/i }));
-    expect(await screen.findByRole('button', { name: /^create account$/i })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: /continue to email verification/i })).toBeTruthy();
     expect(screen.getByLabelText('Last Name').value).toBe('Lovelace');
     expect(screen.getByLabelText('First Name').value).toBe('Ada');
     expect(screen.getByLabelText(/Middle Name/).value).toBe('Byron');
@@ -231,9 +235,8 @@ describe('DGFY auth and business registration routes', () => {
     expect(screen.getByLabelText('Confirm Password').value).toBe('password123');
   });
 
-  it('keeps the verification step usable when the first verification code request fails', async () => {
-    dgfyAuthMock.registerDgfyAccount.mockResolvedValue({ token: 'dgfy-token', account: dgfyAccount });
-    dgfyAuthMock.requestDgfyEmailVerification.mockRejectedValue({
+  it('does not create the account when the first verification code request fails', async () => {
+    dgfyAuthMock.requestDgfyRegistrationEmailVerification.mockRejectedValueOnce({
       response: {
         data: {
           error_code: 'EMAIL_OTP_DELIVERY_FAILED',
@@ -243,7 +246,7 @@ describe('DGFY auth and business registration routes', () => {
     });
 
     renderRoutes(['/dgfy/auth?intent=customer&mode=create-account&return_to=%2Fdone']);
-    expect(await screen.findByRole('button', { name: /^create account$/i })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: /continue to email verification/i })).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Last Name'), { target: { value: 'Lovelace' } });
     fireEvent.change(screen.getByLabelText('First Name'), { target: { value: 'Ada' } });
@@ -253,17 +256,16 @@ describe('DGFY auth and business registration routes', () => {
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
     fireEvent.change(screen.getByLabelText('Confirm Password'), { target: { value: 'password123' } });
     fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Account Terms/i));
-    fireEvent.click(screen.getByRole('button', { name: /^create account$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /continue to email verification/i }));
 
-    expect(await screen.findByText(/verification requires attention/i)).toBeTruthy();
-    expect(screen.getByText(/account was created, but the verification code could not be delivered/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /resend code/i })).toBeTruthy();
+    await waitFor(() => expect(dgfyAuthMock.requestDgfyRegistrationEmailVerification).toHaveBeenCalledWith('ada@example.test'));
+    expect(dgfyAuthMock.registerDgfyAccount).not.toHaveBeenCalled();
+    expect(screen.queryByText(/check your email/i)).toBeNull();
   });
 
   it('explains when the verification code has expired and requires resend', async () => {
-    dgfyAuthMock.registerDgfyAccount.mockResolvedValue({ token: 'dgfy-token', account: dgfyAccount });
-    dgfyAuthMock.requestDgfyEmailVerification.mockResolvedValue({});
-    dgfyAuthMock.verifyDgfyEmail.mockRejectedValue({
+    dgfyAuthMock.requestDgfyRegistrationEmailVerification.mockResolvedValue({});
+    dgfyAuthMock.registerDgfyAccount.mockRejectedValue({
       response: {
         data: {
           error_code: 'EMAIL_OTP_EXPIRED',
@@ -273,7 +275,7 @@ describe('DGFY auth and business registration routes', () => {
     });
 
     renderRoutes(['/dgfy/auth?intent=customer&mode=create-account&return_to=%2Fdone']);
-    expect(await screen.findByRole('button', { name: /^create account$/i })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: /continue to email verification/i })).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Last Name'), { target: { value: 'Lovelace' } });
     fireEvent.change(screen.getByLabelText('First Name'), { target: { value: 'Ada' } });
@@ -283,10 +285,10 @@ describe('DGFY auth and business registration routes', () => {
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
     fireEvent.change(screen.getByLabelText('Confirm Password'), { target: { value: 'password123' } });
     fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Account Terms/i));
-    fireEvent.click(screen.getByRole('button', { name: /^create account$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /continue to email verification/i }));
 
     fireEvent.change(await screen.findByLabelText('Verification Code'), { target: { value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: /verify email/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create verified account/i }));
 
     expect(await screen.findByText(/^verification code expired$/i)).toBeTruthy();
     expect(screen.getByText(/request a new code, then enter the latest 6-digit code/i)).toBeTruthy();
@@ -331,6 +333,10 @@ describe('DGFY auth and business registration routes', () => {
       token: 'dgfy-token',
       account: dgfyAccount
     });
+    dgfyAuthMock.startDgfyTenantSession.mockResolvedValue({
+      token: 'ims-token',
+      company: { token: 'token-autofoods-12345678' }
+    });
     apiMock.post.mockResolvedValueOnce({
       data: {
         success: true,
@@ -365,6 +371,46 @@ describe('DGFY auth and business registration routes', () => {
     }, {
       headers: { Authorization: 'Bearer dgfy-token' }
     }));
-    expect(await screen.findByText('Company Created')).toBeTruthy();
+    await waitFor(() => expect(dgfyAuthMock.startDgfyTenantSession).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      companyToken: 'token-autofoods-12345678'
+    }, 'dgfy-token'));
+    expect(await screen.findByText('Dashboard screen')).toBeTruthy();
+  });
+
+  it('falls back to SKUpervisor login when the automatic IMS session cannot start', async () => {
+    dgfyAuthMock.fetchDgfyMe.mockResolvedValueOnce({
+      token: 'dgfy-token',
+      account: dgfyAccount
+    });
+    dgfyAuthMock.startDgfyTenantSession.mockRejectedValue({
+      response: { data: { message: 'Unable to start a SKUpervisor session for this DGFY account.' } }
+    });
+    apiMock.post.mockResolvedValueOnce({
+      data: {
+        success: true,
+        message: 'Company registered and activated successfully. You can sign in now.',
+        data: {
+          id: 'tenant-1',
+          name: 'Auto Foods',
+          status: 'active',
+          company_token: 'token-autofoods-12345678',
+          workflow_mode: 'food_manufacturing'
+        }
+      }
+    });
+
+    renderRoutes(['/register-company#business-registration']);
+
+    expect(await screen.findByText(/DGFY account connected/i)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Auto Foods' } });
+    fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
+    fireEvent.click(screen.getByRole('button', { name: /create company/i }));
+
+    await waitFor(() => expect(dgfyAuthMock.startDgfyTenantSession).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      companyToken: 'token-autofoods-12345678'
+    }, 'dgfy-token'));
+    expect(await screen.findByText('Login screen')).toBeTruthy();
   });
 });
