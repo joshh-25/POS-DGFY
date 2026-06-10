@@ -17,7 +17,7 @@
 - [Food & Beverage Mode Addendum (2026-05-06)](#food--beverage-mode-addendum-2026-05-06)
 - [Item Financial Readiness Addendum (2026-05-07)](#item-financial-readiness-addendum-2026-05-07)
 - [Account Phone Contact Addendum (2026-05-15)](#account-phone-contact-addendum-2026-05-15)
-- [DGFY Legal Acknowledgement Addendum (2026-05-26)](#dgfy-legal-acknowledgement-addendum-2026-05-26)
+- [DGFY Legal Acknowledgement Addendum (2026-06-08)](#dgfy-legal-acknowledgement-addendum-2026-06-08)
 - [DGFY Customer Account Addendum (2026-05-24)](#dgfy-customer-account-addendum-2026-05-24)
 - [Platform Admin Capability Audit Addendum (2026-06-07)](#platform-admin-capability-audit-addendum-2026-06-07)
 
@@ -44,7 +44,7 @@
 - [20. POS Cash Drawer Events Table](#20-pos-cash-drawer-events-table)
 - [Food & Beverage Mode Addendum (2026-05-06)](#food--beverage-mode-addendum-2026-05-06)
 - [Item Financial Readiness Addendum (2026-05-07)](#item-financial-readiness-addendum-2026-05-07)
-- [DGFY Legal Acknowledgement Addendum (2026-05-26)](#dgfy-legal-acknowledgement-addendum-2026-05-26)
+- [DGFY Legal Acknowledgement Addendum (2026-06-08)](#dgfy-legal-acknowledgement-addendum-2026-06-08)
 - [DGFY Customer Account Addendum (2026-05-24)](#dgfy-customer-account-addendum-2026-05-24)
 - [Platform Admin Capability Audit Addendum (2026-06-07)](#platform-admin-capability-audit-addendum-2026-06-07)
 
@@ -180,7 +180,7 @@ Validation contract:
   - `20260422000001-add-compliance-downgrade-override-controls.cjs` adds governed downgrade columns, audit event types, and controlled downgrade trigger support.
   - `20260422000002-harden-compliance-downgrade-controls.cjs` tightens trigger invariants (same-update marker mutation, no mixed override+revert mutation, and tenant one-per-cycle enforcement parity).
 
-## DGFY Legal Acknowledgement Addendum (2026-05-26)
+## DGFY Legal Acknowledgement Addendum (2026-06-08)
 
 DGFY account registration and public company registration require versioned ToS/T&C acknowledgement before the mutation proceeds.
 
@@ -1302,8 +1302,8 @@ CREATE TABLE system_settings (
 
 Landlord-level payment routing tables support PayMongo QR Ph Storefront payments without coupling provider webhooks to tenant-local lookups:
 
-- `tenant_payment_accounts`: one row per UUID tenant/provider with PayMongo child merchant ID, wallet ID, wallet status (`unknown`, `closed_loop`, `enabled`, `restricted`), wallet verification timestamp, onboarding status, QR Ph readiness, split readiness, charge readiness, requirements snapshot, readiness evidence metadata, and last sync time.
-- `commerce_payment_sessions`: one row per Storefront online payment attempt with UUID `tenant_id`, immutable checkout payload, DGFY fee snapshot, total amount in pesos and centavos, PayMongo Payment Intent/Payment Method/Payment IDs, QR image URL, expiration, webhook state, split payload, final `pos_transaction_id`, and manual-resolution failure fields.
+- `tenant_payment_accounts`: one row per UUID tenant/provider with PayMongo child merchant ID, wallet ID, wallet status (`unknown`, `closed_loop`, `enabled`, `restricted`), wallet verification timestamp, onboarding status, QR Ph readiness, split readiness, charge readiness, requirements snapshot, readiness evidence metadata, fee-contract metadata, and last sync time.
+- `commerce_payment_sessions`: one row per Storefront online payment attempt with UUID `tenant_id`, immutable checkout payload, DGFY fee snapshot, `fee_policy` snapshot (`dgfy_fee_basis=subtotal`, `dgfy_fee_charged_to=customer`, `provider_fee_shoulder=tenant_company`), total amount in pesos and centavos, PayMongo Payment Intent/Payment Method/Payment IDs, QR image URL, expiration, webhook state, split payload, final `pos_transaction_id`, and manual-resolution failure fields.
 - `commerce_payment_refunds`: one row per PayMongo refund attempt with UUID `tenant_id`, public refund reference, linked commerce session, provider payment/refund IDs, amount in centavos, reason, notes, refund strategy, split-refund payload, provider payload, status, failure fields, and requester.
 - Admin settlement reporting is derived from `commerce_payment_sessions` plus `commerce_payment_refunds`; it is a reconciliation view over stored local payment evidence, not a PayMongo payout ledger.
 

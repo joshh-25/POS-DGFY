@@ -57,30 +57,30 @@ const dgfyAccount = {
 };
 
 const dgfyLegalTerms = {
-  provider_clause: 'DGFY is an e-marketplace/platform service provider. The seller owns the product, sets the price, fulfills the order, and remains the seller of record. DGFY facilitates the sale, collects payment through a licensed payment partner, deducts disclosed fees, and remits the seller’s net settlement.',
+  provider_clause: 'DGFY is an e-marketplace/platform service provider. The seller owns the product, sets the price, fulfills the order, and remains the seller of record. Online payments are processed by licensed payment partners such as PayMongo; DGFY does not operate a stored-value wallet or hold seller settlement funds. When PayMongo QR Ph checkout is used, the disclosed DGFY platform fee is 1% of the item subtotal and is charged to the customer as an added platform fee. PayMongo/provider processing, payout, bank, dispute, and related provider fees are shouldered by the registered company and reduce the company net settlement unless a separate signed provider contract says otherwise.',
   flows: {
     account_registration: {
       snapshot: {
-        terms_version: 'dgfy-account-terms-2026-05-26',
-        privacy_version: 'dgfy-privacy-2026-05-26',
-        marketplace_terms_version: 'dgfy-marketplace-provider-2026-05-26',
-        acknowledgement_text: 'I agree to the DGFY Terms, Privacy Policy, and marketplace account terms. DGFY is an e-marketplace/platform service provider. The seller owns the product, sets the price, fulfills the order, and remains the seller of record. DGFY facilitates the sale, collects payment through a licensed payment partner, deducts disclosed fees, and remits the seller’s net settlement.'
+        terms_version: 'dgfy-account-terms-2026-06-08',
+        privacy_version: 'dgfy-privacy-2026-06-08',
+        marketplace_terms_version: 'dgfy-marketplace-provider-2026-06-08',
+        acknowledgement_text: 'I agree to the DGFY Terms, Privacy Policy, and marketplace account terms. DGFY is an e-marketplace/platform service provider. The seller owns the product, sets the price, fulfills the order, and remains the seller of record. Online payments are processed by licensed payment partners such as PayMongo; DGFY does not operate a stored-value wallet or hold seller settlement funds. When PayMongo QR Ph checkout is used, the disclosed DGFY platform fee is 1% of the item subtotal and is charged to the customer as an added platform fee. PayMongo/provider processing, payout, bank, dispute, and related provider fees are shouldered by the registered company and reduce the company net settlement unless a separate signed provider contract says otherwise.'
       },
       documents: [
-        { key: 'accountTerms', title: 'DGFY Account Terms', version: 'dgfy-account-terms-2026-05-26', summary: 'Account terms', href: '/legal/dgfy-account-terms' },
-        { key: 'privacy', title: 'DGFY Privacy Policy', version: 'dgfy-privacy-2026-05-26', summary: 'Privacy terms', href: '/privacy' },
-        { key: 'marketplaceTerms', title: 'DGFY Marketplace Provider Terms', version: 'dgfy-marketplace-provider-2026-05-26', summary: 'Marketplace terms', href: '/legal/dgfy-marketplace-provider-terms' }
+        { key: 'accountTerms', title: 'DGFY Account Terms', version: 'dgfy-account-terms-2026-06-08', summary: 'Account terms', href: '/legal/dgfy-account-terms' },
+        { key: 'privacy', title: 'DGFY Privacy Policy', version: 'dgfy-privacy-2026-06-08', summary: 'Privacy terms', href: '/privacy' },
+        { key: 'marketplaceTerms', title: 'DGFY Marketplace Provider Terms', version: 'dgfy-marketplace-provider-2026-06-08', summary: 'Marketplace terms', href: '/legal/dgfy-marketplace-provider-terms' }
       ]
     },
     company_registration: {
       snapshot: {
-        company_terms_version: 'dgfy-company-terms-2026-05-26',
-        marketplace_terms_version: 'dgfy-marketplace-provider-2026-05-26',
-        acknowledgement_text: 'I confirm that the registered company is the seller of record for products, services, prices, fulfillment, customer support, tax obligations, and payout account ownership. DGFY is an e-marketplace/platform service provider. The seller owns the product, sets the price, fulfills the order, and remains the seller of record. DGFY facilitates the sale, collects payment through a licensed payment partner, deducts disclosed fees, and remits the seller’s net settlement.'
+        company_terms_version: 'dgfy-company-terms-2026-06-08',
+        marketplace_terms_version: 'dgfy-marketplace-provider-2026-06-08',
+        acknowledgement_text: 'I confirm that the registered company is the seller of record for products, services, prices, fulfillment, customer support, tax obligations, and payout account ownership. DGFY is an e-marketplace/platform service provider. The seller owns the product, sets the price, fulfills the order, and remains the seller of record. Online payments are processed by licensed payment partners such as PayMongo; DGFY does not operate a stored-value wallet or hold seller settlement funds. When PayMongo QR Ph checkout is used, the disclosed DGFY platform fee is 1% of the item subtotal and is charged to the customer as an added platform fee. PayMongo/provider processing, payout, bank, dispute, and related provider fees are shouldered by the registered company and reduce the company net settlement unless a separate signed provider contract says otherwise.'
       },
       documents: [
-        { key: 'companyTerms', title: 'DGFY Company Registration Terms', version: 'dgfy-company-terms-2026-05-26', summary: 'Company terms', href: '/legal/dgfy-company-terms' },
-        { key: 'marketplaceTerms', title: 'DGFY Marketplace Provider Terms', version: 'dgfy-marketplace-provider-2026-05-26', summary: 'Marketplace terms', href: '/legal/dgfy-marketplace-provider-terms' }
+        { key: 'companyTerms', title: 'DGFY Company Registration Terms', version: 'dgfy-company-terms-2026-06-08', summary: 'Company terms', href: '/legal/dgfy-company-terms' },
+        { key: 'marketplaceTerms', title: 'DGFY Marketplace Provider Terms', version: 'dgfy-marketplace-provider-2026-06-08', summary: 'Marketplace terms', href: '/legal/dgfy-marketplace-provider-terms' }
       ]
     }
   }
@@ -312,9 +312,9 @@ describe('RegisterCompany DGFY handoff', () => {
       phone: '+639123456789',
       email_otp_code: '123456',
       accepted_terms: true,
-      terms_version: 'dgfy-account-terms-2026-05-26',
-      privacy_version: 'dgfy-privacy-2026-05-26',
-      marketplace_terms_version: 'dgfy-marketplace-provider-2026-05-26'
+      terms_version: 'dgfy-account-terms-2026-06-08',
+      privacy_version: 'dgfy-privacy-2026-06-08',
+      marketplace_terms_version: 'dgfy-marketplace-provider-2026-06-08'
     })));
   });
 
@@ -382,8 +382,8 @@ describe('RegisterCompany DGFY handoff', () => {
       name: 'Auto Foods',
       workflowMode: 'food_manufacturing',
       accepted_company_terms: true,
-      company_terms_version: 'dgfy-company-terms-2026-05-26',
-      marketplace_terms_version: 'dgfy-marketplace-provider-2026-05-26'
+      company_terms_version: 'dgfy-company-terms-2026-06-08',
+      marketplace_terms_version: 'dgfy-marketplace-provider-2026-06-08'
     }, {
       headers: { Authorization: 'Bearer dgfy-token' }
     }));

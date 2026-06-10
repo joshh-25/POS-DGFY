@@ -22,6 +22,8 @@ const extractWorkflowModeFromTenant = (tenant) => {
 export const buildApproveTenantUseCase = ({
     tenantAdminRepository,
     provisionTenant,
+    createPayMongoChildAccountForTenant = null,
+    shouldAutoCreatePayMongoChildAccounts = () => false,
     emailService,
     logger
 }) => {
@@ -55,6 +57,31 @@ export const buildApproveTenantUseCase = ({
                 workflowMode: extractWorkflowModeFromTenant(tenant)
             });
 
+            let paymongoChildAccountStatus = 'skipped';
+            if (shouldAutoCreatePayMongoChildAccounts() && typeof createPayMongoChildAccountForTenant === 'function') {
+                try {
+                    const paymongoResult = await createPayMongoChildAccountForTenant({
+                        tenantId: tenant.id,
+                        payload: { trade_name: tenant.name },
+                        actor: 'tenant_approval'
+                    });
+                    paymongoChildAccountStatus = paymongoResult?.data?.idempotent_replay ? 'existing' : 'created';
+                    if (paymongoResult?.success === false || paymongoResult?.error) {
+                        paymongoChildAccountStatus = 'failed';
+                        logger?.warn?.('[TenantApproval] PayMongo child account creation did not complete', {
+                            tenant_id: tenant.id,
+                            error: paymongoResult?.error?.message || paymongoResult?.message || 'unknown_error'
+                        });
+                    }
+                } catch (paymongoError) {
+                    paymongoChildAccountStatus = 'failed';
+                    logger?.warn?.('[TenantApproval] PayMongo child account creation failed after tenant provisioning', {
+                        tenant_id: tenant.id,
+                        error: paymongoError.message
+                    });
+                }
+            }
+
             let emailSent = false;
             if (emailService?.isEmailConfigured?.()) {
                 try {
@@ -82,7 +109,7 @@ export const buildApproveTenantUseCase = ({
                 payload: {
                     success: true,
                     message: 'Tenant approved and provisioned successfully',
-                    data: { ...result, email_sent: emailSent }
+                    data: { ...result, email_sent: emailSent, paymongo_child_account_status: paymongoChildAccountStatus }
                 }
             });
         } catch (error) {

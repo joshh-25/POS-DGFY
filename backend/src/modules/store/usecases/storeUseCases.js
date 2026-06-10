@@ -2091,6 +2091,7 @@ const serializePaymentSession = (session = {}) => ({
     total_amount: session.total_amount,
     currency: session.currency || 'PHP',
     platform_fee_centavos: session.platform_fee_centavos,
+    fee_policy: session.fee_policy || null,
     tenant_transfer_merchant_id: session.tenant_transfer_merchant_id || null,
     tracking_pin: session.tracking_pin || null,
     pos_transaction_id: session.pos_transaction_id || null,
@@ -2227,6 +2228,15 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                     value: platformFeeCentavos
                 }]
             } : null;
+            const feePolicy = {
+                dgfy_fee_basis: 'subtotal',
+                dgfy_fee_rate: '0.01',
+                dgfy_fee_charged_to: 'customer',
+                provider_fee_shoulder: 'tenant_company',
+                provider_fee_customer_passthrough: false,
+                refund_policy: 'full_refund_reverses_dgfy_and_tenant_shares',
+                gross_sales_visibility: ['gross_sales', 'net_sales']
+            };
 
             const session = await commercePaymentRepository.createSession({
                 public_reference: publicReference,
@@ -2245,6 +2255,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                 currency: 'PHP',
                 total_amount_centavos: totalAmountCentavos,
                 platform_fee_centavos: platformFeeCentavos,
+                fee_policy: feePolicy,
                 tenant_transfer_merchant_id: account.provider_merchant_id,
                 split_payload: splitPayload
             });
@@ -2264,7 +2275,10 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                         commerce_payment_session: publicReference,
                         tenant_id: String(tenantId),
                         store_slug: storeSlug,
-                        platform_fee_centavos: String(platformFeeCentavos)
+                        platform_fee_centavos: String(platformFeeCentavos),
+                        dgfy_fee_basis: feePolicy.dgfy_fee_basis,
+                        dgfy_fee_charged_to: feePolicy.dgfy_fee_charged_to,
+                        provider_fee_shoulder: feePolicy.provider_fee_shoulder
                     },
                     splitPayment: splitPayload,
                     returnUrl: process.env.STOREFRONT_PAYMENT_RETURN_URL || null

@@ -177,6 +177,7 @@ const serializeSettlementRow = (session = {}, refunds = []) => {
     status: session.status,
     total_amount_centavos: totalCentavos,
     platform_fee_centavos: platformFeeCentavos,
+    fee_policy: session.fee_policy || null,
     estimated_tenant_gross_centavos: Math.max(0, totalCentavos - platformFeeCentavos),
     succeeded_refund_centavos: succeededRefundCentavos,
     pending_refund_centavos: pendingRefundCentavos,
@@ -434,6 +435,284 @@ export const buildListTenantPaymentAccountsUseCase = ({ commercePaymentRepositor
     const tenantId = normalizeTenantId(query.tenant_id);
     const accounts = await commercePaymentRepository.listTenantPaymentAccounts({ tenantId });
     return ok({ payment_accounts: accounts.map(serializeAccount) });
+  } catch (error) {
+    return fail(error instanceof DomainError ? error : new DomainError(DomainErrorCode.INTERNAL_ERROR, error.message));
+  }
+};
+
+const extractPayMongoAccountId = (resource = {}) => {
+  const attrs = resource?.attributes || {};
+  return resource?.id
+    || attrs.account_id
+    || attrs.merchant_id
+    || attrs.id
+    || null;
+};
+
+const extractOnboardingUrl = (resource = {}) => {
+  const attrs = resource?.attributes || {};
+  return attrs.onboarding_url
+    || attrs.onboarding_link
+    || attrs.hosted_onboarding_url
+    || attrs.verification_url
+    || null;
+};
+
+const extractRequirementsDue = (resource = {}) => {
+  const attrs = resource?.attributes || resource || {};
+  return attrs.requirements_due
+    || attrs.requirements
+    || attrs.currently_due
+    || attrs.eventually_due
+    || null;
+};
+
+const hasExplicitEnabledWalletEvidence = (resource = {}) => {
+  const attrs = resource?.attributes || resource || {};
+  const wallet = attrs.wallet || {};
+  const status = String(attrs.wallet_status || wallet.status || '').toLowerCase();
+  return ['enabled', 'activated', 'active'].includes(status);
+};
+
+const hasExplicitSplitEvidence = (resource = {}) => {
+  const attrs = resource?.attributes || resource || {};
+  const capabilities = attrs.capabilities || {};
+  const features = Array.isArray(attrs.features) ? attrs.features.map((feature) => String(feature).toLowerCase()) : [];
+  return attrs.split_enabled === true
+    || attrs.split_payments_enabled === true
+    || capabilities.split_payments === 'active'
+    || features.includes('split_payments')
+    || features.includes('split_payment');
+};
+
+const hasExplicitChargeEvidence = (resource = {}) => {
+  const attrs = resource?.attributes || resource || {};
+  const capabilities = attrs.capabilities || {};
+  return attrs.charges_enabled === true
+    || attrs.payments_enabled === true
+    || capabilities.payments === 'active'
+    || capabilities.charges === 'active';
+};
+
+const findExistingChildAccountForTenant = async ({ paymongoService, tenantId, tradeName }) => {
+  if (typeof paymongoService?.listChildAccounts !== 'function') return null;
+  try {
+    const accounts = await paymongoService.listChildAccounts({ search_term: tradeName });
+    return (accounts || []).find((account) => {
+      const attrs = account?.attributes || {};
+      return attrs.metadata?.tenant_id === tenantId
+        || String(attrs.trade_name || '').trim().toLowerCase() === String(tradeName || '').trim().toLowerCase();
+    }) || null;
+  } catch {
+    return null;
+  }
+};
+
+export const buildCreateTenantPayMongoChildAccountUseCase = ({
+  commercePaymentRepository,
+  paymongoService
+}) => async ({ tenantId, payload = {}, actor = null } = {}) => {
+  try {
+    const normalizedTenantId = normalizeTenantId(tenantId);
+    if (!normalizedTenantId) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'tenant_id is required', { statusCode: 422 });
+    const tenant = await commercePaymentRepository.findTenantById(normalizedTenantId);
+    if (!tenant) throw new DomainError(DomainErrorCode.TENANT_NOT_FOUND, 'Tenant not found', { statusCode: 404 });
+
+    const existing = await commercePaymentRepository.findTenantPaymentAccount({ tenantId: normalizedTenantId, provider: 'paymongo' });
+    if (existing?.provider_merchant_id) {
+      return ok({
+        payment_account: serializeAccount(existing),
+        idempotent_replay: true
+      });
+    }
+
+    const tradeName = String(payload.trade_name || tenant.name || '').trim();
+    if (!tradeName) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'trade_name is required to create a PayMongo child merchant', { statusCode: 422 });
+    }
+
+    const existingProviderAccount = await findExistingChildAccountForTenant({
+      paymongoService,
+      tenantId: normalizedTenantId,
+      tradeName
+    });
+    const childMerchant = existingProviderAccount || await paymongoService.createChildMerchant({
+      tradeName,
+      type: 'merchant',
+      features: ['payment_gateway', 'basic_wallet'],
+      metadata: {
+        tenant_id: normalizedTenantId,
+        created_from: 'dgfy_admin_payments',
+        actor: actor || null
+      }
+    });
+    const providerMerchantId = extractPayMongoAccountId(childMerchant);
+    if (!providerMerchantId) {
+      throw new DomainError(
+        DomainErrorCode.INTERNAL_ERROR,
+        'PayMongo child merchant response did not include a merchant account ID',
+        {
+          statusCode: 502,
+          details: { provider_response_id_missing: true }
+        }
+      );
+    }
+
+    const providerPayload = childMerchant?.attributes || {};
+    const account = await commercePaymentRepository.upsertTenantPaymentAccount({
+      tenant_id: normalizedTenantId,
+      provider: 'paymongo',
+      provider_merchant_id: providerMerchantId,
+      provider_wallet_id: providerPayload.wallet_id || providerPayload.wallet?.id || null,
+      wallet_status: providerPayload.wallet_status || 'unknown',
+      wallet_verified_at: null,
+      onboarding_status: 'pending',
+      qrph_enabled: false,
+      split_enabled: false,
+      charges_enabled: false,
+      requirements_due: extractRequirementsDue(childMerchant),
+      metadata: {
+        verification_reference: null,
+        verified_at: null,
+        verified_by: null,
+        trade_name: tradeName,
+        onboarding_url: extractOnboardingUrl(childMerchant),
+        child_account_created_at: new Date().toISOString(),
+        child_account_created_by: actor || null,
+        child_account_creation_source: existingProviderAccount ? 'provider_lookup' : 'api',
+        provider_status: providerPayload.status || null,
+        provider_features: providerPayload.features || null,
+        provider_account_matched_before_create: Boolean(existingProviderAccount),
+        fee_contract: {
+          dgfy_fee_basis: 'subtotal',
+          dgfy_fee_charged_to: 'customer',
+          provider_fee_shoulder: 'tenant_company'
+        }
+      },
+      last_synced_at: new Date()
+    });
+
+    await writePaymentAudit({
+      commercePaymentRepository,
+      entityId: account.account_id,
+      action: 'CREATE',
+      actor,
+      changes: {
+        event: 'tenant_paymongo_child_account_created',
+        tenant_id: normalizedTenantId,
+        provider_merchant_id: providerMerchantId,
+        trade_name: tradeName,
+        provider_account_matched_before_create: Boolean(existingProviderAccount),
+        onboarding_status: account.onboarding_status
+      }
+    });
+
+    return ok({
+      payment_account: serializeAccount(account),
+      paymongo_child_account: {
+        id: providerMerchantId,
+        onboarding_url: extractOnboardingUrl(childMerchant),
+        raw_status: providerPayload.status || null
+      },
+      provider_account_matched_before_create: Boolean(existingProviderAccount),
+      idempotent_replay: false
+    });
+  } catch (error) {
+    return fail(error instanceof DomainError ? error : new DomainError(DomainErrorCode.INTERNAL_ERROR, error.message));
+  }
+};
+
+export const buildOperateTenantPayMongoChildAccountUseCase = ({
+  commercePaymentRepository,
+  paymongoService
+}) => async ({ tenantId, action, actor = null } = {}) => {
+  try {
+    const normalizedTenantId = normalizeTenantId(tenantId);
+    if (!normalizedTenantId) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'tenant_id is required', { statusCode: 422 });
+    const normalizedAction = String(action || '').trim();
+    if (!['sync-requirements', 'submit-review', 'activate'].includes(normalizedAction)) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Unsupported PayMongo child account action', { statusCode: 422 });
+    }
+
+    const account = await commercePaymentRepository.findTenantPaymentAccount({ tenantId: normalizedTenantId, provider: 'paymongo' });
+    if (!account?.provider_merchant_id) {
+      throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Tenant PayMongo child account is not created yet', { statusCode: 404 });
+    }
+
+    let providerResource = null;
+    if (normalizedAction === 'sync-requirements') {
+      providerResource = await paymongoService.retrieveChildMerchantRequirements(account.provider_merchant_id);
+    } else if (normalizedAction === 'submit-review') {
+      providerResource = await paymongoService.submitChildMerchantForReview(account.provider_merchant_id);
+    } else if (normalizedAction === 'activate') {
+      providerResource = await paymongoService.activateAccount(account.provider_merchant_id);
+    }
+
+    const providerPayload = providerResource?.attributes || providerResource || {};
+    const walletEnabled = hasExplicitEnabledWalletEvidence(providerResource);
+    const splitEnabled = walletEnabled && hasExplicitSplitEvidence(providerResource);
+    const chargesEnabled = walletEnabled && hasExplicitChargeEvidence(providerResource);
+    const activated = normalizedAction === 'activate' && ['activated', 'active'].includes(String(providerPayload.status || '').toLowerCase());
+    const now = new Date();
+    const metadata = {
+      ...(account.metadata || {}),
+      provider_status: providerPayload.status || account.metadata?.provider_status || null,
+      provider_features: providerPayload.features || account.metadata?.provider_features || null,
+      last_provider_action: normalizedAction,
+      last_provider_action_at: now.toISOString(),
+      last_provider_action_by: actor || null,
+      provider_action_response_id: providerResource?.id || null
+    };
+    if (activated) {
+      metadata.verification_reference = providerResource?.id || metadata.verification_reference || `paymongo:${normalizedAction}:${account.provider_merchant_id}`;
+      metadata.verified_at = now.toISOString();
+      metadata.verified_by = actor || 'platform-admin';
+    }
+
+    const updated = await commercePaymentRepository.upsertTenantPaymentAccount({
+      tenant_id: normalizedTenantId,
+      provider: 'paymongo',
+      provider_merchant_id: account.provider_merchant_id,
+      provider_wallet_id: providerPayload.wallet_id || providerPayload.wallet?.id || account.provider_wallet_id || null,
+      wallet_status: walletEnabled ? 'enabled' : (providerPayload.wallet_status || account.wallet_status || 'unknown'),
+      wallet_verified_at: walletEnabled ? now : account.wallet_verified_at,
+      onboarding_status: activated ? 'active' : account.onboarding_status,
+      qrph_enabled: activated ? true : Boolean(account.qrph_enabled),
+      split_enabled: splitEnabled ? true : Boolean(account.split_enabled),
+      charges_enabled: chargesEnabled ? true : Boolean(account.charges_enabled),
+      requirements_due: extractRequirementsDue(providerResource) || account.requirements_due || null,
+      metadata,
+      last_synced_at: now
+    });
+
+    await writePaymentAudit({
+      commercePaymentRepository,
+      entityId: updated.account_id,
+      action: 'UPDATE',
+      actor,
+      changes: {
+        event: 'tenant_paymongo_child_account_provider_action',
+        tenant_id: normalizedTenantId,
+        provider_merchant_id: account.provider_merchant_id,
+        action: normalizedAction,
+        onboarding_status: updated.onboarding_status,
+        wallet_status: updated.wallet_status,
+        split_enabled: Boolean(updated.split_enabled),
+        charges_enabled: Boolean(updated.charges_enabled)
+      }
+    });
+
+    return ok({
+      payment_account: serializeAccount(updated),
+      provider_action: {
+        action: normalizedAction,
+        provider_resource_id: providerResource?.id || null,
+        activated,
+        wallet_evidence_detected: walletEnabled,
+        split_evidence_detected: splitEnabled,
+        charge_evidence_detected: chargesEnabled
+      }
+    });
   } catch (error) {
     return fail(error instanceof DomainError ? error : new DomainError(DomainErrorCode.INTERNAL_ERROR, error.message));
   }

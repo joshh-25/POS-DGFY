@@ -140,6 +140,28 @@ describe('registerCompanyRequestUseCase approval mode', () => {
         }), { transaction: 'tx-company' });
     });
 
+    it('optionally creates a pending PayMongo child account after auto-provisioning', async () => {
+        const createPayMongoChildAccountForTenant = jest.fn().mockResolvedValue({
+            success: true,
+            data: { idempotent_replay: false }
+        });
+        const { deps, useCase } = createUseCase({
+            createPayMongoChildAccountForTenant,
+            shouldAutoCreatePayMongoChildAccounts: jest.fn().mockReturnValue(true)
+        });
+
+        const result = await useCase({ body: validBody, dgfyAccount, correlationId: 'req-auto-paymongo' });
+
+        expect(result.success).toBe(true);
+        expect(deps.provisionTenant).toHaveBeenCalled();
+        expect(createPayMongoChildAccountForTenant).toHaveBeenCalledWith({
+            tenantId: '12345678-aaaa-bbbb-cccc-123456789abc',
+            payload: { trade_name: validBody.name },
+            actor: 'company_registration_auto_provision'
+        });
+        expect(result.data.payload.data.paymongo_child_account_status).toBe('created');
+    });
+
     it('keeps standard registration pending when manual approval mode is explicitly configured', async () => {
         const { deps, useCase } = createUseCase({
             getTenantRegistrationApprovalMode: jest.fn().mockReturnValue(TENANT_REGISTRATION_APPROVAL_MODES.MANUAL)

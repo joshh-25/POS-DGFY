@@ -1,7 +1,7 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-05-20
+last_reviewed: 2026-06-08
 related_adr: docs/architecture/adr/0027-paymongo-commerce-qrph-platform-split-settlement.md
 declaration_id: 2026-05-19-paymongo-qrph-commerce-payments
 classification: regulatory
@@ -29,7 +29,10 @@ This declaration covers adding PayMongo QR Ph Storefront commerce payment sessio
 - Public Storefront product/F&B checkout can create a PayMongo QR Ph payment session before order creation.
 - PayMongo webhooks finalize Storefront orders only after `payment.paid`.
 - The mandatory DGFY 1% convenience fee is snapshotted before provider handoff and sent as a fixed centavo split to the DGFY PayMongo account.
+- The DGFY 1% fee is based on item subtotal only and is charged to the customer as an added platform fee.
+- PayMongo/provider processing, payout, bank, dispute, and related provider fees are shouldered by the tenant/company and reduce company net settlement unless a separate signed provider contract says otherwise.
 - Tenant PayMongo child-merchant readiness is tracked landlord-side in `tenant_payment_accounts`.
+- Platform Admin > Payments can create a tenant PayMongo child merchant from an existing tenant record and store the returned child merchant ID as pending readiness.
 - Tenant PayMongo wallet status and wallet verification timestamp are tracked landlord-side and are required before split/charge readiness can be enabled.
 - `commerce_payment_sessions` stores immutable checkout payloads, provider IDs, QR image URLs, split payloads, and manual-resolution states.
 - Tenant `pos_transactions` store payment status/reference/provider/session metadata for online-store order reconciliation.
@@ -60,6 +63,8 @@ This declaration covers adding PayMongo QR Ph Storefront commerce payment sessio
 20. The live PayMongo webhook must not be considered ready until an unsigned probe to `https://skupervisor.surebizcorp.com/api/v1/commerce-payments/paymongo/webhook` returns `401 Invalid PayMongo webhook signature` after deployment.
 21. Webhook signature verification must reject missing signatures by default and reject stale timestamps outside the configured tolerance.
 22. Non-proportional PayMongo split-refund source values must equal the requested refund amount before the app calls the provider API.
+23. Company and marketplace terms must disclose DGFY's platform role, the customer-paid 1% platform fee, DGFY's no-custody boundary, and tenant/company responsibility for PayMongo/provider fees.
+24. Automated child-account creation must not enable QR Ph/split/charge readiness without PayMongo activation and wallet evidence.
 
 ## Verification Evidence
 
@@ -69,6 +74,7 @@ This declaration covers adding PayMongo QR Ph Storefront commerce payment sessio
 - `npm --prefix frontend run build:store`
 - `git diff --check`
 - `node --check` on changed backend payment/session files
+- backend tenant onboarding tests for optional PayMongo child-account creation
 - `npm --prefix backend run verify:commerce-payment-migration`
 - `npm --prefix backend run verify:paymongo:sandbox`
 - `npm --prefix backend run verify:paymongo:webhook -- <https-webhook-url>` for sandbox or production endpoint reachability/signature-enforcement checks.

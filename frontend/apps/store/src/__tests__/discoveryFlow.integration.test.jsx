@@ -164,15 +164,15 @@ const dgfyLegalTerms = {
   flows: {
     account_registration: {
       snapshot: {
-        terms_version: 'dgfy-account-terms-2026-05-26',
-        privacy_version: 'dgfy-privacy-2026-05-26',
-        marketplace_terms_version: 'dgfy-marketplace-provider-2026-05-26',
+        terms_version: 'dgfy-account-terms-2026-06-08',
+        privacy_version: 'dgfy-privacy-2026-06-08',
+        marketplace_terms_version: 'dgfy-marketplace-provider-2026-06-08',
         acknowledgement_text: 'I agree to the DGFY Terms, Privacy Policy, and marketplace account terms.'
       },
       documents: [
-        { key: 'accountTerms', title: 'DGFY Account Terms', version: 'dgfy-account-terms-2026-05-26', summary: 'Account terms', href: '/legal/dgfy-account-terms' },
-        { key: 'privacy', title: 'DGFY Privacy Policy', version: 'dgfy-privacy-2026-05-26', summary: 'Privacy terms', href: '/privacy' },
-        { key: 'marketplaceTerms', title: 'DGFY Marketplace Provider Terms', version: 'dgfy-marketplace-provider-2026-05-26', summary: 'Marketplace terms', href: '/legal/dgfy-marketplace-provider-terms' }
+        { key: 'accountTerms', title: 'DGFY Account Terms', version: 'dgfy-account-terms-2026-06-08', summary: 'Account terms', href: '/legal/dgfy-account-terms' },
+        { key: 'privacy', title: 'DGFY Privacy Policy', version: 'dgfy-privacy-2026-06-08', summary: 'Privacy terms', href: '/privacy' },
+        { key: 'marketplaceTerms', title: 'DGFY Marketplace Provider Terms', version: 'dgfy-marketplace-provider-2026-06-08', summary: 'Marketplace terms', href: '/legal/dgfy-marketplace-provider-terms' }
       ]
     }
   }
@@ -492,9 +492,9 @@ describe('storefront discovery integration flow', () => {
         phone: '+639123456789',
         email_otp_code: '123456',
         accepted_terms: true,
-        terms_version: 'dgfy-account-terms-2026-05-26',
-        privacy_version: 'dgfy-privacy-2026-05-26',
-        marketplace_terms_version: 'dgfy-marketplace-provider-2026-05-26'
+        terms_version: 'dgfy-account-terms-2026-06-08',
+        privacy_version: 'dgfy-privacy-2026-06-08',
+        marketplace_terms_version: 'dgfy-marketplace-provider-2026-06-08'
       }));
     });
   }, 15000);
