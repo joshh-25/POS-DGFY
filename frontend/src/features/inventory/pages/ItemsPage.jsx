@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import ItemCard from '@/components/items/ItemCard';
 import ItemDetailsModal from '@/components/items/ItemDetailsModal';
 import ItemFormModal from '@/components/items/ItemFormModal';
+import StorefrontImageCarousel from '@/components/items/StorefrontImageCarousel';
 import ProductCreateWizard from '@/components/products/ProductCreateWizard';
 import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
 import CSVImportModal from '@/components/items/CSVImportModal';
@@ -2555,42 +2556,13 @@ export default function Items() {
                               <td className="p-3">
                                 <div className="space-y-2">
                                   {storefrontImageGallery.length > 0 ? (
-                                    <div className="flex max-w-xs flex-wrap gap-2">
-                                      {storefrontImageGallery.map((entry, index) => (
-                                        <div key={`${entry.url || entry.path}-${index}`} className="space-y-1">
-                                          <div className="relative">
-                                            <img
-                                              src={resolveAssetUrl(entry.url || entry.path)}
-                                              alt={`${item.name} storefront image ${index + 1}`}
-                                              className="h-16 w-20 rounded-md border border-slate-200 object-cover"
-                                            />
-                                            {index === 0 && (
-                                              <span className="absolute left-1 top-1 rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                                                Primary
-                                              </span>
-                                            )}
-                                          </div>
-                                          <div className="flex gap-1">
-                                            {index > 0 && (
-                                              <button
-                                                type="button"
-                                                className="rounded border border-slate-200 px-1.5 py-0.5 text-[10px] text-slate-600 hover:bg-slate-50"
-                                                onClick={() => handleSetPrimaryStorefrontImage(item, index)}
-                                              >
-                                                Set first
-                                              </button>
-                                            )}
-                                            <button
-                                              type="button"
-                                              className="rounded border border-red-200 px-1.5 py-0.5 text-[10px] text-red-700 hover:bg-red-50"
-                                              onClick={() => handleDeleteStorefrontImage(item, index)}
-                                            >
-                                              Remove
-                                            </button>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
+                                    <StorefrontImageCarousel
+                                      gallery={storefrontImageGallery}
+                                      itemName={item.name}
+                                      variant="table"
+                                      onSetPrimary={(index) => handleSetPrimaryStorefrontImage(item, index)}
+                                      onRemove={(index) => handleDeleteStorefrontImage(item, index)}
+                                    />
                                   ) : (
                                     <span className="text-xs text-slate-500">No image</span>
                                   )}

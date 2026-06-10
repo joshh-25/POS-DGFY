@@ -4,6 +4,8 @@ import {
   ArrowUpRight,
   BadgeCheck,
   ChefHat,
+  ChevronLeft,
+  ChevronRight,
   MapPin,
   Plus,
   ShieldAlert,
@@ -218,6 +220,8 @@ export function FnbProductDetailsPage({
   const descRef = React.useRef(null);
   const [showReadMore, setShowReadMore] = React.useState(false);
   const [activeImageIndex, setActiveImageIndex] = React.useState(0);
+  const carouselTouchStartXRef = React.useRef(null);
+  const carouselTouchStartYRef = React.useRef(null);
 
   const descriptionText = String(item?.descriptionPreview || item?.description || '').trim();
   const imageGallery = React.useMemo(() => normalizeProductImageGallery(item), [item]);
@@ -234,6 +238,48 @@ export function FnbProductDetailsPage({
   React.useEffect(() => {
     setActiveImageIndex(0);
   }, [item?.item_id, imageGallery.length]);
+
+  const goToImage = React.useCallback((nextIndex) => {
+    if (!hasMultipleImages) return;
+    const normalizedIndex = Number(nextIndex);
+    if (!Number.isFinite(normalizedIndex)) return;
+    setActiveImageIndex(((Math.trunc(normalizedIndex) % imageGallery.length) + imageGallery.length) % imageGallery.length);
+  }, [hasMultipleImages, imageGallery.length]);
+
+  const showPreviousImage = React.useCallback(() => {
+    if (!hasMultipleImages) return;
+    setActiveImageIndex((index) => (index === 0 ? imageGallery.length - 1 : index - 1));
+  }, [hasMultipleImages, imageGallery.length]);
+
+  const showNextImage = React.useCallback(() => {
+    if (!hasMultipleImages) return;
+    setActiveImageIndex((index) => (index + 1) % imageGallery.length);
+  }, [hasMultipleImages, imageGallery.length]);
+
+  const handleCarouselTouchStart = React.useCallback((event) => {
+    const touch = event.touches?.[0];
+    if (!touch || !hasMultipleImages) return;
+    carouselTouchStartXRef.current = touch.clientX;
+    carouselTouchStartYRef.current = touch.clientY;
+  }, [hasMultipleImages]);
+
+  const handleCarouselTouchEnd = React.useCallback((event) => {
+    const touch = event.changedTouches?.[0];
+    const startX = carouselTouchStartXRef.current;
+    const startY = carouselTouchStartYRef.current;
+    carouselTouchStartXRef.current = null;
+    carouselTouchStartYRef.current = null;
+    if (!touch || startX === null || startY === null || !hasMultipleImages) return;
+
+    const deltaX = touch.clientX - startX;
+    const deltaY = touch.clientY - startY;
+    if (Math.abs(deltaX) < 42 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) return;
+    if (deltaX < 0) {
+      showNextImage();
+    } else {
+      showPreviousImage();
+    }
+  }, [hasMultipleImages, showNextImage, showPreviousImage]);
 
   const [expandedGroups, setExpandedGroups] = React.useState(() => {
     const initial = {};
@@ -568,8 +614,15 @@ export function FnbProductDetailsPage({
               height: standardImageHeight,
               background: '#f8fafc',
               border: '1px solid rgba(226, 232, 240, 0.8)',
-              boxShadow: '0 20px 48px rgba(15, 23, 42, 0.06)'
-            }}>
+              boxShadow: '0 20px 48px rgba(15, 23, 42, 0.06)',
+              touchAction: hasMultipleImages ? 'pan-y' : 'auto'
+            }}
+              role={hasMultipleImages ? 'region' : undefined}
+              aria-roledescription={hasMultipleImages ? 'carousel' : undefined}
+              aria-label={hasMultipleImages ? `${item.name} image carousel` : undefined}
+              onTouchStart={handleCarouselTouchStart}
+              onTouchEnd={handleCarouselTouchEnd}
+            >
               {/* Fullscreen Button Overlay */}
               <button
                 type="button"
@@ -601,53 +654,53 @@ export function FnbProductDetailsPage({
                 <>
                   <button
                     type="button"
-                    aria-label="Previous slide"
-                    onClick={() => setActiveImageIndex((index) => (index === 0 ? imageGallery.length - 1 : index - 1))}
+                    aria-label="Previous product image"
+                    onClick={showPreviousImage}
                     style={{
                       position: 'absolute',
                       left: 16,
                       top: '50%',
                       transform: 'translateY(-50%)',
-                      width: 36,
-                      height: 36,
+                      width: isMobileViewport ? 40 : 46,
+                      height: isMobileViewport ? 40 : 46,
                       borderRadius: '50%',
                       background: 'rgba(255, 255, 255, 0.85)',
                       backdropFilter: 'blur(8px)',
-                      border: '1px solid rgba(255, 255, 255, 0.6)',
+                      border: '1px solid rgba(226, 232, 240, 0.9)',
                       display: 'grid',
                       placeItems: 'center',
-                      color: '#475569',
-                      boxShadow: '0 4px 12px rgba(15, 23, 42, 0.08)',
+                      color: '#0f172a',
+                      boxShadow: '0 10px 26px rgba(15, 23, 42, 0.14)',
                       cursor: 'pointer',
                       zIndex: 10
                     }}
                   >
-                    {'<'}
+                    <ChevronLeft size={isMobileViewport ? 20 : 24} strokeWidth={2.4} />
                   </button>
                   <button
                     type="button"
-                    aria-label="Next slide"
-                    onClick={() => setActiveImageIndex((index) => (index + 1) % imageGallery.length)}
+                    aria-label="Next product image"
+                    onClick={showNextImage}
                     style={{
                       position: 'absolute',
                       right: 16,
                       top: '50%',
                       transform: 'translateY(-50%)',
-                      width: 36,
-                      height: 36,
+                      width: isMobileViewport ? 40 : 46,
+                      height: isMobileViewport ? 40 : 46,
                       borderRadius: '50%',
                       background: 'rgba(255, 255, 255, 0.85)',
                       backdropFilter: 'blur(8px)',
-                      border: '1px solid rgba(255, 255, 255, 0.6)',
+                      border: '1px solid rgba(226, 232, 240, 0.9)',
                       display: 'grid',
                       placeItems: 'center',
-                      color: '#475569',
-                      boxShadow: '0 4px 12px rgba(15, 23, 42, 0.08)',
+                      color: '#0f172a',
+                      boxShadow: '0 10px 26px rgba(15, 23, 42, 0.14)',
                       cursor: 'pointer',
                       zIndex: 10
                     }}
                   >
-                    {'>'}
+                    <ChevronRight size={isMobileViewport ? 20 : 24} strokeWidth={2.4} />
                   </button>
                 </>
               )}
@@ -657,6 +710,7 @@ export function FnbProductDetailsPage({
                 <img
                   src={imageUrl}
                   alt={item.name}
+                  aria-live="polite"
                   style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                 />
               ) : (
@@ -689,7 +743,9 @@ export function FnbProductDetailsPage({
                   bottom: 16,
                   left: 16,
                   display: 'flex',
+                  flexWrap: 'wrap',
                   gap: 8,
+                  maxWidth: 'calc(100% - 32px)',
                   zIndex: 10
                 }}>
                   {imageGallery.map((entry, index) => (
@@ -697,7 +753,8 @@ export function FnbProductDetailsPage({
                       key={`${entry.url}-${index}`}
                       type="button"
                       aria-label={`Show product image ${index + 1}`}
-                      onClick={() => setActiveImageIndex(index)}
+                      aria-current={index === activeImageIndex ? 'true' : undefined}
+                      onClick={() => goToImage(index)}
                       style={{
                         width: 48,
                         height: 48,
@@ -713,6 +770,45 @@ export function FnbProductDetailsPage({
                     >
                       <img src={entry.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     </button>
+                  ))}
+                </div>
+              )}
+              {imageUrl && hasMultipleImages && (
+                <div
+                  aria-label={`Image ${activeImageIndex + 1} of ${imageGallery.length}`}
+                  style={{
+                    position: 'absolute',
+                    bottom: isMobileViewport ? 82 : 84,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 10px',
+                    borderRadius: 999,
+                    background: 'rgba(15, 23, 42, 0.54)',
+                    backdropFilter: 'blur(8px)',
+                    zIndex: 10
+                  }}
+                >
+                  {imageGallery.map((entry, index) => (
+                    <button
+                      key={`carousel-dot-${entry.url}-${index}`}
+                      type="button"
+                      aria-label={`Go to product image ${index + 1}`}
+                      aria-current={index === activeImageIndex ? 'true' : undefined}
+                      onClick={() => goToImage(index)}
+                      style={{
+                        width: index === activeImageIndex ? 22 : 8,
+                        height: 8,
+                        borderRadius: 999,
+                        border: 'none',
+                        background: index === activeImageIndex ? '#ffffff' : 'rgba(255,255,255,0.55)',
+                        padding: 0,
+                        cursor: 'pointer',
+                        transition: 'width 160ms ease, background 160ms ease'
+                      }}
+                    />
                   ))}
                 </div>
               )}

@@ -29,6 +29,12 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain('review_token');
     expect(source).toContain('<FnbProductDetailsPage');
     expect(productDetailsSource()).toContain('image_gallery');
+    expect(productDetailsSource()).toContain("aria-roledescription={hasMultipleImages ? 'carousel' : undefined}");
+    expect(productDetailsSource()).toContain('handleCarouselTouchStart');
+    expect(productDetailsSource()).toContain('handleCarouselTouchEnd');
+    expect(productDetailsSource()).toContain('aria-label="Previous product image"');
+    expect(productDetailsSource()).toContain('aria-label="Next product image"');
+    expect(productDetailsSource()).toContain('carousel-dot');
     expect(source).toContain('const openFnbDetail = useCallback((item, options = {}) => {');
     expect(source).toContain('const closeFnbDetail = () => {');
     expect(source).toContain('isFnbDetailsSubpage');
