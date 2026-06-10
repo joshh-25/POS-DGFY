@@ -46,6 +46,7 @@ import FolderCard from '@/components/items/FolderCard';
 import CreateFolderCard from '@/components/items/CreateFolderCard';
 import MoveToFolderModal from '@/components/items/MoveToFolderModal';
 import { useItemSelection } from '@/hooks/useItemSelection';
+import { useFuzzySearch } from '@/hooks/useFuzzySearch';
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, TouchSensor } from '@dnd-kit/core';
 import { usePermission } from '@/hooks/usePermission';
 import { normalizeApiError } from '@/src/utils/errorHandler.js';
@@ -82,6 +83,23 @@ const MSME_ITEM_PRESET = Object.freeze({
   SELLABLE_POS: 'sellable_pos',
   INVENTORY_ONLY: 'inventory_only'
 });
+
+// Fuse.js field weights for the main inventory search.
+// sku_code ranks highest (most precise intent), description lowest (context only).
+// Mirrors the threshold=0.4 used by the backend semantic search in itemRepository.js.
+const ITEM_SEARCH_KEYS = [
+  { name: 'sku_code',    weight: 0.9 },
+  { name: 'name',        weight: 0.7 },
+  { name: 'description', weight: 0.3 },
+  { name: 'category',    weight: 0.2 },
+];
+
+// POS checklist modal omits description/category — the modal already has
+// separate category/status dropdowns, so the text search stays name/SKU only.
+const POS_CHECKLIST_SEARCH_KEYS = [
+  { name: 'sku_code', weight: 0.9 },
+  { name: 'name',     weight: 0.7 },
+];
 
 const MSME_RESTRICTED_CATEGORY_FILTERS = new Set(['raw_material', 'packaging', 'finished_goods', 'work_in_progress']);
 const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
@@ -217,6 +235,19 @@ export default function Items() {
   const normalizedPosChecklistSearch = useMemo(
     () => String(deferredPosChecklistSearch || '').trim().toLowerCase(),
     [deferredPosChecklistSearch]
+  );
+
+  // Fuzzy search results — index rebuilds only when `items` changes, not per keystroke.
+  const fuzzySearchResults = useFuzzySearch(items, normalizedSearchQuery, ITEM_SEARCH_KEYS);
+  const fuzzyMatchIds = useMemo(
+    () => new Set(fuzzySearchResults.map((i) => i.item_id)),
+    [fuzzySearchResults]
+  );
+
+  const fuzzyPosResults = useFuzzySearch(items, normalizedPosChecklistSearch, POS_CHECKLIST_SEARCH_KEYS);
+  const fuzzyPosIds = useMemo(
+    () => new Set(fuzzyPosResults.map((i) => i.item_id)),
+    [fuzzyPosResults]
   );
 
   // DnD Sensors
@@ -617,17 +648,22 @@ export default function Items() {
   const posChecklistItems = useMemo(() => {
     return items
       .filter((item) => {
-        const matchesSearch = normalizedPosChecklistSearch.length === 0
-          || (item.name || '').toLowerCase().includes(normalizedPosChecklistSearch)
-          || (item.sku_code || '').toLowerCase().includes(normalizedPosChecklistSearch);
+        const matchesSearch = normalizedPosChecklistSearch.length === 0 || fuzzyPosIds.has(item.item_id);
         const filterCategory = resolveCategoryFilterValue(item);
         const matchesCategory = posChecklistCategory === 'all' || filterCategory === posChecklistCategory || item.category === posChecklistCategory;
         const status = String(item.status || '').toLowerCase();
         const matchesStatus = posChecklistStatus === 'all' || status === posChecklistStatus;
         return matchesSearch && matchesCategory && matchesStatus;
       })
-      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-  }, [items, normalizedPosChecklistSearch, posChecklistCategory, posChecklistStatus, resolveCategoryFilterValue]);
+      .sort((a, b) => {
+        if (normalizedPosChecklistSearch.length >= 2) {
+          const aIdx = fuzzyPosResults.findIndex((i) => i.item_id === a.item_id);
+          const bIdx = fuzzyPosResults.findIndex((i) => i.item_id === b.item_id);
+          return aIdx - bIdx;
+        }
+        return String(a.name || '').localeCompare(String(b.name || ''));
+      });
+  }, [items, fuzzyPosIds, fuzzyPosResults, normalizedPosChecklistSearch, posChecklistCategory, posChecklistStatus, resolveCategoryFilterValue]);
 
   const checklistSelectedCount = posChecklistSelectedIds.size;
   const checklistFilteredCount = posChecklistItems.length;
@@ -1105,17 +1141,15 @@ export default function Items() {
   const filteredItems = useMemo(() => {
     return items
       .filter(item => {
-        const matchesSearch = normalizedSearchQuery.length === 0
-          || item.name.toLowerCase().includes(normalizedSearchQuery)
-          || (item.sku_code || '').toLowerCase().includes(normalizedSearchQuery);
+        // Fuzzy match: O(1) Set lookup against pre-computed Fuse.js results.
+        // Falls back to showing all items when the query is empty or < 2 chars.
+        const matchesSearch = normalizedSearchQuery.length === 0 || fuzzyMatchIds.has(item.item_id);
 
-        // Category filter matches effective category
         const effectiveCategory = resolveCategoryFilterValue(item);
         const matchesCategory = categoryFilter === 'all' ||
           effectiveCategory === categoryFilter ||
           item.category === categoryFilter;
 
-        // Folder navigation - if inside a folder, show only items in that folder
         let matchesFolder = true;
         if (currentFolder !== null) {
           matchesFolder = doesItemMatchFolder(item, currentFolder);
@@ -1123,7 +1157,6 @@ export default function Items() {
           matchesFolder = doesItemMatchFolder(item, folderFilter);
         }
 
-        // Handle draft status filter
         if (statusFilter === 'draft') {
           return matchesSearch && matchesCategory && matchesFolder && item.status === 'draft';
         }
@@ -1133,14 +1166,12 @@ export default function Items() {
           (statusFilter === 'critical' && (status === 'critical' || status === 'warning')) ||
           status === statusFilter;
 
-        // Handle FIFO filter
         let matchesFifo = true;
         if (fifoFilter === 'enabled') {
           matchesFifo = item.fifo_enabled === true;
         } else if (fifoFilter === 'disabled') {
           matchesFifo = item.fifo_enabled === false;
         } else if (fifoFilter === 'expiring') {
-          // Show items with FIFO enabled and batches expiring within 30 days
           if (item.fifo_enabled && item.fifo_batches && item.fifo_batches.length > 0) {
             const nextExpiry = getNextExpiryDate(item);
             if (nextExpiry) {
@@ -1157,6 +1188,13 @@ export default function Items() {
         return matchesSearch && matchesCategory && matchesStatus && matchesFolder && matchesFifo && item.status !== 'draft';
       })
       .sort((a, b) => {
+        // When a search is active, honour Fuse.js relevance order (best match first).
+        if (normalizedSearchQuery.length >= 2) {
+          const aIdx = fuzzySearchResults.findIndex((i) => i.item_id === a.item_id);
+          const bIdx = fuzzySearchResults.findIndex((i) => i.item_id === b.item_id);
+          return aIdx - bIdx;
+        }
+        // No active search — apply the user's chosen sort.
         switch (sortBy) {
           case 'name':
             return a.name.localeCompare(b.name);
@@ -1170,7 +1208,7 @@ export default function Items() {
             return 0;
         }
       });
-  }, [items, normalizedSearchQuery, categoryFilter, statusFilter, sortBy, folderFilter, fifoFilter, currentFolder, doesItemMatchFolder, resolveCategoryFilterValue]);
+  }, [items, fuzzyMatchIds, fuzzySearchResults, normalizedSearchQuery, categoryFilter, statusFilter, sortBy, folderFilter, fifoFilter, currentFolder, doesItemMatchFolder, resolveCategoryFilterValue]);
 
   // Item Selection Hook
   const { selectedIds, toggleSelection, clearSelection, count: selectedCount } = useItemSelection(filteredItems);
