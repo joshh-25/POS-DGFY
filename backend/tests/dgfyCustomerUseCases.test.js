@@ -26,17 +26,19 @@ const account = {
 
 describe('dgfyCustomerUseCases', () => {
     it('loads dashboard data with explicit deferred phone verification marker', async () => {
+        const repository = {
+            listActiveTenants: jest.fn(),
+            listActivitiesForAccount: jest.fn().mockResolvedValue({
+                rows: [
+                    { activity_id: 1, activity_type: 'order', reference: 'SK-ABC123', status: 'placed', occurred_at: new Date() },
+                    { activity_id: 2, activity_type: 'service_booking', reference: 'SV-001', status: 'pending', occurred_at: new Date() }
+                ]
+            }),
+            listAddresses: jest.fn().mockResolvedValue([{ address_id: 1, label: 'Home', address_line: 'Iloilo' }]),
+            listLoyalty: jest.fn().mockResolvedValue({ balance: 5, transactions: [] })
+        };
         const useCase = buildGetDgfyCustomerDashboardUseCase({
-            repository: {
-                listActivitiesForAccount: jest.fn().mockResolvedValue({
-                    rows: [
-                        { activity_id: 1, activity_type: 'order', reference: 'SK-ABC123', status: 'placed', occurred_at: new Date() },
-                        { activity_id: 2, activity_type: 'service_booking', reference: 'SV-001', status: 'pending', occurred_at: new Date() }
-                    ]
-                }),
-                listAddresses: jest.fn().mockResolvedValue([{ address_id: 1, label: 'Home', address_line: 'Iloilo' }]),
-                listLoyalty: jest.fn().mockResolvedValue({ balance: 5, transactions: [] })
-            }
+            repository
         });
 
         const result = await useCase({ account });
@@ -47,6 +49,7 @@ describe('dgfyCustomerUseCases', () => {
         expect(result.data.bookings).toHaveLength(1);
         expect(result.data.addresses[0].label).toBe('Home');
         expect(result.data.loyalty.balance).toBe(5);
+        expect(repository.listActiveTenants).not.toHaveBeenCalled();
     });
 
     it('tracks references only inside the authenticated DGFY account', async () => {
@@ -322,10 +325,10 @@ describe('dgfyCustomerUseCases', () => {
         };
         const tenantOrderReader = jest.fn()
             .mockResolvedValueOnce([
-                { tracking_pin: 'SK-AAAA', customer_email: account.email, fulfillment_status: 'completed', total_amount: 250, lines: [{ item_id: 5, quantity: 1, sale_price: 250 }] }
+                { tracking_pin: 'SK-AAAA', customer_email: account.email, fulfillment_status: 'completed', total_amount: 250, lines: [{ item_id: 5, quantity: 1, sale_price: 250 }], storeCustomer: { dgfy_account_id: account.id } }
             ])
             .mockResolvedValueOnce([
-                { tracking_pin: 'SK-BBBB', customer_phone: '09123456789', fulfillment_status: 'placed', total_amount: 100, lines: [{ item_id: 9, quantity: 1, sale_price: 100 }] }
+                { tracking_pin: 'SK-BBBB', customer_phone: '09123456789', fulfillment_status: 'placed', total_amount: 100, lines: [{ item_id: 9, quantity: 1, sale_price: 100 }], storeCustomer: { dgfy_account_id: account.id } }
             ]);
         const activityRecorder = jest.fn().mockImplementation(({ tenantId, order }) => Promise.resolve({
             activity_id: tenantId === 'tenant-1' ? 1 : 2,
@@ -358,16 +361,16 @@ describe('dgfyCustomerUseCases', () => {
         };
         const tenantActivityReader = jest.fn().mockResolvedValue({
             orders: [
-                { tracking_pin: 'SK-AAAA', customer_email: account.email, fulfillment_status: 'completed', total_amount: 250 }
+                { tracking_pin: 'SK-AAAA', customer_email: account.email, fulfillment_status: 'completed', total_amount: 250, storeCustomer: { dgfy_account_id: account.id } }
             ],
             serviceBookings: [
-                { booking_id: 7, public_reference: 'SV-A1B2C3D4', customer_email: account.email, status: 'confirmed', payment_status: 'unpaid', start_at: new Date('2026-06-01T01:00:00Z') }
+                { booking_id: 7, public_reference: 'SV-A1B2C3D4', customer_email: account.email, status: 'confirmed', payment_status: 'unpaid', start_at: new Date('2026-06-01T01:00:00Z'), storeCustomer: { dgfy_account_id: account.id } }
             ],
             hospitalityReservations: [
-                { reservation_id: 9, public_reference: 'HSP-A1B2C3D4E5', customer_phone: '09123456789', status: 'confirmed', payment_status: 'deposit_paid', check_in_date: '2026-06-10', check_out_date: '2026-06-12' }
+                { reservation_id: 9, public_reference: 'HSP-A1B2C3D4E5', customer_phone: '09123456789', status: 'confirmed', payment_status: 'deposit_paid', check_in_date: '2026-06-10', check_out_date: '2026-06-12', storeCustomer: { dgfy_account_id: account.id } }
             ],
             fnbOrders: [
-                { check_id: 11, status: 'paid', posTransaction: { tracking_pin: 'FNB-A1B2C3', customer_email: account.email, payment_status: 'paid', total_amount: 399 }, lines: [{ item_id: 15, quantity: 1, item: { name: 'Brunch Set' } }] }
+                { check_id: 11, status: 'paid', posTransaction: { tracking_pin: 'FNB-A1B2C3', customer_email: account.email, payment_status: 'paid', total_amount: 399, storeCustomer: { dgfy_account_id: account.id } }, lines: [{ item_id: 15, quantity: 1, item: { name: 'Brunch Set' } }] }
             ]
         });
         const activityRecorder = jest.fn().mockResolvedValue({ activity_id: 1, dgfy_account_id: account.id, status: 'completed' });
@@ -423,7 +426,7 @@ describe('dgfyCustomerUseCases', () => {
         };
         const tenantActivityReader = jest.fn().mockResolvedValue({
             orders: [
-                { tracking_pin: 'SK-AAAA', customer_email: account.email, fulfillment_status: 'completed', total_amount: 250 }
+                { tracking_pin: 'SK-AAAA', customer_email: account.email, fulfillment_status: 'completed', total_amount: 250, storeCustomer: { dgfy_account_id: account.id } }
             ],
             serviceBookings: [],
             hospitalityReservations: []

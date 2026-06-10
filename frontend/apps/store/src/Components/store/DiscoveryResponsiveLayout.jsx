@@ -1,5 +1,5 @@
 import React from 'react';
-import { CalendarCheck2, ChevronRight, FileText, Home, Menu, User, UserCircle2, X } from 'lucide-react';
+import { CalendarCheck2, ChevronRight, ChevronDown, FileText, Home, Menu, User, UserCircle2, X } from 'lucide-react';
 
 export const getDiscoveryViewportState = (viewportWidth = 1280) => {
   const width = Number(viewportWidth || 0);
@@ -96,7 +96,9 @@ export function DiscoveryHeader({
   accountLabel = 'My Account',
   menuOpen = false,
   onMenuToggle = () => {},
-  onItemClick
+  onItemClick,
+  accountName,
+  accountInitials
 }) {
   const isMobileViewport = viewportMode === 'mobile';
   const isTabletViewport = viewportMode === 'tablet';
@@ -127,8 +129,19 @@ export function DiscoveryHeader({
           {isMobileViewport ? (
             <>
               {typeof onAuthClick === 'function' && isAuthenticated && (
-                <button type="button" onClick={onAuthClick} className="discovery-header__profileButton" aria-label={accountLabel}>
-                  <UserCircle2 size={20} />
+                <button
+                  type="button"
+                  onClick={onAuthClick}
+                  aria-label={accountLabel}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}
+                >
+                  {accountInitials ? (
+                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#AEE8F4', color: '#1A4586', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700 }}>
+                      {accountInitials}
+                    </div>
+                  ) : (
+                    <UserCircle2 size={24} />
+                  )}
                 </button>
               )}
               <button type="button" onClick={onMenuToggle} className="discovery-header__menuButton" aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}>
@@ -138,15 +151,38 @@ export function DiscoveryHeader({
           ) : (
             <>
               {typeof onAuthClick === 'function' && (
-                <button type="button" onClick={onAuthClick} className="discovery-header__secondaryAction">
-                  <UserCircle2 size={isTabletViewport ? 14 : 15} />
-                  {isAuthenticated ? accountLabel : authLabel}
+                <button
+                  type="button"
+                  onClick={onAuthClick}
+                  className={isAuthenticated ? '' : "discovery-header__secondaryAction"}
+                  style={isAuthenticated ? { background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, color: '#101828', fontSize: isTabletViewport ? 14 : 15, fontWeight: 600 } : undefined}
+                >
+                  {isAuthenticated ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {accountInitials ? (
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#AEE8F4', color: '#1A4586', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700 }}>
+                          {accountInitials}
+                        </div>
+                      ) : (
+                        <UserCircle2 size={isTabletViewport ? 14 : 15} />
+                      )}
+                      <span>{accountName ? accountName.split(' ')[0] : accountLabel}</span>
+                      <ChevronDown size={14} style={{ marginLeft: 4 }} />
+                    </div>
+                  ) : (
+                    <>
+                      <UserCircle2 size={isTabletViewport ? 14 : 15} />
+                      {authLabel}
+                    </>
+                  )}
                 </button>
               )}
-              <button type="button" onClick={onBusinessClick} className={cx('discovery-header__cta', isTabletViewport && 'discovery-header__cta--tablet')}>
-                <User size={isTabletViewport ? 14 : 15} />
-                {businessLabel}
-              </button>
+              {!isAuthenticated && (
+                <button type="button" onClick={onBusinessClick} className={cx('discovery-header__cta', isTabletViewport && 'discovery-header__cta--tablet')}>
+                  <User size={isTabletViewport ? 14 : 15} />
+                  {businessLabel}
+                </button>
+              )}
             </>
           )}
         </div>
@@ -200,15 +236,38 @@ export function DiscoveryHeader({
               </div>
               <div className="discovery-header__drawerFooter">
                 {typeof onAuthClick === 'function' && (
-                  <button type="button" onClick={onAuthClick} className="discovery-header__menuSecondaryAction">
-                    <UserCircle2 size={15} />
-                    {isAuthenticated ? accountLabel : authLabel}
+                  <button
+                    type="button"
+                    onClick={onAuthClick}
+                    className={isAuthenticated ? '' : "discovery-header__menuSecondaryAction"}
+                    style={isAuthenticated ? { background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, color: '#101828', fontSize: 15, fontWeight: 600, width: '100%', textAlign: 'left' } : undefined}
+                  >
+                    {isAuthenticated ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {accountInitials ? (
+                          <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#AEE8F4', color: '#1A4586', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700 }}>
+                            {accountInitials}
+                          </div>
+                        ) : (
+                          <UserCircle2 size={15} />
+                        )}
+                        <span>{accountName ? accountName.split(' ')[0] : accountLabel}</span>
+                        <ChevronDown size={14} style={{ marginLeft: 4 }} />
+                      </div>
+                    ) : (
+                      <>
+                        <UserCircle2 size={15} />
+                        {authLabel}
+                      </>
+                    )}
                   </button>
                 )}
-                <button type="button" onClick={onBusinessClick} className="discovery-header__menuCta">
-                  <User size={15} />
-                  {businessLabel}
-                </button>
+                {!isAuthenticated && (
+                  <button type="button" onClick={onBusinessClick} className="discovery-header__menuCta">
+                    <User size={15} />
+                    {businessLabel}
+                  </button>
+                )}
               </div>
             </div>
           </aside>

@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ArrowLeft, Building2, ShieldCheck, Store, UserRound } from 'lucide-react';
+import { ArrowLeft, Building2, ShieldCheck, Store, UserRound, ChevronRight } from 'lucide-react';
 
 const providerClause = 'DGFY is an e-marketplace/platform service provider. The seller owns the product, sets the price, fulfills the order, and remains the seller of record. Online payments are processed by licensed payment partners such as PayMongo; DGFY does not operate a stored-value wallet or hold seller settlement funds. When PayMongo QR Ph checkout is used, the disclosed DGFY platform fee is 1% of the item subtotal and is charged to the customer as an added platform fee. PayMongo/provider processing, payout, bank, dispute, and related provider fees are shouldered by the registered company and reduce the company net settlement unless a separate signed provider contract says otherwise.';
 
@@ -107,34 +107,148 @@ export default function LegalDocument() {
     const location = useLocation();
     const document = legalDocuments[location.pathname] || legalDocuments['/legal/dgfy-company-terms'];
     const Icon = document.icon;
+    const returnTo = String(location.state?.returnTo || '/register-company').trim() || '/register-company';
+
+    const [activeSection, setActiveSection] = useState('');
+
+    useEffect(() => {
+        const handleScroll = () => {
+            const sections = document.sections.map(s => s.heading.toLowerCase().replace(/\s+/g, '-'));
+            let current = '';
+            for (const id of sections) {
+                const el = window.document.getElementById(id);
+                if (el && el.getBoundingClientRect().top < 150) {
+                    current = id;
+                }
+            }
+            if (current !== activeSection) {
+                setActiveSection(current);
+            }
+        };
+        window.addEventListener('scroll', handleScroll);
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, [document.sections, activeSection]);
+
+    const scrollToSection = (e, id) => {
+        e.preventDefault();
+        const el = window.document.getElementById(id);
+        if (el) {
+            window.scrollTo({
+                top: el.offsetTop - 80,
+                behavior: 'smooth'
+            });
+        }
+    };
 
     return (
-        <main className="min-h-screen bg-[#f4faf8] px-4 py-8 text-[#132033]">
-            <div className="mx-auto w-full max-w-4xl">
-                <Link to="/register-company" className="inline-flex items-center gap-2 text-sm font-semibold text-[#1f5f9f] hover:text-[#174f86]">
-                    <ArrowLeft className="h-4 w-4" />
-                    Back to registration
-                </Link>
+        <div className="min-h-screen bg-[#F8FAFC] font-sans text-[#0F172A] flex flex-col">
+            {/* HERO SECTION */}
+            <section className="bg-[#1A4E8D] text-white px-6 py-16 lg:py-24 relative overflow-hidden shrink-0">
+                {/* Background Pattern/Gradient */}
+                <div className="absolute inset-0 bg-gradient-to-br from-[#1A4E8D] to-[#0F172A] opacity-90"></div>
+                <div className="absolute -top-32 -right-32 h-[500px] w-[500px] rounded-full bg-white/5 blur-[100px]"></div>
 
-                <header className="mt-6 border-b border-[#d8e8e3] pb-6">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#e8f4ff] text-[#1f5f9f]">
-                        <Icon className="h-7 w-7" />
+                <div className="container mx-auto max-w-6xl relative z-10">
+                    <Link to={returnTo} state={location.state || null} className="inline-flex items-center gap-2 text-sm font-semibold text-blue-200 hover:text-white transition-colors mb-8">
+                        <ArrowLeft className="h-4 w-4" />
+                        Back to registration
+                    </Link>
+
+                    <div className="flex flex-col md:flex-row md:items-end gap-8 justify-between">
+                        <div className="max-w-3xl">
+                            <div className="flex items-center gap-3 mb-5">
+                                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/10 text-white backdrop-blur-sm border border-white/10 shadow-sm">
+                                    <Icon className="h-6 w-6" />
+                                </div>
+                                <span className="text-xs font-bold uppercase tracking-widest text-blue-200">Official Legal Document</span>
+                            </div>
+                            <h1 className="text-4xl lg:text-5xl font-black tracking-tight mb-5 leading-tight">{document.title}</h1>
+                            <p className="text-lg text-blue-100 max-w-2xl leading-relaxed">{document.summary}</p>
+                        </div>
+                        <div className="flex-shrink-0 text-left md:text-right">
+                            <p className="text-xs font-semibold uppercase tracking-widest text-blue-300 mb-2">Document Version</p>
+                            <p className="text-sm font-mono bg-black/20 px-4 py-2 rounded-xl inline-block border border-white/10 shadow-inner">{document.version}</p>
+                        </div>
                     </div>
-                    <p className="mt-5 text-xs font-semibold uppercase tracking-wide text-slate-500">Current DGFY terms</p>
-                    <h1 className="mt-2 text-3xl font-black tracking-normal md:text-4xl">{document.title}</h1>
-                    <p className="mt-2 text-sm font-semibold uppercase tracking-wide text-slate-500">{document.version}</p>
-                    <p className="mt-4 max-w-2xl text-base leading-7 text-slate-700">{document.summary}</p>
-                </header>
-
-                <div className="py-6">
-                    {document.sections.map((section) => (
-                        <section key={section.heading} className="border-b border-[#d8e8e3] py-5 last:border-b-0">
-                            <h2 className="text-lg font-bold">{section.heading}</h2>
-                            <p className="mt-2 text-sm leading-7 text-slate-700">{section.body}</p>
-                        </section>
-                    ))}
                 </div>
-            </div>
-        </main>
+            </section>
+
+            {/* CONTENT LAYOUT */}
+            <section className="container mx-auto max-w-6xl px-6 py-12 lg:py-20 flex-1">
+                <div className="flex flex-col lg:flex-row gap-12 lg:gap-16 relative items-start">
+
+                    {/* LEFT: MAIN DOCUMENT */}
+                    <main className="flex-1 min-w-0 bg-white p-8 lg:p-14 rounded-3xl shadow-sm border border-slate-200">
+                        <div className="max-w-none">
+
+                            <p className="text-lg text-slate-700 font-medium mb-10 pb-10 border-b border-slate-100">
+                                This document outlines the official terms and policies for DGFY. By proceeding with registration or use of our services, you acknowledge and agree to these terms.
+                            </p>
+
+                            <div className="space-y-16">
+                                {document.sections.map((section, index) => {
+                                    const sectionId = section.heading.toLowerCase().replace(/\s+/g, '-');
+                                    return (
+                                        <div key={section.heading} id={sectionId} className="scroll-mt-24">
+                                            <div className="flex items-center gap-5 mb-6">
+                                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F1F5F9] text-base font-bold text-[#1A4E8D] shadow-inner">
+                                                    {index + 1}
+                                                </span>
+                                                <h2 className="text-2xl font-bold tracking-tight m-0 text-slate-900">{section.heading}</h2>
+                                            </div>
+                                            <div className="pl-[60px]">
+                                                <p className="text-base leading-8 text-slate-600 m-0">{section.body}</p>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </main>
+
+                    {/* RIGHT: TABLE OF CONTENTS (STICKY SIDEBAR) */}
+                    <aside className="lg:w-80 flex-shrink-0 sticky top-12">
+                        <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                            <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-6">Contents</h3>
+                            <ul className="space-y-4">
+                                {document.sections.map((section, index) => {
+                                    const sectionId = section.heading.toLowerCase().replace(/\s+/g, '-');
+                                    const isActive = activeSection === sectionId || (!activeSection && index === 0);
+                                    return (
+                                        <li key={sectionId}>
+                                            <a
+                                                href={`#${sectionId}`}
+                                                onClick={(e) => scrollToSection(e, sectionId)}
+                                                className={`flex text-sm font-medium transition-colors duration-200 group ${
+                                                    isActive
+                                                    ? 'text-[#1A4E8D]'
+                                                    : 'text-slate-500 hover:text-slate-900'
+                                                }`}
+                                            >
+                                                <span className={`mr-3 transition-colors ${isActive ? 'text-[#1A4E8D]' : 'text-slate-300 group-hover:text-slate-400'}`}>
+                                                    {index + 1}.
+                                                </span>
+                                                <span className="leading-snug">{section.heading}</span>
+                                            </a>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+
+                            <div className="mt-8 pt-8 border-t border-slate-100">
+                                <Link
+                                    to={returnTo}
+                                    state={location.state || null}
+                                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#F8FAFC] px-5 py-3.5 text-sm font-semibold text-slate-700 hover:bg-[#E2E8F0] hover:text-slate-900 transition-colors border border-slate-200 shadow-sm"
+                                >
+                                    Return to Registration
+                                </Link>
+                            </div>
+                        </div>
+                    </aside>
+
+                </div>
+            </section>
+        </div>
     );
 }

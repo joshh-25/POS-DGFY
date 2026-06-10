@@ -23,7 +23,7 @@ export const recordDgfyOrderActivity = async ({ tenantId, order, storeCustomer =
     const email = normalizeEmail(order.customer_email || storeCustomer?.email);
     const account = storeCustomer?.dgfy_account_id
         ? { id: storeCustomer.dgfy_account_id }
-        : (email ? await dgfyCustomerRepository.findDgfyAccountByEmail(email).catch(() => null) : null);
+        : null;
     const lines = orderLineSnapshot(order);
     const totalAmount = Number(order.total_amount ?? order.grand_total ?? 0);
 
