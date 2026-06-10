@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-06-10
+last_reviewed: 2026-06-11
 applies_to: dgfy_accounts, tenant_registration, storefront_account, tenant_user_invitations
 topic: global_dgfy_account_business_registration
 ---
@@ -21,7 +21,7 @@ Introduce a landlord-scoped DGFY account identity.
 2. Public company registration requires an authenticated DGFY account.
 3. Founder email, phone, username seed, and password hash are derived server-side from the DGFY account. Registration clients must not provide or override founder contact, password, plan, or compliance mode.
 4. Every new company starts in `non_compliant_active`. Compliance activation remains a SKUpervisor Settings > Compliance lifecycle.
-5. Public DGFY account registration requires a `dgfy_account_verification` SMTP OTP before account creation. The registration mutation consumes the code and sets `email_verified_at` when the account is created.
+5. Public DGFY account registration requires a global `dgfy_account_verification` SMTP OTP before account creation. The public OTP request must work without a company token and must ignore stale tenant cookies/headers; the registration mutation consumes the global code and sets `email_verified_at` when the account is created.
 6. Public company registration requires a signed-in active DGFY account but does not require a separate DGFY email OTP before tenant creation because the account email was verified at DGFY signup. The authenticated DGFY account email is the founder email source for this registration. If a future DGFY email-change flow changes the account email, that email-change flow owns its own verification requirement before the changed email can be treated as verified identity elsewhere.
 7. The tenant workflow selector remains required, but public-facing copy calls it Business Industry.
 8. A landlord membership registry links DGFY accounts to tenant users. Founder membership is accepted immediately after tenant provisioning.

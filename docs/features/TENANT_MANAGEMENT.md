@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-06-08
+last_reviewed: 2026-06-11
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -16,7 +16,7 @@ The SKU Inventory Manager uses a **Multi-Tenant Architecture** with **Database I
 ## Tenant Lifecycle
 
 ### 1. Registration (Current Policy)
-- **DGFY Account Requirement**: Public company registration requires a signed-in global DGFY account. DGFY account signup first sends a `dgfy_account_verification` SMTP OTP to the submitted email and consumes that code before creating the account. The founder's email, phone, username seed, and password hash are derived server-side from the verified DGFY account.
+- **DGFY Account Requirement**: Public company registration requires a signed-in global DGFY account. DGFY account signup first sends a global `dgfy_account_verification` SMTP OTP to the submitted email and consumes that code before creating the account. The public OTP request does not require a company token and ignores stale tenant cookies/headers, because DGFY account registration verifies only global OTP rows. The founder's email, phone, username seed, and password hash are derived server-side from the verified DGFY account.
 - **DGFY Account Registration Order**: Account creation collects Last Name, First Name, Optional Middle Name, email, contact number, password, and confirm password in that order. Password and confirmation fields expose visibility toggles. The optional middle name is persisted as `dgfy_accounts.middle_name` and appears in DGFY profile/customer account surfaces when present.
 - **Premium-Capable Account**: Every newly registered tenant persists `plan=premium` by default so mode-specific premium-gated surfaces are available after activation. The registration UI no longer displays a premium-capable widget.
 - **Default Auto-Accept Mode**: `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` is the default. Public company registration immediately creates the landlord tenant row, provisions the isolated tenant database, activates the tenant, and automatically exchanges the signed-in DGFY account plus accepted founder membership for the normal tenant session without retyping credentials.
@@ -125,12 +125,12 @@ Tenant Manager exposes platform-owner capability switches for active tenants:
 
 Capability changes require a platform-admin reason, write a landlord `tenant_admin_audit_logs` row with before/after capability snapshots, and write tenant-local settings in a tenant DB transaction. Platform-admin Storefront changes must refresh the landlord `storefront_discovery_index` after successful tenant setting writes; if the refresh fails, the backend compensates by rolling back the Storefront setting changes and returns an error instead of reporting a stale success. Tenant list responses include `capabilities.storefront_readiness` so the admin UI can show whether Storefront visibility is actually publishable through an active primary storefront map pin with coordinates. These switches must not mutate tenant lifecycle `status`, subscription `plan`, item-level POS visibility, item-level Storefront visibility, or branch availability overrides.
 
-Current production status as of 2026-06-10:
-- DGFY OTP-first account signup and automatic IMS tenant-session handoff are deployed at SHA `9e7c64ceaaa6e0f636db0cf59e413874b03f7b70`.
-- Production remote `HEAD`, remote `origin/master`, and `.deploy-state/last_deployed_commit` matched that SHA at proof time; deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260610_151425.summary.txt` reports backend health, IMS, POS, Storefront, public endpoints, tenant-store asset integrity, frontend asset parity, tenant schema sync, tenant schema sync regression, tenant index headroom, permission backfill, Storefront discovery index reconciliation, and PM2 reload passing.
+Current production status as of 2026-06-11:
+- DGFY OTP-first account signup, global OTP scoping, no-company-token OTP request access, and automatic IMS tenant-session handoff are deployed at SHA `8b03dfea4f9615d665baa14df59a78de5c797a60`.
+- Production remote `HEAD`, remote `origin/master`, and `.deploy-state/last_deployed_commit` matched that SHA at proof time; deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260610_234107.summary.txt` reports backend health, IMS, POS, Storefront, public endpoints, tenant-store asset integrity, frontend asset parity, tenant schema sync, tenant schema sync regression, tenant index headroom, permission backfill, Storefront discovery index reconciliation, and PM2 reload passing.
 - The release used the documented emergency no-staging bypass because stale QA deployed-head evidence was the sole failed gate after QA smoke, rollback, restore, docs, and architecture passed. `System_Audit/7.2-Release_evidence_depends_on_stale_or_bypassable_QA_paths.md` remains open until QA deployed-head evidence is deterministic.
-- Local validation for the release included `npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx`, `npm --prefix backend test -- --runInBand tests/dgfyAuthUseCases.test.js tests/emailOtpService.test.js tests/registerCompanyRequestUseCase.autoApproval.test.js`, `npm run check:architecture`, and `npm --prefix frontend run build`.
-- Live route smoke returned HTTP 200 with root content and no framework overlay for `/dgfy/auth?intent=register-business&mode=create-account` and `/register-company`.
+- Local validation for the latest DGFY OTP hotfix included `npm --prefix backend test -- --runInBand tests/tenantHandler.emailOtp.test.js tests/authEmailOtpTenantScope.test.js tests/emailOtpService.test.js tests/dgfyAuthUseCases.test.js`, `npm run check:architecture`, `npm run check:compliance`, and `git diff --check`.
+- Live proof after deployment showed `POST /api/v1/auth/email-otp/request` with purpose `dgfy_account_verification` and no company token no longer returns `TENANT_TOKEN_REQUIRED`; an intentionally invalid email returns normal request validation instead.
 
 ## Technical Architecture
 

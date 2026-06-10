@@ -154,7 +154,7 @@ Supported purposes:
 - `company_registration`: body requires `email`; retained for compatibility with older flows, but current DGFY company registration uses the signed-in DGFY account directly and does not ask for this second OTP.
 - `tenant_user_registration`: body requires `email` and a tenant context (`x-company-token`).
 - `invitation_acceptance`: body requires `invitation_token`; the backend resolves tenant context and invited email from the invitation when `x-company-token` is absent.
-- `dgfy_account_verification`: body requires `email` for DGFY account registration before account creation; existing signed-in accounts can also request this purpose through the authenticated DGFY account endpoint.
+- `dgfy_account_verification`: body requires `email` for DGFY account registration before account creation. The public request is landlord-global, does not require a company token, and must ignore stale browser tenant context because `/dgfy/auth/register` verifies only a global OTP. Existing signed-in accounts can also request this purpose through the authenticated DGFY account endpoint.
 - `dgfy_password_reset`: requested through the DGFY password recovery flow before changing a global DGFY account password.
 
 Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 10), lock after `EMAIL_OTP_MAX_ATTEMPTS` (default 5), and are consumed with a conditional update so a concurrently submitted request cannot reuse a code after it is consumed. Production enables enforcement by default; `EMAIL_OTP_ENFORCEMENT_ENABLED=false` is the rollback switch.
@@ -4610,7 +4610,7 @@ Create a global DGFY account used for customer account surfaces and business reg
 }
 ```
 
-Registration requires a prior `dgfy_account_verification` code from `POST /auth/email-otp/request` for the submitted email, plus the current DGFY account terms, privacy terms, and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current`. The registration mutation consumes the email OTP, creates the account with `email_verified_at` set, and writes the account row, mirrored DGFY invitation memberships, and acknowledgement evidence in one landlord transaction; persistence misconfiguration fails closed with `500 LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_UNAVAILABLE`. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
+Registration requires a prior global `dgfy_account_verification` code from `POST /auth/email-otp/request` for the submitted email, plus the current DGFY account terms, privacy terms, and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current`. The public OTP request does not require tenant context; tenant-scoped browser cookies/headers must not scope this OTP because the registration mutation consumes the email OTP with `tenant_id: null`, creates the account with `email_verified_at` set, and writes the account row, mirrored DGFY invitation memberships, and acknowledgement evidence in one landlord transaction. Persistence misconfiguration fails closed with `500 LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_UNAVAILABLE`. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
 
 The customer-facing registration order is Last Name, First Name, Optional Middle Name, email, contact number, password, and confirm password. Password fields expose visibility toggles. `middle_name` is optional and nullable; when present it is returned on account/profile/customer surfaces.
 
