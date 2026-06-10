@@ -176,26 +176,29 @@ describe('Item/Product wizard contracts', () => {
     const itemFormSource = readFrontendFile('Components/items/ItemFormModal.jsx');
     const productPosSetupSource = readFrontendFile('Components/products/wizard/POSSetupStep.jsx');
     const itemsPageSource = readFrontendFile('src/features/inventory/pages/ItemsPage.jsx');
+    const storefrontImageCarouselSource = readFrontendFile('Components/items/StorefrontImageCarousel.jsx');
 
     expect(itemFormSource).toContain('Add Item Images');
     expect(itemFormSource).toContain('Remove All Item Images');
     expect(itemFormSource).toContain('STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5');
     expect(itemFormSource).toContain('parseStorefrontImageGallery');
     expect(itemFormSource).toContain('image slots remaining');
-    expect(itemFormSource).toContain('Set first');
     expect(itemFormSource).toContain('No item image uploaded yet.');
     expect(itemFormSource).toContain('Enable in Storefront');
     expect(itemFormSource).toContain('Disable in Storefront');
+    expect(itemFormSource).toContain('<StorefrontImageCarousel');
+    expect(itemFormSource).toContain('variant="wizard"');
 
     expect(productPosSetupSource).toContain('Add Item Images');
     expect(productPosSetupSource).toContain('Remove All Item Images');
     expect(productPosSetupSource).toContain('STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5');
     expect(productPosSetupSource).toContain('parseStorefrontImageGallery');
     expect(productPosSetupSource).toContain('image slots remaining');
-    expect(productPosSetupSource).toContain('Set first');
     expect(productPosSetupSource).toContain('No item image uploaded yet.');
     expect(productPosSetupSource).toContain('Enable in Storefront');
     expect(productPosSetupSource).toContain('Disable in Storefront');
+    expect(productPosSetupSource).toContain('<StorefrontImageCarousel');
+    expect(productPosSetupSource).toContain('variant="wizard"');
 
     expect(itemsPageSource).toContain('Item image updated for');
     expect(itemsPageSource).toContain('Primary storefront image updated for');
@@ -203,6 +206,13 @@ describe('Item/Product wizard contracts', () => {
     expect(itemsPageSource).toContain('parseStorefrontImageGallery');
     expect(itemsPageSource).toContain('updateStorefrontCatalogGallery(itemId, nextGallery)');
     expect(itemsPageSource).toContain('Failed to upload item image');
+    expect(itemsPageSource).toContain('<StorefrontImageCarousel');
+    expect(itemsPageSource).toContain('variant="table"');
+    expect(storefrontImageCarouselSource).toContain('Set first');
+    expect(storefrontImageCarouselSource).toContain('Remove');
+    expect(storefrontImageCarouselSource).toContain('aria-label="Previous item image"');
+    expect(storefrontImageCarouselSource).toContain('aria-label="Next item image"');
+    expect(storefrontImageCarouselSource).toContain('item-carousel-dot');
   });
 
   it('uses mode-aware item taxonomy and filtered UOM options in the item form', () => {

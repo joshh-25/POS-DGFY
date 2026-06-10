@@ -4,6 +4,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
+import StorefrontImageCarousel from '@/components/items/StorefrontImageCarousel';
 
 const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
 
@@ -263,46 +264,13 @@ export default function POSSetupStep({
         {productItem ? (
           <div className="space-y-3">
             {storefrontGallery.length > 0 ? (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {storefrontGallery.map((entry, index) => (
-                  <div key={`${entry.url || entry.path}-${index}`} className="rounded-md border border-slate-200 bg-white p-2">
-                    <div className="relative">
-                      <img
-                        src={resolveAssetUrl(entry.url || entry.path)}
-                        alt={`${productItem?.name || 'Product'} storefront image ${index + 1}`}
-                        className="h-24 w-full rounded-md object-cover"
-                      />
-                      {index === 0 && (
-                        <Badge className="absolute left-2 top-2 bg-emerald-600 text-white hover:bg-emerald-600">
-                          Primary
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {index > 0 && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onSetPrimaryStorefrontImage && onSetPrimaryStorefrontImage(productItem, index)}
-                          disabled={!onSetPrimaryStorefrontImage}
-                        >
-                          Set first
-                        </Button>
-                      )}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onDeleteStorefrontImage && onDeleteStorefrontImage(productItem, index)}
-                        disabled={!onDeleteStorefrontImage}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <StorefrontImageCarousel
+                gallery={storefrontGallery}
+                itemName={productItem?.name || 'Product'}
+                variant="wizard"
+                onSetPrimary={(index) => onSetPrimaryStorefrontImage && onSetPrimaryStorefrontImage(productItem, index)}
+                onRemove={(index) => onDeleteStorefrontImage && onDeleteStorefrontImage(productItem, index)}
+              />
             ) : (
               <p className="text-sm text-slate-500">No item image uploaded yet.</p>
             )}
