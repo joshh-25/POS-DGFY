@@ -12,7 +12,7 @@ Last updated: 2026-06-10
 5. Current release blockers from the June 2 audit remain open until remediated. Local release gate, frontend contract suite failures, missing current green backend full-test evidence, and frontend budget artifact self-containment are remediated as of June 4, 2026 for target SHA `be59a6b55f4d6367acd124729b43fa4ee579d09b`.
 6. Production deployment status must not be advanced from this checklist alone; refresh no-staging parity, local release gate or approved targeted release evidence, production contract smoke, and human UAT evidence before the next production promotion.
 7. June 5, 2026 tenant browser-session hardening is live at code SHA `4f6eecd1778ae139e634d23821369f40f22dd5d0`: `/api/v1/auth/refresh-token` can recover strict tenant context from the signed HttpOnly refresh cookie's tenant binding when the companion tenant-context cookie/header is missing, and login/refresh responses include `data.company.token` so the frontend can rehydrate both access and tenant context after hard reload.
-8. At the start of this documentation refresh, local `master`, `origin/master`, and production runtime evidence matched `9e7c64ceaaa6e0f636db0cf59e413874b03f7b70`. Documentation-only commits after this refresh do not change production runtime until separately pushed and promoted.
+8. DGFY signup OTP scope hotfix code commit `4be34b7a` keeps `dgfy_account_verification` OTP requests global even when a browser still carries tenant context, matching the global `/api/v1/dgfy/auth/register` verifier. Promote a SHA containing this commit before treating the browser OTP fix as production runtime.
 
 Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for readiness status and blockers.
 
@@ -98,6 +98,7 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 59. `npm run check:architecture` and `npm --prefix frontend run build` -> PASS on June 10, 2026 before commit `9e7c64ceaaa6e0f636db0cf59e413874b03f7b70`.
 60. Production deployment on June 10, 2026 deployed runtime code target SHA `9e7c64ceaaa6e0f636db0cf59e413874b03f7b70`; deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260610_151425.summary.txt` reported backend health, IMS runtime, POS runtime, Store runtime, public IMS/POS/Storefront/Tenant Store endpoints, tenant-store asset integrity, frontend asset parity, tenant schema sync, tenant schema sync regression gate, tenant index headroom, permission backfill, Storefront discovery index reconciliation, and PM2 reload passing.
 61. Live route smoke returned HTTP 200 with root content and no framework overlay for `https://skupervisor.dgfy.ph/dgfy/auth?intent=register-business&mode=create-account` and `https://skupervisor.dgfy.ph/register-company`.
+62. `npm --prefix backend test -- --runInBand tests/authEmailOtpTenantScope.test.js tests/emailOtpService.test.js tests/dgfyAuthUseCases.test.js` -> PASS on June 10, 2026 with 25 tests before hotfix code commit `4be34b7a`. The regression proves DGFY account-verification OTP requests must ignore stale tenant context because the registration verifier intentionally queries global `tenant_id: null` OTPs.
 
 ## Remaining Non-Technical Blockers (Go/No-Go)
 
