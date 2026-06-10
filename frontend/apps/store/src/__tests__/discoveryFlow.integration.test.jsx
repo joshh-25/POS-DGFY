@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import maplibregl from 'maplibre-gl';
 import { App } from '../main.jsx';
@@ -376,54 +376,15 @@ describe('storefront discovery integration flow', () => {
     }
   });
 
-  it('registers from the storefront account panel with approved field order and terms acknowledgement', async () => {
+  it('keeps the storefront account panel as a launcher with guest and DGFY handoff actions', async () => {
     const defaultFetch = fetchMock.getMockImplementation();
     fetchMock.mockImplementation(async (url, options = {}) => {
       const normalized = String(url);
-      if (normalized.includes('/api/v1/dgfy/legal-terms/current')) {
-        return makeJsonResponse(dgfyLegalTerms);
-      }
-      if (normalized.includes('/api/v1/auth/email-otp/request')) {
-        return makeJsonResponse({
-          otp_id: 'otp-1',
-          purpose: 'dgfy_account_verification',
-          email: 'ada@example.test'
-        });
-      }
       if (normalized.includes('/api/v1/dgfy/auth/me')) {
         return {
           ok: false,
           json: async () => ({ success: false, message: 'Unauthorized' })
         };
-      }
-      if (normalized.includes('/api/v1/dgfy/auth/register')) {
-        return makeJsonResponse({
-          token: 'dgfy-token',
-          account: {
-            id: 'dgfy-1',
-            first_name: 'Ada',
-            middle_name: 'Byron',
-            last_name: 'Lovelace',
-            email: 'ada@example.test',
-            phone: '+639123456789'
-          }
-        });
-      }
-      if (normalized.includes('/api/v1/dgfy/customer/dashboard')) {
-        return makeJsonResponse({
-          account: {
-            id: 'dgfy-1',
-            first_name: 'Ada',
-            middle_name: 'Byron',
-            last_name: 'Lovelace',
-            email: 'ada@example.test',
-            phone: '+639123456789'
-          },
-          orders: [],
-          bookings: [],
-          addresses: [],
-          loyalty: null
-        });
       }
       return defaultFetch(url, options);
     });
@@ -431,73 +392,14 @@ describe('storefront discovery integration flow', () => {
     render(<App />);
 
     fireEvent.click(screen.getAllByRole('button', { name: /log in \/ sign up/i })[0]);
-    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
-    const termsCheckbox = await screen.findByRole('checkbox', { name: /I have reviewed and agree to the current DGFY Account Terms/i });
-    await waitFor(() => expect(fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl).includes('/api/v1/dgfy/legal-terms/current'))).toBe(true));
-    await waitFor(() => expect(termsCheckbox.disabled).toBe(false));
 
-    const submitButton = screen.getByRole('button', { name: /create dgfy account/i });
-    const placeholders = Array.from(submitButton.closest('form').querySelectorAll('input'))
-      .map((input) => input.placeholder)
-      .filter(Boolean)
-      .slice(0, 8);
-    expect(placeholders).toEqual([
-      'Last name',
-      'First name',
-      'Middle name (optional)',
-      'Email',
-      'Email verification code',
-      'Contact number',
-      'Password',
-      'Confirm password'
-    ]);
-
-    fireEvent.click(screen.getByRole('button', { name: /view terms/i }));
-    expect(screen.getByRole('dialog', { name: /current dgfy terms/i })).toBeTruthy();
-    expect(screen.getByText('DGFY Account Terms')).toBeTruthy();
-    fireEvent.click(screen.getAllByRole('button', { name: /close/i }).find((button) => button.textContent === 'Close'));
-
-    fireEvent.change(screen.getByPlaceholderText('Last name'), { target: { value: 'Lovelace' } });
-    fireEvent.change(screen.getByPlaceholderText('First name'), { target: { value: 'Ada' } });
-    fireEvent.change(screen.getByPlaceholderText('Middle name (optional)'), { target: { value: 'Byron' } });
-    fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'ada@example.test' } });
-    fireEvent.click(screen.getByRole('button', { name: /send code/i }));
-    await waitFor(() => {
-      const otpCall = fetchMock.mock.calls.find(([requestUrl]) => String(requestUrl).includes('/api/v1/auth/email-otp/request'));
-      expect(otpCall).toBeTruthy();
-      expect(JSON.parse(otpCall[1].body)).toEqual({
-        purpose: 'dgfy_account_verification',
-        email: 'ada@example.test'
-      });
-    });
-    fireEvent.change(screen.getByPlaceholderText('Email verification code'), { target: { value: '123456' } });
-    fireEvent.change(screen.getByPlaceholderText('Contact number'), { target: { value: '+639123456789' } });
-    fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'password123' } });
-    fireEvent.change(screen.getByPlaceholderText('Confirm password'), { target: { value: 'password123' } });
-    fireEvent.click(screen.getByRole('button', { name: /show password/i }));
-    fireEvent.click(screen.getByRole('button', { name: /show confirm password/i }));
-    expect(screen.getByPlaceholderText('Password').type).toBe('text');
-    expect(screen.getByPlaceholderText('Confirm password').type).toBe('text');
-    fireEvent.click(termsCheckbox);
-    fireEvent.click(submitButton);
-
-    await waitFor(() => {
-      const registerCall = fetchMock.mock.calls.find(([requestUrl]) => String(requestUrl).includes('/api/v1/dgfy/auth/register'));
-      expect(registerCall).toBeTruthy();
-      expect(JSON.parse(registerCall[1].body)).toEqual(expect.objectContaining({
-        first_name: 'Ada',
-        middle_name: 'Byron',
-        last_name: 'Lovelace',
-        email: 'ada@example.test',
-        phone: '+639123456789',
-        email_otp_code: '123456',
-        accepted_terms: true,
-        terms_version: 'dgfy-account-terms-2026-06-08',
-        privacy_version: 'dgfy-privacy-2026-06-08',
-        marketplace_terms_version: 'dgfy-marketplace-provider-2026-06-08'
-      }));
-    });
-  }, 15000);
+    expect(await screen.findByText('DGFY Account')).toBeTruthy();
+    const dialog = screen.getByRole('dialog', { name: 'DGFY Account' });
+    expect(within(dialog).getByRole('button', { name: /continue as guest/i })).toBeTruthy();
+    expect(within(dialog).getByRole('button', { name: /sign in \/ create account/i })).toBeTruthy();
+    expect(within(dialog).getByRole('button', { name: /^register your business$/i })).toBeTruthy();
+    expect(within(dialog).queryByRole('button', { name: /create dgfy account/i })).toBeNull();
+  });
 
   it('auto-loads signed-in DGFY customer context and exposes saved address checkout actions', async () => {
     window.history.pushState({}, '', '/tenant-store/alpha');

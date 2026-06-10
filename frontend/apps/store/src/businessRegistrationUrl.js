@@ -1,19 +1,53 @@
-const DEFAULT_BUSINESS_REGISTRATION_URL = 'https://skupervisor.dgfy.ph/register-company';
+const isDev = Boolean(typeof import.meta !== 'undefined' && import.meta.env?.DEV);
 
-const normalizeBusinessRegistrationBaseUrl = () => {
-  const configured = String(import.meta.env.VITE_SKUPERVISOR_REGISTRATION_URL || '').trim();
-  if (!configured) return DEFAULT_BUSINESS_REGISTRATION_URL;
+const resolveLocalOriginForPort = (port) => {
+  if (typeof window === 'undefined') return '';
+  const protocol = window.location.protocol || 'http:';
+  const hostname = window.location.hostname || '127.0.0.1';
+  return `${protocol}//${hostname}:${port}`;
+};
+
+const resolveDevSkupervisorOrigin = () => (
+  resolveLocalOriginForPort(String(import.meta.env?.VITE_SKUPERVISOR_DEV_PORT || '5180').trim() || '5180')
+  || 'http://127.0.0.1:5180'
+);
+
+const DEFAULT_BUSINESS_REGISTRATION_URL = isDev
+  ? `${resolveDevSkupervisorOrigin()}/register-company`
+  : 'https://skupervisor.dgfy.ph/register-company';
+const DEFAULT_DGFY_AUTH_URL = isDev
+  ? `${resolveDevSkupervisorOrigin()}/dgfy/auth`
+  : 'https://skupervisor.dgfy.ph/dgfy/auth';
+const DEFAULT_DGFY_RESET_URL = isDev
+  ? `${resolveDevSkupervisorOrigin()}/dgfy/reset-password`
+  : 'https://skupervisor.dgfy.ph/dgfy/reset-password';
+
+const normalizeUrl = (configured, fallbackUrl) => {
+  const trimmed = String(configured || '').trim();
+  if (!trimmed) return fallbackUrl;
 
   try {
-    const target = new URL(configured);
+    const target = new URL(trimmed);
     if (!target.pathname || target.pathname === '/') {
-      target.pathname = '/register-company';
+      target.pathname = new URL(fallbackUrl).pathname;
     }
     return target.toString();
   } catch {
-    return DEFAULT_BUSINESS_REGISTRATION_URL;
+    return fallbackUrl;
   }
 };
+
+const normalizeBusinessRegistrationBaseUrl = () => (
+  normalizeUrl(import.meta.env?.VITE_SKUPERVISOR_REGISTRATION_URL, DEFAULT_BUSINESS_REGISTRATION_URL)
+);
+
+const normalizeDgfyAuthBaseUrl = () => (
+  normalizeUrl(import.meta.env?.VITE_DGFY_AUTH_URL, DEFAULT_DGFY_AUTH_URL)
+);
+
+const normalizeDgfyResetBaseUrl = () => (
+  normalizeUrl(import.meta.env?.VITE_DGFY_RESET_URL, DEFAULT_DGFY_RESET_URL)
+);
 
 export const buildBusinessRegistrationUrl = (handoffToken = '') => {
   const target = new URL(normalizeBusinessRegistrationBaseUrl());
@@ -27,9 +61,42 @@ export const buildBusinessRegistrationUrl = (handoffToken = '') => {
 };
 
 export const buildBusinessLoginUrl = () => {
-  const target = new URL(normalizeBusinessRegistrationBaseUrl());
+  const target = new URL(normalizeDgfyAuthBaseUrl());
   target.pathname = '/login';
   target.search = '';
   target.hash = '';
+  return target.toString();
+};
+
+export const buildDgfyAuthUrl = ({
+  intent = 'customer',
+  mode = 'sign-in',
+  returnTo = '',
+  reason = ''
+} = {}) => {
+  const target = new URL(normalizeDgfyAuthBaseUrl());
+  target.pathname = '/dgfy/auth';
+  target.search = '';
+  target.hash = '';
+  target.searchParams.set('intent', String(intent || '').trim() === 'register-business' ? 'register-business' : 'customer');
+  target.searchParams.set('mode', String(mode || '').trim() === 'create-account' ? 'create-account' : 'sign-in');
+  if (returnTo) target.searchParams.set('return_to', String(returnTo).trim());
+  if (reason) target.searchParams.set('reason', String(reason).trim());
+  return target.toString();
+};
+
+export const buildDgfyResetPasswordUrl = ({
+  intent = 'customer',
+  returnTo = '',
+  email = ''
+} = {}) => {
+  const target = new URL(normalizeDgfyResetBaseUrl());
+  target.pathname = '/dgfy/reset-password';
+  target.search = '';
+  target.hash = '';
+  target.searchParams.set('intent', String(intent || '').trim() === 'register-business' ? 'register-business' : 'customer');
+  target.searchParams.set('mode', 'sign-in');
+  if (returnTo) target.searchParams.set('return_to', String(returnTo).trim());
+  if (email) target.searchParams.set('email', String(email).trim());
   return target.toString();
 };

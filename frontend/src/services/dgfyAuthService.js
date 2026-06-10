@@ -24,7 +24,9 @@ export const getStoredDgfyAccount = () => {
 };
 
 export const storeDgfySession = ({ token, account }) => {
-  if (token) dgfyToken = String(token || '').trim();
+  if (token) {
+    dgfyToken = String(token || '').trim();
+  }
   if (account) dgfyAccount = account;
 };
 

@@ -1,6 +1,8 @@
 const PUBLIC_AUTH_ROUTE_PREFIXES = [
   '/login',
   '/register',
+  '/dgfy/auth',
+  '/dgfy/reset-password',
   '/register-company',
   '/legal',
   '/privacy',

@@ -54,6 +54,8 @@ const Reports = lazy(() => import('../Pages/Reports.jsx'))
 const Settings = lazy(() => import('../Pages/Settings.jsx'))
 const Login = lazy(() => import('../Pages/Login.jsx'))
 const Register = lazy(() => import('../Pages/Register.jsx'))
+const DgfyAuthPage = lazy(() => import('../Pages/DgfyAuthPage.jsx'))
+const DgfyResetPasswordPage = lazy(() => import('../Pages/DgfyResetPasswordPage.jsx'))
 const RegisterCompany = lazy(() => import('../Pages/RegisterCompany.jsx'))
 const LegalDocument = lazy(() => import('../Pages/LegalDocument.jsx'))
 const AcceptInvite = lazy(() => import('../Pages/AcceptInvite.jsx'))
@@ -91,6 +93,8 @@ function App() {
         {/* Public routes - Login and Register pages */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/dgfy/auth" element={<DgfyAuthPage />} />
+        <Route path="/dgfy/reset-password" element={<DgfyResetPasswordPage />} />
         <Route path="/register-company" element={<RegisterCompany />} />
         <Route path="/legal/:slug" element={<LegalDocument />} />
         <Route path="/privacy" element={<LegalDocument />} />

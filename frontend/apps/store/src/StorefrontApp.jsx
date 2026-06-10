@@ -128,11 +128,16 @@ import {
 } from './tracking/fnbAdapter.js';
 import TrackingRouteMap, { extractTrackingMapCoordinates } from './tracking/TrackingRouteMap.jsx';
 import HospitalityBookingPanel from './HospitalityBookingPanel.jsx';
-import { buildBusinessRegistrationUrl } from './businessRegistrationUrl.js';
 import {
   WORKFLOW_MODE_LABELS,
   WORKFLOW_MODE_SELECT_VALUES
 } from '../../../src/features/settings/workflowMode.js';
+import { getCsrfToken } from '../../../src/services/browserSession.js';
+import {
+  buildBusinessLoginUrl,
+  buildBusinessRegistrationUrl,
+  buildDgfyAuthUrl
+} from './businessRegistrationUrl.js';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 /* Legacy storefront contract anchors (frontend-only compatibility)
@@ -1429,23 +1434,17 @@ const requestJson = async (url, { method = 'GET', body, storeSlug, authToken = '
   try {
     const token = String(authToken || '').trim();
     const normalizedMethod = String(method || 'GET').toUpperCase();
-    const csrfToken = typeof document === 'undefined'
-      ? ''
-      : decodeURIComponent(String(document.cookie || '')
-        .split(';')
-        .map((entry) => entry.trim())
-        .find((entry) => entry.startsWith('sku_csrf_token='))
-        ?.slice('sku_csrf_token='.length) || '');
+    const csrfToken = ['GET', 'HEAD', 'OPTIONS'].includes(normalizedMethod) ? '' : getCsrfToken();
     response = await fetch(withApiOrigin(url), {
-      method,
-      cache,
+      method: normalizedMethod,
       credentials: 'include',
+      cache,
       signal,
       headers: {
         'Content-Type': 'application/json',
         ...(storeSlug ? { 'x-store-slug': storeSlug } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(!['GET', 'HEAD', 'OPTIONS'].includes(normalizedMethod) && csrfToken ? { 'x-csrf-token': csrfToken } : {})
+        ...(csrfToken ? { 'x-csrf-token': csrfToken } : {})
       },
       body: body ? JSON.stringify(body) : undefined
     });
@@ -4244,6 +4243,11 @@ export default function StorefrontApp() {
   const [selectedStore, setSelectedStore] = useState(null);
   const isStorePage = Boolean(routeSlug);
   const currentPathSubpage = readStoreSubpage();
+  const currentPathname = typeof window === 'undefined' ? '/' : (window.location.pathname || '/');
+  const normalizedCurrentPath = String(currentPathname || '').replace(/\/+$/, '') || '/';
+  const isGlobalAccountPage = normalizedCurrentPath === '/map-dgfy/account' || normalizedCurrentPath === '/tenant-store/account';
+  const isTenantAccountPage = routeSubpage === 'account' || currentPathSubpage === 'account';
+  const isStandaloneAccountPage = isGlobalAccountPage || isTenantAccountPage;
   const isBookingSubpage = routeSubpage === STORE_BOOKING_SUBPAGE;
   const isOrderSubpage = routeSubpage === STORE_ORDER_SUBPAGE;
   const isTrackSubpage = routeSubpage === STORE_TRACK_SUBPAGE;
@@ -4437,25 +4441,7 @@ export default function StorefrontApp() {
   const [customerTrackLoadingReference, setCustomerTrackLoadingReference] = useState('');
   const [customerTrackError, setCustomerTrackError] = useState('');
   const [dgfyAuthTokenState, setDgfyAuthTokenState] = useState(() => readDgfyAuthToken());
-  const [hasDgfyCookieSession, setHasDgfyCookieSession] = useState(false);
-  const dgfyCookieRehydrateAttemptedRef = useRef(false);
-  const [customerAuthMode, setCustomerAuthMode] = useState('sign_in');
-  const [customerAuthSubmitting, setCustomerAuthSubmitting] = useState(false);
-  const [customerAuthError, setCustomerAuthError] = useState('');
-  const [dgfyLegalTerms, setDgfyLegalTerms] = useState(null);
-  const [dgfyLegalTermsLoading, setDgfyLegalTermsLoading] = useState(false);
-  const [customerSignInForm, setCustomerSignInForm] = useState({ email: '', password: '' });
-  const [customerRegisterForm, setCustomerRegisterForm] = useState({
-    first_name: '',
-    middle_name: '',
-    last_name: '',
-    email: '',
-    phone: '',
-    password: '',
-    confirm_password: '',
-    accepted_terms: false
-  });
-
+  const [dgfySessionAccount, setDgfySessionAccount] = useState(null);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [checkoutTab, setCheckoutTab] = useState('checkout');
   const [pendingOrderInitialTab, setPendingOrderInitialTab] = useState('');
@@ -4502,6 +4488,29 @@ export default function StorefrontApp() {
       window.removeEventListener('resize', syncDesktopCategoryOverflow);
     };
   }, [isCategoryRowExpanded, isDiscoveryMobileViewport]);
+  useEffect(() => {
+    let cancelled = false;
+
+    const bootstrapDgfyCookieSession = async () => {
+      if (readDgfyAuthToken()) {
+        return;
+      }
+      try {
+        const payload = await requestJson('/api/v1/dgfy/auth/me', { cache: 'no-store' });
+        if (cancelled) return;
+        const account = payload?.account || payload || null;
+        setDgfySessionAccount(account && typeof account === 'object' ? account : null);
+      } catch {
+        if (cancelled) return;
+        setDgfySessionAccount(null);
+      }
+    };
+
+    bootstrapDgfyCookieSession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const discoveryRequestSequenceRef = useRef(0);
   const discoveryAbortControllerRef = useRef(null);
   const discoveryIntentSequenceRef = useRef(0);
@@ -4544,8 +4553,8 @@ export default function StorefrontApp() {
   const isStandaloneTrackingPage = isTrackSubpage || (isOrderSubpage && checkoutTab === 'track');
   const storeAuthToken = readStoreAuthToken();
   const dgfyAuthToken = String(dgfyAuthTokenState || '').trim();
-  const isDgfyCustomerSignedIn = Boolean(dgfyAuthToken || hasDgfyCookieSession);
-  const isStorefrontAccountAuthenticated = Boolean(storeAuthToken || dgfyAuthToken || hasDgfyCookieSession);
+  const isDgfyCustomerSignedIn = Boolean(dgfyAuthToken || dgfySessionAccount?.id);
+  const isStorefrontAccountAuthenticated = Boolean(storeAuthToken || dgfyAuthToken || dgfySessionAccount?.id);
   const isGuestStorefrontUser = !isStorefrontAccountAuthenticated;
   const trackingMode = isFnbMode ? 'fnb' : (isServicesMode ? 'services' : 'simple');
   const trackingAdapterRegistry = useMemo(
@@ -4614,6 +4623,16 @@ export default function StorefrontApp() {
     if (username) return username;
     const email = String(accountPanel.me?.email || '').trim();
     if (email) return email;
+    const sessionFirstName = String(dgfySessionAccount?.first_name || '').trim();
+    const sessionLastName = String(dgfySessionAccount?.last_name || '').trim();
+    const sessionJoinedName = [sessionFirstName, sessionLastName].filter(Boolean).join(' ').trim();
+    if (sessionJoinedName) return sessionJoinedName;
+    const sessionName = String(dgfySessionAccount?.name || '').trim();
+    if (sessionName) return sessionName;
+    const sessionUsername = String(dgfySessionAccount?.username || '').trim();
+    if (sessionUsername) return sessionUsername;
+    const sessionEmail = String(dgfySessionAccount?.email || '').trim();
+    if (sessionEmail) return sessionEmail;
     const savedName = String(savedCustomerDetails?.name || '').trim();
     if (savedName) return savedName;
     return 'Guest customer';
@@ -4623,6 +4642,11 @@ export default function StorefrontApp() {
     accountPanel.me?.last_name,
     accountPanel.me?.name,
     accountPanel.me?.username,
+    dgfySessionAccount?.email,
+    dgfySessionAccount?.first_name,
+    dgfySessionAccount?.last_name,
+    dgfySessionAccount?.name,
+    dgfySessionAccount?.username,
     savedCustomerDetails?.name
   ]);
   const accountIdentityName = useMemo(() => (
@@ -4633,12 +4657,16 @@ export default function StorefrontApp() {
     const accountEmail = String(accountPanel.me?.email || '').trim();
     if (accountPhone) return maskValue(accountPhone, 3, 2);
     if (accountEmail) return maskValue(accountEmail, 2, 8);
+    const sessionPhone = String(dgfySessionAccount?.phone || '').trim();
+    const sessionEmail = String(dgfySessionAccount?.email || '').trim();
+    if (sessionPhone) return maskValue(sessionPhone, 3, 2);
+    if (sessionEmail) return maskValue(sessionEmail, 2, 8);
     const savedPhone = String(savedCustomerDetails?.phone || '').trim();
     const savedEmail = String(savedCustomerDetails?.email || '').trim();
     if (savedPhone) return maskValue(savedPhone, 3, 2);
     if (savedEmail) return maskValue(savedEmail, 2, 8);
     return 'No linked account details yet';
-  }, [accountPanel.me?.email, accountPanel.me?.phone, savedCustomerDetails?.email, savedCustomerDetails?.phone]);
+  }, [accountPanel.me?.email, accountPanel.me?.phone, dgfySessionAccount?.email, dgfySessionAccount?.phone, savedCustomerDetails?.email, savedCustomerDetails?.phone]);
   const accountIdentityInitials = useMemo(() => {
     const base = String(accountDisplayName || '').trim();
     if (!base) return 'GU';
@@ -4668,26 +4696,10 @@ export default function StorefrontApp() {
     setSavedCustomerDetails(null);
     toast.success('Saved details cleared.');
   }, []);
-  const loadDgfyLegalTerms = useCallback(async () => {
-    if (dgfyLegalTerms || dgfyLegalTermsLoading) return dgfyLegalTerms;
-    setDgfyLegalTermsLoading(true);
-    try {
-      const data = await requestJson('/api/v1/dgfy/legal-terms/current', { cache: 'no-store' });
-      setDgfyLegalTerms(data || null);
-      return data || null;
-    } catch (error) {
-      const message = normalizeStorefrontErrorMessage(error, 'Unable to load account registration requirements.');
-      setCustomerAuthError(message);
-      throw error;
-    } finally {
-      setDgfyLegalTermsLoading(false);
-    }
-  }, [dgfyLegalTerms, dgfyLegalTermsLoading]);
-
   const handleLoadAccountPanel = useCallback(async () => {
     const dgfyToken = readDgfyAuthToken();
     const storeToken = readStoreAuthToken();
-    const shouldLoadDgfyAccount = Boolean(dgfyToken || hasDgfyCookieSession || !storeToken);
+    const shouldLoadDgfyAccount = Boolean(dgfyToken || dgfySessionAccount?.id || !storeToken);
     setAccountPanel((prev) => ({ ...prev, loading: true, error: '' }));
     try {
       if (shouldLoadDgfyAccount) {
@@ -4709,7 +4721,7 @@ export default function StorefrontApp() {
           addresses: Array.isArray(dashboardData?.addresses) ? dashboardData.addresses : [],
           loyalty: loyaltyData?.loyalty || dashboardData?.loyalty || null
         });
-        setHasDgfyCookieSession(true);
+        setDgfySessionAccount(meData?.account || dashboardData?.account || meData || null);
         return;
       }
 
@@ -4737,7 +4749,7 @@ export default function StorefrontApp() {
       if (shouldLoadDgfyAccount && isUnauthorizedRequestError(error)) {
         clearDgfyAuthToken();
         setDgfyAuthTokenState('');
-        setHasDgfyCookieSession(false);
+        setDgfySessionAccount(null);
         if (storeToken && selectedStore?.slug) {
           try {
             const [me, ordersData, bookingsData] = await Promise.all([
@@ -4763,21 +4775,12 @@ export default function StorefrontApp() {
         }
         if (!storeToken) {
           setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: 'Sign in to view your DGFY account.' });
-          setCustomerAuthMode('sign_in');
           return;
         }
       }
       setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: normalizeStorefrontErrorMessage(error, 'Unable to load account.') });
     }
-  }, [hasDgfyCookieSession, selectedStore?.slug]);
-
-  const handleCustomerSignInFieldChange = useCallback((field, value) => {
-    setCustomerSignInForm((previous) => ({ ...previous, [field]: value }));
-  }, []);
-
-  const handleCustomerRegisterFieldChange = useCallback((field, value) => {
-    setCustomerRegisterForm((previous) => ({ ...previous, [field]: value }));
-  }, []);
+  }, [dgfySessionAccount?.id, selectedStore?.slug]);
   const renderSavedDetailsCard = () => (
     <div style={{ border: '1px solid #dbe5ee', borderRadius: 12, padding: '10px 12px', background: '#f8fafc', display: 'grid', gap: 10 }}>
       {hasSavedCustomerDetails ? (
@@ -5251,7 +5254,7 @@ export default function StorefrontApp() {
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
-    const lockBodyScroll = isFnbOrderSubpage || isCheckoutOpen || isGuestTrackingDrawerOpen || isAccountDrawerOpen;
+    const lockBodyScroll = isFnbOrderSubpage || isCheckoutOpen || isGuestTrackingDrawerOpen || (isAccountDrawerOpen && !isStandaloneAccountPage);
     if (!lockBodyScroll) return undefined;
 
     const previousOverflow = document.body.style.overflow;
@@ -5270,7 +5273,7 @@ export default function StorefrontApp() {
       document.body.style.overscrollBehavior = previousOverscrollBehavior;
       document.body.style.touchAction = previousTouchAction;
     };
-  }, [isAccountDrawerOpen, isCheckoutOpen, isFnbOrderSubpage, isGuestTrackingDrawerOpen]);
+  }, [isAccountDrawerOpen, isCheckoutOpen, isFnbOrderSubpage, isGuestTrackingDrawerOpen, isStandaloneAccountPage]);
 
   useEffect(() => {
     if (!isFnbOrderSubpage) return;
@@ -5317,22 +5320,14 @@ export default function StorefrontApp() {
   }, [isGuestStorefrontUser, isGuestTrackingDrawerOpen, isStandaloneTrackingPage, selectedStore?.slug]);
 
   useEffect(() => {
-    if (!isAccountDrawerOpen || customerAuthMode !== 'create_account' || isStorefrontAccountAuthenticated || dgfyLegalTerms || dgfyLegalTermsLoading) {
-      return;
-    }
-    loadDgfyLegalTerms().catch(() => {});
-  }, [customerAuthMode, dgfyLegalTerms, dgfyLegalTermsLoading, isAccountDrawerOpen, isStorefrontAccountAuthenticated, loadDgfyLegalTerms]);
-
-  useEffect(() => {
-    if (dgfyCookieRehydrateAttemptedRef.current || dgfyAuthToken || storeAuthToken || hasDgfyCookieSession) return;
-    dgfyCookieRehydrateAttemptedRef.current = true;
+    if (dgfyAuthToken || storeAuthToken || dgfySessionAccount?.id) return;
     let cancelled = false;
     requestJson('/api/v1/dgfy/auth/me', { cache: 'no-store' })
       .then((meData) => {
         if (cancelled) return;
         const account = meData?.account || meData || null;
         if (!account) return;
-        setHasDgfyCookieSession(true);
+        setDgfySessionAccount(account);
         setAccountPanel((previous) => (
           previous?.me
             ? previous
@@ -5344,12 +5339,12 @@ export default function StorefrontApp() {
         ));
       })
       .catch(() => {
-        if (!cancelled) setHasDgfyCookieSession(false);
+        if (!cancelled) setDgfySessionAccount(null);
       });
     return () => {
       cancelled = true;
     };
-  }, [dgfyAuthToken, hasDgfyCookieSession, storeAuthToken]);
+  }, [dgfyAuthToken, dgfySessionAccount?.id, storeAuthToken]);
 
   useEffect(() => {
     if (!isAccountSubpage || accountPanel.loading) return;
@@ -5381,7 +5376,6 @@ export default function StorefrontApp() {
 
   useEffect(() => {
     if (!isAccountDrawerOpen) {
-      setCustomerAuthError('');
       setCustomerTrackError('');
       setCustomerTrackLoadingReference('');
     }
@@ -7406,31 +7400,46 @@ export default function StorefrontApp() {
     setIsGuestTrackingDrawerOpen(false);
     goStoreTrackPage({ pin: normalizedPin });
   };
+  const buildStorefrontAccountReturnUrl = useCallback(() => {
+    if (typeof window === 'undefined') return '';
+    const target = new URL(window.location.href);
+    target.searchParams.set('dgfy_account', '1');
+    return target.toString();
+  }, []);
+  const openCanonicalDgfyAuth = useCallback((intent = 'customer') => {
+    if (typeof window === 'undefined') return;
+    const normalizedIntent = String(intent || '').trim() === 'register-business' ? 'register-business' : 'customer';
+    window.location.href = buildDgfyAuthUrl({
+      intent: normalizedIntent,
+      mode: 'sign-in',
+      returnTo: normalizedIntent === 'customer'
+        ? buildStorefrontAccountReturnUrl()
+        : '/register-company#business-registration'
+    });
+  }, [buildStorefrontAccountReturnUrl]);
+  const openBusinessRegistrationFlow = useCallback(async () => {
+    if (typeof window === 'undefined') return;
+    if (!isDgfyCustomerSignedIn) {
+      openCanonicalDgfyAuth('register-business');
+      return;
+    }
+    try {
+      const payload = await requestJson('/api/v1/dgfy/auth/handoff', {
+        method: 'POST',
+        authToken: dgfyAuthToken,
+        cache: 'no-store'
+      });
+      window.location.href = buildBusinessRegistrationUrl(String(payload?.handoff_token || '').trim());
+    } catch (error) {
+      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to start business registration.'));
+    }
+  }, [dgfyAuthToken, isDgfyCustomerSignedIn, openCanonicalDgfyAuth]);
   const openAccountPanel = useCallback(() => {
     goStoreAccountPage();
   }, [goStoreAccountPage]);
   const openCustomerAuthDrawer = () => {
     setIsGuestTrackingDrawerOpen(false);
     setIsAccountDrawerOpen(true);
-  };
-  const openBusinessRegistrationFromDgfyAccount = async () => {
-    const dgfyToken = readDgfyAuthToken();
-    let handoffToken = '';
-    if (dgfyToken) {
-      try {
-        const handoff = await requestJson('/api/v1/dgfy/auth/handoff', {
-          method: 'POST',
-          authToken: dgfyToken,
-          cache: 'no-store'
-        });
-        handoffToken = String(handoff?.handoff_token || '').trim();
-      } catch (error) {
-        toast.error(normalizeStorefrontErrorMessage(error, 'Unable to prepare your DGFY business handoff. Sign in again on the registration page.'));
-      }
-    }
-    if (typeof window !== 'undefined') {
-      window.location.href = buildBusinessRegistrationUrl(handoffToken);
-    }
   };
   const saveServiceBookingDraft = (serviceItem = selectedServiceDetail, nextTab = 'review') => {
     if (!serviceItem) return;
@@ -8317,7 +8326,7 @@ export default function StorefrontApp() {
     const normalizedReference = String(reference || '').trim().toUpperCase();
     if (!normalizedReference) return;
     const dgfyToken = readDgfyAuthToken();
-    if (!dgfyToken) {
+    if (!dgfyToken && !dgfySessionAccount?.id) {
       setCustomerTrackError('Sign in to track account-linked activity.');
       return;
     }
@@ -8337,7 +8346,7 @@ export default function StorefrontApp() {
     } finally {
       setCustomerTrackLoadingReference('');
     }
-  }, []);
+  }, [dgfySessionAccount?.id]);
 
   const handleCancelAccountOrder = useCallback(async (order = {}) => {
     const normalizedReference = String(order?.reference || '').trim().toUpperCase();
@@ -8577,9 +8586,34 @@ export default function StorefrontApp() {
   const closeAccountDrawer = useCallback(() => {
     setIsAccountDrawerOpen(false);
   }, []);
+  const closeStandaloneAccountPage = useCallback(() => {
+    if (isTenantAccountPage && routeSlug) {
+      goStore(routeSlug);
+      return;
+    }
+    goDiscovery();
+  }, [goDiscovery, goStore, isTenantAccountPage, routeSlug]);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !isDgfyCustomerSignedIn) return;
+    const currentUrl = new URL(window.location.href);
+    const normalizedPath = String(currentUrl.pathname || '').replace(/\/+$/, '') || '/';
+    const openedFromQuery = currentUrl.searchParams.get('dgfy_account') === '1';
+    const routedAccountPath = normalizedPath === '/map-dgfy/account'
+      || normalizedPath === '/tenant-store/account'
+      || normalizedPath.endsWith('/account');
+    if (!openedFromQuery && !routedAccountPath) return;
+    setIsCheckoutOpen(false);
+    setIsGuestTrackingDrawerOpen(false);
+    setIsAccountDrawerOpen(openedFromQuery);
+    handleLoadAccountPanel();
+    if (openedFromQuery) {
+      currentUrl.searchParams.delete('dgfy_account');
+      window.history.replaceState({}, '', currentUrl.toString());
+    }
+  }, [isDgfyCustomerSignedIn]);
   const handleStorefrontSignOut = useCallback(async () => {
     const dgfyToken = readDgfyAuthToken();
-    if (dgfyToken || hasDgfyCookieSession || accountPanel.me) {
+    if (dgfyToken || dgfySessionAccount?.id || accountPanel.me) {
       try {
         await requestJson('/api/v1/dgfy/auth/logout', { method: 'POST', authToken: dgfyToken, cache: 'no-store' });
       } catch {
@@ -8589,95 +8623,13 @@ export default function StorefrontApp() {
     clearDgfyAuthToken();
     clearStoreAuthToken();
     setDgfyAuthTokenState('');
-    setHasDgfyCookieSession(false);
+    setDgfySessionAccount(null);
     setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: '' });
     setTrackedCustomerActivity(null);
     setCustomerTrackLoadingReference('');
     setCustomerTrackError('');
-    setCustomerAuthMode('sign_in');
-    setCustomerAuthError('');
     toast.success('Signed out.');
-  }, [accountPanel.me, hasDgfyCookieSession]);
-
-  const handleCustomerAuthSubmit = useCallback(async (formDrafts = null) => {
-    if (customerAuthSubmitting) return;
-    setCustomerAuthError('');
-    setCustomerAuthSubmitting(true);
-    try {
-      if (customerAuthMode === 'sign_in') {
-        const signInForm = formDrafts?.signIn || customerSignInForm;
-        const payload = await requestJson('/api/v1/dgfy/auth/login', {
-          method: 'POST',
-          cache: 'no-store',
-          body: {
-            email: signInForm.email,
-            password: signInForm.password
-          }
-        });
-        const token = String(payload?.token || '').trim();
-        if (!token) throw new Error('Missing customer auth token.');
-        writeDgfyAuthToken(token);
-        setDgfyAuthTokenState(token);
-        setHasDgfyCookieSession(true);
-        setCustomerSignInForm({ email: '', password: '' });
-      } else {
-        const registerForm = formDrafts?.register || customerRegisterForm;
-        if (!/^\d{6}$/.test(String(registerForm.email_otp_code || '').trim())) {
-          throw new Error('Enter the 6-digit verification code sent to your DGFY email.');
-        }
-        const legalTerms = dgfyLegalTerms || await loadDgfyLegalTerms();
-        const snapshot = legalTerms?.flows?.account_registration?.snapshot || {};
-        const payload = await requestJson('/api/v1/dgfy/auth/register', {
-          method: 'POST',
-          cache: 'no-store',
-          body: {
-            ...registerForm,
-            accepted_terms: Boolean(registerForm.accepted_terms),
-            terms_version: snapshot.terms_version,
-            privacy_version: snapshot.privacy_version,
-            marketplace_terms_version: snapshot.marketplace_terms_version
-          }
-        });
-        const token = String(payload?.token || '').trim();
-        if (!token) throw new Error('Missing customer auth token.');
-        writeDgfyAuthToken(token);
-        setDgfyAuthTokenState(token);
-        setHasDgfyCookieSession(true);
-        setCustomerRegisterForm({
-          first_name: '',
-          middle_name: '',
-          last_name: '',
-          email: '',
-          phone: '',
-          password: '',
-          confirm_password: '',
-          accepted_terms: false
-        });
-      }
-      await handleLoadAccountPanel();
-      closeAccountDrawer();
-      openAccountPanel();
-    } catch (error) {
-      setCustomerAuthError(normalizeStorefrontErrorMessage(error, customerAuthMode === 'sign_in' ? 'Unable to sign in.' : 'Unable to create your DGFY account.'));
-    } finally {
-      setCustomerAuthSubmitting(false);
-    }
-  }, [closeAccountDrawer, customerAuthMode, customerAuthSubmitting, customerRegisterForm, customerSignInForm, dgfyLegalTerms, handleLoadAccountPanel, loadDgfyLegalTerms, openAccountPanel]);
-
-  const handleRequestDgfyRegistrationEmailOtp = useCallback(async (email) => {
-    const normalizedEmail = String(email || '').trim().toLowerCase();
-    if (!normalizedEmail) {
-      throw new Error('Email is required before requesting a verification code.');
-    }
-    await requestJson('/api/v1/auth/email-otp/request', {
-      method: 'POST',
-      cache: 'no-store',
-      body: {
-        purpose: 'dgfy_account_verification',
-        email: normalizedEmail
-      }
-    });
-  }, []);
+  }, [accountPanel.me, dgfySessionAccount?.id]);
 
   const handleNearMe = () => {
     const currentSearch = String(searchRef.current || search || '').trim();
@@ -9914,20 +9866,20 @@ export default function StorefrontApp() {
     );
   };
 
-  if (isAccountSubpage && (isStorePage || !routeSlug)) {
+  if (isStandaloneAccountPage || (isAccountSubpage && (isStorePage || !routeSlug))) {
     return (
       <main style={{ fontFamily: STYLES.fonts.body, background: '#ffffff', minHeight: '100vh', color: '#0f172a', overflowX: 'clip' }}>
         <DgfyCustomerAccountPage
           presentation="page"
           isMobileViewport={isMobileViewport}
-          onClose={isStorePage ? goStoreCatalogPage : goDiscovery}
+          onClose={closeStandaloneAccountPage}
           onRefresh={handleLoadAccountPanel}
           onTrackReference={handleTrackCustomerReference}
           onCancelOrder={handleCancelAccountOrder}
           onReorderOrder={handleReorderAccountOrder}
           onSignOut={handleStorefrontSignOut}
           onHelp={() => toast.info('Help center is not connected yet.', { duration: 2200, closeButton: true })}
-          onRegisterBusiness={openBusinessRegistrationFromDgfyAccount}
+          onRegisterBusiness={openBusinessRegistrationFlow}
           onClearSavedDetails={clearSavedCustomerDetailsForDevice}
           onUseAddressForCheckout={useAccountAddressForCheckout}
           onSaveAddress={handleSaveAccountAddress}
@@ -9973,6 +9925,8 @@ export default function StorefrontApp() {
               activeItem={activeDiscoveryNavItem === 'Contact Us' ? 'Explore' : activeDiscoveryNavItem}
               isAuthenticated={isDgfyCustomerSignedIn}
               accountLabel="My Account"
+              accountName={accountIdentityName}
+              accountInitials={accountIdentityInitials}
               authLabel="Log in / Sign up"
               businessLabel="Register Your Business"
               menuOpen={isDiscoveryNavMenuOpen}
@@ -9984,11 +9938,9 @@ export default function StorefrontApp() {
                   goDiscoveryAccountPage();
                   return;
                 }
-                setCustomerAuthError('');
-                setCustomerAuthMode('sign_in');
                 openCustomerAuthDrawer();
               }}
-              onBusinessClick={openBusinessRegistrationFromDgfyAccount}
+              onBusinessClick={openBusinessRegistrationFlow}
             />
             {activeDiscoveryNavItem === 'Solutions' ? (
               <SolutionsPage
@@ -10664,9 +10616,7 @@ export default function StorefrontApp() {
                               </div>
                               <button
                                 type="button"
-                                onClick={() => {
-                                  if (typeof window !== 'undefined') window.location.href = buildBusinessRegistrationUrl();
-                                }}
+                                onClick={openBusinessRegistrationFlow}
                                 style={{ marginTop: 22, width: '100%', minHeight: 52, borderRadius: 16, border: '1px solid #1a4586', background: 'linear-gradient(180deg, #1a4e8d 0%, #1a4586 100%)', color: '#fff', fontSize: 15, fontWeight: 800, boxShadow: '0 14px 28px rgba(26, 78, 141, .28)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer' }}
                               >
                                 Register Your Business
@@ -11134,9 +11084,7 @@ export default function StorefrontApp() {
                               </div>
                               <button
                                 type="button"
-                                onClick={() => {
-                                  if (typeof window !== 'undefined') window.location.href = buildBusinessRegistrationUrl();
-                                }}
+                                onClick={openBusinessRegistrationFlow}
                                 style={{ marginTop: 22, width: '100%', minHeight: 52, borderRadius: 16, border: '1px solid #1a4586', background: 'linear-gradient(180deg, #1a4e8d 0%, #1a4586 100%)', color: '#fff', fontSize: 15, fontWeight: 800, boxShadow: '0 14px 28px rgba(26, 78, 141, .28)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer' }}
                               >
                                 Register Your Business
@@ -11286,7 +11234,7 @@ export default function StorefrontApp() {
                               title: 'For Business',
                               links: [
                                 { label: 'Register Your Business', href: buildBusinessRegistrationUrl() },
-                                { label: 'Business Login', href: 'https://skupervisor.dgfy.ph/login' }
+                                { label: 'Business Login', href: buildBusinessLoginUrl() }
                               ]
                             },
                             {
@@ -18481,26 +18429,8 @@ return (
         <DgfyCustomerAuthModal
           isMobileViewport={isMobileViewport}
           onClose={closeAccountDrawer}
-          customerAuthMode={customerAuthMode}
-          customerAuthError={customerAuthError}
-          customerAuthSubmitting={customerAuthSubmitting}
-          dgfyLegalTerms={dgfyLegalTerms}
-          dgfyLegalTermsLoading={dgfyLegalTermsLoading}
-          customerSignInForm={customerSignInForm}
-          customerRegisterForm={customerRegisterForm}
           savedCustomerDetails={savedCustomerDetails}
           hasSavedCustomerDetails={hasSavedCustomerDetails}
-          onCustomerAuthModeChange={(nextMode) => {
-            setCustomerAuthMode(nextMode);
-            setCustomerAuthError('');
-            if (nextMode === 'create_account') {
-              loadDgfyLegalTerms().catch(() => {});
-            }
-          }}
-          onSignInFieldChange={handleCustomerSignInFieldChange}
-          onRegisterFieldChange={handleCustomerRegisterFieldChange}
-          onSubmit={handleCustomerAuthSubmit}
-          onRequestRegisterEmailOtp={handleRequestDgfyRegistrationEmailOtp}
           onContinueAsGuest={() => {
             if (hasSavedCustomerDetails) {
               applySavedCustomerDetails();
@@ -18508,7 +18438,14 @@ return (
             closeAccountDrawer();
           }}
           onClearSavedDetails={clearSavedCustomerDetailsForDevice}
-          onForgotPassword={() => toast.info('Password recovery is not connected yet.')}
+          onOpenAuth={() => {
+            closeAccountDrawer();
+            openCanonicalDgfyAuth('customer');
+          }}
+          onOpenRegisterBusiness={() => {
+            closeAccountDrawer();
+            openBusinessRegistrationFlow();
+          }}
         />
       ) : null}
       {isGuestTrackingDrawerOpen && isGuestStorefrontUser && !isStandaloneTrackingPage && (
