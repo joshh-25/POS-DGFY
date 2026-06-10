@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: frontend
-last_reviewed: 2026-06-09
+last_reviewed: 2026-06-10
 applies_to: storefront_all_modes
 topic: storefront_current_standing
 ---
@@ -53,6 +53,7 @@ This is a frontend capability/status reference, not a new architecture decision.
 - Discovery map initialization is defensive. If MapLibre/WebGL cannot initialize in the browser, the Storefront discovery page remains usable, renders the `Log in / Sign up` account action, and shows a list fallback instead of blanking the page.
 - Storefront map/search stabilization is locally validated as of 2026-06-09. Submitted text searches stay storefront-first, item matches render tenant storefront result cards without auto-opening marker preview cards, repeated identical searches do not refit/flicker, duplicate-coordinate and 13-meter near-coordinate groups render as count pins that scope the existing results panel, hover previews collapse on pin leave, click/tap previews persist until closed, and visible discovery pins are renderer-owned map layer symbols rather than detached DOM overlays.
 - Branch-level Storefront availability is preserved from IMS item and product draft saves as well as final create/update flows. Draft saves now apply submitted branch toggles through the same `storefront_location_item_overrides` path used by active item edits.
+- F&B product detail pages render ordered item galleries as a carousel with previous/next controls, dot navigation, thumbnails, touch swipe support, and ARIA carousel labels. Gallery data is preserved from `storefront_image_gallery` JSON before legacy single-image fallback so multi-image customer-facing media remains available after catalog reads.
 - The merged storefront pilot keeps mode-specific view-model logic in the storefront app while preserving existing backend/source-of-truth contracts.
 
 ## Mode Standing
@@ -86,7 +87,7 @@ This is a frontend capability/status reference, not a new architecture decision.
 - Simple storefront contract coverage is active.
 
 ## Storefront Regression Standing (Latest Run)
-Run date: `2026-06-09`
+Run date: `2026-06-10`
 
 Targeted Storefront discovery/account commands:
 - `npm --prefix frontend exec vitest run apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/discoveryMapDom.test.js apps/store/src/__tests__/storefrontMarkerPreview.test.js apps/store/src/__tests__/discoveryPresentation.test.js --pool=threads`
@@ -106,12 +107,14 @@ Targeted matrix result:
 - June 8 backend branch catalog/services/handle slice: `PASS` (`73/73` targeted tests).
 - June 9 cluster panel/strict-hover follow-up slice: `PASS` (`39/39` targeted frontend tests). Coverage includes strict hover-preview dismissal when the pointer leaves a pin, click-preview persistence, duplicate-coordinate and 13-meter cluster count pins, cluster click routing into the existing results panel instead of a map list widget, and non-scaling View Results pulse CSS.
 - June 9 non-PayMongo frontend polish deployment slice: `PASS` (`42/42` targeted frontend tests). Coverage includes Storefront results-panel collapse behavior, route-aware tenant permission reload after login navigation, and fixed IMS item modal dimensions.
+- June 9 IMS item/product wizard sizing follow-up: `PASS` (`12/12` targeted frontend tests plus SKUpervisor build). Coverage includes the CSS-owned fixed wizard shell and standardized create/edit item/product modal dimensions across wizard steps.
+- June 10 repository standing: `origin/master` and local HEAD match `5e327ba74fd83aa457339233536232efdd8fa8d0`. Latest pushed Storefront work includes gallery preservation from JSON columns; latest production evidence available in this workspace remains `4a7b924af57aa8709b673c75baf673625f0cc170`, so a fresh production deploy is still required before calling the gallery-preservation commit live.
 - Storefront discovery flow, map DOM, marker preview, and presentation suites: `PASS` (`42/42` targeted tests). npm printed the existing unknown `--pool` warning but executed the suites.
 - Backend Storefront discovery repository and map-pin use-case suites: `PASS` (`19/19` targeted tests), including union store/item matching, out-of-stock inclusion, nearest matching branches, and degraded snapshot behavior.
 - Storefront production build: `PASS`
 - Architecture guardrails and controller-boundary checks: `PASS`
 - Diff whitespace check: `PASS`
-- Local rendered route health: `PASS` for `/map-dgfy` page identity, desktop search controls, map region, overlay-free render, search-field interaction, and zero relevant console warnings/errors. Production route smoke passed for `https://dgfy.ph/map-dgfy` after deploying SHA `f72d5e93c3e96ee2f0b1ee305c32c37856016ca6`. The June 9 frontend polish slice deployed SHA `9cab0803a9bdf7e0d7238f94c9db255d9df30146`; deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260609_180115.summary.txt` reported Storefront runtime, public endpoint, tenant-store asset integrity, and frontend asset parity passing. Seeded-data zoom QA remains useful for real-pin placement evidence.
+- Local rendered route health: `PASS` for `/map-dgfy` page identity, desktop search controls, map region, overlay-free render, search-field interaction, and zero relevant console warnings/errors. Production route smoke passed for `https://dgfy.ph/map-dgfy` after deploying SHA `f72d5e93c3e96ee2f0b1ee305c32c37856016ca6`. The latest production evidence available in this workspace is deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260609_230643.summary.txt` for SHA `4a7b924af57aa8709b673c75baf673625f0cc170`, reporting Storefront runtime, public endpoint, tenant-store asset integrity, and frontend asset parity passing. Seeded-data zoom QA remains useful for real-pin placement evidence.
 
 ## Notes
 - This file intentionally tracks the frontend standing and test evidence snapshot only.
