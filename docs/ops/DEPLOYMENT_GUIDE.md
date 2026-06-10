@@ -87,7 +87,8 @@ Production runtime uses the same env validation policy as the hosting preflight 
 Tenant registration rollout note:
 1. Keep `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` for the default public company registration flow.
 2. Verify public registration rate limits are present and strict before deploy because accepted registrations provision isolated tenant databases.
-3. Set `TENANT_REGISTRATION_APPROVAL_MODE=manual` only when intentionally restoring platform-admin review before provisioning; keep `PAYMENTS_ENABLED=false` billing-disabled behavior unchanged unless payment workflows are being intentionally re-enabled.
+3. Verify active auto-standard registrations request the DGFY account email OTP before account creation and then automatically exchange the accepted founder membership for a normal tenant session after tenant provisioning.
+4. Set `TENANT_REGISTRATION_APPROVAL_MODE=manual` only when intentionally restoring platform-admin review before provisioning; keep `PAYMENTS_ENABLED=false` billing-disabled behavior unchanged unless payment workflows are being intentionally re-enabled.
 
 Run on the production server for a one-command deploy:
 

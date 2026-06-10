@@ -287,7 +287,7 @@ Validated on 2026-06-10 for inventory modal consistency and Storefront gallery p
 - Product and item create/edit modals expose the same top-right close affordance while retaining footer `Cancel`, `Save and exit`, and step navigation actions.
 - Wizard modal dimensions are standardized so moving between product steps does not resize the dialog unexpectedly.
 - Storefront catalog reads preserve ordered `storefront_image_gallery` JSON data and use legacy single-image fields only as fallback, keeping F&B gallery carousels populated when multiple item images exist.
-- Current repository HEAD after this validation is `5e327ba74fd83aa457339233536232efdd8fa8d0`; fresh production deployment evidence is still required before these latest repository changes are claimed live.
+- Latest production runtime evidence available in this workspace records deployed code SHA `9e7c64ceaaa6e0f636db0cf59e413874b03f7b70`. Documentation-only commits after the June 10 refresh do not change this feature's runtime state until separately pushed and promoted.
 
 Validated on 2026-06-07 for root handles, main-branch pinning, and branch-scoped catalog/services:
 - Landlord `storefront_handle_reservations` now owns clean `store_tenant_slug` uniqueness so hidden tenants retain their public handle claim while absent from discovery. Discovery index slugs mirror the reservation for visible tenants.

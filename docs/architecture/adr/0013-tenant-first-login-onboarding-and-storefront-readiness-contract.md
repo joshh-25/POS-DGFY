@@ -99,7 +99,7 @@ Adopt a tenant-scoped onboarding lifecycle with soft-reminder UX:
 
 ## Addendum (2026-05-18): Default Auto-Activation Registration
 1. Public company registration now defaults to `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`.
-2. The tenant is provisioned and activated during registration before the frontend shows a company-created confirmation page. The **Proceed to SKUpervisor** action exchanges the signed-in DGFY founder membership for a normal tenant session, with manual login fallback if tenant-session exchange fails.
+2. The tenant is provisioned and activated during registration, then the frontend immediately exchanges the signed-in DGFY founder membership for a normal tenant session and redirects to IMS/onboarding. Manual login with prefilled company context remains the fallback if tenant-session exchange fails.
 3. `TENANT_REGISTRATION_APPROVAL_MODE=manual` remains available as an explicit rollback/admin-review mode for operators who need pending platform-admin approval before provisioning.
 4. Tenant onboarding initialization still occurs during provisioning and remains a soft-reminder flow after first login.
 

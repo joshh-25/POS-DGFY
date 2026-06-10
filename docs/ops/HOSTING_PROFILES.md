@@ -116,7 +116,7 @@ Token blacklist runtime behavior must match the reported capability mode:
 Production browser session cookies require `SESSION_COOKIE_SECURE=true`. Use `SESSION_COOKIE_DOMAIN` only when an approved production domain intentionally shares sessions across subdomains; otherwise keep cookies host-only.
 
 Tenant registration approval mode is security-sensitive operational config:
-- `auto_standard` immediately provisions non-subscription registrations from a signed-in DGFY account and then the frontend shows a company-created confirmation page. The **Proceed to SKUpervisor** action exchanges the accepted founder membership for a normal tenant session, with manual login fallback if tenant-session exchange fails.
+- `auto_standard` immediately provisions non-subscription registrations from a signed-in DGFY account and then the frontend automatically exchanges the accepted founder membership for a normal tenant session, with manual login fallback if tenant-session exchange fails.
 - `manual` keeps company registrations pending until platform-admin approval and is the explicit rollback/admin-review mode.
 - Invalid values fall back to the default `auto_standard`; do not depend on typoed values for rollout state.
 - New pending and active registrations are premium-capable by plan metadata, but provider subscription registration remains blocked while `PAYMENTS_ENABLED=false`.

@@ -5,14 +5,14 @@ Last updated: 2026-06-10
 
 ## Current Release State
 
-1. Latest production deployment evidence available in this workspace is code target SHA `4a7b924af57aa8709b673c75baf673625f0cc170`, deployed on June 9, 2026 with backend/IMS/POS/Store health checks, public IMS/POS/Storefront/Tenant Store endpoint checks, tenant-store asset integrity, frontend asset parity, tenant schema sync, tenant schema sync regression gate, tenant index headroom, permission backfill, and Storefront discovery index reconciliation passing. Remote `HEAD`, remote `origin/master`, and `.deploy-state/last_deployed_commit` matched this SHA at proof time. The release used the explicit emergency no-staging bypass because stale QA deployed-head evidence was the sole failed gate after QA smoke, rollback, restore, docs, and architecture passed.
+1. Latest production deployment evidence available in this workspace is runtime code target SHA `9e7c64ceaaa6e0f636db0cf59e413874b03f7b70`, deployed on June 10, 2026 for DGFY OTP-first account signup and automatic IMS tenant-session handoff. Backend/IMS/POS/Store health checks, public IMS/POS/Storefront/Tenant Store endpoint checks, tenant-store asset integrity, frontend asset parity, tenant schema sync, tenant schema sync regression gate, tenant index headroom, permission backfill, and Storefront discovery index reconciliation passed. Remote `HEAD`, remote `origin/master`, and `.deploy-state/last_deployed_commit` matched this SHA at proof time. The release used the explicit emergency no-staging bypass because stale QA deployed-head evidence was the sole failed gate after QA smoke, rollback, restore, docs, and architecture passed.
 2. June 2, 2026 audit state: dependency vulnerabilities are resolved and the dependency audit commands below return zero current npm advisories for locked root/backend/frontend trees.
 3. The local release gate now includes dependency audits and a focused frontend contract gate before docs, architecture, compliance, backend, frontend, and budget gates.
 4. Current open audit package: `System_Audit/README.md`.
 5. Current release blockers from the June 2 audit remain open until remediated. Local release gate, frontend contract suite failures, missing current green backend full-test evidence, and frontend budget artifact self-containment are remediated as of June 4, 2026 for target SHA `be59a6b55f4d6367acd124729b43fa4ee579d09b`.
 6. Production deployment status must not be advanced from this checklist alone; refresh no-staging parity, local release gate or approved targeted release evidence, production contract smoke, and human UAT evidence before the next production promotion.
 7. June 5, 2026 tenant browser-session hardening is live at code SHA `4f6eecd1778ae139e634d23821369f40f22dd5d0`: `/api/v1/auth/refresh-token` can recover strict tenant context from the signed HttpOnly refresh cookie's tenant binding when the companion tenant-context cookie/header is missing, and login/refresh responses include `data.company.token` so the frontend can rehydrate both access and tenant context after hard reload.
-8. Current repository HEAD is `5e327ba74fd83aa457339233536232efdd8fa8d0` and matches `origin/master` as of June 10, 2026. HEAD includes storefront gallery preservation work after the latest production evidence above; that commit requires fresh production promotion evidence before this checklist should call it live.
+8. At the start of this documentation refresh, local `master`, `origin/master`, and production runtime evidence matched `9e7c64ceaaa6e0f636db0cf59e413874b03f7b70`. Documentation-only commits after this refresh do not change production runtime until separately pushed and promoted.
 
 Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for readiness status and blockers.
 
@@ -35,7 +35,7 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 15. `npm run audit:fifo-drift`
 16. `npm run audit:tenant-index-headroom -- --redundant-groups-threshold=0`
 
-## Latest Technical Evidence (2026-06-09)
+## Latest Technical Evidence (2026-06-10)
 
 1. `npm run audit:dependencies:prod` -> PASS with zero current npm advisories.
 2. `npm run audit:dependencies` -> PASS with zero current npm advisories.
@@ -93,6 +93,11 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 54. No-staging release gate for target SHA `4a7b924af57aa8709b673c75baf673625f0cc170` passed with explicit emergency-bypass metadata after QA multi-location smoke, rollback drill, restore drill, docs lint, and architecture passed. The only failed gate was stale QA deploy-summary parity: `deployed_head=7c240c06a1e2a5f423c6e2fedba653f033476910` while `target_sha=4a7b924af57aa8709b673c75baf673625f0cc170`; the verdict artifact under `.tmp/release-gates/4a7b924af57aa8709b673c75baf673625f0cc170/` records the bypass.
 55. Production deployment on June 9, 2026 deployed code target SHA `4a7b924af57aa8709b673c75baf673625f0cc170`; deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260609_230643.summary.txt` reported backend health, IMS runtime, POS runtime, Store runtime, public IMS/POS/Storefront/Tenant Store endpoints, tenant-store asset integrity, frontend asset parity, tenant schema sync, tenant schema sync regression gate, tenant index headroom, permission backfill, Storefront discovery index reconciliation, and PM2 reload passing. PayMongo/payment-provider validation stayed skipped because production `PAYMENTS_ENABLED` is not true, and PayMongo code changes were not included in the deployed commit.
 56. Repository commit `5e327ba74fd83aa457339233536232efdd8fa8d0` preserves Storefront galleries from JSON columns and is pushed to `origin/master`, but it is not advanced in this checklist as production-deployed without a new deploy summary.
+57. `npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx` -> PASS on June 10, 2026 with 9 tests after the DGFY signup flow became OTP-first and the company-registration success path began automatic IMS tenant-session handoff.
+58. `npm --prefix backend test -- --runInBand tests/dgfyAuthUseCases.test.js tests/emailOtpService.test.js tests/registerCompanyRequestUseCase.autoApproval.test.js` -> PASS on June 10, 2026 with 35 tests for DGFY auth, email OTP, and auto-approval registration behavior.
+59. `npm run check:architecture` and `npm --prefix frontend run build` -> PASS on June 10, 2026 before commit `9e7c64ceaaa6e0f636db0cf59e413874b03f7b70`.
+60. Production deployment on June 10, 2026 deployed runtime code target SHA `9e7c64ceaaa6e0f636db0cf59e413874b03f7b70`; deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260610_151425.summary.txt` reported backend health, IMS runtime, POS runtime, Store runtime, public IMS/POS/Storefront/Tenant Store endpoints, tenant-store asset integrity, frontend asset parity, tenant schema sync, tenant schema sync regression gate, tenant index headroom, permission backfill, Storefront discovery index reconciliation, and PM2 reload passing.
+61. Live route smoke returned HTTP 200 with root content and no framework overlay for `https://skupervisor.dgfy.ph/dgfy/auth?intent=register-business&mode=create-account` and `https://skupervisor.dgfy.ph/register-company`.
 
 ## Remaining Non-Technical Blockers (Go/No-Go)
 
