@@ -17,6 +17,7 @@ const PLAN_SENSITIVE_ROUTE_PATTERN = /^\/api\/v1\/(pos|ai|forecast|payments|comp
 const STOREFRONT_ROUTE_PATTERN = /^\/api\/v1\/store(?:\/|$)/i;
 const STRICT_AUTH_ROUTE_PATTERN = /^\/api\/v1\/auth\/(register|email-otp\/request|login|refresh-token|logout|validate-invite|accept-invite)\b/i;
 const REFRESH_TOKEN_ROUTE_PATTERN = /^\/api\/v1\/auth\/refresh-token\b/i;
+const AUTH_EMAIL_OTP_REQUEST_ROUTE_PATTERN = /^\/api\/v1\/auth\/email-otp\/request\b/i;
 
 const DEFAULT_TENANT_CONTEXT = Object.freeze({
     tenantId: 'default',
@@ -92,6 +93,11 @@ const resolveStrictAuthDbFailure = (tenantStatus) => {
     };
 };
 
+const isGlobalDgfyAccountOtpRequest = (req, path) => (
+    AUTH_EMAIL_OTP_REQUEST_ROUTE_PATTERN.test(path)
+    && String(req.body?.purpose || '').trim() === 'dgfy_account_verification'
+);
+
 export const invalidateTenantLookupCache = ({ companyToken = null, tenantId = null } = {}) => {
     if (companyToken) {
         tenantCache.delete(String(companyToken));
@@ -115,6 +121,7 @@ export const tenantHandler = async (req, res, next) => {
         const isPublicWebhookRoute = path === '/api/v1/payments/webhook'
             || path === '/api/v1/commerce-payments/paymongo/webhook';
         const isStrictAuthRoute = STRICT_AUTH_ROUTE_PATTERN.test(path);
+        const isGlobalDgfyOtpRequest = isGlobalDgfyAccountOtpRequest(req, path);
 
         // 1. Identification Strategy:
         // Header (x-company-token) -> Store slug (x-store-slug for public store routes) -> Subdomain (Future) -> Auth User (Future)
@@ -188,7 +195,7 @@ export const tenantHandler = async (req, res, next) => {
             } else {
                 logger.debug('[TenantHandler] No company token for webhook route (expected).');
             }
-            if (isStrictAuthRoute) {
+            if (isStrictAuthRoute && !isGlobalDgfyOtpRequest) {
                 return sendTenantContextError(
                     res,
                     400,
