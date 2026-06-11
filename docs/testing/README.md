@@ -106,6 +106,25 @@ Evidence semantics:
 3. The local release gate runs `npm run test:frontend:contracts` through `scripts/gate-release-local.js`.
 4. These gates do not prove browser visual parity, live map-provider behavior, or production account-provider behavior; manual/browser QA remains required where visual placement or live provider interaction matters.
 
+## Tenant Capability Messaging Gate
+
+Tenant capability messaging evidence is mandatory when changing platform-admin IMS/POS/Storefront capability controls, tenant-visible disabled-state UI, global API error normalization, POS terminal availability messaging, or Storefront access-mode blocked-action copy.
+
+Required commands:
+1. From `frontend/`: `npm exec vitest run src/utils/__tests__/tenantCapabilityMessages.test.js src/utils/__tests__/errorHandler.test.js src/components/common/__tests__/GlobalApiErrorListener.test.js src/components/common/__tests__/TenantCapabilityNotice.test.jsx src/components/common/__tests__/TenantCapabilityLayout.render.test.jsx src/components/common/__tests__/tenantCapabilityNotice.contract.test.js src/features/pos/__tests__/TerminalPageLayout.capabilityNotice.test.jsx src/features/pos/__tests__/terminalViewModeContracts.test.js src/services/__tests__/api.globalErrors.test.js apps/store/src/__tests__/customerAccess.test.js apps/store/src/__tests__/storefrontErrorMessages.test.js src/pages/__tests__/TenantManager.capabilities.integration.test.jsx -- --pool=threads`
+2. `npm --prefix frontend run build:skupervisor`
+3. `npm --prefix frontend run build:pos`
+4. `npm --prefix frontend run build:store`
+5. `npm run lint:docs`
+6. `npm run check:architecture`
+7. `npm run check:compliance`
+8. `git diff --check`
+
+Evidence semantics:
+1. The focused Vitest set proves backend `code` / `error_code` compatibility is normalized for `TENANT_CAPABILITY_DISABLED` and `CUSTOMER_ACCESS_MODE_BLOCKED`, tenant-wide IMS notices render after settings hydration or blocked-action events, POS terminal surfaces show POS-specific blocked copy, Storefront catalog/checkout helpers use mode-specific public copy, and Tenant Manager shows capability impact before the audit reason is submitted.
+2. The three frontend builds prove the shared message utility resolves in SKUpervisor, POS, and Storefront bundles.
+3. These gates do not prove proactive email, notification-center delivery, or production tenant behavior. V1 messaging is reactive in-app UI only, and backend route gates remain the enforcement source.
+
 ## Backend Test Matrix Gate
 
 Backend matrix evidence is mandatory for release readiness and for changes touching backend auth, payment, compliance, POS/fiscal, tenant provisioning, storefront, inventory, reporting, AI tools, database integration, or platform services.

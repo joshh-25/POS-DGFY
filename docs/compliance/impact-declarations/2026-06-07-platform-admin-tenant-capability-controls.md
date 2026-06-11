@@ -1,14 +1,14 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-06-08
+last_reviewed: 2026-06-11
 related_adr: docs/architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md
 declaration_id: 2026-06-07-platform-admin-tenant-capability-controls
 classification: regulatory
 surfaces: admin-tenants,tenant-management,pos,storefront-discovery,ims,settings,compliance,terminal
-reason_codes_impacted: ALLOWED,TENANT_CAPABILITY_DISABLED,VALIDATION_FAILED
+reason_codes_impacted: ALLOWED,TENANT_CAPABILITY_DISABLED,CUSTOMER_ACCESS_MODE_BLOCKED,VALIDATION_FAILED
 policy_version: 2026.06.07
-verification_evidence: npm run check:architecture,npm run lint:docs,npm run check:compliance,npm --prefix backend test -- --runTestsByPath tests/tenantCapabilityReadiness.schemaCompatibility.test.js tests/adminTenantCapabilities.transport.test.js tests/tenantCapabilityRouteGates.test.js tests/updateTenantCapabilitiesUseCase.rollback.test.js tests/adminTenantCapabilityValidator.test.js tests/listTenantCapabilityAuditLogs.usecase.test.js tests/tenantCapabilitySettings.test.js tests/listTenants.usecase.test.js --runInBand,cd frontend && npm exec vitest run src/pages/__tests__/TenantManager.capabilities.integration.test.jsx src/pages/__tests__/TenantManager.editPlan.integration.test.jsx src/pages/__tests__/TenantManager.forceNonCompliant.integration.test.jsx -- --pool=threads,npm --prefix frontend run build:skupervisor,git diff --check
+verification_evidence: npm run check:architecture,npm run lint:docs,npm run check:compliance,npm --prefix backend test -- --runTestsByPath tests/tenantCapabilityReadiness.schemaCompatibility.test.js tests/adminTenantCapabilities.transport.test.js tests/tenantCapabilityRouteGates.test.js tests/updateTenantCapabilitiesUseCase.rollback.test.js tests/adminTenantCapabilityValidator.test.js tests/listTenantCapabilityAuditLogs.usecase.test.js tests/tenantCapabilitySettings.test.js tests/listTenants.usecase.test.js --runInBand,cd frontend && npm exec vitest run src/utils/__tests__/tenantCapabilityMessages.test.js src/utils/__tests__/errorHandler.test.js src/components/common/__tests__/GlobalApiErrorListener.test.js src/components/common/__tests__/TenantCapabilityNotice.test.jsx src/components/common/__tests__/TenantCapabilityLayout.render.test.jsx src/components/common/__tests__/tenantCapabilityNotice.contract.test.js src/features/pos/__tests__/TerminalPageLayout.capabilityNotice.test.jsx src/features/pos/__tests__/terminalViewModeContracts.test.js src/services/__tests__/api.globalErrors.test.js apps/store/src/__tests__/customerAccess.test.js apps/store/src/__tests__/storefrontErrorMessages.test.js src/pages/__tests__/TenantManager.capabilities.integration.test.jsx -- --pool=threads,npm --prefix frontend run build:skupervisor,npm --prefix frontend run build:pos,npm --prefix frontend run build:store,git diff --check
 rollback_note: Revert the admin capability endpoint, Tenant Manager capability UI, IMS/POS route gates, and related docs together; then rerun storefront discovery sync for any tenant whose Storefront visibility changed during the rollout.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -33,6 +33,8 @@ This declaration covers platform-admin Tenant Manager controls for tenant-level 
 - `/api/v1/pos/*` returns `403 TENANT_CAPABILITY_DISABLED` when platform POS access is disabled. Shared mode routes that authorize through POS permission fallbacks ignore those fallback permissions while POS is disabled.
 - Authenticated IMS route groups return `403 TENANT_CAPABILITY_DISABLED` when platform IMS access is disabled; auth, current-user remediation, admin, receive-token, billing/payment, and public Storefront routes stay outside this gate.
 - Storefront visibility/access-mode changes refresh the landlord discovery index after successful tenant setting writes; failed refreshes roll back Storefront setting changes before returning failure.
+- Tenant-facing IMS, POS, and Storefront UI now normalize `TENANT_CAPABILITY_DISABLED` and `CUSTOMER_ACCESS_MODE_BLOCKED` into explicit "Platform admin changed your permissions" copy. The tenant shell also reads existing system settings after user hydration to show disabled or downgraded capability state before a blocked click when settings are readable. This remains in-app message/banner only; it does not add email, notification-center records, schema changes, fiscal behavior changes, or new authorization decisions.
+- Tenant Manager capability confirmation modals show the tenant/customer impact preview before the platform admin submits the required audit reason.
 
 ## Compliance Preconditions
 
@@ -41,6 +43,7 @@ This declaration covers platform-admin Tenant Manager controls for tenant-level 
 3. `customer_access_mode` must remain one of `ghost`, `catalog`, `inquiry`, or `transaction`.
 4. Capability switches must not mutate tenant lifecycle status, subscription plan metadata, item-level catalog overrides, branch availability overrides, payment readiness, or fiscal compliance mode.
 5. Capability changes must keep a durable platform-admin reason and before/after audit snapshot.
+6. Tenant-facing capability messages must remain explanatory UI only; backend route gates and Storefront access-mode use cases remain the source of enforcement truth.
 
 ## Verification Evidence
 
@@ -52,8 +55,12 @@ Required validation for this declaration:
 4. `npm --prefix backend test -- --runTestsByPath tests/tenantCapabilityReadiness.schemaCompatibility.test.js tests/adminTenantCapabilities.transport.test.js tests/tenantCapabilityRouteGates.test.js tests/updateTenantCapabilitiesUseCase.rollback.test.js tests/adminTenantCapabilityValidator.test.js tests/listTenantCapabilityAuditLogs.usecase.test.js tests/tenantCapabilitySettings.test.js tests/listTenants.usecase.test.js --runInBand`
 5. From `frontend/`: `npm exec vitest run src/pages/__tests__/TenantManager.capabilities.integration.test.jsx src/pages/__tests__/TenantManager.editPlan.integration.test.jsx src/pages/__tests__/TenantManager.forceNonCompliant.integration.test.jsx -- --pool=threads`
 6. Tenant Manager audit-trail rendering: `npm --prefix frontend test -- TenantManager.capabilities.integration.test.jsx`
-7. `npm --prefix frontend run build:skupervisor`
-8. `git diff --check`
+7. Tenant-facing capability messaging and affected tenant surfaces, from `frontend/`: `npm exec vitest run src/utils/__tests__/tenantCapabilityMessages.test.js src/utils/__tests__/errorHandler.test.js src/components/common/__tests__/GlobalApiErrorListener.test.js src/components/common/__tests__/TenantCapabilityNotice.test.jsx src/components/common/__tests__/TenantCapabilityLayout.render.test.jsx src/components/common/__tests__/tenantCapabilityNotice.contract.test.js src/features/pos/__tests__/TerminalPageLayout.capabilityNotice.test.jsx src/features/pos/__tests__/terminalViewModeContracts.test.js src/services/__tests__/api.globalErrors.test.js apps/store/src/__tests__/customerAccess.test.js apps/store/src/__tests__/storefrontErrorMessages.test.js src/pages/__tests__/TenantManager.capabilities.integration.test.jsx -- --pool=threads`
+8. Result for the current tenant-facing messaging slice: 12 files / 81 tests passed on 2026-06-11.
+9. `npm --prefix frontend run build:skupervisor`
+10. `npm --prefix frontend run build:pos`
+11. `npm --prefix frontend run build:store`
+12. `git diff --check`
 
 ## Production Verification
 

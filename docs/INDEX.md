@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-06-10
+last_reviewed: 2026-06-11
 applies_to: docs_navigation
 topic: docs_index
 ---
@@ -47,6 +47,7 @@ Canonical planning entry:
 - Third-party Storefront map integrations such as MapViu use `GET /api/v1/storefront/discovery/map-pins` plus the path-limited `PUBLIC_API_CORS_ORIGIN` allowlist; the implementation/deploy note is `docs/features/STOREFRONT_MAPVIU_PUBLIC_API_2026-05-29.md`.
 - Tenant first-login onboarding is tracked in ADR 0013 and `docs/api/specification.md`. The current wizard uses optional brand assets, primary storefront location, and mode-aware bulk starter items; merchant-facing starter uploads are labeled `Item image`, upload only after item creation succeeds, and are capped at 5 images per item; future mode work must define onboarding item presets before production readiness.
 - Customer Access Modes and Inventory Display are default-on public Storefront contracts. `CUSTOMER_ACCESS_MODES_ENABLED=false` is rollback-only, `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` supports tenant re-enablement during rollback, and `GET /settings` exposes read-only runtime key `customer_access_modes_enabled` for IMS Settings status. The feature contract is tracked in `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md` and governed by ADR 0017.
+- Platform-admin tenant capability controls are tracked in `docs/features/TENANT_MANAGEMENT.md`, `docs/api/integration-guide.md`, and `docs/compliance/impact-declarations/2026-06-07-platform-admin-tenant-capability-controls.md`. Current source centralizes tenant-facing IMS/POS/Storefront blocked-action copy in `frontend/src/utils/tenantCapabilityMessages.js`, normalizes `TENANT_CAPABILITY_DISABLED` and `CUSTOMER_ACCESS_MODE_BLOCKED` into tenant-readable messages, exposes reactive IMS/POS capability notices in tenant layouts, and previews Tenant Manager capability-change impact before the platform-admin audit reason is submitted.
 - Inventory item/product create-edit flows are covered by `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md` where they intersect POS/Storefront catalog setup. They expose guarded footer actions and a top-right close control across create/edit modes, keep draft save separate from finalization, preserve branch/gallery setup on save paths, and retain internal Storefront catalog image field names while using `Item image` in merchant-facing copy.
 - Storefront location pin management, including inactive-pin permanent delete, reference-count blockers, fail-closed tenant-reference inspection, and discovery refresh behavior, is tracked in `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md`, `docs/api/specification.md`, and ADR 0017.
 - Barcode Identity, Labels, and Scan Routing is tracked in `docs/features/BARCODE_IDENTITY_LABELS_AND_SCAN_ROUTING.md` and governed by ADR 0018. It covers tenant-local manufacturer/internal barcodes, printable labels, IMS scan prefill, POS scan eligibility, Storefront QR, Services/tickets, offline replay revalidation, and conflict handling.
