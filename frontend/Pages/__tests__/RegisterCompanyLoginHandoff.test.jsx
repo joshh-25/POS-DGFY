@@ -12,6 +12,7 @@ const apiMock = vi.hoisted(() => ({
 const dgfyAuthMock = vi.hoisted(() => ({
   clearDgfySession: vi.fn(),
   completeDgfyPasswordReset: vi.fn(),
+  createDgfyHandoff: vi.fn(),
   dgfyAuthHeader: vi.fn(() => ({ Authorization: 'Bearer dgfy-token' })),
   exchangeDgfyHandoff: vi.fn(),
   fetchDgfyLegalTerms: vi.fn(),
@@ -41,6 +42,7 @@ import DgfyAuthPage from '../DgfyAuthPage.jsx';
 import DgfyResetPasswordPage from '../DgfyResetPasswordPage.jsx';
 import LegalDocument from '../LegalDocument.jsx';
 import RegisterCompany from '../RegisterCompany.jsx';
+import { appendDgfyHandoffToken } from '../../src/features/dgfyRouteHelpers.js';
 
 const dgfyAccount = {
   id: 'dgfy-1',
@@ -106,6 +108,8 @@ describe('DGFY auth and business registration routes', () => {
     apiMock.get.mockReset();
     dgfyAuthMock.clearDgfySession.mockReset();
     dgfyAuthMock.completeDgfyPasswordReset.mockReset();
+    dgfyAuthMock.createDgfyHandoff.mockReset();
+    dgfyAuthMock.createDgfyHandoff.mockResolvedValue({ handoff_token: 'handoff-token-1' });
     dgfyAuthMock.dgfyAuthHeader.mockReset();
     dgfyAuthMock.dgfyAuthHeader.mockReturnValue({ Authorization: 'Bearer dgfy-token' });
     dgfyAuthMock.exchangeDgfyHandoff.mockReset();
@@ -130,6 +134,15 @@ describe('DGFY auth and business registration routes', () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+  });
+
+  it('appends a one-time handoff token to absolute storefront auth return targets', () => {
+    const target = appendDgfyHandoffToken(
+      'https://dgfy.ph/map-dgfy/account?dgfy_account=1',
+      'handoff-token-1'
+    );
+
+    expect(target).toBe('https://dgfy.ph/map-dgfy/account?dgfy_account=1&handoff_token=handoff-token-1');
   });
 
   it('renders the canonical DGFY sign-in route and returns to the supplied intent target', async () => {

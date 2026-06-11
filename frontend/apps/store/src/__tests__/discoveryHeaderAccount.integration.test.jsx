@@ -161,7 +161,7 @@ describe('discovery header customer account actions', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('dialog', { name: /dgfy account/i })).toBeTruthy();
-      expect(screen.getByRole('button', { name: /^sign in$/i })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /sign in \/ create account/i })).toBeTruthy();
     });
   }, 10000);
 
@@ -179,7 +179,7 @@ describe('discovery header customer account actions', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
-    expect(screen.getByRole('button', { name: /^my account$/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /kate/i })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /log in \/ sign up/i })).toBeNull();
   }, 10000);
 
@@ -197,7 +197,7 @@ describe('discovery header customer account actions', () => {
     render(<App />);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    await user.click(screen.getByRole('button', { name: /^my account$/i }));
+    await user.click(screen.getByRole('button', { name: /kate/i }));
 
     await waitFor(() => {
       expect(window.location.pathname).toBe('/map-dgfy/account');
@@ -218,7 +218,7 @@ describe('discovery header customer account actions', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /^my account$/i })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /cookie/i })).toBeTruthy();
     });
 
     const meCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/api/v1/dgfy/auth/me'));
@@ -226,6 +226,57 @@ describe('discovery header customer account actions', () => {
     expect(meCall[1]?.credentials).toBe('include');
     expect(meCall[1]?.headers?.Authorization).toBeUndefined();
     expect(window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__).toBe('');
+  }, 10000);
+
+  it('exchanges a DGFY auth handoff token on storefront return before showing guest state', async () => {
+    window.history.pushState({}, '', '/map-dgfy?dgfy_account=1&handoff_token=handoff-token-1');
+    const user = userEvent.setup();
+    const defaultFetch = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(async (url, options = {}) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/dgfy/auth/handoff/exchange')) {
+        return makeJsonResponse({
+          token: 'dgfy-handoff-session',
+          account: {
+            id: 'acct-handoff',
+            first_name: 'Handoff',
+            last_name: 'Customer',
+            email: 'handoff@example.com'
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/dgfy/auth/me')) {
+        return makeJsonResponse({
+          account: {
+            id: 'acct-handoff',
+            first_name: 'Handoff',
+            last_name: 'Customer',
+            email: 'handoff@example.com'
+          }
+        });
+      }
+      return defaultFetch(url, options);
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /handoff/i })).toBeTruthy();
+    });
+
+    const exchangeCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/api/v1/dgfy/auth/handoff/exchange'));
+    expect(exchangeCall).toBeTruthy();
+    expect(exchangeCall[1]?.method).toBe('POST');
+    expect(exchangeCall[1]?.credentials).toBe('include');
+    expect(JSON.parse(exchangeCall[1]?.body || '{}')).toEqual({ handoff_token: 'handoff-token-1' });
+    expect(window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__).toBe('dgfy-handoff-session');
+    expect(window.location.search).not.toContain('handoff_token');
+    expect(screen.queryByRole('dialog', { name: /dgfy account/i })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /handoff/i }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: /^my account$/i })).toBeTruthy());
+    await user.click(screen.getByRole('button', { name: /sign out/i }));
+    await waitFor(() => expect(window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__).toBe(''));
   }, 10000);
 
   it('logs out a cookie-backed DGFY session even when no bearer token is in memory', async () => {
@@ -241,9 +292,9 @@ describe('discovery header customer account actions', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /^my account$/i })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /cookie/i })).toBeTruthy();
     });
-    await user.click(screen.getByRole('button', { name: /^my account$/i }));
+    await user.click(screen.getByRole('button', { name: /cookie/i }));
     await waitFor(() => expect(screen.getByRole('heading', { name: /^My Account$/i })).toBeTruthy());
     await user.click(screen.getByRole('button', { name: /sign out/i }));
 

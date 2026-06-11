@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   clearDgfySession,
+  createDgfyHandoff,
   fetchDgfyLegalTerms,
   fetchDgfyMe,
   getStoredDgfyToken,
@@ -22,7 +23,8 @@ import {
   readDgfyRouteParams,
   resolveDgfyPostAuthTarget,
   resolveStorefrontHomeUrl,
-  hasAbsoluteNavigationTarget
+  hasAbsoluteNavigationTarget,
+  appendDgfyHandoffToken
 } from '../src/features/dgfyRouteHelpers.js';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -76,6 +78,16 @@ const navigateToTarget = (navigate, target) => {
     return;
   }
   navigate(target, { replace: true });
+};
+
+const resolveHandoffNavigationTarget = async (target, token = '') => {
+  if (!hasAbsoluteNavigationTarget(target)) return target;
+  try {
+    const handoff = await createDgfyHandoff(token || getStoredDgfyToken());
+    return appendDgfyHandoffToken(target, handoff?.handoff_token);
+  } catch {
+    return target;
+  }
 };
 
 /* ─── Field group ───────────────────────────────────────────── */
@@ -212,9 +224,11 @@ export default function DgfyAuthPage() {
   useEffect(() => {
     let cancelled = false;
     fetchDgfyMe(getStoredDgfyToken())
-      .then(() => {
+      .then(async (session) => {
         if (cancelled) return;
-        navigateToTarget(navigate, resolveDgfyPostAuthTarget({ intent: routeParams.intent, returnTo: routeParams.returnTo }));
+        const target = resolveDgfyPostAuthTarget({ intent: routeParams.intent, returnTo: routeParams.returnTo });
+        const finalTarget = await resolveHandoffNavigationTarget(target, session?.token || getStoredDgfyToken());
+        if (!cancelled) navigateToTarget(navigate, finalTarget);
       })
       .catch(() => { if (!cancelled) { clearDgfySession(); setSessionResolved(true); } });
     return () => { cancelled = true; };
@@ -240,7 +254,10 @@ export default function DgfyAuthPage() {
     const target = resolveDgfyPostAuthTarget({ intent: routeParams.intent, returnTo: routeParams.returnTo });
     setNotice(routeParams.intent === 'register-business' ? 'DGFY account connected. Continuing to business registration...' : 'DGFY account connected. Returning to your account...');
     try { await fetchDgfyMe(session?.token || getStoredDgfyToken()).catch(() => null); }
-    finally { navigateToTarget(navigate, target); }
+    finally {
+      const finalTarget = await resolveHandoffNavigationTarget(target, session?.token || getStoredDgfyToken());
+      navigateToTarget(navigate, finalTarget);
+    }
   }, [navigate, routeParams.intent, routeParams.returnTo]);
 
   const buildRegistrationPayload = useCallback((emailOtpCode = '') => ({

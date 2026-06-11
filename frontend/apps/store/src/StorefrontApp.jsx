@@ -1297,6 +1297,27 @@ const writeDgfyAuthToken = (token) => {
   DGFY_CUSTOMER_AUTH_TOKEN_KEYS.slice(1).forEach((key) => window.localStorage.removeItem(key));
 };
 
+const readDgfyHandoffToken = () => {
+  if (typeof window === 'undefined') return '';
+  try {
+    return String(new URL(window.location.href).searchParams.get('handoff_token') || '').trim();
+  } catch {
+    return '';
+  }
+};
+
+const clearDgfyHandoffTokenFromUrl = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    const currentUrl = new URL(window.location.href);
+    if (!currentUrl.searchParams.has('handoff_token')) return;
+    currentUrl.searchParams.delete('handoff_token');
+    window.history.replaceState({}, '', currentUrl.toString());
+  } catch {
+    // URL cleanup is best-effort; auth state is owned by the exchanged session.
+  }
+};
+
 const clearStoreAuthToken = () => {
   if (typeof window === 'undefined') return;
   storefrontAuthTokenMemory = '';
@@ -4493,6 +4514,43 @@ export default function StorefrontApp() {
     let cancelled = false;
 
     const bootstrapDgfyCookieSession = async () => {
+      const handoffToken = readDgfyHandoffToken();
+      if (handoffToken) {
+        try {
+          const payload = await requestJson('/api/v1/dgfy/auth/handoff/exchange', {
+            method: 'POST',
+            body: { handoff_token: handoffToken },
+            cache: 'no-store'
+          });
+          if (cancelled) return;
+          const token = String(payload?.token || '').trim();
+          const account = payload?.account && typeof payload.account === 'object' ? payload.account : null;
+          if (token) {
+            writeDgfyAuthToken(token);
+            setDgfyAuthTokenState(token);
+          }
+          setDgfySessionAccount(account);
+          if (account) {
+            setAccountPanel((previous) => (
+              previous?.me
+                ? previous
+                : {
+                  ...previous,
+                  error: '',
+                  me: account
+                }
+            ));
+          }
+          clearDgfyHandoffTokenFromUrl();
+          return;
+        } catch (error) {
+          if (!cancelled) {
+            clearDgfyHandoffTokenFromUrl();
+            setDgfySessionAccount(null);
+          }
+        }
+      }
+
       if (readDgfyAuthToken()) {
         return;
       }

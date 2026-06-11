@@ -110,3 +110,18 @@ export const resolveDgfyPostAuthTarget = ({ intent = 'customer', returnTo = '' }
 };
 
 export const hasAbsoluteNavigationTarget = (target = '') => /^https?:\/\//i.test(String(target || '').trim());
+
+export const appendDgfyHandoffToken = (target = '', handoffToken = '') => {
+  const normalizedTarget = String(target || '').trim();
+  const normalizedToken = String(handoffToken || '').trim();
+  if (!normalizedTarget || !normalizedToken || !hasAbsoluteNavigationTarget(normalizedTarget)) {
+    return normalizedTarget;
+  }
+  try {
+    const url = new URL(normalizedTarget);
+    url.searchParams.set('handoff_token', normalizedToken);
+    return url.toString();
+  } catch {
+    return normalizedTarget;
+  }
+};
