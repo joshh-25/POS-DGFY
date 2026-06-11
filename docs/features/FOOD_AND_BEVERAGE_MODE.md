@@ -89,6 +89,16 @@ Exports must preserve the persisted preset key for each restaurant item. In part
 - Storefront and POS use `default_sale_price` as the base customer price. F&B modifier deltas can add to that base, but missing or zero base price blocks sale readiness.
 - F&B recipe, FIFO, weighted-average, and stock-movement costs remain internal valuation/COGS data and are never exposed in public Storefront payloads.
 
+## Product Wizard Contract
+
+F&B product setup uses the shared product wizard but removes Food Manufacturing-only complexity from the restaurant flow. In F&B mode:
+
+- POS Setup / Storefront Catalog setup is step 2 so menu visibility, branch availability, and item images are configured early.
+- Physical & Chemical Properties and Quality Control are not shown in the F&B product wizard.
+- Saving, saving drafts, finalizing drafts, and updating F&B products clear manufacturing-oriented `physical_properties` and `quality_control` data before persistence. This cleanup applies only to F&B; Food Manufacturing and other non-F&B product modes keep those fields and their existing behavior.
+- The wizard keeps F&B restaurant-native fields such as recipes, nutrition, allergens, shelf life, packaging, costing, compliance, and review.
+- The shared numbered step navigator is visible for multi-step product setup. Each step is a circular numbered control with active/completed/inactive states, direct navigation, and hover/focus tooltip copy that names the step contents.
+
 ## Mode Guards
 
 F&B-only APIs are guarded by `fnbDining`. Manufacturing production routes remain denied in F&B through `productionWorkflows` capability absence, and the frontend hides job-order and dispatch-order navigation while keeping inventory stock movements available.
