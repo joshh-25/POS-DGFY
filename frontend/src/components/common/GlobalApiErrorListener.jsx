@@ -26,12 +26,23 @@ export const setupGlobalApiErrorListeners = ({
     toastApi.error(message, { duration: 5000 });
   };
 
+  const onCapabilityBlocked = (event) => {
+    if (event?.detail?.suppressToast === true) return;
+    const title = event?.detail?.title || 'Platform admin changed your permissions';
+    const message = event?.detail?.message || DEFAULT_ERROR_MESSAGE;
+    const signature = `${title}: ${message}`;
+    if (deduper.shouldSuppress(signature)) return;
+    toastApi.error(title, { description: message, duration: 7000 });
+  };
+
   targetWindow.addEventListener('api:error', onApiError);
   targetWindow.addEventListener('api:server-error', onLegacyServerError);
+  targetWindow.addEventListener('tenant:capability-blocked', onCapabilityBlocked);
 
   return () => {
     targetWindow.removeEventListener('api:error', onApiError);
     targetWindow.removeEventListener('api:server-error', onLegacyServerError);
+    targetWindow.removeEventListener('tenant:capability-blocked', onCapabilityBlocked);
   };
 };
 

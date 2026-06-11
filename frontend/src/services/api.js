@@ -315,9 +315,15 @@ api.interceptors.response.use(
       }
     }
 
-    // Global error notification path for 5xx and network/no-response failures.
-    // Components can opt out on a request-by-request basis using skipGlobalErrorToast.
-    if (!error?.config?.skipGlobalErrorToast) {
+    // Global error notification path for 5xx, network/no-response failures,
+    // and tenant capability blocks. Components can opt out of generic toasts,
+    // but capability blocks still dispatch status events for shell banners.
+    const errorCode = error?.response?.data?.code
+      || error?.response?.data?.error_code
+      || error?.response?.data?.error?.code
+      || '';
+    const isCapabilityBlock = errorCode === 'TENANT_CAPABILITY_DISABLED' || errorCode === 'CUSTOMER_ACCESS_MODE_BLOCKED';
+    if (!error?.config?.skipGlobalErrorToast || isCapabilityBlock) {
       emitGlobalApiError({ error, source: 'tenant-api' });
     }
 

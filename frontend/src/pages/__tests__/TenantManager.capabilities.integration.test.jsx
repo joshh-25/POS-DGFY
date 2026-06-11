@@ -123,6 +123,8 @@ describe('TenantManager capability controls', () => {
 
     await user.click(screen.getByRole('button', { name: /POS Off/i }));
     await screen.findByText('Confirm capability change');
+    expect(screen.getByText('Tenant impact preview')).toBeTruthy();
+    expect(screen.getByText(/POS access will be restored for this company/)).toBeTruthy();
     await user.type(screen.getByLabelText('Reason'), 'Tenant requested POS restoration');
     await user.click(screen.getByRole('button', { name: /Apply change/i }));
 

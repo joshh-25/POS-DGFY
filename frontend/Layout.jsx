@@ -26,11 +26,14 @@ import { cn } from "./src/lib/utils.js";
 import { logout, getCurrentUser } from './src/services/authService.js';
 import FeedbackWidget from './Components/common/FeedbackWidget';
 import GracePeriodBanner from './Components/common/GracePeriodBanner';
+import TenantCapabilityNotice from './src/components/common/TenantCapabilityNotice.jsx';
 import useStore from './src/store/useStore.js';
 import { useWorkflowMode } from './src/features/settings/WorkflowModeContext.jsx';
 import { getWorkflowModeLabel, isWorkflowPageVisible } from './src/features/settings/workflowMode.js';
 import OnboardingSetupModal, { OnboardingReminderBanner } from './src/features/onboarding/components/OnboardingSetupModal.jsx';
 import { trackOnboardingEvent } from './src/services/onboardingService.js';
+import { getAllSettings } from './src/services/settingsService.js';
+import { buildTenantCapabilityNoticeFromSettings } from './src/utils/tenantCapabilityMessages.js';
 
 const ALL_NAV_ITEMS = [
   { name: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard', permission: null }, // Everyone sees dashboard? Or maybe basic view?
@@ -70,6 +73,7 @@ const UserProfile = ({ user }) => {
 export default function Layout({ children, currentPageName }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [capabilityNotice, setCapabilityNotice] = useState(null);
   const { can, userRole, loading } = usePermission();
   const { setCurrentUser: setGlobalCurrentUser } = useStore();
   const { workflowMode, modeChangeNotice, dismissModeChangeNotice } = useWorkflowMode();
@@ -84,6 +88,25 @@ export default function Layout({ children, currentPageName }) {
   }, [loading, can, userRole]);
 
   React.useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handleCapabilityBlocked = (event) => {
+      const detail = event?.detail || {};
+      if (!detail?.message) return;
+      setCapabilityNotice({
+        title: detail.title || 'Platform admin changed your permissions',
+        message: detail.message,
+        code: detail.code || null,
+        capability: detail.capability || null
+      });
+    };
+
+    window.addEventListener('tenant:capability-blocked', handleCapabilityBlocked);
+    return () => {
+      window.removeEventListener('tenant:capability-blocked', handleCapabilityBlocked);
+    };
+  }, []);
+
+  React.useEffect(() => {
     const fetchUser = async () => {
       try {
         const user = await getCurrentUser();
@@ -96,6 +119,25 @@ export default function Layout({ children, currentPageName }) {
     };
     fetchUser();
   }, [setGlobalCurrentUser]);
+
+  React.useEffect(() => {
+    if (!currentUser) return;
+    let cancelled = false;
+    getAllSettings({ force: true })
+      .then((settings) => {
+        if (cancelled) return;
+        const notice = buildTenantCapabilityNoticeFromSettings(settings);
+        if (notice?.message) {
+          setCapabilityNotice((current) => current || notice);
+        }
+      })
+      .catch(() => {
+        // Capability-gated settings failures are already surfaced through the API interceptor.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser]);
 
 
   const onboarding = currentUser?.onboarding || null;
@@ -243,6 +285,12 @@ export default function Layout({ children, currentPageName }) {
       <main className="app-main min-h-screen pt-16 lg:pt-0">
         <GracePeriodBanner />
         <div className="p-6 lg:p-8">
+          {capabilityNotice && (
+            <TenantCapabilityNotice
+              notice={capabilityNotice}
+              onDismiss={() => setCapabilityNotice(null)}
+            />
+          )}
           {shouldShowOnboardingReminder && (
             <OnboardingReminderBanner
               onboarding={onboarding}

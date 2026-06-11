@@ -29,8 +29,13 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import * as adminService from '@/services/adminService';
 import { toast } from 'sonner';
-import { normalizeApiError } from '@/src/utils/errorHandler.js';
-import { WORKFLOW_MODE_LABELS, WORKFLOW_MODE_SELECT_VALUES } from '@/src/features/settings/workflowMode.js';
+import { normalizeApiError } from '../../src/utils/errorHandler.js';
+import {
+    CAPABILITY_BLOCK_TITLE,
+    TENANT_CAPABILITY_MESSAGES,
+    getStorefrontAccessModeMessage
+} from '../../src/utils/tenantCapabilityMessages.js';
+import { WORKFLOW_MODE_LABELS, WORKFLOW_MODE_SELECT_VALUES } from '../../src/features/settings/workflowMode.js';
 
 const STATUS_CONFIG = {
     pending: { label: 'Pending', color: 'text-amber-600 bg-amber-50 border-amber-200', icon: Clock },
@@ -98,6 +103,60 @@ const getTenantCapabilities = (tenant = {}) => ({
     ...DEFAULT_TENANT_CAPABILITIES,
     ...(tenant.capabilities && typeof tenant.capabilities === 'object' ? tenant.capabilities : {})
 });
+
+const getCapabilityImpactPreview = (change = {}) => {
+    const patch = change?.patch || {};
+    if (patch.ims_enabled === false) {
+        return {
+            title: CAPABILITY_BLOCK_TITLE,
+            message: TENANT_CAPABILITY_MESSAGES.tenant_ims_enabled
+        };
+    }
+    if (patch.pos_enabled === false) {
+        return {
+            title: CAPABILITY_BLOCK_TITLE,
+            message: TENANT_CAPABILITY_MESSAGES.tenant_pos_enabled
+        };
+    }
+    if (patch.storefront_visible === false) {
+        return {
+            title: CAPABILITY_BLOCK_TITLE,
+            message: TENANT_CAPABILITY_MESSAGES.store_is_visible
+        };
+    }
+    if (patch.customer_access_mode) {
+        const mode = String(patch.customer_access_mode || '').trim().toLowerCase();
+        if (mode !== 'transaction') {
+            return {
+                title: CAPABILITY_BLOCK_TITLE,
+                message: getStorefrontAccessModeMessage(mode)
+            };
+        }
+        return {
+            title: 'Tenant impact preview',
+            message: 'Online ordering mode restores cart, quote, booking, checkout, and payment actions when the tenant also passes compliance, payment, stock, and readiness checks.'
+        };
+    }
+    if (patch.ims_enabled === true) {
+        return {
+            title: 'Tenant impact preview',
+            message: 'IMS access will be restored for this company after the audit reason is saved.'
+        };
+    }
+    if (patch.pos_enabled === true) {
+        return {
+            title: 'Tenant impact preview',
+            message: 'POS access will be restored for this company after the audit reason is saved.'
+        };
+    }
+    if (patch.storefront_visible === true) {
+        return {
+            title: 'Tenant impact preview',
+            message: 'Storefront / Maps visibility will be restored after the audit reason is saved, but public discovery still requires a valid active primary map pin.'
+        };
+    }
+    return null;
+};
 
 const formatTenantPlanLabel = (plan) => {
     const normalized = String(plan || '').trim().toLowerCase();
@@ -878,6 +937,7 @@ export default function TenantManager() {
 
     const visibleArtifacts = filterByComplianceStatus(complianceArtifacts);
     const visiblePeripherals = filterByComplianceStatus(compliancePeripherals);
+    const pendingCapabilityImpact = getCapabilityImpactPreview(pendingCapabilityChange);
 
     return (
         <div className="mx-auto max-w-7xl">
@@ -1823,6 +1883,12 @@ export default function TenantManager() {
                                 <X className="h-5 w-5" />
                             </button>
                         </div>
+                        {pendingCapabilityImpact && (
+                            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                                <p className="text-sm font-semibold text-amber-900">{pendingCapabilityImpact.title}</p>
+                                <p className="mt-1 text-xs leading-5 text-amber-800">{pendingCapabilityImpact.message}</p>
+                            </div>
+                        )}
                         <label className="block text-sm font-medium text-slate-700" htmlFor="capability-reason">
                             Reason
                         </label>

@@ -255,7 +255,7 @@ const isRetryableCheckoutReplayError = (error) => {
 
 const resolveCheckoutReplayErrorDetails = (error) => ({
       message: String(error?.response?.data?.message || error?.message || 'Replay failed').trim(),
-    code: String(error?.response?.data?.error_code || error?.code || '').trim() || undefined,
+    code: String(error?.response?.data?.code || error?.response?.data?.error_code || error?.code || '').trim() || undefined,
     status: Number(error?.response?.status || 0) || undefined
 });
 

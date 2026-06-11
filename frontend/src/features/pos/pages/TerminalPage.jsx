@@ -18,6 +18,7 @@ import { getComplianceProfile } from '@/services/complianceService.js';
 import api from '@/services/api.js';
 import { clearClientSession } from '@/services/sessionCleanup.js';
 import { getAccessToken, getCompanyToken, refreshBrowserSession } from '@/services/browserSession.js';
+import { normalizeApiError } from '@/src/utils/errorHandler.js';
 import { useWorkflowMode } from '../../settings/WorkflowModeContext.jsx';
 import { getWorkflowModeLabel, isMsmeWorkflowMode } from '../../settings/workflowMode.js';
 import { resolveBusinessModePosDefaults } from '../../settings/businessModeTemplates.js';
@@ -87,6 +88,16 @@ const COMPLIANCE_REASON_LABELS = Object.freeze({
   BSP_OPS_REGISTRATION_REQUIRED: 'BSP OPS registration controls incomplete',
   BSP_PAYMENT_CONTROL_REQUIRED: 'BSP payment control review incomplete'
 });
+
+const normalizeTerminalActionError = (error, fallback) => {
+  const normalized = normalizeApiError(error);
+  return {
+    ...normalized,
+    displayMessage: normalized.title
+      ? `${normalized.title}. ${normalized.message}`
+      : (normalized.message || fallback)
+  };
+};
 
 const normalizeActivationBlocker = (entry) => {
   const code = String(entry?.code || '').trim() || 'COMPLIANCE_BLOCKER';
@@ -198,7 +209,7 @@ const isRetryableTerminalOperationError = (error) => {
 
 const resolveTerminalOperationErrorDetails = (error) => ({
   message: String(error?.response?.data?.message || error?.message || 'Operation replay failed').trim(),
-  code: String(error?.response?.data?.error_code || error?.code || '').trim() || undefined,
+  code: String(error?.response?.data?.code || error?.response?.data?.error_code || error?.code || '').trim() || undefined,
   status: Number(error?.response?.status || 0) || undefined
 });
 
@@ -641,7 +652,8 @@ export default function TerminalPage() {
       setShiftState((prev) => ({ ...prev, loading: false }));
       setTodayDashboard((prev) => ({ ...prev, loading: false }));
       if (error?.response?.status !== 403) {
-        toast.error(error?.response?.data?.message || 'Failed to load terminal operational context.');
+        const normalized = normalizeTerminalActionError(error, 'Failed to load terminal operational context.');
+        toast.error(normalized.displayMessage);
       }
     }
   }, [activeTerminalId, canViewPos, locked, operatingLocationId]);
@@ -739,16 +751,17 @@ export default function TerminalPage() {
     } catch (error) {
       const isForbidden = error?.response?.status === 403;
       const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+      const normalized = normalizeTerminalActionError(error, 'Failed to load incoming online orders.');
       setIncomingOrdersState({
         loading: false,
         orders: [],
         accessState: isForbidden ? 'forbidden' : 'error',
         errorMessage: isForbidden
-          ? 'You need POS view permission to access incoming online orders.'
-          : (offline ? 'You are offline. Incoming queue refresh is temporarily unavailable.' : (error?.response?.data?.message || 'Failed to load incoming online orders.'))
+          ? normalized.displayMessage
+          : (offline ? 'You are offline. Incoming queue refresh is temporarily unavailable.' : normalized.displayMessage)
       });
-      if (!silent && !offline) {
-        toast.error(error?.response?.data?.message || 'Failed to load incoming online orders.');
+      if (!silent && !offline && !normalized.isCapabilityBlock) {
+        toast.error(normalized.displayMessage);
       }
     }
   }, [canViewPos, locked, queueLocationScopeId]);
@@ -1296,7 +1309,10 @@ export default function TerminalPage() {
           `Shift-open action queued after connectivity issue (${pendingCount} queued).`
         );
       } else {
-        toast.error(error?.response?.data?.message || 'Failed to open terminal shift.');
+        const normalized = normalizeTerminalActionError(error, 'Failed to open terminal shift.');
+        if (!normalized.isCapabilityBlock) {
+          toast.error(normalized.displayMessage);
+        }
       }
     } finally {
       setShiftActionLoading((prev) => ({ ...prev, open: false }));
@@ -1512,7 +1528,10 @@ export default function TerminalPage() {
           `Order status update queued after connectivity issue (${pendingCount} queued).`
         );
       } else {
-        toast.error(error?.response?.data?.message || 'Failed to update online order status.');
+        const normalized = normalizeTerminalActionError(error, 'Failed to update online order status.');
+        if (!normalized.isCapabilityBlock) {
+          toast.error(normalized.displayMessage);
+        }
       }
     } finally {
       setIncomingOrderActionState((prev) => {

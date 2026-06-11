@@ -84,7 +84,8 @@ import {
   canUseCheckout,
   canUseProductCart,
   canViewCatalog,
-  getAccessCapabilities
+  getAccessCapabilities,
+  getStorefrontAccessBlockMessage
 } from './customerAccess.js';
 import { getFoodBeverageStorefrontViewModel } from './fnbStorefrontViewModel.js';
 import { getDiscoveryMarkerKey } from './discoveryMapDom.js';
@@ -1458,7 +1459,7 @@ const requestJson = async (url, { method = 'GET', body, storeSlug, authToken = '
   if (!response.ok || payload?.success === false) {
     throw buildRequestError(payload?.message || `Request failed (${response.status})`, {
       status: response.status,
-      errorCode: payload?.error_code || null,
+      errorCode: payload?.code || payload?.error_code || null,
       details: payload?.errors || payload?.details || null,
       requestId: payload?.request_id || null,
       payload
@@ -6294,6 +6295,7 @@ export default function StorefrontApp() {
   }, [storeLocations, selectedLocationId]);
   const hasMultipleStoreBranches = Array.isArray(storeLocations) && storeLocations.length > 1;
   const accessCapabilities = useMemo(() => getAccessCapabilities(selectedStore), [selectedStore]);
+  const storefrontAccessBlockMessage = useMemo(() => getStorefrontAccessBlockMessage(selectedStore), [selectedStore]);
   const catalogPermitted = canViewCatalog(selectedStore);
   const productCartPermitted = canUseProductCart(selectedStore);
   const checkoutPermitted = canUseCheckout(selectedStore);
@@ -7263,7 +7265,7 @@ export default function StorefrontApp() {
 
   const addToCart = (item, options = {}) => {
     if (isServiceCatalogItem(item) ? !bookingPermitted : !productCartPermitted) {
-      toast.error('This storefront is not accepting online checkout right now.');
+      toast.error(storefrontAccessBlockMessage || 'This storefront is not accepting online checkout right now.');
       return;
     }
     const requestedQuantity = Math.max(1, Number(options?.quantity || 1));
@@ -7444,7 +7446,7 @@ export default function StorefrontApp() {
   const saveServiceBookingDraft = (serviceItem = selectedServiceDetail, nextTab = 'review') => {
     if (!serviceItem) return;
     if (!bookingPermitted || accessCapabilities.booking === false) {
-      const message = 'This storefront is not accepting service bookings right now.';
+      const message = storefrontAccessBlockMessage || 'This storefront is not accepting service bookings right now.';
       setCheckoutError(message);
       toast.error(message);
       return;
@@ -7901,7 +7903,7 @@ export default function StorefrontApp() {
       return;
     }
     if (!checkoutPermitted || accessCapabilities.quote === false) {
-      const message = 'This storefront is not accepting online checkout right now.';
+      const message = storefrontAccessBlockMessage || 'This storefront is not accepting online checkout right now.';
       setQuoteError(message);
       toast.error(message);
       return;

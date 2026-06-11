@@ -1,7 +1,8 @@
-import React, { Suspense, lazy, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Bell, Menu, UserRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import TenantCapabilityNotice from '../../../components/common/TenantCapabilityNotice.jsx';
 
 const POSCheckoutTerminal = lazy(() => import('./POSCheckoutTerminal'));
 const TerminalLockDrawer = lazy(() => import('./TerminalLockDrawer'));
@@ -100,11 +101,29 @@ export default function TerminalPageLayout({
   const navigate = useNavigate();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationReadState, setNotificationReadState] = useState({});
+  const [capabilityNotice, setCapabilityNotice] = useState(null);
   const queueCount = Number(queuedTerminalOperationCount || 0);
   const blockedQueueCount = Number(queuedTerminalBlockedCount || 0);
   const queueTotalCount = Number(queueSummary?.total || queueCount + blockedQueueCount);
   const complianceBlocked = Boolean(complianceBlockerDetails);
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handleCapabilityBlocked = (event) => {
+      const detail = event?.detail || {};
+      if (detail.capability !== 'tenant_pos_enabled' || !detail.message) return;
+      setCapabilityNotice({
+        title: detail.title || 'Platform admin changed your permissions',
+        message: detail.message,
+        code: detail.code || null
+      });
+    };
+
+    window.addEventListener('tenant:capability-blocked', handleCapabilityBlocked);
+    return () => {
+      window.removeEventListener('tenant:capability-blocked', handleCapabilityBlocked);
+    };
+  }, []);
   const notifications = useMemo(() => {
     const items = [];
     if (incomingOrders.length > 0) {
@@ -383,6 +402,14 @@ export default function TerminalPageLayout({
                         </button>
                     </div>
                 </div>
+            )}
+
+            {capabilityNotice && (
+                <TenantCapabilityNotice
+                    className="mx-4 mt-3"
+                    notice={capabilityNotice}
+                    onDismiss={() => setCapabilityNotice(null)}
+                />
             )}
 
             {complianceBlockerDetails && (

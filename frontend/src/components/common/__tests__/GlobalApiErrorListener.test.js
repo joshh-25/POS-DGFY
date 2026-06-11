@@ -56,14 +56,57 @@ describe('GlobalApiErrorListener setup', () => {
     vi.useRealTimers();
   });
 
+  it('shows title and description for tenant capability block events', () => {
+    const mockWindow = createMockWindow();
+    const toastApi = { error: vi.fn() };
+    const cleanup = setupGlobalApiErrorListeners({ windowObj: mockWindow, toastApi });
+
+    mockWindow.dispatchEvent({
+      type: 'tenant:capability-blocked',
+      detail: {
+        title: 'Platform admin changed your permissions',
+        message: 'POS access is disabled for this company.'
+      }
+    });
+
+    expect(toastApi.error).toHaveBeenCalledTimes(1);
+    expect(toastApi.error).toHaveBeenCalledWith('Platform admin changed your permissions', {
+      description: 'POS access is disabled for this company.',
+      duration: 7000
+    });
+
+    cleanup();
+  });
+
+  it('does not toast suppressed tenant capability block events', () => {
+    const mockWindow = createMockWindow();
+    const toastApi = { error: vi.fn() };
+    const cleanup = setupGlobalApiErrorListeners({ windowObj: mockWindow, toastApi });
+
+    mockWindow.dispatchEvent({
+      type: 'tenant:capability-blocked',
+      detail: {
+        title: 'Platform admin changed your permissions',
+        message: 'POS access is disabled for this company.',
+        suppressToast: true
+      }
+    });
+
+    expect(toastApi.error).not.toHaveBeenCalled();
+
+    cleanup();
+  });
+
   it('removes listeners on cleanup', () => {
     const mockWindow = createMockWindow();
     const cleanup = setupGlobalApiErrorListeners({ windowObj: mockWindow, toastApi: { error: vi.fn() } });
 
     expect(mockWindow.listenerCount('api:error')).toBe(1);
     expect(mockWindow.listenerCount('api:server-error')).toBe(1);
+    expect(mockWindow.listenerCount('tenant:capability-blocked')).toBe(1);
     cleanup();
     expect(mockWindow.listenerCount('api:error')).toBe(0);
     expect(mockWindow.listenerCount('api:server-error')).toBe(0);
+    expect(mockWindow.listenerCount('tenant:capability-blocked')).toBe(0);
   });
 });
