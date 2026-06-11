@@ -209,7 +209,9 @@ describe('Item/Product wizard contracts', () => {
     expect(productWizardSource).toContain('if (savingActionRef.current) return;');
 
     expect(productWizardSource).toContain('wizard-footer flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between');
-    expect(productWizardSource).toContain('flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end');
+    expect(productWizardSource).toContain('order-1 flex flex-col gap-2 sm:order-none sm:flex-row sm:flex-wrap sm:justify-end');
+    expect(productWizardSource).toContain('className="order-1 w-full bg-teal-600 hover:bg-teal-700 sm:order-none sm:w-auto"');
+    expect(productWizardSource).toContain('className="order-3 w-full sm:order-none sm:w-auto"');
     expect(itemFormSource).toContain('wizard-footer flex-shrink-0 border-t border-slate-200 pt-4 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end');
 
     expect(itemFormSource).toContain('disabled={isSaving}');

@@ -703,28 +703,29 @@ export default function ProductCreateWizard({
 
           {/* Navigation */}
           <DialogFooter className="wizard-footer flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-h-10">
+            <div className="min-h-10 order-2 sm:order-none">
               {step > 1 && (
-                <Button variant="outline" onClick={handleBack} disabled={isSaving}>
+                <Button variant="outline" onClick={handleBack} disabled={isSaving} className="w-full sm:w-auto">
                   <ArrowLeft className="w-4 h-4 mr-2" /> Back
                 </Button>
               )}
             </div>
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
-              <Button variant="outline" onClick={() => handleClose(false)} disabled={isSaving}>Cancel</Button>
+            <div className="order-1 flex flex-col gap-2 sm:order-none sm:flex-row sm:flex-wrap sm:justify-end">
+              <Button variant="outline" onClick={() => handleClose(false)} disabled={isSaving} className="order-3 w-full sm:order-none sm:w-auto">Cancel</Button>
 
               {((product && product.status !== 'draft') || onSaveDraft) && (
                 <Button
                   variant="outline"
                   onClick={() => runSaveAction('save-exit', handleSaveAndExit)}
                   disabled={isSaving}
+                  className="order-2 w-full sm:order-none sm:w-auto"
                 >
                   {savingAction === 'save-exit' ? 'Saving...' : 'Save and exit'}
                 </Button>
               )}
 
               {step < wizardSteps.length ? (
-                <Button onClick={handleNext} className="bg-teal-600 hover:bg-teal-700" disabled={isSaving}>
+                <Button onClick={handleNext} className="order-1 w-full bg-teal-600 hover:bg-teal-700 sm:order-none sm:w-auto" disabled={isSaving}>
                   Next <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
               ) : (
@@ -732,7 +733,7 @@ export default function ProductCreateWizard({
                   {isEditingDraft ? (
                     <Button
                       onClick={() => runSaveAction('finalize', handleFinalize)}
-                      className="bg-teal-600 hover:bg-teal-700"
+                      className="order-1 w-full bg-teal-600 hover:bg-teal-700 sm:order-none sm:w-auto"
                       disabled={isSaving}
                     >
                       <Check className="w-4 h-4 mr-2" />
@@ -741,7 +742,7 @@ export default function ProductCreateWizard({
                   ) : (
                     <Button
                       onClick={() => runSaveAction('submit', handleSubmit)}
-                      className="bg-teal-600 hover:bg-teal-700"
+                      className="order-1 w-full bg-teal-600 hover:bg-teal-700 sm:order-none sm:w-auto"
                       disabled={isSaving}
                     >
                       <Check className="w-4 h-4 mr-2" />
