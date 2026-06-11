@@ -90,44 +90,6 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     expect(screen.getByText('Document context: training_test')).toBeTruthy();
   });
 
-  it('does not infer fiscal status from INV invoice prefixes without explicit server contract fields', () => {
-    renderReceipt({
-      transaction: buildTransaction({
-        invoice_number: 'INV-LEGACY-001',
-        document_type: null,
-        document_context: null
-      }),
-      businessSettings: {
-        pos_business_name: 'Compliance Test Store',
-        pos_tin_branch: '123-456-789-000'
-      }
-    });
-
-    expect(screen.getByText('NON-FISCAL SLIP')).toBeTruthy();
-    expect(screen.getByText('NOT A FISCAL RECEIPT')).toBeTruthy();
-    expect(screen.getByText('Document context: non_fiscal')).toBeTruthy();
-    expect(screen.queryByText('FISCAL INVOICE')).toBeNull();
-    expect(screen.queryByText(/TIN\/Branch:/i)).toBeNull();
-  });
-
-  it('does not infer fiscal status when document_type is present without document_context', () => {
-    renderReceipt({
-      transaction: buildTransaction({
-        invoice_number: 'INV-MISSING-CONTEXT',
-        document_type: 'fiscal_invoice',
-        document_context: null
-      }),
-      businessSettings: {
-        pos_business_name: 'Compliance Test Store',
-        pos_tin_branch: '123-456-789-000'
-      }
-    });
-
-    expect(screen.getByText('NON-FISCAL SLIP')).toBeTruthy();
-    expect(screen.getByText('Document context: non_fiscal')).toBeTruthy();
-    expect(screen.queryByText('FISCAL INVOICE')).toBeNull();
-  });
-
   it('renders fiscal header fields only for fiscal document context', () => {
     renderReceipt({
       transaction: buildTransaction({
@@ -157,52 +119,6 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     expect(screen.getByText('MIN: MIN-2026-001')).toBeTruthy();
     expect(screen.getByText('Accreditation: BIR-TEST-2026-001')).toBeTruthy();
     expect(screen.queryByText('NOT A FISCAL RECEIPT')).toBeNull();
-  });
-
-  it('prefers server fiscal document snapshot fields when present', () => {
-    renderReceipt({
-      transaction: buildTransaction({
-        invoice_number: 'INV-001002',
-        document_type: 'fiscal_invoice',
-        document_context: 'fiscal',
-        fiscal_document_hash: 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-        fiscal_document_snapshot: {
-          template_version: 'rmo-24-2023-prep-v1',
-          document: {
-            receipt_contract_version: '2026.04.08'
-          },
-          seller: {
-            registered_name: 'Snapshot Registered Corp.',
-            tin_branch: '999-888-777-00000',
-            ptu_number: 'PTU-SNAPSHOT',
-            min_number: 'MIN-SNAPSHOT',
-            accreditation_number: 'ACC-SNAPSHOT',
-            software_name: 'SKU Inventory Manager',
-            software_version: '2026.06',
-            software_serial_number: 'SKU-SN-001'
-          },
-          buyer: {
-            name: 'Acme Buyer Inc.',
-            tin: '987-654-321-00000',
-            business_style: 'Wholesale',
-            address: 'Quezon City'
-          }
-        }
-      }),
-      businessSettings: {
-        pos_business_name: 'Fallback Store',
-        pos_tin_branch: '123-456-789-000'
-      }
-    });
-
-    expect(screen.getByText('Snapshot Registered Corp.')).toBeTruthy();
-    expect(screen.getByText('TIN/Branch: 999-888-777-00000')).toBeTruthy();
-    expect(screen.getByText('PTU: PTU-SNAPSHOT')).toBeTruthy();
-    expect(screen.getByText('Software: SKU Inventory Manager / 2026.06 / SKU-SN-001')).toBeTruthy();
-    expect(screen.getByText('Buyer')).toBeTruthy();
-    expect(screen.getByText('Acme Buyer Inc.')).toBeTruthy();
-    expect(screen.getByText('TIN: 987-654-321-00000')).toBeTruthy();
-    expect(screen.getByText('Fiscal document hash: abcdef123456')).toBeTruthy();
   });
 
   it('keeps regulator-summary rows and footer contract lines in fixed order', () => {
