@@ -24,7 +24,14 @@ import { cn } from "../../src/lib/utils.js";
 import { useCSVImport } from '../../src/hooks/useCSVImport.js';
 import { useWorkflowMode } from '../../src/features/settings/WorkflowModeContext.jsx';
 import { getWorkflowModeLabel } from '../../src/features/settings/workflowMode.js';
+import WizardStepNavigator from '@/src/components/common/WizardStepNavigator.jsx';
 import { toast } from 'sonner';
+
+const CSV_IMPORT_STEPS = Object.freeze([
+    { id: 'upload', number: 1, name: 'Upload', description: 'Choose the CSV template file to validate.' },
+    { id: 'preview', number: 2, name: 'Preview', description: 'Review parsed rows and validation errors before import.' },
+    { id: 'result', number: 3, name: 'Result', description: 'Review created, updated, skipped, and failed rows.' }
+]);
 
 export default function CSVImportModal({ open, onClose, onSuccess }) {
     const [step, setStep] = useState(1); // 1: Upload, 2: Preview, 3: Result
@@ -42,6 +49,23 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
         reset
     } = useCSVImport();
     const { workflowMode } = useWorkflowMode();
+    const navigatorSteps = CSV_IMPORT_STEPS.map((entry) => {
+        if (entry.number === 2) {
+            return {
+                ...entry,
+                disabled: !previewData,
+                disabledReason: 'Validate a CSV file before opening preview.'
+            };
+        }
+        if (entry.number === 3) {
+            return {
+                ...entry,
+                disabled: !importResult,
+                disabledReason: 'Confirm the import before opening results.'
+            };
+        }
+        return entry;
+    });
 
     const handleClose = () => {
         setStep(1);
@@ -343,13 +367,16 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
                     <DialogTitle className="flex items-center gap-2">
                         <Upload className="w-5 h-5 text-teal-600" />
                         Import Items from CSV
-                        {step > 1 && (
-                            <Badge variant="outline" className="ml-2">
-                                Step {step} of 3
-                            </Badge>
-                        )}
                     </DialogTitle>
                 </DialogHeader>
+
+                <WizardStepNavigator
+                    steps={navigatorSteps}
+                    currentStep={step}
+                    completedStep={step - 1}
+                    onStepChange={setStep}
+                    ariaLabel="CSV import steps"
+                />
 
                 <div className="py-4">
                     {error && (

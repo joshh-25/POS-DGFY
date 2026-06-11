@@ -39,12 +39,16 @@ export const getAllSettings = async ({ force = false } = {}) => {
   inFlightSettingsRequest = api.get('/settings')
     .then((response) => {
       const settings = response.data.data;
-      cachedSettings = settings;
-      cachedSettingsExpiresAt = Date.now() + SETTINGS_CACHE_TTL_MS;
+      if (cachedSettingsScope === scope) {
+        cachedSettings = settings;
+        cachedSettingsExpiresAt = Date.now() + SETTINGS_CACHE_TTL_MS;
+      }
       return settings;
     })
     .finally(() => {
-      inFlightSettingsRequest = null;
+      if (cachedSettingsScope === scope) {
+        inFlightSettingsRequest = null;
+      }
     });
 
   return inFlightSettingsRequest;

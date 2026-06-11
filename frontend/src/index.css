@@ -67,6 +67,124 @@ body {
   scrollbar-gutter: stable;
 }
 
+.wizard-step-navigator {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding: 0.5rem 0 2.75rem;
+  scrollbar-gutter: stable;
+}
+
+.wizard-step-navigator__track {
+  display: flex;
+  align-items: center;
+  min-width: max-content;
+  gap: 0;
+}
+
+.wizard-step-navigator__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.wizard-step-navigator__button {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+
+.wizard-step-navigator__button:hover,
+.wizard-step-navigator__button:focus-visible {
+  border-color: #0f766e;
+  color: #0f766e;
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.18);
+  outline: none;
+}
+
+.wizard-step-navigator__button--active {
+  border-color: #0d9488;
+  background: #0d9488;
+  color: #ffffff;
+}
+
+.wizard-step-navigator__button--completed {
+  border-color: #14b8a6;
+  background: #ccfbf1;
+  color: #115e59;
+}
+
+.wizard-step-navigator__button--disabled,
+.wizard-step-navigator__button:disabled {
+  cursor: not-allowed;
+  border-color: #e2e8f0;
+  background: #f8fafc;
+  color: #94a3b8;
+  box-shadow: none;
+}
+
+.wizard-step-navigator__connector {
+  width: 2.75rem;
+  height: 2px;
+  background: #e2e8f0;
+}
+
+.wizard-step-navigator__connector--completed {
+  background: #14b8a6;
+}
+
+.wizard-step-navigator__tooltip {
+  pointer-events: none;
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 0.45rem);
+  z-index: 20;
+  min-width: 11rem;
+  max-width: 16rem;
+  transform: translateX(-50%) translateY(-0.25rem);
+  border-radius: 0.5rem;
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.3;
+  opacity: 0;
+  padding: 0.45rem 0.6rem;
+  text-align: center;
+  transition: opacity 150ms ease, transform 150ms ease;
+  white-space: normal;
+}
+
+.wizard-step-navigator__item:hover .wizard-step-navigator__tooltip,
+.wizard-step-navigator__button:focus-visible + .wizard-step-navigator__tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+@media (max-width: 640px) {
+  .wizard-step-navigator__connector {
+    width: 1.5rem;
+  }
+
+  .wizard-step-navigator__button {
+    width: 1.85rem;
+    height: 1.85rem;
+    font-size: 0.8125rem;
+  }
+}
+
 .dgfy-pos-sidebar-scroll,
 .dgfy-pos-scrollbar-hidden {
   scrollbar-width: none;

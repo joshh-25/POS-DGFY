@@ -17,7 +17,6 @@ import NumberStepper from "@/components/ui/number-stepper";
 import {
   ArrowRight,
   ArrowLeft,
-  Check,
   Star,
   Truck,
   AlertTriangle,
@@ -35,6 +34,13 @@ import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { isPurchasable } from '@/components/utils/categoryHelpers';
 import { useWorkflowMode } from '@/src/features/settings/WorkflowModeContext.jsx';
 import { toUomAbbreviation } from '../../src/utils/uomDisplay';
+import WizardStepNavigator from '@/src/components/common/WizardStepNavigator.jsx';
+
+const PO_WIZARD_STEPS = Object.freeze([
+  { id: 'items', number: 1, name: 'Items', description: 'Choose low-stock or restock items and order quantities.' },
+  { id: 'suppliers', number: 2, name: 'Suppliers', description: 'Assign selected items to suppliers and review MOQ guidance.' },
+  { id: 'review', number: 3, name: 'Review', description: 'Review purchase orders, variance, totals, and delivery date.' }
+]);
 
 /**
  * Calculate suggested order quantity based on purchase_allowance and supplier MOQ
@@ -513,25 +519,14 @@ export default function POCreateWizard({ open, onClose, onSubmit, suppliers, ite
             <DialogTitle>Create Purchase Order</DialogTitle>
           </DialogHeader>
 
-          {/* Step Indicator */}
-          <div className="flex items-center justify-center gap-4 py-4">
-            {[1, 2, 3].map((s) => (
-              <div key={s} className="flex items-center">
-                <div className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center font-medium transition-colors",
-                  step >= s ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-400"
-                )}>
-                  {step > s ? <Check className="w-4 h-4" /> : s}
-                </div>
-                {s < 3 && (
-                  <div className={cn(
-                    "w-16 h-0.5 mx-2",
-                    step > s ? "bg-teal-600" : "bg-slate-200"
-                  )} />
-                )}
-              </div>
-            ))}
-          </div>
+          <WizardStepNavigator
+            steps={PO_WIZARD_STEPS}
+            currentStep={step}
+            completedStep={step - 1}
+            onStepChange={setStep}
+            ariaLabel="Purchase order wizard steps"
+            className="py-4"
+          />
 
           {/* Step 1: Select Items */}
           {step === 1 && (

@@ -135,6 +135,54 @@ describe('Item/Product wizard contracts', () => {
     expect(itemsPageSource).toContain('throw error;');
   });
 
+  it('uses mode-derived product wizard steps with POS setup second and F&B manufacturing steps removed', () => {
+    const productWizardSource = readFrontendFile('Components/products/ProductCreateWizard.jsx');
+
+    expect(productWizardSource).toContain('PRODUCT_WIZARD_STEP_DEFINITIONS');
+    expect(productWizardSource).toContain("key: 'basic_info'");
+    expect(productWizardSource).toContain("key: 'pos_setup'");
+    expect(productWizardSource.indexOf("key: 'basic_info'")).toBeLessThan(productWizardSource.indexOf("key: 'pos_setup'"));
+    expect(productWizardSource.indexOf("key: 'pos_setup'")).toBeLessThan(productWizardSource.indexOf("key: 'recipe_ingredients'"));
+    expect(productWizardSource).toContain("key: 'physical_properties'");
+    expect(productWizardSource).toContain("excludeModes: ['fnb']");
+    expect(productWizardSource).toContain("key: 'quality_control'");
+    expect(productWizardSource).toContain('resolveProductWizardSteps');
+    expect(productWizardSource).toContain("filter((definition) => !(definition.excludeModes || []).includes(normalizedMode))");
+  });
+
+  it('clears manufacturing-only product wizard data for F&B saves without changing other modes', () => {
+    const productWizardSource = readFrontendFile('Components/products/ProductCreateWizard.jsx');
+
+    expect(productWizardSource).toContain('const clearFnbManufacturingFields = (payload, workflowMode) =>');
+    expect(productWizardSource).toContain("normalizeWorkflowMode(workflowMode) !== 'fnb'");
+    expect(productWizardSource).toContain('physical_properties: {}');
+    expect(productWizardSource).toContain('quality_control: {}');
+    expect(productWizardSource).toContain('const draftData = clearFnbManufacturingFields');
+    expect(productWizardSource).toContain('const finalData = clearFnbManufacturingFields');
+    expect(productWizardSource).toContain('return clearFnbManufacturingFields(sanitized, workflowMode);');
+  });
+
+  it('wires the shared step navigator into every multi-step modal surface', () => {
+    const productWizardSource = readFrontendFile('Components/products/ProductCreateWizard.jsx');
+    const poWizardSource = readFrontendFile('Components/po/POCreateWizard.jsx');
+    const csvImportSource = readFrontendFile('Components/items/CSVImportModal.jsx');
+    const supplierImportSource = readFrontendFile('Components/suppliers/SupplierImportModal.jsx');
+    const onboardingSource = readFrontendFile('src/features/onboarding/components/OnboardingSetupModal.jsx');
+
+    [productWizardSource, poWizardSource, csvImportSource, supplierImportSource, onboardingSource].forEach((source) => {
+      expect(source).toContain('WizardStepNavigator');
+    });
+
+    expect(productWizardSource).toContain('ariaLabel="Product wizard steps"');
+    expect(poWizardSource).toContain('ariaLabel="Purchase order wizard steps"');
+    expect(csvImportSource).toContain('ariaLabel="CSV import steps"');
+    expect(supplierImportSource).toContain('ariaLabel="Supplier import steps"');
+    expect(onboardingSource).toContain('ariaLabel="Tenant onboarding setup steps"');
+    expect(csvImportSource).toContain('disabledReason: \'Validate a CSV file before opening preview.\'');
+    expect(supplierImportSource).toContain('disabledReason: \'Confirm the import before opening results.\'');
+    expect(onboardingSource).toContain('maxReachableStepIndex');
+  });
+
   it('preserves Storefront branch availability when saving item and product drafts', () => {
     const itemsPageSource = readFrontendFile('src/features/inventory/pages/ItemsPage.jsx');
 

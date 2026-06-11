@@ -34,11 +34,58 @@ import {
   createHospitalityRoom,
   createHospitalityRoomType
 } from '../../hospitality/api/hospitalityApi.js';
+import WizardStepNavigator from '../../../components/common/WizardStepNavigator.jsx';
 
 const WIZARD_STEPS = Object.freeze(['brand_assets', 'primary_location', 'bulk_items']);
 const HOSPITALITY_WIZARD_STEPS = Object.freeze(['brand_assets', 'primary_location', 'hospitality_rooms']);
+const WIZARD_STEP_LABELS = Object.freeze({
+  brand_assets: {
+    name: 'Brand Assets',
+    description: 'Profile image, cover image, and optional branding setup.'
+  },
+  primary_location: {
+    name: 'Storefront Location',
+    description: 'Public visibility, main location, map pin, and business hours.'
+  },
+  bulk_items: {
+    name: 'Starter Items',
+    description: 'Create priced starter items and optional Storefront item images.'
+  },
+  hospitality_rooms: {
+    name: 'Starter Rooms',
+    description: 'Create the first room type and room records for Hospitality mode.'
+  }
+});
 const MAX_ITEM_IMAGE_FILES = 5;
 const MapPinPicker = React.lazy(() => import('../../../components/maps/MapPinPicker.jsx'));
+
+const resolveInitialReachableStepIndex = (onboarding, wizardSteps) => {
+  const payloads = onboarding?.tenant_onboarding_progress?.step_payloads || {};
+  const hasChecklistSnapshot = Boolean(onboarding?.tenant_onboarding_progress?.checklist_snapshot);
+  const missingRequirements = getProgress(onboarding).missing_requirements;
+  let reachableIndex = 0;
+
+  if (payloads.brand_assets) {
+    reachableIndex = Math.max(reachableIndex, 1);
+  }
+
+  if (
+    payloads.primary_location
+    || (hasChecklistSnapshot && !missingRequirements.includes('has_primary_storefront_location'))
+  ) {
+    reachableIndex = Math.max(reachableIndex, 2);
+  }
+
+  if (
+    payloads.bulk_items
+    || payloads.hospitality_rooms
+    || (hasChecklistSnapshot && !missingRequirements.includes('has_priced_starter_item'))
+  ) {
+    reachableIndex = Math.max(reachableIndex, wizardSteps.length - 1);
+  }
+
+  return Math.min(reachableIndex, wizardSteps.length - 1);
+};
 
 const getProgress = (onboarding) => {
   const snapshot = onboarding?.tenant_onboarding_progress?.checklist_snapshot;
@@ -196,6 +243,7 @@ export default function OnboardingSetupModal({
   const [hospitalityRoomTypeId, setHospitalityRoomTypeId] = useState(null);
   const [hospitalityRoomRows, setHospitalityRoomRows] = useState(() => [buildEmptyHospitalityRoomRow()]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [maxReachableStepIndex, setMaxReachableStepIndex] = useState(0);
   const lastTrackedOpenRef = useRef(false);
   const initializedForOpenRef = useRef(false);
 
@@ -217,6 +265,7 @@ export default function OnboardingSetupModal({
     if (!initializedForOpenRef.current) {
       initializedForOpenRef.current = true;
       setCurrentStepIndex(0);
+      setMaxReachableStepIndex(resolveInitialReachableStepIndex(onboarding, wizardSteps));
       setLogoFile(null);
       setCoverFile(null);
       setItemRows([buildEmptyItemRow(normalizedWorkflowMode)]);
@@ -274,6 +323,19 @@ export default function OnboardingSetupModal({
   if (!open) return null;
 
   const step = wizardSteps[currentStepIndex] || wizardSteps[0];
+  const navigatorSteps = wizardSteps.map((stepKey, index) => {
+    const meta = WIZARD_STEP_LABELS[stepKey] || {};
+    return {
+      id: stepKey,
+      number: index + 1,
+      name: meta.name || `Step ${index + 1}`,
+      description: meta.description || meta.name || `Step ${index + 1}`,
+      disabled: index > maxReachableStepIndex,
+      disabledReason: index === 1
+        ? 'Save or skip brand assets before opening location setup.'
+        : 'Save the previous setup step before opening this step.'
+    };
+  });
   const canGoBack = currentStepIndex > 0;
   const canGoNext = currentStepIndex < wizardSteps.length - 1;
   const missingRequirements = progress.missing_requirements;
@@ -326,6 +388,7 @@ export default function OnboardingSetupModal({
       setLogoFile(null);
       setCoverFile(null);
       await onRefreshUser?.();
+      setMaxReachableStepIndex((prev) => Math.max(prev, 1));
       goToNextStep();
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to save branding.');
@@ -380,6 +443,7 @@ export default function OnboardingSetupModal({
       });
       toast.success(publicStorefrontVisible ? 'Primary storefront location saved.' : 'Public storefront hidden.');
       await onRefreshUser?.();
+      setMaxReachableStepIndex((prev) => Math.max(prev, 2));
       goToNextStep();
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to save storefront location.');
@@ -508,6 +572,7 @@ export default function OnboardingSetupModal({
         }
       }));
       setHospitalityRoomRows(nextRows);
+      setMaxReachableStepIndex((prev) => Math.max(prev, 2));
       await saveOnboardingStep({
         stepKey: 'hospitality_rooms',
         payload: {
@@ -590,6 +655,7 @@ export default function OnboardingSetupModal({
       }
 
       setItemRows(nextRows);
+      setMaxReachableStepIndex((prev) => Math.max(prev, 2));
       await saveOnboardingStep({
         stepKey: 'bulk_items',
         payload: {
@@ -677,6 +743,14 @@ export default function OnboardingSetupModal({
           <p className="mt-2 text-xs font-semibold text-slate-700">
             Step {currentStepIndex + 1} of {wizardSteps.length}
           </p>
+          <WizardStepNavigator
+            steps={navigatorSteps}
+            currentStep={currentStepIndex + 1}
+            completedStep={currentStepIndex}
+            onStepChange={(nextStep) => setCurrentStepIndex(nextStep - 1)}
+            ariaLabel="Tenant onboarding setup steps"
+            className="mt-2"
+          />
         </div>
 
         <div className="space-y-5 px-5 py-5">

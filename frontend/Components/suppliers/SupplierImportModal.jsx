@@ -22,7 +22,14 @@ import {
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { useSupplierCSV } from '../../src/hooks/useSupplierCSV.js';
+import WizardStepNavigator from '@/src/components/common/WizardStepNavigator.jsx';
 import { toast } from 'sonner';
+
+const SUPPLIER_IMPORT_STEPS = Object.freeze([
+    { id: 'upload', number: 1, name: 'Upload', description: 'Choose the supplier CSV file to validate.' },
+    { id: 'preview', number: 2, name: 'Preview', description: 'Review supplier rows and validation errors before import.' },
+    { id: 'result', number: 3, name: 'Result', description: 'Review created, updated, skipped, and failed suppliers.' }
+]);
 
 export default function SupplierImportModal({ open, onClose, onSuccess }) {
     const [step, setStep] = useState(1); // 1: Upload, 2: Preview, 3: Result
@@ -39,6 +46,23 @@ export default function SupplierImportModal({ open, onClose, onSuccess }) {
         downloadTemplate,
         reset
     } = useSupplierCSV();
+    const navigatorSteps = SUPPLIER_IMPORT_STEPS.map((entry) => {
+        if (entry.number === 2) {
+            return {
+                ...entry,
+                disabled: !previewData,
+                disabledReason: 'Validate a CSV file before opening preview.'
+            };
+        }
+        if (entry.number === 3) {
+            return {
+                ...entry,
+                disabled: !importResult,
+                disabledReason: 'Confirm the import before opening results.'
+            };
+        }
+        return entry;
+    });
 
     const handleClose = () => {
         setStep(1);
@@ -325,13 +349,16 @@ export default function SupplierImportModal({ open, onClose, onSuccess }) {
                     <DialogTitle className="flex items-center gap-2">
                         <Upload className="w-5 h-5 text-teal-600" />
                         Import Suppliers
-                        {step > 1 && (
-                            <Badge variant="outline" className="ml-2">
-                                Step {step} of 3
-                            </Badge>
-                        )}
                     </DialogTitle>
                 </DialogHeader>
+
+                <WizardStepNavigator
+                    steps={navigatorSteps}
+                    currentStep={step}
+                    completedStep={step - 1}
+                    onStepChange={setStep}
+                    ariaLabel="Supplier import steps"
+                />
 
                 <div className="py-4">
                     {error && (

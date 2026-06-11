@@ -132,6 +132,79 @@ describe('inventory itemRepository', () => {
     });
   });
 
+  it('listStorefrontCatalogOverrides retries without gallery when tenant schema is missing the gallery column', async () => {
+    const missingGalleryColumnError = {
+      name: 'SequelizeDatabaseError',
+      original: {
+        code: 'ER_BAD_FIELD_ERROR',
+        sqlMessage: "Unknown column 'storefrontCatalogOverride.storefront_image_gallery' in 'field list'"
+      }
+    };
+    const Item = {
+      findAll: jest.fn()
+        .mockRejectedValueOnce(missingGalleryColumnError)
+        .mockResolvedValueOnce([
+          {
+            toJSON: () => ({
+              item_id: 901,
+              name: 'Iced Tea',
+              sku_code: 'FNB-TEA',
+              category: 'product',
+              product_type: 'finished_goods',
+              mode_item_preset: 'menu_item',
+              status: 'active',
+              default_sale_price: 85,
+              current_stock: 12,
+              storefrontCatalogOverride: {
+                storefront_visible: true,
+                storefront_image_path: 'storefront/iced-tea.png',
+                storefront_image_url: '/uploads/storefront/iced-tea.png'
+              }
+            })
+          }
+        ])
+    };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'StorefrontCatalogOverride') return {};
+      if (name === 'PosCatalogOverride') return {};
+      if (name === 'ServiceItemDetail') return null;
+      if (name === 'TenantLocation') return null;
+      if (name === 'StorefrontLocationItemOverride') return null;
+      return {};
+    });
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({
+      tenantId: 'gallery-column-fallback-test'
+    });
+
+    const result = await itemRepository.listStorefrontCatalogOverrides({ limit: 50 });
+
+    expect(Item.findAll).toHaveBeenCalledTimes(2);
+    const retryInclude = Item.findAll.mock.calls[1][0].include.find((entry) => (
+      entry.as === 'storefrontCatalogOverride'
+    ));
+    expect(retryInclude.attributes).toEqual([
+      'storefront_visible',
+      'storefront_image_path',
+      'storefront_image_url'
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual(expect.objectContaining({
+      item_id: 901,
+      storefront_visible: true,
+      storefront_image_url: '/uploads/storefront/iced-tea.png',
+      storefront_image_gallery: [
+        {
+          path: 'storefront/iced-tea.png',
+          url: '/uploads/storefront/iced-tea.png',
+          is_primary: true,
+          sort_order: 0
+        }
+      ]
+    }));
+  });
+
   it('maps list payload for product compositions in getItems', async () => {
     const ProductComposition = {};
     const ItemFolder = {};
@@ -1020,6 +1093,102 @@ describe('inventory itemRepository', () => {
     expect(result).toBe(finalized);
   });
 
+  it('clears manufacturing-only side-table rows when finalizing an F&B product draft', async () => {
+    inventoryRepositoryDependencies.getAllSettings = jest.fn().mockResolvedValue({
+      ops_workflow_mode: { value: 'fnb' }
+    });
+    const draftItem = {
+      item_id: 3303,
+      status: 'draft',
+      wizard_metadata: {
+        physical_properties: { texture: 'Liquid' },
+        quality_control: { test_frequency: 'Daily' }
+      },
+      sku_code: 'FNB-DRAFT',
+      name: 'Draft Iced Tea',
+      category: 'product',
+      product_type: 'finished_goods',
+      vat_type: 'vatable',
+      description: 'desc',
+      product_folder: null,
+      max_capacity: 100,
+      min_threshold: 20,
+      purchase_allowance: 10,
+      unit_of_measure: 'serving',
+      cost_per_unit: 1.5,
+      current_stock: 0,
+      fifo_enabled: true,
+      batch_size: 10,
+      yield_percentage: 90,
+      processing_loss: 5,
+      production_notes: 'note',
+      update: jest.fn().mockResolvedValue(true)
+    };
+    const finalized = { item_id: 3303, status: 'active', productCompositions: [] };
+    const Item = {
+      findOne: jest.fn()
+        .mockResolvedValueOnce(draftItem)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(finalized)
+    };
+    const ItemPhysicalProperties = {
+      destroy: jest.fn().mockResolvedValue(1)
+    };
+    const ItemQualityControl = {
+      destroy: jest.fn().mockResolvedValue(1)
+    };
+    const transaction = {
+      commit: jest.fn().mockResolvedValue(true),
+      rollback: jest.fn().mockResolvedValue(true),
+      finished: null
+    };
+    const sequelize = {
+      transaction: jest.fn().mockResolvedValue(transaction)
+    };
+
+    inventoryRepositoryDependencies.syncItemEmbedding = jest.fn().mockResolvedValue(undefined);
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-finalize-fnb-clear' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'sequelize') return sequelize;
+      if (name === 'ItemNutrition') return {};
+      if (name === 'ItemAllergen') return {};
+      if (name === 'ItemPhysicalProperties') return ItemPhysicalProperties;
+      if (name === 'ItemShelfLife') return {};
+      if (name === 'ItemPackaging') return {};
+      if (name === 'ItemQualityControl') return ItemQualityControl;
+      if (name === 'ItemRegulatoryCompliance') return {};
+      if (name === 'ItemCostBreakdown') return {};
+      if (name === 'FIFOBatch') return {};
+      if (name === 'ProductComposition') return {};
+      return {};
+    });
+
+    await itemRepository.finalizeItem(3303, {
+      physical_properties: {},
+      quality_control: {}
+    }, 6);
+
+    expect(ItemPhysicalProperties.destroy).toHaveBeenCalledWith({
+      where: { item_id: 3303 },
+      transaction
+    });
+    expect(ItemQualityControl.destroy).toHaveBeenCalledWith({
+      where: { item_id: 3303 },
+      transaction
+    });
+    expect(draftItem.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'active',
+        wizard_metadata: null,
+        updated_by: 6
+      }),
+      { transaction }
+    );
+    expect(transaction.commit).toHaveBeenCalled();
+    expect(transaction.rollback).not.toHaveBeenCalled();
+  });
+
   it('blocks finalize when item is not in draft status', async () => {
     const Item = {
       findOne: jest.fn().mockResolvedValue({ status: 'active' })
@@ -1147,6 +1316,125 @@ describe('inventory itemRepository', () => {
     expect(transaction.commit).toHaveBeenCalled();
     expect(transaction.rollback).not.toHaveBeenCalled();
     expect(result).toEqual({ item_id: 15, name: 'Flour' });
+  });
+
+  it('clears manufacturing-only side-table rows when updating an F&B product with empty wizard fields', async () => {
+    inventoryRepositoryDependencies.getAllSettings = jest.fn().mockResolvedValue({
+      ops_workflow_mode: { value: 'fnb' }
+    });
+    const updateSpy = jest.fn().mockResolvedValue(true);
+    const itemRecord = {
+      item_id: 515,
+      sku_code: 'FNB-515',
+      current_stock: 0,
+      fifo_enabled: true,
+      status: 'active',
+      category: 'product',
+      wizard_metadata: null,
+      update: updateSpy
+    };
+    const Item = {
+      findOne: jest.fn().mockResolvedValue(itemRecord)
+    };
+    const ItemPhysicalProperties = {
+      destroy: jest.fn().mockResolvedValue(1)
+    };
+    const ItemQualityControl = {
+      destroy: jest.fn().mockResolvedValue(1)
+    };
+    const transaction = {
+      LOCK: { UPDATE: 'UPDATE' },
+      commit: jest.fn().mockResolvedValue(true),
+      rollback: jest.fn().mockResolvedValue(true),
+      finished: null
+    };
+    const sequelize = {
+      transaction: jest.fn().mockResolvedValue(transaction)
+    };
+
+    jest.spyOn(itemRepository, 'getItemById').mockResolvedValue({ item_id: 515, name: 'Iced Tea' });
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-fnb-clear-manufacturing' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'sequelize') return sequelize;
+      if (name === 'ItemPhysicalProperties') return ItemPhysicalProperties;
+      if (name === 'ItemQualityControl') return ItemQualityControl;
+      return {};
+    });
+
+    await itemRepository.updateItem(515, {
+      status: 'active',
+      category: 'product',
+      physical_properties: {},
+      quality_control: {}
+    }, 7);
+
+    expect(ItemPhysicalProperties.destroy).toHaveBeenCalledWith({
+      where: { item_id: 515 },
+      transaction
+    });
+    expect(ItemQualityControl.destroy).toHaveBeenCalledWith({
+      where: { item_id: 515 },
+      transaction
+    });
+    expect(transaction.commit).toHaveBeenCalled();
+    expect(transaction.rollback).not.toHaveBeenCalled();
+  });
+
+  it('does not clear manufacturing side-table rows for non-F&B product updates with empty wizard fields', async () => {
+    inventoryRepositoryDependencies.getAllSettings = jest.fn().mockResolvedValue({
+      ops_workflow_mode: { value: 'food_manufacturing' }
+    });
+    const itemRecord = {
+      item_id: 516,
+      sku_code: 'MFG-516',
+      current_stock: 0,
+      fifo_enabled: true,
+      status: 'active',
+      category: 'product',
+      wizard_metadata: null,
+      update: jest.fn().mockResolvedValue(true)
+    };
+    const Item = {
+      findOne: jest.fn().mockResolvedValue(itemRecord)
+    };
+    const ItemPhysicalProperties = {
+      destroy: jest.fn().mockResolvedValue(1)
+    };
+    const ItemQualityControl = {
+      destroy: jest.fn().mockResolvedValue(1)
+    };
+    const transaction = {
+      LOCK: { UPDATE: 'UPDATE' },
+      commit: jest.fn().mockResolvedValue(true),
+      rollback: jest.fn().mockResolvedValue(true),
+      finished: null
+    };
+    const sequelize = {
+      transaction: jest.fn().mockResolvedValue(transaction)
+    };
+
+    jest.spyOn(itemRepository, 'getItemById').mockResolvedValue({ item_id: 516, name: 'Sauce Batch' });
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-non-fnb-keeps-manufacturing' });
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'sequelize') return sequelize;
+      if (name === 'ItemPhysicalProperties') return ItemPhysicalProperties;
+      if (name === 'ItemQualityControl') return ItemQualityControl;
+      return {};
+    });
+
+    await itemRepository.updateItem(516, {
+      status: 'active',
+      category: 'product',
+      physical_properties: {},
+      quality_control: {}
+    }, 7);
+
+    expect(ItemPhysicalProperties.destroy).not.toHaveBeenCalled();
+    expect(ItemQualityControl.destroy).not.toHaveBeenCalled();
+    expect(transaction.commit).toHaveBeenCalled();
+    expect(transaction.rollback).not.toHaveBeenCalled();
   });
 
   it('uses selected location stock as baseline when updating stock with location_id', async () => {

@@ -14,6 +14,8 @@ import { validateComposition, showValidationErrors } from '../utils/compositionV
 import { useLocations } from '@/src/hooks/useLocations.js';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { resolveBusinessModeProductDefaults } from '@/src/features/settings/businessModeTemplates.js';
+import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
+import WizardStepNavigator from '@/src/components/common/WizardStepNavigator.jsx';
 import { toast } from 'sonner';
 
 // Import step components
@@ -31,21 +33,41 @@ import RegulatoryComplianceStep from './wizard/RegulatoryComplianceStep';
 import POSSetupStep from './wizard/POSSetupStep';
 import SummaryStep from './wizard/SummaryStep';
 
-const STEPS = [
-  { id: 1, name: 'Basic Info', component: BasicInfoStep },
-  { id: 2, name: 'Recipe & Ingredients', component: RecipeFormulationStep },
-  { id: 3, name: 'Yield & Loss', component: YieldManagementStep },
-  { id: 4, name: 'Nutrition', component: NutritionalInfoStep },
-  { id: 5, name: 'Allergens', component: AllergenManagementStep },
-  { id: 6, name: 'Properties', component: PhysicalPropertiesStep },
-  { id: 7, name: 'Shelf Life', component: ShelfLifeStep },
-  { id: 8, name: 'Packaging', component: PackagingLabelingStep },
-  { id: 9, name: 'Costing', component: CostFinancialStep },
-  { id: 10, name: 'POS Setup', component: POSSetupStep },
-  { id: 11, name: 'Quality Control', component: QualityControlStep },
-  { id: 12, name: 'Compliance', component: RegulatoryComplianceStep },
-  { id: 13, name: 'Review', component: SummaryStep },
+export const PRODUCT_WIZARD_STEP_DEFINITIONS = [
+  { key: 'basic_info', name: 'Basic Info', description: 'Product identity, SKU, category, stock, and VAT setup.', component: BasicInfoStep },
+  { key: 'pos_setup', name: 'POS Setup', description: 'POS visibility, menu image, Storefront visibility, and item images.', component: POSSetupStep },
+  { key: 'recipe_ingredients', name: 'Recipe & Ingredients', description: 'Recipe composition, ingredient quantities, and product components.', component: RecipeFormulationStep },
+  { key: 'yield_loss', name: 'Yield & Loss', description: 'Batch size, yield percentage, and processing loss.', component: YieldManagementStep },
+  { key: 'nutrition', name: 'Nutrition', description: 'Nutrition facts and customer-facing dietary information.', component: NutritionalInfoStep },
+  { key: 'allergens', name: 'Allergens', description: 'Allergen declarations and may-contain warnings.', component: AllergenManagementStep },
+  { key: 'physical_properties', name: 'Properties', description: 'Physical and chemical manufacturing properties.', component: PhysicalPropertiesStep, excludeModes: ['fnb'] },
+  { key: 'shelf_life', name: 'Shelf Life', description: 'Shelf-life, storage, and expiry details.', component: ShelfLifeStep },
+  { key: 'packaging', name: 'Packaging', description: 'Packaging, labeling, and presentation details.', component: PackagingLabelingStep },
+  { key: 'costing', name: 'Costing', description: 'Costs, margin, and customer selling price.', component: CostFinancialStep },
+  { key: 'quality_control', name: 'Quality Control', description: 'Manufacturing quality checks and batch standards.', component: QualityControlStep, excludeModes: ['fnb'] },
+  { key: 'compliance', name: 'Compliance', description: 'Regulatory and compliance references.', component: RegulatoryComplianceStep },
+  { key: 'review', name: 'Review', description: 'Review product setup before saving.', component: SummaryStep },
 ];
+
+export const resolveProductWizardSteps = (workflowMode = 'manufacturing') => {
+  const normalizedMode = normalizeWorkflowMode(workflowMode);
+  return PRODUCT_WIZARD_STEP_DEFINITIONS
+    .filter((definition) => !(definition.excludeModes || []).includes(normalizedMode))
+    .map((definition, index) => ({
+      ...definition,
+      id: definition.key,
+      number: index + 1
+    }));
+};
+
+const clearFnbManufacturingFields = (payload, workflowMode) => {
+  if (normalizeWorkflowMode(workflowMode) !== 'fnb') return payload;
+  return {
+    ...payload,
+    physical_properties: {},
+    quality_control: {}
+  };
+};
 
 const BASE_PRODUCT_DATA = {
   category: 'product',
@@ -110,6 +132,10 @@ export default function ProductCreateWizard({
 }) {
   const [step, setStep] = useState(1);
   const [initialStep, setInitialStep] = useState(1);
+  const wizardSteps = useMemo(
+    () => resolveProductWizardSteps(workflowMode),
+    [workflowMode]
+  );
   const modeProductDefaults = useMemo(
     () => resolveBusinessModeProductDefaults(workflowMode),
     [workflowMode]
@@ -127,6 +153,12 @@ export default function ProductCreateWizard({
   const activeLocations = useMemo(
     () => (Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : []),
     [locations]
+  );
+  const activeLocationsKey = useMemo(
+    () => activeLocations
+      .map((location) => `${location?.location_id || ''}:${location?.is_active !== false ? '1' : '0'}`)
+      .join('|'),
+    [activeLocations]
   );
   const productLocationStockMap = useMemo(() => {
     const rows = Array.isArray(product?.item_location_stocks) ? product.item_location_stocks : [];
@@ -146,6 +178,12 @@ export default function ProductCreateWizard({
 
   const isEditingDraft = product?.status === 'draft';
   const isSaving = Boolean(savingAction);
+
+  useEffect(() => {
+    if (step > wizardSteps.length) {
+      setStep(wizardSteps.length);
+    }
+  }, [step, wizardSteps.length]);
 
   const runSaveAction = async (action, operation) => {
     if (savingActionRef.current) return;
@@ -250,7 +288,7 @@ export default function ProductCreateWizard({
 
       // Resume from last completed step if draft
       if (product.status === 'draft' && product.wizard_metadata?.last_completed_step) {
-        const resumeStep = product.wizard_metadata.last_completed_step + 1;
+        const resumeStep = Math.min(product.wizard_metadata.last_completed_step + 1, wizardSteps.length);
         setStep(resumeStep);
         setInitialStep(resumeStep);
       } else {
@@ -274,7 +312,7 @@ export default function ProductCreateWizard({
       setSkuManuallyEdited(false);
       setLastSuggestedSku('');
     }
-  }, [modeProductDefaults, product, open, activeLocations]);
+  }, [modeProductDefaults, product, open, activeLocationsKey, wizardSteps.length]);
 
   useEffect(() => {
     if (!open || skuManuallyEdited) return;
@@ -368,7 +406,7 @@ export default function ProductCreateWizard({
   };
 
   const handleNext = () => {
-    if (step < STEPS.length) setStep(step + 1);
+    if (step < wizardSteps.length) setStep(step + 1);
   };
 
   const handleBack = () => {
@@ -408,7 +446,7 @@ export default function ProductCreateWizard({
   };
 
   const handleSaveDraft = async () => {
-    const draftData = {
+    const draftData = clearFnbManufacturingFields({
       ...productData,
       status: 'draft',
       wizard_metadata: {
@@ -416,7 +454,7 @@ export default function ProductCreateWizard({
         steps_completed: Array.from({ length: step }, (_, i) => i + 1),
         last_saved_at: new Date().toISOString()
       }
-    };
+    }, workflowMode);
 
     if (onSaveDraft) {
       try {
@@ -451,12 +489,12 @@ export default function ProductCreateWizard({
       return;
     }
     const parsedLocationId = Number.parseInt(productData.location_id, 10);
-    const finalData = {
+    const finalData = clearFnbManufacturingFields({
       ...productData,
       location_id: hasStockAdjustment && Number.isInteger(parsedLocationId) && parsedLocationId > 0 ? parsedLocationId : null,
       status: 'active',
       wizard_metadata: null
-    };
+    }, workflowMode);
 
     try {
       await onSubmit(finalData);
@@ -531,7 +569,7 @@ export default function ProductCreateWizard({
         ? parsedLocationId
         : null;
 
-      return sanitized;
+      return clearFnbManufacturingFields(sanitized, workflowMode);
     };
 
     // Validate composition for nested products (circular dependencies and depth limits)
@@ -576,7 +614,7 @@ export default function ProductCreateWizard({
     onClose();
   };
 
-  const CurrentStepComponent = STEPS[step - 1].component;
+  const CurrentStepComponent = wizardSteps[step - 1]?.component || wizardSteps[0].component;
 
   return (
     <>
@@ -618,16 +656,24 @@ export default function ProductCreateWizard({
           <div className="border-b border-slate-200 py-3">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-slate-600">
-                Step {step} of {STEPS.length}
+                Step {step} of {wizardSteps.length}
               </span>
-              <span className="text-sm text-slate-500">{STEPS[step - 1].name}</span>
+              <span className="text-sm text-slate-500">{wizardSteps[step - 1]?.name}</span>
             </div>
             <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
               <div
                 className="h-full bg-teal-600 transition-all duration-300"
-                style={{ width: `${(step / STEPS.length) * 100}%` }}
+                style={{ width: `${(step / wizardSteps.length) * 100}%` }}
               />
             </div>
+            <WizardStepNavigator
+              steps={wizardSteps}
+              currentStep={step}
+              completedStep={step - 1}
+              onStepChange={setStep}
+              ariaLabel="Product wizard steps"
+              className="mt-2"
+            />
           </div>
 
           {/* Step Content */}
@@ -677,7 +723,7 @@ export default function ProductCreateWizard({
                 </Button>
               )}
 
-              {step < STEPS.length ? (
+              {step < wizardSteps.length ? (
                 <Button onClick={handleNext} className="bg-teal-600 hover:bg-teal-700" disabled={isSaving}>
                   Next <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
