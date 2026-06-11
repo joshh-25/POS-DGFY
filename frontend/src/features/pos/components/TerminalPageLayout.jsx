@@ -1,14 +1,29 @@
-import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Bell, Menu, UserRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import TenantCapabilityNotice from '../../../components/common/TenantCapabilityNotice.jsx';
+import { resolveAppAssetUrl } from '@/src/utils/assetUrl.js';
 
-const POSCheckoutTerminal = lazy(() => import('./POSCheckoutTerminal'));
-const TerminalLockDrawer = lazy(() => import('./TerminalLockDrawer'));
-const TerminalWorkspaceSidebar = lazy(() => import('./TerminalWorkspaceSidebar'));
-const TerminalOperationsWorkspace = lazy(() => import('./TerminalOperationsWorkspace'));
+import POSCheckoutTerminal from './POSCheckoutTerminal.jsx';
+import TerminalLockDrawer from './TerminalLockDrawer.jsx';
+import TerminalWorkspaceSidebar from './TerminalWorkspaceSidebar.jsx';
+import TerminalOperationsWorkspace from './TerminalOperationsWorkspace.jsx';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
+const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
+const MAX_NOTIFICATION_ITEMS = 5;
+const QUEUE_STATUS_LABELS = {
+  queued: 'Queued',
+  replaying: 'Replaying',
+  replayed: 'Replayed',
+  failed_manual_resolution_required: 'Manual Resolution Required'
+};
+const QUEUE_OPERATION_LABELS = {
+  checkout: 'Checkout',
+  shift_open: 'Shift Open',
+  shift_close: 'Shift Close',
+  cash_event: 'Cash Drawer Event',
+  order_status_update: 'Order Status Update'
+};
 
 export default function TerminalPageLayout({
     locked,
@@ -45,6 +60,7 @@ export default function TerminalPageLayout({
     canTransactPos,
     terminalMeta,
     todayDashboard,
+    reportRefreshKey = 0,
     openShiftForm,
     setOpenShiftForm,
     cashEventForm,
@@ -86,6 +102,8 @@ export default function TerminalPageLayout({
     dismissModeChangeNotice = () => {},
     receiptRequestId,
     setReceiptRequestId,
+    receiptReturnViewMode = null,
+    setReceiptReturnViewMode = () => {},
     setIncomingReceiptOpeningId,
     historyRequestQuery,
     setHistoryRequestQuery,
@@ -100,69 +118,81 @@ export default function TerminalPageLayout({
 }) {
   const navigate = useNavigate();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [notificationReadState, setNotificationReadState] = useState({});
-  const [capabilityNotice, setCapabilityNotice] = useState(null);
   const queueCount = Number(queuedTerminalOperationCount || 0);
   const blockedQueueCount = Number(queuedTerminalBlockedCount || 0);
-  const queueTotalCount = Number(queueSummary?.total || queueCount + blockedQueueCount);
+  const actionableQueueCount = queueCount + blockedQueueCount;
+  const queueTotalCount = Number(queueSummary?.total || actionableQueueCount);
   const complianceBlocked = Boolean(complianceBlockerDetails);
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const handleCapabilityBlocked = (event) => {
-      const detail = event?.detail || {};
-      if (detail.capability !== 'tenant_pos_enabled' || !detail.message) return;
-      setCapabilityNotice({
-        title: detail.title || 'Platform admin changed your permissions',
-        message: detail.message,
-        code: detail.code || null
-      });
+  const activeHeaderTitle = useMemo(() => {
+    const titles = {
+      checkout: 'POS Catalog',
+      receipt: 'Receipt',
+      history: 'History',
+      reports: 'Report',
+      items: 'Items',
+      incoming_queue: 'Orders',
+      location_scope: 'Location Scope',
+      shift_controls: 'Shift',
+      cash_drawer: 'Cash Drawer Event',
+      close_shift: 'Close Shift',
+      sales_today: 'Sales Today',
+      terminal_setup: 'Terminal Setup Context',
+      sync_queue: 'Sync Queue'
     };
-
-    window.addEventListener('tenant:capability-blocked', handleCapabilityBlocked);
-    return () => {
-      window.removeEventListener('tenant:capability-blocked', handleCapabilityBlocked);
-    };
-  }, []);
+    return titles[posViewMode] || 'POS Catalog';
+  }, [posViewMode]);
   const notifications = useMemo(() => {
     const items = [];
     if (incomingOrders.length > 0) {
       items.push({
         id: 'incoming-orders',
-        signature: `incoming-orders:${incomingOrders.length}`,
         title: `${incomingOrders.length} incoming order${incomingOrders.length === 1 ? '' : 's'}`,
         description: 'Review and process new online orders.',
         actionLabel: 'Open Orders',
-        action: () => handleSelectViewMode('incoming_queue')
+        onClick: () => {
+          setNotificationsOpen(false);
+          handleSelectViewMode('incoming_queue');
+        }
       });
     }
-    if (queueTotalCount > 0) {
-      items.push({
-        id: 'sync-queue',
-        signature: `sync-queue:${queueTotalCount}:${blockedQueueCount}`,
-        title: `${queueTotalCount} queued terminal operation${queueTotalCount === 1 ? '' : 's'}`,
-        description: blockedQueueCount > 0
-          ? `${blockedQueueCount} need manual resolution in Sync Queue.`
-          : 'Review or replay queued terminal operations.',
-        actionLabel: 'Open Sync Queue',
-        action: () => handleSelectViewMode('sync_queue')
+    const queueNotificationItems = (Array.isArray(queuedTerminalOperations) ? queuedTerminalOperations : [])
+      .filter((entry) => {
+        const status = String(entry?.status || '').trim();
+        return status === 'queued' || status === 'replaying' || status === 'failed_manual_resolution_required';
+      })
+      .slice(0, MAX_NOTIFICATION_ITEMS)
+      .map((entry) => {
+        const statusKey = String(entry?.status || '').trim() || 'queued';
+        const operationLabel = QUEUE_OPERATION_LABELS[entry?.operation] || entry?.operation || 'Terminal Operation';
+        const lastErrorMessage = String(entry?.last_error?.message || '').trim();
+        return {
+          id: `sync-queue-${entry.intent_id}`,
+          title: `${operationLabel} • ${QUEUE_STATUS_LABELS[statusKey] || statusKey}`,
+          description: lastErrorMessage || `Intent ${entry.intent_id}`,
+          actionLabel: 'Open Sync Queue',
+          onClick: () => {
+            setNotificationsOpen(false);
+            handleSelectViewMode('sync_queue');
+          }
+        };
       });
-    }
+    items.push(...queueNotificationItems);
     if (complianceBlocked) {
       items.push({
         id: 'compliance-blocked',
-        signature: `compliance-blocked:${complianceBlockerDetails?.title || ''}:${complianceBlockerDetails?.message || ''}:${complianceBlockerDetails?.actionHref || ''}`,
         title: complianceBlockerDetails?.title || 'Compliance action required',
         description: complianceBlockerDetails?.message || 'Resolve the compliance blocker before checkout.',
         actionLabel: complianceBlockerDetails?.actionHref ? 'Open Compliance' : '',
-        action: () => {
+        onClick: () => {
+          setNotificationsOpen(false);
           if (complianceBlockerDetails?.actionHref) {
             navigate(complianceBlockerDetails.actionHref);
           }
         }
       });
     }
-    return items;
+    return items.slice(0, MAX_NOTIFICATION_ITEMS);
   }, [
     blockedQueueCount,
     complianceBlocked,
@@ -170,24 +200,10 @@ export default function TerminalPageLayout({
     handleSelectViewMode,
     incomingOrders.length,
     navigate,
-    queueTotalCount
+    queuedTerminalOperations
   ]);
-  const unreadNotificationCount = notifications.reduce((count, item) => (
-    notificationReadState[item.id]?.signature === item.signature && notificationReadState[item.id]?.read
-      ? count
-      : count + 1
-  ), 0);
-  const handleNotificationClick = (item) => {
-    setNotificationReadState((prev) => ({
-      ...prev,
-      [item.id]: {
-        signature: item.signature,
-        read: true
-      }
-    }));
-    setNotificationsOpen(false);
-    item.action?.();
-  };
+  const notificationCount = notifications.length;
+  const primaryNotificationAction = notifications[0]?.onClick || null;
   const shellLayoutClassName = IS_DGFY_POS_SURFACE
     ? `lg:grid ${effectiveSidebarCollapsed ? 'lg:grid-cols-[minmax(0,1fr)]' : 'lg:grid-cols-[244px_minmax(0,1fr)]'}`
     : `xl:grid ${effectiveSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[244px_minmax(0,1fr)]'}`;
@@ -201,10 +217,10 @@ export default function TerminalPageLayout({
     ? 'hidden lg:flex lg:h-full lg:w-full lg:min-h-0 lg:touch-pan-y'
     : 'hidden xl:flex xl:h-full xl:w-full xl:min-h-0 xl:touch-pan-y';
   const headerShellClassName = IS_DGFY_POS_SURFACE
-    ? 'flex min-h-[44px] flex-col gap-1.5 lg:grid lg:min-h-[56px] lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-2.5'
+    ? 'flex min-h-[38px] flex-col gap-1 lg:grid lg:min-h-[46px] lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-2'
     : 'grid min-h-[56px] grid-cols-1 gap-2.5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center';
   const headerSubtitleClassName = IS_DGFY_POS_SURFACE
-    ? 'mt-0.5 hidden max-w-3xl text-[12px] leading-4 text-[#334155] lg:block'
+    ? 'mt-0.5 hidden max-w-3xl text-[11px] leading-4 text-[#334155] lg:block'
     : 'mt-0.5 hidden max-w-3xl text-[12px] leading-4 text-[#334155] md:block';
   const offlineMessageClassName = IS_DGFY_POS_SURFACE
     ? 'mt-2 hidden text-sm font-semibold text-amber-700 lg:block'
@@ -219,7 +235,7 @@ export default function TerminalPageLayout({
     ? 'relative hidden h-10 w-10 shrink-0 place-items-center rounded-lg text-[#1A4E8D] hover:bg-slate-100 lg:grid'
     : 'relative grid h-10 w-10 shrink-0 place-items-center rounded-lg text-[#1A4E8D] hover:bg-slate-100';
   const desktopIdentityClassName = IS_DGFY_POS_SURFACE
-    ? 'hidden min-w-0 shrink-0 items-center gap-2.5 lg:flex'
+    ? 'hidden min-w-0 shrink-0 items-center gap-2 lg:flex'
     : 'flex min-w-0 shrink-0 items-center gap-2.5';
   const overlayContainerClassName = IS_DGFY_POS_SURFACE
     ? 'fixed inset-0 z-50 lg:hidden'
@@ -227,43 +243,55 @@ export default function TerminalPageLayout({
   const notificationPanel = notificationsOpen ? createPortal(
     <div className="fixed inset-0 z-[120]" onClick={() => setNotificationsOpen(false)}>
       <div
-        className="absolute right-4 top-[4.5rem] w-[20rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/15 lg:right-7 lg:top-[4.75rem]"
+        className="absolute right-2 top-[3.85rem] w-[21rem] max-w-[calc(100vw-1rem)] lg:right-5 lg:top-[4.1rem]"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="border-b border-slate-200 px-4 py-3">
-          <p className="text-sm font-extrabold text-[#0F172A]">Notifications</p>
-          <p className="mt-0.5 text-xs text-[#64748B]">Review alerts without leaving the current screen.</p>
-        </div>
-        <div className="max-h-[28.5rem] overflow-y-auto">
-          {notifications.length > 0 ? notifications.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => handleNotificationClick(item)}
-              className={`block w-full border-b border-slate-100 px-4 py-3 text-left transition hover:bg-slate-50 ${
-                notificationReadState[item.id]?.signature === item.signature && notificationReadState[item.id]?.read
-                  ? 'bg-white'
-                  : 'bg-blue-50/40'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-sm font-bold text-[#0F172A]">{item.title}</p>
-                {!(notificationReadState[item.id]?.signature === item.signature && notificationReadState[item.id]?.read) && (
-                  <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-[#2563EB]" />
-                )}
+        <div className="absolute right-4 top-0 z-10 h-5 w-5 -translate-y-[62%] rotate-45 border-l border-t border-slate-200 bg-[#1A4E8D]" />
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/15">
+          <div className="bg-[#1A4E8D] px-4 py-3 text-white">
+            <p className="text-lg font-black">Notifications</p>
+            <p className="mt-0.5 text-xs text-blue-100">Review alerts without leaving the current screen.</p>
+          </div>
+          <div className="max-h-[22rem] overflow-y-auto bg-[#F8FAFC]">
+            {notifications.length > 0 ? notifications.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={item.onClick}
+                className="flex w-full items-start gap-3 border-b border-slate-200 px-4 py-4 text-left transition hover:bg-white"
+              >
+                <span className="mt-2 h-3 w-3 shrink-0 rounded-full bg-[#1A4E8D]" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-extrabold text-[#0F172A]">{item.title}</p>
+                  <p className="mt-1 text-xs leading-5 text-[#64748B]">{item.description}</p>
+                  {item.actionLabel ? (
+                    <span className="mt-2 inline-flex text-[11px] font-bold uppercase tracking-wide text-[#1A4E8D]">
+                      {item.actionLabel}
+                    </span>
+                  ) : null}
+                </div>
+              </button>
+            )) : (
+              <div className="px-4 py-5 text-center">
+                <p className="text-sm font-semibold text-[#0F172A]">No notifications</p>
+                <p className="mt-1 text-xs text-[#64748B]">New orders and terminal alerts will appear here.</p>
               </div>
-              <p className="mt-1 text-xs leading-5 text-[#64748B]">{item.description}</p>
-              {item.actionLabel ? (
-                <span className="mt-2 inline-flex rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-[#1A4E8D]">
-                  {item.actionLabel}
-                </span>
-              ) : null}
+            )}
+          </div>
+          {notifications.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof primaryNotificationAction === 'function') {
+                  primaryNotificationAction();
+                } else {
+                  setNotificationsOpen(false);
+                }
+              }}
+              className="block w-full bg-[#1A4E8D] px-4 py-3 text-center text-sm font-black text-white transition hover:bg-[#143F73]"
+            >
+              Show all notifications
             </button>
-          )) : (
-            <div className="px-4 py-5 text-center">
-              <p className="text-sm font-semibold text-[#0F172A]">No notifications</p>
-              <p className="mt-1 text-xs text-[#64748B]">New orders and terminal alerts will appear here.</p>
-            </div>
           )}
         </div>
       </div>
@@ -280,12 +308,12 @@ export default function TerminalPageLayout({
         aria-expanded={notificationsOpen}
       >
         <Bell size={size} />
-        {unreadNotificationCount > 0 && (
+        {notificationCount > 0 && (
           <span className={size === 20
             ? 'absolute -right-1.5 -top-1.5 grid h-4.5 w-4.5 place-items-center rounded-full bg-red-500 text-[9px] font-black text-white'
             : 'absolute -right-2 -top-2 grid h-5 w-5 place-items-center rounded-full bg-red-500 text-[10px] font-black text-white'}
           >
-            {unreadNotificationCount}
+            {notificationCount}
           </span>
         )}
       </button>
@@ -321,7 +349,7 @@ export default function TerminalPageLayout({
             </div>
             )}
             <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-            <div className="border-b border-slate-200 bg-white/95 px-4 py-2 backdrop-blur sm:px-5 lg:px-7">
+            <div className="border-b border-slate-200 bg-white/95 px-4 py-1.5 backdrop-blur sm:px-5 lg:px-7">
                 <div className={headerShellClassName}>
                     <div className="flex min-w-0 items-center justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-3">
@@ -334,41 +362,43 @@ export default function TerminalPageLayout({
                                 }
                                 setMobileNavOpen(true);
                             }}
-                            className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-[#1A4E8D] hover:bg-slate-100"
+                            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[#1A4E8D] hover:bg-slate-100"
                             aria-label={isDesktopWide ? (effectiveSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar') : 'Open sidebar menu'}
                             aria-pressed={isDesktopWide ? effectiveSidebarCollapsed : undefined}
                         >
                             <Menu className="h-6 w-6" />
                         </button>
                         <div className="min-w-0 flex-1">
-                        <h1 className={IS_DGFY_POS_SURFACE ? 'truncate text-base font-black tracking-tight text-[#0F172A] sm:text-[18px] lg:text-lg' : 'truncate text-lg font-black tracking-tight text-[#0F172A] sm:text-[22px]'}>DGFY Terminal Workspace</h1>
-                        <p className={headerSubtitleClassName}>{headerSubtitle}</p>
-                        {!isOnline && (
-                            <p className={offlineMessageClassName}>
-                                You are offline. Online queue refresh and online-order actions are paused until connection is restored.
-                            </p>
-                        )}
+                            <h1 className="min-w-0 truncate text-[18px] font-black tracking-tight text-[#0F172A] lg:text-[20px]">
+                                {activeHeaderTitle}
+                            </h1>
+                            <p className={headerSubtitleClassName}>{headerSubtitle}</p>
+                            {!isOnline && (
+                                <p className={offlineMessageClassName}>
+                                    You are offline. Online queue refresh and online-order actions are paused until connection is restored.
+                                </p>
+                            )}
                         </div>
                         </div>
                         {renderNotificationButton(compactBellClassName, 20)}
                     </div>
                     <div className="flex min-w-0 items-center justify-between gap-3 sm:gap-4 lg:justify-end">
                     <div className={compactIdentityClassName}>
-                        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#0B449C] text-white">
-                            <UserRound size={25} className="text-white" />
+                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0B449C] text-white">
+                            <UserRound size={22} className="text-white" />
                         </div>
                         <div className="min-w-0 leading-tight">
-                            <div className="truncate text-[13px] font-extrabold">{terminalUser?.username || 'Locked'}</div>
+                            <div className="truncate text-[12px] font-extrabold">{terminalUser?.username || 'Locked'}</div>
                             <div className="truncate text-[11px] text-[#64748B]">{terminalUser?.email || 'Sign in required'}</div>
                         </div>
                     </div>
                     {renderNotificationButton(desktopBellClassName, 24)}
                     <div className={desktopIdentityClassName}>
-                        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#0B449C] text-white">
-                            <UserRound size={25} className="text-white" />
+                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0B449C] text-white">
+                            <UserRound size={22} className="text-white" />
                         </div>
                         <div className="min-w-0 leading-tight">
-                            <div className="truncate text-[13px] font-extrabold">{terminalUser?.username || 'Locked'}</div>
+                            <div className="truncate text-[12px] font-extrabold">{terminalUser?.username || 'Locked'}</div>
                             <div className="truncate text-[11px] text-[#64748B]">{terminalUser?.email || 'Sign in required'}</div>
                         </div>
                     </div>
@@ -402,14 +432,6 @@ export default function TerminalPageLayout({
                         </button>
                     </div>
                 </div>
-            )}
-
-            {capabilityNotice && (
-                <TenantCapabilityNotice
-                    className="mx-4 mt-3"
-                    notice={capabilityNotice}
-                    onDismiss={() => setCapabilityNotice(null)}
-                />
             )}
 
             {complianceBlockerDetails && (
@@ -464,7 +486,7 @@ export default function TerminalPageLayout({
                 </div>
             )}
 
-            {(Number(queueTotalCount) > 0 || replayingQueuedTerminalOperations) && (
+            {(actionableQueueCount > 0 || replayingQueuedTerminalOperations) && (
                 <div className="mx-4 mt-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
@@ -503,7 +525,7 @@ export default function TerminalPageLayout({
                     <div className="dgfy-pos-scrollbar-hidden absolute left-0 top-0 h-full w-[82%] max-w-[304px] overflow-y-auto bg-white p-3 shadow-2xl shadow-slate-950/30">
                         <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
                             <img
-                                src="/dgfy-horizontal_logo-removebg-preview.png"
+                                src={DGFY_POS_LOGO}
                                 alt="DGFY"
                                 className="h-8 w-auto min-w-0 object-contain"
                             />
@@ -549,12 +571,12 @@ export default function TerminalPageLayout({
                 </div>
             )}
 
-            <div className="grid grid-cols-1 gap-4 p-4 xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]">
+            <div className="grid grid-cols-1 gap-2 p-2 xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]">
                 <div
                     id={TERMINAL_SECTION_IDS.checkoutWorkspace}
                     className="transition"
                 >
-                    {isCheckoutWorkspaceMode && (
+                    {(isCheckoutWorkspaceMode || receiptRequestId !== null || receiptReturnViewMode !== null) && (
                         <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
                             <POSCheckoutTerminal
                                 sessionLocked={locked}
@@ -571,11 +593,18 @@ export default function TerminalPageLayout({
                                 onCheckoutCompleted={handleCheckoutCompleted}
                                 viewMode={posViewMode}
                                 onViewModeChange={setPosViewMode}
+                                modalOnly={!isCheckoutWorkspaceMode}
                                 externalReceiptTransactionId={receiptRequestId}
                                 externalHistoryQuery={historyRequestQuery}
                                 onExternalReceiptHydrated={() => {
                                     setReceiptRequestId(null);
+                                }}
+                                onExternalReceiptClosed={() => {
                                     setIncomingReceiptOpeningId(null);
+                                    if (receiptReturnViewMode) {
+                                        setPosViewMode(receiptReturnViewMode);
+                                        setReceiptReturnViewMode(null);
+                                    }
                                 }}
                                 onExternalHistoryHydrated={() => {
                                     setHistoryRequestQuery('');
@@ -593,10 +622,12 @@ export default function TerminalPageLayout({
                                 viewMode={posViewMode}
                                 isMsmeMode={isMsmeMode}
                                 terminalUser={terminalUser}
+                                activeTerminalId={activeTerminalId}
                                 locked={locked}
                                 terminalMeta={terminalMeta}
                                 shiftState={shiftState}
                                 todayDashboard={todayDashboard}
+                                reportRefreshKey={reportRefreshKey}
                                 canViewPos={canViewPos}
                                 canTransactPos={canTransactPos}
                                 canAdjustCashDrawer={canAdjustCashDrawer}

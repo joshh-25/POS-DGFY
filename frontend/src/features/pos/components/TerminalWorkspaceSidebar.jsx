@@ -1,6 +1,8 @@
 import React from 'react';
 import {
   Banknote,
+  BarChart3,
+  ClipboardList,
   Clock3,
   History,
   ListChecks,
@@ -14,7 +16,9 @@ import {
   UserRound
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { resolveAppAssetUrl } from '@/src/utils/assetUrl.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
+const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
 
 const NavButton = ({ active = false, label, onClick, icon: Icon, disabled = false, caption = '', testId = '' }) => (
   <button
@@ -74,14 +78,13 @@ export default function TerminalWorkspaceSidebar({
   return (
     <aside
       className={`${className} rounded-none border-0 border-r border-slate-200 bg-white shadow-sm xl:h-full xl:min-h-0 xl:overflow-hidden`}
-      data-scroll-zone-context={showScrollZoneBadge ? 'desktop-sidebar' : undefined}
     >
       <div className="dgfy-pos-sidebar-scroll min-h-0 flex-1 overflow-y-auto">
         {showBrand && (
         <div className="relative h-[60px] overflow-hidden bg-transparent px-4">
           <div className="flex h-full items-center justify-center">
             <img
-              src="/dgfy-horizontal_logo-removebg-preview.png"
+              src={DGFY_POS_LOGO}
               alt="DGFY"
               className="w-[120px] h-auto object-contain"
             />
@@ -126,6 +129,32 @@ export default function TerminalWorkspaceSidebar({
                 : (!canViewPos ? 'POS view permission required' : 'Invoice lookups and audit trail')
             }
             testId="pos-nav-history"
+          />
+          <NavButton
+            label="Report"
+            icon={BarChart3}
+            active={currentViewMode === 'reports'}
+            onClick={() => onSelectViewMode('reports')}
+            disabled={locked || !canViewPos}
+            caption={
+              locked
+                ? 'Unlock terminal to continue'
+                : (!canViewPos ? 'POS view permission required' : 'Daily totals, popular items, and transactions')
+            }
+            testId="pos-nav-reports"
+          />
+          <NavButton
+            label="Items"
+            icon={ClipboardList}
+            active={currentViewMode === 'items'}
+            onClick={() => onSelectViewMode('items')}
+            disabled={locked || !canViewPos}
+            caption={
+              locked
+                ? 'Unlock terminal to continue'
+                : (!canViewPos ? 'POS view permission required' : 'Edit SKUpervisor item price and cost')
+            }
+            testId="pos-nav-items"
           />
           {showIncomingQueue && (
             <NavButton

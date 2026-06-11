@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000';
 const configuredBasePath = process.env.VITE_STORE_BASE_PATH || '/';
-const allowedHosts = ['surebizcorp.com', 'store.surebizcorp.com', 'store.dgfy.ph', 'dgfy.ph', 'localhost', '127.0.0.1'];
+const allowedHosts = true;
 const normalizedBasePath = (() => {
   const trimmed = String(configuredBasePath).trim() || '/';
   if (trimmed === '/') return '/';
@@ -41,13 +41,14 @@ export default defineConfig({
     'import.meta.env.VITE_BUILD_STAMP': JSON.stringify(process.env.VITE_BUILD_STAMP || new Date().toISOString())
   },
   server: {
-    port: 5173,
+    host: true,
+    port: 5175,
     allowedHosts,
     proxy: proxyTargets
   },
   preview: {
-    port: 5173,
     host: true,
+    port: 5175,
     allowedHosts,
     proxy: proxyTargets
   },

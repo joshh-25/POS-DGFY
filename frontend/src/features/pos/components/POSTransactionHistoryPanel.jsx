@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart3, CalendarDays, ChevronDown, Globe, ListFilter, MoreVertical, Receipt, RotateCcw, Search, Store, UserRound } from 'lucide-react';
+import { CalendarDays, ChevronDown, Globe, ListFilter, RotateCcw, Search, Store, UserRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -72,12 +72,11 @@ export default function POSTransactionHistoryPanel({
     historyRows,
     historyDetailLoading,
     openHistoryDetail,
-    openInSalesReport,
+    printHistoryReceipt,
     loadHistory,
     historyPage,
     historyPagination
 }) {
-    const [openActionMenuId, setOpenActionMenuId] = useState(null);
     const [expandedRowId, setExpandedRowId] = useState(null);
     const [isTabletViewport, setIsTabletViewport] = useState(false);
     const totalEntries = Number(historyPagination?.total || historyRows.length || 0);
@@ -112,20 +111,8 @@ export default function POSTransactionHistoryPanel({
     }, []);
 
     return (
-        <section className="space-y-5 rounded-2xl bg-white p-2 lg:p-0">
-                <div className="flex flex-col gap-4 border-b border-slate-200 px-4 pb-5 pt-3 xl:flex-row xl:items-start xl:justify-between lg:px-6">
-                    <div className="flex items-start gap-4">
-                        <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-gradient-to-b from-[#2563EB] to-[#1D4ED8] text-white shadow-lg shadow-blue-900/20">
-                            <Receipt className="h-7 w-7" />
-                        </div>
-                        <div className="min-w-0">
-                            <h2 className="text-[22px] font-black tracking-tight text-[#0F172A]">POS Sales History</h2>
-                            <p className="mt-1 text-[13px] text-[#334155]">
-                                Track invoice times, cashier accountability, and receipt totals.
-                            </p>
-                        </div>
-                    </div>
-
+        <section className="space-y-4 rounded-xl bg-white p-1 lg:p-0">
+                <div className="flex flex-col gap-3 border-b border-slate-200 px-3 pb-4 pt-2 xl:flex-row xl:items-start xl:justify-between lg:px-4">
                     <div className="flex w-full flex-col gap-3 lg:flex-row xl:w-auto">
                         <IconInput icon={Search}>
                             <Input
@@ -135,20 +122,11 @@ export default function POSTransactionHistoryPanel({
                                 className="h-11 rounded-xl border-slate-200 bg-white pl-12 pr-4 text-[13px] text-[#334155] shadow-sm shadow-slate-100 focus-visible:border-[#2563EB] focus-visible:ring-4 focus-visible:ring-blue-100 lg:min-w-[24rem]"
                             />
                         </IconInput>
-                        <Button
-                            type="button"
-                            data-testid="pos-history-open-sales-report"
-                            onClick={() => openInSalesReport()}
-                            className="h-11 rounded-xl bg-[#1A4E8D] px-5 text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 hover:bg-[#143F73]"
-                        >
-                            <BarChart3 className="mr-2 h-5 w-5" />
-                            Open Sales Report
-                        </Button>
                     </div>
                 </div>
 
-                <div className="px-4 lg:px-6">
-                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
+                <div className="px-3 lg:px-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                         <SelectField label="Status" value={historyStatus} onChange={(event) => setHistoryStatus(event.target.value)}>
                             <option value="all">All Status</option>
                             <option value="completed">Completed</option>
@@ -222,7 +200,7 @@ export default function POSTransactionHistoryPanel({
                             </IconInput>
                         </label>
 
-                        <div className="flex items-end gap-3 xl:col-start-4">
+                        <div className="flex items-end gap-3 sm:col-span-2 xl:col-span-1 xl:col-start-4">
                             <Button
                                 type="button"
                                 variant="outline"
@@ -261,7 +239,7 @@ export default function POSTransactionHistoryPanel({
                                     {!isTabletViewport && <th scope="col" className="px-4 py-4 text-right text-[13px] font-black">Vatable</th>}
                                     {!isTabletViewport && <th scope="col" className="px-4 py-4 text-right text-[13px] font-black">VAT</th>}
                                     <th scope="col" className="px-4 py-4 text-right text-[13px] font-black text-[#1A4E8D]">Total</th>
-                                    <th scope="col" className="px-6 py-4 text-right text-[13px] font-black">Action</th>
+                                    <th scope="col" className="w-[5.75rem] px-3 py-4 text-center text-[13px] font-black">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -274,11 +252,19 @@ export default function POSTransactionHistoryPanel({
                                 ) : historyRows.length > 0 ? historyRows.map((row) => {
                                     const dateTime = formatDateTime(row.created_at);
                                     const sourceKey = row.order_source === 'online_store' ? 'online_store' : 'in_store';
+                                    const isOfflinePending = row.offline_sync_state === 'pending_sync';
                                     const expanded = expandedRowId === row.pos_transaction_id;
                                     return (
                                         <React.Fragment key={row.pos_transaction_id}>
                                             <tr className="border-b border-slate-100 text-slate-700 transition hover:bg-slate-50/70">
-                                                <td className="px-6 py-4 text-[13px] font-black text-[#0F172A]">{row.invoice_number}</td>
+                                                <td className="px-6 py-4 text-[13px] font-black text-[#0F172A]">
+                                                    <div>{row.invoice_number}</div>
+                                                    {isOfflinePending && (
+                                                        <span className="mt-1 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-700">
+                                                            Pending Sync
+                                                        </span>
+                                                    )}
+                                                </td>
                                                 <td className="px-4 py-4 text-[#334155]">
                                                     <div>{dateTime.date}</div>
                                                     <div className="mt-0.5">{dateTime.time}</div>
@@ -303,63 +289,40 @@ export default function POSTransactionHistoryPanel({
                                                 {!isTabletViewport && <td className="px-4 py-4 text-right text-[#334155]">PHP {money(row.vatable_sales)}</td>}
                                                 {!isTabletViewport && <td className="px-4 py-4 text-right text-[#334155]">PHP {money(row.vat_amount)}</td>}
                                                 <td className="px-4 py-4 text-right font-black text-[#1A4E8D]">PHP {money(row.total_amount)}</td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <div className="relative flex justify-end">
+                                                <td className="w-[5.75rem] px-2 py-3 text-center">
+                                                    <div className="flex justify-center gap-2">
                                                         <Button
                                                             type="button"
-                                                            size="icon"
+                                                            size="sm"
                                                             variant="outline"
-                                                            className="h-10 w-10 rounded-xl border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                                                            aria-label={`Open actions for ${row.invoice_number || row.pos_transaction_id}`}
+                                                            className="flex h-12 w-[4.75rem] flex-col items-center justify-center gap-0.5 px-2 text-center text-[11px] font-extrabold leading-none"
                                                             onClick={(event) => {
                                                                 event.stopPropagation();
-                                                                setOpenActionMenuId((current) => (
-                                                                    current === row.pos_transaction_id ? null : row.pos_transaction_id
-                                                                ));
+                                                                if (isOfflinePending) return;
+                                                                if (typeof printHistoryReceipt === 'function') {
+                                                                    printHistoryReceipt(row.pos_transaction_id);
+                                                                } else {
+                                                                    openHistoryDetail(row.pos_transaction_id);
+                                                                }
                                                             }}
+                                                            disabled={historyDetailLoading || isOfflinePending}
+                                                            aria-label={`View receipt for ${row.invoice_number || row.pos_transaction_id}`}
                                                         >
-                                                            <MoreVertical className="h-5 w-5" />
+                                                            <span>{isOfflinePending ? 'Pending' : 'View'}</span>
+                                                            <span>{isOfflinePending ? 'Sync' : 'Receipt'}</span>
                                                         </Button>
-                                                        {openActionMenuId === row.pos_transaction_id && (
-                                                            <div className="absolute right-0 top-[calc(100%-0.15rem)] z-10 w-36 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg shadow-slate-900/10">
-                                                                <button
-                                                                    type="button"
-                                                                    className="block w-full border-b border-slate-100 px-3 py-2.5 text-left text-[12px] font-semibold text-[#334155] transition hover:bg-slate-50"
-                                                                    data-testid={`pos-history-row-open-sales-report-${row.pos_transaction_id}`}
-                                                                    onClick={(event) => {
-                                                                        event.stopPropagation();
-                                                                        setOpenActionMenuId(null);
-                                                                        openInSalesReport(row);
-                                                                    }}
-                                                                >
-                                                                    Sales
-                                                                </button>
-                                                                {isTabletViewport && (
-                                                                    <button
-                                                                        type="button"
-                                                                        className="block w-full border-b border-slate-100 px-3 py-2.5 text-left text-[12px] font-semibold text-[#334155] transition hover:bg-slate-50"
-                                                                        onClick={(event) => {
-                                                                            event.stopPropagation();
-                                                                            setOpenActionMenuId(null);
-                                                                            setExpandedRowId((current) => current === row.pos_transaction_id ? null : row.pos_transaction_id);
-                                                                        }}
-                                                                    >
-                                                                        View Row
-                                                                    </button>
-                                                                )}
-                                                                <button
-                                                                    type="button"
-                                                                    className="block w-full px-3 py-2.5 text-left text-[12px] font-semibold text-[#334155] transition hover:bg-slate-50"
-                                                                    disabled={historyDetailLoading}
-                                                                    onClick={(event) => {
-                                                                        event.stopPropagation();
-                                                                        setOpenActionMenuId(null);
-                                                                        openHistoryDetail(row.pos_transaction_id);
-                                                                    }}
-                                                                >
-                                                                    View Receipt
-                                                                </button>
-                                                            </div>
+                                                        {isTabletViewport && (
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                variant="outline"
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation();
+                                                                    setExpandedRowId((current) => current === row.pos_transaction_id ? null : row.pos_transaction_id);
+                                                                }}
+                                                            >
+                                                                Row
+                                                            </Button>
                                                         )}
                                                     </div>
                                                 </td>

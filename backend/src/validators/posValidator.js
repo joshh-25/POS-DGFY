@@ -85,12 +85,6 @@ const checkoutPosSchema = Joi.object({
     customer_name: Joi.string().trim().max(255).allow('', null).optional(),
     customer_email: Joi.string().trim().email({ tlds: { allow: false } }).allow('', null).optional(),
     customer_phone: Joi.string().trim().max(50).allow('', null).optional(),
-    buyer_name: Joi.string().trim().max(255).allow('', null).optional(),
-    buyer_tin: Joi.string().trim().max(40).pattern(/^[0-9-]{9,20}$/).allow('', null).optional().messages({
-        'string.pattern.base': 'buyer_tin must contain 9-20 digits or hyphens'
-    }),
-    buyer_business_style: Joi.string().trim().max(255).allow('', null).optional(),
-    buyer_address: Joi.string().trim().max(1000).allow('', null).optional(),
     special_instructions: Joi.string().trim().max(500).allow('', null).optional(),
     discount_beneficiary: discountBeneficiarySchema.optional(),
     lines: Joi.array().items(checkoutLineSchema).min(1).required().messages({
@@ -101,9 +95,9 @@ const checkoutPosSchema = Joi.object({
     const hasProfile = Boolean(String(value?.discount_profile_name || '').trim());
     const hasDiscountRate = value?.discount_rate !== undefined && value?.discount_rate !== null;
 
-    if (hasDiscountRate && !hasProfile) {
+    if (hasDiscountRate && !hasProfile && discountAmount <= 0) {
         return helpers.error('any.invalid', {
-            message: 'discount_rate requires discount_profile_name'
+            message: 'manual discount_rate requires discount_amount'
         });
     }
 
@@ -181,45 +175,6 @@ const governedResetSchema = Joi.object({
     confirmation_text: Joi.string().trim().valid('INCREMENT RESET COUNTER').required()
 });
 
-const fiscalPrintEventSchema = Joi.object({
-    reason: Joi.string().trim().max(255).allow('', null).optional()
-});
-
-const voidTransactionSchema = Joi.object({
-    reason: Joi.string().trim().min(8).max(255).required()
-});
-
-const esalesReportSchema = Joi.object({
-    report_month: Joi.string().trim().pattern(/^\d{4}-\d{2}$/).required().messages({
-        'string.pattern.base': 'report_month must be in YYYY-MM format'
-    }),
-    evidence_ref: Joi.string().trim().max(255).allow('', null).optional()
-});
-
-const esalesReportStatusSchema = Joi.object({
-    status: Joi.string().valid('submitted', 'accepted', 'rejected').required(),
-    status_evidence_ref: Joi.string().trim().max(255).allow('', null).optional(),
-    status_note: Joi.string().trim().max(500).allow('', null).optional()
-});
-
-const fiscalTerminalRegistrationSchema = Joi.object({
-    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
-    location_id: Joi.number().integer().positive().allow(null).optional(),
-    min_number: Joi.string().trim().max(80).allow('', null).optional(),
-    machine_serial_number: Joi.string().trim().max(120).allow('', null).optional(),
-    software_version: Joi.string().trim().max(80).allow('', null).optional(),
-    software_serial_number: Joi.string().trim().max(120).allow('', null).optional(),
-    ptu_number: Joi.string().trim().max(80).allow('', null).optional(),
-    permit_issued_at: Joi.date().iso().allow(null).optional(),
-    permit_effective_at: Joi.date().iso().allow(null).optional(),
-    permit_expires_at: Joi.date().iso().allow(null).optional(),
-    receipt_printer_binding: Joi.string().trim().max(120).allow('', null).optional(),
-    cash_drawer_binding: Joi.string().trim().max(120).allow('', null).optional(),
-    accreditation_status: Joi.string().valid('draft', 'pending_review', 'verified', 'revoked').default('draft'),
-    evidence_ref: Joi.string().trim().max(255).allow('', null).optional(),
-    metadata: Joi.object().unknown(true).optional()
-});
-
 const terminalCurrentShiftQuerySchema = Joi.object({
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
     location_id: Joi.number().integer().positive().optional()
@@ -279,6 +234,22 @@ const updateOnlineOrderStatusSchema = Joi.object({
     fulfillment_status: Joi.string().valid(...ONLINE_FULFILLMENT_STATUSES).required()
 });
 
+const devicePrintReceiptSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).optional(),
+    transaction_id: Joi.number().integer().positive().required(),
+    copies: Joi.number().integer().min(1).max(5).default(1),
+    reason: Joi.string().trim().max(255).allow('', null).optional(),
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
+});
+
+const deviceOpenDrawerSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).optional(),
+    shift_id: Joi.number().integer().positive().required(),
+    transaction_id: Joi.number().integer().positive().allow(null).optional(),
+    reason: Joi.string().trim().min(3).max(255).required(),
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
+});
+
 const buildValidationErrorResponse = (error) => ({
     success: false,
     data: null,
@@ -325,8 +296,5 @@ export const validateSwitchTerminalShiftLocation = validateSchema(switchTerminal
 export const validateCashDrawerEvent = validateSchema(cashDrawerEventSchema, 'body', 'validatedData');
 export const validateCloseTerminalShift = validateSchema(closeTerminalShiftSchema, 'body', 'validatedData');
 export const validateUpdateOnlineOrderStatus = validateSchema(updateOnlineOrderStatusSchema, 'body', 'validatedData');
-export const validateFiscalPrintEvent = validateSchema(fiscalPrintEventSchema, 'body', 'validatedData');
-export const validateVoidTransaction = validateSchema(voidTransactionSchema, 'body', 'validatedData');
-export const validateESalesReport = validateSchema(esalesReportSchema, 'body', 'validatedData');
-export const validateESalesReportStatus = validateSchema(esalesReportStatusSchema, 'body', 'validatedData');
-export const validateFiscalTerminalRegistration = validateSchema(fiscalTerminalRegistrationSchema, 'body', 'validatedData');
+export const validatePosDeviceReceiptPrint = validateSchema(devicePrintReceiptSchema, 'body', 'validatedData');
+export const validatePosDeviceDrawerOpen = validateSchema(deviceOpenDrawerSchema, 'body', 'validatedData');

@@ -26,14 +26,9 @@ export {
     getTerminalTodayDashboard,
     listIncomingOnlineOrders,
     updateOnlineOrderStatus,
-    recordFiscalPrintEvent,
-    voidTransaction,
-    generateESalesReport,
-    listESalesReports,
-    verifyFiscalEventLedger,
-    updateESalesReportStatus,
-    upsertFiscalTerminalRegistration,
-    listFiscalTerminalRegistrations
+    getDeviceStatus,
+    printReceipt,
+    openDeviceDrawer
 } from '../modules/pos/controllers/posHandlers.js';
 
 import {
@@ -60,14 +55,9 @@ import {
     getTerminalTodayDashboard,
     listIncomingOnlineOrders,
     updateOnlineOrderStatus,
-    recordFiscalPrintEvent,
-    voidTransaction,
-    generateESalesReport,
-    listESalesReports,
-    verifyFiscalEventLedger,
-    updateESalesReportStatus,
-    upsertFiscalTerminalRegistration,
-    listFiscalTerminalRegistrations
+    getDeviceStatus,
+    printReceipt,
+    openDeviceDrawer
 } from '../modules/pos/controllers/posHandlers.js';
 
 export default {
@@ -94,12 +84,7 @@ export default {
     getTerminalTodayDashboard,
     listIncomingOnlineOrders,
     updateOnlineOrderStatus,
-    recordFiscalPrintEvent,
-    voidTransaction,
-    generateESalesReport,
-    listESalesReports,
-    verifyFiscalEventLedger,
-    updateESalesReportStatus,
-    upsertFiscalTerminalRegistration,
-    listFiscalTerminalRegistrations
+    getDeviceStatus,
+    printReceipt,
+    openDeviceDrawer
 };

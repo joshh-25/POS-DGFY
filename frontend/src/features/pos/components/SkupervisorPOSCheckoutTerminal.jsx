@@ -10,7 +10,9 @@ import {
     closePosDay,
     fetchPosTransactions,
     fetchPosTransactionById,
-    recordFiscalPrintEvent
+    fetchPosDeviceStatus,
+    printPosReceipt,
+    openPosDeviceDrawer
 } from '../services/posService';
 import {
     TERMINAL_QUEUE_STATUS,
@@ -29,11 +31,11 @@ import { usePermission } from '@/hooks/usePermission';
 import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 import { handlePaneScrollKeyDown } from '../utils/scrollKeyControls.js';
 import {
-    DGFY_CONVENIENCE_FEE_LABEL,
-    DGFY_CONVENIENCE_FEE_RATE,
-    buildPosCheckoutPayload,
-    resolveReceiptDocumentContract
-} from '../utils/checkoutSurfaceContract.js';
+    notifyIminWebPosReady,
+    openDrawerWithIminBridge,
+    printOrderWithIminBridge,
+    printReceiptWithIminBridge
+} from '../utils/iminHardwareBridge.js';
 
 const ReceiptPrintView = lazy(() => import('./ReceiptPrintView'));
 const POSBarcodeScanner = lazy(() => import('./SkupervisorPOSBarcodeScanner.jsx'));
@@ -48,6 +50,8 @@ const POS_ITEM_IMAGE_MAP = [
     { match: ['chicken wings', 'wings'], src: '/pos-items/chicken%20wings.jpg' },
     { match: ['chicken tenders', 'tenders'], src: '/pos-items/chicken%20Tenders.jpg' }
 ];
+const POS_FORM_INPUT_CLASS = 'mt-1 focus-visible:border-blue-400 focus-visible:ring-blue-500';
+const POS_FORM_SELECT_CLASS = 'focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2';
 
 const money = (value) => Number(value || 0).toFixed(2);
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
@@ -62,6 +66,8 @@ const VAT_TYPE_LABEL = {
     vat_exempt: 'VAT Exempt',
     zero_rated: 'Zero Rated'
 };
+const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
+const DGFY_CONVENIENCE_FEE_RATE = 0.01;
 const normalizeDiscountProfiles = (rawProfiles) => {
     let profiles = rawProfiles;
     if (typeof profiles === 'string') {
@@ -232,7 +238,7 @@ const isRetryableCheckoutReplayError = (error) => {
 
 const resolveCheckoutReplayErrorDetails = (error) => ({
       message: String(error?.response?.data?.message || error?.message || 'Replay failed').trim(),
-    code: String(error?.response?.data?.code || error?.response?.data?.error_code || error?.code || '').trim() || undefined,
+    code: String(error?.response?.data?.error_code || error?.code || '').trim() || undefined,
     status: Number(error?.response?.status || 0) || undefined
 });
 
@@ -262,6 +268,42 @@ const resolveMappedPosItemImage = (item = {}) => {
     return String(match?.src || '').trim();
 };
 
+const inferReceiptContract = (transaction, fallbackContract = null) => {
+    if (fallbackContract?.document_type) {
+        return fallbackContract;
+    }
+
+    const documentType = String(transaction?.document_type || '').toLowerCase();
+    if (documentType === 'non_fiscal_slip') {
+        return {
+            document_type: 'non_fiscal_slip',
+            label: 'NON-FISCAL SLIP'
+        };
+    }
+    if (documentType === 'fiscal_invoice') {
+        return {
+            document_type: 'fiscal_invoice',
+            label: 'FISCAL INVOICE'
+        };
+    }
+
+    const invoiceNumber = String(transaction?.invoice_number || '').toUpperCase();
+    if (invoiceNumber.startsWith('NFS-')) {
+        return {
+            document_type: 'non_fiscal_slip',
+            label: 'NON-FISCAL SLIP'
+        };
+    }
+    if (invoiceNumber.startsWith('INV-')) {
+        return {
+            document_type: 'fiscal_invoice',
+            label: 'FISCAL INVOICE'
+        };
+    }
+
+    return null;
+};
+
 export default function POSCheckoutTerminal({
     sessionLocked = false,
     isMsmeMode = false,
@@ -283,6 +325,10 @@ export default function POSCheckoutTerminal({
     onExternalCatalogHydrated = null,
     fnbContext = null
 }) {
+    useEffect(() => {
+        notifyIminWebPosReady();
+    }, []);
+
     const navigate = useNavigate();
     const { can } = usePermission();
     const canOverridePrice = can('pos:price_override');
@@ -298,13 +344,9 @@ export default function POSCheckoutTerminal({
     const [search, setSearch] = useState('');
     const [orderMethod, setOrderMethod] = useState('dine_in');
     const [paymentType, setPaymentType] = useState('cash');
-    const [buyerFiscalName, setBuyerFiscalName] = useState('');
-    const [buyerFiscalTin, setBuyerFiscalTin] = useState('');
-    const [buyerFiscalBusinessStyle, setBuyerFiscalBusinessStyle] = useState('');
-    const [buyerFiscalAddress, setBuyerFiscalAddress] = useState('');
     const [discountProfiles, setDiscountProfiles] = useState([]);
     const [selectedDiscountProfile, setSelectedDiscountProfile] = useState('');
-    const [manualDiscountAmountInput, setManualDiscountAmountInput] = useState('');
+    const [manualDiscountRateInput, setManualDiscountRateInput] = useState('');
     const [cart, setCart] = useState([]);
     const [fnbKitchenStations, setFnbKitchenStations] = useState([]);
     const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -313,12 +355,6 @@ export default function POSCheckoutTerminal({
     const [closingDay, setClosingDay] = useState(false);
     const [lastReceipt, setLastReceipt] = useState(null);
     const [lastReceiptContract, setLastReceiptContract] = useState(null);
-    const [fiscalPrintDialogOpen, setFiscalPrintDialogOpen] = useState(false);
-    const [fiscalPrintDraft, setFiscalPrintDraft] = useState({
-        reason: '',
-        printed: false,
-        priorPrintCount: 0
-    });
     const [historyRows, setHistoryRows] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyPage, setHistoryPage] = useState(1);
@@ -333,6 +369,10 @@ export default function POSCheckoutTerminal({
     const [historyDateTo, setHistoryDateTo] = useState('');
     const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
     const [receiptSettings, setReceiptSettings] = useState({});
+    const [deviceStatus, setDeviceStatus] = useState(null);
+    const [deviceStatusLoading, setDeviceStatusLoading] = useState(false);
+    const [receiptPrinting, setReceiptPrinting] = useState(false);
+    const [drawerOpening, setDrawerOpening] = useState(false);
     const [imagePreview, setImagePreview] = useState(null);
     const catalogScrollRef = useRef(null);
     const currentSaleScrollRef = useRef(null);
@@ -376,6 +416,8 @@ export default function POSCheckoutTerminal({
             String(entry?.status || '') === TERMINAL_QUEUE_STATUS.FAILED_MANUAL_RESOLUTION_REQUIRED
         )).length
     ), [queuedCheckouts]);
+    const detectedPrinterCount = Number(deviceStatus?.bridge?.printersDetected || 0);
+    const isPrinterAvailable = detectedPrinterCount > 0;
 
     const setCurrentViewMode = useCallback((nextMode) => {
         if (!isViewModeControlled) {
@@ -489,65 +531,6 @@ export default function POSCheckoutTerminal({
         return entry;
     }, [syncQueuedCheckoutsState]);
 
-    const handlePrintReceipt = useCallback(async () => {
-        if (!lastReceipt) return;
-        if (lastReceipt.document_type === 'fiscal_invoice') {
-            const priorPrintCount = Array.isArray(lastReceipt.fiscalPrintEvents)
-                ? lastReceipt.fiscalPrintEvents.length
-                : Number(lastReceipt.fiscal_reprint_count || 0);
-            setFiscalPrintDraft({
-                reason: '',
-                printed: false,
-                priorPrintCount
-            });
-            setFiscalPrintDialogOpen(true);
-            return;
-        }
-        window.print();
-    }, [lastReceipt]);
-
-    const openFiscalPrintDialog = useCallback(() => {
-        window.print();
-        setFiscalPrintDraft((current) => ({
-            ...current,
-            printed: true
-        }));
-    }, []);
-
-    const confirmFiscalPrintRecorded = useCallback(async () => {
-        if (!lastReceipt) return;
-        const reason = String(fiscalPrintDraft.reason || '').trim();
-        if (fiscalPrintDraft.priorPrintCount > 0 && reason.length < 3) {
-            toast.error('Fiscal reprint reason is required.');
-            return;
-        }
-        if (!fiscalPrintDraft.printed) {
-            toast.error('Open the print dialog before recording fiscal print evidence.');
-            return;
-        }
-        try {
-            const result = await recordFiscalPrintEvent(lastReceipt.pos_transaction_id, { reason });
-            if (result?.print_event) {
-                setLastReceipt((current) => current
-                    ? {
-                        ...current,
-                        fiscal_reprint_count: result.print_type === 'reprint'
-                            ? Number(result.print_sequence || 1) - 1
-                            : Number(current.fiscal_reprint_count || 0),
-                        fiscalPrintEvents: [
-                            ...(Array.isArray(current.fiscalPrintEvents) ? current.fiscalPrintEvents : []),
-                            result.print_event
-                        ]
-                    }
-                    : current);
-            }
-            setFiscalPrintDialogOpen(false);
-            toast.success('Fiscal print evidence recorded.');
-        } catch (error) {
-            toast.error(error?.response?.data?.message || 'Unable to record fiscal print event.');
-        }
-    }, [fiscalPrintDraft.priorPrintCount, fiscalPrintDraft.printed, fiscalPrintDraft.reason, lastReceipt]);
-
     const loadCatalog = useCallback(async () => {
         if (sessionLocked) {
             setCatalog([]);
@@ -622,7 +605,7 @@ export default function POSCheckoutTerminal({
                     const data = await createPosCheckout(payload);
                     replayedCount += 1;
                     setLastReceipt(data?.transaction || null);
-                    setLastReceiptContract(resolveReceiptDocumentContract(data?.transaction, data?.receipt_contract));
+                    setLastReceiptContract(inferReceiptContract(data?.transaction, data?.receipt_contract));
                     if (typeof onCheckoutCompleted === 'function') {
                         onCheckoutCompleted(data?.transaction || null);
                     }
@@ -719,24 +702,38 @@ export default function POSCheckoutTerminal({
         try {
             const allSettings = await getAllSettings();
             setReceiptSettings({
-                pos_registered_name: allSettings?.pos_registered_name?.value || '',
                 pos_business_name: allSettings?.pos_business_name?.value || '',
-                pos_business_style: allSettings?.pos_business_style?.value || '',
-                pos_taxpayer_type: allSettings?.pos_taxpayer_type?.value || '',
                 pos_tin_branch: allSettings?.pos_tin_branch?.value || '',
                 pos_address: allSettings?.pos_address?.value || '',
                 pos_ptu_number: allSettings?.pos_ptu_number?.value || '',
                 pos_min_number: allSettings?.pos_min_number?.value || '',
                 pos_accreditation_number: allSettings?.pos_accreditation_number?.value || '',
-                pos_software_name: allSettings?.pos_software_name?.value || '',
-                pos_software_version: allSettings?.pos_software_version?.value || '',
-                pos_software_serial_number: allSettings?.pos_software_serial_number?.value || '',
                 pos_receipt_footer_message: allSettings?.pos_receipt_footer_message?.value || ''
             });
             setDiscountProfiles(normalizeDiscountProfiles(allSettings?.pos_discount_profiles?.value));
         } catch {
             setReceiptSettings({});
             setDiscountProfiles([]);
+        }
+    }, [sessionLocked]);
+
+    const loadDeviceStatus = useCallback(async ({ notifyOnError = false } = {}) => {
+        if (sessionLocked) {
+            setDeviceStatus(null);
+            return;
+        }
+
+        setDeviceStatusLoading(true);
+        try {
+            const result = await fetchPosDeviceStatus();
+            setDeviceStatus(result || null);
+        } catch (error) {
+            setDeviceStatus(null);
+            if (notifyOnError) {
+                toast.error(error?.response?.data?.message || 'Failed to load POS device status.');
+            }
+        } finally {
+            setDeviceStatusLoading(false);
         }
     }, [sessionLocked]);
 
@@ -784,13 +781,16 @@ export default function POSCheckoutTerminal({
 
     const openHistoryDetail = async (posTransactionId, { switchToReceipt = true } = {}) => {
         setHistoryDetailLoading(true);
+        setLastReceipt(null);
+        setLastReceiptContract(null);
+        if (switchToReceipt) {
+            setCurrentViewMode('receipt');
+        }
+
         try {
             const detail = await fetchPosTransactionById(posTransactionId);
             setLastReceipt(detail || null);
-            setLastReceiptContract(resolveReceiptDocumentContract(detail));
-            if (switchToReceipt) {
-                setCurrentViewMode('receipt');
-            }
+            setLastReceiptContract(inferReceiptContract(detail));
         } catch (error) {
             toast.error(buildMissingFieldsMessage(error) || error?.response?.data?.message || 'Failed to load selected transaction');
         } finally {
@@ -836,7 +836,7 @@ export default function POSCheckoutTerminal({
                 const detail = await fetchPosTransactionById(id);
                 if (cancelled) return;
                 setLastReceipt(detail || null);
-                setLastReceiptContract(resolveReceiptDocumentContract(detail));
+                setLastReceiptContract(inferReceiptContract(detail));
                 setCurrentViewMode('receipt');
             } catch (error) {
                 if (!cancelled) {
@@ -885,7 +885,8 @@ export default function POSCheckoutTerminal({
         if (sessionLocked) return;
         loadReceiptSettings();
         loadPosFolders();
-    }, [loadReceiptSettings, loadPosFolders, sessionLocked]);
+        loadDeviceStatus();
+    }, [loadDeviceStatus, loadReceiptSettings, loadPosFolders, sessionLocked]);
 
     useEffect(() => {
         let active = true;
@@ -966,11 +967,16 @@ export default function POSCheckoutTerminal({
         [discountProfiles, selectedDiscountProfile]
     );
 
-    const manualDiscountAmount = useMemo(() => {
-        const parsed = Number(manualDiscountAmountInput);
+    const manualDiscountRate = useMemo(() => {
+        const parsed = Number(manualDiscountRateInput);
         if (!Number.isFinite(parsed) || parsed <= 0) return 0;
-        return round4(Math.min(parsed, cartSubtotal));
-    }, [cartSubtotal, manualDiscountAmountInput]);
+        return round4(Math.min(parsed, 100));
+    }, [manualDiscountRateInput]);
+
+    const manualDiscountAmount = useMemo(
+        () => round4(Math.min((cartSubtotal * manualDiscountRate) / 100, cartSubtotal)),
+        [cartSubtotal, manualDiscountRate]
+    );
 
     const calculatedDiscountAmount = useMemo(
         () => (
@@ -982,10 +988,10 @@ export default function POSCheckoutTerminal({
     );
 
     useEffect(() => {
-        if (selectedDiscountProfile && manualDiscountAmountInput) {
-            setManualDiscountAmountInput('');
+        if (selectedDiscountProfile && manualDiscountRateInput) {
+            setManualDiscountRateInput('');
         }
-    }, [manualDiscountAmountInput, selectedDiscountProfile]);
+    }, [manualDiscountRateInput, selectedDiscountProfile]);
 
     const serviceFeeAmount = useMemo(
         () => round4(Math.max(0, cartSubtotal) * DGFY_CONVENIENCE_FEE_RATE),
@@ -1288,34 +1294,41 @@ export default function POSCheckoutTerminal({
             return;
         }
 
-        const payload = buildPosCheckoutPayload({
-            idempotencyKey: createIdempotencyKey(),
-            terminalId: normalizedTerminalId,
-            selectedLocationId,
-            orderMethod,
-            paymentType,
-            calculatedDiscountAmount,
-            selectedDiscount,
-            activeShiftId,
-            fnbContext: normalizedFnbContext,
-            buyerFiscal: {
-                buyer_name: buyerFiscalName,
-                buyer_tin: buyerFiscalTin,
-                buyer_business_style: buyerFiscalBusinessStyle,
-                buyer_address: buyerFiscalAddress
-            },
-            cart
-        });
+        const payload = {
+            idempotency_key: createIdempotencyKey(),
+            terminal_id: normalizedTerminalId || undefined,
+            location_id: selectedLocationId || undefined,
+            order_method: orderMethod,
+            payment_type: paymentType,
+            payment_handoff_mode: paymentType === 'cash' ? 'internal' : 'external',
+            discount_amount: Number(calculatedDiscountAmount || 0),
+            discount_profile_name: selectedDiscount?.name || null,
+            discount_rate: selectedDiscount ? Number(selectedDiscount.percentage) : (manualDiscountRate > 0 ? Number(manualDiscountRate) : null),
+            shift_id: activeShiftId || undefined,
+            fnb_check_id: normalizedFnbContext?.fnb_check_id || undefined,
+            fnb_table_id: normalizedFnbContext?.fnb_table_id || undefined,
+            fnb_table_label_snapshot: normalizedFnbContext?.fnb_table_label_snapshot || undefined,
+            fnb_guest_count: normalizedFnbContext?.fnb_guest_count || undefined,
+            fnb_server_id: normalizedFnbContext?.fnb_server_id || undefined,
+            restaurant_service_charge: normalizedFnbContext?.restaurant_service_charge || undefined,
+            lines: cart.map((line) => ({
+                item_id: line.item_id,
+                quantity: Number(line.quantity),
+                sale_price: Number(line.sale_price),
+                price_override_reason: String(line.price_override_reason || '').trim() || undefined,
+                course: line.course || normalizedFnbContext?.default_course || undefined,
+                line_modifiers: line.line_modifiers || undefined,
+                special_instructions: line.special_instructions || undefined,
+                kitchen_station_id: line.kitchen_station_id || undefined,
+                scan_metadata: line.scan_metadata || undefined
+            }))
+        };
 
         const queueCheckoutIntentLocally = async (source) => {
             await enqueueCheckoutIntent(payload, source);
             setCart([]);
             setSelectedDiscountProfile('');
-            setManualDiscountAmountInput('');
-            setBuyerFiscalName('');
-            setBuyerFiscalTin('');
-            setBuyerFiscalBusinessStyle('');
-            setBuyerFiscalAddress('');
+            setManualDiscountRateInput('');
             const refreshedQueue = await listTerminalOperationQueueEntries({
                 includeResolved: false,
                 statuses: [
@@ -1341,21 +1354,37 @@ export default function POSCheckoutTerminal({
         try {
             const data = await createPosCheckout(payload);
             setLastReceipt(data?.transaction || null);
-            setLastReceiptContract(resolveReceiptDocumentContract(data?.transaction, data?.receipt_contract));
+            setLastReceiptContract(inferReceiptContract(data?.transaction, data?.receipt_contract));
             setCart([]);
             setSelectedDiscountProfile('');
-            setManualDiscountAmountInput('');
-            setBuyerFiscalName('');
-            setBuyerFiscalTin('');
-            setBuyerFiscalBusinessStyle('');
-            setBuyerFiscalAddress('');
+            setManualDiscountRateInput('');
             if (typeof onCheckoutCompleted === 'function') {
                 onCheckoutCompleted(data?.transaction || null);
             }
+            try {
+                const completedTransaction = data?.transaction || null;
+                const receiptContract = inferReceiptContract(completedTransaction, data?.receipt_contract);
+                const iminPrintResult = printReceiptWithIminBridge({
+                    transaction: completedTransaction,
+                    businessSettings: receiptSettings,
+                    receiptContract,
+                    openDrawerAfterPrint: true
+                });
+                if (iminPrintResult.handled) {
+                    toast.success('Receipt printed and cash drawer opened.');
+                } else {
+                    const iminDrawerResult = openDrawerWithIminBridge();
+                    if (iminDrawerResult.handled) {
+                        toast.success('Cash drawer opened.');
+                    }
+                }
+            } catch (hardwareError) {
+                toast.error(hardwareError?.message || 'Checkout completed, but the receipt printer or cash drawer failed.');
+            }
             toast.success(
                 data?.idempotent_replay
-                    ? `Replayed (${resolveReceiptDocumentContract(data?.transaction, data?.receipt_contract).label || 'receipt loaded'})`
-                    : `Done (${resolveReceiptDocumentContract(data?.transaction, data?.receipt_contract).label || 'receipt ready'})`
+                    ? `Replayed (${inferReceiptContract(data?.transaction, data?.receipt_contract)?.label || 'receipt loaded'})`
+                    : `Done (${inferReceiptContract(data?.transaction, data?.receipt_contract)?.label || 'receipt ready'})`
             );
             if (data?.terminal_identity_policy?.warning?.message) {
                 toast.message(`Terminal policy warning: ${data.terminal_identity_policy.warning.message}`);
@@ -1401,6 +1430,120 @@ export default function POSCheckoutTerminal({
             setClosingDay(false);
         }
     };
+
+    const handlePrintReceipt = useCallback(async (transaction, reason = 'manual_reprint') => {
+        const transactionId = Number(transaction?.pos_transaction_id);
+        if (!Number.isInteger(transactionId) || transactionId <= 0) {
+            toast.error('Select a saved receipt first.');
+            return;
+        }
+
+        setReceiptPrinting(true);
+        try {
+            const iminPrintResult = printReceiptWithIminBridge({
+                transaction,
+                businessSettings: receiptSettings,
+                receiptContract: inferReceiptContract(transaction),
+                openDrawerAfterPrint: true
+            });
+            if (iminPrintResult.handled) {
+                toast.success('Receipt printed and cash drawer opened.');
+                return;
+            }
+
+            const result = await printPosReceipt({
+                idempotency_key: createIdempotencyKey(),
+                transaction_id: transactionId,
+                terminal_id: normalizedTerminalId || undefined,
+                reason
+            });
+            toast.success(
+                result?.transaction?.invoice_number
+                    ? `Print sent for ${result.transaction.invoice_number}.`
+                    : 'Receipt print request sent.'
+            );
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Failed to send receipt to printer.');
+        } finally {
+            setReceiptPrinting(false);
+            loadDeviceStatus();
+        }
+    }, [loadDeviceStatus, normalizedTerminalId, receiptSettings]);
+
+    const handlePrintOrder = useCallback(() => {
+        if (cart.length === 0) {
+            toast.error('Add at least one item before printing an order.');
+            return;
+        }
+
+        try {
+            const result = printOrderWithIminBridge({
+                cart,
+                terminalId: normalizedTerminalId,
+                orderMethod,
+                fnbContext: normalizedFnbContext
+            });
+            if (result.handled) {
+                toast.success('Order ticket sent to printer.');
+                return;
+            }
+            toast.error('Order printing is available only inside the iMin APK.');
+        } catch (error) {
+            toast.error(error?.message || 'Failed to print order ticket.');
+        } finally {
+            loadDeviceStatus();
+        }
+    }, [cart, loadDeviceStatus, normalizedFnbContext, normalizedTerminalId, orderMethod]);
+
+    const printHistoryReceipt = useCallback(async (posTransactionId) => {
+        const transactionId = Number(posTransactionId);
+        if (!Number.isInteger(transactionId) || transactionId <= 0) {
+            toast.error('Select a saved receipt first.');
+            return;
+        }
+
+        setHistoryDetailLoading(true);
+        try {
+            const detail = await fetchPosTransactionById(transactionId);
+            setLastReceipt(detail || null);
+            setLastReceiptContract(inferReceiptContract(detail));
+            setCurrentViewMode('receipt');
+        } catch (error) {
+            toast.error(buildMissingFieldsMessage(error) || error?.response?.data?.message || 'Failed to load selected receipt.');
+        } finally {
+            setHistoryDetailLoading(false);
+        }
+    }, []);
+
+    const handleOpenDrawer = useCallback(async ({ transactionId = null, reason = 'manual_ui_open' } = {}) => {
+        if (!activeShiftId) {
+            toast.error('Open a shift first before opening the cash drawer.');
+            return;
+        }
+
+        setDrawerOpening(true);
+        try {
+            const iminDrawerResult = openDrawerWithIminBridge();
+            if (iminDrawerResult.handled) {
+                toast.success('Cash drawer opened.');
+                return;
+            }
+
+            await openPosDeviceDrawer({
+                idempotency_key: createIdempotencyKey(),
+                shift_id: activeShiftId,
+                transaction_id: transactionId || undefined,
+                terminal_id: normalizedTerminalId || undefined,
+                reason
+            });
+            toast.success('Cash drawer open request sent.');
+        } catch (error) {
+            toast.error(error?.response?.data?.message || error?.message || 'Failed to open the cash drawer.');
+        } finally {
+            setDrawerOpening(false);
+            loadDeviceStatus();
+        }
+    }, [activeShiftId, loadDeviceStatus, normalizedTerminalId]);
 
     return (
         <div className={shellClassName}>
@@ -1502,7 +1645,7 @@ export default function POSCheckoutTerminal({
                         historyRows={historyRows}
                         historyDetailLoading={historyDetailLoading}
                         openHistoryDetail={openHistoryDetail}
-                        openInSalesReport={openInSalesReport}
+                        printHistoryReceipt={printHistoryReceipt}
                         loadHistory={loadHistory}
                         historyPage={historyPage}
                         historyPagination={historyPagination}
@@ -1534,10 +1677,6 @@ export default function POSCheckoutTerminal({
                         onScroll={syncCatalogPaneScrollState}
                     >
                 <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between mb-4">
-                    <div>
-                        <h2 className="text-xl font-bold text-slate-900">POS Catalog</h2>
-                        <p className="text-sm text-slate-600">Tap an item card to add it to the current cart.</p>
-                    </div>
                     <Input
                         value={search}
                         onChange={(event) => setSearch(event.target.value)}
@@ -1631,7 +1770,7 @@ export default function POSCheckoutTerminal({
                 {catalogLoading ? (
                     <p className="text-sm text-slate-500">Loading catalog...</p>
                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pb-2">
+                    <div className="grid grid-cols-1 gap-3 pb-2 md:grid-cols-2">
                         {catalog.map((item) => {
                             const isServiceItem = isServiceCatalogItem(item);
                             const isOutOfStock = !isServiceItem && Number(item.current_stock || 0) <= 0;
@@ -1656,7 +1795,7 @@ export default function POSCheckoutTerminal({
                                     role={isOutOfStock ? 'group' : 'button'}
                                     tabIndex={isOutOfStock ? -1 : 0}
                                     aria-disabled={isOutOfStock}
-                                    className={`text-left border border-slate-200 rounded-xl p-3 transition-all shadow-sm ${
+                                    className={`flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-2 text-left shadow-sm transition-all md:h-[11rem] md:p-1.5 xl:h-[12rem] ${
                                         isOutOfStock
                                             ? 'cursor-not-allowed opacity-75 blur-[0.5px]'
                                             : 'cursor-pointer hover:-translate-y-0.5 hover:border-teal-400 hover:bg-teal-50 hover:shadow-md'
@@ -1673,14 +1812,14 @@ export default function POSCheckoutTerminal({
                                                 hasImage
                                             });
                                         }}
-                                        className="w-full aspect-square max-h-64 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-inner hover:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
-                                title={hasImage ? 'Enlarge image' : 'Preview placeholder'}
+                                        className="flex h-24 w-full shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-slate-50 shadow-inner hover:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 md:h-16 xl:h-20"
+                                        title={hasImage ? 'Enlarge image' : 'Preview placeholder'}
                                     >
                                         {hasImage ? (
                                             <img
                                                 src={posImageSrc}
                                                 alt={`${item.name} menu`}
-                                                className="h-full w-full object-cover"
+                                                className="h-full w-full object-cover object-center"
                                                 onError={() => {
                                                     setCatalogImageErrors((previous) => {
                                                         const next = new Set(previous);
@@ -1697,7 +1836,9 @@ export default function POSCheckoutTerminal({
                                     </button>
                                 </div>
                                 <div className="flex items-start justify-between gap-2">
-                                    <p className="text-lg font-semibold text-slate-900 leading-tight">{item.name}</p>
+                                    <p className="min-h-[2.5rem] flex-1 overflow-hidden text-base font-semibold leading-tight text-slate-900 md:min-h-[2rem] md:text-sm xl:text-base">
+                                        {item.name}
+                                    </p>
                                     {isServiceItem ? (
                                         <span className="shrink-0 rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-700">
                                             Service
@@ -1708,14 +1849,14 @@ export default function POSCheckoutTerminal({
                                         </span>
                                     ) : null}
                                 </div>
-                                <p className="text-xs font-semibold tracking-wide bg-gradient-to-r from-slate-700 via-slate-600 to-slate-500 bg-clip-text text-transparent">
+                                <p className="truncate text-[11px] font-semibold tracking-wide bg-gradient-to-r from-slate-700 via-slate-600 to-slate-500 bg-clip-text text-transparent">
                                     {item.sku_code}
                                 </p>
-                                <div className="mt-2 text-xs text-slate-600 flex justify-between">
-                                    <span className="font-medium bg-gradient-to-r from-teal-700 to-emerald-600 bg-clip-text text-transparent">
+                                <div className="mt-auto flex items-end justify-between gap-3 pt-2 text-xs text-slate-600">
+                                    <span className="min-w-0 flex-1 font-medium bg-gradient-to-r from-teal-700 to-emerald-600 bg-clip-text text-transparent">
                                         {isServiceItem ? 'Service sale' : `Stock: ${Number(item.current_stock || 0).toFixed(2)}`}
                                     </span>
-                                    <span className="font-semibold text-slate-700">
+                                    <span className="shrink-0 font-semibold text-slate-700">
                                         {Number(item.default_sale_price || 0) > 0
                                             ? `Price: PHP ${money(item.default_sale_price)}`
                                             : 'Price not set'}
@@ -1777,7 +1918,7 @@ export default function POSCheckoutTerminal({
                         <select
                             value={orderMethod}
                             onChange={(event) => setOrderMethod(event.target.value)}
-                            className="w-full mt-1 border border-slate-200 rounded-lg px-2 py-2 text-sm"
+                            className={`w-full mt-1 border border-slate-200 rounded-lg px-2 py-2 text-sm ${POS_FORM_SELECT_CLASS}`}
                         >
                             <option value="dine_in">Dine In</option>
                             <option value="takeout">Takeout</option>
@@ -1792,7 +1933,7 @@ export default function POSCheckoutTerminal({
                         <select
                             value={paymentType}
                             onChange={(event) => setPaymentType(event.target.value)}
-                            className="w-full mt-1 border border-slate-200 rounded-lg px-2 py-2 text-sm"
+                            className={`w-full mt-1 border border-slate-200 rounded-lg px-2 py-2 text-sm ${POS_FORM_SELECT_CLASS}`}
                         >
                             <option value="cash">Cash</option>
                             <option value="gcash">{isMsmeMode ? 'GCash (Manual)' : 'GCash'}</option>
@@ -1806,36 +1947,6 @@ export default function POSCheckoutTerminal({
                             </span>
                         )}
                     </label>
-
-                    <div className="rounded-lg border border-slate-200 bg-white p-3">
-                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Buyer Fiscal Details</p>
-                        <div className="mt-2 grid grid-cols-1 gap-2">
-                            <Input
-                                value={buyerFiscalName}
-                                onChange={(event) => setBuyerFiscalName(event.target.value)}
-                                placeholder="Buyer name"
-                                className="h-9 text-[13px]"
-                            />
-                            <Input
-                                value={buyerFiscalTin}
-                                onChange={(event) => setBuyerFiscalTin(event.target.value)}
-                                placeholder="Buyer TIN"
-                                className="h-9 text-[13px]"
-                            />
-                            <Input
-                                value={buyerFiscalBusinessStyle}
-                                onChange={(event) => setBuyerFiscalBusinessStyle(event.target.value)}
-                                placeholder="Business style"
-                                className="h-9 text-[13px]"
-                            />
-                            <Input
-                                value={buyerFiscalAddress}
-                                onChange={(event) => setBuyerFiscalAddress(event.target.value)}
-                                placeholder="Buyer address"
-                                className="h-9 text-[13px]"
-                            />
-                        </div>
-                    </div>
 
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
                         <p className="font-semibold text-slate-700">{DGFY_CONVENIENCE_FEE_LABEL} (1%)</p>
@@ -1971,7 +2082,7 @@ export default function POSCheckoutTerminal({
                                     <select
                                         value={line.course || 'main'}
                                         onChange={(event) => updateCartLine(lineKey, { course: event.target.value })}
-                                        className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm"
+                                        className={`mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm ${POS_FORM_SELECT_CLASS}`}
                                     >
                                         <option value="appetizer">Appetizer</option>
                                         <option value="main">Main</option>
@@ -1986,7 +2097,7 @@ export default function POSCheckoutTerminal({
                                         <select
                                             value={line.kitchen_station_id || ''}
                                             onChange={(event) => updateCartLine(lineKey, { kitchen_station_id: event.target.value ? Number(event.target.value) : null })}
-                                            className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm"
+                                            className={`mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm ${POS_FORM_SELECT_CLASS}`}
                                         >
                                             <option value="">Default station</option>
                                             {fnbKitchenStationOptions.map((station) => (
@@ -2003,6 +2114,7 @@ export default function POSCheckoutTerminal({
                                         value={line.special_instructions || ''}
                                         onChange={(event) => updateCartLine(lineKey, { special_instructions: event.target.value })}
                                         placeholder="No onions, sauce side"
+                                        className={POS_FORM_INPUT_CLASS}
                                     />
                                 </label>
                             </div>
@@ -2013,6 +2125,7 @@ export default function POSCheckoutTerminal({
                                         value={line.price_override_reason || ''}
                                         onChange={(event) => updateCartLine(lineKey, { price_override_reason: event.target.value })}
                                         placeholder="Required when changing price"
+                                        className={POS_FORM_INPUT_CLASS}
                                     />
                                 </label>
                             )}
@@ -2047,10 +2160,10 @@ export default function POSCheckoutTerminal({
                             const nextProfile = event.target.value;
                             setSelectedDiscountProfile(nextProfile);
                             if (nextProfile) {
-                                setManualDiscountAmountInput('');
+                                setManualDiscountRateInput('');
                             }
                         }}
-                        className="w-full mt-1 border border-slate-200 rounded-lg px-2 py-2 text-sm"
+                        className={`w-full mt-1 border border-slate-200 rounded-lg px-2 py-2 text-sm ${POS_FORM_SELECT_CLASS}`}
                     >
                         <option value="">No Discount</option>
                         {discountProfiles
@@ -2064,20 +2177,22 @@ export default function POSCheckoutTerminal({
                 </label>
 
                 <label className="text-xs text-slate-500 block mb-3">
-                    Manual Discount Amount (PHP)
+                    Manual Discount Percentage
                     <Input
                         type="number"
                         min="0"
-                        step="0.0001"
-                        value={manualDiscountAmountInput}
+                        max="100"
+                        step="0.01"
+                        value={manualDiscountRateInput}
                         onChange={(event) => {
                             const nextValue = event.target.value;
-                            setManualDiscountAmountInput(nextValue);
+                            setManualDiscountRateInput(nextValue);
                             if (Number(nextValue) > 0) {
                                 setSelectedDiscountProfile('');
                             }
                         }}
                         placeholder="0.00"
+                        className={POS_FORM_INPUT_CLASS}
                     />
                     <span className="mt-1 block text-[11px] text-slate-500">
                         Manual and preset discounts cannot combine.
@@ -2093,6 +2208,7 @@ export default function POSCheckoutTerminal({
                         value={money(calculatedDiscountAmount)}
                         readOnly
                         disabled
+                        className={POS_FORM_INPUT_CLASS}
                     />
                     {selectedDiscount ? (
                         <span className="mt-1 block text-[11px] text-slate-500">
@@ -2100,7 +2216,7 @@ export default function POSCheckoutTerminal({
                         </span>
                     ) : manualDiscountAmount > 0 ? (
                         <span className="mt-1 block text-[11px] text-slate-500">
-                            Manual discount applied: PHP {money(manualDiscountAmount)}.
+                            Manual discount applied: {money(manualDiscountRate)}% / PHP {money(manualDiscountAmount)}.
                         </span>
                     ) : (
                         <span className="mt-1 block text-[11px] text-slate-500">
@@ -2179,8 +2295,16 @@ export default function POSCheckoutTerminal({
                     )}
                     <Button
                         type="button"
+                        variant="outline"
+                        onClick={handlePrintOrder}
+                        disabled={cart.length === 0}
+                    >
+                        Print Order
+                    </Button>
+                    <Button
+                        type="button"
                         onClick={handleCheckout}
-                        disabled={Boolean(checkoutBlockedReason) || checkoutLoading || cart.length === 0}
+                        disabled={checkoutLoading}
                     >
                         {checkoutLoading ? 'Processing...' : 'Checkout'}
                     </Button>
@@ -2190,10 +2314,21 @@ export default function POSCheckoutTerminal({
                     <Button
                         type="button"
                         variant="outline"
-                        onClick={handlePrintReceipt}
-                        disabled={!lastReceipt}
+                        onClick={() => handlePrintReceipt(lastReceipt, 'last_receipt_panel')}
+                        disabled={!lastReceipt || receiptPrinting}
                     >
-                        Print Last Receipt
+                        {receiptPrinting ? 'Printing...' : 'Print Last Receipt'}
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleOpenDrawer({
+                            transactionId: Number(lastReceipt?.pos_transaction_id) || null,
+                            reason: 'manual_drawer_panel'
+                        })}
+                        disabled={!activeShiftId || drawerOpening}
+                    >
+                        {drawerOpening ? 'Opening...' : 'Open Cash Drawer'}
                     </Button>
                 </div>
                     </div>
@@ -2216,6 +2351,17 @@ export default function POSCheckoutTerminal({
                                     {terminalIdentityLabel}
                                 </span>
                             )}
+                            <span className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${
+                                isPrinterAvailable
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                    : 'border-amber-200 bg-amber-50 text-amber-700'
+                            }`}>
+                                {deviceStatusLoading
+                                    ? 'Checking printer...'
+                                    : (isPrinterAvailable
+                                        ? `${detectedPrinterCount} printer${detectedPrinterCount === 1 ? '' : 's'} ready`
+                                        : 'Printer unavailable')}
+                            </span>
                             <Button
                                 type="button"
                                 variant="outline"
@@ -2225,6 +2371,27 @@ export default function POSCheckoutTerminal({
                                 onClick={() => openInSalesReport(lastReceipt)}
                             >
                                 Open in Sales Report
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handlePrintReceipt(lastReceipt, 'receipt_preview')}
+                                disabled={!lastReceipt || receiptPrinting}
+                            >
+                                {receiptPrinting ? 'Printing...' : 'Send to Printer'}
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleOpenDrawer({
+                                    transactionId: Number(lastReceipt?.pos_transaction_id) || null,
+                                    reason: 'receipt_preview_drawer_open'
+                                })}
+                                disabled={!activeShiftId || drawerOpening}
+                            >
+                                {drawerOpening ? 'Opening...' : 'Open Drawer'}
                             </Button>
                         </div>
                     </div>
@@ -2260,43 +2427,6 @@ export default function POSCheckoutTerminal({
                         </div>
                     )}
                 </section>
-            )}
-
-            {fiscalPrintDialogOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
-                    <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-2xl">
-                        <div className="mb-3">
-                            <h3 className="text-base font-semibold text-slate-900">Record Fiscal Print Evidence</h3>
-                            <p className="mt-1 text-sm text-slate-500">
-                                Open the print dialog first. Record fiscal evidence only after the physical or PDF print was completed.
-                            </p>
-                        </div>
-                        {fiscalPrintDraft.priorPrintCount > 0 && (
-                            <label className="mb-3 block space-y-1">
-                                <span className="text-xs font-semibold text-slate-600">Reprint Reason</span>
-                                <Input
-                                    value={fiscalPrintDraft.reason}
-                                    onChange={(event) => setFiscalPrintDraft((current) => ({ ...current, reason: event.target.value }))}
-                                    placeholder="Required for fiscal reprints"
-                                />
-                            </label>
-                        )}
-                        <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                            Current sequence: {fiscalPrintDraft.priorPrintCount > 0 ? `Reprint #${fiscalPrintDraft.priorPrintCount}` : 'Original print'}
-                        </div>
-                        <div className="mt-4 flex flex-wrap justify-end gap-2">
-                            <Button type="button" variant="outline" onClick={() => setFiscalPrintDialogOpen(false)}>
-                                Cancel
-                            </Button>
-                            <Button type="button" variant="outline" onClick={openFiscalPrintDialog}>
-                                Open Print Dialog
-                            </Button>
-                            <Button type="button" onClick={confirmFiscalPrintRecorded} disabled={!fiscalPrintDraft.printed}>
-                                Confirm Printed
-                            </Button>
-                        </div>
-                    </div>
-                </div>
             )}
 
             {imagePreview && (

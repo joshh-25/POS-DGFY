@@ -100,6 +100,40 @@ const normalizeHostHeader = (value) => {
   return trimmed.split(':')[0] || '';
 };
 
+const LOCAL_POS_ORIGINS = new Set([
+  'dgfypos://app',
+  'http://localhost:5174',
+  'http://127.0.0.1:5174',
+  'http://localhost:5184',
+  'http://127.0.0.1:5184',
+]);
+
+const LOCAL_POS_ORIGIN_PATTERNS = [
+  /^http:\/\/\d{1,3}(?:\.\d{1,3}){3}:5174$/,
+  /^http:\/\/\d{1,3}(?:\.\d{1,3}){3}:5184$/,
+];
+
+const normalizeOriginLikeValue = (value) => {
+  if (typeof value !== 'string') return '';
+  const raw = value.trim();
+  if (!raw) return '';
+  if (LOCAL_POS_ORIGINS.has(raw)) return raw;
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return '';
+  }
+};
+
+const isDevelopmentLocalPosRequest = (req) => {
+  if (!isDevelopment) return false;
+  const origin = normalizeOriginLikeValue(req.headers.origin);
+  if (LOCAL_POS_ORIGINS.has(origin) || LOCAL_POS_ORIGIN_PATTERNS.some((pattern) => pattern.test(origin))) return true;
+  const refererOrigin = normalizeOriginLikeValue(req.headers.referer);
+  return LOCAL_POS_ORIGINS.has(refererOrigin)
+    || LOCAL_POS_ORIGIN_PATTERNS.some((pattern) => pattern.test(refererOrigin));
+};
+
 const companyTokenFromValidatePath = (pathValue) => {
   if (typeof pathValue !== 'string') return '';
   const match = pathValue.match(/\/auth\/validate-token\/([^/?#]+)/i);
@@ -163,6 +197,16 @@ const getRetryAfterSeconds = (req, options) => {
     return Math.max(1, Math.ceil((resetTimeMs - Date.now()) / 1000));
   }
   return Math.max(1, Math.ceil((options?.windowMs || windowMs) / 1000));
+};
+
+const shouldSkipLocalPosAuthRateLimit = (req) => {
+  if (!isDevelopmentLocalPosRequest(req)) return false;
+  logger.info('[RateLimiter] Skipping local POS auth throttle in development', {
+    path: req.path,
+    origin: req.headers.origin || null,
+    referer: req.headers.referer || null,
+  });
+  return true;
 };
 
 const logRateLimitEvent = (req, scope, retryAfterSeconds, keyType) => {
@@ -386,9 +430,10 @@ export const authLimiter = rateLimit({
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },
-  skip: () => {
+  skip: (req) => {
     if (process.env.NODE_ENV === 'test') return true;
     if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    if (shouldSkipLocalPosAuthRateLimit(req)) return true;
     return false;
   },
 });
@@ -422,9 +467,10 @@ export const emailOtpLimiter = rateLimit({
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },
-  skip: () => {
+  skip: (req) => {
     if (process.env.NODE_ENV === 'test') return true;
     if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    if (shouldSkipLocalPosAuthRateLimit(req)) return true;
     return false;
   },
 });

@@ -23,7 +23,7 @@ const invalidateSettingsCache = () => {
 /**
  * Get all system settings
  */
-export const getAllSettings = async ({ force = false } = {}) => {
+export const getAllSettings = async ({ force = false, requestConfig = {} } = {}) => {
   const scope = getSettingsScope();
   const now = Date.now();
 
@@ -36,19 +36,15 @@ export const getAllSettings = async ({ force = false } = {}) => {
   }
 
   cachedSettingsScope = scope;
-  inFlightSettingsRequest = api.get('/settings')
+  inFlightSettingsRequest = api.get('/settings', requestConfig)
     .then((response) => {
       const settings = response.data.data;
-      if (cachedSettingsScope === scope) {
-        cachedSettings = settings;
-        cachedSettingsExpiresAt = Date.now() + SETTINGS_CACHE_TTL_MS;
-      }
+      cachedSettings = settings;
+      cachedSettingsExpiresAt = Date.now() + SETTINGS_CACHE_TTL_MS;
       return settings;
     })
     .finally(() => {
-      if (cachedSettingsScope === scope) {
-        inFlightSettingsRequest = null;
-      }
+      inFlightSettingsRequest = null;
     });
 
   return inFlightSettingsRequest;

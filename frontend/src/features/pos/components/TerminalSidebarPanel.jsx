@@ -113,7 +113,7 @@ export default function TerminalSidebarPanel({
   const incomingOrdersAccessState = String(incomingOrdersState?.accessState || '').trim() || 'idle';
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
   const hiddenSectionsInMsme = new Set(['incoming_queue', 'location_scope', 'cash_drawer', 'sales_today', 'terminal_setup']);
-  const [switchReason, setSwitchReason] = React.useState('');
+  const [switchReason, setSwitchReason] = useState('');
 
   const showSection = (key) => {
     if (isMsmeMode && hiddenSectionsInMsme.has(key)) return false;
