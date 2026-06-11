@@ -1,6 +1,6 @@
 import React, { useEffect, lazy, Suspense } from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Layout from '../Layout.jsx'
 import AdminLayout from '../Components/admin/AdminLayout.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
@@ -8,19 +8,40 @@ import { PermissionProvider } from './store/PermissionContext.jsx'
 import { WorkflowModeProvider } from './features/settings/WorkflowModeContext.jsx'
 import WorkflowModeRouteGate from './features/settings/components/WorkflowModeRouteGate.jsx'
 import { getPageNameFromPath } from '../utils.js'
-import { refreshBrowserSession, setBrowserSession } from './services/browserSession.js'
+import { getAccessToken, refreshBrowserSession, setBrowserSession } from './services/browserSession.js'
 import { shouldRefreshBrowserSessionForPath } from './services/publicRoutePolicy.js'
 import ErrorBoundary from './components/common/ErrorBoundary.jsx' // Fix 10.3
 import GlobalApiErrorListener from './components/common/GlobalApiErrorListener.jsx'
 import { Toaster } from '@/components/ui/sonner'
+import { getRuntimeConfig, resolveApiBaseUrl } from './utils/runtimeConfig.js'
 import './index.css'
 
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/'
 const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`
+const runtimeConfig = getRuntimeConfig(import.meta.env, typeof window !== 'undefined' ? window.location : undefined)
+const runtimeApiBaseUrl = resolveApiBaseUrl(import.meta.env, typeof window !== 'undefined' ? window.location : undefined)
+const RootRouter = runtimeConfig.isDesktopShell ? HashRouter : BrowserRouter
+
+const applyDesktopShellBootstrap = () => {
+  if (typeof window === 'undefined') return
+  if (!runtimeConfig.isDesktopShell) return
+
+  try {
+    if (runtimeConfig.companyToken) {
+      window.localStorage.setItem('companyToken', runtimeConfig.companyToken)
+    }
+    if (runtimeConfig.terminalId) {
+      window.localStorage.setItem('pos_terminal_identity_v1', runtimeConfig.terminalId)
+    }
+  } catch {
+    // Shell bootstrap values are optional and should not block app mount.
+  }
+}
 
 const registerAdminServiceWorker = async () => {
   if (typeof window === 'undefined') return
   if (import.meta.env.DEV) return
+  if (runtimeConfig.isDesktopShell) return
   if (!('serviceWorker' in navigator)) return
 
   try {
@@ -82,6 +103,7 @@ function App() {
    */
   useEffect(() => {
     if (!shouldRefreshBrowserSessionForPath(location.pathname)) return;
+    if (getAccessToken()) return;
     refreshBrowserSession().catch(() => {});
   }, [location.pathname]);
 
@@ -247,10 +269,11 @@ function App() {
 const rootElement = document.getElementById('root');
 
 const mountApp = () => {
+  applyDesktopShellBootstrap()
   ReactDOM.createRoot(rootElement).render(
     <React.StrictMode>
       <ErrorBoundary>
-        <BrowserRouter
+        <RootRouter
           future={{
             v7_startTransition: true,
             v7_relativeSplatPath: true,
@@ -263,7 +286,7 @@ const mountApp = () => {
               <App />
             </WorkflowModeProvider>
           </PermissionProvider>
-        </BrowserRouter>
+        </RootRouter>
       </ErrorBoundary>
     </React.StrictMode>,
   )
@@ -283,7 +306,7 @@ if (import.meta.env.DEV) {
       const TERMINAL_ID = 'COUNTER-01';
 
       // Attempt to login and store tokens; backend will validate tenant context
-      const resp = await fetch('/api/v1/auth/login', {
+      const resp = await fetch(`${runtimeApiBaseUrl}/auth/login`, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',

@@ -33,6 +33,33 @@ export const fetchPosTransactionById = async (id) => {
     return response.data?.data;
 };
 
+export const fetchPosDeviceStatus = async () => {
+    const response = await api.get('/pos/device/status', {
+        // Device status is a background capability probe. In tablet/APK deployments
+        // the local HTTP bridge can be absent, so this should fail quietly.
+        skipGlobalErrorToast: true
+    });
+    return response.data?.data;
+};
+
+export const printPosReceipt = async (payload = {}) => {
+    const response = await api.post('/pos/device/print-receipt', payload, {
+        headers: payload?.terminal_id
+            ? { 'x-pos-terminal-id': payload.terminal_id }
+            : undefined
+    });
+    return response.data?.data;
+};
+
+export const openPosDeviceDrawer = async (payload = {}) => {
+    const response = await api.post('/pos/device/open-drawer', payload, {
+        headers: payload?.terminal_id
+            ? { 'x-pos-terminal-id': payload.terminal_id }
+            : undefined
+    });
+    return response.data?.data;
+};
+
 export const closePosDay = async (businessDate = null) => {
     const response = await api.post('/pos/z-reading/close-day', businessDate ? { business_date: businessDate } : {});
     return response.data?.data;
@@ -53,8 +80,8 @@ export const incrementGovernedResetCounter = async (payload) => {
     return response.data?.data;
 };
 
-export const fetchCurrentTerminalShift = async (params = {}) => {
-    const response = await api.get('/pos/terminal/shifts/current', { params });
+export const fetchCurrentTerminalShift = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/terminal/shifts/current', { params, ...requestConfig });
     return response.data?.data;
 };
 
@@ -78,8 +105,8 @@ export const closeTerminalShift = async (shiftId, payload = {}) => {
     return response.data?.data;
 };
 
-export const fetchTerminalTodayDashboard = async (params = {}) => {
-    const response = await api.get('/pos/terminal/dashboard/today', { params });
+export const fetchTerminalTodayDashboard = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/terminal/dashboard/today', { params, ...requestConfig });
     return response.data?.data;
 };
 
@@ -96,12 +123,98 @@ export const updateOnlineOrderStatus = async (posTransactionId, payload = {}) =>
     return response.data?.data;
 };
 
+const unsupportedFiscalEndpointError = (operation) => {
+    const error = new Error(`${operation} is not available in the current backend runtime.`);
+    error.code = 'POS_FISCAL_ENDPOINT_UNAVAILABLE';
+    return error;
+};
+
+const getDataOrFallback = (response) => response.data?.data ?? response.data ?? null;
+
+export const fetchFiscalTerminalRegistrations = async () => {
+    try {
+        const response = await api.get('/pos/fiscal-terminal-registrations');
+        return getDataOrFallback(response) || [];
+    } catch (error) {
+        if (error?.response?.status === 404) {
+            return [];
+        }
+        throw error;
+    }
+};
+
+export const saveFiscalTerminalRegistration = async (payload = {}) => {
+    try {
+        const id = payload?.pos_fiscal_terminal_registration_id;
+        const response = id
+            ? await api.put(`/pos/fiscal-terminal-registrations/${id}`, payload)
+            : await api.post('/pos/fiscal-terminal-registrations', payload);
+        return getDataOrFallback(response);
+    } catch (error) {
+        if (error?.response?.status === 404) {
+            throw unsupportedFiscalEndpointError('Fiscal terminal registration');
+        }
+        throw error;
+    }
+};
+
+export const fetchESalesReports = async (params = {}) => {
+    try {
+        const response = await api.get('/pos/esales-reports', { params });
+        return getDataOrFallback(response) || [];
+    } catch (error) {
+        if (error?.response?.status === 404) {
+            return [];
+        }
+        throw error;
+    }
+};
+
+export const generateESalesReport = async (payload = {}) => {
+    try {
+        const response = await api.post('/pos/esales-reports', payload);
+        return getDataOrFallback(response);
+    } catch (error) {
+        if (error?.response?.status === 404) {
+            throw unsupportedFiscalEndpointError('eSales report generation');
+        }
+        throw error;
+    }
+};
+
+export const updateESalesReportStatus = async (reportId, payload = {}) => {
+    try {
+        const response = await api.patch(`/pos/esales-reports/${reportId}`, payload);
+        return getDataOrFallback(response);
+    } catch (error) {
+        if (error?.response?.status === 404) {
+            throw unsupportedFiscalEndpointError('eSales report status update');
+        }
+        throw error;
+    }
+};
+
+export const fetchFiscalLedgerIntegrity = async (params = {}) => {
+    try {
+        const response = await api.get('/pos/fiscal-ledger-integrity', { params });
+        return getDataOrFallback(response) || null;
+    } catch (error) {
+        if (error?.response?.status === 404) {
+            return null;
+        }
+        throw error;
+    }
+};
+
 export default {
     fetchPosCatalog,
     scanPosBarcode,
     createPosCheckout,
     fetchPosTransactions,
     fetchPosTransactionById,
+    fetchPosDeviceStatus,
+    printPosReceipt,
+    openPosDeviceDrawer,
     closePosDay,
     fetchDailyZReading,
     fetchCurrentXReading,
@@ -113,5 +226,11 @@ export default {
     closeTerminalShift,
     fetchTerminalTodayDashboard,
     fetchIncomingOnlineOrders,
-    updateOnlineOrderStatus
+    updateOnlineOrderStatus,
+    fetchFiscalTerminalRegistrations,
+    saveFiscalTerminalRegistration,
+    fetchESalesReports,
+    generateESalesReport,
+    updateESalesReportStatus,
+    fetchFiscalLedgerIntegrity
 };

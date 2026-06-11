@@ -21,8 +21,17 @@ import {
 import { isStockExemptServiceItem } from '../../shared/utils/stockBearingPolicy.js';
 
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
-const toDateStart = (value) => new Date(`${String(value).slice(0, 10)}T00:00:00.000Z`);
-const toDateEnd = (value) => new Date(`${String(value).slice(0, 10)}T23:59:59.999Z`);
+const normalizeBusinessDateValue = (value) => {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value.toISOString().slice(0, 10);
+    }
+
+    const normalized = String(value || '').trim();
+    const dateMatch = normalized.match(/^(\d{4}-\d{2}-\d{2})/);
+    return dateMatch ? dateMatch[1] : '';
+};
+const toDateStart = (value) => new Date(`${normalizeBusinessDateValue(value)}T00:00:00.000+08:00`);
+const toDateEnd = (value) => new Date(`${normalizeBusinessDateValue(value)}T23:59:59.999+08:00`);
 const toPositiveInt = (value) => {
     const normalized = Number.parseInt(value, 10);
     return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
@@ -327,6 +336,12 @@ const applyLocationStockMap = (items = [], locationStockMap = new Map()) => (
             current_stock: isServiceItem ? 0 : stockValue
         };
     })
+);
+
+const computeTransactionTotalCost = (lines = []) => round4(
+    (Array.isArray(lines) ? lines : []).reduce((sum, line) => (
+        sum + (Number(line?.quantity || 0) * Number(line?.cost_snapshot || 0))
+    ), 0)
 );
 
 const buildTransactionInclude = () => ([
@@ -900,15 +915,27 @@ export const posRepository = {
                     model: dbStore.get('PosTerminalShift'),
                     as: 'shift',
                     attributes: ['pos_terminal_shift_id', 'business_date', 'terminal_id', 'location_id', 'status']
+                },
+                {
+                    model: dbStore.get('PosTransactionLine'),
+                    as: 'lines',
+                    attributes: ['line_id', 'pos_transaction_id', 'quantity', 'cost_snapshot']
                 }
             ],
+            distinct: true,
             order: [['created_at', 'DESC']],
             limit,
             offset
         });
 
         return {
-            transactions: rows,
+            transactions: rows.map((row) => {
+                const payload = toPlain(row);
+                return {
+                    ...payload,
+                    total_cost: computeTransactionTotalCost(payload.lines)
+                };
+            }),
             pagination: {
                 page,
                 limit,
@@ -920,6 +947,8 @@ export const posRepository = {
 
     async getZReadingSummary({ startAt, endAt, terminalId = null, cashierId = null, shiftId = null, locationId = null }, options = {}) {
         const PosTransaction = dbStore.get('PosTransaction');
+        const PosTransactionLine = dbStore.get('PosTransactionLine');
+        const Item = dbStore.get('Item');
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
         const where = buildFinanciallyRecognizedSalesWhere({
@@ -974,16 +1003,171 @@ export const posRepository = {
             transaction: options.transaction
         });
 
+        const lineSummaryRows = PosTransactionLine
+            ? await PosTransactionLine.findAll({
+                include: [{
+                    model: PosTransaction,
+                    as: 'transaction',
+                    attributes: [],
+                    required: true,
+                    where
+                }],
+                attributes: [
+                    [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('quantity')), 0), 'item_count'],
+                    [
+                        sequelize.literal('COALESCE(SUM(`PosTransactionLine`.`quantity` * COALESCE(`PosTransactionLine`.`cost_snapshot`, 0)), 0)'),
+                        'total_cost'
+                    ],
+                    [
+                        sequelize.literal('COALESCE(SUM(CASE WHEN `transaction`.`discount_amount` > 0 THEN `PosTransactionLine`.`quantity` ELSE 0 END), 0)'),
+                        'discount_item_count'
+                    ]
+                ],
+                raw: true,
+                transaction: options.transaction
+            })
+            : [];
+
+        const lineSummary = lineSummaryRows[0] || {};
+
+        const popularItemRows = PosTransactionLine
+            ? await PosTransactionLine.findAll({
+                include: [
+                    {
+                        model: PosTransaction,
+                        as: 'transaction',
+                        attributes: [],
+                        required: true,
+                        where
+                    },
+                    ...(Item ? [{
+                        model: Item,
+                        as: 'item',
+                        attributes: [],
+                        required: false
+                    }] : [])
+                ],
+                attributes: [
+                    'item_id',
+                    ...(Item ? [
+                        [sequelize.col('item.name'), 'item_name'],
+                        [sequelize.col('item.sku_code'), 'sku_code']
+                    ] : []),
+                    [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('quantity')), 0), 'quantity'],
+                    [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('line_subtotal')), 0), 'amount'],
+                    [
+                        sequelize.literal('COALESCE(SUM(`PosTransactionLine`.`quantity` * COALESCE(`PosTransactionLine`.`cost_snapshot`, 0)), 0)'),
+                        'cost'
+                    ]
+                ],
+                group: [
+                    'PosTransactionLine.item_id',
+                    ...(Item ? ['item.name', 'item.sku_code'] : [])
+                ],
+                order: [[sequelize.literal('quantity'), 'DESC']],
+                limit: 10,
+                raw: true,
+                transaction: options.transaction
+            })
+            : [];
+
+        const dailyStartAt = new Date(startAt.getTime() - (10 * 24 * 60 * 60 * 1000));
+        const dailyWhere = buildFinanciallyRecognizedSalesWhere({
+            created_at: {
+                [Op.gte]: dailyStartAt,
+                [Op.lt]: endAt
+            }
+        });
+        if (terminalId) dailyWhere.terminal_id = terminalId;
+        if (cashierId) dailyWhere.cashier_id = cashierId;
+        if (shiftId) dailyWhere.shift_id = shiftId;
+        if (locationId) dailyWhere.location_id = locationId;
+
+        const dailyTransactionBusinessDate = sequelize.literal("DATE_FORMAT(DATE_ADD(`PosTransaction`.`created_at`, INTERVAL 8 HOUR), '%Y-%m-%d')");
+        const dailyLineBusinessDate = sequelize.literal("DATE_FORMAT(DATE_ADD(`transaction`.`created_at`, INTERVAL 8 HOUR), '%Y-%m-%d')");
+
+        const dailyTotalRows = await PosTransaction.findAll({
+            where: dailyWhere,
+            attributes: [
+                [dailyTransactionBusinessDate, 'business_date'],
+                [sequelize.fn('COUNT', sequelize.col('pos_transaction_id')), 'transaction_count'],
+                [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('discount_amount')), 0), 'discount_amount'],
+                [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('total_amount')), 0), 'total_amount']
+            ],
+            group: [dailyTransactionBusinessDate],
+            order: [[dailyTransactionBusinessDate, 'ASC']],
+            raw: true,
+            transaction: options.transaction
+        });
+        const dailyLineRows = PosTransactionLine
+            ? await PosTransactionLine.findAll({
+                include: [{
+                    model: PosTransaction,
+                    as: 'transaction',
+                    attributes: [],
+                    required: true,
+                    where: dailyWhere
+                }],
+                attributes: [
+                    [dailyLineBusinessDate, 'business_date'],
+                    [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('quantity')), 0), 'item_count'],
+                    [
+                        sequelize.literal('COALESCE(SUM(`PosTransactionLine`.`quantity` * COALESCE(`PosTransactionLine`.`cost_snapshot`, 0)), 0)'),
+                        'total_cost'
+                    ],
+                    [
+                        sequelize.literal('COALESCE(SUM(CASE WHEN `transaction`.`discount_amount` > 0 THEN `PosTransactionLine`.`quantity` ELSE 0 END), 0)'),
+                        'discount_item_count'
+                    ]
+                ],
+                group: [dailyLineBusinessDate],
+                raw: true,
+                transaction: options.transaction
+            })
+            : [];
+        const dailyLinesByDate = new Map(dailyLineRows.map((row) => [
+            String(row?.business_date || '').slice(0, 10),
+            row
+        ]));
+
         return {
             transaction_count: Number.parseInt(summaryRow?.transaction_count || 0, 10),
             subtotal_amount: round4(summaryRow?.subtotal_amount),
             discount_amount: round4(summaryRow?.discount_amount),
             service_fee_total: round4(summaryRow?.service_fee_total),
+            restaurant_service_charge_total: round4(summaryRow?.restaurant_service_charge_total),
             vatable_sales: round4(summaryRow?.vatable_sales),
             vat_amount: round4(summaryRow?.vat_amount),
             vat_exempt_sales: round4(summaryRow?.vat_exempt_sales),
             zero_rated_sales: round4(summaryRow?.zero_rated_sales),
             total_amount: round4(summaryRow?.total_amount),
+            item_count: round4(lineSummary?.item_count),
+            discount_item_count: round4(lineSummary?.discount_item_count),
+            total_cost: round4(lineSummary?.total_cost),
+            refund_amount: 0,
+            refunded_item_count: 0,
+            net_profit: round4(summaryRow?.total_amount) - round4(lineSummary?.total_cost),
+            daily_totals: dailyTotalRows.map((row) => ({
+                business_date: row.business_date,
+                transaction_count: Number.parseInt(row.transaction_count || 0, 10),
+                total_amount: round4(row.total_amount),
+                discount_amount: round4(row.discount_amount),
+                item_count: round4(dailyLinesByDate.get(String(row.business_date || '').slice(0, 10))?.item_count),
+                discount_item_count: round4(dailyLinesByDate.get(String(row.business_date || '').slice(0, 10))?.discount_item_count),
+                total_cost: round4(dailyLinesByDate.get(String(row.business_date || '').slice(0, 10))?.total_cost),
+                refund_amount: 0,
+                refunded_item_count: 0,
+                net_profit: round4(row.total_amount) - round4(dailyLinesByDate.get(String(row.business_date || '').slice(0, 10))?.total_cost)
+            })),
+            popular_items: popularItemRows.map((row) => ({
+                item_id: toPositiveInt(row.item_id),
+                item_name: row.item_name || `Item #${row.item_id}`,
+                sku_code: row.sku_code || null,
+                quantity: round4(row.quantity),
+                amount: round4(row.amount),
+                cost: round4(row.cost),
+                net_profit: round4(row.amount) - round4(row.cost)
+            })),
             payment_breakdown: paymentBreakdownRows.map((row) => ({
                 payment_type: row.payment_type,
                 count: Number.parseInt(row.count || 0, 10),
@@ -1657,6 +1841,18 @@ export const posRepository = {
     async createCashDrawerEvent(payload = {}, options = {}) {
         const PosCashDrawerEvent = dbStore.get('PosCashDrawerEvent');
         return PosCashDrawerEvent.create(payload, { transaction: options.transaction });
+    },
+
+    async createAuditLog(payload = {}, options = {}) {
+        const AuditLog = dbStore.get('AuditLog');
+        if (!AuditLog) {
+            throw new Error('AuditLog model is unavailable');
+        }
+
+        const created = await AuditLog.create(payload, {
+            transaction: options.transaction
+        });
+        return toPlain(created);
     },
 
     async listCashDrawerEventsByShiftId(shiftId, options = {}) {

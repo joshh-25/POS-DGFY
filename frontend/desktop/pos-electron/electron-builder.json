@@ -1,0 +1,43 @@
+{
+  "appId": "com.dgfy.pos",
+  "productName": "DGFY POS",
+  "directories": {
+    "output": "desktop-dist"
+  },
+  "files": [
+    "desktop/pos-electron/main.cjs",
+    "desktop/pos-electron/preload.cjs",
+    "desktop/pos-electron/setup.html",
+    "desktop/pos-electron/setup.css",
+    "desktop/pos-electron/setup.js",
+    "package.json"
+  ],
+  "extraResources": [
+    {
+      "from": "../dist-apps/pos",
+      "to": "dist-apps/pos",
+      "filter": [
+        "**/*"
+      ]
+    }
+  ],
+  "extraMetadata": {
+    "main": "desktop/pos-electron/main.cjs"
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "artifactName": "DGFY-POS-Setup-${version}.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true
+  }
+}

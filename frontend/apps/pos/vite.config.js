@@ -7,10 +7,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const frontendRoot = path.resolve(__dirname, '../..');
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000';
-const allowedHosts = ['pos.surebizcorp.com', 'pos.dgfy.ph', 'localhost', '127.0.0.1'];
+const allowedHosts = true;
 
 export default defineConfig({
   root: __dirname,
+  base: './',
   plugins: [react()],
   define: {
     'import.meta.env.VITE_APP_SURFACE': JSON.stringify('pos')
@@ -29,6 +30,7 @@ export default defineConfig({
     extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json']
   },
   server: {
+    host: true,
     port: 5174,
     allowedHosts,
     proxy: {
@@ -45,8 +47,8 @@ export default defineConfig({
     }
   },
   preview: {
-    port: 5174,
     host: true,
+    port: 5174,
     allowedHosts
   },
   build: {

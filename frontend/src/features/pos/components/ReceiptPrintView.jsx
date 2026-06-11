@@ -4,6 +4,7 @@ const money = (value) => `PHP ${Number(value || 0).toFixed(2)}`;
 const DGFY_BRAND_NAME = 'DGFY';
 const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
 const DGFY_ACRONYM = 'Discover Goods For You';
+const DGFY_RECEIPT_LOGO_SRC = './dgfy-logo.png';
 
 const parseTransactionMetadata = (value) => {
     if (!value) return {};
@@ -80,38 +81,44 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
     const isTrainingContext = documentContext === 'training_test';
     const documentLabel = isFiscal ? 'FISCAL INVOICE' : 'NON-FISCAL SLIP';
     const restaurantServiceChargeAmount = Number(transaction.restaurant_service_charge_amount || 0);
+    const businessName = String(businessSettings.pos_business_name || '').trim();
+    const shouldShowBusinessName = businessName && businessName.toLowerCase() !== DGFY_BRAND_NAME.toLowerCase();
 
     return (
-        <div className="bg-white border border-slate-200 rounded-xl p-4 print:border-none print:rounded-none print:p-0">
-            <div className="text-center border-b border-dashed border-slate-300 pb-3 mb-3">
-                <p className="font-semibold text-slate-900">{businessSettings.pos_business_name || DGFY_BRAND_NAME}</p>
-                {businessSettings.pos_business_name && (
-                    <p className="text-xs text-slate-600">Brand: {DGFY_BRAND_NAME}</p>
+        <div className="pos-thermal-receipt bg-white border border-slate-200 rounded-xl p-4 text-[13px] leading-[1.3] print:border-none print:rounded-none print:p-0 print:text-[11px] print:leading-[1.25]">
+            <div className="text-center border-b border-dashed border-slate-300 pb-3 mb-3 print:pb-2 print:mb-2">
+                <img
+                    src={DGFY_RECEIPT_LOGO_SRC}
+                    alt="DGFY"
+                    className="mx-auto mb-2 h-auto w-28 object-contain print:w-24"
+                />
+                {shouldShowBusinessName && (
+                    <p className="font-semibold text-slate-900">{businessName}</p>
                 )}
                 {isFiscal && businessSettings.pos_tin_branch && (
-                    <p className="text-xs text-slate-600">TIN/Branch: {businessSettings.pos_tin_branch}</p>
+                    <p className="text-xs text-slate-600 print:text-[10px]">TIN/Branch: {businessSettings.pos_tin_branch}</p>
                 )}
                 {businessSettings.pos_address && (
-                    <p className="text-xs text-slate-600">{businessSettings.pos_address}</p>
+                    <p className="text-xs text-slate-600 print:text-[10px]">{businessSettings.pos_address}</p>
                 )}
                 {isFiscal && (
-                    <div className="text-xs text-slate-500 mt-1 space-y-0.5">
+                    <div className="text-xs text-slate-500 mt-1 space-y-0.5 print:text-[10px]">
                         {businessSettings.pos_ptu_number && <p>PTU: {businessSettings.pos_ptu_number}</p>}
                         {businessSettings.pos_min_number && <p>MIN: {businessSettings.pos_min_number}</p>}
                         {businessSettings.pos_accreditation_number && <p>Accreditation: {businessSettings.pos_accreditation_number}</p>}
                     </div>
                 )}
-                <h3 className="font-semibold text-slate-900 mt-2">{documentLabel}</h3>
+                <h3 className="font-semibold text-slate-900 mt-2 print:mt-1 print:text-[12px]">{documentLabel}</h3>
                 {!isFiscal && (
-                    <div className={`mt-1 rounded-md border px-2 py-1 text-[11px] uppercase tracking-wide ${isTrainingContext ? 'border-red-300 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                    <div className={`mt-1 rounded-md border px-2 py-1 text-[11px] uppercase tracking-wide print:px-1.5 print:py-1 print:text-[9px] ${isTrainingContext ? 'border-red-300 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
                         <p className="font-semibold">NOT A FISCAL RECEIPT</p>
                         <p>{isTrainingContext ? 'Training/Test mode only' : 'Non-fiscal document'}</p>
                     </div>
                 )}
-                <p className="text-xs text-slate-500">{transaction.invoice_number}</p>
-                <p className="text-xs text-slate-500">{printedAt}</p>
+                <p className="text-xs text-slate-500 print:text-[10px]">{transaction.invoice_number}</p>
+                <p className="text-xs text-slate-500 print:text-[10px]">{printedAt}</p>
                 {(transaction.fnb_check_id || transaction.fnb_table_label_snapshot || transaction.fnb_guest_count) && (
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-slate-500 print:text-[10px]">
                          F&B Check{transaction.fnb_check_id ? ` #${transaction.fnb_check_id}` : ''}
                         {transaction.fnb_table_label_snapshot ? ` Table ${transaction.fnb_table_label_snapshot}` : ''}
                         {transaction.fnb_guest_count ? ` Guests ${transaction.fnb_guest_count}` : ''}
@@ -119,81 +126,81 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                 )}
             </div>
 
-            <div className="space-y-2 text-sm mb-4">
+            <div className="space-y-2 text-sm mb-4 print:space-y-1.5 print:mb-3 print:text-[11px]">
                 {lines.map((line) => {
                     const modifiers = parseArrayMetadata(line.fnb_modifiers_snapshot);
                     return (
-                        <div key={line.line_id} className="flex items-start justify-between gap-4">
-                            <div>
+                        <div key={line.line_id} className="flex items-start justify-between gap-3 print:gap-2">
+                            <div className="min-w-0 flex-1 break-words">
                                 <p className="font-medium text-slate-900">{line.item?.name || `Item #${line.item_id}`}</p>
-                                <p className="text-xs text-slate-500">
+                                <p className="text-xs text-slate-500 print:text-[10px]">
                                     {Number(line.quantity).toFixed(2)} {line.unit_of_measure || ''} x {money(line.sale_price)}
                                 </p>
                                 {(line.fnb_course_snapshot || modifiers.length || line.fnb_special_instructions) && (
-                                    <p className="text-xs text-slate-500">
+                                    <p className="text-xs text-slate-500 print:text-[10px]">
                                         {line.fnb_course_snapshot ? `Course: ${line.fnb_course_snapshot}` : ''}
                                         {modifiers.length ? ` Modifiers: ${modifiers.map((modifier) => modifier.option_name || modifier.name).filter(Boolean).join(', ')}` : ''}
                                         {line.fnb_special_instructions ? ` Notes: ${line.fnb_special_instructions}` : ''}
                                     </p>
                                 )}
                             </div>
-                            <p className="font-medium text-slate-900">{money(line.line_subtotal)}</p>
+                            <p className="shrink-0 whitespace-nowrap pl-2 text-right font-medium tabular-nums text-slate-900">{money(line.line_subtotal)}</p>
                         </div>
                     );
                 })}
             </div>
 
-            <div className="border-t border-dashed border-slate-300 pt-3 text-sm space-y-1">
-                <div className="flex justify-between text-slate-600">
-                    <span>Subtotal</span>
-                    <span>{money(transaction.subtotal_amount)}</span>
+            <div className="border-t border-dashed border-slate-300 pt-3 text-sm space-y-1 print:pt-2 print:text-[11px]">
+                <div className="flex items-start justify-between gap-3 text-slate-600 print:gap-2">
+                    <span className="min-w-0 flex-1">Subtotal</span>
+                    <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.subtotal_amount)}</span>
                 </div>
-                <div className="flex justify-between text-slate-600">
-                    <span>Vatable Sales</span>
-                    <span>{money(transaction.vatable_sales)}</span>
+                <div className="flex items-start justify-between gap-3 text-slate-600 print:gap-2">
+                    <span className="min-w-0 flex-1">Vatable Sales</span>
+                    <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.vatable_sales)}</span>
                 </div>
-                <div className="flex justify-between text-slate-600">
-                    <span>VAT Amount</span>
-                    <span>{money(transaction.vat_amount)}</span>
+                <div className="flex items-start justify-between gap-3 text-slate-600 print:gap-2">
+                    <span className="min-w-0 flex-1">VAT Amount</span>
+                    <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.vat_amount)}</span>
                 </div>
-                <div className="flex justify-between text-slate-600">
-                    <span>VAT Exempt Sales</span>
-                    <span>{money(transaction.vat_exempt_sales)}</span>
+                <div className="flex items-start justify-between gap-3 text-slate-600 print:gap-2">
+                    <span className="min-w-0 flex-1">VAT Exempt Sales</span>
+                    <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.vat_exempt_sales)}</span>
                 </div>
-                <div className="flex justify-between text-slate-600">
-                    <span>Zero Rated Sales</span>
-                    <span>{money(transaction.zero_rated_sales)}</span>
+                <div className="flex items-start justify-between gap-3 text-slate-600 print:gap-2">
+                    <span className="min-w-0 flex-1">Zero Rated Sales</span>
+                    <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.zero_rated_sales)}</span>
                 </div>
-                <div className="flex justify-between text-slate-600">
-                    <span>
+                <div className="flex items-start justify-between gap-3 text-slate-600 print:gap-2">
+                    <span className="min-w-0 flex-1">
                         Discount
                         {transaction.discount_label_snapshot ? ` (${transaction.discount_label_snapshot})` : ''}
                         {transaction.discount_rate_snapshot != null ? ` @ ${Number(transaction.discount_rate_snapshot).toFixed(2)}%` : ''}
                     </span>
-                    <span>{money(transaction.discount_amount)}</span>
+                    <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.discount_amount)}</span>
                 </div>
-                <div className="flex justify-between text-slate-600">
-                    <span>
+                <div className="flex items-start justify-between gap-3 text-slate-600 print:gap-2">
+                    <span className="min-w-0 flex-1">
                         {transaction.service_fee_label_snapshot || DGFY_CONVENIENCE_FEE_LABEL}
                         {transaction.service_fee_method_snapshot ? ` (${transaction.service_fee_method_snapshot})` : ''}
                     </span>
-                    <span>{money(transaction.service_fee_amount)}</span>
+                    <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.service_fee_amount)}</span>
                 </div>
                 {restaurantServiceChargeAmount > 0 && (
-                    <div className="flex justify-between text-slate-600">
-                        <span>
+                    <div className="flex items-start justify-between gap-3 text-slate-600 print:gap-2">
+                        <span className="min-w-0 flex-1">
                             {transaction.restaurant_service_charge_label_snapshot || 'Restaurant service charge'}
                             {transaction.restaurant_service_charge_rate_snapshot != null ? ` @ ${Number(transaction.restaurant_service_charge_rate_snapshot).toFixed(2)}%` : ''}
                         </span>
-                        <span>{money(restaurantServiceChargeAmount)}</span>
+                        <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(restaurantServiceChargeAmount)}</span>
                     </div>
                 )}
-                <div className="flex justify-between text-base font-semibold text-slate-900 pt-1">
-                    <span>Total</span>
-                    <span>{money(transaction.total_amount)}</span>
+                <div className="flex items-start justify-between gap-3 pt-1 text-base font-semibold text-slate-900 print:gap-2 print:text-[12px]">
+                    <span className="min-w-0 flex-1">Total</span>
+                    <span className="shrink-0 whitespace-nowrap pl-2 text-right tabular-nums">{money(transaction.total_amount)}</span>
                 </div>
             </div>
-            <div className="text-center text-xs text-slate-500 mt-3 pt-3 border-t border-dashed border-slate-300 space-y-0.5">
+            <div className="text-center text-xs text-slate-500 mt-3 pt-3 border-t border-dashed border-slate-300 space-y-0.5 print:mt-2 print:pt-2 print:text-[9px]">
                 <p>Document context: {documentContext}</p>
                 <p>Receipt contract version: {receiptContractVersion}</p>
                 <p>Sequence control: invoice number is system-generated and immutable.</p>

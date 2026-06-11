@@ -25,7 +25,9 @@ import {
     validateSwitchTerminalShiftLocation,
     validateCashDrawerEvent,
     validateCloseTerminalShift,
-    validateUpdateOnlineOrderStatus
+    validateUpdateOnlineOrderStatus,
+    validatePosDeviceReceiptPrint,
+    validatePosDeviceDrawerOpen
 } from '../validators/posValidator.js';
 
 const router = express.Router();
@@ -51,6 +53,9 @@ router.post('/terminal/shifts/:id/switch-location', checkPermission(PERMISSIONS.
 router.post('/terminal/shifts/:id/cash-events', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), validateShiftIdParam, validateCashDrawerEvent, posController.recordCashDrawerEvent);
 router.post('/terminal/shifts/:id/close', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), validateShiftIdParam, validateCloseTerminalShift, posController.closeTerminalShift);
 router.get('/terminal/dashboard/today', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateTerminalDashboardTodayQuery, posController.getTerminalTodayDashboard);
+router.get('/device/status', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.getDeviceStatus);
+router.post('/device/print-receipt', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), validatePosDeviceReceiptPrint, posController.printReceipt);
+router.post('/device/open-drawer', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), validatePosDeviceDrawerOpen, posController.openDeviceDrawer);
 router.get('/incoming-orders', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateIncomingOnlineOrdersQuery, posController.listIncomingOnlineOrders);
 router.patch('/orders/:id/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateOnlineOrderStatus, posController.updateOnlineOrderStatus);
 router.post('/z-reading/close-day', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), validateCloseDayBody, posController.closeDayZReading);

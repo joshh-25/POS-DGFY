@@ -25,7 +25,10 @@ export {
     closeTerminalShift,
     getTerminalTodayDashboard,
     listIncomingOnlineOrders,
-    updateOnlineOrderStatus
+    updateOnlineOrderStatus,
+    getDeviceStatus,
+    printReceipt,
+    openDeviceDrawer
 } from '../modules/pos/controllers/posHandlers.js';
 
 import {
@@ -51,7 +54,10 @@ import {
     closeTerminalShift,
     getTerminalTodayDashboard,
     listIncomingOnlineOrders,
-    updateOnlineOrderStatus
+    updateOnlineOrderStatus,
+    getDeviceStatus,
+    printReceipt,
+    openDeviceDrawer
 } from '../modules/pos/controllers/posHandlers.js';
 
 export default {
@@ -77,5 +83,8 @@ export default {
     closeTerminalShift,
     getTerminalTodayDashboard,
     listIncomingOnlineOrders,
-    updateOnlineOrderStatus
+    updateOnlineOrderStatus,
+    getDeviceStatus,
+    printReceipt,
+    openDeviceDrawer
 };

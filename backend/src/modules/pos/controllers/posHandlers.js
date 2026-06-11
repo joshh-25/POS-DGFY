@@ -21,7 +21,10 @@ import {
     closeTerminalShiftUseCase,
     getTerminalTodayDashboardUseCase,
     listIncomingOnlineOrdersUseCase,
-    updateOnlineOrderStatusUseCase
+    updateOnlineOrderStatusUseCase,
+    getPosDeviceStatusUseCase,
+    printPosReceiptUseCase,
+    openPosDrawerUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
@@ -339,6 +342,82 @@ export const updateOnlineOrderStatus = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: 'Online order status updated successfully',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getDeviceStatus = async (req, res, next) => {
+    try {
+        const result = await getPosDeviceStatusUseCase({
+            user: req.user,
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const printReceipt = async (req, res, next) => {
+    try {
+        const result = await printPosReceiptUseCase({
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS receipt print request sent',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const openDeviceDrawer = async (req, res, next) => {
+    try {
+        const result = await openPosDrawerUseCase({
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS cash drawer open request sent',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -670,5 +749,8 @@ export default {
     closeTerminalShift,
     getTerminalTodayDashboard,
     listIncomingOnlineOrders,
-    updateOnlineOrderStatus
+    updateOnlineOrderStatus,
+    getDeviceStatus,
+    printReceipt,
+    openDeviceDrawer
 };

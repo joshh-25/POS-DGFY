@@ -95,9 +95,9 @@ const checkoutPosSchema = Joi.object({
     const hasProfile = Boolean(String(value?.discount_profile_name || '').trim());
     const hasDiscountRate = value?.discount_rate !== undefined && value?.discount_rate !== null;
 
-    if (hasDiscountRate && !hasProfile) {
+    if (hasDiscountRate && !hasProfile && discountAmount <= 0) {
         return helpers.error('any.invalid', {
-            message: 'discount_rate requires discount_profile_name'
+            message: 'manual discount_rate requires discount_amount'
         });
     }
 
@@ -234,6 +234,22 @@ const updateOnlineOrderStatusSchema = Joi.object({
     fulfillment_status: Joi.string().valid(...ONLINE_FULFILLMENT_STATUSES).required()
 });
 
+const devicePrintReceiptSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).optional(),
+    transaction_id: Joi.number().integer().positive().required(),
+    copies: Joi.number().integer().min(1).max(5).default(1),
+    reason: Joi.string().trim().max(255).allow('', null).optional(),
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
+});
+
+const deviceOpenDrawerSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).optional(),
+    shift_id: Joi.number().integer().positive().required(),
+    transaction_id: Joi.number().integer().positive().allow(null).optional(),
+    reason: Joi.string().trim().min(3).max(255).required(),
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
+});
+
 const buildValidationErrorResponse = (error) => ({
     success: false,
     data: null,
@@ -280,3 +296,5 @@ export const validateSwitchTerminalShiftLocation = validateSchema(switchTerminal
 export const validateCashDrawerEvent = validateSchema(cashDrawerEventSchema, 'body', 'validatedData');
 export const validateCloseTerminalShift = validateSchema(closeTerminalShiftSchema, 'body', 'validatedData');
 export const validateUpdateOnlineOrderStatus = validateSchema(updateOnlineOrderStatusSchema, 'body', 'validatedData');
+export const validatePosDeviceReceiptPrint = validateSchema(devicePrintReceiptSchema, 'body', 'validatedData');
+export const validatePosDeviceDrawerOpen = validateSchema(deviceOpenDrawerSchema, 'body', 'validatedData');

@@ -1,6 +1,5 @@
 import api from './api.js';
 import { clearClientSession } from './sessionCleanup.js';
-import { getAccessToken, refreshBrowserSession, setBrowserSession } from './browserSession.js';
 
 export const register = async (userData, companyToken) => {
   // Pass company token in header for the registration request (to route to correct DB)
@@ -12,7 +11,10 @@ export const register = async (userData, companyToken) => {
 
   const response = await api.post('/auth/register', userData, config);
 
-  setBrowserSession({ companyToken });
+  // Store company token for future requests
+  if (companyToken) {
+    localStorage.setItem('companyToken', companyToken);
+  }
 
   return response.data.data;
 };
@@ -34,7 +36,7 @@ export const requestEmailOtp = async ({ purpose, email, invitationToken, company
   return response.data.data;
 };
 
-export const login = async (credentials) => {
+export const login = async (credentials, requestConfig = {}) => {
   const resolvedCompanyToken = String(
     credentials?.companyToken || ''
   ).trim();
@@ -46,7 +48,9 @@ export const login = async (credentials) => {
   const config = {
     headers: {
       'x-company-token': resolvedCompanyToken
-    }
+    },
+    skipAuthRefresh: true,
+    ...requestConfig
   };
 
   const response = await api.post('/auth/login', {
@@ -54,8 +58,13 @@ export const login = async (credentials) => {
     password: credentials.password
   }, config);
 
-  const { token } = response.data.data;
-  setBrowserSession({ token, companyToken: resolvedCompanyToken });
+  const { token, refreshToken } = response.data.data;
+  localStorage.setItem('authToken', token);
+  localStorage.setItem('refreshToken', refreshToken);
+  // Store company token for future requests
+  if (resolvedCompanyToken) {
+    localStorage.setItem('companyToken', resolvedCompanyToken);
+  }
 
   // Dispatch custom event to notify PermissionContext to reload
   window.dispatchEvent(new CustomEvent('auth:login'));
@@ -84,18 +93,22 @@ export const logout = async () => {
 };
 
 export const refreshToken = async () => {
-  return refreshBrowserSession();
+  const refreshToken = localStorage.getItem('refreshToken');
+  const response = await api.post('/auth/refresh-token', { refreshToken });
+  const { token, refreshToken: newRefreshToken } = response.data.data;
+  localStorage.setItem('authToken', token);
+  if (newRefreshToken) {
+    localStorage.setItem('refreshToken', newRefreshToken);
+  }
+  return token;
 };
 
-export const getCurrentUser = async () => {
-  let token = getAccessToken();
-  if (!token) {
-    token = await refreshBrowserSession().catch(() => '');
-  }
+export const getCurrentUser = async (requestConfig = {}) => {
+  const token = localStorage.getItem('authToken');
   if (!token) return null;
 
   try {
-    const response = await api.get('/users/me');
+    const response = await api.get('/users/me', requestConfig);
     return response.data.data;
   } catch (error) {
     if (error.response?.status === 401) {

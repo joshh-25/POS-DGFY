@@ -346,6 +346,37 @@ const normalizeZReadingSummary = (summary = {}) => ({
     vat_exempt_sales: round4(summary?.vat_exempt_sales),
     zero_rated_sales: round4(summary?.zero_rated_sales),
     total_amount: round4(summary?.total_amount),
+    item_count: round4(summary?.item_count),
+    discount_item_count: round4(summary?.discount_item_count),
+    total_cost: round4(summary?.total_cost),
+    refund_amount: round4(summary?.refund_amount),
+    refunded_item_count: round4(summary?.refunded_item_count),
+    net_profit: round4(summary?.net_profit),
+    daily_totals: Array.isArray(summary?.daily_totals)
+        ? summary.daily_totals.map((entry) => ({
+            business_date: entry?.business_date || null,
+            transaction_count: Number.parseInt(entry?.transaction_count || 0, 10),
+            total_amount: round4(entry?.total_amount),
+            discount_amount: round4(entry?.discount_amount),
+            item_count: round4(entry?.item_count),
+            discount_item_count: round4(entry?.discount_item_count),
+            total_cost: round4(entry?.total_cost),
+            refund_amount: round4(entry?.refund_amount),
+            refunded_item_count: round4(entry?.refunded_item_count),
+            net_profit: round4(entry?.net_profit)
+        }))
+        : [],
+    popular_items: Array.isArray(summary?.popular_items)
+        ? summary.popular_items.map((entry) => ({
+            item_id: parsePositiveInt(entry?.item_id),
+            item_name: String(entry?.item_name || '').trim() || null,
+            sku_code: entry?.sku_code || null,
+            quantity: round4(entry?.quantity),
+            amount: round4(entry?.amount),
+            cost: round4(entry?.cost),
+            net_profit: round4(entry?.net_profit)
+        }))
+        : [],
     payment_breakdown: Array.isArray(summary?.payment_breakdown)
         ? summary.payment_breakdown.map((entry) => ({
             payment_type: entry?.payment_type || null,
@@ -1174,19 +1205,23 @@ const resolveCheckoutDiscount = ({ payload, subtotalAmount, settings }) => {
     const requestedRate = payload?.discount_rate;
 
     if (!profileName) {
+        if (requestedDiscount > 0) {
+            const manualRate = requestedRate == null ? null : round4(requestedRate);
+            const manualDiscountAmount = manualRate == null
+                ? requestedDiscount
+                : round4(subtotalAmount * (manualRate / 100));
+            return {
+                discountAmount: Math.min(manualDiscountAmount, subtotalAmount),
+                discountLabelSnapshot: 'Manual Discount',
+                discountRateSnapshot: manualRate
+            };
+        }
         if (requestedRate != null) {
             throw new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
-                'discount_rate requires discount_profile_name.',
+                'manual discount_rate requires discount_amount.',
                 { statusCode: 422 }
             );
-        }
-        if (requestedDiscount > 0) {
-            return {
-                discountAmount: Math.min(requestedDiscount, subtotalAmount),
-                discountLabelSnapshot: 'Manual Discount',
-                discountRateSnapshot: null
-            };
         }
         return {
             discountAmount: 0,

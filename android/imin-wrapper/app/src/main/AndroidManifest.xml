@@ -3,6 +3,20 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <queries>
+        <package android:name="com.neo.printer.sdk" />
+        <package android:name="com.imin.printerservice" />
+        <intent>
+            <action android:name="com.neo.printer.sdk.core.ApiAdapterManager.NeoPrinterService" />
+        </intent>
+        <intent>
+            <action android:name="com.imin.printerservice.NeoPrinterService" />
+        </intent>
+    </queries>
 
     <application
         android:allowBackup="true"
@@ -15,7 +29,7 @@
         android:theme="@style/Theme.DGFYIMinPOS"
         android:usesCleartextTraffic="true">
         <activity
-            android:name=".MainActivity"
+            android:name=".WebPosActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
@@ -24,6 +38,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 
 </manifest>

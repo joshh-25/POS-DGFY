@@ -1,6 +1,8 @@
 import React from 'react';
 import {
   Banknote,
+  BarChart3,
+  ClipboardList,
   Clock3,
   History,
   ListChecks,
@@ -14,7 +16,9 @@ import {
   UserRound
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { resolveAppAssetUrl } from '@/src/utils/assetUrl.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
+const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
 
 const NavButton = ({ active = false, label, onClick, icon: Icon, disabled = false, caption = '', testId = '' }) => (
   <button
@@ -80,7 +84,7 @@ export default function TerminalWorkspaceSidebar({
         <div className="relative h-[60px] overflow-hidden bg-transparent px-4">
           <div className="flex h-full items-center justify-center">
             <img
-              src="/dgfy-horizontal_logo-removebg-preview.png"
+              src={DGFY_POS_LOGO}
               alt="DGFY"
               className="w-[120px] h-auto object-contain"
             />
@@ -104,11 +108,6 @@ export default function TerminalWorkspaceSidebar({
 
         <div className={`px-3 ${showBrand ? 'py-6' : 'pb-6 pt-3'}`}>
         <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Primary Modes</p>
-        {showScrollZoneBadge && (
-          <div className="mt-2 rounded-md border border-blue-100 bg-blue-50 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide text-[#1A4E8D]">
-            Scroll zone enabled
-          </div>
-        )}
         <div className="mt-3 space-y-2">
           <NavButton
             label="Sell"
@@ -130,6 +129,32 @@ export default function TerminalWorkspaceSidebar({
                 : (!canViewPos ? 'POS view permission required' : 'Invoice lookups and audit trail')
             }
             testId="pos-nav-history"
+          />
+          <NavButton
+            label="Report"
+            icon={BarChart3}
+            active={currentViewMode === 'reports'}
+            onClick={() => onSelectViewMode('reports')}
+            disabled={locked || !canViewPos}
+            caption={
+              locked
+                ? 'Unlock terminal to continue'
+                : (!canViewPos ? 'POS view permission required' : 'Daily totals, popular items, and transactions')
+            }
+            testId="pos-nav-reports"
+          />
+          <NavButton
+            label="Items"
+            icon={ClipboardList}
+            active={currentViewMode === 'items'}
+            onClick={() => onSelectViewMode('items')}
+            disabled={locked || !canViewPos}
+            caption={
+              locked
+                ? 'Unlock terminal to continue'
+                : (!canViewPos ? 'POS view permission required' : 'Edit SKUpervisor item price and cost')
+            }
+            testId="pos-nav-items"
           />
           {showIncomingQueue && (
             <NavButton
