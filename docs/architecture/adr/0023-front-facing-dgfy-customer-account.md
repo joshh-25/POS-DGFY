@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-06-08
+last_reviewed: 2026-06-11
 applies_to: dgfy_accounts, storefront_account, customer_orders, customer_tracking
 topic: front_facing_dgfy_customer_account
 ---
@@ -30,6 +30,7 @@ DGFY account registration now precedes company registration. The same global DGF
 10. The front-facing account drawer exposes tracking recovery, authenticated reference tracking, a unified history view with store/mode filters, eligible cancel/reorder actions, typed review submission, saved-address management, loyalty summary, and the separate business-registration route. Storefront DGFY registration uses the same account legal-terms endpoint and acknowledgement payload as `/register-company`, and the drawer/header account action must remain immediately visible as `Log in / Sign up`.
 11. Storefront checkout and service booking responses must return an `account_action` that clearly separates authenticated DGFY account linkage, guest checkout with a new email eligible for account signup, guest checkout with an existing DGFY email, and download-only guest fallback. Frontend copy must use order/booking-specific wording so guest service bookings are not described as generic checkout orders.
 12. Full historical customer activity migration is handled by the governed operator command `npm run backfill:dgfy-customer-activity:apply`. The apply command runs landlord migrations first, then scans all active DGFY accounts and tenants. The dry-run command `npm run backfill:dgfy-customer-activity -- ...` pages tenants/accounts without writing activity rows. Historical backfill covers POS customer orders, F&B checks linked through POS transactions, Services bookings, and Hospitality reservations. It records `dgfy_customer_backfill_runs` in apply mode, supports inactive tenants only by explicit flag, and can fail fast for deployment gates. Operators can require mode discovery with `--require-activity-types=order,service_booking,hospitality_booking,fnb_order`; this is the production evidence gate for deployments that must prove all customer-facing modes exist before apply. Dry-run can continue without the run-log table so operators can preview pre-migration environments; apply mode remains schema-strict after migration.
+13. Storefront-originated DGFY customer sign-in/signup that completes on the SKUpervisor auth host must return to `dgfy.ph` with a one-time DGFY handoff token when the target is an absolute Storefront URL. The Storefront exchanges that token before showing guest state, removes the one-time token from the URL, and then loads account context. This is the required cross-origin account bridge when production browser cookies are host-only under ADR 0026.
 
 ## Consequences
 
@@ -39,6 +40,7 @@ DGFY account registration now precedes company registration. The same global DGF
 4. Recovery, reviews, loyalty, reorder, and address management have backend and storefront contracts before future native mobile or admin moderation surfaces expand the product.
 5. Dashboard loading stays deterministic and account-owned. Historical import work must preserve explicit DGFY account linkage rather than inferring ownership from guest contact data.
 6. Guest review invites must remain separate from signed-in DGFY account history. A guest invite token can validate and submit a pending review for its fulfilled order target, but it must not create, mutate, or replace account-owned activity/history state.
+7. Cross-origin customer auth cannot rely on the Skupervisor host cookie being readable by Storefront. The handoff exchange is the durable return contract unless production intentionally enables a shared `SESSION_COOKIE_DOMAIN=.dgfy.ph` session policy.
 
 ## Validation
 
@@ -50,3 +52,4 @@ Required validation for this flow:
 4. Existing Storefront checkout/order tests proving DGFY-linked store-customer behavior does not regress, plus Services booking tests proving guest signup eligibility and authenticated-account linkage.
 5. Historical backfill tests proving dry-run/apply behavior, account matching, unbounded tenant/activity traversal when requested, POS order activity, F&B order activity, Services booking activity, Hospitality reservation activity, and run audit updates.
 6. Storefront build and rendered smoke for the discovery header showing both public account and business-registration actions.
+7. Frontend DGFY auth and discovery account regression tests proving absolute Storefront return URLs receive a one-time handoff token and the Storefront consumes it before rendering guest state.
