@@ -68,6 +68,7 @@ htdocs/.htaccess
 .vite/
 .deploy-state/
 /dist-apps/
+/frontend/desktop-dist/
 /frontend/apps/store/src/scratch/
 /frontend/apps/store/.tmp-store-build/
 
