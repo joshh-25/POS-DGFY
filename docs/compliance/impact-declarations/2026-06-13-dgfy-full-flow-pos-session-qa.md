@@ -8,7 +8,7 @@ classification: regulatory
 surfaces: pos,terminal,storefront,dgfy_account,tenant_registration,inventory,settings,compliance,admin,commerce_payments
 reason_codes_impacted: ALLOWED,VALIDATION_FAILED,UNAUTHORIZED,RESOURCE_NOT_FOUND,CONFLICT
 policy_version: 2026.06.13
-verification_evidence: npm run check:architecture,npm run lint:docs,npm --prefix backend test -- --runTestsByPath focused-dgfy-pos-storefront-matrix,npm --prefix frontend test -- focused-dgfy-pos-storefront-matrix,npm --prefix frontend run build:skupervisor,npm --prefix frontend run build:pos,npm --prefix frontend run build:store
+verification_evidence: npm run check:architecture,npm run lint:docs,npm --prefix backend test -- --runTestsByPath focused-dgfy-pos-storefront-matrix,npm --prefix frontend test -- focused-dgfy-pos-storefront-matrix,npm --prefix frontend run build:skupervisor,npm --prefix frontend run build:pos,npm --prefix frontend run build:store,scripts/deploy-remote.sh --yes production deploy b40f2d96
 rollback_note: Revert the DGFY browser-session hardening, POS terminal UI contract restorations, and QA matrix/documentation slice together if account handoff, POS terminal operation, or compliance gate behavior regresses.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -43,6 +43,7 @@ This update touches POS terminal UI components while validating the full DGFY ac
 5. Receipt history actions must remain receipt-focused; pending offline rows must not be represented as synced receipts.
 6. Shift controls must continue to expose operating-location selection without exposing incoming online queue controls in MSME-only mode.
 7. Platform-admin DGFY account, tenant capability, and commerce payment operations must resolve to mounted authenticated backend routes.
+8. Production deployment must use lockfiles and dependency declarations that pass deterministic `npm ci`; runtime builds must not depend on undeclared local `node_modules` packages.
 
 ## Verification Evidence
 
@@ -58,3 +59,7 @@ Local validation recorded for this update set:
 8. `npm --prefix frontend test -- --run src/services/__tests__/adminService.adminOperations.contract.test.js src/services/__tests__/browserTokenStorage.guard.test.js src/features/pos/__tests__/terminalSessionSource.contract.test.js src/pages/__tests__/DgfyAccountManager.integration.test.jsx src/pages/__tests__/TenantManager.capabilities.integration.test.jsx apps/store/src/__tests__/discoveryFlow.integration.test.jsx apps/store/src/__tests__/profileLauncher.integration.test.jsx --testTimeout 20000` passed.
 9. `npm --prefix frontend run build:skupervisor`, `npm --prefix frontend run build:pos`, and `npm --prefix frontend run build:store` passed. `build:skupervisor` no longer emits `IMPORT_IS_UNDEFINED` warnings for DGFY account admin, tenant capability, or commerce payment admin service calls.
 10. In-app Browser rendered smoke passed for local preview routes `/dgfy/auth`, `/dgfy/reset-password`, `/register-company`, `/map-dgfy`, `/map-dgfy/account`, and POS `/` on desktop; `/dgfy/auth`, `/map-dgfy`, `/map-dgfy/account`, and POS `/` also passed practical mobile-width smoke. Browser interactions verified discovery search input and the DGFY auth sign-in mode toggle without submitting mutations.
+11. `npm --prefix backend ci --ignore-scripts` passed after syncing `backend/package-lock.json` with `backend/package.json`.
+12. `npm --prefix frontend ci --ignore-scripts` and `npm --prefix frontend run build:skupervisor` passed after declaring `fuse.js` as a frontend dependency.
+13. Production deploy completed for runtime code SHA `b40f2d96e513a1a259d423df91d0ccf406521c6c` with deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260613_162435.summary.txt`. Backend health, IMS/POS/Store runtime checks, public endpoint checks, tenant-store asset integrity, frontend asset parity, tenant schema sync, tenant schema regression gate, tenant index headroom, permission backfill, Storefront discovery reconciliation, and PM2 reload passed.
+14. Post-deploy read-only rendered smoke passed for `https://skupervisor.dgfy.ph/dgfy/auth`, `https://skupervisor.dgfy.ph/dgfy/reset-password`, `https://skupervisor.dgfy.ph/register-company`, `https://dgfy.ph/map-dgfy`, `https://dgfy.ph/map-dgfy/account`, and `https://pos.dgfy.ph` on desktop where applicable; DGFY auth, Storefront discovery/account, and POS also passed mobile smoke. Guest/locked surfaces emitted expected unauthenticated API responses but no framework overlay.
