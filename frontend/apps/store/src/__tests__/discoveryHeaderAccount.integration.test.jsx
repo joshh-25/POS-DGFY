@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from '../main.jsx';
 
@@ -296,6 +296,15 @@ describe('discovery header customer account actions', () => {
     });
     await user.click(screen.getByRole('button', { name: /cookie/i }));
     await waitFor(() => expect(screen.getByRole('heading', { name: /^My Account$/i })).toBeTruthy());
+    const accountDashboardNav = within(screen.getByLabelText(/dgfy account dashboard navigation/i));
+    ['Overview', 'Orders', 'Bookings', 'Addresses', 'Loyalty', 'Account', 'Business'].forEach((sectionLabel) => {
+      expect(accountDashboardNav.getByRole('button', { name: new RegExp(sectionLabel, 'i') })).toBeTruthy();
+    });
+    expect(screen.getByRole('heading', { name: /customer dashboard/i })).toBeTruthy();
+    await user.click(accountDashboardNav.getByRole('button', { name: /^business$/i }));
+    await waitFor(() => expect(screen.getByText(/company registration remains separate/i)).toBeTruthy());
+    await user.click(accountDashboardNav.getByRole('button', { name: /^account$/i }));
+    await waitFor(() => expect(screen.getByText(/profile overview/i)).toBeTruthy());
     await user.click(screen.getByRole('button', { name: /sign out/i }));
 
     await waitFor(() => {
@@ -305,5 +314,32 @@ describe('discovery header customer account actions', () => {
       expect(logoutCall[1]?.credentials).toBe('include');
       expect(logoutCall[1]?.headers?.Authorization).toBeUndefined();
     });
+  }, 10000);
+
+  it('returns the standalone account page to discovery after sign out', async () => {
+    window.history.pushState({}, '', '/map-dgfy/account');
+    dgfyMeResponse = makeJsonResponse({
+      account: {
+        id: 'acct-standalone',
+        first_name: 'Standalone',
+        last_name: 'Customer',
+        email: 'standalone@example.com'
+      }
+    });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /^My Account$/i })).toBeTruthy();
+    });
+    expect(screen.getByRole('button', { name: /back to discovery/i })).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: /sign out/i }));
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/map-dgfy');
+    });
+    const logoutCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/api/v1/dgfy/auth/logout'));
+    expect(logoutCall).toBeTruthy();
   }, 10000);
 });

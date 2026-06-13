@@ -8689,7 +8689,10 @@ export default function StorefrontApp() {
     setCustomerTrackLoadingReference('');
     setCustomerTrackError('');
     toast.success('Signed out.');
-  }, [accountPanel.me, dgfySessionAccount?.id]);
+    if (isStandaloneAccountPage) {
+      closeStandaloneAccountPage();
+    }
+  }, [accountPanel.me, closeStandaloneAccountPage, dgfySessionAccount?.id, isStandaloneAccountPage]);
 
   const handleNearMe = () => {
     const currentSearch = String(searchRef.current || search || '').trim();
