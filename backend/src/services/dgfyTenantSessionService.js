@@ -46,7 +46,7 @@ const findAcceptedMembership = async ({ account, tenantId, companyToken }) => {
     include: [{
       model: Tenant,
       as: 'tenant',
-      attributes: ['id', 'name', 'company_token', 'status', 'plan']
+      attributes: ['id', 'name', 'db_name', 'company_token', 'status', 'plan']
     }],
     order: [['updated_at', 'DESC']]
   });
