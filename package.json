@@ -78,6 +78,7 @@
     "gate:release:no-staging:qa-env": "powershell -ExecutionPolicy Bypass -File scripts/run-qa-release-gate.ps1",
     "gate:release:prod-contracts:env": "powershell -ExecutionPolicy Bypass -File scripts/run-prod-contract-gate.ps1",
     "gate:release:local": "node scripts/gate-release-local.js",
+    "uat:production:dgfy": "node scripts/run-dgfy-production-uat.js",
     "verify:release-verdict": "node scripts/verify-release-verdict.js",
     "test:deploy:namecheap": "node scripts/deploy/namecheap-shared/upload-artifacts.test.js"
   },
