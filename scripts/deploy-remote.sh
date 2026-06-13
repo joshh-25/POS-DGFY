@@ -302,11 +302,9 @@ ssh -t -p "$REMOTE_PORT" "$REMOTE_USER@$REMOTE_HOST" "
 
     cd ${REMOTE_DIR} || { echo 'Could not cd to ${REMOTE_DIR}'; exit 1; }
 
-    chmod +x ${DEPLOY_SCRIPT}
-
     ${REMOTE_EXPORTS}
 
-    ./${DEPLOY_SCRIPT} ${REMOTE_DEPLOY_ARGS}
+    bash ${DEPLOY_SCRIPT} ${REMOTE_DEPLOY_ARGS}
 "
 
 SSH_EXIT=$?
