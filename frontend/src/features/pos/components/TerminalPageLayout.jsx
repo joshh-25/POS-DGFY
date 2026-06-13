@@ -123,6 +123,8 @@ export default function TerminalPageLayout({
   const actionableQueueCount = queueCount + blockedQueueCount;
   const queueTotalCount = Number(queueSummary?.total || actionableQueueCount);
   const complianceBlocked = Boolean(complianceBlockerDetails);
+  const normalizedActiveTerminalId = String(activeTerminalId || '').trim();
+  const terminalIdentityDisplay = normalizedActiveTerminalId || 'Not selected';
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
   const activeHeaderTitle = useMemo(() => {
     const titles = {
@@ -586,7 +588,7 @@ export default function TerminalPageLayout({
                                 queueReplayManagedExternally
                                 selectedLocationId={operatingLocationId}
                                 activeShiftId={activeShiftId}
-                                terminalId={activeTerminalId}
+                                terminalId={normalizedActiveTerminalId}
                                 terminalMeta={terminalMeta}
                                 checkoutBlockedReason={checkoutBlockedReason}
                                 complianceBlockerDetails={complianceBlockerDetails}
@@ -622,7 +624,7 @@ export default function TerminalPageLayout({
                                 viewMode={posViewMode}
                                 isMsmeMode={isMsmeMode}
                                 terminalUser={terminalUser}
-                                activeTerminalId={activeTerminalId}
+                                activeTerminalId={normalizedActiveTerminalId}
                                 locked={locked}
                                 terminalMeta={terminalMeta}
                                 shiftState={shiftState}

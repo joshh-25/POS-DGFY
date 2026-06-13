@@ -308,8 +308,17 @@ export default function POSTransactionHistoryPanel({
                                                             disabled={historyDetailLoading || isOfflinePending}
                                                             aria-label={`View receipt for ${row.invoice_number || row.pos_transaction_id}`}
                                                         >
-                                                            <span>{isOfflinePending ? 'Pending' : 'View'}</span>
-                                                            <span>{isOfflinePending ? 'Sync' : 'Receipt'}</span>
+                                                            {isOfflinePending ? (
+                                                                <>
+                                                                    <span>Pending</span>
+                                                                    <span>Sync</span>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <span>View</span>
+                                                                    <span>Receipt</span>
+                                                                </>
+                                                            )}
                                                         </Button>
                                                         {isTabletViewport && (
                                                             <Button

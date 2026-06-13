@@ -108,6 +108,7 @@ export default function POSBarcodeScanner({
                     scannerBufferTimerRef.current = null;
                 }
                 setScannerCode(bufferedCode);
+                submitScan(bufferedCode);
                 return;
             }
 
