@@ -31,6 +31,42 @@ const CUSTOMER_ACCESS_MODE_SETTING_KEY = 'customer_access_mode';
 const INVENTORY_DISPLAY_MODE_SETTING_KEY = 'inventory_display_mode';
 const INVENTORY_LOW_STOCK_DISPLAY_THRESHOLD_SETTING_KEY = 'inventory_low_stock_display_threshold';
 
+const buildRegisteredOnboardingProgress = () => ({
+    step_payloads: {
+        business_classification: {
+            legitimacy: {
+                registration_status: 'registered'
+            }
+        }
+    },
+    classification_snapshot: {
+        payload: {
+            legitimacy: {
+                registration_status: 'registered'
+            }
+        }
+    },
+    checklist_snapshot: {
+        checklist: {
+            store_name_ready: true,
+            has_primary_storefront_location: false,
+            has_priced_starter_item: false
+        },
+        required_keys: [
+            'store_name_ready',
+            'has_primary_storefront_location',
+            'has_priced_starter_item'
+        ],
+        required_total: 3,
+        completed_required_count: 1,
+        is_ready: false,
+        missing_requirements: [
+            'has_primary_storefront_location',
+            'has_priced_starter_item'
+        ]
+    }
+});
+
 const seedWorkflowModeSetting = async (tenantSequelize, workflowMode) => {
     const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
     await tenantSequelize.query(
@@ -74,31 +110,7 @@ const seedDefaultOnboardingSettings = async (tenantSequelize) => {
         },
         {
             key: ONBOARDING_PROGRESS_SETTING_KEY,
-            value: JSON.stringify({
-                step_payloads: {},
-                checklist_snapshot: {
-                    checklist: {
-                        store_name_ready: true,
-                        has_active_location: false,
-                        has_primary_storefront_location: false,
-                        has_sellable_item: false
-                    },
-                    required_keys: [
-                        'store_name_ready',
-                        'has_active_location',
-                        'has_primary_storefront_location',
-                        'has_sellable_item'
-                    ],
-                    required_total: 4,
-                    completed_required_count: 1,
-                    is_ready: false,
-                    missing_requirements: [
-                        'has_active_location',
-                        'has_primary_storefront_location',
-                        'has_sellable_item'
-                    ]
-                }
-            }),
+            value: JSON.stringify(buildRegisteredOnboardingProgress()),
             dataType: 'json',
             description: 'Tenant onboarding progress and checklist snapshot'
         }
