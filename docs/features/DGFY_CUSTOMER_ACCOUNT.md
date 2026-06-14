@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-06-11
+last_reviewed: 2026-06-14
 applies_to: dgfy_customer_account, storefront_account, customer_tracking
 topic: dgfy_customer_account
 ---
@@ -23,6 +23,12 @@ Tenant storefront headers expose **Log in / Sign up** directly so customers can 
 DGFY accounts are landlord-scoped. Tenant-local `store_customers` remain tenant-isolated compatibility rows and can be lazily linked to a DGFY account with `dgfy_account_id`.
 
 Customer account sign-in or signup that starts on `dgfy.ph` and completes on `skupervisor.dgfy.ph/dgfy/auth` must return to the Storefront with a one-time `handoff_token` appended to the absolute return URL. The Storefront consumes `/api/v1/dgfy/auth/handoff/exchange` before showing guest state, stores only the current in-page DGFY session token, removes `handoff_token` from the URL, and then loads the account page or account launcher as signed in. This cross-origin handoff is required even though DGFY auth also issues an HttpOnly `sku_dgfy_session` cookie, because production cookies are host-only unless `SESSION_COOKIE_DOMAIN=.dgfy.ph` is explicitly configured under ADR 0026.
+
+## Production UAT Status
+
+The controlled production mutation UAT passed on June 13, 2026 with dedicated QA data and evidence in `.tmp/production-uat/dgfy-production-uat.json`. The approved run proved OTP delivery, fresh DGFY account registration, automatic company activation, IMS tenant-session handoff, onboarding item creation, DGFY-authenticated Storefront checkout, POS completion, inventory decrement from `10` to `9`, and completed-order visibility in the DGFY customer account. The release evidence slice was deployed at SHA `1850188b9063ef80db27b488f6204d0b7261e01c` with deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260613_213041.summary.txt`; local `master`, `origin/master`, production remote `HEAD`, and `.deploy-state/last_deployed_commit` matched that SHA at proof time.
+
+The UAT ratings recorded by the gate are DGFY account UI shell `9.2`, DGFY signup/business registration `9.2`, e-commerce Storefront checkout `9.2`, POS order/inventory flow `9.2`, admin/payment/capability operations `9.1`, and production readiness `9.2`. The QA tenant, item, location, order, and account records are retained for audit cleanup and must not be treated as customer/operator data.
 
 ## Guest Users
 
@@ -127,6 +133,7 @@ Current validation must include:
 - `npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx apps/store/src/__tests__/discoveryHeaderAccount.integration.test.jsx`
 - `npm run backfill:dgfy-customer-activity -- --tenant-page-size 1 --transaction-limit-per-tenant 1`
 - `npm run backfill:dgfy-customer-activity -- --all-transactions --require-activity-types=order,service_booking,hospitality_booking,fnb_order` when production release evidence must prove all customer-facing modes are present.
+- `npm run uat:production:dgfy` when controlled production mutation UAT is approved and a dedicated QA account, tenant, item, checkout, POS operator path, inventory record, and cleanup/signoff rule are available.
 - DGFY auth and Storefront checkout/order regression tests.
 - `npm --prefix frontend run build:store`
 - Rendered desktop and mobile storefront smoke checks for the discovery auth dialog, routed account page, recovery panel, address controls, loyalty summary, order actions, and company-registration separation.
