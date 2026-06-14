@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-06-11
+last_reviewed: 2026-06-14
 applies_to: docs_navigation
 topic: docs_index
 ---
@@ -78,7 +78,7 @@ Canonical planning entry:
 - Compliance activation readiness browser E2E and startup regression guardrails are under `docs/testing/README.md`.
 - Frontend release-hardening budgets are documented in `docs/testing/README.md`; `npm run check:frontend-budgets` owns the multi-app build by default, requires fresh SKUpervisor/POS/Store artifacts or explicit timestamped prebuilt proof, writes budget reports, governs route chunks, and keeps lazy MapLibre isolated under its dedicated ceiling.
 - No-staging release promotion requires exact QA deploy parity. `docs/ops/NO_STAGING_RELEASE_STANDARD.md` defines the hard gate that rejects stale `qa_deploy_summary.txt` evidence when `deployed_head` does not match `RELEASE_TARGET_SHA`.
-- Current production runtime evidence is tracked in `docs/testing/release-go-no-go-checklist.md` and `System_Audit/README.md`. As of this June 11, 2026 refresh, latest production evidence available in this workspace records deployed runtime SHA `8b03dfea4f9615d665baa14df59a78de5c797a60`; local `master`, `origin/master`, production remote `HEAD`, and `.deploy-state/last_deployed_commit` matched that SHA at proof time.
+- Current production runtime evidence is tracked in `docs/testing/release-go-no-go-checklist.md`, `docs/testing/dgfy-full-flow-e2e-verification-matrix-2026-06-13.md`, and `System_Audit/README.md`. As of this June 14, 2026 refresh, latest production evidence available in this workspace records deployed SHA `1850188b9063ef80db27b488f6204d0b7261e01c`; local `master`, `origin/master`, production remote `HEAD`, and `.deploy-state/last_deployed_commit` matched that SHA at proof time. Controlled DGFY production mutation UAT passed with ratings at or above `9.1`, while QA records from that run remain retained for audit cleanup.
 - Historical compliance remediation packets are archived under `docs/archive/compliance/2026-04-07`.
 - Historical exploratory testing packets are archived under `docs/archive/testing/`.
 - Historical SKU expansion/storefront planning snapshots are archived under `docs/archive/reference/2026-03/`.
