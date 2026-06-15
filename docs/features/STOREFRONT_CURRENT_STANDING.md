@@ -115,7 +115,7 @@ Targeted matrix result:
 - Storefront production build: `PASS`
 - Architecture guardrails and controller-boundary checks: `PASS`
 - Diff whitespace check: `PASS`
-- Local rendered route health: `PASS` for `/map-dgfy` page identity, desktop search controls, map region, overlay-free render, search-field interaction, and zero relevant console warnings/errors. Production route smoke passed for `https://dgfy.ph/map-dgfy` after deploying SHA `f72d5e93c3e96ee2f0b1ee305c32c37856016ca6`. The latest production evidence available in this workspace is deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260615_142215.summary.txt` for SHA `062cd52cfb18854cc50632e29fa895fa0a180a72`, reporting Storefront runtime, public endpoint, tenant-store asset integrity, and frontend asset parity passing. Seeded-data zoom QA remains useful for real-pin placement evidence.
+- Local rendered route health: `PASS` for `/map-dgfy` page identity, desktop search controls, map region, overlay-free render, search-field interaction, and zero relevant console warnings/errors. Production route smoke passed for `https://dgfy.ph/map-dgfy` after deploying SHA `f72d5e93c3e96ee2f0b1ee305c32c37856016ca6`. The latest production evidence available in this workspace is deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260615_143449.summary.txt` for SHA `062cd52cfb18854cc50632e29fa895fa0a180a72`, reporting Storefront runtime, public endpoint, tenant-store asset integrity, and frontend asset parity passing. Seeded-data zoom QA remains useful for real-pin placement evidence.
 
 ## Notes
 - This file intentionally tracks the frontend standing and test evidence snapshot only.

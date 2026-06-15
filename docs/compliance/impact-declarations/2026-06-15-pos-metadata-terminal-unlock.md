@@ -73,7 +73,7 @@ Required validation for this branch:
 7. `npm run check:architecture`
 8. `npm run check:compliance`
 9. `git diff --check`
-10. Production deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260615_142215.summary.txt`
+10. Production deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260615_143449.summary.txt`
 10. `npm --prefix backend run doctor:runtime`
 11. DGFY account, Storefront checkout, POS incoming queue, and tracking smoke for saved delivery locations with and without exact coordinates.
 
