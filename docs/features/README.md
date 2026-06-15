@@ -22,7 +22,7 @@ When to use:
 7. `docs/features/DGFY_UNIFIED_ONBOARDING_PLAN.md`
 - Current implementation status and operating contract for first-login onboarding that connects DGFY storefront, DGFY POS, and SKUpervisor.
 8. `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md`
-- Implemented-behind-flag contract for Customer Access Mode and Inventory Display across onboarding, Settings, discovery/profile/catalog metadata, inventory display serialization, Storefront UI gating, quote/checkout blocking, and public service booking/waitlist enforcement.
+- Current contract for Customer Access Mode, Inventory Display, inventory POS/Storefront catalog setup, shared item-image galleries, onboarding, Settings, discovery/profile/catalog metadata, inventory display serialization, Storefront UI gating, quote/checkout blocking, and public service booking/waitlist enforcement.
 9. `docs/features/SERVICES_MODE.md`
 - Services Mode item taxonomy, UOM boundary, stock-exempt service rows, stock-bearing physical add-ons/supplies, and legacy-row behavior.
 10. `docs/features/FOOD_AND_BEVERAGE_MODE.md`

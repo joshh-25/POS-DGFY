@@ -15,6 +15,7 @@ Overall status: in_progress
 7. The POS/SKUpervisor surface split requires explicit operator verification that standalone POS checkout, SKUpervisor `/pos`, Sales handoff, receipt preview, barcode scan, Sync Queue, and mode-specific panels still reach the intended surface.
 8. Frontend build toolchain requirements are now documented for release: the merged lockfile targets Vite 8 / `@vitejs/plugin-react` 6, so deterministic frontend builds require a Node version accepted by that toolchain (`^20.19.0 || ^22.12.0 || >=24.0.0`).
 9. The current source tree contains paired POS terminal-unlock hardening and POS configuration/compliance metadata changes that are not yet production-deployed. When the next deployment is requested from this branch/worktree, both the login-context fix and the in-progress POS config/compliance changes will be promoted together unless they are deliberately split first.
+10. The current source tree also contains item/product modal wizard image upload fixes. Single-item POS Upload Image and Storefront Add Item Images now share the same item-image gallery path, POS terminal catalog rows fall back to the shared primary item image when no legacy POS-only image exists, and Storefront gallery append updates load the primary key so existing galleries can grow beyond one image up to the five-image cap. This is source-current only until a deployment records a new deployed SHA and POS/SKUpervisor asset proof.
 
 ## 2) Current Behavior Snapshot
 
@@ -96,10 +97,12 @@ Overall status: in_progress
 - admin service-worker registration is production-only and non-blocking
 - `/api/` and `/uploads/` bypass service-worker caching to avoid stale authenticated data and stale tenant uploads
 - POS and Storefront keep their existing service-worker entrypoints
-31. POS and Storefront catalog controls are split:
-- POS visibility uses `pos_catalog_overrides.pos_visible`; POS image upload/removal preserves the existing visibility state.
-- Storefront visibility uses `storefront_catalog_overrides.storefront_visible`; Storefront image upload/removal preserves the existing visibility state.
-- Storefront catalog images are independent from POS menu images.
+31. POS and Storefront catalog controls keep visibility split while sharing single-item item images:
+- POS visibility uses `pos_catalog_overrides.pos_visible`; image upload/removal preserves the existing visibility state.
+- Storefront visibility uses `storefront_catalog_overrides.storefront_visible`; image upload/removal preserves the existing visibility state.
+- In item/product setup wizards, POS Upload Image and Storefront Add Item Images use the same appendable item-image gallery when the shared uploader is wired.
+- POS terminal catalog cards prefer a legacy POS-only image when one exists and otherwise display the shared primary item image from `storefront_catalog_overrides.storefront_image_url`.
+- Bulk POS and Storefront SKU-filename image imports remain separate endpoints for operational batch setup.
 - Public Storefront catalog payloads expose customer price through `default_sale_price` and must not expose `current_stock`, `cost_per_unit`, FIFO cost, weighted cost, or raw inventory value.
 - Public Storefront catalog listing and QR item resolution suppress/block otherwise visible rows when `default_sale_price` is missing or zero. Image upload may preserve hidden setup rows, but cannot publish a visible price-less row.
 32. Storefront catalog fallback boundaries are now explicit:
