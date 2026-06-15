@@ -1,11 +1,11 @@
 # Release Go/No-Go Checklist (Current)
 
 Status: reference  
-Last updated: 2026-06-14
+Last updated: 2026-06-15
 
 ## Current Release State
 
-1. Latest production deployment evidence available in this workspace is target SHA `1850188b9063ef80db27b488f6204d0b7261e01c`, deployed on June 13, 2026 after the DGFY production UAT runner/docs evidence slice. The runtime fixes in the same deployed chain cover DGFY account/admin service integration, POS browser-session hardening, commerce payment admin route mounting, dependency-lock determinism, DGFY/Storefront/POS route smoke, and controlled DGFY production mutation UAT. Backend/IMS/POS/Store health checks, public IMS/POS/Storefront/Tenant Store endpoint checks, tenant-store asset integrity, frontend asset parity, tenant schema sync, tenant schema sync regression gate, tenant index headroom, permission backfill, Storefront discovery index reconciliation, and PM2 reload passed. Local `master`, `origin/master`, production remote `HEAD`, and `.deploy-state/last_deployed_commit` matched this SHA at proof time. The release used the explicit emergency no-staging bypass only because stale QA deployed-head evidence was the sole failed no-staging gate after QA smoke, rollback, restore, docs, and architecture passed.
+1. Latest production deployment evidence available in this workspace is target SHA `062cd52cfb18854cc50632e29fa895fa0a180a72`, deployed on June 15, 2026 after the POS wizard image-upload correction and iMin POS wrapper live-origin source/docs slice. Deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260615_142215.summary.txt` records backend/IMS/POS/Store health checks, public IMS/POS/Storefront/Tenant Store endpoint checks, tenant-store asset integrity, frontend asset parity, tenant schema sync, tenant schema sync regression gate, tenant index headroom, permission backfill, Storefront discovery index reconciliation, and PM2 reload passing. Local `master`, `origin/master`, production remote `HEAD`, and `.deploy-state/last_deployed_commit` matched this SHA at proof time. The release used the explicit emergency no-staging bypass only because stale QA deployed-head evidence was the sole failed no-staging gate after QA smoke, rollback, restore, docs, and architecture passed. Controlled DGFY production mutation UAT remains the latest human mutation UAT evidence and passed on June 13, 2026 against dedicated QA data.
 2. June 2, 2026 audit state: dependency vulnerabilities are resolved and the dependency audit commands below return zero current npm advisories for locked root/backend/frontend trees.
 3. The local release gate now includes dependency audits and a focused frontend contract gate before docs, architecture, compliance, backend, frontend, and budget gates.
 4. Current open audit package: `System_Audit/README.md`.
@@ -37,7 +37,7 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 15. `npm run audit:fifo-drift`
 16. `npm run audit:tenant-index-headroom -- --redundant-groups-threshold=0`
 
-## Latest Technical Evidence (2026-06-14)
+## Latest Technical Evidence (2026-06-15)
 
 1. `npm run audit:dependencies:prod` -> PASS with zero current npm advisories.
 2. `npm run audit:dependencies` -> PASS with zero current npm advisories.
@@ -115,6 +115,7 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 74. `npm --prefix frontend run build:skupervisor`, `npm --prefix frontend run build:pos`, and `npm --prefix frontend run build:store` -> PASS on June 13, 2026 for the DGFY/POS/admin remediation set.
 75. `npm run uat:production:dgfy` -> PASS on June 13, 2026 with evidence file `.tmp/production-uat/dgfy-production-uat.json`; the controlled mutation run proved OTP delivery, fresh DGFY account registration, company auto-activation, IMS tenant-session handoff, onboarding item creation, DGFY-authenticated Storefront checkout, POS completion, inventory decrement from `10` to `9`, and DGFY account order visibility.
 76. Production deploy on June 13, 2026 completed at SHA `1850188b9063ef80db27b488f6204d0b7261e01c`; deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260613_213041.summary.txt` records backend health, IMS/POS/Store runtime checks, public endpoint checks, tenant-store asset integrity, frontend asset parity, tenant schema sync, tenant schema sync regression, tenant index headroom, permission backfill, Storefront discovery reconciliation, and PM2 reload passing. Local `master`, `origin/master`, remote `HEAD`, and `.deploy-state/last_deployed_commit` matched the SHA at proof time.
+77. Production deploy on June 15, 2026 completed at SHA `062cd52cfb18854cc50632e29fa895fa0a180a72`; deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260615_142215.summary.txt` records backend health, IMS/POS/Store runtime checks, public endpoint checks, tenant-store asset integrity, frontend asset parity, tenant schema sync, tenant schema regression, tenant index headroom, permission backfill, Storefront discovery reconciliation, and PM2 reload passing. Local `master`, `origin/master`, remote `HEAD`, and `.deploy-state/last_deployed_commit` matched the SHA at proof time. The no-staging gate used the documented emergency bypass because stale QA deployed-head evidence was the only failed gate; QA smoke, rollback drill, restore drill, docs lint, and architecture checks passed for the target SHA. This deploy includes POS terminal unlock hardening, POS metadata review/configuration, Storefront saved-location pins, the clarified Storefront-only wizard item-image upload surface used by POS terminal cards, and iMin POS wrapper live-origin source/docs. Local Android wrapper build was blocked by missing Android SDK configuration (`ANDROID_HOME` or `android/imin-wrapper/local.properties`); installed iMin devices still require APK rebuild/install and real-device smoke before being treated as operator-ready.
 
 ## Remaining Non-Technical Blockers (Go/No-Go)
 
