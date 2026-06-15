@@ -294,7 +294,12 @@ export const getTenantPosMetadata = async (req, res) => {
             tenant_id: req.params?.id || null
         })
     });
-    return sendUseCaseResult(res, result);
+    return sendUseCaseResult(res, result, {
+        successPayloadResolver: (useCaseResult) => ({
+            success: true,
+            data: useCaseResult.data
+        })
+    });
 };
 
 export const listTenantPosMetadataAuditLogs = async (req, res) => {
@@ -342,7 +347,12 @@ export const updateTenantPosMetadata = async (req, res) => {
             pending_action: (req.validatedData || req.body || {}).pending_action || null
         })
     });
-    return sendUseCaseResult(res, result);
+    return sendUseCaseResult(res, result, {
+        successPayloadResolver: (useCaseResult) => ({
+            success: true,
+            data: useCaseResult.data
+        })
+    });
 };
 
 /**

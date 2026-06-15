@@ -61,6 +61,7 @@ let getPricingSettings;
 let registerCompanyRequest;
 let provisionNewTenant;
 let updateTenant;
+let getTenantPosMetadata;
 let updateTenantPosMetadata;
 let listTenantPosMetadataAuditLogs;
 
@@ -72,6 +73,7 @@ beforeAll(async () => {
   registerCompanyRequest = mod.registerCompanyRequest;
   provisionNewTenant = mod.provisionNewTenant;
   updateTenant = mod.updateTenant;
+  getTenantPosMetadata = mod.getTenantPosMetadata;
   updateTenantPosMetadata = mod.updateTenantPosMetadata;
   listTenantPosMetadataAuditLogs = mod.listTenantPosMetadataAuditLogs;
 });
@@ -250,6 +252,44 @@ describe('adminTenantHandlers transport contracts', () => {
     }));
   });
 
+  it('getTenantPosMetadata returns metadata data for platform-admin review UI', async () => {
+    mockGetTenantPosMetadataUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        tenant_id: 'tenant-1',
+        current: { pos_receipt_footer_message: 'Current footer' },
+        pending_review: {
+          status: 'pending_review',
+          changes: { pos_receipt_footer_message: 'Requested footer' }
+        }
+      }
+    });
+
+    const req = {
+      params: { id: 'tenant-1' },
+      headers: {},
+      requestId: 'req-pos-metadata-view'
+    };
+    const res = createRes();
+
+    await getTenantPosMetadata(req, res);
+
+    expect(mockGetTenantPosMetadataUseCase).toHaveBeenCalledWith({ id: 'tenant-1' });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: expect.objectContaining({
+        tenant_id: 'tenant-1',
+        pending_review: expect.objectContaining({ status: 'pending_review' })
+      })
+    });
+    expect(mockTrackProductUsageFromResult).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'admin_tenant_pos_metadata_viewed',
+      surface: 'admin_tenants',
+      action: 'view_tenant_pos_metadata'
+    }));
+  });
+
   it('updateTenantPosMetadata forwards platform-admin POS metadata review payloads', async () => {
     mockUpdateTenantPosMetadataUseCase.mockResolvedValue({
       success: true,
@@ -277,6 +317,13 @@ describe('adminTenantHandlers transport contracts', () => {
       actor: { username: 'platform-admin' }
     }));
     expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: expect.objectContaining({
+        tenant_id: 'tenant-1',
+        current: { pos_software_name: 'DGFY POS' }
+      })
+    });
     expect(mockTrackProductUsageFromResult).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'admin_tenant_pos_metadata_updated',
       surface: 'admin_tenants',
