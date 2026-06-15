@@ -14,8 +14,8 @@ Overall status: in_progress
 6. PR #11 DGFY POS surface split local release blockers are closed as of this pass: POS-specific lint, full frontend lint errors, frontend budget drift, shared checkout contract drift, local release gate, production deploy, exact deployed-SHA verification, and production POS smoke now pass. Production readiness still requires human operator UAT.
 7. The POS/SKUpervisor surface split requires explicit operator verification that standalone POS checkout, SKUpervisor `/pos`, Sales handoff, receipt preview, barcode scan, Sync Queue, and mode-specific panels still reach the intended surface.
 8. Frontend build toolchain requirements are now documented for release: the merged lockfile targets Vite 8 / `@vitejs/plugin-react` 6, so deterministic frontend builds require a Node version accepted by that toolchain (`^20.19.0 || ^22.12.0 || >=24.0.0`).
-9. The current source tree contains paired POS terminal-unlock hardening and POS configuration/compliance metadata changes that are not yet production-deployed. When the next deployment is requested from this branch/worktree, both the login-context fix and the in-progress POS config/compliance changes will be promoted together unless they are deliberately split first.
-10. The current source tree also contains item/product modal wizard image upload fixes. Single-item POS Upload Image and Storefront Add Item Images now share the same item-image gallery path, POS terminal catalog rows fall back to the shared primary item image when no legacy POS-only image exists, and Storefront gallery append updates load the primary key so existing galleries can grow beyond one image up to the five-image cap. This is source-current only until a deployment records a new deployed SHA and POS/SKUpervisor asset proof.
+9. POS terminal-unlock hardening and POS configuration/compliance metadata changes are production-deployed in the current commit chain. Operational UAT still must prove admin approval, cashier login, checkout, receipt/history, and source-separation workflows with real operators.
+10. Item/product modal wizard image upload fixes are production-deployed in the current commit chain. POS Controls no longer has a separate image upload action; Storefront Catalog is the single wizard item-image upload surface, POS terminal catalog rows fall back to the shared primary item image when no legacy POS-only image exists, and Storefront gallery append updates load the primary key so existing galleries can grow beyond one image up to the five-image cap.
 
 ## 2) Current Behavior Snapshot
 
@@ -97,10 +97,10 @@ Overall status: in_progress
 - admin service-worker registration is production-only and non-blocking
 - `/api/` and `/uploads/` bypass service-worker caching to avoid stale authenticated data and stale tenant uploads
 - POS and Storefront keep their existing service-worker entrypoints
-31. POS and Storefront catalog controls keep visibility split while sharing single-item item images:
-- POS visibility uses `pos_catalog_overrides.pos_visible`; image upload/removal preserves the existing visibility state.
+31. POS and Storefront catalog controls keep visibility split while sharing Storefront Catalog item images:
+- POS visibility uses `pos_catalog_overrides.pos_visible`; POS Controls does not expose an image upload action in item/product setup.
 - Storefront visibility uses `storefront_catalog_overrides.storefront_visible`; image upload/removal preserves the existing visibility state.
-- In item/product setup wizards, POS Upload Image and Storefront Add Item Images use the same appendable item-image gallery when the shared uploader is wired.
+- In item/product setup wizards, Storefront Catalog `Add Item Images` is the single appendable item-image gallery action.
 - POS terminal catalog cards prefer a legacy POS-only image when one exists and otherwise display the shared primary item image from `storefront_catalog_overrides.storefront_image_url`.
 - Bulk POS and Storefront SKU-filename image imports remain separate endpoints for operational batch setup.
 - Public Storefront catalog payloads expose customer price through `default_sale_price` and must not expose `current_stock`, `cost_per_unit`, FIFO cost, weighted cost, or raw inventory value.
@@ -143,7 +143,7 @@ Overall status: in_progress
 - Text-only delivery checkout remains valid when map/geolocation is unavailable; coordinates are preferred for driver routing but are not mandatory.
 - Mode-aware location copy is source-current: F&B uses drop-off/driver language, simple delivery uses delivery address/pin language, and services/on-site flows use service/site/technician language when location fields are exposed.
 - Online Store delivery orders that include coordinates surface address text, coordinate text, and the existing map-navigation link in the live POS incoming queue. Text-only delivery orders surface the address without rendering a broken map link.
-- This is source-current with the find-location-pin implementation and must be included in the deployment that promotes that feature unless deliberately split first.
+- This is included in the deployed commit chain; production operator UAT should still verify coordinate-backed and text-only delivery orders in the POS incoming queue.
 39. Mode-aware RBAC is active:
 - `users.role_preset_key` stores the mode-native preset while preserving legacy `users.role`, `users.permissions`, and `is_master_admin`.
 - `GET /api/v1/users/role-catalog` returns the active tenant mode's role presets and visible permission groups for User Management.
@@ -175,10 +175,11 @@ Overall status: in_progress
 - non-compliant/non-fiscal checkout keeps buyer fiscal fields nullable and persists them as `null`; a missing `buyer_tin` column is deployment/migration drift, not a customer buyer-TIN requirement
 - `/api/v1/compliance/profile` or `/api/v1/pos/incoming-orders` `500` responses after deployment must trigger migration/doctor/restart verification before cashier UAT
 45. Deployment scope note for the current branch:
-- POS metadata approval/configuration, platform-admin audit extensions, and terminal unlock hardening are source-current together
-- Storefront saved-location pin follow-up is also source-current with the find-location-pin implementation and should deploy with that feature when implementation is finished
-- do not describe these changes as production-live until a deploy records a new deployed SHA, POS asset identity, backend health, POS smoke, and the relevant admin/cashier UAT evidence
-- if only one part should deploy, split or revert the other part before running the deployment workflow
+- Production web/source deploy is current at SHA `062cd52cfb18854cc50632e29fa895fa0a180a72` with deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260615_142215.summary.txt`.
+- Backend, IMS, POS, Store, public endpoint, tenant-store asset integrity, frontend asset parity, tenant schema, tenant index headroom, permission backfill, Storefront discovery, and PM2 reload checks passed during that deploy.
+- The deploy used the auditable emergency no-staging bypass only for stale QA deployed-head evidence; QA smoke, rollback drill, restore drill, docs lint, and architecture checks passed for the target SHA.
+- Android iMin wrapper source now routes physical-device builds to `https://pos.dgfy.ph`, but installed iMin devices do not change until the APK is rebuilt, installed, and smoke-tested on device hardware.
+- Human cashier/admin UAT, source-separation parity proof, and strict location-binding operational acceptance remain non-technical readiness blockers.
 
 ## 3) Automated Gate Status (Latest)
 
