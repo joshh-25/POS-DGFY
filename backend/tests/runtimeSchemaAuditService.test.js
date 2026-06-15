@@ -35,7 +35,8 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260428000001-add-storefront-profile-content-to-discovery-index.cjs' },
         { name: '20260429000001-add-storefront-v2-profile-fields-to-discovery-index.cjs' },
         { name: '20260429000002-create-storefront-follows.cjs' },
-        { name: '20260504000001-add-customer-access-fields-to-discovery-index.cjs' }
+        { name: '20260504000001-add-customer-access-fields-to-discovery-index.cjs' },
+        { name: '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -100,7 +101,17 @@ const buildHealthySequelizeMock = () => ({
                     delivery_fee: {},
                     store_customer_id: {},
                     accepted_by: {},
-                    accepted_at: {}
+                    accepted_at: {},
+                    buyer_tin: { allowNull: true },
+                    buyer_business_style: { allowNull: true },
+                    buyer_address: { allowNull: true },
+                    fiscal_document_template_version: { allowNull: true },
+                    fiscal_document_hash: { allowNull: true },
+                    fiscal_document_snapshot: { allowNull: true },
+                    fiscal_lifecycle_state: { allowNull: false },
+                    fiscal_reprint_count: { allowNull: false },
+                    fiscal_void_event_hash: { allowNull: true },
+                    void_reason: { allowNull: true }
                 },
                 stock_movements: {
                     movement_id: {},
@@ -289,7 +300,31 @@ describe('runtimeSchemaAuditService', () => {
             expect.objectContaining({ table: 'item_folders', column: 'show_in_pos_filter' }),
             expect.objectContaining({ table: 'users', column: 'role' }),
             expect.objectContaining({ table: 'pos_catalog_overrides', column: 'pos_visible' }),
-            expect.objectContaining({ table: 'pos_transactions', column: 'service_fee_amount' })
+            expect.objectContaining({ table: 'pos_transactions', column: 'service_fee_amount' }),
+            expect.objectContaining({ table: 'pos_transactions', column: 'buyer_tin' })
+        ]));
+    });
+
+    it('returns degraded when June POS fiscal-prep migration is missing from a stale runtime', async () => {
+        const mock = buildHealthySequelizeMock();
+        const requiredMigration = '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs';
+        mock.query = jest.fn(async () => (
+            (await buildHealthySequelizeMock().query())
+                .filter((row) => row.name !== requiredMigration)
+        ));
+
+        const result = await auditRuntimeSchemaReadiness({
+            sequelizeInstance: mock
+        });
+
+        expect(result.status).toBe('degraded');
+        expect(result.missingMigrations).toContain(requiredMigration);
+        expect(result.issues).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                scope: 'migration',
+                type: 'missing_required_migration',
+                migration: requiredMigration
+            })
         ]));
     });
 
@@ -319,6 +354,38 @@ describe('runtimeSchemaAuditService', () => {
                 type: 'invalid_column_contract',
                 table: 'pos_transactions',
                 column: 'cashier_id'
+            })
+        ]));
+    });
+
+    it('returns degraded when fiscal-prep POS columns have unsafe nullability', async () => {
+        const mock = buildHealthySequelizeMock();
+        mock.getQueryInterface = () => ({
+            describeTable: jest.fn(async (tableName) => {
+                const table = await buildHealthySequelizeMock().getQueryInterface().describeTable(tableName);
+                if (tableName === 'pos_transactions') {
+                    return {
+                        ...table,
+                        buyer_tin: { allowNull: false }
+                    };
+                }
+                return table;
+            })
+        });
+
+        const result = await auditRuntimeSchemaReadiness({
+            sequelizeInstance: mock
+        });
+
+        expect(result.status).toBe('degraded');
+        expect(result.issues).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                scope: 'schema',
+                type: 'invalid_column_contract',
+                table: 'pos_transactions',
+                column: 'buyer_tin',
+                expected: { allowNull: true },
+                actual: { allowNull: false }
             })
         ]));
     });
