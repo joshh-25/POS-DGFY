@@ -190,8 +190,8 @@ const FNB_RECOMMENDED_LOCATION = Object.freeze({
 const TILE_BASE = import.meta.env.VITE_TILE_BASE || 'https://tiles.openfreemap.org';
 
 const TILING_SERVER = import.meta.env.DEV
-  ? '/openfreemap/styles/liberty'
-  : `${TILE_BASE}/styles/liberty`;
+  ? '/openfreemap/styles/positron'
+  : `${TILE_BASE}/styles/positron`;
 
 const tileTransformRequest = import.meta.env.DEV
   ? (url) => {
@@ -9143,11 +9143,9 @@ export default function StorefrontApp() {
   }, [isDgfyCustomerSignedIn]);
   const handleStorefrontSignOut = useCallback(async () => {
     const dgfyToken = readDgfyAuthToken();
-    if (dgfyToken) {
-      try {
-        await requestJson('/api/v1/dgfy/auth/logout', { method: 'POST', authToken: dgfyToken, cache: 'no-store' });
-      } catch {
-      }
+    try {
+      await requestJson('/api/v1/dgfy/auth/logout', { method: 'POST', authToken: dgfyToken, cache: 'no-store' });
+    } catch {
     }
     clearDgfyAuthToken();
     clearStoreAuthToken();
@@ -9157,8 +9155,22 @@ export default function StorefrontApp() {
     setTrackedCustomerActivity(null);
     setCustomerTrackLoadingReference('');
     setCustomerTrackError('');
+    setIsAccountDrawerOpen(false);
+    if (typeof window !== 'undefined') {
+      const currentUrl = new URL(window.location.href);
+      const normalizedPath = String(currentUrl.pathname || '').replace(/\/+$/, '') || '/';
+      if (currentUrl.searchParams.get('dgfy_account') === '1') {
+        currentUrl.searchParams.delete('dgfy_account');
+        window.history.replaceState({}, '', currentUrl.toString());
+      }
+      if (normalizedPath === '/map-dgfy/account' || normalizedPath === '/tenant-store/account') {
+        window.history.replaceState({}, '', '/map-dgfy');
+      } else if (routeSlug && (routeSubpage === 'account' || currentPathSubpage === 'account')) {
+        window.history.replaceState({}, '', storePath(routeSlug));
+      }
+    }
     toast.success('Signed out.');
-  }, []);
+  }, [currentPathSubpage, routeSlug, routeSubpage]);
 
   const handleNearMe = () => {
     const currentSearch = String(searchRef.current || search || '').trim();
