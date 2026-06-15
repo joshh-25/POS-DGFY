@@ -205,6 +205,31 @@ describe('inventory itemRepository', () => {
     }));
   });
 
+  it('loads Storefront override primary key before updating gallery images', async () => {
+    const StorefrontCatalogOverride = {
+      findOne: jest.fn().mockResolvedValue({
+        item_id: 901,
+        storefront_visible: true,
+        storefront_image_path: 'storefront/iced-tea.png',
+        storefront_image_url: '/uploads/storefront/iced-tea.png',
+        storefront_image_gallery: [],
+        update: jest.fn()
+      })
+    };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'StorefrontCatalogOverride') return StorefrontCatalogOverride;
+      return {};
+    });
+
+    await itemRepository.findStorefrontCatalogOverrideByItemId(901);
+
+    expect(StorefrontCatalogOverride.findOne).toHaveBeenCalledWith(expect.objectContaining({
+      where: { item_id: 901 },
+      attributes: expect.arrayContaining(['item_id'])
+    }));
+  });
+
   it('maps list payload for product compositions in getItems', async () => {
     const ProductComposition = {};
     const ItemFolder = {};

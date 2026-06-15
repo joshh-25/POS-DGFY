@@ -3,6 +3,7 @@ import React from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import ReceiptPrintView from '../components/ReceiptPrintView.jsx';
+import { formatIminReceiptText } from '../utils/iminHardwareBridge.js';
 
 const buildTransaction = (overrides = {}) => ({
   pos_transaction_id: 1001,
@@ -109,7 +110,10 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
         pos_tin_branch: '123-456-789-000',
         pos_ptu_number: 'PTU-REF-999',
         pos_min_number: 'MIN-2026-001',
-        pos_accreditation_number: 'BIR-TEST-2026-001'
+        pos_accreditation_number: 'BIR-TEST-2026-001',
+        pos_software_name: 'DGFY POS',
+        pos_software_version: '2026.06',
+        pos_software_serial_number: 'DGFY-SN-001'
       }
     });
 
@@ -118,7 +122,50 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     expect(screen.getByText('PTU: PTU-REF-999')).toBeTruthy();
     expect(screen.getByText('MIN: MIN-2026-001')).toBeTruthy();
     expect(screen.getByText('Accreditation: BIR-TEST-2026-001')).toBeTruthy();
+    expect(screen.getByText('Software: DGFY POS')).toBeTruthy();
+    expect(screen.getByText('Version: 2026.06')).toBeTruthy();
+    expect(screen.getByText('Serial: DGFY-SN-001')).toBeTruthy();
     expect(screen.queryByText('NOT A FISCAL RECEIPT')).toBeNull();
+  });
+
+  it('keeps iMin hardware receipt fiscal compliance fields aligned with preview', () => {
+    const text = formatIminReceiptText({
+      transaction: buildTransaction({
+        invoice_number: 'INV-001002',
+        document_type: 'fiscal_invoice',
+        document_context: 'fiscal',
+        special_instructions: JSON.stringify({
+          receipt_contract: {
+            version: '2026.04.08',
+            document_type: 'fiscal_invoice',
+            document_context: 'fiscal'
+          }
+        })
+      }),
+      businessSettings: {
+        pos_business_name: 'Compliance Test Store',
+        pos_tin_branch: '123-456-789-000',
+        pos_ptu_number: 'PTU-REF-999',
+        pos_min_number: 'MIN-2026-001',
+        pos_accreditation_number: 'BIR-TEST-2026-001',
+        pos_software_name: 'DGFY POS',
+        pos_software_version: '2026.06',
+        pos_software_serial_number: 'DGFY-SN-001'
+      },
+      receiptContract: {
+        version: '2026.04.08',
+        document_type: 'fiscal_invoice',
+        document_context: 'fiscal'
+      }
+    });
+
+    expect(text).toContain('TIN/Branch: 123-456-789-000');
+    expect(text).toContain('PTU: PTU-REF-999');
+    expect(text).toContain('MIN: MIN-2026-001');
+    expect(text).toContain('Accreditation: BIR-TEST-2026-001');
+    expect(text).toContain('Software: DGFY POS');
+    expect(text).toContain('Version: 2026.06');
+    expect(text).toContain('Serial: DGFY-SN-001');
   });
 
   it('keeps regulator-summary rows and footer contract lines in fixed order', () => {

@@ -36,6 +36,9 @@ describe('adminService admin operation contracts', () => {
   it.each([
     ['updateTenantCapabilities', 'patch', '/admin/tenants/tenant-1/capabilities', () => adminService.updateTenantCapabilities('tenant-1', { ims_enabled: true })],
     ['listTenantCapabilityAuditLogs', 'get', '/admin/tenants/tenant-1/capabilities/audit-logs', () => adminService.listTenantCapabilityAuditLogs('tenant-1', { limit: 20 })],
+    ['getTenantPosMetadata', 'get', '/admin/tenants/tenant-1/pos-metadata', () => adminService.getTenantPosMetadata('tenant-1')],
+    ['listTenantPosMetadataAuditLogs', 'get', '/admin/tenants/tenant-1/pos-metadata/audit-logs', () => adminService.listTenantPosMetadataAuditLogs('tenant-1', { limit: 10 })],
+    ['updateTenantPosMetadata', 'patch', '/admin/tenants/tenant-1/pos-metadata', () => adminService.updateTenantPosMetadata('tenant-1', { pending_action: 'approve' })],
     ['listDgfyAccounts', 'get', '/dgfy/admin/accounts', () => adminService.listDgfyAccounts({ status: 'active' })],
     ['getDgfyAccount', 'get', '/dgfy/admin/accounts/acct-1', () => adminService.getDgfyAccount('acct-1')],
     ['updateDgfyAccountProfile', 'patch', '/dgfy/admin/accounts/acct-1/profile', () => adminService.updateDgfyAccountProfile('acct-1', { first_name: 'Ada' })],

@@ -467,6 +467,16 @@ describe('POS checkout F&B contracts', () => {
         expect(createdTransaction.restaurant_service_charge_amount).toBe(24);
         expect(createdTransaction.restaurant_service_charge_taxable).toBe(true);
         expect(createdTransaction.total_amount).toBe(266.4);
+        expect(createdTransaction).toEqual(expect.objectContaining({
+            document_type: 'non_fiscal_slip',
+            document_context: 'non_fiscal',
+            buyer_tin: null,
+            buyer_business_style: null,
+            buyer_address: null,
+            fiscal_document_template_version: null,
+            fiscal_document_hash: null,
+            fiscal_document_snapshot: null
+        }));
         expect(createdTransaction.vatable_sales).toBe(235.7143);
         expect(createdTransaction.vat_amount).toBe(28.2857);
         expect(createdTransaction.lines[0]).toEqual(expect.objectContaining({

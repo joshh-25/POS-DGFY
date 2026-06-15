@@ -997,6 +997,9 @@ export default function POSCheckoutTerminal({
                 pos_ptu_number: allSettings?.pos_ptu_number?.value || '',
                 pos_min_number: allSettings?.pos_min_number?.value || '',
                 pos_accreditation_number: allSettings?.pos_accreditation_number?.value || '',
+                pos_software_name: allSettings?.pos_software_name?.value || '',
+                pos_software_version: allSettings?.pos_software_version?.value || '',
+                pos_software_serial_number: allSettings?.pos_software_serial_number?.value || '',
                 pos_receipt_footer_message: allSettings?.pos_receipt_footer_message?.value || ''
             });
             setDiscountProfiles(normalizeDiscountProfiles(allSettings?.pos_discount_profiles?.value));

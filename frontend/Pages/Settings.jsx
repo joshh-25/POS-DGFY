@@ -182,6 +182,7 @@ const createDefaultSettings = ({ workflowMode = DEFAULT_WORKFLOW_MODE } = {}) =>
   posSoftwareName: '',
   posSoftwareVersion: '',
   posSoftwareSerialNumber: '',
+  posReceiptMetadataPendingReview: null,
   posFiscalBuyerDetailsRequired: false,
   posReceiptFooterMessage: '',
   posDiscountProfiles: [],
@@ -912,6 +913,9 @@ export default function Settings() {
           posSoftwareName: systemSettings.pos_software_name?.value || '',
           posSoftwareVersion: systemSettings.pos_software_version?.value || '',
           posSoftwareSerialNumber: systemSettings.pos_software_serial_number?.value || '',
+          posReceiptMetadataPendingReview: systemSettings.pos_receipt_metadata_pending_changes?.value?.status === 'pending_review'
+            ? systemSettings.pos_receipt_metadata_pending_changes.value
+            : null,
           posFiscalBuyerDetailsRequired: systemSettings.pos_fiscal_buyer_details_required?.value === true,
           posReceiptFooterMessage: systemSettings.pos_receipt_footer_message?.value || '',
           posDiscountProfiles: normalizeDiscountProfiles(systemSettings.pos_discount_profiles?.value),
@@ -1865,9 +1869,6 @@ export default function Settings() {
         pos_ptu_number: settings.posPtuNumber,
         pos_min_number: settings.posMinNumber,
         pos_accreditation_number: settings.posAccreditationNumber,
-        pos_software_name: settings.posSoftwareName,
-        pos_software_version: settings.posSoftwareVersion,
-        pos_software_serial_number: settings.posSoftwareSerialNumber,
         pos_fiscal_buyer_details_required: settings.posFiscalBuyerDetailsRequired === true,
         pos_receipt_footer_message: settings.posReceiptFooterMessage,
         pos_discount_profiles: posDiscountProfiles,
@@ -1916,7 +1917,7 @@ export default function Settings() {
       }
 
       // Save threshold settings to backend
-      await settingsService.updateSettings(updatePayload);
+      const saveResult = await settingsService.updateSettings(updatePayload);
 
       if (currentUser?.is_master_admin === true && nextWorkflowMode !== persistedWorkflowMode) {
         setPersistedWorkflowMode(nextWorkflowMode);
@@ -1926,7 +1927,18 @@ export default function Settings() {
         });
       }
 
-      toast.success("Settings saved successfully!");
+      if (Array.isArray(saveResult?.pending_review_keys) && saveResult.pending_review_keys.length > 0) {
+        toast.success('Settings saved. Receipt metadata changes are pending platform admin approval.');
+        const refreshedSettings = await settingsService.getAllSettings({ force: true }).catch(() => null);
+        if (refreshedSettings?.pos_receipt_metadata_pending_changes?.value?.status === 'pending_review') {
+          setSettings((current) => ({
+            ...current,
+            posReceiptMetadataPendingReview: refreshedSettings.pos_receipt_metadata_pending_changes.value
+          }));
+        }
+      } else {
+        toast.success("Settings saved successfully!");
+      }
     } catch (error) {
       const errorMsg = error.response?.data?.message || 'Failed to save settings';
       const validationErrors = Array.isArray(error.response?.data?.errors)
@@ -3735,10 +3747,35 @@ export default function Settings() {
                 Receipt & POS Metadata
               </CardTitle>
               <CardDescription>
-                Configure receipt identity, cashier closeout defaults, terminal policy, and checkout presets.
+                Configure receipt identity changes for platform-admin review, plus cashier closeout defaults, terminal policy, and checkout presets.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <p className="font-semibold">Receipt metadata edits require platform admin approval.</p>
+                <p className="mt-1 text-xs leading-5 text-amber-800">
+                  Software name, software version, and software serial number are managed by platform admin for the DGFY POS and are not shown on this admin settings form.
+                </p>
+                {settings.posReceiptMetadataPendingReview ? (
+                  <div className="mt-2 space-y-2">
+                    <p className="text-xs font-semibold text-amber-800">
+                      Pending review submitted {settings.posReceiptMetadataPendingReview.requested_at
+                        ? new Date(settings.posReceiptMetadataPendingReview.requested_at).toLocaleString()
+                        : 'recently'}.
+                    </p>
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {Object.entries(settings.posReceiptMetadataPendingReview.changes || {}).map(([key, value]) => (
+                        <div key={key} className="rounded-md border border-amber-200 bg-white/70 px-2 py-1.5 text-xs">
+                          <div className="font-semibold text-amber-900">{SETTINGS_FIELD_LABELS[key] || key}</div>
+                          <div className="mt-0.5 break-words text-amber-800">
+                            {typeof value === 'boolean' ? (value ? 'Yes' : 'No') : (String(value ?? '').trim() || '-')}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Registered Name</Label>
@@ -3810,30 +3847,6 @@ export default function Settings() {
                     value={settings.posAccreditationNumber}
                     onChange={(e) => handleChange('posAccreditationNumber', e.target.value)}
                     placeholder="BIR accreditation reference"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Software Name</Label>
-                  <Input
-                    value={settings.posSoftwareName}
-                    onChange={(e) => handleChange('posSoftwareName', e.target.value)}
-                    placeholder="Software product name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Software Version</Label>
-                  <Input
-                    value={settings.posSoftwareVersion}
-                    onChange={(e) => handleChange('posSoftwareVersion', e.target.value)}
-                    placeholder="Installed fiscal version"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Software Serial Number</Label>
-                  <Input
-                    value={settings.posSoftwareSerialNumber}
-                    onChange={(e) => handleChange('posSoftwareSerialNumber', e.target.value)}
-                    placeholder="Software/license serial"
                   />
                 </div>
                 <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">

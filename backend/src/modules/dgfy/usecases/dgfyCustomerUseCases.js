@@ -158,6 +158,21 @@ const ensureAccount = (account) => {
     return account;
 };
 
+const parseOptionalCoordinate = (value, { min, max, field }) => {
+    if (value === undefined || value === null || value === '') return null;
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `${field} must be between ${min} and ${max}.`, { statusCode: 422 });
+    }
+    return parsed;
+};
+
+const ensureCoordinatePair = (latitude, longitude) => {
+    if ((latitude === null) !== (longitude === null)) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'latitude and longitude must be provided together.', { statusCode: 422 });
+    }
+};
+
 const mapError = (error, fallbackMessage) => {
     if (error instanceof DomainError) return error;
     return new DomainError(DomainErrorCode.INTERNAL_ERROR, fallbackMessage, {
@@ -695,11 +710,14 @@ export const buildManageDgfyCustomerAddressesUseCases = ({ repository = dgfyCust
             if (!addressLine) {
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'address_line is required.', { statusCode: 422 });
             }
+            const latitude = parseOptionalCoordinate(body.latitude, { min: -90, max: 90, field: 'latitude' });
+            const longitude = parseOptionalCoordinate(body.longitude, { min: -180, max: 180, field: 'longitude' });
+            ensureCoordinatePair(latitude, longitude);
             const address = await repository.createAddress(dgfyAccount.id, {
                 label: String(body.label || 'Address').trim() || 'Address',
                 address_line: addressLine,
-                latitude: body.latitude ?? null,
-                longitude: body.longitude ?? null,
+                latitude,
+                longitude,
                 is_default: body.is_default === true
             });
             return ok({ address });
@@ -717,8 +735,16 @@ export const buildManageDgfyCustomerAddressesUseCases = ({ repository = dgfyCust
                 if (!addressLine) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'address_line cannot be blank.', { statusCode: 422 });
                 updates.address_line = addressLine;
             }
-            if (body.latitude !== undefined) updates.latitude = body.latitude;
-            if (body.longitude !== undefined) updates.longitude = body.longitude;
+            const nextLatitude = body.latitude !== undefined ? parseOptionalCoordinate(body.latitude, { min: -90, max: 90, field: 'latitude' }) : undefined;
+            const nextLongitude = body.longitude !== undefined ? parseOptionalCoordinate(body.longitude, { min: -180, max: 180, field: 'longitude' }) : undefined;
+            if (nextLatitude !== undefined || nextLongitude !== undefined) {
+                const existing = await repository.getAddress?.(dgfyAccount.id, addressId);
+                const latitude = nextLatitude !== undefined ? nextLatitude : (existing?.latitude ?? null);
+                const longitude = nextLongitude !== undefined ? nextLongitude : (existing?.longitude ?? null);
+                ensureCoordinatePair(latitude, longitude);
+                if (nextLatitude !== undefined) updates.latitude = nextLatitude;
+                if (nextLongitude !== undefined) updates.longitude = nextLongitude;
+            }
             if (body.is_default !== undefined) updates.is_default = body.is_default === true;
             const address = await repository.updateAddress(dgfyAccount.id, addressId, updates);
             if (!address) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Address not found.', { statusCode: 404 });

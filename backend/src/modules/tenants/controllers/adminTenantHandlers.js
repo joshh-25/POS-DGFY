@@ -10,6 +10,9 @@ import {
     updateTenantUseCase,
     updateTenantCapabilitiesUseCase,
     listTenantCapabilityAuditLogsUseCase,
+    listTenantPosMetadataAuditLogsUseCase,
+    getTenantPosMetadataUseCase,
+    updateTenantPosMetadataUseCase,
     deleteTenantUseCase,
     resubmitRegistrationUseCase,
     tenantAdminRepository
@@ -274,6 +277,82 @@ export const listTenantCapabilityAuditLogs = async (req, res) => {
         })
     });
     return sendUseCaseResult(res, result);
+};
+
+export const getTenantPosMetadata = async (req, res) => {
+    const result = await getTenantPosMetadataUseCase({
+        id: req.params?.id
+    });
+    await trackProductUsageFromResult({
+        req,
+        user: req.user,
+        eventType: 'admin_tenant_pos_metadata_viewed',
+        surface: 'admin_tenants',
+        action: 'view_tenant_pos_metadata',
+        result,
+        successMetadataResolver: () => ({
+            tenant_id: req.params?.id || null
+        })
+    });
+    return sendUseCaseResult(res, result, {
+        successPayloadResolver: (useCaseResult) => ({
+            success: true,
+            data: useCaseResult.data
+        })
+    });
+};
+
+export const listTenantPosMetadataAuditLogs = async (req, res) => {
+    const result = await listTenantPosMetadataAuditLogsUseCase({
+        id: req.params?.id,
+        limit: req.validatedQuery?.limit
+    });
+    await trackProductUsageFromResult({
+        req,
+        user: req.user,
+        eventType: 'admin_tenant_pos_metadata_audit_logs_viewed',
+        surface: 'admin_tenants',
+        action: 'list_tenant_pos_metadata_audit_logs',
+        result,
+        successMetadataResolver: (data) => ({
+            tenant_id: req.params?.id || null,
+            log_count: Array.isArray(data?.logs) ? data.logs.length : 0
+        })
+    });
+    return sendUseCaseResult(res, result);
+};
+
+export const updateTenantPosMetadata = async (req, res) => {
+    const result = await updateTenantPosMetadataUseCase({
+        id: req.params?.id,
+        body: req.validatedData || req.body,
+        actor: {
+            username: req.admin?.username || req.user?.username || 'platform_admin'
+        },
+        metadata: {
+            request_id: req.requestId || req.headers['x-request-id'] || null,
+            ip_address: req.ip || null,
+            user_agent: req.get?.('user-agent') || req.headers['user-agent'] || null
+        }
+    });
+    await trackProductUsageFromResult({
+        req,
+        user: req.user,
+        eventType: 'admin_tenant_pos_metadata_updated',
+        surface: 'admin_tenants',
+        action: 'update_tenant_pos_metadata',
+        result,
+        successMetadataResolver: () => ({
+            tenant_id: req.params?.id || null,
+            pending_action: (req.validatedData || req.body || {}).pending_action || null
+        })
+    });
+    return sendUseCaseResult(res, result, {
+        successPayloadResolver: (useCaseResult) => ({
+            success: true,
+            data: useCaseResult.data
+        })
+    });
 };
 
 /**
@@ -603,6 +682,9 @@ export default {
     getPricingSettings,
     updatePricingSettings,
     updateTenant,
+    getTenantPosMetadata,
+    listTenantPosMetadataAuditLogs,
+    updateTenantPosMetadata,
     deleteTenant,
     setupPayPalRecurring,
     adminChangePlan,

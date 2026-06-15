@@ -193,6 +193,8 @@ Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 
 ### POST /auth/login
 Authenticate user and establish a browser session.
 
+Tenant-local login remains selected by the `x-company-token` request header. Standalone POS terminal unlock must first call `POST /api/v1/auth/lookup` for the submitted email and then send `/auth/login` with the resolved company token. The current browser company token may be reused only when it is one of the lookup tenants, or as a temporary fallback when lookup fails because of a network/server outage. Missing email-to-tenant mapping, multiple-tenant ambiguity, lookup rate limiting, and invalid password must remain distinguishable operator outcomes.
+
 **Request**
 ```json
 {
@@ -3645,7 +3647,7 @@ Track online-store order status for public users.
    - `pos_transactions.vat_amount`
    - `pos_transactions.vat_exempt_sales`
    - `pos_transactions.zero_rated_sales`
-4. Tenant POS receipt/business metadata is stored in `system_settings`:
+4. Tenant POS receipt/business metadata is stored in `system_settings`. Tenant admins can request changes to the receipt/business fields below, but they are first written to `pos_receipt_metadata_pending_changes` and do not become live until platform admin approval:
    - `pos_registered_name`
    - `pos_business_name`
    - `pos_business_style`
@@ -3655,32 +3657,41 @@ Track online-store order status for public users.
    - `pos_ptu_number`
    - `pos_min_number`
    - `pos_accreditation_number`
+   - `pos_receipt_footer_message`
+5. DGFY POS software identity is platform-admin controlled per tenant and is not accepted through tenant settings validators:
    - `pos_software_name`
    - `pos_software_version`
    - `pos_software_serial_number`
-   - `pos_receipt_footer_message`
+   - Fiscal receipt preview and iMin hardware print output include these values when the server receipt contract is `document_type=fiscal_invoice`.
+6. Platform-admin POS metadata operations:
+   - `GET /admin/tenants/:id/pos-metadata` returns current platform-controlled software identity, current receipt metadata, and any pending receipt metadata review.
+   - `PATCH /admin/tenants/:id/pos-metadata` accepts either `software_settings` or `pending_action` (`approve` or `reject`) plus a required `reason` of at least 3 characters.
+   - `GET /admin/tenants/:id/pos-metadata/audit-logs?limit=10` returns `tenant_admin_audit_logs` rows with `action = pos_metadata_update`.
+7. Tenant POS operating settings remain tenant-editable when allowed by normal settings/compliance policy:
    - `pos_discount_profiles` (JSON array of `{name, percentage, active}`)
    - `pos_order_method_fees` (deprecated; retained for historical read compatibility only)
    - `pos_petty_cash_symbol`
    - `pos_petty_cash_amount`
-5. Fiscal invoice checkout can carry buyer fiscal details:
+8. Fiscal invoice checkout can carry buyer fiscal details:
    - `buyer_name`
    - `buyer_tin`
    - `buyer_business_style`
    - `buyer_address`
-6. Fiscal invoice persistence stores a server-owned immutable preparation snapshot:
+   - These buyer fiscal fields are optional for non-fiscal/non-compliant checkout. Non-fiscal checkout persists the fiscal buyer fields as `null`; the tenant schema still must contain the nullable columns so POS reads and order queues do not fail on model selection.
+9. Fiscal invoice persistence stores a server-owned immutable preparation snapshot:
    - `pos_transactions.buyer_tin`
    - `pos_transactions.buyer_business_style`
    - `pos_transactions.buyer_address`
    - `pos_transactions.fiscal_document_template_version`
    - `pos_transactions.fiscal_document_hash`
    - `pos_transactions.fiscal_document_snapshot`
-7. Fiscal lifecycle persistence adds:
+   - fiscal checkout also writes a `checkout_issued` fiscal event when the fiscal event repository is available.
+10. Fiscal lifecycle persistence adds:
    - `pos_transactions.fiscal_lifecycle_state`
    - `pos_transactions.fiscal_reprint_count`
    - `pos_transactions.fiscal_void_event_hash`
    - `pos_transactions.void_reason`
-8. Fiscal terminal registration and event tables:
+11. Fiscal terminal registration and event tables:
    - `pos_fiscal_terminal_registrations`
    - `pos_fiscal_events`
    - `pos_fiscal_print_events`
@@ -5014,6 +5025,10 @@ Front-facing customer account endpoints live under `/api/v1/dgfy/customer`. Exce
 | `POST` | `/dgfy/customer/review-invites/:token/submit` | Submit a fulfilled guest invite review as pending approval and consume the single-use token |
 | `POST` | `/dgfy/customer/tracking-recovery/request` | Request a generic tracking recovery response for email/phone lookup |
 | `POST` | `/dgfy/customer/tracking-recovery/verify` | Verify a six-digit recovery code and return matching activity references |
+
+`POST /dgfy/customer/addresses` and `PUT/PATCH /dgfy/customer/addresses/:address_id` accept `label`, `address_line`, optional nullable `latitude`, optional nullable `longitude`, and `is_default`. Latitude must be within `-90..90`, longitude must be within `-180..180`, and coordinates must be supplied or cleared as a pair. Text-only addresses remain valid fallback records and must not be rejected only because coordinates are absent. Coordinate-backed addresses are preferred for delivery checkout because Storefront checkout persists them as nullable `delivery_latitude` and `delivery_longitude` on the online POS transaction.
+
+Storefront checkout keeps account-saved, temporary checkout, recommended store or branch, manual map, current-device, and text-only location states internally distinct while preserving the public checkout payload shape. A delivery checkout is valid when it has readable address text, with or without coordinates. If coordinates are present, POS incoming orders can render address text, coordinate text, and a map-navigation link; if coordinates are absent, POS must render the text address without a broken map link.
 
 `PATCH /dgfy/customer/addresses/:address_id/default` is a transport alias for updating the address with `is_default=true`; it must remain registered before the generic `PATCH /dgfy/customer/addresses/:address_id` route. Storefront checkout and booking forms consume the default saved address for signed-in customers only when the visible customer address field is still empty.
 

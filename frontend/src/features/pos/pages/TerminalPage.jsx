@@ -23,6 +23,14 @@ import { useWorkflowMode } from '../../settings/WorkflowModeContext.jsx';
 import { getWorkflowModeLabel, isMsmeWorkflowMode } from '../../settings/workflowMode.js';
 import { resolveBusinessModePosDefaults } from '../../settings/businessModeTemplates.js';
 import {
+  POS_TERMINAL_LOGIN_ERROR_CODES,
+  createTerminalLoginError,
+  isCompanyTokenResolutionError,
+  normalizeLookupTenantOptions,
+  resolveTerminalLoginErrorMessage,
+  shouldFallbackToCurrentCompanyTokenAfterLookupError
+} from '../utils/terminalUnlockDiagnostics.js';
+import {
   TERMINAL_QUEUE_STATUS,
   enqueueTerminalOperationIntent as persistTerminalOperationIntent,
   getReplayCandidateEntries,
@@ -215,34 +223,23 @@ const computeRetryBackoffMs = (attemptCount = 1) => {
 
 const SUPPRESS_GLOBAL_ERROR_TOAST = Object.freeze({ skipGlobalErrorToast: true });
 
-const lookupCompanyToken = async (email) => {
+const lookupCompanyToken = async (email, preferredCompanyToken = '') => {
   const response = await api.post('/auth/lookup', { email }, { skipGlobalErrorToast: true });
-  const tenant = response?.data?.data;
-  return tenant?.company_token || null;
-};
-const isCompanyTokenResolutionError = (error) => {
-  const status = Number(error?.response?.status || 0);
-  const message = String(error?.response?.data?.message || '').toLowerCase();
-  if (status === 404) {
-    return message.includes('company token') || message.includes('tenant');
+  const tenants = normalizeLookupTenantOptions(response?.data?.data);
+  const normalizedPreferred = String(preferredCompanyToken || '').trim();
+  if (normalizedPreferred && tenants.some((tenant) => tenant?.company_token === normalizedPreferred)) {
+    return normalizedPreferred;
   }
-  return status === 400 && message.includes('company token');
-};
-
-const resolveTerminalLoginErrorMessage = (error) => {
-  const responseMessage = String(error?.response?.data?.message || '').trim();
-  if (responseMessage) return responseMessage;
-
-  const status = Number(error?.response?.status || 0);
-  if (!status) {
-    return 'Unable to reach the POS backend. Check the server connection and try again.';
+  if (tenants.length === 1) {
+    return tenants[0]?.company_token || null;
   }
-
-  if (status === 401) return 'Invalid email or password.';
-  if (status === 403) return 'Your account is not allowed to unlock this terminal.';
-  if (status === 404) return 'Email not registered in any company.';
-
-  return 'Unable to sign in to terminal.';
+  if (tenants.length > 1) {
+    throw createTerminalLoginError(
+      'This email belongs to multiple companies. Sign in from SKUpervisor once, then reopen POS for the selected company.',
+      POS_TERMINAL_LOGIN_ERROR_CODES.MULTIPLE_TENANTS
+    );
+  }
+  return null;
 };
 
 const parseUserPermissions = (user) => {
@@ -1210,15 +1207,23 @@ export default function TerminalPage() {
 
     setSubmitting(true);
     try {
-      let resolvedCompanyToken = String(
-        getCompanyToken() || ''
-      ).trim();
-      if (!resolvedCompanyToken) {
-        resolvedCompanyToken = String(await lookupCompanyToken(email) || '').trim();
-        if (!resolvedCompanyToken) {
-          toast.error('Unable to resolve company token for this account.');
+      const currentCompanyToken = String(getCompanyToken() || '').trim();
+      let resolvedCompanyToken = '';
+      try {
+        resolvedCompanyToken = String(await lookupCompanyToken(email, currentCompanyToken) || '').trim();
+      } catch (lookupError) {
+        if (!currentCompanyToken || !shouldFallbackToCurrentCompanyTokenAfterLookupError(lookupError)) {
+          toast.error(resolveTerminalLoginErrorMessage(lookupError));
           return;
         }
+        resolvedCompanyToken = currentCompanyToken;
+      }
+      if (!resolvedCompanyToken) {
+        toast.error(resolveTerminalLoginErrorMessage(createTerminalLoginError(
+          'Unable to resolve company token for this account.',
+          POS_TERMINAL_LOGIN_ERROR_CODES.COMPANY_TOKEN_UNRESOLVED
+        )));
+        return;
       }
       try {
         await loginWithCredentials(

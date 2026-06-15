@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: qa
-last_reviewed: 2026-06-13
+last_reviewed: 2026-06-14
 applies_to: dgfy_account, business_registration, onboarding, storefront_checkout, pos_fulfillment, inventory_records
 topic: dgfy_full_flow_e2e_verification
 ---
@@ -111,9 +111,9 @@ Production deploy completed on June 13, 2026 for runtime code SHA `b40f2d96e513a
 
 Documentation and release evidence were later deployed on June 13, 2026 at SHA `f6532baf0a41114ad8dc4f40e3ddf3c53039c321`. The current production UAT gate verified local `master`, `origin/master`, remote `HEAD`, and `.deploy-state/last_deployed_commit` all match `f6532baf0a41114ad8dc4f40e3ddf3c53039c321`.
 
-The release used the documented emergency no-staging bypass because stale QA deployed-head evidence was the only no-staging gate failure. QA smoke, QA rollback drill, QA restore drill, documentation lint, architecture checks, production deterministic installs, production builds, tenant schema sync, tenant schema regression gate, tenant index headroom, permission backfill, Storefront discovery reconciliation, PM2 reload, public endpoint checks, and frontend asset parity passed.
+The final deployment for this evidence set completed at SHA `1850188b9063ef80db27b488f6204d0b7261e01c` with deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260613_213041.summary.txt`. Local `master`, `origin/master`, production remote `HEAD`, and `.deploy-state/last_deployed_commit` matched this SHA at proof time. The release used the documented emergency no-staging bypass because stale QA deployed-head evidence was the only no-staging gate failure. QA smoke, QA rollback drill, QA restore drill, documentation lint, architecture checks, production deterministic installs, production builds, tenant schema sync, tenant schema regression gate, tenant index headroom, permission backfill, Storefront discovery reconciliation, PM2 reload, public endpoint checks, and frontend asset parity passed.
 
-No production mutation was performed. These checks only verified public route HTTP status, first static assets, and rendered browser health.
+No production mutation was performed for this read-only route-smoke section. These checks only verified public route HTTP status, first static assets, and rendered browser health; the controlled mutation evidence is recorded separately in the production UAT rating gate below.
 
 | Route | HTTP/assets | Rendered result | Evidence | Notes |
 |---|---|---|---|---|
@@ -158,7 +158,7 @@ Two earlier mutation attempts are intentionally not counted as approval evidence
 
 ### Open Findings and Gated Work
 
-1. The no-staging release gate previously depended on stale QA deployed-head evidence and required the documented emergency bypass. Refresh QA deploy parity evidence before the next production release so `qa.deploy.summary.sha_match` can pass normally.
+1. The no-staging release gate still depended on stale QA deployed-head evidence and required the documented emergency bypass for the final 2026-06-13 deployment. Refresh QA deploy parity evidence before the next production release so `qa.deploy.summary.sha_match` can pass normally.
 2. Production QA records from the controlled mutation runs are retained for audit cleanup. They must not be treated as customer/operator data.
 
 ## Local Automated Command Plan

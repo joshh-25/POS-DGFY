@@ -24,7 +24,7 @@ const serializeAuditLog = (row) => {
     };
 };
 
-export const buildListTenantCapabilityAuditLogsUseCase = ({ tenantAdminRepository, logger }) => {
+const buildListTenantAdminAuditLogsUseCase = ({ tenantAdminRepository, logger, action, logName }) => {
     return async ({ id, limit = 20 }) => {
         try {
             const tenant = await tenantAdminRepository.findTenantById(id);
@@ -36,7 +36,7 @@ export const buildListTenantCapabilityAuditLogsUseCase = ({ tenantAdminRepositor
                 ));
             }
 
-            const logs = await tenantAdminRepository.listTenantAdminAuditLogs(id, { limit });
+            const logs = await tenantAdminRepository.listTenantAdminAuditLogs(id, { limit, action });
             return ok({
                 statusCode: 200,
                 payload: {
@@ -48,12 +48,24 @@ export const buildListTenantCapabilityAuditLogsUseCase = ({ tenantAdminRepositor
                 }
             });
         } catch (error) {
-            logger?.error?.('List tenant capability audit logs error:', error);
+            logger?.error?.(`List tenant ${logName} audit logs error:`, error);
             return fail(new DomainError(
                 DomainErrorCode.INTERNAL_ERROR,
-                error.message || 'Failed to list tenant capability audit logs',
+                error.message || `Failed to list tenant ${logName} audit logs`,
                 { statusCode: 500 }
             ));
         }
     };
 };
+
+export const buildListTenantCapabilityAuditLogsUseCase = (deps) => buildListTenantAdminAuditLogsUseCase({
+    ...deps,
+    action: 'capability_update',
+    logName: 'capability'
+});
+
+export const buildListTenantPosMetadataAuditLogsUseCase = (deps) => buildListTenantAdminAuditLogsUseCase({
+    ...deps,
+    action: 'pos_metadata_update',
+    logName: 'POS metadata'
+});

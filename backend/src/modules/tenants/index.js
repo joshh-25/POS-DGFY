@@ -24,7 +24,13 @@ import { buildUpdateTenantUseCase } from './usecases/updateTenantUseCase.js';
 import { buildDeleteTenantUseCase } from './usecases/deleteTenantUseCase.js';
 import { buildResubmitRegistrationUseCase } from './usecases/resubmitRegistrationUseCase.js';
 import { buildUpdateTenantCapabilitiesUseCase } from './usecases/updateTenantCapabilitiesUseCase.js';
-import { buildListTenantCapabilityAuditLogsUseCase } from './usecases/listTenantCapabilityAuditLogsUseCase.js';
+import {
+    buildListTenantCapabilityAuditLogsUseCase,
+    buildListTenantPosMetadataAuditLogsUseCase
+} from './usecases/listTenantCapabilityAuditLogsUseCase.js';
+import { buildGetTenantPosMetadataUseCase } from './usecases/getTenantPosMetadataUseCase.js';
+import { buildUpdateTenantPosMetadataUseCase } from './usecases/updateTenantPosMetadataUseCase.js';
+import { updateSettingsUseCase } from '../settings/index.js';
 import { readTenantCapabilities } from './usecases/tenantCapabilitySettings.js';
 import tenantConnector from '../../utils/TenantConnector.js';
 
@@ -100,6 +106,24 @@ export const updateTenantCapabilitiesUseCase = buildUpdateTenantCapabilitiesUseC
 
 export const listTenantCapabilityAuditLogsUseCase = buildListTenantCapabilityAuditLogsUseCase({
     tenantAdminRepository,
+    logger
+});
+
+export const listTenantPosMetadataAuditLogsUseCase = buildListTenantPosMetadataAuditLogsUseCase({
+    tenantAdminRepository,
+    logger
+});
+
+export const getTenantPosMetadataUseCase = buildGetTenantPosMetadataUseCase({
+    tenantAdminRepository,
+    tenantConnector,
+    logger
+});
+
+export const updateTenantPosMetadataUseCase = buildUpdateTenantPosMetadataUseCase({
+    tenantAdminRepository,
+    tenantConnector,
+    updateSettingsUseCase,
     logger
 });
 

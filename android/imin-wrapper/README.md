@@ -12,27 +12,27 @@ This is a minimal Android WebView wrapper for running the hosted DGFY POS URL on
   - `window.iMinBridge.openCashDrawer()`
 - Provides a stub `DrawerController` where the iMin SDK call will go
 
-## What you must change first
+## Current live routing
 
-Update [AppConfig.kt](./app/src/main/java/com/dgfy/iminwrapper/AppConfig.kt):
+Release physical-device builds route to:
 
-```kotlin
-const val HOSTED_POS_URL = "https://pos.example.com"
-val ALLOWED_HOSTS = setOf("pos.example.com")
-```
+- `https://pos.dgfy.ph/?apk_build=<timestamp>#/terminal`
+- `https://pos.dgfy.ph/api/v1`
 
-Replace:
+Allowed in-wrapper production hosts are:
 
-- the hosted POS URL
-- the allowed host list
+- `pos.dgfy.ph`
+- `skupervisor.dgfy.ph`
+
+The Android emulator path still uses the local development host through `10.0.2.2`.
 
 ## What you need to do next
 
 1. Open `android/imin-wrapper` in Android Studio.
-2. Let Android Studio create Gradle wrapper files if prompted.
+2. Let Android Studio sync Gradle if prompted.
 3. Set your final package name if you do not want `com.dgfy.iminwrapper`.
-4. Replace the drawer stub in [DrawerController.kt](./app/src/main/java/com/dgfy/iminwrapper/DrawerController.kt) with the real iMin SDK call for your device model.
-5. Build and install the APK on the iMin device.
+4. Build and install the APK on the iMin device.
+5. Validate login, catalog, checkout, receipt/history, and stock deduction against the production tenant before treating the APK as live-ready.
 
 ## Frontend bridge call
 
@@ -46,7 +46,7 @@ Do not call this in the browser-only path without the wrapper.
 
 ## Recommended implementation order
 
-1. Confirm the hosted POS URL works on the device network.
+1. Confirm `https://pos.dgfy.ph` works on the device network.
 2. Install the wrapper APK on the iMin terminal.
 3. Verify the WebView loads the POS.
 4. Integrate the real iMin SDK drawer call.

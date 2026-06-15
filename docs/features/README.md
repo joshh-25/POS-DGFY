@@ -22,14 +22,16 @@ When to use:
 7. `docs/features/DGFY_UNIFIED_ONBOARDING_PLAN.md`
 - Current implementation status and operating contract for first-login onboarding that connects DGFY storefront, DGFY POS, and SKUpervisor.
 8. `docs/features/CUSTOMER_ACCESS_MODES_AND_INVENTORY_DISPLAY.md`
-- Implemented-behind-flag contract for Customer Access Mode and Inventory Display across onboarding, Settings, discovery/profile/catalog metadata, inventory display serialization, Storefront UI gating, quote/checkout blocking, and public service booking/waitlist enforcement.
+- Current contract for Customer Access Mode, Inventory Display, inventory POS/Storefront catalog setup, shared item-image galleries, onboarding, Settings, discovery/profile/catalog metadata, inventory display serialization, Storefront UI gating, quote/checkout blocking, and public service booking/waitlist enforcement.
 9. `docs/features/SERVICES_MODE.md`
 - Services Mode item taxonomy, UOM boundary, stock-exempt service rows, stock-bearing physical add-ons/supplies, and legacy-row behavior.
 10. `docs/features/FOOD_AND_BEVERAGE_MODE.md`
 - Food & Beverage mode restaurant workflow, item taxonomy, restaurant inventory boundary, table/check/kitchen/reservation behavior, and service-charge separation.
 11. `docs/features/STOREFRONT_CURRENT_STANDING.md`
 - Current storefront implementation standing for shared template registry, mode-specific presentation, exact-coordinate duplicate marker lists, MapLibre/WebGL fallback behavior, and current storefront regression/build evidence.
-12. `docs/proposals/MASTER_ONBOARDING_QUESTIONNAIRE_ANALYSIS.md`
+12. `docs/features/DGFY_CUSTOMER_ACCOUNT.md`
+- Current DGFY customer account behavior for landlord-scoped customer identity, account activity, tracking/reorder/cancel/review actions, and saved delivery locations with optional exact pin coordinates.
+13. `docs/proposals/MASTER_ONBOARDING_QUESTIONNAIRE_ANALYSIS.md`
 - Strategic questionnaire analysis reference for advisory onboarding classification and monetization segmentation framing.
 
 ## Usage Notes

@@ -18,7 +18,7 @@ export default (sequelize) => {
             }
         },
         action: {
-            type: DataTypes.ENUM('capability_update'),
+            type: DataTypes.ENUM('capability_update', 'pos_metadata_update'),
             allowNull: false
         },
         actor_username: {

@@ -292,6 +292,28 @@ export const listTenantCapabilityAuditLogs = async (tenantId, params = {}) => {
     return response.data;
 };
 
+export const getTenantPosMetadata = async (tenantId) => {
+    const response = await adminApi.get(`/admin/tenants/${tenantId}/pos-metadata`, requireAdminAuthConfig());
+    return response.data;
+};
+
+export const listTenantPosMetadataAuditLogs = async (tenantId, params = {}) => {
+    const response = await adminApi.get(`/admin/tenants/${tenantId}/pos-metadata/audit-logs`, {
+        ...requireAdminAuthConfig(),
+        params
+    });
+    return response.data;
+};
+
+export const updateTenantPosMetadata = async (tenantId, payload = {}) => {
+    const response = await adminApi.patch(
+        `/admin/tenants/${tenantId}/pos-metadata`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
 export const listDgfyAccounts = async (params = {}) => {
     const response = await adminApi.get('/dgfy/admin/accounts', {
         ...requireAdminAuthConfig(),

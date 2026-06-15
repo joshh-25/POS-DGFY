@@ -35,7 +35,8 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260428000001-add-storefront-profile-content-to-discovery-index.cjs',
     '20260429000001-add-storefront-v2-profile-fields-to-discovery-index.cjs',
     '20260429000002-create-storefront-follows.cjs',
-    '20260504000001-add-customer-access-fields-to-discovery-index.cjs'
+    '20260504000001-add-customer-access-fields-to-discovery-index.cjs',
+    '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -77,7 +78,17 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'delivery_fee',
         'store_customer_id',
         'accepted_by',
-        'accepted_at'
+        'accepted_at',
+        'buyer_tin',
+        'buyer_business_style',
+        'buyer_address',
+        'fiscal_document_template_version',
+        'fiscal_document_hash',
+        'fiscal_document_snapshot',
+        'fiscal_lifecycle_state',
+        'fiscal_reprint_count',
+        'fiscal_void_event_hash',
+        'void_reason'
     ],
     stock_movements: ['movement_id', 'item_id', 'movement_type', 'quantity', 'location_id', 'source_location_id', 'destination_location_id'],
     fifo_batches: ['batch_id', 'item_id', 'location_id', 'quantity', 'quantity_consumed'],
@@ -135,7 +146,17 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
 
 const REQUIRED_COLUMN_CONTRACTS = Object.freeze({
     pos_transactions: {
-        cashier_id: { allowNull: true }
+        cashier_id: { allowNull: true },
+        buyer_tin: { allowNull: true },
+        buyer_business_style: { allowNull: true },
+        buyer_address: { allowNull: true },
+        fiscal_document_template_version: { allowNull: true },
+        fiscal_document_hash: { allowNull: true },
+        fiscal_document_snapshot: { allowNull: true },
+        fiscal_lifecycle_state: { allowNull: false },
+        fiscal_reprint_count: { allowNull: false },
+        fiscal_void_event_hash: { allowNull: true },
+        void_reason: { allowNull: true }
     }
 });
 

@@ -53,6 +53,109 @@ body {
   scrollbar-gutter: stable;
 }
 
+.wizard-step-navigator {
+  overflow-x: auto;
+  overflow-y: visible;
+  padding: 0.5rem 0.125rem 0.25rem;
+  scrollbar-width: thin;
+}
+
+.wizard-step-navigator__track {
+  display: flex;
+  min-width: max-content;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.wizard-step-navigator__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.wizard-step-navigator__button {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #475569;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+
+.wizard-step-navigator__button:hover,
+.wizard-step-navigator__button:focus-visible {
+  border-color: #0f766e;
+  color: #0f766e;
+  box-shadow: 0 0 0 3px rgb(20 184 166 / 0.16);
+  outline: none;
+}
+
+.wizard-step-navigator__button--active {
+  border-color: #0f766e;
+  background: #0f766e;
+  color: #fff;
+}
+
+.wizard-step-navigator__button--completed {
+  border-color: #14b8a6;
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
+.wizard-step-navigator__button--disabled {
+  cursor: not-allowed;
+  border-color: #e2e8f0;
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
+.wizard-step-navigator__connector {
+  display: block;
+  width: 1.25rem;
+  height: 2px;
+  flex: 0 0 auto;
+  border-radius: 9999px;
+  background: #e2e8f0;
+}
+
+.wizard-step-navigator__connector--completed {
+  background: #14b8a6;
+}
+
+.wizard-step-navigator__tooltip {
+  pointer-events: none;
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.5rem);
+  z-index: 50;
+  max-width: 18rem;
+  width: max-content;
+  transform: translateX(-50%);
+  border-radius: 0.375rem;
+  background: #0f172a;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.25;
+  opacity: 0;
+  padding: 0.375rem 0.5rem;
+  transition: opacity 120ms ease;
+}
+
+.wizard-step-navigator__button:hover + .wizard-step-navigator__tooltip,
+.wizard-step-navigator__button:focus-visible + .wizard-step-navigator__tooltip {
+  opacity: 1;
+}
+
 .dgfy-pos-sidebar-scroll,
 .dgfy-pos-scrollbar-hidden {
   scrollbar-width: none;

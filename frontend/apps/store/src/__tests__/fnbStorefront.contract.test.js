@@ -60,7 +60,27 @@ describe('Food & Beverage storefront contract', () => {
     expect(accountSource).toContain('onSaveAddress');
     expect(accountSource).toContain('onDeleteAddress');
     expect(accountSource).toContain('onSetDefaultAddress');
-    expect(accountSource).toContain('Add Address');
+    expect(accountSource).toContain('renderAddressPinEditor');
+    expect(accountSource).toContain('latitude');
+    expect(accountSource).toContain('longitude');
+    expect(accountSource).toContain('Pinned at');
+    expect(accountSource).toContain('Add Location');
+    expect(accountSource).toContain('Saved Locations');
+    expect(source).toContain('const renderAddressPinEditor = useCallback');
+    expect(source).toContain('Use Current Location');
+    expect(source).toContain('Saved Delivery Locations');
+    expect(source).toContain('Saved Service Locations');
+    expect(source).toContain('text_only');
+    expect(source).toContain('String(previous?.address_line || \'\').trim() || resolvedAddress');
+    expect(source).toContain('String(previous || \'\').trim() ? previous : formattedAddress');
+    expect(source).toContain('latitude: coordinates?.latitude ?? null');
+    expect(source).toContain('longitude: coordinates?.longitude ?? null');
+    expect(source).toContain('/api/v1/dgfy/customer/addresses');
+    expect(source).toContain('deliverySavedLocations');
+    expect(source).toContain('applySavedDeliveryLocation');
+    expect(source).toContain('sourceType: \'account_saved\'');
+    expect(source).toContain('sourceType: \'checkout_temporary\'');
+    expect(source).toContain('sourceType: \'recommended_store_or_branch\'');
   });
 
   it('builds business registration links through the configurable Storefront helper', () => {
@@ -68,7 +88,7 @@ describe('Food & Beverage storefront contract', () => {
     const solutionsSource = solutionsPageSource();
     const helperSource = businessRegistrationUrlSource();
 
-    expect(source).toContain("import { buildBusinessRegistrationUrl } from './businessRegistrationUrl.js';");
+    expect(source).toContain('buildBusinessRegistrationUrl');
     expect(solutionsSource).toContain("import { buildBusinessLoginUrl, buildBusinessRegistrationUrl } from '../../../businessRegistrationUrl.js';");
     expect(helperSource).toContain('VITE_SKUPERVISOR_REGISTRATION_URL');
     expect(helperSource).toContain('https://skupervisor.dgfy.ph/register-company');
