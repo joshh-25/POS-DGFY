@@ -1,6 +1,8 @@
 import { jest } from '@jest/globals';
 
 const mockForceNonCompliantModeUseCase = jest.fn();
+const mockSelectComplianceModeUseCase = jest.fn();
+const mockUpgradeToCompliantUseCase = jest.fn();
 const mockInvalidateTenantLookupCache = jest.fn();
 const mockSendUseCaseResult = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
@@ -18,6 +20,9 @@ jest.unstable_mockModule('../src/modules/tenants/index.js', () => ({
     updateTenantUseCase: noopUseCase,
     updateTenantCapabilitiesUseCase: noopUseCase,
     listTenantCapabilityAuditLogsUseCase: noopUseCase,
+    getTenantPosMetadataUseCase: noopUseCase,
+    listTenantPosMetadataAuditLogsUseCase: noopUseCase,
+    updateTenantPosMetadataUseCase: noopUseCase,
     deleteTenantUseCase: noopUseCase,
     resubmitRegistrationUseCase: noopUseCase,
     tenantAdminRepository: {}
@@ -36,6 +41,8 @@ jest.unstable_mockModule('../src/modules/compliance/index.js', () => ({
     listComplianceSecurityIncidentsUseCase: noopUseCase,
     updateComplianceArtifactVerificationUseCase: noopUseCase,
     updateCompliancePeripheralVerificationUseCase: noopUseCase,
+    selectComplianceModeUseCase: mockSelectComplianceModeUseCase,
+    upgradeToCompliantUseCase: mockUpgradeToCompliantUseCase,
     forceNonCompliantModeUseCase: mockForceNonCompliantModeUseCase,
     reviewFinalReviewDocumentUseCase: noopUseCase,
     updateComplianceSecurityIncidentStatusUseCase: noopUseCase
@@ -64,10 +71,14 @@ jest.unstable_mockModule('../src/modules/shared/controllers/useCaseResponder.js'
 }));
 
 let adminForceNonCompliant;
+let adminSelectComplianceMode;
+let adminUpgradeComplianceMode;
 
 beforeAll(async () => {
     const mod = await import('../src/modules/tenants/controllers/adminTenantHandlers.js');
     adminForceNonCompliant = mod.adminForceNonCompliant;
+    adminSelectComplianceMode = mod.adminSelectComplianceMode;
+    adminUpgradeComplianceMode = mod.adminUpgradeComplianceMode;
 });
 
 describe('adminForceNonCompliant handler', () => {
@@ -123,6 +134,74 @@ describe('adminForceNonCompliant handler', () => {
             eventType: 'admin_force_non_compliant_attempted',
             surface: 'admin_tenants',
             action: 'force_non_compliant'
+        }));
+        expect(mockSendUseCaseResult).toHaveBeenCalled();
+    });
+
+    it('selects tenant compliance mode and invalidates tenant lookup cache on success', async () => {
+        mockSelectComplianceModeUseCase.mockResolvedValue({
+            success: true,
+            data: { mode_state: 'non_compliant_active' }
+        });
+
+        const req = {
+            params: { id: 'tenant-1' },
+            validatedData: {
+                mode_choice: 'non_compliant',
+                reason: 'Give tenant POS access',
+                context: {}
+            },
+            admin: { id: 5, username: 'platform_admin' }
+        };
+        const res = {};
+
+        await adminSelectComplianceMode(req, res);
+
+        expect(mockSelectComplianceModeUseCase).toHaveBeenCalledWith(expect.objectContaining({
+            tenantId: 'tenant-1',
+            modeChoice: 'non_compliant',
+            reason: 'Give tenant POS access',
+            actorUser: expect.objectContaining({ is_platform_admin: true }),
+            requirePrimaryAudit: true
+        }));
+        expect(mockInvalidateTenantLookupCache).toHaveBeenCalledWith({ tenantId: 'tenant-1' });
+        expect(mockTrackProductUsageFromResult).toHaveBeenCalledWith(expect.objectContaining({
+            eventType: 'admin_compliance_mode_select_attempted',
+            surface: 'admin_tenants',
+            action: 'select_compliance_mode'
+        }));
+        expect(mockSendUseCaseResult).toHaveBeenCalled();
+    });
+
+    it('upgrades tenant compliance mode and invalidates tenant lookup cache on success', async () => {
+        mockUpgradeToCompliantUseCase.mockResolvedValue({
+            success: true,
+            data: { mode_state: 'compliant_pending' }
+        });
+
+        const req = {
+            params: { id: 'tenant-1' },
+            validatedData: {
+                reason: 'Tenant is preparing compliance documents',
+                context: {}
+            },
+            admin: { id: 5, username: 'platform_admin' }
+        };
+        const res = {};
+
+        await adminUpgradeComplianceMode(req, res);
+
+        expect(mockUpgradeToCompliantUseCase).toHaveBeenCalledWith(expect.objectContaining({
+            tenantId: 'tenant-1',
+            reason: 'Tenant is preparing compliance documents',
+            actorUser: expect.objectContaining({ is_platform_admin: true }),
+            requirePrimaryAudit: true
+        }));
+        expect(mockInvalidateTenantLookupCache).toHaveBeenCalledWith({ tenantId: 'tenant-1' });
+        expect(mockTrackProductUsageFromResult).toHaveBeenCalledWith(expect.objectContaining({
+            eventType: 'admin_compliance_mode_upgrade_attempted',
+            surface: 'admin_tenants',
+            action: 'upgrade_compliance_mode'
         }));
         expect(mockSendUseCaseResult).toHaveBeenCalled();
     });

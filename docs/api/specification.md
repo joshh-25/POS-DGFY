@@ -5138,6 +5138,13 @@ List all tenant registrations with their status.
       "plan_policy": "registered_tenant_premium_capable",
       "compliance_mode_state": null,
       "compliance_mode_choice_required": true,
+      "admin_compliance_mode_action": {
+        "action": "select_mode",
+        "allowed": true,
+        "label": "Set compliance mode",
+        "helper_text": "Select non-compliant POS access or move the tenant into compliant pending mode.",
+        "options": ["non_compliant", "compliant"]
+      },
       "can_force_non_compliant": false,
       "force_non_compliant_block_reason": "Compliance mode has not been selected yet.",
       "capabilities": {
@@ -5162,6 +5169,7 @@ List all tenant registrations with their status.
 **Eligibility fields (server-computed)**
 - `can_force_non_compliant`: authoritative eligibility flag for admin `POST /admin/tenants/:id/force-non-compliant` action.
 - `force_non_compliant_block_reason`: human-readable reason when force action is blocked.
+- `admin_compliance_mode_action`: authoritative next platform-admin compliance lifecycle action. Supported actions are `select_mode`, `upgrade_to_compliant_pending`, `force_non_compliant`, and `none`. A `compliant` selection or upgrade moves the tenant only to `compliant_pending`; `compliant_active` remains gated by the existing checklist activation flow.
 - Admin UI should treat these fields as source-of-truth instead of recomputing eligibility from local assumptions.
 - `effective_plan`: authoritative plan value to render and use for admin presentation. Pending and active tenants return `premium` even if a historical stored `plan` value is still `standard`.
 - `plan_policy`: explains whether `effective_plan` came from stored metadata (`stored_plan`) or registered-tenant premium capability normalization (`registered_tenant_premium_capable`).
@@ -5433,6 +5441,47 @@ Append immutable compliance audit evidence that an incident has been acknowledge
 
 ### POST /admin/tenants/:id/compliance/security-incidents/:incident_id/resolve
 Append immutable compliance audit evidence that an incident has been resolved.
+
+### POST /admin/tenants/:id/compliance/mode/select
+Platform-admin governed mode selection for tenants whose lifecycle has not been selected.
+
+**Request Body**
+```json
+{
+  "mode_choice": "compliant",
+  "reason": "Tenant requested compliant onboarding",
+  "context": {
+    "ticket": "OPS-432"
+  }
+}
+```
+
+**Behavior**
+- Allowed for tenants with no selected compliance lifecycle or `compliance_mode_choice_required=true`.
+- `mode_choice=non_compliant` sets `non_compliant_active` and enables non-fiscal POS operation.
+- `mode_choice=compliant` sets `compliant_pending`; fiscal issuance remains blocked until normal checklist activation succeeds.
+- Requires platform-admin authentication and a 3-255 character reason.
+- Persists immutable compliance audit event `mode_selection`; the mutation fails closed if the primary audit write is unavailable.
+
+### POST /admin/tenants/:id/compliance/mode/upgrade
+Platform-admin governed upgrade from non-compliant POS mode into compliant pending mode.
+
+**Request Body**
+```json
+{
+  "reason": "Tenant is preparing compliance documents",
+  "context": {
+    "ticket": "OPS-433"
+  }
+}
+```
+
+**Behavior**
+- Allowed only from `non_compliant_active`.
+- Moves the tenant to `compliant_pending`; it does not set `compliant_active`.
+- Fiscal issuance remains gated by `POST /api/v1/compliance/activate` and the existing readiness checklist.
+- Requires platform-admin authentication and a 3-255 character reason.
+- Persists immutable compliance audit event `mode_upgrade`; the mutation fails closed if the primary audit write is unavailable.
 
 ### POST /admin/tenants/:id/force-non-compliant
 Platform-admin governed downgrade to force tenant lifecycle back to `non_compliant_active`.

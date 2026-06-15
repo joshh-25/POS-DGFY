@@ -27,6 +27,7 @@ import {
 } from './posReceiptMetadataApprovalPolicy.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
+const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
 
 const getTenantComplianceSnapshot = () => {
     const store = dbStore.getStore() || {};
@@ -61,6 +62,19 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository }) => {
         try {
             let normalizedValue = value;
             let strictBindingRegistryPatch = null;
+            if (key === PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY) {
+                return fail(new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'Platform maximum Customer Access Mode is controlled by platform admin.',
+                    {
+                        statusCode: 403,
+                        details: {
+                            reason_code: 'CUSTOMER_ACCESS_PLATFORM_MAX_PLATFORM_CONTROLLED',
+                            setting_keys: [PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY]
+                        }
+                    }
+                ));
+            }
             if (actorUser?.is_platform_admin !== true && isPlatformControlledPosSoftwareKey(key)) {
                 return fail(new DomainError(
                     DomainErrorCode.AUTHORIZATION_FAILED,

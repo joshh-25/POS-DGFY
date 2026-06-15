@@ -5,12 +5,14 @@ export const INVENTORY_DISPLAY_MODES = Object.freeze(['hidden', 'availability', 
 
 export const CUSTOMER_ACCESS_SETTING_KEYS = Object.freeze([
     'customer_access_mode',
+    'platform_max_customer_access_mode',
     'inventory_display_mode',
     'inventory_low_stock_display_threshold',
     'tenant_onboarding_progress'
 ]);
 
 export const DEFAULT_CUSTOMER_ACCESS_MODE = 'catalog';
+export const DEFAULT_PLATFORM_MAX_CUSTOMER_ACCESS_MODE = 'transaction';
 export const DEFAULT_INVENTORY_DISPLAY_MODE = 'availability';
 export const DEFAULT_LOW_STOCK_DISPLAY_THRESHOLD = 5;
 
@@ -142,6 +144,7 @@ export const resolveEffectiveCustomerAccessMode = ({
     requestedMode,
     legacyVisibilityMode,
     registrationStage,
+    platformMaxMode,
     featureEnabled = isCustomerAccessModesEnabled()
 } = {}) => {
     const requested = normalizeCustomerAccessMode(
@@ -149,19 +152,33 @@ export const resolveEffectiveCustomerAccessMode = ({
         DEFAULT_CUSTOMER_ACCESS_MODE
     );
     const normalizedStage = normalizeRegistrationStage(registrationStage);
-    const maxAllowed = getMaxCustomerAccessModeForStage(normalizedStage);
+    const registrationStageMax = getMaxCustomerAccessModeForStage(normalizedStage);
+    const platformMax = normalizeCustomerAccessMode(platformMaxMode, DEFAULT_PLATFORM_MAX_CUSTOMER_ACCESS_MODE);
+    const maxAllowed = minCustomerAccessMode(registrationStageMax, platformMax);
     const effective = featureEnabled
         ? minCustomerAccessMode(requested, maxAllowed)
         : 'transaction';
-    const limitationReason = featureEnabled && effective !== requested
-        ? `Registration stage ${normalizedStage} allows up to ${maxAllowed} mode.`
-        : null;
+    const limitationReasons = [];
+    if (featureEnabled && effective !== requested) {
+        if (compareCustomerAccessModes(registrationStageMax, requested) < 0) {
+            limitationReasons.push(`Registration stage ${normalizedStage} allows up to ${registrationStageMax} mode.`);
+        }
+        if (compareCustomerAccessModes(platformMax, requested) < 0) {
+            limitationReasons.push(`Platform maximum allows up to ${platformMax} mode.`);
+        }
+        if (limitationReasons.length === 0) {
+            limitationReasons.push(`Customer access is capped at ${maxAllowed} mode.`);
+        }
+    }
+    const limitationReason = limitationReasons.length > 0 ? limitationReasons.join(' ') : null;
 
     return {
         customer_access_mode: requested,
         requested_customer_access_mode: requested,
         effective_customer_access_mode: effective,
         max_customer_access_mode: maxAllowed,
+        platform_max_customer_access_mode: platformMax,
+        registration_stage_max_customer_access_mode: registrationStageMax,
         registration_stage: normalizedStage,
         limitation_reason: limitationReason,
         customer_access_modes_enabled: featureEnabled,
@@ -176,6 +193,7 @@ export const resolveAccessPolicyFromSettings = (settings = {}, options = {}) => 
         requestedMode: settings?.customer_access_mode?.value ?? settings?.customer_access_mode,
         legacyVisibilityMode: progress?.classification_snapshot?.visibility_mode,
         registrationStage,
+        platformMaxMode: settings?.platform_max_customer_access_mode?.value ?? settings?.platform_max_customer_access_mode,
         featureEnabled: options.featureEnabled ?? isCustomerAccessModesEnabled()
     });
     const inventoryDisplayMode = normalizeInventoryDisplayMode(

@@ -27,6 +27,24 @@ import {
 } from './posReceiptMetadataApprovalPolicy.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
+const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
+
+const assertTenantSettingsDoNotMutatePlatformAccessCeiling = ({ settingsData }) => {
+    if (!Object.prototype.hasOwnProperty.call(settingsData, PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY)) {
+        return;
+    }
+    throw new DomainError(
+        DomainErrorCode.AUTHORIZATION_FAILED,
+        'Platform maximum Customer Access Mode is controlled by platform admin.',
+        {
+            statusCode: 403,
+            details: {
+                reason_code: 'CUSTOMER_ACCESS_PLATFORM_MAX_PLATFORM_CONTROLLED',
+                setting_keys: [PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY]
+            }
+        }
+    );
+};
 
 const assertWorkflowModeAuthorization = ({ settingsData, actorUser }) => {
     if (!Object.prototype.hasOwnProperty.call(settingsData, WORKFLOW_MODE_SETTING_KEY)) {
@@ -142,6 +160,7 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository }) => {
             });
             settingsData = posMetadataReview.settingsData;
 
+            assertTenantSettingsDoNotMutatePlatformAccessCeiling({ settingsData });
             assertWorkflowModeAuthorization({ settingsData, actorUser });
             await assertPublicStorefrontHandlePatch({ settingsData, settingsRepository });
             if (

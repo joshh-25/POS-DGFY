@@ -2597,6 +2597,31 @@ const buildFnbContentReadinessItems = ({
   ].filter(Boolean).slice(0, 5);
 };
 
+const buildFnbOverviewFallbackCopy = ({
+  storeName = '',
+  fnbViewModel = {},
+  selectedStore = null
+} = {}) => {
+  const name = String(storeName || selectedStore?.tenant_name || 'This menu').trim();
+  const totalItems = Number(fnbViewModel?.totalItems || selectedStore?.catalog_count || 0);
+  const sectionCount = Number(fnbViewModel?.menuSectionCount || 0);
+  const beverageCount = Number(fnbViewModel?.beverageCount || 0);
+  const parts = [];
+  if (totalItems > 0) {
+    parts.push(`${totalItems} published menu item${totalItems === 1 ? '' : 's'}`);
+  }
+  if (sectionCount > 0) {
+    parts.push(`${sectionCount} organized section${sectionCount === 1 ? '' : 's'}`);
+  }
+  if (beverageCount > 0) {
+    parts.push(`${beverageCount} drink option${beverageCount === 1 ? '' : 's'}`);
+  }
+  if (parts.length === 0) {
+    return `${name} shares menu highlights, store details, and contact options for customers browsing the storefront.`;
+  }
+  return `${name} offers ${parts.join(', ')} for customers browsing the storefront.`;
+};
+
 const FnbHero = ({
   modeAdapter,
   heroSectionModel,
@@ -2630,6 +2655,11 @@ const FnbHero = ({
   const addressText = String(heroSectionModel.addressLine || heroSectionModel.locationLabel || '').trim();
   const galleryImages = Array.isArray(heroSectionModel.galleryPreview) ? heroSectionModel.galleryPreview.filter(Boolean) : [];
   const aboutText = String(heroSectionModel.aboutText || '').trim();
+  const overviewFallbackCopy = buildFnbOverviewFallbackCopy({
+    storeName: heroSectionModel.name,
+    fnbViewModel,
+    selectedStore
+  });
   const hasAboutToggle = aboutText.length > 180;
   const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
     && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
@@ -2882,7 +2912,7 @@ const FnbHero = ({
               overflow: hasAboutToggle ? 'hidden' : 'visible',
               fontFamily: heroTheme.bodyFont
             }}>
-              {aboutText || 'This menu storefront is connected to live SKUpervisor product data and the food and beverage backend.'}
+              {aboutText || overviewFallbackCopy}
             </p>
           </div>
 
@@ -5630,9 +5660,23 @@ export default function StorefrontApp() {
     setRouteServiceItemId(null);
     setRouteItemId(null);
   };
-  const goStoreOrderForDiscovery = (slug, locationId = null) => {
+  const goStoreOrderForDiscovery = (slug, locationId = null, storeContext = null) => {
     const normalized = toSlug(slug);
     if (!normalized || typeof window === 'undefined') return;
+    const contextWorkflowMode = String(storeContext?.workflow_mode || storeContext?.business_mode || '').trim().toLowerCase();
+    const hasStoreContext = storeContext && typeof storeContext === 'object';
+    const shouldUseCanonicalStorefront = hasStoreContext && (contextWorkflowMode === 'fnb' || !canUseCheckout(storeContext));
+    if (shouldUseCanonicalStorefront) {
+      goStore(normalized, locationId);
+      if (!canUseCheckout(storeContext)) {
+        const message = getStorefrontAccessBlockMessage(storeContext);
+        if (message) toast.error(message);
+      }
+      window.requestAnimationFrame(() => {
+        document.getElementById('storefront-catalog-section')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+      });
+      return;
+    }
     const persistedTrackedOrders = readTrackedOrdersForStore(normalized).filter((entry) => !TERMINAL_TRACKING_STATUSES.has(String(entry.status || '').trim().toLowerCase()));
     const persistedTrackingPin = readLastTrackingPinForStore(normalized);
     const resolvedInitialTab = 'checkout';
@@ -9487,7 +9531,7 @@ export default function StorefrontApp() {
                       </div>
                       <div style={{ display: 'grid', gap: isMobileGridView ? 8 : 10, gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', marginTop: isMobileGridView ? 0 : 2 }}>
                     <button type="button" className="discovery-grid-action discovery-grid-action-secondary" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
-                    <button type="button" className="discovery-grid-action discovery-grid-action-primary" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={actionButtonStyle('primary')}>Order Now</button>
+                    <button type="button" className="discovery-grid-action discovery-grid-action-primary" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId, store)} style={actionButtonStyle('primary')}>Order Now</button>
                   </div>
                 </div>
               </article>
@@ -9576,7 +9620,7 @@ export default function StorefrontApp() {
                   </div>
                 </div>
               <div style={{ display: 'grid', gap: 8, gridTemplateColumns: '1fr 1fr' }}>
-                <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={actionButtonStyle('primary')}>Order Now</button>
+                <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId, store)} style={actionButtonStyle('primary')}>Order Now</button>
                 <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
               </div>
             </article>
@@ -9727,11 +9771,11 @@ export default function StorefrontApp() {
               {isGridView ? (
                 <>
                   <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
-                  <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={actionButtonStyle('primary')}>Order Now</button>
+                  <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId, store)} style={actionButtonStyle('primary')}>Order Now</button>
                 </>
               ) : (
                 <>
-                  <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={actionButtonStyle('primary')}>Order Now</button>
+                  <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId, store)} style={actionButtonStyle('primary')}>Order Now</button>
                   <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
                 </>
               )}
@@ -11840,7 +11884,7 @@ export default function StorefrontApp() {
                                   </div>
                                   <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                                     <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={{ flex: 1, borderRadius: 8, border: '1px solid #dbeafe', background: '#fff', color: '#1a4e8d', padding: '7px 0', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>View Store</button>
-                                    <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={{ flex: 1, borderRadius: 8, border: 'none', background: '#ff8a1f', color: '#fff', padding: '7px 0', fontWeight: 700, cursor: 'pointer', fontSize: 12, boxShadow: '0 4px 10px rgba(249,115,22,.20)' }}>Order Now</button>
+                                    <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId, store)} style={{ flex: 1, borderRadius: 8, border: 'none', background: '#ff8a1f', color: '#fff', padding: '7px 0', fontWeight: 700, cursor: 'pointer', fontSize: 12, boxShadow: '0 4px 10px rgba(249,115,22,.20)' }}>Order Now</button>
                                   </div>
                                 </div>
                               </article>

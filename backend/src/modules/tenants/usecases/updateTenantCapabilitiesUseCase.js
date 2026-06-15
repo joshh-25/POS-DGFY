@@ -57,6 +57,7 @@ const upsertSetting = async (SystemSetting, key, value, { transaction = null } =
 const includesStorefrontPatch = (patch = {}) => (
     Object.prototype.hasOwnProperty.call(patch, 'store_is_visible')
     || Object.prototype.hasOwnProperty.call(patch, 'customer_access_mode')
+    || Object.prototype.hasOwnProperty.call(patch, 'platform_max_customer_access_mode')
 );
 
 export const buildUpdateTenantCapabilitiesUseCase = ({
@@ -99,7 +100,8 @@ export const buildUpdateTenantCapabilitiesUseCase = ({
                 'tenant_ims_enabled',
                 'tenant_pos_enabled',
                 'store_is_visible',
-                'customer_access_mode'
+                'customer_access_mode',
+                'platform_max_customer_access_mode'
             ];
 
             const transactionResult = await dbStore.run({

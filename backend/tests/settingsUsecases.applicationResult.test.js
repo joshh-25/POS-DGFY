@@ -19,19 +19,35 @@ describe('settings use-cases application result contract', () => {
     });
 
     const result = await useCase();
-    expect(result).toEqual({
-      success: true,
-      data: {
-        timezone: { value: 'UTC' },
-        customer_access_modes_enabled: expect.objectContaining({
-          value: true,
-          data_type: 'boolean',
-          source: 'runtime'
-        })
-      },
-      error: null,
-      message: null
-    });
+        expect(result).toEqual(expect.objectContaining({
+            success: true,
+            data: expect.objectContaining({
+                timezone: { value: 'UTC' },
+                requested_customer_access_mode: expect.objectContaining({
+                    value: 'catalog',
+                    source: 'runtime'
+                }),
+                effective_customer_access_mode: expect.objectContaining({
+                    value: 'catalog',
+                    source: 'runtime'
+                }),
+                max_customer_access_mode: expect.objectContaining({
+                    value: 'catalog',
+                    source: 'runtime'
+                }),
+                platform_max_customer_access_mode: expect.objectContaining({
+                    value: 'transaction',
+                    source: 'runtime_default'
+                }),
+                customer_access_modes_enabled: expect.objectContaining({
+                    value: true,
+                    data_type: 'boolean',
+                    source: 'runtime'
+                })
+            }),
+            error: null,
+            message: null
+        }));
   });
 
   it('getAllSettings exposes rollback runtime state with tenant context', async () => {
@@ -55,6 +71,40 @@ describe('settings use-cases application result contract', () => {
       data_type: 'boolean',
       source: 'runtime'
     }));
+  });
+
+  it('getAllSettings exposes backend-computed customer access policy metadata', async () => {
+    const useCase = buildGetAllSettingsUseCase({
+      settingsRepository: {
+        getAllSettings: jest.fn().mockResolvedValue({
+          customer_access_mode: { value: 'transaction' },
+          platform_max_customer_access_mode: { value: 'catalog', updated_at: '2026-06-15T00:00:00.000Z' },
+          tenant_onboarding_progress: {
+            value: {
+              step_payloads: {
+                business_classification: {
+                  legitimacy: { registration_status: 'registered' }
+                }
+              }
+            }
+          }
+        })
+      },
+      customerAccessModesEnabledProvider: jest.fn().mockReturnValue(true)
+    });
+
+    const result = await useCase();
+
+    expect(result.success).toBe(true);
+    expect(result.data.requested_customer_access_mode.value).toBe('transaction');
+    expect(result.data.effective_customer_access_mode.value).toBe('catalog');
+    expect(result.data.max_customer_access_mode.value).toBe('catalog');
+    expect(result.data.platform_max_customer_access_mode).toEqual(expect.objectContaining({
+      value: 'catalog',
+      source: 'tenant'
+    }));
+    expect(result.data.customer_access_limitation_reason.value).toBe('Platform maximum allows up to catalog mode.');
+    expect(result.data.customer_access_capabilities.value.checkout).toBe(false);
   });
 
   it('getSettingByKey maps not-found errors to RESOURCE_NOT_FOUND', async () => {
@@ -81,6 +131,25 @@ describe('settings use-cases application result contract', () => {
     expect(result.success).toBe(false);
     expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
     expect(result.error.message).toBe('settingsData must be an object');
+  });
+
+  it('updateSettings rejects tenant attempts to configure platform customer access ceiling', async () => {
+    const updateSettings = jest.fn();
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: { updateSettings }
+    });
+
+    const result = await useCase({
+      settingsData: {
+        platform_max_customer_access_mode: 'transaction'
+      },
+      actorUser: { username: 'tenant_admin' }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.AUTHORIZATION_FAILED);
+    expect(result.error.statusCode).toBe(403);
+    expect(updateSettings).not.toHaveBeenCalled();
   });
 
   it('updateSettings rejects reserved public storefront handles', async () => {
@@ -209,6 +278,24 @@ describe('settings use-cases application result contract', () => {
       error: null,
       message: null
     });
+  });
+
+  it('updateSettingByKey rejects tenant attempts to configure platform customer access ceiling', async () => {
+    const updateSettingByKey = jest.fn();
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: { updateSettingByKey }
+    });
+
+    const result = await useCase({
+      key: 'platform_max_customer_access_mode',
+      value: 'transaction',
+      actorUser: { username: 'tenant_admin' }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.AUTHORIZATION_FAILED);
+    expect(result.error.statusCode).toBe(403);
+    expect(updateSettingByKey).not.toHaveBeenCalled();
   });
 
   it('updateSettingByKey does not create a POS metadata pending review when the receipt value is unchanged', async () => {

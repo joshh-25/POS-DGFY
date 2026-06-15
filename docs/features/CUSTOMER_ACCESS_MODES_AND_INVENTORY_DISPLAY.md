@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-06-11
+last_reviewed: 2026-06-15
 applies_to: customer_access_modes_and_storefront_inventory_display
 topic: customer_access_modes_inventory_display
 ---
@@ -13,6 +13,15 @@ topic: customer_access_modes_inventory_display
 Customer Access Mode replaces the old merchant-facing "Visibility Mode" wording with a capability contract: what customers can see and do after finding a business. Inventory Display is a separate Storefront control for how much stock information customers can see. Item-level `Show in Storefront` is a third control: it determines whether an individual item is included in the customer-facing catalog when the tenant's effective Customer Access Mode allows catalog browsing.
 
 This contract is enforced by default. Public Storefront APIs use the effective Customer Access Mode from tenant settings to decide whether customers can browse catalog rows, contact the tenant, request quotes, book services, or complete checkout. `CUSTOMER_ACCESS_MODES_ENABLED=false` is now an explicit rollback switch only; when it is set, `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` may still re-enable enforcement for selected canary tenants.
+
+Customer Access Mode uses a governed ceiling model:
+
+- `customer_access_mode` is the company/tenant requested mode.
+- `platform_max_customer_access_mode` is the platform-admin configured ceiling.
+- Registration readiness contributes its own ceiling from onboarding/legitimacy state.
+- `effective_customer_access_mode` is the most restrictive mode across the company request, platform ceiling, registration readiness, and runtime enforcement gates.
+
+Company admins may downgrade their requested mode at any time, but cannot make the public Storefront more permissive than the platform-admin ceiling. Platform admins may raise or lower the platform ceiling through audited Tenant Manager capability controls. Public quote, booking, cart, checkout, and payment actions remain available only when the effective mode is `transaction` and the existing stock, branch, payment, compliance, and business-hours gates also pass.
 
 Authoritative docs used for this plan:
 
@@ -52,7 +61,7 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 ## Implemented Integration
 1. Backend domain and settings
 - Shared policy helpers live in `backend/src/modules/shared/utils/customerAccessPolicy.js`.
-- Tenant-local settings are persisted in `system_settings`: `customer_access_mode`, `inventory_display_mode`, and `inventory_low_stock_display_threshold`.
+- Tenant-local settings are persisted in `system_settings`: `customer_access_mode`, `platform_max_customer_access_mode`, `inventory_display_mode`, and `inventory_low_stock_display_threshold`.
 - Existing tenants keep their persisted `store_is_visible` value. Newly provisioned tenants default to `store_is_visible=false`, `customer_access_mode=catalog`, `inventory_display_mode=availability`, and low-stock threshold `5`. Provisioning must overwrite a migration-seeded `store_is_visible=true` row for the new tenant before discovery bootstrap runs.
 - `store_is_visible=false` hides the tenant from public discovery/map feeds and public storefront profile reads. This tenant-level public visibility switch is evaluated before Customer Access Mode; a hidden tenant is not exposed as a Map Listing Only entry.
 - Settings validation and normalization accept the new keys through the modular Settings flow. Controllers remain transport-only. Bulk Settings saves compare incoming keys with persisted values before compliance preflight, so unchanged fiscal POS fields included by the full Settings form do not block unrelated Storefront/profile/system changes for non-compliant tenants.
@@ -70,7 +79,9 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - Settings > Storefront exposes the same public map/page visibility switch through `store_is_visible`. Turning it off hides both public discovery/map pins and the public root-handle tenant page (`/:store_tenant_slug`). Turning it on does not create a pin by itself; Settings warns when no active primary storefront pin exists because public publication remains blocked until a real pin is saved.
 - `store_tenant_slug` is the tenant's unique public handle. Duplicate company display names are allowed, but duplicate handles and reserved DGFY root paths are rejected so clean URLs such as `https://dgfy.ph/space-bar` remain deterministic. Handle uniqueness is reserved in landlord `storefront_handle_reservations`, not only in the public discovery index, so hidden tenants keep their clean URL claim while absent from map/search results. `/tenant-store/:slug` and `/store/:slug` remain compatibility paths only.
 - The section shows requested mode, effective mode, max allowed mode, limitation copy, and a runtime enforcement status sourced from `GET /settings` key `customer_access_modes_enabled`.
+- `GET /settings` also exposes runtime access metadata for tenant Settings: `requested_customer_access_mode`, `effective_customer_access_mode`, `max_customer_access_mode`, `platform_max_customer_access_mode`, `registration_stage_max_customer_access_mode`, `customer_access_registration_stage`, `customer_access_limitation_reason`, and `customer_access_capabilities`.
 - `customer_access_modes_enabled` is a virtual runtime setting derived from `CUSTOMER_ACCESS_MODES_ENABLED` and tenant allowlisting. It is read-only and must not be persisted in `system_settings`.
+- `platform_max_customer_access_mode` is platform-admin controlled. Tenant Settings may read it, but tenant Settings mutations must not write it.
 - Modes above the declared onboarding registration stage are disabled in normal tenant UI; backend runtime still enforces public actions.
 - Item-level storefront catalog controls live on inventory item setup surfaces, not Settings. Settings controls whether the Storefront can browse/order overall; `Show in Storefront` controls one item.
 

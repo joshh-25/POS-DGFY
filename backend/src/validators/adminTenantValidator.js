@@ -7,8 +7,9 @@ const capabilityPatchSchema = Joi.object({
     pos_enabled: Joi.boolean().strict().optional(),
     storefront_visible: Joi.boolean().strict().optional(),
     customer_access_mode: Joi.string().trim().lowercase().valid(...CUSTOMER_ACCESS_MODES).optional(),
+    platform_max_customer_access_mode: Joi.string().trim().lowercase().valid(...CUSTOMER_ACCESS_MODES).optional(),
     reason: Joi.string().trim().min(3).max(500).required()
-}).or('ims_enabled', 'pos_enabled', 'storefront_visible', 'customer_access_mode').unknown(false);
+}).or('ims_enabled', 'pos_enabled', 'storefront_visible', 'customer_access_mode', 'platform_max_customer_access_mode').unknown(false);
 
 const capabilityAuditLogQuerySchema = Joi.object({
     limit: Joi.number().integer().min(1).max(100).default(20)

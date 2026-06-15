@@ -198,6 +198,11 @@ const createDefaultSettings = ({ workflowMode = DEFAULT_WORKFLOW_MODE } = {}) =>
   posOpenStatus: true,
   posWaitTimeMinutes: 15,
   customerAccessMode: 'catalog',
+  customerAccessEffectiveMode: 'catalog',
+  customerAccessMaxMode: 'transaction',
+  customerAccessPlatformMaxMode: 'transaction',
+  customerAccessRegistrationStageMaxMode: 'transaction',
+  customerAccessLimitationReason: '',
   inventoryDisplayMode: 'availability',
   inventoryLowStockDisplayThreshold: 5,
   customerAccessRegistrationStage: 'registered',
@@ -355,18 +360,6 @@ const normalizeInventoryDisplayMode = (value) => (
     ? String(value || '').trim().toLowerCase()
     : 'availability'
 );
-const maxAccessModeForStage = (stage) => {
-  const normalized = String(stage || '').trim().toLowerCase();
-  if (normalized === 'registered') return 'transaction';
-  if (normalized === 'partial' || normalized === 'pending' || normalized === 'in_progress') return 'inquiry';
-  return 'catalog';
-};
-const minAccessMode = (left, right) => (
-  CUSTOMER_ACCESS_MODE_RANK[normalizeCustomerAccessMode(left)] <= CUSTOMER_ACCESS_MODE_RANK[normalizeCustomerAccessMode(right)]
-    ? normalizeCustomerAccessMode(left)
-    : normalizeCustomerAccessMode(right)
-);
-
 const getReadableFieldName = (field) => SETTINGS_FIELD_LABELS[field] || field;
 
 const formatValidationErrorDescription = (apiErrors) => {
@@ -882,12 +875,6 @@ export default function Settings() {
         const storefrontDeliveryPartnersRaw = Array.isArray(systemSettings.storefront_delivery_partners?.value)
           ? systemSettings.storefront_delivery_partners.value
           : [];
-        const onboardingProgress = parseJsonObjectSetting(systemSettings.tenant_onboarding_progress?.value);
-        const customerAccessRegistrationStage = String(
-          onboardingProgress?.step_payloads?.business_classification?.legitimacy?.registration_status
-          || onboardingProgress?.classification_snapshot?.payload?.legitimacy?.registration_status
-          || 'registered'
-        ).trim().toLowerCase() || 'registered';
         const storefrontCategoriesRaw = Array.isArray(systemSettings.storefront_categories?.value)
           ? systemSettings.storefront_categories.value
           : [];
@@ -933,9 +920,14 @@ export default function Settings() {
           posOpenStatus: systemSettings.pos_open_status?.value ?? true,
           posWaitTimeMinutes: Number(systemSettings.pos_wait_time_minutes?.value ?? 15) || 15,
           customerAccessMode: normalizeCustomerAccessMode(systemSettings.customer_access_mode?.value || 'catalog'),
+          customerAccessEffectiveMode: normalizeCustomerAccessMode(systemSettings.effective_customer_access_mode?.value || systemSettings.customer_access_mode?.value || 'catalog'),
+          customerAccessMaxMode: normalizeCustomerAccessMode(systemSettings.max_customer_access_mode?.value || 'transaction', 'transaction'),
+          customerAccessPlatformMaxMode: normalizeCustomerAccessMode(systemSettings.platform_max_customer_access_mode?.value || 'transaction', 'transaction'),
+          customerAccessRegistrationStageMaxMode: normalizeCustomerAccessMode(systemSettings.registration_stage_max_customer_access_mode?.value || 'transaction', 'transaction'),
+          customerAccessLimitationReason: String(systemSettings.customer_access_limitation_reason?.value || ''),
           inventoryDisplayMode: normalizeInventoryDisplayMode(systemSettings.inventory_display_mode?.value || 'availability'),
           inventoryLowStockDisplayThreshold: Number(systemSettings.inventory_low_stock_display_threshold?.value ?? 5) || 5,
-          customerAccessRegistrationStage,
+          customerAccessRegistrationStage: String(systemSettings.customer_access_registration_stage?.value || 'registered').trim().toLowerCase() || 'registered',
           customerAccessFlagStatus: systemSettings.customer_access_modes_enabled?.value === false ? 'rollback' : 'enabled',
           storefrontTagline: String(systemSettings.storefront_tagline?.value || ''),
           storefrontAbout: String(systemSettings.storefront_about?.value || ''),
@@ -2213,11 +2205,11 @@ export default function Settings() {
   );
 
   const requestedCustomerAccessMode = normalizeCustomerAccessMode(settings.customerAccessMode);
-  const maxCustomerAccessMode = maxAccessModeForStage(settings.customerAccessRegistrationStage);
-  const effectiveCustomerAccessMode = minAccessMode(requestedCustomerAccessMode, maxCustomerAccessMode);
+  const maxCustomerAccessMode = normalizeCustomerAccessMode(settings.customerAccessMaxMode || 'transaction', 'transaction');
+  const effectiveCustomerAccessMode = normalizeCustomerAccessMode(settings.customerAccessEffectiveMode || requestedCustomerAccessMode);
   const customerAccessLimitation = effectiveCustomerAccessMode !== requestedCustomerAccessMode
-    ? `Registration stage ${settings.customerAccessRegistrationStage || 'informal'} allows up to ${maxCustomerAccessMode} mode.`
-    : 'No registration-stage cap is reducing the requested mode.';
+    ? (settings.customerAccessLimitationReason || `Requested mode is capped at ${maxCustomerAccessMode} mode.`)
+    : 'No platform or registration-stage cap is reducing the requested mode.';
   const customerAccessRollbackActive = settings.customerAccessFlagStatus === 'rollback';
   const customerAccessRuntimeLabel = customerAccessRollbackActive ? 'Rollback active' : 'Enforced';
   const customerAccessRuntimeDescription = customerAccessRollbackActive
@@ -2608,6 +2600,9 @@ export default function Settings() {
                   </select>
                   <p className="text-xs text-slate-500">
                     Effective mode: <span className="font-semibold text-slate-900">{effectiveCustomerAccessMode}</span>. Max allowed: <span className="font-semibold text-slate-900">{maxCustomerAccessMode}</span>.
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Platform max: <span className="font-semibold text-slate-900">{settings.customerAccessPlatformMaxMode}</span>. Registration max: <span className="font-semibold text-slate-900">{settings.customerAccessRegistrationStageMaxMode}</span>.
                   </p>
                   <p className="text-xs text-slate-500">{customerAccessLimitation}</p>
                 </div>

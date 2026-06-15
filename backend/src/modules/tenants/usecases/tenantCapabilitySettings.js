@@ -12,7 +12,8 @@ export const TENANT_CAPABILITY_SETTING_KEYS = Object.freeze({
     ims: 'tenant_ims_enabled',
     pos: 'tenant_pos_enabled',
     storefrontVisible: 'store_is_visible',
-    customerAccessMode: 'customer_access_mode'
+    customerAccessMode: 'customer_access_mode',
+    platformMaxCustomerAccessMode: 'platform_max_customer_access_mode'
 });
 
 const TENANT_CAPABILITY_READ_KEYS = Object.freeze([
@@ -26,7 +27,8 @@ const DEFAULT_CAPABILITIES = Object.freeze({
     ims_enabled: true,
     pos_enabled: true,
     storefront_visible: false,
-    customer_access_mode: DEFAULT_CUSTOMER_ACCESS_MODE
+    customer_access_mode: DEFAULT_CUSTOMER_ACCESS_MODE,
+    platform_max_customer_access_mode: 'transaction'
 });
 
 const parseBoolean = (value, fallback = true) => {
@@ -136,6 +138,10 @@ export const normalizeTenantCapabilities = (settings = {}) => ({
     customer_access_mode: normalizeCustomerAccessMode(
         settings[TENANT_CAPABILITY_SETTING_KEYS.customerAccessMode]?.value ?? settings[TENANT_CAPABILITY_SETTING_KEYS.customerAccessMode],
         DEFAULT_CAPABILITIES.customer_access_mode
+    ),
+    platform_max_customer_access_mode: normalizeCustomerAccessMode(
+        settings[TENANT_CAPABILITY_SETTING_KEYS.platformMaxCustomerAccessMode]?.value ?? settings[TENANT_CAPABILITY_SETTING_KEYS.platformMaxCustomerAccessMode],
+        DEFAULT_CAPABILITIES.platform_max_customer_access_mode
     )
 });
 
@@ -145,6 +151,8 @@ export const buildCustomerAccessCapabilityMetadata = (settings = {}) => {
         requested_customer_access_mode: accessPolicy.requested_customer_access_mode,
         effective_customer_access_mode: accessPolicy.effective_customer_access_mode,
         max_customer_access_mode: accessPolicy.max_customer_access_mode,
+        platform_max_customer_access_mode: accessPolicy.platform_max_customer_access_mode,
+        registration_stage_max_customer_access_mode: accessPolicy.registration_stage_max_customer_access_mode,
         registration_stage: accessPolicy.registration_stage,
         customer_access_limitation_reason: accessPolicy.limitation_reason,
         customer_access_modes_enabled: accessPolicy.customer_access_modes_enabled,
@@ -224,6 +232,13 @@ export const normalizeTenantCapabilityPatch = (payload = {}) => {
             throw new Error(`customer_access_mode must be one of: ${CUSTOMER_ACCESS_MODES.join(', ')}`);
         }
         patch[TENANT_CAPABILITY_SETTING_KEYS.customerAccessMode] = normalized;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'platform_max_customer_access_mode')) {
+        const normalized = String(payload.platform_max_customer_access_mode || '').trim().toLowerCase();
+        if (!CUSTOMER_ACCESS_MODES.includes(normalized)) {
+            throw new Error(`platform_max_customer_access_mode must be one of: ${CUSTOMER_ACCESS_MODES.join(', ')}`);
+        }
+        patch[TENANT_CAPABILITY_SETTING_KEYS.platformMaxCustomerAccessMode] = normalized;
     }
 
     return patch;

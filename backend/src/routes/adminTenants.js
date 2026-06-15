@@ -27,6 +27,8 @@ import {
     adminUpdateComplianceFinalReviewDocumentReview,
     adminAcknowledgeComplianceSecurityIncident,
     adminResolveComplianceSecurityIncident,
+    adminSelectComplianceMode,
+    adminUpgradeComplianceMode,
     adminForceNonCompliant,
     resubmitRegistration
 } from '../controllers/adminTenantController.js';
@@ -42,6 +44,8 @@ import {
     validateComplianceSecurityIncidentQuery,
     validateComplianceSecurityIncidentParam,
     validateComplianceSecurityIncidentAction,
+    validateAdminComplianceModeChoice,
+    validateAdminComplianceModeUpgrade,
     validateComplianceModeDowngrade,
     validateFinalReviewDocumentIdParam,
     validateFinalReviewDocumentReview
@@ -90,6 +94,8 @@ router.get('/:id/compliance/audit-logs', authenticateAdmin, validateComplianceAu
 router.get('/:id/compliance/security-incidents', authenticateAdmin, validateComplianceSecurityIncidentQuery, adminListComplianceSecurityIncidents);
 router.post('/:id/compliance/security-incidents/:incident_id/acknowledge', authenticateAdmin, validateComplianceSecurityIncidentParam, validateComplianceSecurityIncidentAction, adminAcknowledgeComplianceSecurityIncident);
 router.post('/:id/compliance/security-incidents/:incident_id/resolve', authenticateAdmin, validateComplianceSecurityIncidentParam, validateComplianceSecurityIncidentAction, adminResolveComplianceSecurityIncident);
+router.post('/:id/compliance/mode/select', authenticateAdmin, validateAdminComplianceModeChoice, adminSelectComplianceMode);
+router.post('/:id/compliance/mode/upgrade', authenticateAdmin, validateAdminComplianceModeUpgrade, adminUpgradeComplianceMode);
 router.post('/:id/force-non-compliant', authenticateAdmin, validateComplianceModeDowngrade, adminForceNonCompliant);
 
 // ADMIN: Compliance verification operations (platform admin)

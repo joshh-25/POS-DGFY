@@ -34,6 +34,9 @@ jest.unstable_mockModule('../src/controllers/adminTenantController.js', () => ({
     updateTenant: noopHandler,
     updateTenantCapabilities: mockUpdateTenantCapabilities,
     listTenantCapabilityAuditLogs: mockListTenantCapabilityAuditLogs,
+    getTenantPosMetadata: noopHandler,
+    listTenantPosMetadataAuditLogs: noopHandler,
+    updateTenantPosMetadata: noopHandler,
     deleteTenant: noopHandler,
     setupPayPalRecurring: noopHandler,
     adminChangePlan: noopHandler,
@@ -48,6 +51,8 @@ jest.unstable_mockModule('../src/controllers/adminTenantController.js', () => ({
     adminUpdateComplianceFinalReviewDocumentReview: noopHandler,
     adminAcknowledgeComplianceSecurityIncident: noopHandler,
     adminResolveComplianceSecurityIncident: noopHandler,
+    adminSelectComplianceMode: noopHandler,
+    adminUpgradeComplianceMode: noopHandler,
     adminForceNonCompliant: noopHandler,
     resubmitRegistration: noopHandler
 }));
@@ -110,7 +115,8 @@ describe('tenant capability admin transport contracts', () => {
                 ims_enabled: true,
                 pos_enabled: false,
                 storefront_visible: true,
-                customer_access_mode: 'inquiry'
+                customer_access_mode: 'inquiry',
+                platform_max_customer_access_mode: 'transaction'
             });
 
         expect(response.status).toBe(200);
@@ -122,7 +128,8 @@ describe('tenant capability admin transport contracts', () => {
                 ims_enabled: true,
                 pos_enabled: false,
                 storefront_visible: true,
-                customer_access_mode: 'inquiry'
+                customer_access_mode: 'inquiry',
+                platform_max_customer_access_mode: 'transaction'
             }
         }));
     });

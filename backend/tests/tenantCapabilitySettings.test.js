@@ -10,7 +10,8 @@ describe('tenant capability settings helpers', () => {
             ims_enabled: true,
             pos_enabled: true,
             storefront_visible: false,
-            customer_access_mode: 'catalog'
+            customer_access_mode: 'catalog',
+            platform_max_customer_access_mode: 'transaction'
         });
     });
 
@@ -19,12 +20,14 @@ describe('tenant capability settings helpers', () => {
             tenant_ims_enabled: { value: 'false' },
             tenant_pos_enabled: { value: 'true' },
             store_is_visible: { value: 'true' },
-            customer_access_mode: { value: 'transaction' }
+            customer_access_mode: { value: 'transaction' },
+            platform_max_customer_access_mode: { value: 'inquiry' }
         })).toEqual({
             ims_enabled: false,
             pos_enabled: true,
             storefront_visible: true,
-            customer_access_mode: 'transaction'
+            customer_access_mode: 'transaction',
+            platform_max_customer_access_mode: 'inquiry'
         });
     });
 
@@ -46,6 +49,8 @@ describe('tenant capability settings helpers', () => {
             requested_customer_access_mode: 'transaction',
             effective_customer_access_mode: 'catalog',
             max_customer_access_mode: 'catalog',
+            platform_max_customer_access_mode: 'transaction',
+            registration_stage_max_customer_access_mode: 'catalog',
             registration_stage: 'informal',
             customer_access_limitation_reason: 'Registration stage informal allows up to catalog mode.',
             customer_access_modes_enabled: true
@@ -61,12 +66,14 @@ describe('tenant capability settings helpers', () => {
             ims_enabled: false,
             pos_enabled: true,
             storefront_visible: true,
-            customer_access_mode: 'transaction'
+            customer_access_mode: 'transaction',
+            platform_max_customer_access_mode: 'catalog'
         })).toEqual({
             tenant_ims_enabled: 'false',
             tenant_pos_enabled: 'true',
             store_is_visible: 'true',
-            customer_access_mode: 'transaction'
+            customer_access_mode: 'transaction',
+            platform_max_customer_access_mode: 'catalog'
         });
     });
 
@@ -74,6 +81,9 @@ describe('tenant capability settings helpers', () => {
         expect(() => normalizeTenantCapabilityPatch({
             customer_access_mode: 'public-chaos'
         })).toThrow(/customer_access_mode must be one of/i);
+        expect(() => normalizeTenantCapabilityPatch({
+            platform_max_customer_access_mode: 'public-chaos'
+        })).toThrow(/platform_max_customer_access_mode must be one of/i);
     });
 
     it('rejects string booleans instead of silently coercing capability state', () => {

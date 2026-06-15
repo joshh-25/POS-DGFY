@@ -58,6 +58,7 @@ describe('update tenant capabilities rollback behavior', () => {
         settings.clear();
         settings.set('store_is_visible', 'false');
         settings.set('customer_access_mode', 'catalog');
+        settings.set('platform_max_customer_access_mode', 'catalog');
         runContexts.length = 0;
         jest.clearAllMocks();
     });
@@ -91,7 +92,8 @@ describe('update tenant capabilities rollback behavior', () => {
             body: {
                 reason: 'Tenant requested temporary storefront pause',
                 storefront_visible: true,
-                customer_access_mode: 'transaction'
+                customer_access_mode: 'transaction',
+                platform_max_customer_access_mode: 'transaction'
             },
             actor: { username: 'platform_admin' }
         });
@@ -100,6 +102,7 @@ describe('update tenant capabilities rollback behavior', () => {
         expect(result.error.message).toMatch(/capability changes were rolled back/i);
         expect(settings.get('store_is_visible')).toBe('false');
         expect(settings.get('customer_access_mode')).toBe('catalog');
+        expect(settings.get('platform_max_customer_access_mode')).toBe('catalog');
         expect(syncStorefrontDiscoveryIndexForTenant).toHaveBeenCalledTimes(2);
         expect(tenantAdminRepository.createTenantAdminAuditLog).not.toHaveBeenCalled();
         expect(runContexts).toHaveLength(2);

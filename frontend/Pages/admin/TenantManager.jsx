@@ -76,6 +76,8 @@ const DEFAULT_TENANT_CAPABILITIES = {
     requested_customer_access_mode: 'catalog',
     effective_customer_access_mode: 'catalog',
     max_customer_access_mode: 'catalog',
+    platform_max_customer_access_mode: 'transaction',
+    registration_stage_max_customer_access_mode: 'catalog',
     registration_stage: 'informal',
     customer_access_limitation_reason: null,
     customer_access_modes_enabled: true,
@@ -83,6 +85,34 @@ const DEFAULT_TENANT_CAPABILITIES = {
 };
 const FORCE_NON_COMPLIANT_ALLOWED_STATES = new Set(['compliant_pending', 'compliant_active']);
 const FORCE_NON_COMPLIANT_HELPER_TEXT = 'Platform force non-compliant override is only allowed from compliant_pending or compliant_active';
+const COMPLIANCE_ADMIN_ACTIONS = {
+    SELECT_MODE: 'select_mode',
+    UPGRADE_TO_COMPLIANT_PENDING: 'upgrade_to_compliant_pending',
+    FORCE_NON_COMPLIANT: 'force_non_compliant',
+    NONE: 'none'
+};
+const COMPLIANCE_ACTION_COPY = {
+    select_non_compliant: {
+        title: 'Set non-compliant POS mode',
+        confirmLabel: 'Set non-compliant',
+        effect: 'POS access uses non-fiscal slips. Fiscal invoice output stays disabled.'
+    },
+    select_compliant: {
+        title: 'Set compliant pending mode',
+        confirmLabel: 'Set compliant pending',
+        effect: 'POS remains available, but fiscal issuance waits for checklist activation.'
+    },
+    upgrade_to_compliant_pending: {
+        title: 'Move to compliant pending',
+        confirmLabel: 'Move to compliant pending',
+        effect: 'The tenant enters the compliant path. Fiscal issuance still waits for checklist activation.'
+    },
+    force_non_compliant: {
+        title: 'Force non-compliant mode',
+        confirmLabel: 'Force non-compliant',
+        effect: 'Fiscal output is disabled and the tenant returns to non-fiscal POS access.'
+    }
+};
 const POS_SOFTWARE_FIELDS = [
     { key: 'pos_software_name', label: 'Software Name', placeholder: 'DGFY POS' },
     { key: 'pos_software_version', label: 'Software Version', placeholder: 'Installed version' },
@@ -126,6 +156,56 @@ const deriveForceNonCompliantEligibility = (tenant) => {
     }
 
     return { allowed: false, reason: FORCE_NON_COMPLIANT_HELPER_TEXT };
+};
+
+const deriveAdminComplianceModeAction = (tenant) => {
+    const serverAction = tenant?.admin_compliance_mode_action;
+    if (serverAction && typeof serverAction === 'object') {
+        return {
+            action: serverAction.action || COMPLIANCE_ADMIN_ACTIONS.NONE,
+            allowed: serverAction.allowed === true,
+            label: serverAction.label || 'Compliance mode',
+            helperText: serverAction.helper_text || '',
+            options: Array.isArray(serverAction.options) ? serverAction.options : []
+        };
+    }
+
+    const modeState = String(tenant?.compliance_mode_state || '').trim();
+    if (tenant?.compliance_mode_choice_required === true || !modeState) {
+        return {
+            action: COMPLIANCE_ADMIN_ACTIONS.SELECT_MODE,
+            allowed: true,
+            label: 'Set compliance mode',
+            helperText: 'Select non-compliant POS access or move the tenant into compliant pending mode.',
+            options: ['non_compliant', 'compliant']
+        };
+    }
+    if (modeState === 'non_compliant_active') {
+        return {
+            action: COMPLIANCE_ADMIN_ACTIONS.UPGRADE_TO_COMPLIANT_PENDING,
+            allowed: true,
+            label: 'Move to compliant pending',
+            helperText: 'Moves the tenant into the compliant path. Fiscal activation still requires the checklist.',
+            options: []
+        };
+    }
+    if (FORCE_NON_COMPLIANT_ALLOWED_STATES.has(modeState)) {
+        const forceEligibility = deriveForceNonCompliantEligibility(tenant);
+        return {
+            action: COMPLIANCE_ADMIN_ACTIONS.FORCE_NON_COMPLIANT,
+            allowed: forceEligibility.allowed,
+            label: 'Force non-compliant',
+            helperText: forceEligibility.reason || 'Returns the tenant to non-fiscal POS access.',
+            options: []
+        };
+    }
+    return {
+        action: COMPLIANCE_ADMIN_ACTIONS.NONE,
+        allowed: false,
+        label: 'Compliance mode unavailable',
+        helperText: 'Compliance lifecycle state is not supported for a platform-admin action.',
+        options: []
+    };
 };
 
 const getTenantEffectivePlan = (tenant = {}) => {
@@ -185,6 +265,15 @@ const getCapabilityImpactPreview = (change = {}) => {
             message: CUSTOMER_ACCESS_MODE_RANK.transaction > CUSTOMER_ACCESS_MODE_RANK[currentCapabilities.max_customer_access_mode || 'catalog']
                 ? `Online ordering is requested, but checkout will remain capped at ${getCustomerAccessModeLabel(currentCapabilities.max_customer_access_mode)} until registration readiness is updated.`
                 : 'Online ordering mode restores cart, quote, booking, checkout, and payment actions when the tenant also passes compliance, payment, stock, and readiness checks.'
+        };
+    }
+    if (patch.platform_max_customer_access_mode) {
+        const mode = String(patch.platform_max_customer_access_mode || '').trim().toLowerCase();
+        return {
+            title: 'Platform access ceiling',
+            message: mode === 'transaction'
+                ? 'Platform will allow this tenant to become transaction-capable when company requested mode, registration readiness, compliance, payment, stock, and location gates also pass.'
+                : `Platform will cap this tenant at ${getCustomerAccessModeLabel(mode)} even if the company requests a higher customer access mode.`
         };
     }
     if (patch.ims_enabled === true) {
@@ -414,6 +503,10 @@ export default function TenantManager() {
     const [complianceAuditFilter, setComplianceAuditFilter] = useState('all');
     const [verificationNote, setVerificationNote] = useState('');
     const [verificationEvidenceRef, setVerificationEvidenceRef] = useState('');
+    const [pendingComplianceModeAction, setPendingComplianceModeAction] = useState(null);
+    const [complianceModeReason, setComplianceModeReason] = useState('');
+    const [complianceModeChoice, setComplianceModeChoice] = useState('non_compliant');
+    const [complianceModeActionLoading, setComplianceModeActionLoading] = useState(false);
 
     useEffect(() => {
         loadTenants();
@@ -770,31 +863,77 @@ export default function TenantManager() {
         }
     };
 
-    const handleForceNonCompliant = async (tenant) => {
+    const openComplianceModeAction = (tenant) => {
         if (!tenant?.id) return;
-        const eligibility = deriveForceNonCompliantEligibility(tenant);
-        if (!eligibility.allowed) {
-            toast.error(eligibility.reason || FORCE_NON_COMPLIANT_HELPER_TEXT);
+        const action = deriveAdminComplianceModeAction(tenant);
+        if (!action.allowed) {
+            toast.error(action.helperText || 'Compliance mode action is not available.');
             return;
         }
-        const reason = prompt(`Force "${tenant.name}" back to non-compliant mode.\n\nReason (required):`);
-        if (reason === null) return;
-        if (!String(reason || '').trim() || String(reason || '').trim().length < 3) {
+        setPendingComplianceModeAction({ tenant, action });
+        setComplianceModeChoice(action.options?.includes('non_compliant') ? 'non_compliant' : 'compliant');
+        setComplianceModeReason('');
+    };
+
+    const closeComplianceModeAction = () => {
+        if (complianceModeActionLoading) return;
+        setPendingComplianceModeAction(null);
+        setComplianceModeReason('');
+        setComplianceModeChoice('non_compliant');
+    };
+
+    const getPendingComplianceActionKey = () => {
+        const actionType = pendingComplianceModeAction?.action?.action;
+        if (actionType === COMPLIANCE_ADMIN_ACTIONS.SELECT_MODE) {
+            return complianceModeChoice === 'compliant' ? 'select_compliant' : 'select_non_compliant';
+        }
+        if (actionType === COMPLIANCE_ADMIN_ACTIONS.UPGRADE_TO_COMPLIANT_PENDING) {
+            return 'upgrade_to_compliant_pending';
+        }
+        if (actionType === COMPLIANCE_ADMIN_ACTIONS.FORCE_NON_COMPLIANT) {
+            return 'force_non_compliant';
+        }
+        return '';
+    };
+
+    const submitComplianceModeAction = async () => {
+        const tenant = pendingComplianceModeAction?.tenant;
+        const actionType = pendingComplianceModeAction?.action?.action;
+        const reason = String(complianceModeReason || '').trim();
+        if (!tenant?.id || !actionType) return;
+        if (reason.length < 3) {
             toast.error('Reason is required and must be at least 3 characters.');
             return;
         }
-        setActionLoading(tenant.id);
+        setComplianceModeActionLoading(true);
         try {
-            await adminService.forceTenantNonCompliant(tenant.id, { reason: String(reason).trim() });
+            const payload = {
+                reason,
+                context: { source: 'tenant_manager_modal' }
+            };
+            const copy = COMPLIANCE_ACTION_COPY[getPendingComplianceActionKey()];
+            if (actionType === COMPLIANCE_ADMIN_ACTIONS.SELECT_MODE) {
+                await adminService.selectTenantComplianceMode(tenant.id, {
+                    ...payload,
+                    mode_choice: complianceModeChoice
+                });
+            } else if (actionType === COMPLIANCE_ADMIN_ACTIONS.UPGRADE_TO_COMPLIANT_PENDING) {
+                await adminService.upgradeTenantComplianceMode(tenant.id, payload);
+            } else if (actionType === COMPLIANCE_ADMIN_ACTIONS.FORCE_NON_COMPLIANT) {
+                await adminService.forceTenantNonCompliant(tenant.id, payload);
+            }
             await loadTenants();
-            toast.success(`${tenant.name} forced to non-compliant mode`);
+            setPendingComplianceModeAction(null);
+            setComplianceModeReason('');
+            setComplianceModeChoice('non_compliant');
+            toast.success(`${tenant.name}: ${copy?.confirmLabel || 'Compliance mode updated'}`);
         } catch (err) {
             const normalized = normalizeApiError(err);
             if (!normalized.isGlobalCandidate) {
-                toast.error(`Failed to force non-compliant mode: ${normalized.message}`);
+                toast.error(`Failed to update compliance mode: ${normalized.message}`);
             }
         } finally {
-            setActionLoading(null);
+            setComplianceModeActionLoading(false);
         }
     };
 
@@ -1252,8 +1391,13 @@ export default function TenantManager() {
                         const selectedAccessMode = CUSTOMER_ACCESS_MODE_OPTIONS.find(
                             (option) => option.value === capabilities.customer_access_mode
                         ) || CUSTOMER_ACCESS_MODE_OPTIONS[1];
+                        const selectedPlatformMaxAccessMode = CUSTOMER_ACCESS_MODE_OPTIONS.find(
+                            (option) => option.value === capabilities.platform_max_customer_access_mode
+                        ) || CUSTOMER_ACCESS_MODE_OPTIONS[3];
                         const effectiveAccessModeLabel = getCustomerAccessModeLabel(capabilities.effective_customer_access_mode || selectedAccessMode.value);
                         const maxAccessModeLabel = getCustomerAccessModeLabel(capabilities.max_customer_access_mode);
+                        const platformMaxAccessModeLabel = getCustomerAccessModeLabel(capabilities.platform_max_customer_access_mode);
+                        const registrationMaxAccessModeLabel = getCustomerAccessModeLabel(capabilities.registration_stage_max_customer_access_mode);
                         const accessModeCapped = isCustomerAccessCapped(capabilities);
                         const capabilityDisabled = tenant.status !== 'active' || capabilityLoading.startsWith(`${tenant.id}:`) || capabilities.unavailable;
                         const capabilityControls = [
@@ -1463,9 +1607,36 @@ export default function TenantManager() {
                                                                 {capabilities.max_customer_access_mode ? ` / Max: ${maxAccessModeLabel}` : ''}
                                                             </div>
                                                             <div className="mt-1">
+                                                                Platform max: {platformMaxAccessModeLabel} / Registration max: {registrationMaxAccessModeLabel}
+                                                            </div>
+                                                            <div className="mt-1">
                                                                 {accessModeCapped
-                                                                    ? (capabilities.customer_access_limitation_reason || 'Requested mode is capped by registration readiness.')
-                                                                    : 'No registration-stage cap is reducing the requested mode.'}
+                                                                    ? (capabilities.customer_access_limitation_reason || 'Requested mode is capped by platform or registration readiness.')
+                                                                    : 'No platform or registration-stage cap is reducing the requested mode.'}
+                                                            </div>
+                                                        </div>
+                                                        <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+                                                            <div className="mb-2 flex items-center justify-between gap-2">
+                                                                <div>
+                                                                    <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Platform max allowed</div>
+                                                                    <div className="text-xs text-blue-700/80">Company admins can downgrade, but cannot exceed this ceiling.</div>
+                                                                </div>
+                                                                <div className="text-xs font-semibold text-blue-800">{selectedPlatformMaxAccessMode.label}</div>
+                                                            </div>
+                                                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                                                {CUSTOMER_ACCESS_MODE_OPTIONS.map((option) => (
+                                                                    <StorefrontModeButton
+                                                                        key={`platform-max-${option.value}`}
+                                                                        option={option}
+                                                                        selected={selectedPlatformMaxAccessMode.value === option.value}
+                                                                        disabled={capabilityDisabled}
+                                                                        onClick={() => openCapabilityChange(
+                                                                            tenant,
+                                                                            { platform_max_customer_access_mode: option.value },
+                                                                            `Platform max storefront mode: ${option.label}`
+                                                                        )}
+                                                                    />
+                                                                ))}
                                                             </div>
                                                         </div>
                                                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -1579,26 +1750,26 @@ export default function TenantManager() {
                                                         Compliance
                                                     </Button>
                                                     {(() => {
-                                                        const forceEligibility = deriveForceNonCompliantEligibility(tenant);
+                                                        const complianceModeAction = deriveAdminComplianceModeAction(tenant);
                                                         return (
                                                             <Button
-                                                                onClick={() => handleForceNonCompliant(tenant)}
+                                                                onClick={() => openComplianceModeAction(tenant)}
                                                                 variant="outline"
                                                                 size="sm"
-                                                                disabled={isProcessing || !forceEligibility.allowed}
+                                                                disabled={isProcessing || complianceModeActionLoading || !complianceModeAction.allowed}
                                                                 className="border-amber-300 text-amber-700 hover:bg-amber-50"
-                                                                title={forceEligibility.allowed ? 'Force non-compliant' : forceEligibility.reason}
+                                                                title={complianceModeAction.allowed ? complianceModeAction.label : complianceModeAction.helperText}
                                                             >
-                                                                Force non-compliant
+                                                                {complianceModeAction.label}
                                                             </Button>
                                                         );
                                                     })()}
                                                 </div>
                                                 {(() => {
-                                                    const forceEligibility = deriveForceNonCompliantEligibility(tenant);
-                                                    return !forceEligibility.allowed ? (
+                                                    const complianceModeAction = deriveAdminComplianceModeAction(tenant);
+                                                    return !complianceModeAction.allowed && complianceModeAction.helperText ? (
                                                         <p className="text-[10px] text-slate-500">
-                                                            {forceEligibility.reason}
+                                                            {complianceModeAction.helperText}
                                                         </p>
                                                     ) : null;
                                                 })()}
@@ -1630,6 +1801,113 @@ export default function TenantManager() {
                     })
                 )}
             </div>
+
+            {/* Compliance Mode Action Modal */}
+            {pendingComplianceModeAction && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+                    <div
+                        className="w-full max-w-lg overflow-hidden rounded-xl bg-white shadow-xl"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="compliance-mode-action-title"
+                    >
+                        {(() => {
+                            const actionKey = getPendingComplianceActionKey();
+                            const copy = COMPLIANCE_ACTION_COPY[actionKey] || {
+                                title: 'Update compliance mode',
+                                confirmLabel: 'Update mode',
+                                effect: 'Compliance mode will be updated for this tenant.'
+                            };
+                            const action = pendingComplianceModeAction.action;
+                            const tenant = pendingComplianceModeAction.tenant;
+                            const isSelectMode = action.action === COMPLIANCE_ADMIN_ACTIONS.SELECT_MODE;
+                            return (
+                                <>
+                                    <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-slate-50 px-6 py-4">
+                                        <div>
+                                            <h3 id="compliance-mode-action-title" className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+                                                <ShieldCheck className="h-5 w-5 text-amber-700" />
+                                                {copy.title}
+                                            </h3>
+                                            <p className="mt-1 text-sm text-slate-600">
+                                                Tenant: <strong>{tenant.name}</strong>
+                                            </p>
+                                            <p className="text-xs text-slate-500">
+                                                Current mode: {COMPLIANCE_MODE_LABELS[tenant.compliance_mode_state] || tenant.compliance_mode_state || 'Not selected'}
+                                            </p>
+                                        </div>
+                                        <Button variant="ghost" size="icon" onClick={closeComplianceModeAction} disabled={complianceModeActionLoading}>
+                                            <X className="h-5 w-5 text-slate-400" />
+                                        </Button>
+                                    </div>
+                                    <div className="space-y-4 px-6 py-5">
+                                        {isSelectMode && (
+                                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                                <Button
+                                                    type="button"
+                                                    variant={complianceModeChoice === 'non_compliant' ? 'default' : 'outline'}
+                                                    className={complianceModeChoice === 'non_compliant' ? 'bg-slate-900 hover:bg-slate-800' : ''}
+                                                    onClick={() => setComplianceModeChoice('non_compliant')}
+                                                >
+                                                    Non-compliant
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant={complianceModeChoice === 'compliant' ? 'default' : 'outline'}
+                                                    className={complianceModeChoice === 'compliant' ? 'bg-emerald-700 hover:bg-emerald-800' : ''}
+                                                    onClick={() => setComplianceModeChoice('compliant')}
+                                                >
+                                                    Compliant pending
+                                                </Button>
+                                            </div>
+                                        )}
+                                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                                            {copy.effect}
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium text-slate-700" htmlFor="compliance-mode-reason">
+                                                Reason
+                                            </label>
+                                            <textarea
+                                                id="compliance-mode-reason"
+                                                className="min-h-24 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
+                                                value={complianceModeReason}
+                                                onChange={(event) => setComplianceModeReason(event.target.value)}
+                                                placeholder="Required audit reason"
+                                                maxLength={255}
+                                            />
+                                            <p className="text-xs text-slate-500">
+                                                Required for immutable compliance audit evidence.
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={closeComplianceModeAction}
+                                            disabled={complianceModeActionLoading}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            onClick={submitComplianceModeAction}
+                                            disabled={complianceModeActionLoading || complianceModeReason.trim().length < 3}
+                                            className="bg-amber-700 hover:bg-amber-800"
+                                        >
+                                            {complianceModeActionLoading ? (
+                                                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                            ) : null}
+                                            {copy.confirmLabel}
+                                        </Button>
+                                    </div>
+                                </>
+                            );
+                        })()}
+                    </div>
+                </div>
+            )}
 
             {/* Compliance Review Modal */}
             {showComplianceModal && selectedComplianceTenant && (

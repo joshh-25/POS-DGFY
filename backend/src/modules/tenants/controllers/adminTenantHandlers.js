@@ -26,6 +26,8 @@ import {
     listComplianceSecurityIncidentsUseCase,
     updateComplianceArtifactVerificationUseCase,
     updateCompliancePeripheralVerificationUseCase,
+    selectComplianceModeUseCase,
+    upgradeToCompliantUseCase,
     forceNonCompliantModeUseCase,
     reviewFinalReviewDocumentUseCase,
     updateComplianceSecurityIncidentStatusUseCase
@@ -563,6 +565,97 @@ export const adminResolveComplianceSecurityIncident = async (req, res) => {
 };
 
 /**
+ * ADMIN: Select compliance mode for tenants that still require mode choice.
+ */
+export const adminSelectComplianceMode = async (req, res) => {
+    const payload = req.validatedData || req.body || {};
+    const actorUser = buildPlatformAdminActor(req);
+    const result = await selectComplianceModeUseCase({
+        tenantId: req.params?.id,
+        modeChoice: payload.mode_choice,
+        reason: payload.reason,
+        context: {
+            source: 'platform_admin_tenant_manager',
+            ...(payload.context || {})
+        },
+        actorUser,
+        requirePrimaryAudit: true
+    });
+
+    await trackProductUsageFromResult({
+        req,
+        user: actorUser,
+        eventType: 'admin_compliance_mode_select_attempted',
+        surface: 'admin_tenants',
+        action: 'select_compliance_mode',
+        result,
+        successMetadataResolver: () => ({
+            tenant_id: req.params?.id || null,
+            mode_choice: payload.mode_choice || null,
+            requested_reason_length: String(payload.reason || '').trim().length || 0
+        }),
+        failureMetadataResolver: (error) => ({
+            tenant_id: req.params?.id || null,
+            mode_choice: payload.mode_choice || null,
+            status_code: error?.statusCode || null,
+            error_code: error?.code || null
+        })
+    });
+
+    if (result?.success) {
+        invalidateTenantLookupCache({ tenantId: req.params?.id || null });
+    }
+
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to select tenant compliance mode'
+    });
+};
+
+/**
+ * ADMIN: Move a non-compliant tenant into compliant pending mode.
+ */
+export const adminUpgradeComplianceMode = async (req, res) => {
+    const payload = req.validatedData || req.body || {};
+    const actorUser = buildPlatformAdminActor(req);
+    const result = await upgradeToCompliantUseCase({
+        tenantId: req.params?.id,
+        reason: payload.reason,
+        context: {
+            source: 'platform_admin_tenant_manager',
+            ...(payload.context || {})
+        },
+        actorUser,
+        requirePrimaryAudit: true
+    });
+
+    await trackProductUsageFromResult({
+        req,
+        user: actorUser,
+        eventType: 'admin_compliance_mode_upgrade_attempted',
+        surface: 'admin_tenants',
+        action: 'upgrade_compliance_mode',
+        result,
+        successMetadataResolver: () => ({
+            tenant_id: req.params?.id || null,
+            requested_reason_length: String(payload.reason || '').trim().length || 0
+        }),
+        failureMetadataResolver: (error) => ({
+            tenant_id: req.params?.id || null,
+            status_code: error?.statusCode || null,
+            error_code: error?.code || null
+        })
+    });
+
+    if (result?.success) {
+        invalidateTenantLookupCache({ tenantId: req.params?.id || null });
+    }
+
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to move tenant to compliant pending mode'
+    });
+};
+
+/**
  * ADMIN: Force tenant back to non-compliant mode from compliant states.
  */
 export const adminForceNonCompliant = async (req, res) => {
@@ -699,6 +792,8 @@ export default {
     adminUpdateComplianceFinalReviewDocumentReview,
     adminAcknowledgeComplianceSecurityIncident,
     adminResolveComplianceSecurityIncident,
+    adminSelectComplianceMode,
+    adminUpgradeComplianceMode,
     adminForceNonCompliant,
     resubmitRegistration
 };
