@@ -62,7 +62,7 @@ export default function TerminalLockDrawer({
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-[13px] font-bold text-[#0F172A]">{registryEnforced ? 'Terminal ID (Required)' : 'Terminal ID (Optional)'}</Label>
+            <Label className="text-[13px] font-bold text-[#0F172A]">{registryEnforced ? 'Terminal ID (Required)' : 'Terminal ID'}</Label>
             {registryEnforced ? (
               <>
                 <select
@@ -71,7 +71,9 @@ export default function TerminalLockDrawer({
                   required
                   className="h-10 w-full rounded-lg border border-[#B8C7DA] bg-white px-3 py-2 text-sm text-[#0F172A] shadow-sm shadow-slate-200/60 focus:border-[#1A4E8D] focus:outline-none focus:ring-2 focus:ring-[#1A4E8D] focus:ring-offset-2"
                 >
-                  <option value="">Select configured terminal</option>
+                  <option value="">
+                    {registryOptions.length > 0 ? 'Select configured terminal' : 'No active terminals configured'}
+                  </option>
                   {registryOptions.map((entry) => (
                     <option key={entry.terminal_id} value={entry.terminal_id}>
                       {entry.label ? `${entry.label} (${entry.terminal_id})` : entry.terminal_id}
@@ -99,7 +101,7 @@ export default function TerminalLockDrawer({
                 </datalist>
                 <p className="rounded-lg border border-[#D8E1EC] bg-white px-3 py-2 text-[11px] leading-4 text-[#475569]">
                   {terminalRegistryMode === 'warn'
-                    ? 'Warn mode: terminal ID is optional at unlock. Unregistered IDs are allowed but flagged with policy warnings.'
+                    ? 'Use COUNTER-01 if no terminals are configured yet. Terminal ID is required for shifts and checkout; unregistered IDs continue in warn mode with policy warnings.'
                     : 'Select the active device/counter identity before opening shifts and checkout.'}
                 </p>
               </>
