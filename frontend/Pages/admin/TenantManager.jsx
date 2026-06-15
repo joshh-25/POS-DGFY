@@ -62,11 +62,24 @@ const CUSTOMER_ACCESS_MODE_DETAILS = {
     inquiry: 'Catalog plus inquiry/contact CTAs',
     transaction: 'Ordering and booking when ready'
 };
+const CUSTOMER_ACCESS_MODE_RANK = {
+    ghost: 0,
+    catalog: 1,
+    inquiry: 2,
+    transaction: 3
+};
 const DEFAULT_TENANT_CAPABILITIES = {
     ims_enabled: true,
     pos_enabled: true,
     storefront_visible: false,
-    customer_access_mode: 'catalog'
+    customer_access_mode: 'catalog',
+    requested_customer_access_mode: 'catalog',
+    effective_customer_access_mode: 'catalog',
+    max_customer_access_mode: 'catalog',
+    registration_stage: 'informal',
+    customer_access_limitation_reason: null,
+    customer_access_modes_enabled: true,
+    access_capabilities: null
 };
 const FORCE_NON_COMPLIANT_ALLOWED_STATES = new Set(['compliant_pending', 'compliant_active']);
 const FORCE_NON_COMPLIANT_HELPER_TEXT = 'Platform force non-compliant override is only allowed from compliant_pending or compliant_active';
@@ -126,8 +139,21 @@ const getTenantCapabilities = (tenant = {}) => ({
     ...(tenant.capabilities && typeof tenant.capabilities === 'object' ? tenant.capabilities : {})
 });
 
+const getCustomerAccessModeLabel = (mode) => (
+    CUSTOMER_ACCESS_MODE_OPTIONS.find((option) => option.value === String(mode || '').trim().toLowerCase())?.label
+    || mode
+    || 'N/A'
+);
+
+const isCustomerAccessCapped = (capabilities = {}) => {
+    const requested = String(capabilities.requested_customer_access_mode || capabilities.customer_access_mode || '').trim().toLowerCase();
+    const effective = String(capabilities.effective_customer_access_mode || requested || '').trim().toLowerCase();
+    return Boolean(requested && effective && requested !== effective);
+};
+
 const getCapabilityImpactPreview = (change = {}) => {
     const patch = change?.patch || {};
+    const currentCapabilities = getTenantCapabilities(change?.tenant || {});
     if (patch.ims_enabled === false) {
         return {
             title: CAPABILITY_BLOCK_TITLE,
@@ -156,7 +182,9 @@ const getCapabilityImpactPreview = (change = {}) => {
         }
         return {
             title: 'Tenant impact preview',
-            message: 'Online ordering mode restores cart, quote, booking, checkout, and payment actions when the tenant also passes compliance, payment, stock, and readiness checks.'
+            message: CUSTOMER_ACCESS_MODE_RANK.transaction > CUSTOMER_ACCESS_MODE_RANK[currentCapabilities.max_customer_access_mode || 'catalog']
+                ? `Online ordering is requested, but checkout will remain capped at ${getCustomerAccessModeLabel(currentCapabilities.max_customer_access_mode)} until registration readiness is updated.`
+                : 'Online ordering mode restores cart, quote, booking, checkout, and payment actions when the tenant also passes compliance, payment, stock, and readiness checks.'
         };
     }
     if (patch.ims_enabled === true) {
@@ -955,9 +983,7 @@ export default function TenantManager() {
     };
 
     const formatCapabilitySnapshot = (snapshot = {}) => {
-        const modeLabel = CUSTOMER_ACCESS_MODE_OPTIONS.find(
-            (option) => option.value === snapshot?.customer_access_mode
-        )?.label || snapshot?.customer_access_mode || 'N/A';
+        const modeLabel = getCustomerAccessModeLabel(snapshot?.customer_access_mode);
         return [
             `IMS ${snapshot?.ims_enabled ? 'On' : 'Off'}`,
             `POS ${snapshot?.pos_enabled ? 'On' : 'Off'}`,
@@ -972,7 +998,8 @@ export default function TenantManager() {
         if (!query) return tenants;
         return tenants.filter((tenant) => {
             const capabilities = getTenantCapabilities(tenant);
-            const modeLabel = CUSTOMER_ACCESS_MODE_OPTIONS.find((option) => option.value === capabilities.customer_access_mode)?.label || '';
+            const modeLabel = getCustomerAccessModeLabel(capabilities.customer_access_mode);
+            const effectiveModeLabel = getCustomerAccessModeLabel(capabilities.effective_customer_access_mode);
             return [
                 tenant.name,
                 tenant.admin_email,
@@ -980,6 +1007,9 @@ export default function TenantManager() {
                 tenant.status,
                 getTenantEffectivePlan(tenant),
                 modeLabel,
+                effectiveModeLabel,
+                capabilities.registration_stage,
+                capabilities.customer_access_limitation_reason,
                 capabilities.ims_enabled ? 'ims enabled' : 'ims disabled',
                 capabilities.pos_enabled ? 'pos enabled' : 'pos disabled',
                 capabilities.storefront_visible ? 'storefront visible maps' : 'storefront hidden'
@@ -1222,6 +1252,9 @@ export default function TenantManager() {
                         const selectedAccessMode = CUSTOMER_ACCESS_MODE_OPTIONS.find(
                             (option) => option.value === capabilities.customer_access_mode
                         ) || CUSTOMER_ACCESS_MODE_OPTIONS[1];
+                        const effectiveAccessModeLabel = getCustomerAccessModeLabel(capabilities.effective_customer_access_mode || selectedAccessMode.value);
+                        const maxAccessModeLabel = getCustomerAccessModeLabel(capabilities.max_customer_access_mode);
+                        const accessModeCapped = isCustomerAccessCapped(capabilities);
                         const capabilityDisabled = tenant.status !== 'active' || capabilityLoading.startsWith(`${tenant.id}:`) || capabilities.unavailable;
                         const capabilityControls = [
                             {
@@ -1417,7 +1450,23 @@ export default function TenantManager() {
                                                     <div className="mt-3 border-t border-slate-200 pt-3">
                                                         <div className="mb-2 flex items-center justify-between gap-2">
                                                             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Storefront sub-modes</div>
-                                                            <div className="text-xs text-slate-500">Current: {selectedAccessMode.label}</div>
+                                                            <div className="text-xs text-slate-500">Requested: {selectedAccessMode.label}</div>
+                                                        </div>
+                                                        <div className={cn(
+                                                            'mb-3 rounded-lg border px-3 py-2 text-xs',
+                                                            accessModeCapped
+                                                                ? 'border-amber-200 bg-amber-50 text-amber-800'
+                                                                : 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                                                        )}>
+                                                            <div className="font-semibold">
+                                                                Effective: {effectiveAccessModeLabel}
+                                                                {capabilities.max_customer_access_mode ? ` / Max: ${maxAccessModeLabel}` : ''}
+                                                            </div>
+                                                            <div className="mt-1">
+                                                                {accessModeCapped
+                                                                    ? (capabilities.customer_access_limitation_reason || 'Requested mode is capped by registration readiness.')
+                                                                    : 'No registration-stage cap is reducing the requested mode.'}
+                                                            </div>
                                                         </div>
                                                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                                             {CUSTOMER_ACCESS_MODE_OPTIONS.map((option) => (

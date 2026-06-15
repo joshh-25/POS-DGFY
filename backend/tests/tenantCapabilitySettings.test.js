@@ -1,4 +1,5 @@
 import {
+    buildCustomerAccessCapabilityMetadata,
     normalizeTenantCapabilities,
     normalizeTenantCapabilityPatch
 } from '../src/modules/tenants/usecases/tenantCapabilitySettings.js';
@@ -11,6 +12,48 @@ describe('tenant capability settings helpers', () => {
             storefront_visible: false,
             customer_access_mode: 'catalog'
         });
+    });
+
+    it('normalizes wrapped setting rows from tenant capability reads', () => {
+        expect(normalizeTenantCapabilities({
+            tenant_ims_enabled: { value: 'false' },
+            tenant_pos_enabled: { value: 'true' },
+            store_is_visible: { value: 'true' },
+            customer_access_mode: { value: 'transaction' }
+        })).toEqual({
+            ims_enabled: false,
+            pos_enabled: true,
+            storefront_visible: true,
+            customer_access_mode: 'transaction'
+        });
+    });
+
+    it('exposes effective customer access metadata for admin capability payloads', () => {
+        const metadata = buildCustomerAccessCapabilityMetadata({
+            customer_access_mode: { value: 'transaction' },
+            tenant_onboarding_progress: {
+                value: {
+                    step_payloads: {
+                        business_classification: {
+                            legitimacy: { registration_status: 'informal' }
+                        }
+                    }
+                }
+            }
+        });
+
+        expect(metadata).toEqual(expect.objectContaining({
+            requested_customer_access_mode: 'transaction',
+            effective_customer_access_mode: 'catalog',
+            max_customer_access_mode: 'catalog',
+            registration_stage: 'informal',
+            customer_access_limitation_reason: 'Registration stage informal allows up to catalog mode.',
+            customer_access_modes_enabled: true
+        }));
+        expect(metadata.access_capabilities).toEqual(expect.objectContaining({
+            checkout: false,
+            quote: false
+        }));
     });
 
     it('serializes admin capability patches to tenant setting keys', () => {

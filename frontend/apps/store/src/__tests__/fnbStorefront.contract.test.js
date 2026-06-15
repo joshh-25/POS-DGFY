@@ -114,4 +114,14 @@ describe('Food & Beverage storefront contract', () => {
     expect(panel).toContain('Reservation Request');
     expect(panel).toContain('Send Request');
   });
+
+  it('renders derived F&B menu content when storefront profile fields are thin', () => {
+    const source = appSource();
+
+    expect(source).toContain('buildFnbContentReadinessItems');
+    expect(source).toContain('Menu at a glance');
+    expect(source).toContain('menu items published');
+    expect(source).toContain('items marked ready now');
+    expect(source).toContain('Store profile copy is available');
+  });
 });

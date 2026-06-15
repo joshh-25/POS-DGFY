@@ -2570,6 +2570,33 @@ const buildFnbFallbackReasons = ({ fnbViewModel = null, categories = [] } = {}) 
   return [...new Set(reasons.map((entry) => String(entry || '').trim()).filter(Boolean))].slice(0, 4);
 };
 
+const buildFnbContentReadinessItems = ({
+  heroSectionModel = {},
+  fnbViewModel = {},
+  selectedStore = null,
+  deliveryPlatformLinks = []
+} = {}) => {
+  const totalItems = Number(fnbViewModel?.totalItems || selectedStore?.catalog_count || 0);
+  const menuSectionCount = Number(fnbViewModel?.menuSectionCount || 0);
+  const beverageCount = Number(fnbViewModel?.beverageCount || 0);
+  const readyNowCount = Number(fnbViewModel?.readyNowCount || 0);
+  const hasGallery = Array.isArray(heroSectionModel?.galleryImages) && heroSectionModel.galleryImages.length > 0;
+  const hasAbout = String(heroSectionModel?.aboutText || '').trim().length > 0;
+  const hasPromo = heroSectionModel?.promo?.active === true;
+  const hasDelivery = Array.isArray(deliveryPlatformLinks) && deliveryPlatformLinks.length > 0;
+
+  return [
+    totalItems > 0 ? `${totalItems} menu items published` : '',
+    menuSectionCount > 0 ? `${menuSectionCount} menu sections organized` : '',
+    readyNowCount > 0 ? `${readyNowCount} items marked ready now` : '',
+    beverageCount > 0 ? `${beverageCount} beverage options` : '',
+    hasGallery ? 'Storefront gallery is available' : '',
+    hasAbout ? 'Store profile copy is available' : '',
+    hasPromo ? 'Promo content is active' : '',
+    hasDelivery ? 'Delivery partner links are available' : ''
+  ].filter(Boolean).slice(0, 5);
+};
+
 const FnbHero = ({
   modeAdapter,
   heroSectionModel,
@@ -2638,6 +2665,12 @@ const FnbHero = ({
   const deliveryPlatformLinks = useMemo(() => (
     getDeliveryPlatformLinks(heroSectionModel.deliveryPartners)
   ), [heroSectionModel.deliveryPartners]);
+  const contentReadinessItems = useMemo(() => buildFnbContentReadinessItems({
+    heroSectionModel,
+    fnbViewModel,
+    selectedStore,
+    deliveryPlatformLinks
+  }), [heroSectionModel, fnbViewModel, selectedStore, deliveryPlatformLinks]);
   const storefrontShareUrl = selectedStore?.slug ? buildPublicStorefrontUrl(selectedStore.slug) : '';
 
   return (
@@ -2859,6 +2892,20 @@ const FnbHero = ({
                 {galleryImages.slice(0, 4).map((url, index) => (
                   <div key={`${url}-${index}`} style={{ width: isMobileViewport ? 84 : '100%', minWidth: isMobileViewport ? 84 : 0, height: 72, borderRadius: 10, overflow: 'hidden', position: 'relative', background: '#e2e8f0', flexShrink: 0 }}>
                     <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {contentReadinessItems.length > 0 && (
+            <div style={{ border: '1px solid #e2e8f0', borderRadius: 14, background: '#f8fafc', padding: 14, display: 'grid', gap: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: heroTheme.bodyFont }}>Menu at a glance</div>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {contentReadinessItems.map((item) => (
+                  <div key={item} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, lineHeight: 1.5, color: '#475569', fontWeight: 650, fontFamily: heroTheme.bodyFont }}>
+                    <CheckCircle2 size={14} color={heroTheme.accent || '#f97316'} style={{ marginTop: 2, flexShrink: 0 }} />
+                    <span>{item}</span>
                   </div>
                 ))}
               </div>

@@ -2,8 +2,10 @@ import dbStore from '../../../utils/dbStore.js';
 import { getTenantModels } from '../../../utils/tenantModelFactory.js';
 import {
     CUSTOMER_ACCESS_MODES,
+    CUSTOMER_ACCESS_SETTING_KEYS,
     DEFAULT_CUSTOMER_ACCESS_MODE,
-    normalizeCustomerAccessMode
+    normalizeCustomerAccessMode,
+    resolveAccessPolicyFromSettings
 } from '../../shared/utils/customerAccessPolicy.js';
 
 export const TENANT_CAPABILITY_SETTING_KEYS = Object.freeze({
@@ -12,6 +14,13 @@ export const TENANT_CAPABILITY_SETTING_KEYS = Object.freeze({
     storefrontVisible: 'store_is_visible',
     customerAccessMode: 'customer_access_mode'
 });
+
+const TENANT_CAPABILITY_READ_KEYS = Object.freeze([
+    TENANT_CAPABILITY_SETTING_KEYS.ims,
+    TENANT_CAPABILITY_SETTING_KEYS.pos,
+    TENANT_CAPABILITY_SETTING_KEYS.storefrontVisible,
+    ...CUSTOMER_ACCESS_SETTING_KEYS
+]);
 
 const DEFAULT_CAPABILITIES = Object.freeze({
     ims_enabled: true,
@@ -90,24 +99,58 @@ const toSettingsMap = (rows = []) => {
     rows.forEach((row) => {
         const plain = typeof row?.get === 'function' ? row.get({ plain: true }) : row;
         if (plain?.setting_key) {
-            map[plain.setting_key] = plain.setting_value;
+            map[plain.setting_key] = {
+                ...plain,
+                value: parseSettingValue(plain.setting_value)
+            };
         }
     });
     return map;
 };
 
+const parseSettingValue = (value) => {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    if (!trimmed) return trimmed;
+    if (!['{', '[', '"'].includes(trimmed.charAt(0))) return value;
+    try {
+        return JSON.parse(trimmed);
+    } catch {
+        return value;
+    }
+};
+
 export const normalizeTenantCapabilities = (settings = {}) => ({
-    ims_enabled: parseBoolean(settings[TENANT_CAPABILITY_SETTING_KEYS.ims], DEFAULT_CAPABILITIES.ims_enabled),
-    pos_enabled: parseBoolean(settings[TENANT_CAPABILITY_SETTING_KEYS.pos], DEFAULT_CAPABILITIES.pos_enabled),
+    ims_enabled: parseBoolean(
+        settings[TENANT_CAPABILITY_SETTING_KEYS.ims]?.value ?? settings[TENANT_CAPABILITY_SETTING_KEYS.ims],
+        DEFAULT_CAPABILITIES.ims_enabled
+    ),
+    pos_enabled: parseBoolean(
+        settings[TENANT_CAPABILITY_SETTING_KEYS.pos]?.value ?? settings[TENANT_CAPABILITY_SETTING_KEYS.pos],
+        DEFAULT_CAPABILITIES.pos_enabled
+    ),
     storefront_visible: parseBoolean(
-        settings[TENANT_CAPABILITY_SETTING_KEYS.storefrontVisible],
+        settings[TENANT_CAPABILITY_SETTING_KEYS.storefrontVisible]?.value ?? settings[TENANT_CAPABILITY_SETTING_KEYS.storefrontVisible],
         DEFAULT_CAPABILITIES.storefront_visible
     ),
     customer_access_mode: normalizeCustomerAccessMode(
-        settings[TENANT_CAPABILITY_SETTING_KEYS.customerAccessMode],
+        settings[TENANT_CAPABILITY_SETTING_KEYS.customerAccessMode]?.value ?? settings[TENANT_CAPABILITY_SETTING_KEYS.customerAccessMode],
         DEFAULT_CAPABILITIES.customer_access_mode
     )
 });
+
+export const buildCustomerAccessCapabilityMetadata = (settings = {}) => {
+    const accessPolicy = resolveAccessPolicyFromSettings(settings);
+    return {
+        requested_customer_access_mode: accessPolicy.requested_customer_access_mode,
+        effective_customer_access_mode: accessPolicy.effective_customer_access_mode,
+        max_customer_access_mode: accessPolicy.max_customer_access_mode,
+        registration_stage: accessPolicy.registration_stage,
+        customer_access_limitation_reason: accessPolicy.limitation_reason,
+        customer_access_modes_enabled: accessPolicy.customer_access_modes_enabled,
+        access_capabilities: accessPolicy.access_capabilities
+    };
+};
 
 export const readTenantCapabilities = async ({ tenant, tenantConnector }) => {
     if (!tenant?.db_name) {
@@ -136,13 +179,16 @@ export const readTenantCapabilities = async ({ tenant, tenantConnector }) => {
     }, async () => {
         const SystemSetting = dbStore.get('SystemSetting');
         const rows = await SystemSetting.findAll({
-            where: { setting_key: Object.values(TENANT_CAPABILITY_SETTING_KEYS) },
+            where: { setting_key: TENANT_CAPABILITY_READ_KEYS },
             attributes: ['setting_key', 'setting_value']
         });
-        const capabilities = normalizeTenantCapabilities(toSettingsMap(rows));
+        const settingsMap = toSettingsMap(rows);
+        const capabilities = normalizeTenantCapabilities(settingsMap);
+        const customerAccessMetadata = buildCustomerAccessCapabilityMetadata(settingsMap);
         const storefront_readiness = await buildStorefrontReadiness();
         return {
             ...capabilities,
+            ...customerAccessMetadata,
             storefront_readiness: {
                 ...storefront_readiness,
                 visible_and_publishable: capabilities.storefront_visible === true && storefront_readiness.publishable === true

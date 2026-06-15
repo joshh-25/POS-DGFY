@@ -58,7 +58,18 @@ describe('TenantManager capability controls', () => {
             ims_enabled: true,
             pos_enabled: false,
             storefront_visible: true,
-            customer_access_mode: 'catalog'
+            customer_access_mode: 'transaction',
+            requested_customer_access_mode: 'transaction',
+            effective_customer_access_mode: 'catalog',
+            max_customer_access_mode: 'catalog',
+            registration_stage: 'informal',
+            customer_access_limitation_reason: 'Registration stage informal allows up to catalog mode.',
+            access_capabilities: {
+              cart: false,
+              quote: false,
+              checkout: false,
+              booking: false
+            }
           }
         },
         {
@@ -145,7 +156,22 @@ describe('TenantManager capability controls', () => {
     expect(screen.getAllByRole('region', { name: 'Public storefront controls' })).toHaveLength(2);
     expect(screen.getByText('Needs primary map pin')).toBeTruthy();
     expect(screen.getAllByText('Storefront sub-modes')).toHaveLength(2);
+    expect(screen.getByText('Requested: Online ordering mode')).toBeTruthy();
+    expect(screen.getAllByText(/Effective: Catalog only \/ Max: Catalog only/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Registration stage informal allows up to catalog mode.')).toBeTruthy();
     expect(screen.getAllByText('Catalog plus inquiry/contact CTAs')).toHaveLength(2);
+  });
+
+  it('warns when Online Ordering remains capped by registration readiness', async () => {
+    const user = userEvent.setup();
+    render(<TenantManager />);
+
+    await screen.findByText('Kusina & Cafe');
+    await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kusina');
+    await user.click(screen.getByRole('button', { name: /Online ordering mode/i }));
+
+    await screen.findByText('Confirm capability change');
+    expect(screen.getByText(/checkout will remain capped at Catalog only until registration readiness is updated/i)).toBeTruthy();
   });
 
   it('keeps storefront sub-modes disabled until Storefront Maps is visible', async () => {
