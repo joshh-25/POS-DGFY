@@ -208,6 +208,14 @@ const ORDER_METHOD_OPTIONS = [
   { value: 'dine_in', label: 'Dine In' },
   { value: 'takeout', label: 'Takeout' }
 ];
+
+const createStorefrontIdempotencyKey = (prefix = 'storefront') => {
+  const normalizedPrefix = String(prefix || 'storefront').trim() || 'storefront';
+  const randomId = window.crypto?.randomUUID?.();
+  return randomId
+    ? `${normalizedPrefix}-${randomId}`
+    : `${normalizedPrefix}-${Date.now()}`;
+};
 const SERVICE_CATEGORY_ICON_MAP = Object.freeze({
   aircon: Snowflake,
   laundry: Shirt,
@@ -8725,12 +8733,14 @@ export default function StorefrontApp() {
           body: {
             service_item_id: Number(serviceBookingLine.item_id),
             start_at: new Date(serviceAppointmentAt).toISOString(),
+            quantity: Math.max(1, Number(serviceBookingLine.quantity || 1)),
             customer_name: customerName,
             customer_email: customerEmail,
             customer_phone: customerPhone,
             location_id: selectedLocationId ?? selectedStore?.location_id,
             payment_timing: servicePaymentTiming,
             intake_responses: bookingPageIntakeFields.length > 0 ? serviceIntakeResponses : null,
+            idempotency_key: createStorefrontIdempotencyKey('store-service'),
             notes: [
               Number(serviceBookingLine.quantity || 1) > 1 ? `Service quantity/package count: ${serviceBookingLine.quantity}` : '',
               !bookingFieldPlan.addressField && String(customerAddress || '').trim()
