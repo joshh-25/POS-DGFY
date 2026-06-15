@@ -184,9 +184,9 @@ Required checks:
 
 Latest workstation build evidence:
 
-- `.\gradlew.bat assembleDebug` -> PASS on 2026-06-15, producing `android/imin-wrapper/app/build/outputs/apk/debug/app-debug.apk`.
-- `.\gradlew.bat --no-daemon assembleRelease` -> BLOCKED on 2026-06-15 in `:app:compileReleaseKotlin` because Gradle/Kotlin could not create or hash an expected cache output under `app/build/kotlin/compileReleaseKotlin`.
-- Release APK generation, APK install, and real iMin smoke remain pending.
+- `.\gradlew.bat assembleDebug --no-daemon` -> PASS on 2026-06-15, producing `android/imin-wrapper/app/build/outputs/apk/debug/app-debug.apk`.
+- `.\gradlew.bat assembleRelease --no-daemon` -> PASS on 2026-06-15, producing `android/imin-wrapper/app/build/outputs/apk/release/app-release-unsigned.apk`.
+- APK install and real iMin smoke remain pending.
 
 ## Phase 8: Device Capabilities
 
