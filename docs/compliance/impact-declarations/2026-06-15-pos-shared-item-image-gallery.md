@@ -8,7 +8,7 @@ classification: major
 surfaces: pos,terminal,inventory,storefront-catalog
 reason_codes_impacted: ALLOWED,VALIDATION_FAILED
 policy_version: 2026.06.15
-verification_evidence: npm exec vitest run src/features/inventory/__tests__/itemProductWizard.contract.test.js src/features/inventory/__tests__/ProductCreateWizard.behavior.test.jsx --pool=threads,npm exec vitest run src/features/inventory/__tests__/itemProductWizard.contract.test.js --pool=threads,npm --prefix backend test -- --runInBand tests/inventoryItemRepository.test.js tests/posRepository.catalogImages.test.js,npm --prefix frontend run build:skupervisor,npm --prefix frontend run build:pos,npm run lint:docs,npm run check:architecture,git diff --check,production deploy summary /var/www/skupervisor/logs/deploy/deploy_20260615_143449.summary.txt
+verification_evidence: npm --prefix backend test -- --runTestsByPath tests/inventoryItemRepository.test.js tests/storefrontCatalogUseCases.test.js tests/posRepository.catalogImages.test.js tests/runtimeSchemaAuditService.test.js tests/posCheckoutFnbContracts.usecase.test.js,npm --prefix frontend exec vitest run src/features/inventory/__tests__/itemProductWizard.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js --pool=threads,npm run lint:docs,npm run check:architecture,npm run check:compliance,git diff --check,production deploy summary /var/www/skupervisor/logs/deploy/deploy_20260615_153953.summary.txt
 rollback_note: Revert the Storefront-only wizard item-image upload wiring, POS catalog image fallback, and gallery primary-key repository fix together; POS visibility and Storefront visibility remain independently controlled.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -52,4 +52,5 @@ Required validation for this branch:
 5. `npm run lint:docs`
 6. `npm run check:architecture`
 7. `git diff --check`
-8. Production deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260615_143449.summary.txt`
+8. Production deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260615_153953.summary.txt`
+9. Space Bar tenant schema verification showed `buyer_tin`, `buyer_business_style`, `buyer_address`, and `fiscal_lifecycle_state` present after targeted remediation.

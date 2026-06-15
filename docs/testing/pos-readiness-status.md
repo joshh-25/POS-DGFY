@@ -175,7 +175,7 @@ Overall status: in_progress
 - non-compliant/non-fiscal checkout keeps buyer fiscal fields nullable and persists them as `null`; a missing `buyer_tin` column is deployment/migration drift, not a customer buyer-TIN requirement
 - `/api/v1/compliance/profile` or `/api/v1/pos/incoming-orders` `500` responses after deployment must trigger migration/doctor/restart verification before cashier UAT
 45. Deployment scope note for the current branch:
-- Production web/source deploy is current at SHA `062cd52cfb18854cc50632e29fa895fa0a180a72` with deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260615_143449.summary.txt`.
+- Production web/source deploy is current at SHA `52c8dfc8f232aa5e3e926ea75f2baf96d389d425` with deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260615_153953.summary.txt`.
 - Backend, IMS, POS, Store, public endpoint, tenant-store asset integrity, frontend asset parity, tenant schema, tenant index headroom, permission backfill, Storefront discovery, and PM2 reload checks passed during that deploy.
 - The deploy used the auditable emergency no-staging bypass only for stale QA deployed-head evidence; QA smoke, rollback drill, restore drill, docs lint, and architecture checks passed for the target SHA.
 - Android iMin wrapper source now routes physical-device builds to `https://pos.dgfy.ph`, but installed iMin devices do not change until the APK is rebuilt, installed, and smoke-tested on device hardware.
