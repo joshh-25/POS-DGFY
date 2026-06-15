@@ -29,7 +29,9 @@ When to use:
 - Food & Beverage mode restaurant workflow, item taxonomy, restaurant inventory boundary, table/check/kitchen/reservation behavior, and service-charge separation.
 11. `docs/features/STOREFRONT_CURRENT_STANDING.md`
 - Current storefront implementation standing for shared template registry, mode-specific presentation, exact-coordinate duplicate marker lists, MapLibre/WebGL fallback behavior, and current storefront regression/build evidence.
-12. `docs/proposals/MASTER_ONBOARDING_QUESTIONNAIRE_ANALYSIS.md`
+12. `docs/features/DGFY_CUSTOMER_ACCOUNT.md`
+- Current DGFY customer account behavior for landlord-scoped customer identity, account activity, tracking/reorder/cancel/review actions, and saved delivery locations with optional exact pin coordinates.
+13. `docs/proposals/MASTER_ONBOARDING_QUESTIONNAIRE_ANALYSIS.md`
 - Strategic questionnaire analysis reference for advisory onboarding classification and monetization segmentation framing.
 
 ## Usage Notes

@@ -347,7 +347,7 @@ Primary migration:
 
 1. `20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs`
 
-`pos_transactions` fiscal snapshot additions:
+`pos_transactions` fiscal snapshot additions. These columns are required runtime schema fields because the POS model selects them on normal reads, but they remain nullable unless noted by the migration. Non-fiscal/non-compliant checkout stores buyer fiscal details and fiscal document snapshot fields as `null`; missing columns are migration drift, not a customer-facing buyer-TIN requirement.
 
 1. `buyer_tin`
 2. `buyer_business_style`

@@ -299,6 +299,7 @@ Before running manual UAT after backend changes:
    - `http://localhost:5000/api/v1/compliance/peripherals`
    - `http://localhost:5000/api/v1/pos/incoming-orders`
    - `http://localhost:5000/api/v1/sales/transactions`
+   - A `500` caused by missing nullable POS fiscal-prep fields such as `pos_transactions.buyer_tin` is runtime schema drift. Apply migrations, rerun `doctor:runtime`, and restart before treating compliance profile or incoming-order failures as product-state failures.
 9. Verify store checkout validation path is fail-closed:
    - `POST /api/v1/store/checkout` should return `422` for invalid/out-of-stock payloads, not `500`.
 10. Verify storefront catalog location-scope compatibility path is fail-closed:

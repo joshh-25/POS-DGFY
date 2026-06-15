@@ -3677,6 +3677,7 @@ Track online-store order status for public users.
    - `buyer_tin`
    - `buyer_business_style`
    - `buyer_address`
+   - These buyer fiscal fields are optional for non-fiscal/non-compliant checkout. Non-fiscal checkout persists the fiscal buyer fields as `null`; the tenant schema still must contain the nullable columns so POS reads and order queues do not fail on model selection.
 9. Fiscal invoice persistence stores a server-owned immutable preparation snapshot:
    - `pos_transactions.buyer_tin`
    - `pos_transactions.buyer_business_style`
@@ -5024,6 +5025,10 @@ Front-facing customer account endpoints live under `/api/v1/dgfy/customer`. Exce
 | `POST` | `/dgfy/customer/review-invites/:token/submit` | Submit a fulfilled guest invite review as pending approval and consume the single-use token |
 | `POST` | `/dgfy/customer/tracking-recovery/request` | Request a generic tracking recovery response for email/phone lookup |
 | `POST` | `/dgfy/customer/tracking-recovery/verify` | Verify a six-digit recovery code and return matching activity references |
+
+`POST /dgfy/customer/addresses` and `PUT/PATCH /dgfy/customer/addresses/:address_id` accept `label`, `address_line`, optional nullable `latitude`, optional nullable `longitude`, and `is_default`. Latitude must be within `-90..90`, longitude must be within `-180..180`, and coordinates must be supplied or cleared as a pair. Text-only addresses remain valid fallback records and must not be rejected only because coordinates are absent. Coordinate-backed addresses are preferred for delivery checkout because Storefront checkout persists them as nullable `delivery_latitude` and `delivery_longitude` on the online POS transaction.
+
+Storefront checkout keeps account-saved, temporary checkout, recommended store or branch, manual map, current-device, and text-only location states internally distinct while preserving the public checkout payload shape. A delivery checkout is valid when it has readable address text, with or without coordinates. If coordinates are present, POS incoming orders can render address text, coordinate text, and a map-navigation link; if coordinates are absent, POS must render the text address without a broken map link.
 
 `PATCH /dgfy/customer/addresses/:address_id/default` is a transport alias for updating the address with `is_default=true`; it must remain registered before the generic `PATCH /dgfy/customer/addresses/:address_id` route. Storefront checkout and booking forms consume the default saved address for signed-in customers only when the visible customer address field is still empty.
 
