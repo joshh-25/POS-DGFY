@@ -165,7 +165,8 @@ describe('TenantManager capability controls', () => {
     expect(screen.getAllByText(/Platform max: Online ordering mode \/ Registration max: Catalog only/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Platform max allowed')).toHaveLength(2);
     expect(screen.getByText('Registration stage informal allows up to catalog mode.')).toBeTruthy();
-    expect(screen.getAllByText('Catalog plus inquiry/contact CTAs').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText('Company requested mode')).toHaveLength(2);
+    expect(screen.getAllByText('Catalog plus inquiry/contact CTAs')).toHaveLength(2);
   });
 
   it('updates platform max allowed storefront mode separately from requested mode', async () => {
@@ -177,7 +178,7 @@ describe('TenantManager capability controls', () => {
 
     const platformPanel = screen.getByText('Platform max allowed').closest('.rounded-lg');
     expect(platformPanel).toBeTruthy();
-    await user.click(within(platformPanel).getByRole('button', { name: /Catalog only/i }));
+    await user.selectOptions(within(platformPanel).getByLabelText(/Platform max allowed for Kusina & Cafe/i), 'catalog');
 
     await screen.findByText('Confirm capability change');
     expect(screen.getByText(/Platform will cap this tenant at Catalog only/i)).toBeTruthy();
@@ -201,8 +202,7 @@ describe('TenantManager capability controls', () => {
 
     await screen.findByText('Kusina & Cafe');
     await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kusina');
-    const onlineOrderingButtons = screen.getAllByRole('button', { name: /Online ordering mode/i });
-    await user.click(onlineOrderingButtons[onlineOrderingButtons.length - 1]);
+    await user.click(screen.getByRole('button', { name: /Online ordering mode/i }));
 
     await screen.findByText('Confirm capability change');
     expect(screen.getByText(/checkout will remain capped at Catalog only until registration readiness is updated/i)).toBeTruthy();
@@ -217,8 +217,7 @@ describe('TenantManager capability controls', () => {
 
     expect(screen.getByText('Hidden from maps')).toBeTruthy();
     expect(screen.getByText('Turn on Storefront / Maps before changing the customer-facing sub-mode.')).toBeTruthy();
-    const mapListingButtons = screen.getAllByRole('button', { name: /Map listing only/i });
-    expect(mapListingButtons[mapListingButtons.length - 1].disabled).toBe(true);
+    expect(screen.getByRole('button', { name: /Map listing only/i }).disabled).toBe(true);
     expect(screen.getByRole('button', { name: /Storefront \/ Maps Off/i }).disabled).toBe(false);
   });
 

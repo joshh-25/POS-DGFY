@@ -82,7 +82,7 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - `GET /settings` also exposes runtime access metadata for tenant Settings: `requested_customer_access_mode`, `effective_customer_access_mode`, `max_customer_access_mode`, `platform_max_customer_access_mode`, `registration_stage_max_customer_access_mode`, `customer_access_registration_stage`, `customer_access_limitation_reason`, and `customer_access_capabilities`.
 - `customer_access_modes_enabled` is a virtual runtime setting derived from `CUSTOMER_ACCESS_MODES_ENABLED` and tenant allowlisting. It is read-only and must not be persisted in `system_settings`.
 - `platform_max_customer_access_mode` is platform-admin controlled. Tenant Settings may read it, but tenant Settings mutations must not write it.
-- Modes above the declared onboarding registration stage are disabled in normal tenant UI; backend runtime still enforces public actions.
+- Tenant Settings disables modes above the platform-admin ceiling, but may request a mode above current registration readiness. The backend still computes the effective mode with registration readiness and blocks quote, checkout, booking, and payment until effective mode is `transaction`.
 - Item-level storefront catalog controls live on inventory item setup surfaces, not Settings. Settings controls whether the Storefront can browse/order overall; `Show in Storefront` controls one item.
 
 4. Storefront public APIs

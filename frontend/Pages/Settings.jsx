@@ -2206,6 +2206,7 @@ export default function Settings() {
 
   const requestedCustomerAccessMode = normalizeCustomerAccessMode(settings.customerAccessMode);
   const maxCustomerAccessMode = normalizeCustomerAccessMode(settings.customerAccessMaxMode || 'transaction', 'transaction');
+  const platformMaxCustomerAccessMode = normalizeCustomerAccessMode(settings.customerAccessPlatformMaxMode || 'transaction', 'transaction');
   const effectiveCustomerAccessMode = normalizeCustomerAccessMode(settings.customerAccessEffectiveMode || requestedCustomerAccessMode);
   const customerAccessLimitation = effectiveCustomerAccessMode !== requestedCustomerAccessMode
     ? (settings.customerAccessLimitationReason || `Requested mode is capped at ${maxCustomerAccessMode} mode.`)
@@ -2582,8 +2583,9 @@ export default function Settings() {
             <CardContent className="space-y-4">
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Customer Access Mode</Label>
+                  <Label htmlFor="customer-access-mode">Customer Access Mode</Label>
                   <select
+                    id="customer-access-mode"
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     value={requestedCustomerAccessMode}
                     onChange={(e) => handleChange('customerAccessMode', e.target.value)}
@@ -2592,7 +2594,7 @@ export default function Settings() {
                       <option
                         key={option.value}
                         value={option.value}
-                        disabled={CUSTOMER_ACCESS_MODE_RANK[option.value] > CUSTOMER_ACCESS_MODE_RANK[maxCustomerAccessMode]}
+                        disabled={CUSTOMER_ACCESS_MODE_RANK[option.value] > CUSTOMER_ACCESS_MODE_RANK[platformMaxCustomerAccessMode]}
                       >
                         {option.label}
                       </option>
@@ -2603,6 +2605,9 @@ export default function Settings() {
                   </p>
                   <p className="text-xs text-slate-500">
                     Platform max: <span className="font-semibold text-slate-900">{settings.customerAccessPlatformMaxMode}</span>. Registration max: <span className="font-semibold text-slate-900">{settings.customerAccessRegistrationStageMaxMode}</span>.
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Company admins can request modes up to platform max; checkout still follows the effective mode after registration readiness is applied.
                   </p>
                   <p className="text-xs text-slate-500">{customerAccessLimitation}</p>
                 </div>

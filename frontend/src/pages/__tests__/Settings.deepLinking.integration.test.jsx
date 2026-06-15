@@ -2,7 +2,7 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Settings from '../../../Pages/Settings.jsx';
 
@@ -247,9 +247,12 @@ describe('Settings deep-linking and action wiring', () => {
     renderSettings('/settings?tab=storefront#storefront-access-settings');
 
     expect(await screen.findByText(/Effective mode:/i)).toBeTruthy();
+    const accessModeSelect = screen.getByLabelText('Customer Access Mode');
+    expect(within(accessModeSelect).getByRole('option', { name: 'Transaction' }).disabled).toBe(false);
     expect(screen.getByText(/Max allowed:/i)).toBeTruthy();
     expect(screen.getByText(/Platform max:/i)).toBeTruthy();
     expect(screen.getByText(/Registration max:/i)).toBeTruthy();
+    expect(screen.getByText(/Company admins can request modes up to platform max/i)).toBeTruthy();
     expect(screen.getByText('Registration stage informal allows up to catalog mode.')).toBeTruthy();
   });
 

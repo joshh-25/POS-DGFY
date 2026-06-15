@@ -1616,29 +1616,34 @@ export default function TenantManager() {
                                                             </div>
                                                         </div>
                                                         <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50/60 p-3">
-                                                            <div className="mb-2 flex items-center justify-between gap-2">
+                                                            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(180px,220px)] lg:items-center">
                                                                 <div>
                                                                     <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Platform max allowed</div>
-                                                                    <div className="text-xs text-blue-700/80">Company admins can downgrade, but cannot exceed this ceiling.</div>
+                                                                    <div className="text-xs text-blue-700/80">
+                                                                        Company admins can request or downgrade up to this ceiling. Registration readiness can still cap checkout.
+                                                                    </div>
                                                                 </div>
-                                                                <div className="text-xs font-semibold text-blue-800">{selectedPlatformMaxAccessMode.label}</div>
-                                                            </div>
-                                                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                                                {CUSTOMER_ACCESS_MODE_OPTIONS.map((option) => (
-                                                                    <StorefrontModeButton
-                                                                        key={`platform-max-${option.value}`}
-                                                                        option={option}
-                                                                        selected={selectedPlatformMaxAccessMode.value === option.value}
-                                                                        disabled={capabilityDisabled}
-                                                                        onClick={() => openCapabilityChange(
+                                                                <select
+                                                                    aria-label={`Platform max allowed for ${tenant.name}`}
+                                                                    className="h-10 rounded-lg border border-blue-200 bg-white px-3 text-sm font-semibold text-blue-900 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                    value={selectedPlatformMaxAccessMode.value}
+                                                                    disabled={capabilityDisabled}
+                                                                    onChange={(event) => {
+                                                                        const option = CUSTOMER_ACCESS_MODE_OPTIONS.find((modeOption) => modeOption.value === event.target.value) || CUSTOMER_ACCESS_MODE_OPTIONS[1];
+                                                                        openCapabilityChange(
                                                                             tenant,
                                                                             { platform_max_customer_access_mode: option.value },
                                                                             `Platform max storefront mode: ${option.label}`
-                                                                        )}
-                                                                    />
-                                                                ))}
+                                                                        );
+                                                                    }}
+                                                                >
+                                                                    {CUSTOMER_ACCESS_MODE_OPTIONS.map((option) => (
+                                                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                                                    ))}
+                                                                </select>
                                                             </div>
                                                         </div>
+                                                        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Company requested mode</div>
                                                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                                             {CUSTOMER_ACCESS_MODE_OPTIONS.map((option) => (
                                                                 <StorefrontModeButton
