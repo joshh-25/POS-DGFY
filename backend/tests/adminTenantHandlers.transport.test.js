@@ -12,6 +12,9 @@ const mockDeleteTenantUseCase = jest.fn();
 const mockResubmitRegistrationUseCase = jest.fn();
 const mockUpdateTenantCapabilitiesUseCase = jest.fn();
 const mockListTenantCapabilityAuditLogsUseCase = jest.fn();
+const mockListTenantPosMetadataAuditLogsUseCase = jest.fn();
+const mockGetTenantPosMetadataUseCase = jest.fn();
+const mockUpdateTenantPosMetadataUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
 const mockSetupPayPalRecurringUseCase = jest.fn();
 const mockChangePlanUseCase = jest.fn();
@@ -29,6 +32,9 @@ jest.unstable_mockModule('../src/modules/tenants/index.js', () => ({
   resubmitRegistrationUseCase: mockResubmitRegistrationUseCase,
   updateTenantCapabilitiesUseCase: mockUpdateTenantCapabilitiesUseCase,
   listTenantCapabilityAuditLogsUseCase: mockListTenantCapabilityAuditLogsUseCase,
+  listTenantPosMetadataAuditLogsUseCase: mockListTenantPosMetadataAuditLogsUseCase,
+  getTenantPosMetadataUseCase: mockGetTenantPosMetadataUseCase,
+  updateTenantPosMetadataUseCase: mockUpdateTenantPosMetadataUseCase,
   tenantAdminRepository: {
     findTenantById: jest.fn(),
     updateTenant: jest.fn()
@@ -55,6 +61,8 @@ let getPricingSettings;
 let registerCompanyRequest;
 let provisionNewTenant;
 let updateTenant;
+let updateTenantPosMetadata;
+let listTenantPosMetadataAuditLogs;
 
 beforeAll(async () => {
   const mod = await import('../src/modules/tenants/controllers/adminTenantHandlers.js');
@@ -64,6 +72,8 @@ beforeAll(async () => {
   registerCompanyRequest = mod.registerCompanyRequest;
   provisionNewTenant = mod.provisionNewTenant;
   updateTenant = mod.updateTenant;
+  updateTenantPosMetadata = mod.updateTenantPosMetadata;
+  listTenantPosMetadataAuditLogs = mod.listTenantPosMetadataAuditLogs;
 });
 
 const createRes = () => {
@@ -237,6 +247,72 @@ describe('adminTenantHandlers transport contracts', () => {
       eventType: 'admin_tenant_updated',
       surface: 'admin_tenants',
       action: 'update_tenant'
+    }));
+  });
+
+  it('updateTenantPosMetadata forwards platform-admin POS metadata review payloads', async () => {
+    mockUpdateTenantPosMetadataUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        tenant_id: 'tenant-1',
+        current: { pos_software_name: 'DGFY POS' }
+      }
+    });
+
+    const req = {
+      params: { id: 'tenant-1' },
+      body: { pending_action: 'approve', reason: 'verified' },
+      validatedData: { pending_action: 'approve', reason: 'verified' },
+      admin: { username: 'platform-admin' },
+      headers: {},
+      requestId: 'req-pos-metadata'
+    };
+    const res = createRes();
+
+    await updateTenantPosMetadata(req, res);
+
+    expect(mockUpdateTenantPosMetadataUseCase).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'tenant-1',
+      body: { pending_action: 'approve', reason: 'verified' },
+      actor: { username: 'platform-admin' }
+    }));
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(mockTrackProductUsageFromResult).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'admin_tenant_pos_metadata_updated',
+      surface: 'admin_tenants',
+      action: 'update_tenant_pos_metadata'
+    }));
+  });
+
+  it('listTenantPosMetadataAuditLogs forwards POS metadata audit query', async () => {
+    mockListTenantPosMetadataAuditLogsUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        payload: {
+          success: true,
+          data: { logs: [{ id: 1, action: 'pos_metadata_update' }] }
+        }
+      }
+    });
+
+    const req = {
+      params: { id: 'tenant-1' },
+      validatedQuery: { limit: 10 },
+      headers: {}
+    };
+    const res = createRes();
+
+    await listTenantPosMetadataAuditLogs(req, res);
+
+    expect(mockListTenantPosMetadataAuditLogsUseCase).toHaveBeenCalledWith({
+      id: 'tenant-1',
+      limit: 10
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(mockTrackProductUsageFromResult).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'admin_tenant_pos_metadata_audit_logs_viewed',
+      surface: 'admin_tenants',
+      action: 'list_tenant_pos_metadata_audit_logs'
     }));
   });
 });

@@ -10,6 +10,9 @@ import {
     updateTenant,
     updateTenantCapabilities,
     listTenantCapabilityAuditLogs,
+    getTenantPosMetadata,
+    listTenantPosMetadataAuditLogs,
+    updateTenantPosMetadata,
     deleteTenant,
     setupPayPalRecurring,
     adminChangePlan,
@@ -45,7 +48,8 @@ import {
 } from '../validators/complianceValidator.js';
 import {
     validateTenantCapabilityAuditLogQuery,
-    validateTenantCapabilityPatch
+    validateTenantCapabilityPatch,
+    validateTenantPosMetadataPatch
 } from '../validators/adminTenantValidator.js';
 
 const router = express.Router();
@@ -99,6 +103,11 @@ router.put('/:id', authenticateAdmin, updateTenant);
 // ADMIN: Update tenant product capability switches
 router.patch('/:id/capabilities', authenticateAdmin, validateTenantCapabilityPatch, updateTenantCapabilities);
 router.get('/:id/capabilities/audit-logs', authenticateAdmin, validateTenantCapabilityAuditLogQuery, listTenantCapabilityAuditLogs);
+
+// ADMIN: Platform-owned DGFY POS software identity and tenant metadata approvals
+router.get('/:id/pos-metadata', authenticateAdmin, getTenantPosMetadata);
+router.get('/:id/pos-metadata/audit-logs', authenticateAdmin, validateTenantCapabilityAuditLogQuery, listTenantPosMetadataAuditLogs);
+router.patch('/:id/pos-metadata', authenticateAdmin, validateTenantPosMetadataPatch, updateTenantPosMetadata);
 
 // ADMIN: Permanently delete tenant
 router.delete('/:id', authenticateAdmin, deleteTenant);

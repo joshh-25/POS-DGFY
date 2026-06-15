@@ -70,6 +70,28 @@ const DEFAULT_TENANT_CAPABILITIES = {
 };
 const FORCE_NON_COMPLIANT_ALLOWED_STATES = new Set(['compliant_pending', 'compliant_active']);
 const FORCE_NON_COMPLIANT_HELPER_TEXT = 'Platform force non-compliant override is only allowed from compliant_pending or compliant_active';
+const POS_SOFTWARE_FIELDS = [
+    { key: 'pos_software_name', label: 'Software Name', placeholder: 'DGFY POS' },
+    { key: 'pos_software_version', label: 'Software Version', placeholder: 'Installed version' },
+    { key: 'pos_software_serial_number', label: 'Software Serial Number', placeholder: 'Software/license serial' }
+];
+const POS_RECEIPT_METADATA_LABELS = {
+    pos_registered_name: 'Registered Name',
+    pos_business_name: 'Business Name',
+    pos_business_style: 'Business Style',
+    pos_taxpayer_type: 'Taxpayer Type',
+    pos_tin_branch: 'TIN / Branch',
+    pos_address: 'Business Address',
+    pos_ptu_number: 'PTU Number',
+    pos_min_number: 'MIN Number',
+    pos_accreditation_number: 'Accreditation Number',
+    pos_fiscal_buyer_details_required: 'Fiscal Buyer Details Required',
+    pos_receipt_footer_message: 'Receipt Footer Message'
+};
+const formatPosMetadataValue = (value) => {
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    return String(value ?? '').trim() || '-';
+};
 
 const deriveForceNonCompliantEligibility = (tenant) => {
     if (Object.prototype.hasOwnProperty.call(tenant || {}, 'can_force_non_compliant')) {
@@ -308,6 +330,18 @@ export default function TenantManager() {
     const [capabilityAuditTenant, setCapabilityAuditTenant] = useState(null);
     const [capabilityAuditLogs, setCapabilityAuditLogs] = useState([]);
     const [capabilityAuditLoading, setCapabilityAuditLoading] = useState(false);
+    const [posMetadataTenant, setPosMetadataTenant] = useState(null);
+    const [posMetadata, setPosMetadata] = useState(null);
+    const [posMetadataForm, setPosMetadataForm] = useState({
+        pos_software_name: '',
+        pos_software_version: '',
+        pos_software_serial_number: ''
+    });
+    const [posMetadataReason, setPosMetadataReason] = useState('');
+    const [posMetadataLoading, setPosMetadataLoading] = useState(false);
+    const [posMetadataSaving, setPosMetadataSaving] = useState('');
+    const [posMetadataAuditLogs, setPosMetadataAuditLogs] = useState([]);
+    const [posMetadataAuditLoading, setPosMetadataAuditLoading] = useState(false);
 
     // Add Tenant Modal State
     const [showAddModal, setShowAddModal] = useState(false);
@@ -433,6 +467,114 @@ export default function TenantManager() {
         setCapabilityAuditTenant(null);
         setCapabilityAuditLogs([]);
         setCapabilityAuditLoading(false);
+    };
+
+    const openPosMetadata = async (tenant) => {
+        if (!tenant?.id) return;
+        setPosMetadataTenant(tenant);
+        setPosMetadata(null);
+        setPosMetadataAuditLogs([]);
+        setPosMetadataReason('');
+        setPosMetadataLoading(true);
+        setPosMetadataAuditLoading(true);
+        try {
+            const [response, auditResponse] = await Promise.all([
+                adminService.getTenantPosMetadata(tenant.id),
+                adminService.listTenantPosMetadataAuditLogs(tenant.id, { limit: 10 })
+            ]);
+            const data = response.data || {};
+            setPosMetadata(data);
+            setPosMetadataAuditLogs(auditResponse.data?.logs || []);
+            setPosMetadataForm({
+                pos_software_name: data.current?.pos_software_name || '',
+                pos_software_version: data.current?.pos_software_version || '',
+                pos_software_serial_number: data.current?.pos_software_serial_number || ''
+            });
+        } catch (err) {
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(`Failed to load POS metadata: ${normalized.message}`);
+            }
+        } finally {
+            setPosMetadataLoading(false);
+            setPosMetadataAuditLoading(false);
+        }
+    };
+
+    const closePosMetadata = () => {
+        if (posMetadataSaving) return;
+        setPosMetadataTenant(null);
+        setPosMetadata(null);
+        setPosMetadataAuditLogs([]);
+        setPosMetadataReason('');
+        setPosMetadataSaving('');
+        setPosMetadataAuditLoading(false);
+    };
+
+    const refreshPosMetadata = async () => {
+        if (!posMetadataTenant?.id) return;
+        const [response, auditResponse] = await Promise.all([
+            adminService.getTenantPosMetadata(posMetadataTenant.id),
+            adminService.listTenantPosMetadataAuditLogs(posMetadataTenant.id, { limit: 10 })
+        ]);
+        const data = response.data || {};
+        setPosMetadata(data);
+        setPosMetadataAuditLogs(auditResponse.data?.logs || []);
+        setPosMetadataForm({
+            pos_software_name: data.current?.pos_software_name || '',
+            pos_software_version: data.current?.pos_software_version || '',
+            pos_software_serial_number: data.current?.pos_software_serial_number || ''
+        });
+    };
+
+    const savePosSoftwareIdentity = async () => {
+        if (!posMetadataTenant?.id) return;
+        const reason = posMetadataReason.trim();
+        if (reason.length < 3) {
+            toast.error('Reason is required and must be at least 3 characters.');
+            return;
+        }
+        setPosMetadataSaving('software');
+        try {
+            await adminService.updateTenantPosMetadata(posMetadataTenant.id, {
+                software_settings: posMetadataForm,
+                reason
+            });
+            await refreshPosMetadata();
+            toast.success('DGFY POS software identity updated.');
+        } catch (err) {
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(`Failed to update POS software identity: ${normalized.message}`);
+            }
+        } finally {
+            setPosMetadataSaving('');
+        }
+    };
+
+    const reviewPendingPosMetadata = async (action) => {
+        if (!posMetadataTenant?.id) return;
+        const reason = posMetadataReason.trim();
+        if (reason.length < 3) {
+            toast.error('Reason is required and must be at least 3 characters.');
+            return;
+        }
+        setPosMetadataSaving(action);
+        try {
+            await adminService.updateTenantPosMetadata(posMetadataTenant.id, {
+                pending_action: action,
+                reason
+            });
+            await refreshPosMetadata();
+            toast.success(action === 'approve' ? 'Receipt metadata changes approved.' : 'Receipt metadata changes rejected.');
+        } catch (err) {
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(`Failed to ${action} POS metadata: ${normalized.message}`);
+            }
+        } finally {
+            setPosMetadataSaving('');
+        }
     };
 
     const handleApprove = async (tenantId) => {
@@ -1195,6 +1337,16 @@ export default function TenantManager() {
                                                         type="button"
                                                         variant="outline"
                                                         size="sm"
+                                                        onClick={() => openPosMetadata(tenant)}
+                                                        className="h-8 px-2 text-xs"
+                                                    >
+                                                        <Building2 className="mr-1 h-3.5 w-3.5" />
+                                                        POS Metadata
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
                                                         onClick={() => openCapabilityAuditLogs(tenant)}
                                                         className="h-8 px-2 text-xs"
                                                     >
@@ -1794,6 +1946,183 @@ export default function TenantManager() {
                                         </div>
                                     </div>
                                 </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* POS Metadata Modal */}
+            {posMetadataTenant && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                    <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-lg bg-white shadow-xl">
+                        <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-6">
+                            <div>
+                                <h2 className="text-xl font-bold text-slate-900">POS Metadata</h2>
+                                <p className="mt-1 text-sm text-slate-600">{posMetadataTenant.name}</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closePosMetadata}
+                                className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                                aria-label="Close POS metadata"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+                        <div className="max-h-[68vh] space-y-5 overflow-y-auto p-6">
+                            {posMetadataLoading ? (
+                                <div className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-8 text-sm text-slate-600">
+                                    <RefreshCw className="h-4 w-4 animate-spin" />
+                                    Loading POS metadata...
+                                </div>
+                            ) : (
+                                <>
+                                    <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                                        <div className="mb-3">
+                                            <h3 className="text-sm font-semibold text-slate-900">DGFY POS software identity</h3>
+                                            <p className="text-xs text-slate-500">Configured only by platform admin and used by the POS itself.</p>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                                            {POS_SOFTWARE_FIELDS.map((field) => (
+                                                <label key={field.key} className="space-y-1 text-sm">
+                                                    <span className="font-medium text-slate-700">{field.label}</span>
+                                                    <input
+                                                        value={posMetadataForm[field.key] || ''}
+                                                        onChange={(event) => setPosMetadataForm((current) => ({
+                                                            ...current,
+                                                            [field.key]: event.target.value
+                                                        }))}
+                                                        placeholder={field.placeholder}
+                                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
+                                                    />
+                                                </label>
+                                            ))}
+                                        </div>
+                                        <div className="mt-4 flex justify-end">
+                                            <Button
+                                                type="button"
+                                                onClick={savePosSoftwareIdentity}
+                                                disabled={Boolean(posMetadataSaving) || posMetadataReason.trim().length < 3}
+                                                className="bg-slate-900 text-white hover:bg-slate-800"
+                                            >
+                                                {posMetadataSaving === 'software' ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                                Save Software Identity
+                                            </Button>
+                                        </div>
+                                    </section>
+
+                                    <section className="rounded-lg border border-slate-200 bg-white p-4">
+                                        <div className="mb-3">
+                                            <h3 className="text-sm font-semibold text-slate-900">Tenant receipt metadata review</h3>
+                                            <p className="text-xs text-slate-500">Tenant admins can edit these fields, but changes apply only after platform approval.</p>
+                                        </div>
+                                        {posMetadata?.pending_review ? (
+                                            <div className="space-y-3">
+                                                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                                                    Requested {posMetadata.pending_review.requested_at
+                                                        ? formatDate(posMetadata.pending_review.requested_at)
+                                                        : 'recently'} by {posMetadata.pending_review.requested_by || 'tenant admin'}.
+                                                </div>
+                                                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                                                    {Object.entries(posMetadata.pending_review.changes || {}).map(([key, value]) => (
+                                                        <div key={key} className="rounded-md border border-slate-100 bg-slate-50 p-3 text-sm">
+                                                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                                                                {POS_RECEIPT_METADATA_LABELS[key] || key}
+                                                            </div>
+                                                            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                                                <div>
+                                                                    <div className="text-[11px] font-medium uppercase text-slate-400">Current</div>
+                                                                    <div className="mt-1 break-words text-slate-700">
+                                                                        {formatPosMetadataValue(posMetadata.current?.[key])}
+                                                                    </div>
+                                                                </div>
+                                                                <div>
+                                                                    <div className="text-[11px] font-medium uppercase text-amber-600">Requested</div>
+                                                                    <div className="mt-1 break-words font-medium text-slate-900">
+                                                                        {formatPosMetadataValue(value)}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                                                No pending tenant receipt metadata changes.
+                                            </div>
+                                        )}
+                                    </section>
+
+                                    <label className="block text-sm font-medium text-slate-700" htmlFor="pos-metadata-reason">
+                                        Reason
+                                    </label>
+                                    <textarea
+                                        id="pos-metadata-reason"
+                                        value={posMetadataReason}
+                                        onChange={(event) => setPosMetadataReason(event.target.value)}
+                                        rows={3}
+                                        maxLength={500}
+                                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                                        placeholder="State the review or software identity update reason."
+                                    />
+                                    <div className="flex flex-wrap justify-end gap-3">
+                                        <Button type="button" variant="outline" onClick={closePosMetadata} disabled={Boolean(posMetadataSaving)}>
+                                            Close
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => reviewPendingPosMetadata('reject')}
+                                            disabled={!posMetadata?.pending_review || Boolean(posMetadataSaving) || posMetadataReason.trim().length < 3}
+                                            className="border-red-300 text-red-600 hover:bg-red-50"
+                                        >
+                                            {posMetadataSaving === 'reject' ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                            Reject Pending
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            onClick={() => reviewPendingPosMetadata('approve')}
+                                            disabled={!posMetadata?.pending_review || Boolean(posMetadataSaving) || posMetadataReason.trim().length < 3}
+                                            className="bg-emerald-600 text-white hover:bg-emerald-700"
+                                        >
+                                            {posMetadataSaving === 'approve' ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                            Approve Pending
+                                        </Button>
+                                    </div>
+                                    <section className="rounded-lg border border-slate-200 bg-white p-4">
+                                        <div className="mb-3">
+                                            <h3 className="text-sm font-semibold text-slate-900">POS metadata history</h3>
+                                            <p className="text-xs text-slate-500">Audit records for software identity saves and tenant metadata reviews.</p>
+                                        </div>
+                                        {posMetadataAuditLoading ? (
+                                            <div className="flex items-center gap-2 text-sm text-slate-500">
+                                                <RefreshCw className="h-4 w-4 animate-spin" />
+                                                Loading history...
+                                            </div>
+                                        ) : posMetadataAuditLogs.length > 0 ? (
+                                            <div className="space-y-2">
+                                                {posMetadataAuditLogs.map((log) => (
+                                                    <div key={log.id || `${log.created_at}-${log.actor_username}`} className="rounded-md border border-slate-100 bg-slate-50 p-3 text-sm">
+                                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                                            <span className="font-medium text-slate-800">{log.actor_username || 'platform_admin'}</span>
+                                                            <span className="text-xs text-slate-500">{log.created_at ? formatDate(log.created_at) : 'No timestamp'}</span>
+                                                        </div>
+                                                        <div className="mt-1 text-xs uppercase tracking-wide text-slate-400">
+                                                            {log.metadata?.pending_action || (log.metadata?.software_keys?.length ? 'software identity' : 'metadata update')}
+                                                        </div>
+                                                        <p className="mt-2 text-sm text-slate-700">{log.reason || 'No reason recorded'}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="rounded-md border border-slate-100 bg-slate-50 p-3 text-sm text-slate-600">
+                                                No POS metadata audit records yet.
+                                            </div>
+                                        )}
+                                    </section>
+                                </>
                             )}
                         </div>
                     </div>

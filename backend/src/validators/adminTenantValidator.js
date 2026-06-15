@@ -14,6 +14,16 @@ const capabilityAuditLogQuerySchema = Joi.object({
     limit: Joi.number().integer().min(1).max(100).default(20)
 });
 
+const tenantPosMetadataPatchSchema = Joi.object({
+    software_settings: Joi.object({
+        pos_software_name: Joi.string().trim().max(120).allow('').optional(),
+        pos_software_version: Joi.string().trim().max(80).allow('').optional(),
+        pos_software_serial_number: Joi.string().trim().max(120).allow('').optional()
+    }).min(1).optional(),
+    pending_action: Joi.string().trim().lowercase().valid('approve', 'reject').optional(),
+    reason: Joi.string().trim().min(3).max(500).required()
+}).xor('software_settings', 'pending_action').unknown(false);
+
 const buildValidationErrorResponse = (error) => ({
     success: false,
     data: null,
@@ -52,5 +62,20 @@ export const validateTenantCapabilityAuditLogQuery = (req, res, next) => {
     }
 
     req.validatedQuery = value;
+    return next();
+};
+
+export const validateTenantPosMetadataPatch = (req, res, next) => {
+    const { error, value } = tenantPosMetadataPatchSchema.validate(req.body, {
+        abortEarly: false,
+        stripUnknown: true,
+        convert: true
+    });
+
+    if (error) {
+        return res.status(422).json(buildValidationErrorResponse(error));
+    }
+
+    req.validatedData = value;
     return next();
 };

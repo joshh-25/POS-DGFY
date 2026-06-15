@@ -211,6 +211,28 @@ describe('settings use-cases application result contract', () => {
     });
   });
 
+  it('updateSettingByKey does not create a POS metadata pending review when the receipt value is unchanged', async () => {
+    const updateSettingByKey = jest.fn();
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: {
+        updateSettingByKey,
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          pos_registered_name: { value: 'Same Name' }
+        })
+      }
+    });
+
+    const result = await useCase({
+      key: 'pos_registered_name',
+      value: 'Same Name',
+      actorUser: { username: 'tenant_admin' }
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.pending_review_keys).toEqual([]);
+    expect(updateSettingByKey).not.toHaveBeenCalled();
+  });
+
   it('updateSettingByKey blocks strict POS location binding when readiness is not complete', async () => {
     const updateSettingByKey = jest.fn();
     const useCase = buildUpdateSettingByKeyUseCase({
@@ -271,6 +293,164 @@ describe('settings use-cases application result contract', () => {
     expect(result.success).toBe(false);
     expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
     expect(result.error.statusCode).toBe(422);
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('updateSettings submits tenant receipt metadata changes for platform admin approval', async () => {
+    const updateSettings = jest.fn().mockResolvedValue({ updated: 2 });
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: {
+        updateSettings,
+        getSettingByKey: jest.fn().mockResolvedValue({
+          value: {
+            status: 'pending_review',
+            changes: { pos_registered_name: 'Old Name' }
+          }
+        })
+      }
+    });
+
+    const result = await useCase({
+      settingsData: {
+        pos_registered_name: 'New Name',
+        pos_receipt_footer_message: 'Thank you',
+        pos_petty_cash_amount: 100
+      },
+      actorUser: { username: 'tenant_admin' }
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.pending_review_keys).toEqual(['pos_registered_name', 'pos_receipt_footer_message']);
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      pos_petty_cash_amount: 100,
+      pos_receipt_metadata_pending_changes: expect.objectContaining({
+        status: 'pending_review',
+        changes: {
+          pos_registered_name: 'New Name',
+          pos_receipt_footer_message: 'Thank you'
+        }
+      })
+    }));
+    expect(updateSettings.mock.calls[0][0]).not.toHaveProperty('pos_registered_name');
+  });
+
+  it('updateSettings saves unrelated settings without creating a POS metadata pending review when submitted receipt metadata is unchanged', async () => {
+    const updateSettings = jest.fn().mockResolvedValue({ updated: 1 });
+    const getSettingByKey = jest.fn();
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: {
+        updateSettings,
+        getSettingByKey,
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          pos_registered_name: { value: 'Same Name' },
+          pos_tin_branch: { value: '' },
+          pos_petty_cash_amount: { value: 50 }
+        })
+      }
+    });
+
+    const result = await useCase({
+      settingsData: {
+        pos_registered_name: 'Same Name',
+        pos_tin_branch: '',
+        pos_petty_cash_amount: 100
+      },
+      actorUser: { username: 'tenant_admin' }
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.pending_review_keys).toEqual([]);
+    expect(getSettingByKey).not.toHaveBeenCalled();
+    expect(updateSettings).toHaveBeenCalledWith({ pos_petty_cash_amount: 100 });
+  });
+
+  it('updateSettings puts only changed tenant receipt metadata fields into pending review', async () => {
+    const updateSettings = jest.fn().mockResolvedValue({ updated: 1 });
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: {
+        updateSettings,
+        getSettingByKey: jest.fn().mockResolvedValue(null),
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          pos_registered_name: { value: 'Same Name' },
+          pos_receipt_footer_message: { value: 'Old footer' }
+        })
+      }
+    });
+
+    const result = await useCase({
+      settingsData: {
+        pos_registered_name: 'Same Name',
+        pos_receipt_footer_message: 'New footer'
+      },
+      actorUser: { username: 'tenant_admin' }
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.pending_review_keys).toEqual(['pos_receipt_footer_message']);
+    expect(updateSettings).toHaveBeenCalledWith({
+      pos_receipt_metadata_pending_changes: expect.objectContaining({
+        status: 'pending_review',
+        changes: {
+          pos_receipt_footer_message: 'New footer'
+        }
+      })
+    });
+  });
+
+  it('updateSettings starts a fresh pending review after a rejected POS metadata payload', async () => {
+    const updateSettings = jest.fn().mockResolvedValue({ updated: 1 });
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: {
+        updateSettings,
+        getSettingByKey: jest.fn().mockResolvedValue({
+          value: {
+            status: 'rejected',
+            changes: {
+              pos_registered_name: 'Rejected Name'
+            }
+          }
+        }),
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          pos_receipt_footer_message: { value: 'Old footer' }
+        })
+      }
+    });
+
+    const result = await useCase({
+      settingsData: {
+        pos_receipt_footer_message: 'Fresh footer'
+      },
+      actorUser: { username: 'tenant_admin' }
+    });
+
+    expect(result.success).toBe(true);
+    expect(updateSettings).toHaveBeenCalledWith({
+      pos_receipt_metadata_pending_changes: expect.objectContaining({
+        status: 'pending_review',
+        changes: {
+          pos_receipt_footer_message: 'Fresh footer'
+        }
+      })
+    });
+    expect(updateSettings.mock.calls[0][0].pos_receipt_metadata_pending_changes.changes).not.toHaveProperty('pos_registered_name');
+  });
+
+  it('updateSettings rejects tenant attempts to configure DGFY POS software identity', async () => {
+    const updateSettings = jest.fn();
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: { updateSettings }
+    });
+
+    const result = await useCase({
+      settingsData: {
+        pos_software_name: 'Custom POS'
+      },
+      actorUser: { username: 'tenant_admin' }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.AUTHORIZATION_FAILED);
+    expect(result.error.statusCode).toBe(403);
     expect(updateSettings).not.toHaveBeenCalled();
   });
 
