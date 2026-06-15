@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-06-14
+last_reviewed: 2026-06-15
 applies_to: docs_navigation
 topic: docs_index
 ---
@@ -38,6 +38,8 @@ Canonical planning entry:
 - Current strict system audit findings live under root `System_Audit/`; the prior March audit package is archived at `docs/archive/system-audit-2026-03/` and is historical only.
 - Dependency audit gates are current release evidence: `npm run audit:dependencies:prod` and `npm run audit:dependencies` cover root, backend, and frontend package scopes, run in CI, and are included in `npm run gate:release:local`.
 - The DGFY POS surface split is tracked in `docs/testing/pos-readiness-status.md` and `docs/compliance/impact-declarations/2026-05-30-dgfy-pos-surface-split.md`. Standalone POS owns cashier terminal routing, while SKUpervisor `/pos` owns admin/mode panels and reporting handoff; local release gates, production deploy, production POS smoke, exact deployed-head verification, `npm run smoke:pos-terminal-ui`, and shared checkout payload/fee contract tests now pass. Human cashier/admin UAT remains the final readiness gate.
+- Source-current POS terminal unlock hardening is tracked in `docs/testing/pos-readiness-status.md`, `docs/testing/pos-e2e-uat-checklist.md`, `docs/features/TENANT_MANAGEMENT.md`, and `docs/api/specification.md`. Standalone POS must resolve login tenant context through `/api/v1/auth/lookup` before password validation and must not silently reuse stale tenant context for missing mappings, rate limits, or multi-company ambiguity.
+- Source-current POS config/compliance metadata changes are tracked in `docs/testing/pos-readiness-status.md`, `docs/testing/pos-e2e-uat-checklist.md`, `docs/api/specification.md`, `docs/database/schema.md`, and `docs/compliance/impact-declarations/2026-06-15-pos-metadata-terminal-unlock.md`. Tenant receipt metadata edits require platform-admin review, DGFY POS software identity is platform-admin controlled, and these changes will deploy with the terminal unlock hardening unless intentionally split before promotion.
 - POS/storefront source separation contract is maintained in `docs/features/POS_STOREFRONT_SOURCE_SEPARATION_CONTRACT.md` with validation evidence in `docs/testing/pos-readiness-status.md`.
 - Expanded workflow-mode template behavior and backward-compatible family semantics are governed by ADR 0008 + ADR 0014 and current feature/testing docs.
 - New Business Mode selectors hide the legacy `manufacturing` alias while persisted legacy `manufacturing` values continue to normalize to Food Manufacturing until a separate governed Manufacturing mode exists.

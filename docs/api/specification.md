@@ -193,6 +193,8 @@ Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 
 ### POST /auth/login
 Authenticate user and establish a browser session.
 
+Tenant-local login remains selected by the `x-company-token` request header. Standalone POS terminal unlock must first call `POST /api/v1/auth/lookup` for the submitted email and then send `/auth/login` with the resolved company token. The current browser company token may be reused only when it is one of the lookup tenants, or as a temporary fallback when lookup fails because of a network/server outage. Missing email-to-tenant mapping, multiple-tenant ambiguity, lookup rate limiting, and invalid password must remain distinguishable operator outcomes.
+
 **Request**
 ```json
 {
@@ -3645,7 +3647,7 @@ Track online-store order status for public users.
    - `pos_transactions.vat_amount`
    - `pos_transactions.vat_exempt_sales`
    - `pos_transactions.zero_rated_sales`
-4. Tenant POS receipt/business metadata is stored in `system_settings`:
+4. Tenant POS receipt/business metadata is stored in `system_settings`. Tenant admins can request changes to the receipt/business fields below, but they are first written to `pos_receipt_metadata_pending_changes` and do not become live until platform admin approval:
    - `pos_registered_name`
    - `pos_business_name`
    - `pos_business_style`
@@ -3655,32 +3657,38 @@ Track online-store order status for public users.
    - `pos_ptu_number`
    - `pos_min_number`
    - `pos_accreditation_number`
+   - `pos_receipt_footer_message`
+5. DGFY POS software identity is platform-admin controlled per tenant and is not accepted through tenant settings validators:
    - `pos_software_name`
    - `pos_software_version`
    - `pos_software_serial_number`
-   - `pos_receipt_footer_message`
+6. Platform-admin POS metadata operations:
+   - `GET /admin/tenants/:id/pos-metadata` returns current platform-controlled software identity, current receipt metadata, and any pending receipt metadata review.
+   - `PATCH /admin/tenants/:id/pos-metadata` accepts either `software_settings` or `pending_action` (`approve` or `reject`) plus a required `reason` of at least 3 characters.
+   - `GET /admin/tenants/:id/pos-metadata/audit-logs?limit=10` returns `tenant_admin_audit_logs` rows with `action = pos_metadata_update`.
+7. Tenant POS operating settings remain tenant-editable when allowed by normal settings/compliance policy:
    - `pos_discount_profiles` (JSON array of `{name, percentage, active}`)
    - `pos_order_method_fees` (deprecated; retained for historical read compatibility only)
    - `pos_petty_cash_symbol`
    - `pos_petty_cash_amount`
-5. Fiscal invoice checkout can carry buyer fiscal details:
+8. Fiscal invoice checkout can carry buyer fiscal details:
    - `buyer_name`
    - `buyer_tin`
    - `buyer_business_style`
    - `buyer_address`
-6. Fiscal invoice persistence stores a server-owned immutable preparation snapshot:
+9. Fiscal invoice persistence stores a server-owned immutable preparation snapshot:
    - `pos_transactions.buyer_tin`
    - `pos_transactions.buyer_business_style`
    - `pos_transactions.buyer_address`
    - `pos_transactions.fiscal_document_template_version`
    - `pos_transactions.fiscal_document_hash`
    - `pos_transactions.fiscal_document_snapshot`
-7. Fiscal lifecycle persistence adds:
+10. Fiscal lifecycle persistence adds:
    - `pos_transactions.fiscal_lifecycle_state`
    - `pos_transactions.fiscal_reprint_count`
    - `pos_transactions.fiscal_void_event_hash`
    - `pos_transactions.void_reason`
-8. Fiscal terminal registration and event tables:
+11. Fiscal terminal registration and event tables:
    - `pos_fiscal_terminal_registrations`
    - `pos_fiscal_events`
    - `pos_fiscal_print_events`

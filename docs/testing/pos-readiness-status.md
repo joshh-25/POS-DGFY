@@ -1,7 +1,7 @@
 # POS Readiness Status (Canonical)
 
 Status: authoritative-for-pos-readiness
-Last updated: 2026-05-31
+Last updated: 2026-06-15
 Overall status: in_progress
 
 ## 1) Canonical Blockers
@@ -14,6 +14,7 @@ Overall status: in_progress
 6. PR #11 DGFY POS surface split local release blockers are closed as of this pass: POS-specific lint, full frontend lint errors, frontend budget drift, shared checkout contract drift, local release gate, production deploy, exact deployed-SHA verification, and production POS smoke now pass. Production readiness still requires human operator UAT.
 7. The POS/SKUpervisor surface split requires explicit operator verification that standalone POS checkout, SKUpervisor `/pos`, Sales handoff, receipt preview, barcode scan, Sync Queue, and mode-specific panels still reach the intended surface.
 8. Frontend build toolchain requirements are now documented for release: the merged lockfile targets Vite 8 / `@vitejs/plugin-react` 6, so deterministic frontend builds require a Node version accepted by that toolchain (`^20.19.0 || ^22.12.0 || >=24.0.0`).
+9. The current source tree contains paired POS terminal-unlock hardening and POS configuration/compliance metadata changes that are not yet production-deployed. When the next deployment is requested from this branch/worktree, both the login-context fix and the in-progress POS config/compliance changes will be promoted together unless they are deliberately split first.
 
 ## 2) Current Behavior Snapshot
 
@@ -150,6 +151,19 @@ Overall status: in_progress
 - both checkout surfaces now use a shared checkout payload and DGFY fee-label/rate contract for terminal identity, payment handoff, discount, F&B metadata, modifiers, scan metadata, and receipt fee fallback
 - the split preserves backend POS checkout contracts and local POS/backend/checkout-surface contract tests pass
 - production deploy completed through the governed `scripts/deploy-remote.sh --yes` path; exact deployed-head verification and production POS smoke pass, while human cashier/admin UAT remains the final readiness gate
+41. DGFY POS software identity is platform-admin controlled:
+- tenant admins can submit receipt metadata edits, but they land in `pos_receipt_metadata_pending_changes` until platform admin approves them
+- platform admin configures software name, software version, and software serial number through the tenant POS Metadata function, and those fields are not shown on the tenant admin settings form
+42. POS terminal unlock resolves tenant context from email before password validation:
+- the terminal calls `POST /api/v1/auth/lookup` for the submitted email and prefers the current browser company token only when it is one of the returned tenants
+- single-tenant lookup results provide the login company token; multi-tenant lookup blocks with a deterministic operator message; missing mapping and rate-limit failures no longer silently reuse a stale browser tenant
+- fallback to the current browser company token is limited to transient lookup outages (`network`, timeout, or `5xx`) so wrong-tenant contexts do not mask account/mapping issues
+- terminal unlock diagnostics now classify invalid credentials, missing tenant mapping, multiple tenant membership, POS capability disabled, POS permission denial, rate limiting, and optional `/pos/device/status` bridge `503` separately
+- standalone POS development auto-login is opt-in through `VITE_POS_DEV_AUTO_LOGIN=true`; development no longer auto-binds every POS session to the legacy `token-original` tenant by default
+43. Deployment scope note for the current branch:
+- POS metadata approval/configuration, platform-admin audit extensions, and terminal unlock hardening are source-current together
+- do not describe these changes as production-live until a deploy records a new deployed SHA, POS asset identity, backend health, POS smoke, and the relevant admin/cashier UAT evidence
+- if only one part should deploy, split or revert the other part before running the deployment workflow
 
 ## 3) Automated Gate Status (Latest)
 

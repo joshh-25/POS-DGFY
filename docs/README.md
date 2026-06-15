@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-06-14
+last_reviewed: 2026-06-15
 applies_to: all_documentation_users
 topic: docs_hub
 ---
@@ -122,6 +122,8 @@ Start here for all planning and implementation work:
 46. DGFY signup OTP requests are now landlord-global for `dgfy_account_verification`: they do not require a company token, ignore stale tenant context, and match the global `/api/v1/dgfy/auth/register` verifier. Live production proof on 2026-06-11 showed the no-company-token request reaches normal validation instead of `TENANT_TOKEN_REQUIRED`.
 47. Controlled production DGFY mutation UAT passed on 2026-06-13 with dedicated QA data retained for audit cleanup. Evidence file `.tmp/production-uat/dgfy-production-uat.json` recorded OTP delivery, fresh DGFY account registration, automatic company activation, tenant-session handoff into IMS, onboarding item creation, DGFY-authenticated Storefront checkout, POS completion, inventory decrement from `10` to `9`, and completed-order visibility in the DGFY customer account. Honest readiness ratings recorded by that gate are DGFY account UI shell `9.2`, DGFY signup/business registration `9.2`, e-commerce Storefront checkout `9.2`, POS order/inventory flow `9.2`, admin/payment/capability operations `9.1`, and production readiness `9.2`.
 48. Tenant-visible platform capability messaging is source-current and included in the deployed commit chain. `frontend/src/utils/tenantCapabilityMessages.js` centralizes IMS, POS, and Storefront access-mode copy; `Layout.jsx` can surface tenant-wide IMS/status banners after user/settings hydration or blocked-action events; POS terminal layouts show POS-specific disabled-state copy; Storefront helpers reuse the same access-mode messages for catalog/checkout/action blocks; and Tenant Manager confirmation modals preview the customer/tenant impact before writing capability changes.
+49. Current source adds POS terminal unlock tenant-context hardening. Standalone POS resolves the tenant with `/api/v1/auth/lookup` before `/api/v1/auth/login`, reuses the current browser company token only when lookup confirms it belongs to the submitted email, and classifies missing mappings, multiple tenants, invalid credentials, POS capability/permission blocks, rate limiting, and optional device-bridge `503` separately. This is source-current only until a later deploy records a new deployed SHA and POS asset proof.
+50. Current source also contains POS config/compliance metadata changes: tenant admins submit receipt metadata edits for platform-admin approval, platform admin owns DGFY POS software name/version/serial number through Tenant Manager POS Metadata, and POS metadata audit rows use `tenant_admin_audit_logs.action = pos_metadata_update`. These changes are in the same worktree as the terminal unlock hardening and will deploy together unless deliberately split before promotion.
 
 ## Rules
 1. Use authoritative docs first.
