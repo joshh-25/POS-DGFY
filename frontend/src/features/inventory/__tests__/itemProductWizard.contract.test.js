@@ -237,8 +237,9 @@ describe('Item/Product wizard contracts', () => {
     expect(itemFormSource).toContain('parseStorefrontImageGallery');
     expect(itemFormSource).toContain('image slots remaining');
     expect(itemFormSource).toContain('No item image uploaded yet.');
-    expect(itemFormSource).toContain('onUploadStorefrontImage(item, [file])');
-    expect(itemFormSource).toContain('primaryItemImageUrl || posConfig?.pos_image_url');
+    expect(itemFormSource).toContain('POS terminal cards use the item images added in Storefront Catalog below.');
+    expect(itemFormSource).not.toContain('Upload Image');
+    expect(itemFormSource).not.toContain('onUploadPosImage');
     expect(itemFormSource).toContain('Enable in Storefront');
     expect(itemFormSource).toContain('Disable in Storefront');
     expect(itemFormSource).toContain('<StorefrontImageCarousel');
@@ -250,8 +251,9 @@ describe('Item/Product wizard contracts', () => {
     expect(productPosSetupSource).toContain('parseStorefrontImageGallery');
     expect(productPosSetupSource).toContain('image slots remaining');
     expect(productPosSetupSource).toContain('No item image uploaded yet.');
-    expect(productPosSetupSource).toContain('onUploadStorefrontImage(productItem, [file])');
-    expect(productPosSetupSource).toContain('primaryItemImageUrl || posConfig?.pos_image_url');
+    expect(productPosSetupSource).toContain('POS terminal cards use the item images added in Storefront Catalog below.');
+    expect(productPosSetupSource).not.toContain('Upload Image');
+    expect(productPosSetupSource).not.toContain('onUploadPosImage');
     expect(productPosSetupSource).toContain('Enable in Storefront');
     expect(productPosSetupSource).toContain('Disable in Storefront');
     expect(productPosSetupSource).toContain('<StorefrontImageCarousel');

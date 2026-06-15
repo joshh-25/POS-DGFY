@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 import StorefrontImageCarousel from '@/components/items/StorefrontImageCarousel';
 
 const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
@@ -29,8 +28,6 @@ export default function POSSetupStep({
   storefrontConfig,
   showStorefrontCatalogControls = true,
   onTogglePosVisibility,
-  onUploadPosImage,
-  onDeletePosImage,
   onToggleStorefrontVisibility,
   onToggleStorefrontLocationAvailability,
   onUploadStorefrontImage,
@@ -66,7 +63,6 @@ export default function POSSetupStep({
       sort_order: index
     }));
   }, [storefrontConfig]);
-  const primaryItemImageUrl = storefrontGallery[0]?.url || storefrontConfig?.storefront_image_url || null;
   const storefrontLocationAvailability = React.useMemo(() => {
     const activeLocations = (Array.isArray(locations) ? locations : [])
       .filter((location) => location?.is_active !== false);
@@ -121,7 +117,7 @@ export default function POSSetupStep({
       <div className="rounded-xl border border-teal-200 bg-teal-50 p-4">
         <h3 className="mb-1 font-semibold text-teal-900">POS Setup</h3>
         <p className="text-sm text-teal-700">
-          Configure POS visibility and menu image from the product wizard.
+          Configure POS visibility. Item images are managed in Storefront Catalog and used by POS terminal cards.
         </p>
       </div>
       <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -169,53 +165,12 @@ export default function POSSetupStep({
         )}
 
         {productItem ? (
-          <div className="space-y-3">
-            {primaryItemImageUrl || posConfig?.pos_image_url ? (
-              <img
-                src={resolveAssetUrl(primaryItemImageUrl || posConfig.pos_image_url)}
-                alt={`${productItem?.name || 'Product'} item`}
-                className="h-28 w-40 rounded-md border border-slate-200 object-cover"
-              />
-            ) : (
-              <p className="text-sm text-slate-500">No item image uploaded yet.</p>
-            )}
-            <div className="flex flex-wrap gap-2">
-              <label className="cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100">
-                Upload Image
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file && onUploadStorefrontImage) {
-                      onUploadStorefrontImage(productItem, [file]);
-                    } else if (file && onUploadPosImage) {
-                      onUploadPosImage(productItem, file);
-                    }
-                    event.target.value = '';
-                  }}
-                />
-              </label>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  if (onDeleteStorefrontImage) {
-                    onDeleteStorefrontImage(productItem);
-                  } else if (onDeletePosImage) {
-                    onDeletePosImage(productItem);
-                  }
-                }}
-                disabled={!(primaryItemImageUrl || posConfig?.pos_image_url) || (!onDeleteStorefrontImage && !onDeletePosImage)}
-              >
-                Remove Image
-              </Button>
-            </div>
-          </div>
+          <p className="text-sm text-slate-500">
+            POS terminal cards use the item images added in Storefront Catalog below.
+          </p>
         ) : (
           <p className="text-sm text-slate-500">
-            Save the product first, then reopen it to configure POS visibility and menu image.
+            Save the product first, then reopen it to configure POS visibility.
           </p>
         )}
       </div>

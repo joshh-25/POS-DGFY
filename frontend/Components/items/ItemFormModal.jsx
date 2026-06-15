@@ -25,7 +25,6 @@ import { Badge } from "@/components/ui/badge";
 import { UomSelect } from '@/components/ui/UomSelect';
 import { createSupplier, getSuppliers } from '@/src/services/supplierService.js';
 import { useLocations } from '@/src/hooks/useLocations.js';
-import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 import StorefrontImageCarousel from '@/components/items/StorefrontImageCarousel';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { resolveBusinessModeItemDefaults } from '@/src/features/settings/businessModeTemplates.js';
@@ -200,8 +199,6 @@ export default function ItemFormModal({
   storefrontConfig = null,
   showStorefrontCatalogControls = true,
   onTogglePosVisibility,
-  onUploadPosImage,
-  onDeletePosImage,
   onToggleStorefrontVisibility,
   onToggleStorefrontLocationAvailability,
   onUploadStorefrontImage,
@@ -286,7 +283,6 @@ export default function ItemFormModal({
       sort_order: index
     }));
   }, [storefrontConfig]);
-  const primaryItemImageUrl = storefrontGallery[0]?.url || storefrontConfig?.storefront_image_url || null;
   const configuredStorefrontLocationAvailability = useMemo(() => {
     const configuredRows = Array.isArray(storefrontConfig?.location_availability)
       ? storefrontConfig.location_availability
@@ -1383,7 +1379,7 @@ export default function ItemFormModal({
                 <div>
                   <Label>POS Setup (Optional)</Label>
                   <p className="text-xs text-slate-500">
-                    Configure how this item appears in POS and upload a menu image.
+                    Configure how this item appears in POS. Item images are managed in Storefront Catalog and used by POS terminal cards.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -1425,50 +1421,9 @@ export default function ItemFormModal({
               )}
 
               {item ? (
-                <div className="space-y-3">
-                  {primaryItemImageUrl || posConfig?.pos_image_url ? (
-                    <img
-                      src={resolveAssetUrl(primaryItemImageUrl || posConfig.pos_image_url)}
-                      alt={`${item.name} item`}
-                      className="h-28 w-40 rounded-md border border-slate-200 object-cover"
-                    />
-                  ) : (
-                    <p className="text-sm text-slate-500">No item image uploaded yet.</p>
-                  )}
-                  <div className="flex flex-wrap gap-2">
-                    <label className="cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100">
-                      Upload Image
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          if (file && onUploadStorefrontImage) {
-                            onUploadStorefrontImage(item, [file]);
-                          } else if (file && onUploadPosImage) {
-                            onUploadPosImage(item, file);
-                          }
-                          event.target.value = '';
-                        }}
-                      />
-                    </label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        if (onDeleteStorefrontImage) {
-                          onDeleteStorefrontImage(item);
-                        } else if (onDeletePosImage) {
-                          onDeletePosImage(item);
-                        }
-                      }}
-                      disabled={!(primaryItemImageUrl || posConfig?.pos_image_url) || (!onDeleteStorefrontImage && !onDeletePosImage)}
-                    >
-                      Remove Image
-                    </Button>
-                  </div>
-                </div>
+                <p className="text-sm text-slate-500">
+                  POS terminal cards use the item images added in Storefront Catalog below.
+                </p>
               ) : (
                 <p className="text-sm text-slate-500">
                   Save the item first, then reopen it to complete POS setup.
