@@ -43,9 +43,11 @@ export function StorefrontFooterSection({
   registrationYear,
   description,
   displayFont,
+  bodyFontFamily,
   badgeLinks = [],
   columns = [],
-  bottomRightText = 'Powered by SKUpervisor'
+  bottomRightText = 'Powered by SKUpervisor',
+  sectionPadding = null
 }) {
   return (
     <>
@@ -73,12 +75,13 @@ export function StorefrontFooterSection({
       `}</style>
       <footer
         style={{
-          marginLeft: 'calc(50% - 50vw)',
-          width: '100vw',
+          marginLeft: isMobileViewport ? 0 : 'calc(50% - 50vw)',
+          width: isMobileViewport ? '100%' : '100vw',
           background: '#07111f',
           borderTop: '1px solid rgba(255, 255, 255, 0.08)',
           position: 'relative',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          boxSizing: 'border-box'
         }}
       >
         {/* Subtle decorative glow */}
@@ -96,9 +99,10 @@ export function StorefrontFooterSection({
             maxWidth: 1320,
             width: '100%',
             margin: '0 auto',
-            padding: isMobileViewport ? '36px 20px 32px' : '64px 32px 40px',
+            padding: sectionPadding || (isMobileViewport ? '32px 16px 28px' : '64px 32px 40px'),
+            boxSizing: 'border-box',
             display: 'grid',
-            gap: 36,
+            gap: isMobileViewport ? 32 : 36,
             position: 'relative',
             zIndex: 1
           }}
@@ -107,7 +111,7 @@ export function StorefrontFooterSection({
             style={{
               display: 'grid',
               gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)',
-              gap: isMobileViewport ? 32 : 48
+              gap: isMobileViewport ? 28 : 48
             }}
           >
             <div style={{ display: 'grid', gap: 24, alignContent: 'start' }}>
@@ -121,7 +125,7 @@ export function StorefrontFooterSection({
                 }}>
                   {name}
                 </div>
-                <div style={{ maxWidth: 380, fontSize: 15, lineHeight: 1.75, color: '#94a3b8' }}>
+                <div style={{ maxWidth: 380, fontSize: 15, lineHeight: 1.75, color: '#94a3b8', fontFamily: bodyFontFamily }}>
                   {description}
                 </div>
               </div>
@@ -160,7 +164,7 @@ export function StorefrontFooterSection({
 
             {columns.map((column) => (
               <div key={column.title} style={{ display: 'grid', gap: 20, alignContent: 'start' }}>
-                <div style={{ fontSize: 13, fontWeight: 900, color: '#ffffff', letterSpacing: '0.12em', textTransform: 'uppercase', opacity: 0.9 }}>
+                <div style={{ fontSize: 13, fontWeight: 900, color: '#ffffff', letterSpacing: '0.12em', textTransform: 'uppercase', opacity: 0.9, fontFamily: displayFont }}>
                   {column.title}
                 </div>
                 <div style={{ display: 'grid', gap: 12 }}>
@@ -173,18 +177,18 @@ export function StorefrontFooterSection({
                           target={String(item.href).startsWith('http') ? '_blank' : undefined}
                           rel={String(item.href).startsWith('http') ? 'noreferrer' : undefined}
                           className="sf-footer-link"
-                          style={{ fontSize: 15 }}
+                          style={{ fontSize: 15, fontFamily: bodyFontFamily }}
                         >
                           {item.label}
                         </a>
                       ) : (
-                        <div key={`${column.title}-${index}`} style={{ fontSize: 15, color: '#94a3b8' }}>
+                        <div key={`${column.title}-${index}`} style={{ fontSize: 15, color: '#94a3b8', fontFamily: bodyFontFamily }}>
                           {item.label}
                         </div>
                       )
                     ))
                   ) : (
-                    <div style={{ fontSize: 15, color: '#94a3b8' }}>{column.emptyText || 'No entries yet.'}</div>
+                    <div style={{ fontSize: 15, color: '#94a3b8', fontFamily: bodyFontFamily }}>{column.emptyText || 'No entries yet.'}</div>
                   )}
                 </div>
               </div>
@@ -202,10 +206,10 @@ export function StorefrontFooterSection({
               gap: 12
             }}
           >
-            <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500 }}>
+            <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, fontFamily: bodyFontFamily }}>
               &copy; {registrationYear ? `${registrationYear} ` : ''}{name}. All rights reserved.
             </div>
-            <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, fontFamily: bodyFontFamily }}>
               {bottomRightText}
             </div>
           </div>

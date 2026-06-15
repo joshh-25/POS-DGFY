@@ -13,20 +13,19 @@ import { buildBusinessLoginUrl, buildBusinessRegistrationUrl } from '../../../bu
 // Lightweight viewport observer hook for high-performance scroll triggers
 const useIntersection = (ref, options = {}) => {
   const [isIntersecting, setIsIntersecting] = useState(false);
-  const { triggerOnce, threshold, rootMargin } = options;
   useEffect(() => {
     if (!ref.current) return;
     const observer = new IntersectionObserver(([entry]) => {
       if (entry.isIntersecting) {
         setIsIntersecting(true);
-        if (triggerOnce) {
+        if (options.triggerOnce) {
           observer.unobserve(ref.current);
         }
       }
-    }, { threshold, rootMargin });
+    }, options);
     observer.observe(ref.current);
     return () => observer.disconnect();
-  }, [ref, triggerOnce, threshold, rootMargin]);
+  }, [ref, options.triggerOnce]);
   return isIntersecting;
 };
 
@@ -201,7 +200,7 @@ export function SolutionsPage({ logoSrc, onExploreClick }) {
             }} />
 
             {/* Layer 1: Map.DGFY */}
-            <div
+            <div 
               className="solutions-float-item"
               style={{
                 background: '#FFFFFF',
@@ -235,7 +234,7 @@ export function SolutionsPage({ logoSrc, onExploreClick }) {
             </div>
 
             {/* Layer 2: DGFY POS */}
-            <div
+            <div 
               className="solutions-float-item"
               style={{
                 background: '#FFFFFF',
@@ -270,7 +269,7 @@ export function SolutionsPage({ logoSrc, onExploreClick }) {
             </div>
 
             {/* Layer 3: DGFY Inventory Engine */}
-            <div
+            <div 
               className="solutions-float-item"
               style={{
                 background: '#FFFFFF',
@@ -305,7 +304,7 @@ export function SolutionsPage({ logoSrc, onExploreClick }) {
             </div>
 
             {/* Layer 4: SKUPERVISOR */}
-            <div
+            <div 
               className="solutions-float-item"
               style={{
                 background: '#F8FAFC',
@@ -429,18 +428,18 @@ export function SolutionsPage({ logoSrc, onExploreClick }) {
                     backgroundSize: '16px 16px',
                     opacity: 0.6
                   }} />
-
+                  
                   {/* Traced Route SVG Path */}
                   <svg style={{ position: 'absolute', width: '100%', height: '100%' }}>
-                    <path
-                      d="M 30,110 C 80,90 120,40 180,70"
-                      fill="none"
-                      stroke="#1A4E8D"
-                      strokeWidth="3"
-                      className="solutions-route-animated"
+                    <path 
+                      d="M 30,110 C 80,90 120,40 180,70" 
+                      fill="none" 
+                      stroke="#1A4E8D" 
+                      strokeWidth="3" 
+                      className="solutions-route-animated" 
                     />
                   </svg>
-
+                  
                   <div style={{
                     position: 'absolute',
                     top: '12px',
@@ -459,7 +458,7 @@ export function SolutionsPage({ logoSrc, onExploreClick }) {
                     <Search size={12} color="#1A4E8D" />
                     <span>Search products or services...</span>
                   </div>
-
+                  
                   {/* Map Pin Mark and Radial Pulse Glow */}
                   <div style={{
                     position: 'absolute',
@@ -536,16 +535,16 @@ export function SolutionsPage({ logoSrc, onExploreClick }) {
                     <div style={{ height: '1px', background: 'rgba(10,15,28,0.06)' }} />
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <div style={{ flex: 1, background: '#FFFFFF', border: '1px solid rgba(10,15,28,0.06)', borderRadius: '6px', fontSize: '8px', fontWeight: 700, padding: '4px', textAlign: 'center', color: '#5F6B7A' }}>Cash</div>
-                      <div
-                        style={{
-                          flex: 1,
-                          background: '#42C77B',
-                          color: '#FFFFFF',
-                          borderRadius: '6px',
-                          fontSize: '8px',
-                          fontWeight: 800,
-                          padding: '4px',
-                          textAlign: 'center',
+                      <div 
+                        style={{ 
+                          flex: 1, 
+                          background: '#42C77B', 
+                          color: '#FFFFFF', 
+                          borderRadius: '6px', 
+                          fontSize: '8px', 
+                          fontWeight: 800, 
+                          padding: '4px', 
+                          textAlign: 'center', 
                           cursor: 'pointer',
                           transition: 'all 200ms ease'
                         }}
@@ -649,7 +648,7 @@ export function SolutionsPage({ logoSrc, onExploreClick }) {
                 </span>
               </div>
               <div style={{ fontSize: '14px', color: '#5F6B7A', flex: '1 1 400px', lineHeight: 1.5 }}>
-                Enterprise-grade procurement, batch-FIFO tracking, and multi-location inventory sync powering DGFY&apos;s operational backbone.
+                Enterprise-grade procurement, batch-FIFO tracking, and multi-location inventory sync powering DGFY's operational backbone.
               </div>
             </div>
           </div>

@@ -2,13 +2,13 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   clearDgfySession,
-  createDgfyHandoff,
   fetchDgfyLegalTerms,
   fetchDgfyMe,
   getStoredDgfyToken,
   loginDgfyAccount,
   registerDgfyAccount,
-  requestDgfyRegistrationEmailVerification,
+  requestDgfyEmailVerification,
+  verifyDgfyEmail,
 } from '../src/services/dgfyAuthService.js';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -23,8 +23,7 @@ import {
   readDgfyRouteParams,
   resolveDgfyPostAuthTarget,
   resolveStorefrontHomeUrl,
-  hasAbsoluteNavigationTarget,
-  appendDgfyHandoffToken
+  hasAbsoluteNavigationTarget
 } from '../src/features/dgfyRouteHelpers.js';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -56,9 +55,9 @@ const extractRequestErrorDetails = (requestError) => ({
 const resolveVerificationGuidance = ({ code = '', fallbackMessage = '' } = {}) => {
   switch (String(code || '').trim().toUpperCase()) {
     case 'EMAIL_OTP_DELIVERY_UNAVAILABLE':
-      return 'This environment cannot send the verification code until email delivery is configured. Retry once delivery is available.';
+      return 'Your account was created, but this environment cannot send the verification code until email delivery is configured. Retry once delivery is available.';
     case 'EMAIL_OTP_DELIVERY_FAILED':
-      return 'The verification code could not be delivered. Use resend code to request a fresh 6-digit code.';
+      return 'Your account was created, but the verification code could not be delivered. Use resend code to request a fresh 6-digit code.';
     case 'EMAIL_OTP_REQUIRED':
       return 'Enter the current 6-digit verification code before email verification can continue.';
     case 'EMAIL_OTP_EXPIRED':
@@ -78,16 +77,6 @@ const navigateToTarget = (navigate, target) => {
     return;
   }
   navigate(target, { replace: true });
-};
-
-const resolveHandoffNavigationTarget = async (target, token = '') => {
-  if (!hasAbsoluteNavigationTarget(target)) return target;
-  try {
-    const handoff = await createDgfyHandoff(token || getStoredDgfyToken());
-    return appendDgfyHandoffToken(target, handoff?.handoff_token);
-  } catch {
-    return target;
-  }
 };
 
 /* ─── Field group ───────────────────────────────────────────── */
@@ -224,11 +213,9 @@ export default function DgfyAuthPage() {
   useEffect(() => {
     let cancelled = false;
     fetchDgfyMe(getStoredDgfyToken())
-      .then(async (session) => {
+      .then(() => {
         if (cancelled) return;
-        const target = resolveDgfyPostAuthTarget({ intent: routeParams.intent, returnTo: routeParams.returnTo });
-        const finalTarget = await resolveHandoffNavigationTarget(target, session?.token || getStoredDgfyToken());
-        if (!cancelled) navigateToTarget(navigate, finalTarget);
+        navigateToTarget(navigate, resolveDgfyPostAuthTarget({ intent: routeParams.intent, returnTo: routeParams.returnTo }));
       })
       .catch(() => { if (!cancelled) { clearDgfySession(); setSessionResolved(true); } });
     return () => { cancelled = true; };
@@ -254,26 +241,8 @@ export default function DgfyAuthPage() {
     const target = resolveDgfyPostAuthTarget({ intent: routeParams.intent, returnTo: routeParams.returnTo });
     setNotice(routeParams.intent === 'register-business' ? 'DGFY account connected. Continuing to business registration...' : 'DGFY account connected. Returning to your account...');
     try { await fetchDgfyMe(session?.token || getStoredDgfyToken()).catch(() => null); }
-    finally {
-      const finalTarget = await resolveHandoffNavigationTarget(target, session?.token || getStoredDgfyToken());
-      navigateToTarget(navigate, finalTarget);
-    }
+    finally { navigateToTarget(navigate, target); }
   }, [navigate, routeParams.intent, routeParams.returnTo]);
-
-  const buildRegistrationPayload = useCallback((emailOtpCode = '') => ({
-    first_name: authForm.firstName,
-    middle_name: authForm.middleName,
-    last_name: authForm.lastName,
-    email: authForm.email,
-    phone: authForm.phone,
-    password: authForm.password,
-    confirm_password: authForm.confirmPassword,
-    email_otp_code: emailOtpCode,
-    accepted_terms: true,
-    terms_version: accountLegalSnapshot.terms_version,
-    privacy_version: accountLegalSnapshot.privacy_version,
-    marketplace_terms_version: accountLegalSnapshot.marketplace_terms_version
-  }), [accountLegalSnapshot.marketplace_terms_version, accountLegalSnapshot.privacy_version, accountLegalSnapshot.terms_version, authForm]);
 
   const handleRegister = async (event) => {
     event.preventDefault();
@@ -286,27 +255,37 @@ export default function DgfyAuthPage() {
     if (accountLegalTermsUnavailable) { toast.error(accountLegalDisabledReason || 'Current DGFY terms must load before creating an account.'); return; }
     setIsLoading(true);
     try {
-      await requestDgfyRegistrationEmailVerification(authForm.email);
-      setVerificationState({
-        requestStatus: 'sent',
-        guidance: 'We sent a 6-digit verification code to your email. Enter it here to create your DGFY account.',
-        errorCode: ''
+      const session = await registerDgfyAccount({
+        first_name: authForm.firstName, middle_name: authForm.middleName, last_name: authForm.lastName,
+        email: authForm.email, phone: authForm.phone, password: authForm.password, confirm_password: authForm.confirmPassword,
+        accepted_terms: true, terms_version: accountLegalSnapshot.terms_version,
+        privacy_version: accountLegalSnapshot.privacy_version, marketplace_terms_version: accountLegalSnapshot.marketplace_terms_version
       });
-      setResendCooldown(60);
+      toast.success('Account created successfully');
+      try {
+        await requestDgfyEmailVerification(session?.token);
+        setVerificationState({
+          requestStatus: 'sent',
+          guidance: 'We sent a 6-digit verification code to your email. Registration stays paused until you verify the account with the latest code.',
+          errorCode: ''
+        });
+        setResendCooldown(60);
+      } catch (requestError) {
+        const { code, message } = extractRequestErrorDetails(requestError);
+        setVerificationState({
+          requestStatus: 'failed',
+          guidance: resolveVerificationGuidance({
+            code,
+            fallbackMessage: 'Your account was created, but the verification code was not sent yet. Use resend code to request a fresh email.'
+          }),
+          errorCode: code
+        });
+        setResendCooldown(0);
+        toast.error(message || 'Account created, but the verification code could not be sent yet.');
+      }
       setVerifyCode('');
       setMode('verify-email');
-    } catch (requestError) {
-      const { code, message } = extractRequestErrorDetails(requestError);
-      setVerificationState({
-        requestStatus: 'failed',
-        guidance: resolveVerificationGuidance({
-          code,
-          fallbackMessage: 'The verification code was not sent yet. Use resend code to request a fresh email.'
-        }),
-        errorCode: code
-      });
-      toast.error(message || 'Could not send the verification code.');
-    }
+    } catch (requestError) { toast.error(requestError.response?.data?.message || 'Could not create your DGFY account.'); }
     finally { setIsLoading(false); }
   };
 
@@ -315,14 +294,16 @@ export default function DgfyAuthPage() {
     if (!verifyCode.trim()) { toast.error('Enter the verification code sent to your email.'); return; }
     setIsLoading(true);
     try {
-      const session = await registerDgfyAccount(buildRegistrationPayload(verifyCode.trim()));
-      toast.success('Account created and email verified successfully.');
+      await verifyDgfyEmail(verifyCode.trim());
+      toast.success('Email verified successfully. Please sign in to continue.');
+      clearDgfySession();
       setVerificationState({
         requestStatus: 'verified',
         guidance: '',
         errorCode: ''
       });
-      await handleAuthSuccess(session);
+      setLoginForm((prev) => ({ ...prev, email: authForm.email, password: '' }));
+      setMode('sign-in');
     } catch (requestError) {
       const { code, message } = extractRequestErrorDetails(requestError);
       setVerificationState({
@@ -338,7 +319,7 @@ export default function DgfyAuthPage() {
   const handleResendCode = async () => {
     if (resendCooldown > 0) return;
     try {
-      await requestDgfyRegistrationEmailVerification(authForm.email);
+      await requestDgfyEmailVerification();
       setVerificationState({
         requestStatus: 'sent',
         guidance: 'A fresh 6-digit verification code was sent to your email. Use the latest code only; older codes no longer work.',
@@ -372,10 +353,10 @@ export default function DgfyAuthPage() {
     event.preventDefault();
     setError(''); setNotice('');
     setIsLoading(true);
-    try {
-      const session = await loginDgfyAccount(loginForm);
+    try { 
+      const session = await loginDgfyAccount(loginForm); 
       toast.success('Signed in successfully');
-      await handleAuthSuccess(session);
+      await handleAuthSuccess(session); 
     }
     catch (requestError) { toast.error(requestError.response?.data?.message || 'DGFY sign-in failed.'); }
     finally { setIsLoading(false); }
@@ -457,7 +438,7 @@ export default function DgfyAuthPage() {
               <div>
                 <h1 className="text-3xl font-bold tracking-tight" style={{ color: '#0F172A' }}>Check your email</h1>
                 <p className="mt-3 text-sm leading-relaxed" style={{ color: '#64748B' }}>
-                  We sent a 6-digit verification code to <strong style={{ color: '#0F172A' }}>{authForm.email}</strong>.<br />Enter it below to create your account.
+                  We sent a 6-digit verification code to <strong style={{ color: '#0F172A' }}>{authForm.email}</strong>.<br />Enter it below to activate your account.
                 </p>
               </div>
               <div
@@ -512,7 +493,7 @@ export default function DgfyAuthPage() {
                 </FieldGroup>
 
                 <div className="mt-2">
-                  <PrimaryBtn disabled={isLoading || verifyCode.trim().length !== 6}>{isLoading ? 'Creating account...' : 'Create Verified Account'}</PrimaryBtn>
+                  <PrimaryBtn disabled={isLoading || verifyCode.trim().length !== 6}>{isLoading ? 'Verifying…' : 'Verify Email'}</PrimaryBtn>
                 </div>
               </form>
 
@@ -594,7 +575,7 @@ export default function DgfyAuthPage() {
                 <div className="mb-2 border-b pb-2">
                   <h3 className="text-xs font-bold uppercase tracking-widest" style={{ color: '#64748B' }}>Personal Information</h3>
                 </div>
-
+                
                 <div className="grid gap-4 sm:grid-cols-3">
                   <FieldGroup id="dgfyLastName" label="Last Name">
                     <Input id="dgfyLastName" placeholder="e.g. Doe" value={authForm.lastName}
@@ -653,7 +634,7 @@ export default function DgfyAuthPage() {
                 </div>
 
                 <div className="mt-4">
-                  <PrimaryBtn disabled={isLoading}>{isLoading ? 'Sending code...' : 'Continue to Email Verification'}</PrimaryBtn>
+                  <PrimaryBtn disabled={isLoading}>{isLoading ? 'Creating account…' : 'Create Account'}</PrimaryBtn>
                 </div>
               </form>
 

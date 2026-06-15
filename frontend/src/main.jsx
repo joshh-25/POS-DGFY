@@ -1,6 +1,6 @@
 import React, { useEffect, lazy, Suspense } from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Layout from '../Layout.jsx'
 import AdminLayout from '../Components/admin/AdminLayout.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
@@ -8,40 +8,19 @@ import { PermissionProvider } from './store/PermissionContext.jsx'
 import { WorkflowModeProvider } from './features/settings/WorkflowModeContext.jsx'
 import WorkflowModeRouteGate from './features/settings/components/WorkflowModeRouteGate.jsx'
 import { getPageNameFromPath } from '../utils.js'
-import { getAccessToken, refreshBrowserSession, setBrowserSession } from './services/browserSession.js'
+import { refreshBrowserSession, setBrowserSession } from './services/browserSession.js'
 import { shouldRefreshBrowserSessionForPath } from './services/publicRoutePolicy.js'
 import ErrorBoundary from './components/common/ErrorBoundary.jsx' // Fix 10.3
 import GlobalApiErrorListener from './components/common/GlobalApiErrorListener.jsx'
 import { Toaster } from '@/components/ui/sonner'
-import { getRuntimeConfig, resolveApiBaseUrl } from './utils/runtimeConfig.js'
 import './index.css'
 
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/'
 const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`
-const runtimeConfig = getRuntimeConfig(import.meta.env, typeof window !== 'undefined' ? window.location : undefined)
-const runtimeApiBaseUrl = resolveApiBaseUrl(import.meta.env, typeof window !== 'undefined' ? window.location : undefined)
-const RootRouter = runtimeConfig.isDesktopShell ? HashRouter : BrowserRouter
-
-const applyDesktopShellBootstrap = () => {
-  if (typeof window === 'undefined') return
-  if (!runtimeConfig.isDesktopShell) return
-
-  try {
-    if (runtimeConfig.companyToken) {
-      setBrowserSession({ companyToken: runtimeConfig.companyToken })
-    }
-    if (runtimeConfig.terminalId) {
-      window.localStorage.setItem('pos_terminal_identity_v1', runtimeConfig.terminalId)
-    }
-  } catch {
-    // Shell bootstrap values are optional and should not block app mount.
-  }
-}
 
 const registerAdminServiceWorker = async () => {
   if (typeof window === 'undefined') return
   if (import.meta.env.DEV) return
-  if (runtimeConfig.isDesktopShell) return
   if (!('serviceWorker' in navigator)) return
 
   try {
@@ -75,9 +54,9 @@ const Reports = lazy(() => import('../Pages/Reports.jsx'))
 const Settings = lazy(() => import('../Pages/Settings.jsx'))
 const Login = lazy(() => import('../Pages/Login.jsx'))
 const Register = lazy(() => import('../Pages/Register.jsx'))
-const RegisterCompany = lazy(() => import('../Pages/RegisterCompany.jsx'))
 const DgfyAuthPage = lazy(() => import('../Pages/DgfyAuthPage.jsx'))
 const DgfyResetPasswordPage = lazy(() => import('../Pages/DgfyResetPasswordPage.jsx'))
+const RegisterCompany = lazy(() => import('../Pages/RegisterCompany.jsx'))
 const LegalDocument = lazy(() => import('../Pages/LegalDocument.jsx'))
 const AcceptInvite = lazy(() => import('../Pages/AcceptInvite.jsx'))
 const Reactivate = lazy(() => import('../Pages/Reactivate.jsx'))
@@ -105,7 +84,6 @@ function App() {
    */
   useEffect(() => {
     if (!shouldRefreshBrowserSessionForPath(location.pathname)) return;
-    if (getAccessToken()) return;
     refreshBrowserSession().catch(() => {});
   }, [location.pathname]);
 
@@ -115,9 +93,9 @@ function App() {
         {/* Public routes - Login and Register pages */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
-        <Route path="/register-company" element={<RegisterCompany />} />
         <Route path="/dgfy/auth" element={<DgfyAuthPage />} />
         <Route path="/dgfy/reset-password" element={<DgfyResetPasswordPage />} />
+        <Route path="/register-company" element={<RegisterCompany />} />
         <Route path="/legal/:slug" element={<LegalDocument />} />
         <Route path="/privacy" element={<LegalDocument />} />
         <Route path="/accept-invite" element={<AcceptInvite />} />
@@ -273,11 +251,10 @@ function App() {
 const rootElement = document.getElementById('root');
 
 const mountApp = () => {
-  applyDesktopShellBootstrap()
   ReactDOM.createRoot(rootElement).render(
     <React.StrictMode>
       <ErrorBoundary>
-        <RootRouter
+        <BrowserRouter
           future={{
             v7_startTransition: true,
             v7_relativeSplatPath: true,
@@ -290,7 +267,7 @@ const mountApp = () => {
               <App />
             </WorkflowModeProvider>
           </PermissionProvider>
-        </RootRouter>
+        </BrowserRouter>
       </ErrorBoundary>
     </React.StrictMode>,
   )
@@ -310,7 +287,7 @@ if (import.meta.env.DEV) {
       const TERMINAL_ID = 'COUNTER-01';
 
       // Attempt to login and store tokens; backend will validate tenant context
-      const resp = await fetch(`${runtimeApiBaseUrl}/auth/login`, {
+      const resp = await fetch('/api/v1/auth/login', {
         method: 'POST',
         headers: {
           'content-type': 'application/json',

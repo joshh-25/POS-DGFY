@@ -27,22 +27,3 @@ export const getInventoryDisplayLabel = (item = {}) => {
   const label = item?.inventory_display?.label;
   return typeof label === 'string' && label.trim() ? label.trim() : null;
 };
-
-export const getStorefrontAccessBlockMessage = (store = null) => {
-  const mode = String(
-    store?.effective_customer_access_mode
-      || store?.customer_access_mode
-      || store?.requested_customer_access_mode
-      || ''
-  ).trim().toLowerCase();
-  const modeMessage = getStorefrontAccessModeMessage(mode);
-  if (modeMessage) {
-    return modeMessage;
-  }
-  const capabilities = getAccessCapabilities(store);
-  if (capabilities.checkout !== true || capabilities.booking !== true || capabilities.cart !== true) {
-    return 'This Storefront action is not available right now.';
-  }
-  return null;
-};
-import { getStorefrontAccessModeMessage } from '../../../src/utils/tenantCapabilityMessages.js';

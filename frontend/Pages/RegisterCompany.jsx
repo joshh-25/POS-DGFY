@@ -502,26 +502,11 @@ export default function RegisterCompany() {
                 throw new Error(response.data?.message || 'Registration failed');
             }
 
-            const registrationSuccess = {
+            setSuccess({
                 message: response.data.message,
                 data: response.data.data || {}
-            };
-            setSuccess(registrationSuccess);
+            });
             setCompanyForm((current) => ({ ...current, acceptedCompanyTerms: false }));
-            if (registrationSuccess.data?.company_token && registrationSuccess.data?.status === 'active' && dgfyToken) {
-                try {
-                    await startDgfyTenantSession({
-                        tenantId: registrationSuccess.data.id,
-                        companyToken: registrationSuccess.data.company_token
-                    }, dgfyToken);
-                    navigate('/', { replace: true });
-                    return;
-                } catch (sessionError) {
-                    setNotice(sessionError.response?.data?.message || 'Company created. Sign in to SKUpervisor to continue.');
-                    goToManualSkupervisorLogin(registrationSuccess.data);
-                    return;
-                }
-            }
         } catch (err) {
             setError(err.response?.data?.message || err.message || 'Registration failed. Please try again.');
         } finally {
@@ -529,30 +514,17 @@ export default function RegisterCompany() {
         }
     };
 
-    const goToManualSkupervisorLogin = useCallback((tenantData = success?.data || {}) => {
+    const goToManualSkupervisorLogin = useCallback(() => {
         navigate('/login', {
             state: {
                 registration: {
                     email: dgfyAccount?.email,
-                    companyToken: tenantData?.company_token,
-                    companyName: tenantData?.name
+                    companyToken: success?.data?.company_token,
+                    companyName: success?.data?.name
                 }
             }
         });
     }, [dgfyAccount?.email, navigate, success?.data?.company_token, success?.data?.name]);
-
-    const openSkupervisorForCompany = useCallback(async (tenantData = {}) => {
-        if (!tenantData?.company_token || tenantData?.status !== 'active' || !dgfyToken) {
-            return false;
-        }
-
-        await startDgfyTenantSession({
-            tenantId: tenantData.id,
-            companyToken: tenantData.company_token
-        }, dgfyToken);
-        navigate('/', { replace: true });
-        return true;
-    }, [dgfyToken, navigate]);
 
     const handleProceedToSkupervisor = async () => {
         setError('');
@@ -565,7 +537,11 @@ export default function RegisterCompany() {
 
         setIsLoading(true);
         try {
-            await openSkupervisorForCompany(success.data);
+            await startDgfyTenantSession({
+                tenantId: success.data.id,
+                companyToken: success.data.company_token
+            }, dgfyToken);
+            navigate('/', { replace: true });
         } catch (sessionError) {
             setNotice(sessionError.response?.data?.message || 'Company created. Sign in to SKUpervisor to continue.');
             goToManualSkupervisorLogin();
