@@ -205,6 +205,15 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
     if (isFiscal && businessSettings.pos_accreditation_number) {
         pushCenteredWrapped(receiptRows, `Accreditation: ${businessSettings.pos_accreditation_number}`);
     }
+    if (isFiscal && businessSettings.pos_software_name) {
+        pushCenteredWrapped(receiptRows, `Software: ${businessSettings.pos_software_name}`);
+    }
+    if (isFiscal && businessSettings.pos_software_version) {
+        receiptRows.push(center(`Version: ${businessSettings.pos_software_version}`));
+    }
+    if (isFiscal && businessSettings.pos_software_serial_number) {
+        pushCenteredWrapped(receiptRows, `Serial: ${businessSettings.pos_software_serial_number}`);
+    }
 
     receiptRows.push(
         line(),

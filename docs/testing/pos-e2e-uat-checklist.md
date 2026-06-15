@@ -151,7 +151,7 @@ Evidence:
 
 Expected:
 1. Invoice number generated.
-2. Receipt header shows business/TIN/address/PTU/MIN/accreditation.
+2. Receipt header shows business/TIN/address/PTU/MIN/accreditation and platform-admin software name/version/serial when the receipt contract is fiscal.
 3. VAT totals show:
    - vatable sales
    - VAT amount

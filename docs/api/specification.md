@@ -3662,6 +3662,7 @@ Track online-store order status for public users.
    - `pos_software_name`
    - `pos_software_version`
    - `pos_software_serial_number`
+   - Fiscal receipt preview and iMin hardware print output include these values when the server receipt contract is `document_type=fiscal_invoice`.
 6. Platform-admin POS metadata operations:
    - `GET /admin/tenants/:id/pos-metadata` returns current platform-controlled software identity, current receipt metadata, and any pending receipt metadata review.
    - `PATCH /admin/tenants/:id/pos-metadata` accepts either `software_settings` or `pending_action` (`approve` or `reject`) plus a required `reason` of at least 3 characters.
@@ -3683,6 +3684,7 @@ Track online-store order status for public users.
    - `pos_transactions.fiscal_document_template_version`
    - `pos_transactions.fiscal_document_hash`
    - `pos_transactions.fiscal_document_snapshot`
+   - fiscal checkout also writes a `checkout_issued` fiscal event when the fiscal event repository is available.
 10. Fiscal lifecycle persistence adds:
    - `pos_transactions.fiscal_lifecycle_state`
    - `pos_transactions.fiscal_reprint_count`

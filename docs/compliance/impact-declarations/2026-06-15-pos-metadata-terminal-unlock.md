@@ -5,7 +5,7 @@ last_reviewed: 2026-06-15
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md
 declaration_id: 2026-06-15-pos-metadata-terminal-unlock
 classification: regulatory
-surfaces: pos,terminal,settings,admin-tenants,compliance
+surfaces: pos,terminal,settings,admin-tenants,compliance,fiscal-receipts,esales
 reason_codes_impacted: ALLOWED,VALIDATION_FAILED,TENANT_CAPABILITY_DISABLED,POS_LOGIN_MULTIPLE_TENANTS,POS_LOGIN_TENANT_NOT_FOUND,POS_LOGIN_COMPANY_TOKEN_UNRESOLVED
 policy_version: 2026.06.15
 verification_evidence: npm run lint:docs,npm run check:architecture,npm run check:compliance,npm --prefix frontend test -- --run src/features/pos/utils/__tests__/terminalUnlockDiagnostics.test.js src/features/pos/__tests__/terminalSessionSource.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js,npm --prefix frontend run build:pos,git diff --check
@@ -22,12 +22,13 @@ preflight_request_ref: POS-METADATA-TERMINAL-UNLOCK-2026-06-15
 
 Regulatory.
 
-This declaration covers two source-current POS changes that are expected to deploy together unless deliberately split before promotion:
+This declaration covers source-current POS changes that are expected to deploy together unless deliberately split before promotion:
 
 1. POS receipt/configuration metadata governance.
 2. Standalone POS terminal tenant-context login hardening.
+3. Compliant-mode fiscal receipt evidence hardening.
 
-The metadata stream is compliance-sensitive because receipt identity, PTU/MIN/accreditation references, buyer fiscal-detail requirements, and DGFY POS software identity influence POS receipt and fiscal-readiness presentation. The terminal unlock stream is security-sensitive because stale tenant context can send a valid account/password attempt to the wrong tenant database.
+The metadata stream is compliance-sensitive because receipt identity, PTU/MIN/accreditation references, buyer fiscal-detail requirements, and DGFY POS software identity influence POS receipt and fiscal-readiness presentation. The compliant-mode receipt stream is compliance-sensitive because fiscal checkout now persists buyer fiscal fields, immutable fiscal document snapshots, checkout-issued fiscal events, print/reprint evidence, void evidence, fiscal terminal registration records, eSales report packages, and fiscal ledger integrity checks. The terminal unlock stream is security-sensitive because stale tenant context can send a valid account/password attempt to the wrong tenant database.
 
 ## Affected Surfaces
 
@@ -35,6 +36,9 @@ The metadata stream is compliance-sensitive because receipt identity, PTU/MIN/ac
 - Tenant Settings no longer exposes DGFY POS software name, software version, or software serial number as tenant-editable fields.
 - Tenant Manager exposes POS Metadata controls for platform-admin software identity updates and receipt metadata approval/rejection with a required reason.
 - Platform-admin POS metadata operations persist audit rows in `tenant_admin_audit_logs` with `action = pos_metadata_update`.
+- Fiscal receipt preview and iMin hardware print text include platform-admin software name, software version, and software serial number when the server receipt contract is `fiscal_invoice`.
+- Fiscal checkout stores buyer fiscal fields, immutable fiscal document template/hash/snapshot fields, and a `checkout_issued` fiscal event when compliant mode issues a fiscal invoice.
+- Fiscal lifecycle endpoints expose print/reprint evidence, governed void evidence with stock reversals, fiscal terminal registration, eSales report generation/status evidence, and fiscal event ledger integrity checks through the POS API.
 - `POST /api/v1/auth/lookup` is the required pre-login tenant resolver for standalone POS unlock.
 - Standalone POS sends `/auth/login` with the lookup-resolved company token, uses the current browser company token only when lookup confirms it belongs to the submitted email, and limits stale-token fallback to transient lookup outages.
 - POS unlock diagnostics keep invalid credentials, missing email-to-tenant mapping, multiple tenant membership, POS capability disabled, POS permission denial, rate limiting, and optional device-bridge `503` distinct for operator troubleshooting.
@@ -47,7 +51,8 @@ The metadata stream is compliance-sensitive because receipt identity, PTU/MIN/ac
 3. Platform-admin software identity writes and metadata reviews must require a reason and keep before/after audit evidence.
 4. POS terminal login must not trust stale browser tenant context when `/auth/lookup` proves a different tenant, returns multiple tenants, returns no tenant, or rate-limits the request.
 5. `/pos/device/status` `503` remains an optional hardware bridge availability issue and must not be classified as authentication failure.
-6. These source-current changes are not production-live until a deployment records a new deployed SHA, POS asset identity, backend health, POS smoke, and relevant admin/cashier UAT evidence.
+6. Fiscal lifecycle evidence endpoints must remain permission-gated with existing POS fiscal permissions (`pos:reprint`, `pos:void`, `pos:fiscal_terminals:manage`, `pos:esales:manage`, `pos:view`).
+7. These source-current changes are not production-live until a deployment records a new deployed SHA, POS asset identity, backend health, POS smoke, and relevant admin/cashier UAT evidence.
 
 ## Verification Evidence
 
@@ -56,10 +61,12 @@ Required validation for this branch:
 1. `npm --prefix frontend test -- --run src/features/pos/utils/__tests__/terminalUnlockDiagnostics.test.js src/features/pos/__tests__/terminalSessionSource.contract.test.js src/features/pos/__tests__/terminalViewModeContracts.test.js`
 2. `npm --prefix frontend run build:pos`
 3. Backend POS metadata/settings/admin tests covering `posReceiptMetadataApprovalPolicy`, settings validation, tenant admin handlers, POS metadata use cases, and tenant admin audit actions.
-4. `npm run lint:docs`
-5. `npm run check:architecture`
-6. `npm run check:compliance`
-7. `git diff --check`
+4. `npm run test:backend -- --runTestsByPath backend/tests/posCheckoutFnbContracts.usecase.test.js backend/tests/posHandlers.transport.test.js`
+5. `npm --prefix frontend test -- --run src/features/pos/__tests__/receiptContractConformance.contract.test.js`
+6. `npm run lint:docs`
+7. `npm run check:architecture`
+8. `npm run check:compliance`
+9. `git diff --check`
 
 ## Deployment Note
 

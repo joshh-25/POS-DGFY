@@ -106,6 +106,9 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                         {businessSettings.pos_ptu_number && <p>PTU: {businessSettings.pos_ptu_number}</p>}
                         {businessSettings.pos_min_number && <p>MIN: {businessSettings.pos_min_number}</p>}
                         {businessSettings.pos_accreditation_number && <p>Accreditation: {businessSettings.pos_accreditation_number}</p>}
+                        {businessSettings.pos_software_name && <p>Software: {businessSettings.pos_software_name}</p>}
+                        {businessSettings.pos_software_version && <p>Version: {businessSettings.pos_software_version}</p>}
+                        {businessSettings.pos_software_serial_number && <p>Serial: {businessSettings.pos_software_serial_number}</p>}
                     </div>
                 )}
                 <h3 className="font-semibold text-slate-900 mt-2 print:mt-1 print:text-[12px]">{documentLabel}</h3>

@@ -4,6 +4,14 @@ import {
     checkoutPosUseCase,
     listPosTransactionsUseCase,
     getPosTransactionByIdUseCase,
+    recordFiscalPrintEventUseCase,
+    voidPosTransactionUseCase,
+    generateESalesReportUseCase,
+    listESalesReportsUseCase,
+    verifyFiscalEventLedgerUseCase,
+    updateESalesReportStatusUseCase,
+    upsertFiscalTerminalRegistrationUseCase,
+    listFiscalTerminalRegistrationsUseCase,
     closeDayZReadingUseCase,
     getDailyZReadingUseCase,
     getCurrentXReadingUseCase,
@@ -122,6 +130,174 @@ export const checkout = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: 'POS checkout completed',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const recordFiscalPrintEvent = async (req, res, next) => {
+    try {
+        const result = await recordFiscalPrintEventUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 201,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Fiscal print event recorded',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const voidTransaction = async (req, res, next) => {
+    try {
+        const result = await voidPosTransactionUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS transaction voided',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const generateESalesReport = async (req, res, next) => {
+    try {
+        const result = await generateESalesReportUseCase({
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 201,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'eSales report generated',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const listESalesReports = async (req, res, next) => {
+    try {
+        const result = await listESalesReportsUseCase({
+            query: req.validatedQuery || req.query,
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateESalesReportStatus = async (req, res, next) => {
+    try {
+        const result = await updateESalesReportStatusUseCase({
+            reportId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'eSales report status updated',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const upsertFiscalTerminalRegistration = async (req, res, next) => {
+    try {
+        const result = await upsertFiscalTerminalRegistrationUseCase({
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Fiscal terminal registration saved',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const listFiscalTerminalRegistrations = async (req, res, next) => {
+    try {
+        const result = await listFiscalTerminalRegistrationsUseCase({
+            query: req.validatedQuery || req.query,
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const verifyFiscalEventLedger = async (req, res, next) => {
+    try {
+        const result = await verifyFiscalEventLedgerUseCase({
+            query: req.validatedQuery || req.query,
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
