@@ -28,9 +28,9 @@ Make sure these are ready first:
 
 1. Android Studio is installed.
 2. The hosted POS URL is already working in browser.
-3. Your iMin device and your backend host are on the same LAN.
+3. Your iMin device can reach `https://pos.dgfy.ph`.
 4. USB debugging is enabled on the iMin device.
-5. You know the POS URL you want the wrapper to open.
+5. You know whether you are building the live APK or a local/LAN development APK.
 
 ## Step 1: Open The Project In Android Studio
 
@@ -49,31 +49,23 @@ Make sure these are ready first:
 
 Do not continue until the project loads without Gradle errors.
 
-## Step 3: Configure The Hosted POS URL
+## Step 3: Confirm The Hosted POS URL
 
 Open this file:
 
 - `app/src/main/java/com/dgfy/iminwrapper/AppConfig.kt`
 
-Update these values:
+The current release configuration routes physical iMin devices to:
 
-```kotlin
-const val HOSTED_POS_URL = "http://YOUR-LAN-IP:5174/terminal"
-val ALLOWED_HOSTS = setOf("YOUR-LAN-IP")
-```
-
-Example:
-
-```kotlin
-const val HOSTED_POS_URL = "http://192.168.1.10:5174/terminal"
-val ALLOWED_HOSTS = setOf("192.168.1.10")
-```
+- `https://pos.dgfy.ph/?apk_build=<timestamp>#/terminal`
+- `https://pos.dgfy.ph/api/v1`
 
 Rules:
 
-1. Use the real LAN IP of the machine serving the POS.
-2. Do not use `localhost` unless the Android device itself is running the POS server.
-3. Keep the host in `ALLOWED_HOSTS` aligned with the URL host.
+1. Use the live production origin for release APKs.
+2. Use a LAN host only for emulator/development APKs.
+3. Do not use `localhost` unless the Android device itself is running the POS server.
+4. Keep allowed hosts aligned with the URL host.
 
 ## Step 4: Review The Main Wrapper Files
 
@@ -149,10 +141,10 @@ Test these in order:
 
 If the app opens but nothing loads:
 
-1. verify the LAN IP in `AppConfig.kt`
-2. verify port `5174` is reachable from the iMin device
-3. verify backend and frontend are actually running
-4. verify device and host are on the same Wi-Fi or LAN
+1. verify `https://pos.dgfy.ph` is reachable from the iMin device browser
+2. verify production POS and backend health are green
+3. verify the APK was rebuilt after changing `AppConfig.kt`
+4. verify the WebView did not block navigation because the host is missing from `allowedHosts()`
 
 ## Step 9: Only After App Stability, Add Hardware Integration
 
@@ -192,7 +184,13 @@ Later steps:
 
 ## Current Recommended URL Pattern
 
-Use a direct LAN URL such as:
+For release APKs, use:
+
+```text
+https://pos.dgfy.ph/#/terminal
+```
+
+For local development APKs, use a direct LAN URL such as:
 
 ```text
 http://192.168.1.10:5174/terminal
