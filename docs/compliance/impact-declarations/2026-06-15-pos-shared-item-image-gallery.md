@@ -30,7 +30,7 @@ The change is compliance-sensitive only because it touches the POS catalog repos
 
 - Inventory item and product setup modals still expose separate `Show in POS` and `Show in Storefront` controls.
 - POS Controls no longer exposes an image upload action; Storefront Catalog `Add Item Images` is the single wizard gallery upload path.
-- Storefront catalog gallery persistence now reloads override rows with `item_id`, so appending gallery images can update existing override rows without Sequelize rejecting the update for missing primary key.
+- Storefront catalog gallery persistence now reloads override rows with `storefront_catalog_override_id`, so appending gallery images can update existing override rows without Sequelize rejecting the update for missing primary key.
 - POS terminal catalog payloads use `pos_catalog_overrides.pos_image_url` first, then the shared Storefront catalog primary item image as a display fallback.
 - Legacy POS-only image data remains compatible and remains preferred when present.
 

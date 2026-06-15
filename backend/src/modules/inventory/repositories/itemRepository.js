@@ -2164,7 +2164,7 @@ export const itemRepository = {
         try {
             return await StorefrontCatalogOverride.findOne({
                 where: { item_id: itemId },
-                attributes: ['item_id', 'storefront_visible', 'storefront_image_path', 'storefront_image_url', 'storefront_image_gallery'],
+                attributes: ['storefront_catalog_override_id', 'item_id', 'storefront_visible', 'storefront_image_path', 'storefront_image_url', 'storefront_image_gallery'],
                 transaction: options.transaction
             });
         } catch (error) {
@@ -2174,7 +2174,7 @@ export const itemRepository = {
             if (isMissingStorefrontCatalogGalleryColumnError(error)) {
                 return StorefrontCatalogOverride.findOne({
                     where: { item_id: itemId },
-                    attributes: ['item_id', 'storefront_visible', 'storefront_image_path', 'storefront_image_url'],
+                    attributes: ['storefront_catalog_override_id', 'item_id', 'storefront_visible', 'storefront_image_path', 'storefront_image_url'],
                     transaction: options.transaction
                 });
             }
