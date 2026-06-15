@@ -3,6 +3,7 @@ import {
     buildDgfyHistoricalBackfillUseCase,
     buildGetDgfyCustomerDashboardUseCase,
     buildListDgfyCustomerActivitiesUseCase,
+    buildManageDgfyCustomerAddressesUseCases,
     buildListPublicDgfyCustomerReviewsUseCase,
     buildModerateDgfyCustomerReviewUseCase,
     buildRequestDgfyTrackingRecoveryUseCase,
@@ -71,6 +72,175 @@ describe('dgfyCustomerUseCases', () => {
             reference: 'SK-ABC123'
         });
         expect(result.data.activity.reference).toBe('SK-ABC123');
+    });
+
+    it('creates coordinate-backed saved addresses for delivery pins', async () => {
+        const repository = {
+            createAddress: jest.fn().mockImplementation((accountId, payload) => Promise.resolve({
+                address_id: 10,
+                dgfy_account_id: accountId,
+                ...payload
+            }))
+        };
+        const useCases = buildManageDgfyCustomerAddressesUseCases({ repository });
+
+        const result = await useCases.create({
+            account,
+            body: {
+                label: 'Home',
+                address_line: '123 Test Street',
+                latitude: '10.7202',
+                longitude: '122.5621',
+                is_default: true
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.createAddress).toHaveBeenCalledWith(account.id, expect.objectContaining({
+            label: 'Home',
+            address_line: '123 Test Street',
+            latitude: 10.7202,
+            longitude: 122.5621,
+            is_default: true
+        }));
+    });
+
+    it('rejects invalid saved address coordinates', async () => {
+        const repository = {
+            createAddress: jest.fn()
+        };
+        const useCases = buildManageDgfyCustomerAddressesUseCases({ repository });
+
+        const result = await useCases.create({
+            account,
+            body: {
+                label: 'Bad pin',
+                address_line: 'Somewhere',
+                latitude: 91,
+                longitude: 122
+            }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+        expect(repository.createAddress).not.toHaveBeenCalled();
+    });
+
+    it('rejects saved address coordinate half-pairs', async () => {
+        const repository = {
+            createAddress: jest.fn()
+        };
+        const useCases = buildManageDgfyCustomerAddressesUseCases({ repository });
+
+        const result = await useCases.create({
+            account,
+            body: {
+                label: 'Partial pin',
+                address_line: 'Somewhere',
+                latitude: 10.72
+            }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+        expect(repository.createAddress).not.toHaveBeenCalled();
+    });
+
+    it('updates a saved address with validated coordinate pairs', async () => {
+        const repository = {
+            getAddress: jest.fn().mockResolvedValue({
+                address_id: 10,
+                dgfy_account_id: account.id,
+                address_line: 'Old address',
+                latitude: null,
+                longitude: null
+            }),
+            updateAddress: jest.fn().mockImplementation((accountId, addressId, payload) => Promise.resolve({
+                address_id: Number(addressId),
+                dgfy_account_id: accountId,
+                ...payload
+            }))
+        };
+        const useCases = buildManageDgfyCustomerAddressesUseCases({ repository });
+
+        const result = await useCases.update({
+            account,
+            addressId: 10,
+            body: {
+                address_line: 'Updated address',
+                latitude: '10.7001',
+                longitude: '122.5602'
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.getAddress).toHaveBeenCalledWith(account.id, 10);
+        expect(repository.updateAddress).toHaveBeenCalledWith(account.id, 10, expect.objectContaining({
+            address_line: 'Updated address',
+            latitude: 10.7001,
+            longitude: 122.5602
+        }));
+    });
+
+    it('clears saved address coordinates as a pair while preserving text address fallback', async () => {
+        const repository = {
+            getAddress: jest.fn().mockResolvedValue({
+                address_id: 10,
+                dgfy_account_id: account.id,
+                address_line: 'Text address',
+                latitude: 10.7,
+                longitude: 122.56
+            }),
+            updateAddress: jest.fn().mockImplementation((accountId, addressId, payload) => Promise.resolve({
+                address_id: Number(addressId),
+                dgfy_account_id: accountId,
+                address_line: 'Text address',
+                ...payload
+            }))
+        };
+        const useCases = buildManageDgfyCustomerAddressesUseCases({ repository });
+
+        const result = await useCases.update({
+            account,
+            addressId: 10,
+            body: {
+                latitude: null,
+                longitude: null
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.updateAddress).toHaveBeenCalledWith(account.id, 10, expect.objectContaining({
+            latitude: null,
+            longitude: null
+        }));
+    });
+
+    it('rejects one-coordinate saved address updates against existing text-only records', async () => {
+        const repository = {
+            getAddress: jest.fn().mockResolvedValue({
+                address_id: 10,
+                dgfy_account_id: account.id,
+                address_line: 'Text address',
+                latitude: null,
+                longitude: null
+            }),
+            updateAddress: jest.fn()
+        };
+        const useCases = buildManageDgfyCustomerAddressesUseCases({ repository });
+
+        const result = await useCases.update({
+            account,
+            addressId: 10,
+            body: {
+                latitude: 10.7
+            }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+        expect(repository.getAddress).toHaveBeenCalledWith(account.id, 10);
+        expect(repository.updateAddress).not.toHaveBeenCalled();
     });
 
     it('requires an account-linked purchased item before accepting a review', async () => {

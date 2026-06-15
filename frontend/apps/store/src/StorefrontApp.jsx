@@ -190,14 +190,6 @@ const isKnownProvisionedPlaceholderCoordinate = (latitude, longitude) => (
     && Math.abs(Number(longitude) - coordinate.longitude) < 0.000001
   ))
 );
-const FNB_RECOMMENDED_LOCATION = Object.freeze({
-  id: 'recommended-main-branch',
-  label: 'Mandurriao, Iloilo City',
-  fullAddress: 'Mandurriao, Iloilo City, Iloilo, Philippines',
-  latitude: DEFAULT_CENTER.latitude,
-  longitude: DEFAULT_CENTER.longitude,
-  recommended: true
-});
 const TILE_BASE = import.meta.env.VITE_TILE_BASE || 'https://tiles.openfreemap.org';
 
 const TILING_SERVER = import.meta.env.DEV
@@ -267,6 +259,24 @@ function formatReverseGeocodedAddress(payload = {}) {
   if (!displayName) return '';
   const segments = displayName.split(',').map((segment) => segment.trim()).filter(Boolean);
   return segments.slice(0, 5).join(', ');
+}
+
+async function reverseGeocodeDeliveryPin(pin, { signal } = {}) {
+  const normalized = normalizeCoordinatePair(pin);
+  if (!normalized) return '';
+  const fallbackAddress = buildPinnedDeliveryAddress(normalized);
+  const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${encodeURIComponent(normalized.latitude)}&lon=${encodeURIComponent(normalized.longitude)}&format=jsonv2&addressdetails=1`, {
+    method: 'GET',
+    signal,
+    headers: {
+      Accept: 'application/json'
+    }
+  });
+  if (!response.ok) {
+    throw new Error(`Reverse geocoding failed: ${response.status}`);
+  }
+  const payload = await response.json();
+  return formatReverseGeocodedAddress(payload) || fallbackAddress;
 }
 
 function formatFollowersLabel(count) {
@@ -913,6 +923,21 @@ const storePath = (slug, subpage = null, query = '', locationId = null) => `/${e
 const toNumberOrNull = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+};
+const normalizeCoordinatePair = ({ latitude, longitude } = {}) => {
+  if (latitude == null || longitude == null || latitude === '' || longitude === '') return null;
+  const parsedLatitude = toNumberOrNull(latitude);
+  const parsedLongitude = toNumberOrNull(longitude);
+  if (parsedLatitude == null || parsedLongitude == null) return null;
+  if (parsedLatitude < -90 || parsedLatitude > 90 || parsedLongitude < -180 || parsedLongitude > 180) return null;
+  return {
+    latitude: Number(parsedLatitude.toFixed(6)),
+    longitude: Number(parsedLongitude.toFixed(6))
+  };
+};
+const normalizeSavedLocationSource = (sourceType = '') => {
+  const normalized = String(sourceType || '').trim();
+  return normalized || 'checkout_temporary';
 };
 const getIndexedDiscoveryCoordinate = (store = {}) => {
   const latitude = toNumberOrNull(store?.latitude);
@@ -4419,7 +4444,7 @@ export default function StorefrontApp() {
   const [deliveryLocationAction, setDeliveryLocationAction] = useState('saved');
   const [showExpandedDeliveryMap, setShowExpandedDeliveryMap] = useState(false);
   const [savedPinnedLocations, setSavedPinnedLocations] = useState([]);
-  const [selectedSavedLocationId, setSelectedSavedLocationId] = useState(FNB_RECOMMENDED_LOCATION.id);
+  const [selectedSavedLocationId, setSelectedSavedLocationId] = useState('');
   const [serviceAppointmentAt, setServiceAppointmentAt] = useState('');
   const [servicePaymentTiming, setServicePaymentTiming] = useState('postpaid');
   const [servicePaymentPreviewMethod, setServicePaymentPreviewMethod] = useState('qr');
@@ -4458,6 +4483,8 @@ export default function StorefrontApp() {
   const [accountPanel, setAccountPanel] = useState(EMPTY_ACCOUNT_PANEL);
   const [accountOrderActionReference, setAccountOrderActionReference] = useState('');
   const [accountAddressActionId, setAccountAddressActionId] = useState('');
+  const [accountAddressPinAction, setAccountAddressPinAction] = useState({ mode: '', loading: false, error: '' });
+  const accountAddressPinRequestRef = useRef(0);
   const [pendingAccountReorder, setPendingAccountReorder] = useState(null);
   const [trackedCustomerActivity, setTrackedCustomerActivity] = useState(null);
   const [customerTrackLoadingReference, setCustomerTrackLoadingReference] = useState('');
@@ -7652,76 +7679,335 @@ export default function StorefrontApp() {
     );
   };
 
-  const deliverySavedLocations = useMemo(() => ([
-    FNB_RECOMMENDED_LOCATION,
-    ...savedPinnedLocations
-  ]), [savedPinnedLocations]);
+  const locationCopy = useMemo(() => {
+    if (hasServiceCart || isServicesMode) {
+      return {
+        savedHeading: 'Saved Service Locations',
+        pinTitle: 'Service Location Pin',
+        pinDescription: 'Optional for on-site work, but useful for technician directions.',
+        pinAction: 'Pin Service Location',
+        currentAction: 'Pin Current Location',
+        saveAction: 'Save Service Location',
+        savedAccountToast: 'Saved service location added to your account.',
+        savedTemporaryToast: 'Temporary service location added for this checkout.',
+        emptyPin: 'No site pin selected yet. Tap the map or use current location.',
+        addressOnly: 'Address only',
+        pinSaved: 'Site pin saved',
+        recommendedLabel: 'Suggested service location',
+        newLocationLabel: 'Use New Service Location',
+        mapInstruction: 'Tap anywhere on the map to pin the service location.',
+        addressLabel: 'Service Address'
+      };
+    }
+    if (isFnbMode) {
+      return {
+        savedHeading: 'Saved Delivery Locations',
+        pinTitle: 'Drop-off Pin',
+        pinDescription: 'Optional, but recommended for faster driver handoff.',
+        pinAction: 'Pin Drop-off',
+        currentAction: 'Pin Current Location',
+        saveAction: 'Save Delivery Location',
+        savedAccountToast: 'Saved delivery location added to your account.',
+        savedTemporaryToast: 'Temporary delivery location added for this checkout.',
+        emptyPin: 'No drop-off pin selected yet. Tap the map or use current location.',
+        addressOnly: 'Address only',
+        pinSaved: 'Drop-off pin saved',
+        recommendedLabel: 'Suggested drop-off area',
+        newLocationLabel: 'Use New Delivery Location',
+        mapInstruction: 'Tap anywhere on the map to pin your drop-off location.',
+        addressLabel: 'Delivery Address'
+      };
+    }
+    return {
+      savedHeading: 'Saved Delivery Addresses',
+      pinTitle: 'Delivery Pin',
+      pinDescription: 'Optional, but recommended for easier delivery tracking.',
+      pinAction: 'Pin Delivery Address',
+      currentAction: 'Pin My Location',
+      saveAction: 'Save Address',
+      savedAccountToast: 'Saved delivery address added to your account.',
+      savedTemporaryToast: 'Temporary delivery address added for this checkout.',
+      emptyPin: 'No delivery pin selected yet. Tap the map or use your current location.',
+      addressOnly: 'Address only',
+      pinSaved: 'Delivery pin saved',
+      recommendedLabel: 'Suggested branch address',
+      newLocationLabel: 'Use New Address',
+      mapInstruction: 'Tap anywhere on the map to pin the delivery address.',
+      addressLabel: 'Delivery Address'
+    };
+  }, [hasServiceCart, isFnbMode, isServicesMode]);
 
-  const activePinnedDeliveryAddress = String(resolvedDeliveryAddress || customerAddress || buildPinnedDeliveryAddress(customerPin) || '').trim();
+  const suggestedCheckoutLocation = useMemo(() => {
+    const source = selectedLocation || selectedStore || {};
+    const coordinates = normalizeCoordinatePair(source);
+    const fullAddress = String(source.address_line || source.addressLine || selectedStore?.address_line || '').trim();
+    if (!fullAddress && !coordinates) return null;
+    const labelBase = String(source.name || source.location_name || selectedStore?.tenant_name || selectedStore?.store_name || 'Store location').trim();
+    return {
+      id: `recommended-${source.location_id || selectedStore?.tenant_id || selectedStore?.slug || 'store'}`,
+      label: labelBase || 'Store location',
+      fullAddress: fullAddress || buildPinnedDeliveryAddress(coordinates),
+      latitude: coordinates?.latitude ?? null,
+      longitude: coordinates?.longitude ?? null,
+      recommended: true,
+      sourceType: 'recommended_store_or_branch'
+    };
+  }, [selectedLocation, selectedStore]);
+
+  const accountSavedDeliveryLocations = useMemo(() => (
+    (Array.isArray(accountPanel?.addresses) ? accountPanel.addresses : [])
+      .map((address) => {
+        const label = String(address?.label || 'Saved address').trim() || 'Saved address';
+        const fullAddress = String(address?.address_line || '').trim();
+        const coordinates = normalizeCoordinatePair(address);
+        return {
+          id: `account-address-${address.address_id || label}`,
+          label: address?.is_default ? `${label} - Default` : label,
+          fullAddress,
+          latitude: coordinates?.latitude ?? null,
+          longitude: coordinates?.longitude ?? null,
+          recommended: address?.is_default === true,
+          accountAddress: true,
+          sourceType: 'account_saved',
+          address_id: address?.address_id
+        };
+      })
+      .filter((location) => location.fullAddress)
+  ), [accountPanel?.addresses]);
+  const deliverySavedLocations = useMemo(() => {
+    const locations = [
+      ...accountSavedDeliveryLocations,
+      ...(suggestedCheckoutLocation ? [suggestedCheckoutLocation] : []),
+      ...savedPinnedLocations.map((location) => ({
+        ...location,
+        sourceType: normalizeSavedLocationSource(location.sourceType)
+      }))
+    ];
+    const seen = new Set();
+    return locations.filter((location) => {
+      const coordinates = normalizeCoordinatePair(location);
+      const key = coordinates
+        ? `coord:${coordinates.latitude.toFixed(6)}:${coordinates.longitude.toFixed(6)}`
+        : `addr:${String(location.fullAddress || '').trim().toLowerCase()}`;
+      if (!String(location.fullAddress || '').trim()) return false;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [accountSavedDeliveryLocations, savedPinnedLocations, suggestedCheckoutLocation]);
+
+  const activePinnedDeliveryAddress = String(customerAddress || resolvedDeliveryAddress || buildPinnedDeliveryAddress(customerPin) || '').trim();
   const hasPinnedDeliveryLocation = Number.isFinite(Number(customerPin?.latitude)) && Number.isFinite(Number(customerPin?.longitude));
+  const hasCheckoutLocationAddress = activePinnedDeliveryAddress.length > 0;
   const canAddPinnedLocation = isDeliveryOrder
-    && hasPinnedDeliveryLocation
-    && activePinnedDeliveryAddress.length > 0
-    && !deliverySavedLocations.some((location) => (
-      Number(location.latitude).toFixed(6) === Number(customerPin?.latitude).toFixed(6)
-      && Number(location.longitude).toFixed(6) === Number(customerPin?.longitude).toFixed(6)
-    ));
+    && hasCheckoutLocationAddress
+    && !deliverySavedLocations.some((location) => {
+      const coordinates = normalizeCoordinatePair(location);
+      if (coordinates && hasPinnedDeliveryLocation) {
+        return coordinates.latitude.toFixed(6) === Number(customerPin?.latitude).toFixed(6)
+          && coordinates.longitude.toFixed(6) === Number(customerPin?.longitude).toFixed(6);
+      }
+      return !coordinates
+        && !hasPinnedDeliveryLocation
+        && String(location.fullAddress || '').trim().toLowerCase() === activePinnedDeliveryAddress.toLowerCase();
+    });
 
   const applySavedDeliveryLocation = useCallback((location) => {
     if (!location) return;
+    const coordinates = normalizeCoordinatePair(location);
     setDeliveryLocationAction('saved');
     setSelectedSavedLocationId(String(location.id));
     setPinLocationError('');
     setResolvedDeliveryAddress(String(location.fullAddress || ''));
     setCustomerAddress(String(location.fullAddress || ''));
-    setCustomerPin({
-      latitude: Number(Number(location.latitude).toFixed(6)),
-      longitude: Number(Number(location.longitude).toFixed(6))
-    });
+    setCustomerPin(coordinates);
   }, []);
   const useAccountAddressForCheckout = useCallback((address) => {
     if (!address) return;
     const addressLine = String(address.address_line || address.fullAddress || address.formatted_address || '').trim();
-    const latitude = toNumberOrNull(address.latitude);
-    const longitude = toNumberOrNull(address.longitude);
+    const coordinates = normalizeCoordinatePair(address);
     setDeliveryLocationAction('saved');
-    setSelectedSavedLocationId(String(address.address_id || address.id || 'account-address'));
+    setSelectedSavedLocationId(String(address.id || (address.address_id ? `account-address-${address.address_id}` : 'account-address')));
     setPinLocationError('');
     if (addressLine) {
       setResolvedDeliveryAddress(addressLine);
       setCustomerAddress(addressLine);
     }
-    if (latitude != null && longitude != null) {
-      setCustomerPin({
-        latitude: Number(latitude.toFixed(6)),
-        longitude: Number(longitude.toFixed(6))
-      });
+    if (coordinates) {
+      setCustomerPin(coordinates);
     }
     toast.success('Saved address applied to checkout.');
   }, []);
 
-  const handleAddPinnedLocation = useCallback(() => {
-    if (!canAddPinnedLocation || !hasPinnedDeliveryLocation) return;
+  const applyAccountAddressPin = useCallback(async ({ pin, onChange, mode }) => {
+    const coordinates = normalizeCoordinatePair(pin);
+    if (!coordinates || typeof onChange !== 'function') return;
+    const requestId = accountAddressPinRequestRef.current + 1;
+    accountAddressPinRequestRef.current = requestId;
+    onChange((previous) => ({
+      ...previous,
+      latitude: coordinates.latitude,
+      longitude: coordinates.longitude,
+      address_line: String(previous?.address_line || '').trim() || buildPinnedDeliveryAddress(coordinates)
+    }));
+    setAccountAddressPinAction({ mode, loading: true, error: '' });
+    try {
+      const resolvedAddress = await reverseGeocodeDeliveryPin(coordinates);
+      if (accountAddressPinRequestRef.current !== requestId) return;
+      onChange((previous) => ({
+        ...previous,
+        latitude: coordinates.latitude,
+        longitude: coordinates.longitude,
+        address_line: String(previous?.address_line || '').trim() || resolvedAddress || buildPinnedDeliveryAddress(coordinates)
+      }));
+    } catch {
+      if (accountAddressPinRequestRef.current !== requestId) return;
+      onChange((previous) => ({
+        ...previous,
+        latitude: coordinates.latitude,
+        longitude: coordinates.longitude,
+        address_line: String(previous?.address_line || '').trim() || buildPinnedDeliveryAddress(coordinates)
+      }));
+      setAccountAddressPinAction({ mode, loading: false, error: 'Address lookup failed. The pin was saved; edit the address text if needed.' });
+      return;
+    }
+    setAccountAddressPinAction({ mode: '', loading: false, error: '' });
+  }, []);
+
+  const handleAccountAddressCurrentLocation = useCallback(({ onChange, mode }) => {
+    if (!navigator?.geolocation) {
+      setAccountAddressPinAction({ mode, loading: false, error: 'Geolocation is not supported on this device/browser.' });
+      return;
+    }
+    setAccountAddressPinAction({ mode, loading: true, error: '' });
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        applyAccountAddressPin({
+          pin: {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          },
+          onChange,
+          mode
+        });
+      },
+      (error) => {
+        const errorCode = Number(error?.code || 0);
+        const message = errorCode === 1
+          ? 'Location permission is blocked. Pin the address on the map instead.'
+          : (errorCode === 3 ? 'Location request timed out. Pin the address on the map instead.' : 'Unable to get your current location.');
+        setAccountAddressPinAction({ mode, loading: false, error: message });
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000
+      }
+    );
+  }, [applyAccountAddressPin]);
+
+  const renderAddressPinEditor = useCallback(({ draft = {}, onChange, mode = 'address' }) => {
+    const pin = normalizeCoordinatePair(draft);
+    const isBusy = accountAddressPinAction.loading && accountAddressPinAction.mode === mode;
+    const errorMessage = accountAddressPinAction.mode === mode ? accountAddressPinAction.error : '';
+    return (
+      <div style={{ display: 'grid', gap: 10, border: '1px solid #dbe5ee', borderRadius: 14, background: '#f8fafc', padding: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>Location Pin</div>
+            <div style={{ fontSize: 12, color: '#64748b' }}>Optional exact map point for this saved address.</div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => handleAccountAddressCurrentLocation({ onChange, mode })}
+              disabled={isBusy}
+              style={{ minHeight: 36, borderRadius: 12, border: '1px solid #0F6FFF', background: '#fff', color: '#0F6FFF', padding: '0 12px', fontSize: 12, fontWeight: 800, cursor: isBusy ? 'wait' : 'pointer' }}
+            >
+              {isBusy ? 'Resolving...' : 'Use Current Location'}
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange?.((previous) => ({ ...previous, latitude: null, longitude: null }))}
+              disabled={!pin || isBusy}
+              style={{ minHeight: 36, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '0 12px', fontSize: 12, fontWeight: 800, cursor: (!pin || isBusy) ? 'not-allowed' : 'pointer' }}
+            >
+              Clear Pin
+            </button>
+          </div>
+        </div>
+        <DeliveryPinMap
+          pin={pin}
+          onPinChange={(nextPin) => applyAccountAddressPin({ pin: nextPin, onChange, mode })}
+          disabled={isBusy}
+          height={180}
+          highlighted={Boolean(pin)}
+          highlightColor="#0F6FFF"
+          highlightGlow="rgba(15,111,255,0.14)"
+        />
+        <div style={{ fontSize: 12, color: pin ? '#0F6FFF' : '#64748b', fontWeight: pin ? 800 : 600 }}>
+          {pin ? `Pinned at ${pin.latitude.toFixed(6)}, ${pin.longitude.toFixed(6)}` : 'No pin saved yet. Tap the map or use current location.'}
+        </div>
+        {errorMessage ? <div style={{ fontSize: 12, color: '#b91c1c' }}>{errorMessage}</div> : null}
+      </div>
+    );
+  }, [accountAddressPinAction.error, accountAddressPinAction.loading, accountAddressPinAction.mode, applyAccountAddressPin, handleAccountAddressCurrentLocation]);
+
+  const handleAddPinnedLocation = useCallback(async () => {
+    if (!canAddPinnedLocation || !hasCheckoutLocationAddress) return;
+    const dgfyToken = readDgfyAuthToken();
+    const coordinates = normalizeCoordinatePair(customerPin);
+    if (dgfyToken) {
+      const label = extractSavedLocationLabel(activePinnedDeliveryAddress);
+      setAccountAddressActionId('checkout-pin');
+      try {
+        const result = await requestJson('/api/v1/dgfy/customer/addresses', {
+          method: 'POST',
+          authToken: dgfyToken,
+          cache: 'no-store',
+          body: {
+            label,
+            address_line: activePinnedDeliveryAddress,
+            latitude: coordinates?.latitude ?? null,
+            longitude: coordinates?.longitude ?? null,
+            is_default: false
+          }
+        });
+        const savedAddress = result?.address || result?.data?.address;
+        if (savedAddress?.address_id) {
+          setSelectedSavedLocationId(`account-address-${savedAddress.address_id}`);
+        }
+        setDeliveryLocationAction('saved');
+        await handleLoadAccountPanel();
+        toast.success(locationCopy.savedAccountToast);
+        return;
+      } catch (error) {
+        toast.error(normalizeStorefrontErrorMessage(error, 'Unable to save this location.'));
+        return;
+      } finally {
+        setAccountAddressActionId('');
+      }
+    }
     const newLocation = {
       id: `saved-location-${Date.now()}`,
       label: extractSavedLocationLabel(activePinnedDeliveryAddress),
       fullAddress: activePinnedDeliveryAddress,
-      latitude: Number(Number(customerPin.latitude).toFixed(6)),
-      longitude: Number(Number(customerPin.longitude).toFixed(6)),
-      recommended: false
+      latitude: coordinates?.latitude ?? null,
+      longitude: coordinates?.longitude ?? null,
+      recommended: false,
+      sourceType: 'checkout_temporary'
     };
     setSavedPinnedLocations((previous) => [...previous, newLocation]);
     setSelectedSavedLocationId(newLocation.id);
     setDeliveryLocationAction('saved');
-    toast.success('Saved location added.');
-  }, [activePinnedDeliveryAddress, canAddPinnedLocation, customerPin, hasPinnedDeliveryLocation]);
+    toast.success(locationCopy.savedTemporaryToast);
+  }, [activePinnedDeliveryAddress, canAddPinnedLocation, customerPin, handleLoadAccountPanel, hasCheckoutLocationAddress, locationCopy.savedAccountToast, locationCopy.savedTemporaryToast]);
 
   useEffect(() => {
     if (!isFnbMode || !isDeliveryOrder) return;
     if (deliveryLocationAction === 'map' || deliveryLocationAction === 'current') return;
     if (hasPinnedDeliveryLocation || String(customerAddress || '').trim()) return;
-    applySavedDeliveryLocation(FNB_RECOMMENDED_LOCATION);
-  }, [applySavedDeliveryLocation, customerAddress, deliveryLocationAction, hasPinnedDeliveryLocation, isDeliveryOrder, isFnbMode]);
+    if (suggestedCheckoutLocation) applySavedDeliveryLocation(suggestedCheckoutLocation);
+  }, [applySavedDeliveryLocation, customerAddress, deliveryLocationAction, hasPinnedDeliveryLocation, isDeliveryOrder, isFnbMode, suggestedCheckoutLocation]);
 
   useEffect(() => {
     if (!isDeliveryOrder || !hasPinnedDeliveryLocation) {
@@ -7739,24 +8025,13 @@ export default function StorefrontApp() {
       setResolvingPinnedDeliveryAddress(true);
       setPinLocationError('');
       try {
-        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}&format=jsonv2&addressdetails=1`, {
-          method: 'GET',
-          signal: controller.signal,
-          headers: {
-            Accept: 'application/json'
-          }
-        });
-        if (!response.ok) {
-          throw new Error(`Reverse geocoding failed: ${response.status}`);
-        }
-        const payload = await response.json();
-        const formattedAddress = formatReverseGeocodedAddress(payload) || fallbackAddress;
+        const formattedAddress = await reverseGeocodeDeliveryPin({ latitude, longitude }, { signal: controller.signal }) || fallbackAddress;
         setResolvedDeliveryAddress(formattedAddress);
-        setCustomerAddress(formattedAddress);
+        setCustomerAddress((previous) => String(previous || '').trim() ? previous : formattedAddress);
       } catch (error) {
         if (error?.name === 'AbortError') return;
         setResolvedDeliveryAddress('');
-        setCustomerAddress(fallbackAddress);
+        setCustomerAddress((previous) => String(previous || '').trim() ? previous : fallbackAddress);
       } finally {
         setResolvingPinnedDeliveryAddress(false);
       }
@@ -8572,6 +8847,7 @@ export default function StorefrontApp() {
     }
     const addressId = existingAddress?.address_id;
     const actionId = addressId ? String(addressId) : 'new';
+    const coordinates = normalizeCoordinatePair(draft);
     setAccountAddressActionId(actionId);
     try {
       await requestJson(addressId
@@ -8583,6 +8859,8 @@ export default function StorefrontApp() {
         body: {
           label: String(draft.label || 'Address').trim() || 'Address',
           address_line: addressLine,
+          latitude: coordinates?.latitude ?? null,
+          longitude: coordinates?.longitude ?? null,
           is_default: draft.is_default === true
         }
       });
@@ -8820,7 +9098,7 @@ export default function StorefrontApp() {
   ]), []);
   const fnbHasCustomerName = String(customerName || '').trim().length > 0;
   const fnbHasPrimaryContact = String(customerPhone || '').trim().length > 0 || String(customerEmail || '').trim().length > 0;
-  const fnbHasDeliveryAddress = !isDeliveryOrder || (hasPinnedDeliveryLocation && String(activePinnedDeliveryAddress || '').trim().length > 0);
+  const fnbHasDeliveryAddress = !isDeliveryOrder || String(activePinnedDeliveryAddress || customerAddress || '').trim().length > 0;
   const fnbCustomerStepComplete = fnbHasCustomerName && fnbHasPrimaryContact && fnbHasDeliveryAddress;
   const fnbOrderBrand = '#1A4E8D';
   const fnbOrderBrandDark = '#1A4586';
@@ -9948,6 +10226,7 @@ export default function StorefrontApp() {
           onSaveAddress={handleSaveAccountAddress}
           onDeleteAddress={handleDeleteAccountAddress}
           onSetDefaultAddress={handleSetDefaultAccountAddress}
+          renderAddressPinEditor={renderAddressPinEditor}
           accountIdentityInitials={accountIdentityInitials}
           accountIdentityName={accountIdentityName}
           accountIdentityContact={accountIdentityContact}
@@ -14896,7 +15175,7 @@ return (
                   </label>
                   {isDeliveryOrder && (
                     <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
-                      Delivery Address *
+                      {locationCopy.addressLabel} *
                       <textarea value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} placeholder="House no., street, barangay, landmark" rows={3} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical' }} />
                     </label>
                   )}
@@ -14904,26 +15183,79 @@ return (
 
                 {isDeliveryOrder && (
                   <div style={{ border: '1px solid #d9e4e8', borderRadius: 14, padding: 12, background: 'linear-gradient(180deg,#f8fffe 0%,#ffffff 100%)', display: 'grid', gap: 10 }}>
+                    {deliverySavedLocations.length > 0 && (
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>{locationCopy.savedHeading}</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+                          {deliverySavedLocations.map((location) => {
+                            const isSelected = String(selectedSavedLocationId) === String(location.id) && deliveryLocationAction === 'saved';
+                            const coordinates = normalizeCoordinatePair(location);
+                            return (
+                              <button
+                                key={`simple-delivery-location-${location.id}`}
+                                type="button"
+                                onClick={() => applySavedDeliveryLocation(location)}
+                                style={{
+                                  minHeight: 72,
+                                  borderRadius: 12,
+                                  border: `1.5px solid ${isSelected ? '#0f766e' : '#dbe5ee'}`,
+                                  background: isSelected ? '#ecfdf5' : '#fff',
+                                  padding: 12,
+                                  textAlign: 'left',
+                                  display: 'grid',
+                                  gap: 4,
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <span style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>{location.label}</span>
+                                <span style={{ fontSize: 11, color: '#64748b', lineHeight: 1.4 }}>{location.fullAddress}</span>
+                                <span style={{ fontSize: 10, fontWeight: 800, color: coordinates ? '#0f766e' : '#94a3b8' }}>{coordinates ? locationCopy.pinSaved : locationCopy.addressOnly}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <div>
-                        <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>Delivery Pin</div>
-                        <div style={{ fontSize: 12, color: '#64748b' }}>Optional, but recommended for faster handoff.</div>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>{locationCopy.pinTitle}</div>
+                        <div style={{ fontSize: 12, color: '#64748b' }}>{locationCopy.pinDescription}</div>
                       </div>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         <button type="button" onClick={handlePinMyLocation} disabled={pinLocationLoading} style={{ borderRadius: 12, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 700, cursor: 'pointer' }}>
-                          {pinLocationLoading ? 'Pinning...' : 'Pin My Location'}
+                          {pinLocationLoading ? 'Pinning...' : locationCopy.currentAction}
                         </button>
-                        <button type="button" onClick={() => setCustomerPin(null)} disabled={!customerPin} style={{ borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '8px 12px', fontWeight: 700, cursor: !customerPin ? 'not-allowed' : 'pointer' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCustomerPin(null);
+                            setSelectedSavedLocationId('');
+                            setDeliveryLocationAction(String(customerAddress || '').trim() ? 'text_only' : 'map');
+                          }}
+                          disabled={!customerPin}
+                          style={{ borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '8px 12px', fontWeight: 700, cursor: !customerPin ? 'not-allowed' : 'pointer' }}
+                        >
                           Clear Pin
+                        </button>
+                        <button type="button" onClick={handleAddPinnedLocation} disabled={!canAddPinnedLocation || accountAddressActionId === 'checkout-pin'} style={{ borderRadius: 12, border: '1px solid #0f766e', background: canAddPinnedLocation ? '#ecfdf5' : '#f8fafc', color: canAddPinnedLocation ? '#0f766e' : '#94a3b8', padding: '8px 12px', fontWeight: 700, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed' }}>
+                          {accountAddressActionId === 'checkout-pin' ? 'Saving...' : locationCopy.saveAction}
                         </button>
                       </div>
                     </div>
                     <div style={{ fontSize: 12, color: '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '9px 12px' }}>
                       {customerPin
                         ? `Pinned at ${Number(customerPin.latitude).toFixed(6)}, ${Number(customerPin.longitude).toFixed(6)}`
-                        : 'No pin selected yet. Tap the map or use your current location.'}
+                        : locationCopy.emptyPin}
                     </div>
-                    <DeliveryPinMap pin={customerPin} onPinChange={setCustomerPin} disabled={false} />
+                    <DeliveryPinMap
+                      pin={customerPin}
+                      onPinChange={(nextPin) => {
+                        setDeliveryLocationAction('map');
+                        setSelectedSavedLocationId('');
+                        setCustomerPin(nextPin);
+                      }}
+                      disabled={false}
+                    />
                     {pinLocationError && <p style={{ margin: 0, fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</p>}
                   </div>
                 )}
@@ -16685,7 +17017,7 @@ return (
                                     >
                                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                                         <span style={{ fontSize: 11, fontWeight: 800, color: location.recommended ? '#64748b' : '#64748b' }}>
-                                          {location.recommended ? 'Saved location' : 'Saved location'}
+                                          {location.recommended ? locationCopy.recommendedLabel : 'Saved location'}
                                         </span>
                                         {location.recommended && (
                                           <span style={{ fontSize: 10, fontWeight: 800, color: '#166534', background: '#dcfce7', borderRadius: 999, padding: '3px 8px' }}>
@@ -16708,7 +17040,7 @@ return (
                               <button
                                 type="button"
                                 aria-label="Add New Location"
-                                title="Please pin your location in the map. Use maximize to enlarge the map."
+                                title={locationCopy.mapInstruction}
                                 onClick={() => {
                                   setDeliveryLocationAction('map');
                                   setSelectedSavedLocationId('');
@@ -16737,7 +17069,7 @@ return (
                                 <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: deliveryLocationAction === 'map' ? fnbOrderBrand : '#94a3b8', background: deliveryLocationAction === 'map' ? '#dff3f8' : 'transparent', transition: 'all 200ms ease' }}>
                                   <Plus size={18} />
                                 </span>
-                                Add New Location
+                                {locationCopy.newLocationLabel}
                               </button>
                             </div>
                             <div style={{ display: 'grid', gap: 10 }}>
@@ -16779,16 +17111,16 @@ return (
                                   <Maximize size={18} />
                                 </button>
                               </div>
-                              <div style={{ display: 'none' }} aria-hidden="true">Delivery orders need a pinned map location.</div>
+                              <div style={{ display: 'none' }} aria-hidden="true">Delivery orders can use address text with an optional pinned map location.</div>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                                 <div style={{ fontSize: 12, color: '#64748b' }}>
                                   {resolvingPinnedDeliveryAddress
                                     ? 'Resolving address from your pinned location...'
-                                    : (activePinnedDeliveryAddress || 'Tap the map or use your current location to pin your location.')}
+                                    : (activePinnedDeliveryAddress || locationCopy.emptyPin)}
                                 </div>
                                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                   <button type="button" onClick={handlePinMyLocation} disabled={pinLocationLoading} style={{ minHeight: 38, borderRadius: 12, border: '1px solid #dbe5ee', background: '#fff', color: '#334155', padding: '0 12px', fontSize: 12, fontWeight: 800, cursor: pinLocationLoading ? 'wait' : 'pointer' }}>
-                                    {pinLocationLoading ? 'Pinning...' : 'Pin Current Location'}
+                                    {pinLocationLoading ? 'Pinning...' : locationCopy.currentAction}
                                   </button>
                                   <button
                                     type="button"
@@ -16798,10 +17130,10 @@ return (
                                     }}
                                     style={{ minHeight: 38, borderRadius: 12, border: deliveryLocationAction === 'map' ? `1px solid ${fnbOrderBrand}` : '1px solid #dbe5ee', background: deliveryLocationAction === 'map' ? fnbOrderBrandTint : '#fff', color: deliveryLocationAction === 'map' ? fnbOrderBrandDark : '#334155', padding: '0 12px', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}
                                   >
-                                    Pin on Map
+                                    {locationCopy.pinAction}
                                   </button>
-                                  <button type="button" onClick={handleAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ minHeight: 38, borderRadius: 12, border: `1px solid ${fnbOrderBrand}`, background: canAddPinnedLocation ? fnbOrderBrandTint : '#f8fafc', color: canAddPinnedLocation ? fnbOrderBrandDark : '#94a3b8', padding: '0 12px', fontSize: 12, fontWeight: 800, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed' }}>
-                                    Add Location
+                                  <button type="button" onClick={handleAddPinnedLocation} disabled={!canAddPinnedLocation || accountAddressActionId === 'checkout-pin'} style={{ minHeight: 38, borderRadius: 12, border: `1px solid ${fnbOrderBrand}`, background: canAddPinnedLocation ? fnbOrderBrandTint : '#f8fafc', color: canAddPinnedLocation ? fnbOrderBrandDark : '#94a3b8', padding: '0 12px', fontSize: 12, fontWeight: 800, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed' }}>
+                                    {accountAddressActionId === 'checkout-pin' ? 'Saving...' : locationCopy.saveAction}
                                   </button>
                                 </div>
                               </div>
@@ -16816,7 +17148,7 @@ return (
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
                               <div style={{ display: 'grid', gap: 4 }}>
                                 <div style={{ fontSize: 16, fontWeight: 900, color: '#1e293b' }}>Large Map</div>
-                                <div style={{ fontSize: 12, color: '#64748b' }}>Tap anywhere on the map to pin your delivery location.</div>
+                                <div style={{ fontSize: 12, color: '#64748b' }}>{locationCopy.mapInstruction}</div>
                               </div>
                               <button type="button" onClick={() => setShowExpandedDeliveryMap(false)} style={{ minHeight: 40, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}>
                                 Close
@@ -17550,7 +17882,7 @@ return (
                     )}
                     {!hasServiceCart && (
                       <label style={{ display: 'block', fontSize: 12, color: '#475569', marginTop: 10 }}>
-                        Delivery Address
+                        {locationCopy.addressLabel}
                         <input
                           value={customerAddress}
                           onChange={(e) => setCustomerAddress(e.target.value)}
@@ -17571,9 +17903,9 @@ return (
                     <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: 'linear-gradient(180deg,#f8fffe 0%,#ffffff 100%)', boxShadow: '0 8px 24px rgba(15,23,42,.04)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
                         <div>
-                          <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>Location Pin</div>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>{locationCopy.pinTitle}</div>
                           <div style={{ fontSize: 12, color: '#64748b' }}>
-                            {isDeliveryOrder ? 'Add a precise drop-off pin to help fulfillment.' : 'Pinning is available for delivery orders.'}
+                            {isDeliveryOrder ? locationCopy.pinDescription : 'Pinning is available only when this checkout needs a location.'}
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -17583,15 +17915,27 @@ return (
                             disabled={!isDeliveryOrder || pinLocationLoading}
                             style={{ borderRadius: 12, border: '1px solid #0f766e', background: isDeliveryOrder ? '#fff' : '#f8fafc', color: '#0f766e', padding: '9px 12px', fontWeight: 700, cursor: isDeliveryOrder ? 'pointer' : 'not-allowed' }}
                           >
-                            {pinLocationLoading ? 'Pinning...' : 'Pin My Location'}
+                            {pinLocationLoading ? 'Pinning...' : locationCopy.currentAction}
                           </button>
                           <button
                             type="button"
-                            onClick={() => setCustomerPin(null)}
+                            onClick={() => {
+                              setCustomerPin(null);
+                              setSelectedSavedLocationId('');
+                              setDeliveryLocationAction(String(customerAddress || '').trim() ? 'text_only' : 'map');
+                            }}
                             disabled={!isDeliveryOrder || !customerPin}
                             style={{ borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '9px 12px', fontWeight: 700, cursor: (!isDeliveryOrder || !customerPin) ? 'not-allowed' : 'pointer' }}
                           >
                             Clear Pin
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleAddPinnedLocation}
+                            disabled={!isDeliveryOrder || !canAddPinnedLocation || accountAddressActionId === 'checkout-pin'}
+                            style={{ borderRadius: 12, border: '1px solid #0f766e', background: canAddPinnedLocation ? '#ecfdf5' : '#f8fafc', color: canAddPinnedLocation ? '#0f766e' : '#94a3b8', padding: '9px 12px', fontWeight: 700, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed' }}
+                          >
+                            {accountAddressActionId === 'checkout-pin' ? 'Saving...' : locationCopy.saveAction}
                           </button>
                         </div>
                       </div>
@@ -17599,13 +17943,17 @@ return (
                         {isDeliveryOrder
                           ? (customerPin
                             ? `Pinned at ${Number(customerPin.latitude).toFixed(6)}, ${Number(customerPin.longitude).toFixed(6)}`
-                            : 'No pin selected yet. Tap the map or use your current location.')
+                            : locationCopy.emptyPin)
                           : 'Switch order method to Delivery if you want to save a location pin.'}
                       </div>
                       <div style={{ display: 'grid', gap: 10 }}>
                         <DeliveryPinMap
                           pin={customerPin}
-                          onPinChange={setCustomerPin}
+                          onPinChange={(nextPin) => {
+                            setDeliveryLocationAction('map');
+                            setSelectedSavedLocationId('');
+                            setCustomerPin(nextPin);
+                          }}
                           disabled={!isDeliveryOrder}
                         />
                         {pinLocationError && <p style={{ margin: 0, fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</p>}

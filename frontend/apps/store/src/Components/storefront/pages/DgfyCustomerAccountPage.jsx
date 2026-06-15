@@ -85,6 +85,7 @@ export function DgfyCustomerAccountPage({
   onSaveAddress,
   onDeleteAddress,
   onSetDefaultAddress,
+  renderAddressPinEditor,
   accountIdentityInitials,
   accountIdentityName,
   accountIdentityContact,
@@ -105,9 +106,16 @@ export function DgfyCustomerAccountPage({
   const allAddresses = Array.isArray(accountPanel?.addresses) ? accountPanel.addresses : [];
   const loyalty = accountPanel?.loyalty || { balance: 0, transactions: [] };
   const loyaltyTransactions = Array.isArray(loyalty?.transactions) ? loyalty.transactions.slice(0, 3) : [];
-  const [addressDraft, setAddressDraft] = useState({ label: 'Home', address_line: '', is_default: false });
+  const emptyAddressDraft = (isDefault = false) => ({
+    label: 'Home',
+    address_line: '',
+    latitude: null,
+    longitude: null,
+    is_default: isDefault
+  });
+  const [addressDraft, setAddressDraft] = useState(() => emptyAddressDraft(false));
   const [editingAddressId, setEditingAddressId] = useState(null);
-  const [editingAddressDraft, setEditingAddressDraft] = useState({ label: '', address_line: '', is_default: false });
+  const [editingAddressDraft, setEditingAddressDraft] = useState({ label: '', address_line: '', latitude: null, longitude: null, is_default: false });
   const [pendingCancelOrder, setPendingCancelOrder] = useState(null);
   const [activeNav, setActiveNav] = useState('overview');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -115,7 +123,7 @@ export function DgfyCustomerAccountPage({
     { id: 'overview', label: 'Overview', icon: Home },
     { id: 'orders', label: 'Orders', icon: Package },
     { id: 'bookings', label: 'Bookings', icon: CalendarDays },
-    { id: 'addresses', label: 'Addresses', icon: MapPin },
+    { id: 'addresses', label: 'Locations', icon: MapPin },
     { id: 'loyalty', label: 'Loyalty', icon: Award },
     { id: 'account', label: 'Account', icon: User },
     { id: 'business', label: 'Business', icon: Store }
@@ -125,19 +133,26 @@ export function DgfyCustomerAccountPage({
   const showBookings = showOverview || activeNav === 'bookings';
   const showAddresses = showOverview || activeNav === 'addresses';
   const showLoyalty = showOverview || activeNav === 'loyalty';
-  const resetAddressDraft = () => setAddressDraft({ label: 'Home', address_line: '', is_default: allAddresses.length === 0 });
+  const resetAddressDraft = () => setAddressDraft(emptyAddressDraft(allAddresses.length === 0));
   const startEditAddress = (address = {}) => {
     setEditingAddressId(address.address_id);
     setEditingAddressDraft({
       label: String(address.label || 'Address').trim() || 'Address',
       address_line: String(address.address_line || '').trim(),
+      latitude: address.latitude ?? null,
+      longitude: address.longitude ?? null,
       is_default: address.is_default === true
     });
   };
   const cancelEditAddress = () => {
     setEditingAddressId(null);
-    setEditingAddressDraft({ label: '', address_line: '', is_default: false });
+    setEditingAddressDraft({ label: '', address_line: '', latitude: null, longitude: null, is_default: false });
   };
+  const renderPinEditor = (draft, setDraft, mode) => (
+    typeof renderAddressPinEditor === 'function'
+      ? renderAddressPinEditor({ draft, onChange: setDraft, mode })
+      : null
+  );
 
   return (
     <>
@@ -215,7 +230,7 @@ export function DgfyCustomerAccountPage({
                 My Account
               </h1>
               <div style={{ marginTop: 10, fontSize: isMobileViewport ? 15 : 16, lineHeight: 1.6, color: MUTED, maxWidth: isMobileViewport ? '100%' : 720, overflowWrap: 'anywhere' }}>
-                View your orders, bookings, tracking references, saved addresses, and loyalty activity across DGFY stores.
+                View your orders, bookings, tracking references, saved locations, and loyalty activity across DGFY stores.
               </div>
             </div>
           </div>
@@ -344,7 +359,7 @@ export function DgfyCustomerAccountPage({
                 { label: 'Active Orders', value: activeOrderCount, icon: ShoppingBag },
                 { label: 'Order History', value: allOrders.length, icon: Ticket },
                 { label: 'Bookings', value: allBookings.length, icon: CalendarDays },
-                { label: 'Saved Addresses', value: allAddresses.length, icon: MapPin }
+                { label: 'Saved Locations', value: allAddresses.length, icon: MapPin }
               ].map((card) => {
                 const Icon = card.icon;
                 return (
@@ -740,8 +755,8 @@ export function DgfyCustomerAccountPage({
                     <MapPin size={18} strokeWidth={2.1} />
                   </div>
                   <div>
-                    <div style={{ fontSize: 20, fontWeight: 700, color: TEXT }}>Saved Addresses</div>
-                    <div style={{ fontSize: 14, color: MUTED }}>Addresses currently linked to your DGFY customer account.</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: TEXT }}>Saved Locations</div>
+                    <div style={{ fontSize: 14, color: MUTED }}>Addresses and optional map pins linked to your DGFY customer account.</div>
                   </div>
                 </div>
                 {typeof onSaveAddress === 'function' ? (
@@ -753,7 +768,7 @@ export function DgfyCustomerAccountPage({
                     }}
                     style={{ borderRadius: 20, border: `1px solid ${BORDER}`, background: '#FFFFFF', padding: '16px 18px', display: 'grid', gap: 10 }}
                   >
-                    <div style={{ fontSize: 15, fontWeight: 700, color: TEXT }}>Add Address</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: TEXT }}>Add Location</div>
                     <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: MUTED }}>
                       Label
                       <input
@@ -773,6 +788,7 @@ export function DgfyCustomerAccountPage({
                         style={{ minHeight: 76, borderRadius: 12, border: `1px solid ${BORDER}`, padding: '10px 12px', fontSize: 14, color: TEXT, resize: 'vertical' }}
                       />
                     </label>
+                    {renderPinEditor(addressDraft, setAddressDraft, 'create')}
                     <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: TEXT, fontWeight: 700 }}>
                       <input
                         type="checkbox"
@@ -786,14 +802,14 @@ export function DgfyCustomerAccountPage({
                       disabled={accountAddressActionId === 'new'}
                       style={{ justifySelf: 'start', minHeight: 40, borderRadius: 14, border: 'none', background: PRIMARY, color: '#FFFFFF', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: accountAddressActionId === 'new' ? 'wait' : 'pointer', opacity: accountAddressActionId === 'new' ? 0.72 : 1 }}
                     >
-                      {accountAddressActionId === 'new' ? 'Saving...' : 'Save Address'}
+                      {accountAddressActionId === 'new' ? 'Saving...' : 'Save Location'}
                     </button>
                   </form>
                 ) : null}
                 <div style={{ display: 'grid', gap: 12 }}>
                   {allAddresses.length === 0 ? (
                     <div style={{ borderRadius: 20, border: `1px dashed ${BORDER}`, background: SOFT_SURFACE, padding: '18px 20px', fontSize: 14, color: MUTED }}>
-                      No saved addresses yet.
+                      No saved locations yet.
                     </div>
                   ) : allAddresses.map((address) => {
                     const label = String(address.label || 'Address').trim() || 'Address';
@@ -828,6 +844,7 @@ export function DgfyCustomerAccountPage({
                               style={{ minHeight: 76, borderRadius: 12, border: `1px solid ${BORDER}`, padding: '10px 12px', fontSize: 14, color: TEXT, resize: 'vertical' }}
                             />
                           </label>
+                          {renderPinEditor(editingAddressDraft, setEditingAddressDraft, 'edit')}
                           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: TEXT, fontWeight: 700 }}>
                             <input
                               type="checkbox"
@@ -865,6 +882,13 @@ export function DgfyCustomerAccountPage({
                             ) : null}
                           </div>
                           <div style={{ fontSize: 14, lineHeight: 1.6, color: MUTED }}>{address.address_line || 'Address details unavailable.'}</div>
+                          {address.latitude != null && address.longitude != null ? (
+                            <div style={{ fontSize: 12, fontWeight: 700, color: PRIMARY }}>
+                              Pinned at {Number(address.latitude).toFixed(6)}, {Number(address.longitude).toFixed(6)}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 12, color: MUTED }}>No map pin saved for this address.</div>
+                          )}
                           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             {typeof onUseAddressForCheckout === 'function' ? (
                               <button
