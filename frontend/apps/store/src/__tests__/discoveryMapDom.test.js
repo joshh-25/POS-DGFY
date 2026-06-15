@@ -1,5 +1,6 @@
+/** @vitest-environment jsdom */
 import { describe, expect, it } from 'vitest';
-import { getDiscoveryMarkerKey } from '../discoveryMapDom.js';
+import { getDiscoveryMarkerKey, makeClusterElement } from '../discoveryMapDom.js';
 
 describe('discovery map DOM helpers', () => {
   it('keeps location identity before falling back to tenant-only marker identity', () => {
@@ -21,5 +22,14 @@ describe('discovery map DOM helpers', () => {
       slug: 'alpha',
       location_id: 22
     })).toBe('explicit-pin');
+  });
+
+  it('renders shared-coordinate cluster markers with the standard pin visual wrapper', () => {
+    const element = makeClusterElement(7, true, '7 storefronts at this location');
+
+    expect(element.classList.contains('discovery-result-cluster')).toBe(true);
+    expect(element.classList.contains('is-selected')).toBe(true);
+    expect(element.getAttribute('aria-label')).toBe('7 storefronts at this location');
+    expect(element.querySelector('.discovery-result-cluster-visual')?.textContent).toBe('7');
   });
 });

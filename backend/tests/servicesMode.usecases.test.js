@@ -164,33 +164,60 @@ describe('Services Mode use cases', () => {
     });
 
     it('normalizes service intake form schemas for storefront catalog consumers', async () => {
+        const listServiceCatalog = jest.fn(async () => ([{
+            ...serviceItem,
+            sku_code: 'SVC-001',
+            description: 'Consultation service',
+            unit_of_measure: 'service',
+            cost_per_unit: 250,
+            status: 'active',
+            serviceDetail: {
+                ...serviceItem.serviceDetail,
+                visible_in_storefront: true,
+                visible_in_pos: true,
+                intake_form_schema: JSON.stringify([
+                    { key: 'concern', label: 'Concern', required: true }
+                ])
+            }
+        }]));
         const useCase = buildListServiceCatalogUseCase({
             serviceRepository: {
-                listServiceCatalog: jest.fn(async () => ([{
-                    ...serviceItem,
-                    sku_code: 'SVC-001',
-                    description: 'Consultation service',
-                    unit_of_measure: 'service',
-                    cost_per_unit: 250,
-                    status: 'active',
-                    serviceDetail: {
-                        ...serviceItem.serviceDetail,
-                        visible_in_storefront: true,
-                        visible_in_pos: true,
-                        intake_form_schema: JSON.stringify([
-                            { key: 'concern', label: 'Concern', required: true }
-                        ])
-                    }
-                }]))
+                listServiceCatalog
             }
         });
 
-        const result = await useCase({ query: { limit: 20 }, storefrontOnly: true });
+        const result = await useCase({ query: { limit: 20, location_id: 3 }, storefrontOnly: true });
 
         expect(result.success).toBe(true);
+        expect(listServiceCatalog).toHaveBeenCalledWith(expect.objectContaining({
+            storefrontOnly: true,
+            location_id: 3
+        }));
         expect(result.data.services[0].service_detail.intake_form_schema).toEqual({
             fields: [{ key: 'concern', label: 'Concern', required: true }]
         });
+    });
+
+    it('returns not-found for public service availability when the service is disabled at the requested branch', async () => {
+        const findServiceItemById = jest.fn(async () => null);
+        const useCase = buildGetServiceAvailabilityUseCase({
+            serviceRepository: {
+                findServiceItemById
+            }
+        });
+
+        const result = await useCase({
+            query: {
+                service_item_id: 10,
+                date: nextDateForWeekday(1),
+                location_id: 3
+            },
+            storefrontOnly: true
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe('RESOURCE_NOT_FOUND');
+        expect(findServiceItemById).toHaveBeenCalledWith(10, { storefrontLocationId: 3 });
     });
 
     it('rejects invalid booking status jumps', async () => {
@@ -251,6 +278,39 @@ describe('Services Mode use cases', () => {
         expect(result.success).toBe(false);
         expect(result.error.code).toBe('CONFLICT');
         expect(result.error.message).toContain('blacked out');
+        expect(tx.rollback).toHaveBeenCalled();
+    });
+
+    it('blocks storefront bookings when the service is disabled at the requested branch', async () => {
+        const tx = transaction();
+        const findServiceItemById = jest.fn(async () => null);
+        const useCase = buildCreateServiceBookingUseCase({
+            serviceRepository: {
+                beginTransaction: jest.fn(async () => tx),
+                getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
+                findServiceItemById
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                service_item_id: 10,
+                location_id: 3,
+                start_at: `${nextDateForWeekday(2)}T09:00:00+08:00`,
+                customer_name: 'Guest',
+                customer_email: 'guest@example.com',
+                idempotency_key: 'svc-branch-disabled-1'
+            },
+            source: 'storefront'
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe('RESOURCE_NOT_FOUND');
+        expect(findServiceItemById).toHaveBeenCalledWith(10, expect.objectContaining({
+            transaction: tx,
+            lock: true,
+            storefrontLocationId: 3
+        }));
         expect(tx.rollback).toHaveBeenCalled();
     });
 

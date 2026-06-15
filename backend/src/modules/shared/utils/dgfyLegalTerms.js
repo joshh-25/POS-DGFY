@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { DomainError, DomainErrorCode } from '../contracts/domainErrors.js';
 
-export const DGFY_MARKETPLACE_PROVIDER_CLAUSE = 'DGFY is an e-marketplace/platform service provider. The seller owns the product, sets the price, fulfills the order, and remains the seller of record. DGFY facilitates the sale, collects payment through a licensed payment partner, deducts disclosed fees, and remits the seller’s net settlement.';
+export const DGFY_MARKETPLACE_PROVIDER_CLAUSE = 'DGFY is an e-marketplace/platform service provider. The seller owns the product, sets the price, fulfills the order, and remains the seller of record. Online payments are processed by licensed payment partners such as PayMongo; DGFY does not operate a stored-value wallet or hold seller settlement funds. When PayMongo QR Ph checkout is used, the disclosed DGFY platform fee is 1% of the item subtotal and is charged to the customer as an added platform fee. PayMongo/provider processing, payout, bank, dispute, and related provider fees are shouldered by the registered company and reduce the company net settlement unless a separate signed provider contract says otherwise.';
 
 export const DGFY_LEGAL_TERM_FLOWS = Object.freeze({
     ACCOUNT_REGISTRATION: 'dgfy_account_registration',
@@ -9,10 +9,10 @@ export const DGFY_LEGAL_TERM_FLOWS = Object.freeze({
 });
 
 export const DGFY_LEGAL_TERM_VERSIONS = Object.freeze({
-    accountTerms: 'dgfy-account-terms-2026-05-26',
-    privacy: 'dgfy-privacy-2026-05-26',
-    marketplaceTerms: 'dgfy-marketplace-provider-2026-05-26',
-    companyTerms: 'dgfy-company-terms-2026-05-26'
+    accountTerms: 'dgfy-account-terms-2026-06-08',
+    privacy: 'dgfy-privacy-2026-06-08',
+    marketplaceTerms: 'dgfy-marketplace-provider-2026-06-08',
+    companyTerms: 'dgfy-company-terms-2026-06-08'
 });
 
 export const DGFY_LEGAL_DOCUMENTS = Object.freeze({
@@ -42,7 +42,7 @@ export const DGFY_LEGAL_DOCUMENTS = Object.freeze({
         title: 'DGFY Company Registration Terms',
         version: DGFY_LEGAL_TERM_VERSIONS.companyTerms,
         href: '/legal/dgfy-company-terms',
-        summary: 'Confirms the registering company remains seller of record, owns fulfillment and customer obligations, and uses a registered business payout account.'
+        summary: 'Confirms the registering company remains seller of record, owns fulfillment and customer obligations, uses a registered business payout account, and shoulders PayMongo/provider fees.'
     })
 });
 

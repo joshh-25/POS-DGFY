@@ -106,6 +106,25 @@ Evidence semantics:
 3. The local release gate runs `npm run test:frontend:contracts` through `scripts/gate-release-local.js`.
 4. These gates do not prove browser visual parity, live map-provider behavior, or production account-provider behavior; manual/browser QA remains required where visual placement or live provider interaction matters.
 
+## Tenant Capability Messaging Gate
+
+Tenant capability messaging evidence is mandatory when changing platform-admin IMS/POS/Storefront capability controls, tenant-visible disabled-state UI, global API error normalization, POS terminal availability messaging, or Storefront access-mode blocked-action copy.
+
+Required commands:
+1. From `frontend/`: `npm exec vitest run src/utils/__tests__/tenantCapabilityMessages.test.js src/utils/__tests__/errorHandler.test.js src/components/common/__tests__/GlobalApiErrorListener.test.js src/components/common/__tests__/TenantCapabilityNotice.test.jsx src/components/common/__tests__/TenantCapabilityLayout.render.test.jsx src/components/common/__tests__/tenantCapabilityNotice.contract.test.js src/features/pos/__tests__/TerminalPageLayout.capabilityNotice.test.jsx src/features/pos/__tests__/terminalViewModeContracts.test.js src/services/__tests__/api.globalErrors.test.js apps/store/src/__tests__/customerAccess.test.js apps/store/src/__tests__/storefrontErrorMessages.test.js src/pages/__tests__/TenantManager.capabilities.integration.test.jsx -- --pool=threads`
+2. `npm --prefix frontend run build:skupervisor`
+3. `npm --prefix frontend run build:pos`
+4. `npm --prefix frontend run build:store`
+5. `npm run lint:docs`
+6. `npm run check:architecture`
+7. `npm run check:compliance`
+8. `git diff --check`
+
+Evidence semantics:
+1. The focused Vitest set proves backend `code` / `error_code` compatibility is normalized for `TENANT_CAPABILITY_DISABLED` and `CUSTOMER_ACCESS_MODE_BLOCKED`, tenant-wide IMS notices render after settings hydration or blocked-action events, POS terminal surfaces show POS-specific blocked copy, Storefront catalog/checkout helpers use mode-specific public copy, and Tenant Manager shows capability impact before the audit reason is submitted.
+2. The three frontend builds prove the shared message utility resolves in SKUpervisor, POS, and Storefront bundles.
+3. These gates do not prove proactive email, notification-center delivery, or production tenant behavior. V1 messaging is reactive in-app UI only, and backend route gates remain the enforcement source.
+
 ## Backend Test Matrix Gate
 
 Backend matrix evidence is mandatory for release readiness and for changes touching backend auth, payment, compliance, POS/fiscal, tenant provisioning, storefront, inventory, reporting, AI tools, database integration, or platform services.
@@ -145,6 +164,25 @@ Evidence semantics:
 1. The focused MapLibre suite proves the picker initializes with the inline OpenStreetMap raster style contract, preserves click/geolocation/drag coordinate updates, disables MapLibre's internal resize tracker for modal/panel teardown safety, skips unsafe hidden-container resize calls, and keeps the coordinate fallback usable when tile resource requests emit MapLibre errors.
 2. The onboarding and Settings suites prove both user-facing surfaces still wire the shared picker into their location forms.
 3. These gates do not prove live tile-provider availability, browser WebGL support, or production CSP/proxy parity; rendered browser QA remains required before claiming visual map parity.
+
+## Storefront Public Visibility Gate
+
+Use this gate when changing tenant provisioning, onboarding primary-location setup, Settings > Storefront visibility controls, discovery indexing, or public storefront profile visibility.
+
+Required commands:
+1. `npm run audit:storefront-public-visibility -- --json`
+2. `npm --prefix backend test -- --runTestsByPath tests/tenantProvisioning.storefrontBootstrap.test.js tests/onboardingUsecases.applicationResult.test.js tests/onboardingValidator.test.js tests/storefrontPublicVisibilityAuditService.test.js`
+3. From `frontend/`: `npm exec vitest run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx --pool=threads`
+4. `npm run lint:docs`
+5. `npm run check:architecture`
+6. `npm --prefix frontend run build:skupervisor`
+7. `git diff --check`
+
+Evidence semantics:
+1. The audit proves the current tenant data has no hidden tenant still indexed, no invalid or missing explicit `store_is_visible` setting, no visible tenant missing an active primary pin, no stale indexed location, and no legacy fallback-location publication beyond the governed compatibility path.
+2. `-- --fail-on warning` may be used as a stricter pre-release gate when fallback-location publication should block promotion.
+3. `-- --repair-missing-settings` only backfills an explicit setting that preserves current discovery-index exposure. It must not be used as a substitute for deciding whether a tenant should be public.
+4. A green local audit does not prove production tenant data is clean. Production or canary release evidence must include the same audit against the target data plus public discovery/profile smoke for hidden and visible tenants.
 
 ## Claim Guardrail
 

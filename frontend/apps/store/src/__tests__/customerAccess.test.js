@@ -5,7 +5,8 @@ import {
   canUseProductCart,
   canViewCatalog,
   getAccessCapabilities,
-  getInventoryDisplayLabel
+  getInventoryDisplayLabel,
+  getStorefrontAccessBlockMessage
 } from '../customerAccess.js';
 
 describe('store customer access helpers', () => {
@@ -48,5 +49,31 @@ describe('store customer access helpers', () => {
     expect(getInventoryDisplayLabel({ inventory_display: { label: 'Only 2 left' } })).toBe('Only 2 left');
     expect(getInventoryDisplayLabel({ inventory_display: { label: null } })).toBeNull();
     expect(getInventoryDisplayLabel({ current_stock: 12 })).toBeNull();
+  });
+
+  it('returns Map Listing Only blocked-action copy', () => {
+    expect(getStorefrontAccessBlockMessage({
+      effective_customer_access_mode: 'ghost'
+    })).toBe('Customers can see your store profile, map location, and contact/social links, but catalog and checkout are hidden.');
+  });
+
+  it('returns Catalog Only blocked-action copy', () => {
+    expect(getStorefrontAccessBlockMessage({
+      effective_customer_access_mode: 'catalog'
+    })).toBe('Customers can browse your catalog, but cart, quote, booking, and checkout are disabled.');
+  });
+
+  it('returns Inquiry Mode blocked-action copy', () => {
+    expect(getStorefrontAccessBlockMessage({
+      effective_customer_access_mode: 'inquiry'
+    })).toBe('Customers can browse and contact you, but checkout and booking are disabled.');
+  });
+
+  it('uses neutral fallback copy when capabilities are blocked without a known access mode', () => {
+    expect(getStorefrontAccessBlockMessage({
+      access_capabilities: {
+        checkout: false
+      }
+    })).toBe('This Storefront action is not available right now.');
   });
 });

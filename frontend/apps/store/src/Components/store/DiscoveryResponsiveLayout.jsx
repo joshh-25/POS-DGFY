@@ -129,9 +129,9 @@ export function DiscoveryHeader({
           {isMobileViewport ? (
             <>
               {typeof onAuthClick === 'function' && isAuthenticated && (
-                <button 
-                  type="button" 
-                  onClick={onAuthClick} 
+                <button
+                  type="button"
+                  onClick={onAuthClick}
                   aria-label={accountLabel}
                   style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}
                 >

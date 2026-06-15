@@ -157,14 +157,13 @@ export const normalizeStorefrontPageModel = ({
   const facebookLink = trimText(socialLinks.facebook);
   const instagramLink = trimText(socialLinks.instagram);
   const preferredSupportLink = messengerLink || facebookLink;
-  const preferredSupportLabel = messengerLink ? 'Messenger' : (facebookLink ? 'Facebook' : '');
   const messageHref = buildStorefrontMessageHref({ messengerLink, phone, email });
   const locationSummary = trimText(selectedStore?.location_name || selectedStore?.address_line);
   const addressLine = trimText(selectedStore?.address_line);
   const hours = trimText(
-    formatStorefrontBusinessHoursDisplay(selectedStore?.storefront_hours)
+    selectedStore?.storefront_hours_status?.display
+    || formatStorefrontBusinessHoursDisplay(selectedStore?.storefront_hours)
     || selectedStore?.storefront_hours
-    || selectedStore?.storefront_hours_status?.display
   );
   
   const contactRows = [];

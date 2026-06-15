@@ -31,6 +31,9 @@ const mockCloseTerminalShiftUseCase = jest.fn();
 const mockGetTerminalTodayDashboardUseCase = jest.fn();
 const mockListIncomingOnlineOrdersUseCase = jest.fn();
 const mockUpdateOnlineOrderStatusUseCase = jest.fn();
+const mockGetPosDeviceStatusUseCase = jest.fn();
+const mockPrintPosReceiptUseCase = jest.fn();
+const mockOpenPosDrawerUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
 
 jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
@@ -64,7 +67,10 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     closeTerminalShiftUseCase: mockCloseTerminalShiftUseCase,
     getTerminalTodayDashboardUseCase: mockGetTerminalTodayDashboardUseCase,
     listIncomingOnlineOrdersUseCase: mockListIncomingOnlineOrdersUseCase,
-    updateOnlineOrderStatusUseCase: mockUpdateOnlineOrderStatusUseCase
+    updateOnlineOrderStatusUseCase: mockUpdateOnlineOrderStatusUseCase,
+    getPosDeviceStatusUseCase: mockGetPosDeviceStatusUseCase,
+    printPosReceiptUseCase: mockPrintPosReceiptUseCase,
+    openPosDrawerUseCase: mockOpenPosDrawerUseCase
 }));
 
 jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () => ({

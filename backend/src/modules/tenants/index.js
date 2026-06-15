@@ -12,6 +12,7 @@ import { trackEngagementEvent } from '../../services/engagementService.js';
 import { getTenantRegistrationApprovalMode } from '../../config/tenantRegistrationApproval.js';
 import { tenantAdminRepository } from './repositories/tenantAdminRepository.js';
 import { dgfyAccountRepository } from '../dgfy/index.js';
+import { createTenantPayMongoChildAccountUseCase } from '../commercePayments/index.js';
 import { buildRegisterCompanyRequestUseCase } from './usecases/registerCompanyRequestUseCase.js';
 import { buildListTenantsUseCase } from './usecases/listTenantsUseCase.js';
 import { buildApproveTenantUseCase } from './usecases/approveTenantUseCase.js';
@@ -22,6 +23,14 @@ import { buildUpdatePricingSettingsUseCase } from './usecases/updatePricingSetti
 import { buildUpdateTenantUseCase } from './usecases/updateTenantUseCase.js';
 import { buildDeleteTenantUseCase } from './usecases/deleteTenantUseCase.js';
 import { buildResubmitRegistrationUseCase } from './usecases/resubmitRegistrationUseCase.js';
+import { buildUpdateTenantCapabilitiesUseCase } from './usecases/updateTenantCapabilitiesUseCase.js';
+import { buildListTenantCapabilityAuditLogsUseCase } from './usecases/listTenantCapabilityAuditLogsUseCase.js';
+import { readTenantCapabilities } from './usecases/tenantCapabilitySettings.js';
+import tenantConnector from '../../utils/TenantConnector.js';
+
+const shouldAutoCreatePayMongoChildAccounts = () => (
+    String(process.env.PAYMONGO_AUTO_CREATE_CHILD_ACCOUNTS || '').toLowerCase() === 'true'
+);
 
 export const registerCompanyRequestUseCase = buildRegisterCompanyRequestUseCase({
     tenantAdminRepository,
@@ -30,6 +39,8 @@ export const registerCompanyRequestUseCase = buildRegisterCompanyRequestUseCase(
     addEmailTenantMapping: landlordService.addEmailTenantMapping,
     dgfyAccountRepository,
     provisionTenant,
+    createPayMongoChildAccountForTenant: createTenantPayMongoChildAccountUseCase,
+    shouldAutoCreatePayMongoChildAccounts,
     emailService,
     idGenerator: uuidv4,
     getTenantRegistrationApprovalMode: () => getTenantRegistrationApprovalMode(process.env, logger),
@@ -38,12 +49,16 @@ export const registerCompanyRequestUseCase = buildRegisterCompanyRequestUseCase(
 
 export const listTenantsUseCase = buildListTenantsUseCase({
     tenantAdminRepository,
+    tenantConnector,
+    readTenantCapabilities,
     logger
 });
 
 export const approveTenantUseCase = buildApproveTenantUseCase({
     tenantAdminRepository,
     provisionTenant,
+    createPayMongoChildAccountForTenant: createTenantPayMongoChildAccountUseCase,
+    shouldAutoCreatePayMongoChildAccounts,
     emailService,
     logger
 });
@@ -73,6 +88,18 @@ export const updateTenantUseCase = buildUpdateTenantUseCase({
     tenantAdminRepository,
     provisionTenant,
     emailService,
+    logger
+});
+
+export const updateTenantCapabilitiesUseCase = buildUpdateTenantCapabilitiesUseCase({
+    tenantAdminRepository,
+    tenantConnector,
+    syncStorefrontDiscoveryIndexForTenant,
+    logger
+});
+
+export const listTenantCapabilityAuditLogsUseCase = buildListTenantCapabilityAuditLogsUseCase({
+    tenantAdminRepository,
     logger
 });
 

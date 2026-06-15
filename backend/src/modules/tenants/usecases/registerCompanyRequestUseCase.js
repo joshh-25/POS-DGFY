@@ -52,6 +52,8 @@ export const buildRegisterCompanyRequestUseCase = ({
     addEmailTenantMapping,
     dgfyAccountRepository,
     provisionTenant,
+    createPayMongoChildAccountForTenant = null,
+    shouldAutoCreatePayMongoChildAccounts = () => false,
     emailService,
     idGenerator,
     getTenantRegistrationApprovalMode = () => TENANT_REGISTRATION_APPROVAL_MODES.AUTO_STANDARD,
@@ -93,6 +95,35 @@ export const buildRegisterCompanyRequestUseCase = ({
         });
         let tenant = null;
         let validatedSubscriptionId = null;
+        let paymongoChildAccountStatus = 'skipped';
+
+        const createPendingPayMongoChildAccount = async ({ source }) => {
+            if (!shouldAutoCreatePayMongoChildAccounts() || typeof createPayMongoChildAccountForTenant !== 'function') {
+                return 'skipped';
+            }
+
+            try {
+                const result = await createPayMongoChildAccountForTenant({
+                    tenantId: tenant.id,
+                    payload: { trade_name: tenant.name },
+                    actor: source
+                });
+                if (result?.success === false || result?.error) {
+                    logger?.warn?.('[Registration] PayMongo child account creation did not complete', {
+                        tenant_id: tenant.id,
+                        error: result?.error?.message || result?.message || 'unknown_error'
+                    });
+                    return 'failed';
+                }
+                return result?.data?.idempotent_replay ? 'existing' : 'created';
+            } catch (paymongoError) {
+                logger?.warn?.('[Registration] PayMongo child account creation failed after tenant provisioning', {
+                    tenant_id: tenant.id,
+                    error: paymongoError.message
+                });
+                return 'failed';
+            }
+        };
 
         try {
             await tracker.attempt();
@@ -385,6 +416,10 @@ export const buildRegisterCompanyRequestUseCase = ({
                     });
                 }
 
+                paymongoChildAccountStatus = await createPendingPayMongoChildAccount({
+                    source: 'company_registration_auto_provision'
+                });
+
                 let emailSent = false;
                 if (emailService?.isEmailConfigured?.()) {
                     try {
@@ -409,7 +444,8 @@ export const buildRegisterCompanyRequestUseCase = ({
                         status: provisionedTenant?.status || 'active',
                         auto_approved: true,
                         auto_approval_source: autoApprovalSource,
-                        email_sent: emailSent
+                        email_sent: emailSent,
+                        paymongo_child_account_status: paymongoChildAccountStatus
                     }
                 });
 
@@ -430,7 +466,8 @@ export const buildRegisterCompanyRequestUseCase = ({
                             compliance_mode_state: complianceModeState,
                             workflow_mode: normalizedWorkflowMode,
                             company_token: tenant.company_token,
-                            email_sent: emailSent
+                            email_sent: emailSent,
+                            paymongo_child_account_status: paymongoChildAccountStatus
                         }
                     }
                 });

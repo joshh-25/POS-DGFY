@@ -121,6 +121,29 @@ describe('api.js global error events', () => {
     expect(onApiError).not.toHaveBeenCalled();
   });
 
+  it('still emits suppressed tenant capability status events for skipped requests', async () => {
+    const onApiError = vi.fn();
+    const onCapabilityBlocked = vi.fn();
+    window.addEventListener('api:error', onApiError);
+    window.addEventListener('tenant:capability-blocked', onCapabilityBlocked);
+    mockApi.onGet('/pos/orders/incoming').reply(403, {
+      error_code: 'TENANT_CAPABILITY_DISABLED',
+      capability: 'tenant_pos_enabled',
+      message: 'POS is disabled for this tenant by platform admin.'
+    });
+
+    await expect(api.get('/pos/orders/incoming', { skipGlobalErrorToast: true })).rejects.toBeTruthy();
+
+    expect(onApiError).not.toHaveBeenCalled();
+    expect(onCapabilityBlocked).toHaveBeenCalledTimes(1);
+    expect(onCapabilityBlocked.mock.calls[0][0].detail).toMatchObject({
+      title: 'Platform admin changed your permissions',
+      code: 'TENANT_CAPABILITY_DISABLED',
+      capability: 'tenant_pos_enabled',
+      suppressToast: true
+    });
+  });
+
   it('does not emit api:error for 4xx errors', async () => {
     const onApiError = vi.fn();
     const onLegacy = vi.fn();

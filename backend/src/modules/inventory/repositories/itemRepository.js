@@ -69,10 +69,39 @@ const isMissingStorefrontCatalogOverrideTableError = (error) => {
     return code === 'ER_NO_SUCH_TABLE' && message.includes('storefront_catalog_overrides');
 };
 
+const isMissingStorefrontCatalogGalleryColumnError = (error) => {
+    if (!error) return false;
+    const code = error.original?.code || error.parent?.code || error.code;
+    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
+    return code === 'ER_BAD_FIELD_ERROR'
+        && message.includes('storefrontCatalogOverride.storefront_image_gallery');
+};
+
+const isMissingStorefrontLocationItemOverrideTableError = (error) => {
+    if (!error) return false;
+    const code = error.original?.code || error.parent?.code || error.code;
+    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
+    return code === 'ER_NO_SUCH_TABLE' && message.includes('storefront_location_item_overrides');
+};
+
 const toPlain = (value) => (
     value && typeof value.toJSON === 'function'
         ? value.toJSON()
         : value
+);
+
+const parsePositiveInt = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const normalizeLocationAvailabilityEntries = (entries = []) => (
+    (Array.isArray(entries) ? entries : [])
+        .map((entry) => ({
+            location_id: parsePositiveInt(entry?.location_id),
+            storefront_available: entry?.storefront_available !== false
+        }))
+        .filter((entry) => entry.location_id)
 );
 
 const normalizeStorefrontImageGallery = (value) => {
@@ -415,7 +444,7 @@ const calculateRecipeCost = (productCompositions) => {
     }, 0);
 };
 
-const saveRelatedWizardData = async (itemId, wizardData, transaction) => {
+const saveRelatedWizardData = async (itemId, wizardData, transaction, options = {}) => {
     const ItemNutrition = dbStore.get('ItemNutrition');
     const ItemAllergen = dbStore.get('ItemAllergen');
     const ItemPhysicalProperties = dbStore.get('ItemPhysicalProperties');
@@ -463,7 +492,13 @@ const saveRelatedWizardData = async (itemId, wizardData, transaction) => {
         }
     }
 
-    if (wizardData.physical_properties && Object.keys(wizardData.physical_properties).length > 0) {
+    const clearManufacturingProperties = options.clearManufacturingProperties === true;
+    const hasPhysicalPropertiesPayload = hasOwn(wizardData, 'physical_properties');
+    const hasQualityControlPayload = hasOwn(wizardData, 'quality_control');
+
+    if (clearManufacturingProperties && hasPhysicalPropertiesPayload && ItemPhysicalProperties?.destroy) {
+        promises.push(ItemPhysicalProperties.destroy({ where: { item_id: itemId }, transaction }));
+    } else if (wizardData.physical_properties && Object.keys(wizardData.physical_properties).length > 0) {
         promises.push(
             ItemPhysicalProperties.upsert({
                 item_id: itemId,
@@ -490,7 +525,9 @@ const saveRelatedWizardData = async (itemId, wizardData, transaction) => {
         );
     }
 
-    if (wizardData.quality_control && Object.keys(wizardData.quality_control).length > 0) {
+    if (clearManufacturingProperties && hasQualityControlPayload && ItemQualityControl?.destroy) {
+        promises.push(ItemQualityControl.destroy({ where: { item_id: itemId }, transaction }));
+    } else if (wizardData.quality_control && Object.keys(wizardData.quality_control).length > 0) {
         promises.push(
             ItemQualityControl.upsert({
                 item_id: itemId,
@@ -605,6 +642,11 @@ const saveRelatedWizardData = async (itemId, wizardData, transaction) => {
 };
 
 export const itemRepository = {
+    async beginTransaction() {
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        return sequelize.transaction();
+    },
+
     async getItems(queryParams = {}) {
         const Item = dbStore.get('Item');
         const ProductComposition = dbStore.get('ProductComposition');
@@ -1082,6 +1124,7 @@ export const itemRepository = {
                 }, userId, transaction);
             }
 
+            const clearManufacturingProperties = workflowMode === 'fnb';
             if (itemData.status === 'active' && itemData.category === 'product') {
                 const wizardData = {
                     labor_cost,
@@ -1099,7 +1142,9 @@ export const itemRepository = {
                     regulatory_compliance
                 };
 
-                await saveRelatedWizardData(item.item_id, wizardData, transaction);
+                await saveRelatedWizardData(item.item_id, wizardData, transaction, {
+                    clearManufacturingProperties
+                });
             }
 
             await transaction.commit();
@@ -1249,6 +1294,7 @@ export const itemRepository = {
                 await item.update(dbFields, { transaction });
             }
 
+            const clearManufacturingProperties = workflowMode === 'fnb';
             if (item.status === 'active' && item.category === 'product') {
                 const wizardData = {
                     labor_cost,
@@ -1266,7 +1312,9 @@ export const itemRepository = {
                     regulatory_compliance
                 };
 
-                await saveRelatedWizardData(itemId, wizardData, transaction);
+                await saveRelatedWizardData(itemId, wizardData, transaction, {
+                    clearManufacturingProperties
+                });
             }
 
             await transaction.commit();
@@ -1285,6 +1333,7 @@ export const itemRepository = {
         const transaction = await sequelize.transaction();
 
         try {
+            const workflowMode = await getCurrentWorkflowMode();
             const item = await findVisibleItemById(Item, itemId, { transaction });
             if (!item) {
                 throw notFoundError('Item not found');
@@ -1369,7 +1418,9 @@ export const itemRepository = {
                 throw error;
             }
 
-            await saveRelatedWizardData(itemId, wizardData, transaction);
+            await saveRelatedWizardData(itemId, wizardData, transaction, {
+                clearManufacturingProperties: workflowMode === 'fnb'
+            });
 
             const itemFields = { ...mergedData };
             delete itemFields.labor_cost;
@@ -1840,11 +1891,130 @@ export const itemRepository = {
             throw normalizeSkuConflictError(error);
         }
     },
+    async listStorefrontItemLocationAvailability(itemIds = [], options = {}) {
+        const TenantLocation = dbStore.get('TenantLocation');
+        const StorefrontLocationItemOverride = dbStore.get('StorefrontLocationItemOverride');
+        const normalizedItemIds = [...new Set((Array.isArray(itemIds) ? itemIds : [])
+            .map((itemId) => parsePositiveInt(itemId))
+            .filter(Boolean))];
+
+        if (!TenantLocation?.findAll || normalizedItemIds.length === 0) return new Map();
+
+        const locations = (await TenantLocation.findAll({
+            where: { is_active: true },
+            attributes: ['location_id', 'name', 'is_open', 'is_active', 'is_primary_storefront'],
+            order: [
+                ['is_primary_storefront', 'DESC'],
+                ['name', 'ASC'],
+                ['location_id', 'ASC']
+            ],
+            transaction: options.transaction
+        })).map(toPlain);
+
+        const availabilityByItemId = new Map(normalizedItemIds.map((itemId) => [
+            itemId,
+            locations.map((location) => ({
+                location_id: location.location_id,
+                name: location.name,
+                is_open: location.is_open !== false,
+                is_active: location.is_active !== false,
+                is_primary_storefront: location.is_primary_storefront === true,
+                storefront_available: true
+            }))
+        ]));
+
+        if (!StorefrontLocationItemOverride?.findAll || locations.length === 0) {
+            return availabilityByItemId;
+        }
+
+        try {
+            const rows = await StorefrontLocationItemOverride.findAll({
+                where: {
+                    item_id: { [Op.in]: normalizedItemIds },
+                    location_id: { [Op.in]: locations.map((location) => Number(location.location_id)) }
+                },
+                attributes: ['item_id', 'location_id', 'storefront_available'],
+                transaction: options.transaction
+            });
+
+            rows.map(toPlain).forEach((row) => {
+                const itemId = Number(row.item_id);
+                const locationId = Number(row.location_id);
+                const current = availabilityByItemId.get(itemId);
+                if (!Array.isArray(current)) return;
+                const entry = current.find((location) => Number(location.location_id) === locationId);
+                if (entry) entry.storefront_available = row.storefront_available !== false;
+            });
+            return availabilityByItemId;
+        } catch (error) {
+            if (isMissingStorefrontLocationItemOverrideTableError(error)) {
+                return availabilityByItemId;
+            }
+            throw error;
+        }
+    },
+    async upsertStorefrontItemLocationAvailability(itemId, entries = [], options = {}) {
+        const StorefrontLocationItemOverride = dbStore.get('StorefrontLocationItemOverride');
+        const TenantLocation = dbStore.get('TenantLocation');
+        const normalizedItemId = parsePositiveInt(itemId);
+        const normalizedEntries = normalizeLocationAvailabilityEntries(entries);
+        if (!normalizedItemId || normalizedEntries.length === 0) return [];
+        if (!StorefrontLocationItemOverride?.findOne) {
+            throw new Error('Storefront location item override model is unavailable');
+        }
+
+        const validLocations = TenantLocation?.findAll
+            ? await TenantLocation.findAll({
+                where: {
+                    location_id: { [Op.in]: normalizedEntries.map((entry) => entry.location_id) },
+                    is_active: true
+                },
+                attributes: ['location_id'],
+                transaction: options.transaction
+            })
+            : [];
+        const validLocationIds = new Set(validLocations.map((row) => Number(toPlain(row).location_id)));
+        const invalid = normalizedEntries.filter((entry) => !validLocationIds.has(Number(entry.location_id)));
+        if (invalid.length > 0) {
+            const error = new Error('location_availability contains inactive or unknown location_id values');
+            error.statusCode = 422;
+            error.details = invalid.map((entry) => ({ location_id: entry.location_id }));
+            throw error;
+        }
+
+        const results = [];
+        for (const entry of normalizedEntries) {
+            const existing = await StorefrontLocationItemOverride.findOne({
+                where: {
+                    item_id: normalizedItemId,
+                    location_id: entry.location_id
+                },
+                transaction: options.transaction
+            });
+            const payload = {
+                item_id: normalizedItemId,
+                location_id: entry.location_id,
+                storefront_available: entry.storefront_available !== false
+            };
+            if (existing) {
+                await existing.update(payload, { transaction: options.transaction });
+                results.push(toPlain(existing));
+            } else {
+                results.push(toPlain(await StorefrontLocationItemOverride.create(payload, {
+                    transaction: options.transaction
+                })));
+            }
+        }
+
+        return results;
+    },
     async listStorefrontCatalogOverrides({ search = '', limit = 200 } = {}) {
         const Item = dbStore.get('Item');
         const StorefrontCatalogOverride = dbStore.get('StorefrontCatalogOverride');
         const PosCatalogOverride = dbStore.get('PosCatalogOverride');
         const ServiceItemDetail = dbStore.get('ServiceItemDetail');
+        const storefrontOverrideAttributes = ['storefront_visible', 'storefront_image_path', 'storefront_image_url', 'storefront_image_gallery'];
+        const storefrontOverrideAttributesWithoutGallery = ['storefront_visible', 'storefront_image_path', 'storefront_image_url'];
         const normalizedLimit = Math.max(1, Math.min(Number.parseInt(limit, 10) || 200, 1000));
         const normalizedSearch = String(search || '').trim();
         const workflowMode = await getCurrentWorkflowMode();
@@ -1881,7 +2051,7 @@ export const itemRepository = {
                 StorefrontCatalogOverride ? {
                     model: StorefrontCatalogOverride,
                     as: 'storefrontCatalogOverride',
-                    attributes: ['storefront_visible', 'storefront_image_path', 'storefront_image_url', 'storefront_image_gallery'],
+                    attributes: storefrontOverrideAttributes,
                     required: false
                 } : null
             ].filter(Boolean),
@@ -1889,7 +2059,7 @@ export const itemRepository = {
             limit: normalizedLimit
         };
 
-        const mapRow = (item, { allowLegacyPosFallback = false } = {}) => {
+        const mapRow = (item, { allowLegacyPosFallback = false, availabilityByItemId = new Map() } = {}) => {
             const payload = toPlain(item);
             const override = payload?.storefrontCatalogOverride || null;
             const legacyPosOverride = allowLegacyPosFallback ? (payload?.posCatalogOverride || null) : null;
@@ -1926,6 +2096,7 @@ export const itemRepository = {
                 storefront_image_path: storefrontImagePath,
                 storefront_image_url: storefrontImageUrl,
                 storefront_image_gallery: storefrontImageGallery,
+                location_availability: availabilityByItemId.get(Number(payload.item_id)) || [],
                 has_storefront_override: Boolean(override),
                 storefront_readiness: readiness,
                 catalog_setup_recommendation: recommendation
@@ -1934,8 +2105,31 @@ export const itemRepository = {
 
         try {
             const rows = await Item.findAll(baseQuery);
-            return rows.map(mapRow);
+            const availabilityByItemId = await this.listStorefrontItemLocationAvailability(
+                rows.map((row) => toPlain(row)?.item_id),
+            );
+            return rows.map((row) => mapRow(row, { availabilityByItemId }));
         } catch (error) {
+            if (isMissingStorefrontCatalogGalleryColumnError(error)) {
+                logger.warn('[ItemRepository] Retrying storefront overrides without gallery column while tenant schema catches up', {
+                    event_type: 'storefront_catalog_gallery_column_fallback',
+                    reason: error?.original?.code || error?.parent?.code || error?.code || 'unknown'
+                });
+
+                const retryRows = await Item.findAll({
+                    ...baseQuery,
+                    include: (baseQuery.include || []).map((entry) => (
+                        entry?.as === 'storefrontCatalogOverride'
+                            ? { ...entry, attributes: storefrontOverrideAttributesWithoutGallery }
+                            : entry
+                    ))
+                });
+                const availabilityByItemId = await this.listStorefrontItemLocationAvailability(
+                    retryRows.map((row) => toPlain(row)?.item_id),
+                );
+                return retryRows.map((row) => mapRow(row, { availabilityByItemId }));
+            }
+
             if (!isMissingStorefrontCatalogOverrideTableError(error)) {
                 throw error;
             }
@@ -1957,7 +2151,10 @@ export const itemRepository = {
                     } : null
                 ].filter(Boolean)
             });
-            return fallbackRows.map((row) => mapRow(row, { allowLegacyPosFallback: true }));
+            const availabilityByItemId = await this.listStorefrontItemLocationAvailability(
+                fallbackRows.map((row) => toPlain(row)?.item_id),
+            );
+            return fallbackRows.map((row) => mapRow(row, { allowLegacyPosFallback: true, availabilityByItemId }));
         }
     },
     async findStorefrontCatalogOverrideByItemId(itemId, options = {}) {
@@ -1967,11 +2164,19 @@ export const itemRepository = {
         try {
             return await StorefrontCatalogOverride.findOne({
                 where: { item_id: itemId },
+                attributes: ['storefront_visible', 'storefront_image_path', 'storefront_image_url', 'storefront_image_gallery'],
                 transaction: options.transaction
             });
         } catch (error) {
             if (isMissingStorefrontCatalogOverrideTableError(error)) {
                 return null;
+            }
+            if (isMissingStorefrontCatalogGalleryColumnError(error)) {
+                return StorefrontCatalogOverride.findOne({
+                    where: { item_id: itemId },
+                    attributes: ['storefront_visible', 'storefront_image_path', 'storefront_image_url'],
+                    transaction: options.transaction
+                });
             }
             throw error;
         }

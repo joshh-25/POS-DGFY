@@ -44,6 +44,13 @@ const withTenantCompanyPayload = (session = {}, tenantToken = null) => {
   };
 };
 
+export const resolveAuthEmailOtpTenantId = (req, purpose) => {
+  if (purpose === EMAIL_OTP_PURPOSES.DGFY_ACCOUNT_VERIFICATION) {
+    return null;
+  }
+  return req.tenant?.id || null;
+};
+
 const persistSecurityAuditEvent = async (req, {
   eventType,
   operation,
@@ -96,7 +103,7 @@ export const requestAuthEmailOtp = async (req, res) => {
   try {
     const { purpose, email, invitation_token: invitationToken } = req.validatedData;
     let targetEmail = email;
-    let tenantId = req.tenant?.id || null;
+    let tenantId = resolveAuthEmailOtpTenantId(req, purpose);
 
     if (purpose === EMAIL_OTP_PURPOSES.INVITATION_ACCEPTANCE) {
       const inviteResult = await validateInviteTokenUseCase({ token: invitationToken });

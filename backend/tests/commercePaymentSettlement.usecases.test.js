@@ -17,6 +17,11 @@ describe('commerce payment settlement reporting', () => {
           status: 'partial_refunded',
           total_amount_centavos: 10000,
           platform_fee_centavos: 100,
+          fee_policy: {
+            dgfy_fee_basis: 'subtotal',
+            dgfy_fee_charged_to: 'customer',
+            provider_fee_shoulder: 'tenant_company'
+          },
           tenant_transfer_merchant_id: 'org_child',
           provider_payment_id: 'pay_123'
         }]),
@@ -41,6 +46,7 @@ describe('commerce payment settlement reporting', () => {
     }));
     expect(result.data.settlement_report.rows[0]).toEqual(expect.objectContaining({
       payment_session_id: 'CPS-SETTLE001',
+      fee_policy: expect.objectContaining({ provider_fee_shoulder: 'tenant_company' }),
       net_after_succeeded_refunds_centavos: 7500
     }));
   });

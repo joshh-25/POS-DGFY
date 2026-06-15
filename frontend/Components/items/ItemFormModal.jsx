@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Package, Folder } from 'lucide-react';
+import { Plus, Trash2, Package, Folder, X } from 'lucide-react';
 import { Switch } from "@/components/ui/switch";
 import { dummyItems } from '@/components/data/dummyData';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
@@ -26,6 +26,7 @@ import { UomSelect } from '@/components/ui/UomSelect';
 import { createSupplier, getSuppliers } from '@/src/services/supplierService.js';
 import { useLocations } from '@/src/hooks/useLocations.js';
 import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
+import StorefrontImageCarousel from '@/components/items/StorefrontImageCarousel';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { resolveBusinessModeItemDefaults } from '@/src/features/settings/businessModeTemplates.js';
 import {
@@ -40,6 +41,19 @@ const MSME_ITEM_PRESET = Object.freeze({
   SELLABLE_POS: 'sellable_pos',
   INVENTORY_ONLY: 'inventory_only'
 });
+const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
+
+const parseStorefrontImageGallery = (value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
 
 const MSME_VISIBLE_UPDATE_FIELDS = Object.freeze([
   'sku_code',
@@ -189,6 +203,7 @@ export default function ItemFormModal({
   onUploadPosImage,
   onDeletePosImage,
   onToggleStorefrontVisibility,
+  onToggleStorefrontLocationAvailability,
   onUploadStorefrontImage,
   onSetPrimaryStorefrontImage,
   onDeleteStorefrontImage,
@@ -240,10 +255,14 @@ export default function ItemFormModal({
     () => resolveBusinessModeItemDefaults(workflowMode),
     [workflowMode]
   );
+  const { locations, loading: loadingLocations } = useLocations();
+  const activeLocations = useMemo(
+    () => (Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : []),
+    [locations]
+  );
+  const [draftStorefrontLocationAvailability, setDraftStorefrontLocationAvailability] = useState([]);
   const storefrontGallery = useMemo(() => {
-    const entries = Array.isArray(storefrontConfig?.storefront_image_gallery)
-      ? storefrontConfig.storefront_image_gallery
-      : [];
+    const entries = parseStorefrontImageGallery(storefrontConfig?.storefront_image_gallery);
     const gallery = entries
       .map((entry, index) => ({
         path: entry?.path || null,
@@ -267,6 +286,27 @@ export default function ItemFormModal({
       sort_order: index
     }));
   }, [storefrontConfig]);
+  const configuredStorefrontLocationAvailability = useMemo(() => {
+    const configuredRows = Array.isArray(storefrontConfig?.location_availability)
+      ? storefrontConfig.location_availability
+      : [];
+    const configuredByLocationId = new Map(configuredRows.map((row) => [
+      String(row?.location_id),
+      row
+    ]));
+    return activeLocations.map((location) => {
+      const configured = configuredByLocationId.get(String(location?.location_id));
+      return {
+        location_id: location.location_id,
+        name: location.name,
+        is_primary_storefront: location.is_primary_storefront === true,
+        storefront_available: configured?.storefront_available !== false
+      };
+    });
+  }, [activeLocations, storefrontConfig]);
+  const storefrontLocationAvailability = item
+    ? configuredStorefrontLocationAvailability
+    : draftStorefrontLocationAvailability;
   const modeItemTaxonomy = useMemo(
     () => resolveModeItemTaxonomy(workflowMode),
     [workflowMode]
@@ -291,11 +331,6 @@ export default function ItemFormModal({
     storefrontVisible: storefrontConfig?.storefront_visible === true,
     serviceCostTrackingEnabled: trackServiceCost
   }), [currentItemPreset, formData, posConfig?.pos_visible, storefrontConfig?.storefront_visible, trackServiceCost, workflowMode]);
-  const { locations, loading: loadingLocations } = useLocations();
-  const activeLocations = useMemo(
-    () => (Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : []),
-    [locations]
-  );
   const [stockBaseline, setStockBaseline] = useState(0);
   const itemLocationStockMap = useMemo(() => {
     const rows = Array.isArray(item?.item_location_stocks) ? item.item_location_stocks : [];
@@ -354,6 +389,11 @@ export default function ItemFormModal({
       fetchSuppliers();
     }
   }, [msmeMode, open]);
+
+  useEffect(() => {
+    if (!open || item) return;
+    setDraftStorefrontLocationAvailability(configuredStorefrontLocationAvailability);
+  }, [configuredStorefrontLocationAvailability, item, open]);
 
   useEffect(() => {
     if (item && open) {
@@ -757,6 +797,35 @@ export default function ItemFormModal({
     });
   };
 
+  const handleStorefrontLocationAvailabilityChange = (locationId, checked) => {
+    const normalizedLocationId = Number.parseInt(locationId, 10);
+    if (!Number.isInteger(normalizedLocationId) || normalizedLocationId <= 0) return;
+
+    if (item) {
+      onToggleStorefrontLocationAvailability?.(item, normalizedLocationId, checked);
+      return;
+    }
+
+    setDraftStorefrontLocationAvailability((previous) => {
+      const sourceRows = previous.length > 0 ? previous : configuredStorefrontLocationAvailability;
+      const hasLocationRow = sourceRows.some((row) => Number(row?.location_id) === normalizedLocationId);
+      if (hasLocationRow) {
+        return sourceRows.map((row) => (
+          Number(row?.location_id) === normalizedLocationId
+            ? { ...row, storefront_available: Boolean(checked) }
+            : row
+        ));
+      }
+      return [
+        ...sourceRows,
+        {
+          location_id: normalizedLocationId,
+          storefront_available: Boolean(checked)
+        }
+      ];
+    });
+  };
+
   const handleClose = () => {
     if (savingActionRef.current) return;
     if (isDirty && !item) {
@@ -940,9 +1009,13 @@ export default function ItemFormModal({
       ? {
         ...submitPayload,
         supplier_links: normalizedSupplierLinks,
-        supplier_links_dirty: !areSupplierLinksEqual(normalizedSupplierLinks, item?.suppliers || [])
+        supplier_links_dirty: !areSupplierLinksEqual(normalizedSupplierLinks, item?.suppliers || []),
+        storefront_location_availability: storefrontLocationAvailability
       }
-      : submitPayload;
+      : {
+        ...submitPayload,
+        storefront_location_availability: storefrontLocationAvailability
+      };
 
     if (isDraft && onSaveDraft && !item) {
       try {
@@ -986,16 +1059,30 @@ export default function ItemFormModal({
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography max-h-[90vh] max-w-4xl overflow-y-auto pb-6">
-          <DialogHeader>
-            <DialogTitle className="wizard-title flex items-center gap-2">
-              {item ? 'Edit Item' : 'Create New Item'}
-              {isEditingDraft && (
-                <Badge variant="outline" className="bg-slate-100 text-slate-700">
-                  Draft
-                </Badge>
-              )}
-            </DialogTitle>
+        <DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography pb-0">
+          <DialogHeader className="flex-shrink-0">
+            <div className="flex items-start justify-between gap-4">
+              <DialogTitle className="wizard-title flex items-center gap-2">
+                {item ? 'Edit Item' : 'Create New Item'}
+                {isEditingDraft && (
+                  <Badge variant="outline" className="bg-slate-100 text-slate-700">
+                    Draft
+                  </Badge>
+                )}
+              </DialogTitle>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 shrink-0 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                onClick={handleClose}
+                disabled={isSaving}
+                aria-label={item ? 'Close edit item modal' : 'Close create item modal'}
+                title="Close"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
             {msmeMode && !item && (
               <p className="text-xs text-slate-500">
                 Item type: {createPreset === MSME_ITEM_PRESET.SELLABLE_POS ? 'Sell in POS (auto-show)' : 'Inventory only'}.
@@ -1003,7 +1090,7 @@ export default function ItemFormModal({
             )}
           </DialogHeader>
 
-          <div className="wizard-step-content space-y-4">
+          <div className="wizard-step-content flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
             {/* Basic Info */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
@@ -1402,54 +1489,54 @@ export default function ItemFormModal({
                 )}
               </div>
 
+              {storefrontLocationAvailability.length > 0 && (
+                <div className="rounded-md border border-slate-200 bg-white p-3">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Branch availability</p>
+                      <p className="text-xs text-slate-500">Controls where this item appears inside the tenant store.</p>
+                    </div>
+                    <Badge variant="outline">
+                      {storefrontLocationAvailability.filter((row) => row.storefront_available !== false).length}/{storefrontLocationAvailability.length}
+                    </Badge>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {storefrontLocationAvailability.map((location) => (
+                      <div key={location.location_id} className="flex items-center justify-between gap-3 rounded-md border border-slate-100 px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-800">{location.name || `Location ${location.location_id}`}</p>
+                          <p className="text-xs text-slate-500">{location.is_primary_storefront ? 'Main branch' : 'Branch'}</p>
+                        </div>
+                        <Switch
+                          checked={location.storefront_available !== false}
+                          onCheckedChange={(checked) => handleStorefrontLocationAvailabilityChange(location.location_id, checked)}
+                          disabled={item ? !onToggleStorefrontLocationAvailability : false}
+                          aria-label={`Toggle storefront availability for ${location.name || location.location_id}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {item ? (
                 <div className="space-y-3">
                   {storefrontGallery.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                      {storefrontGallery.map((entry, index) => (
-                        <div key={`${entry.url || entry.path}-${index}`} className="rounded-md border border-slate-200 bg-white p-2">
-                          <div className="relative">
-                            <img
-                              src={resolveAssetUrl(entry.url || entry.path)}
-                              alt={`${item.name} storefront image ${index + 1}`}
-                              className="h-24 w-full rounded-md object-cover"
-                            />
-                            {index === 0 && (
-                              <Badge className="absolute left-2 top-2 bg-emerald-600 text-white hover:bg-emerald-600">
-                                Primary
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {index > 0 && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => onSetPrimaryStorefrontImage && onSetPrimaryStorefrontImage(item, index)}
-                                disabled={!onSetPrimaryStorefrontImage}
-                              >
-                                Set first
-                              </Button>
-                            )}
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => onDeleteStorefrontImage && onDeleteStorefrontImage(item, index)}
-                              disabled={!onDeleteStorefrontImage}
-                            >
-                              Remove
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    <StorefrontImageCarousel
+                      gallery={storefrontGallery}
+                      itemName={item.name}
+                      variant="wizard"
+                      onSetPrimary={(index) => onSetPrimaryStorefrontImage && onSetPrimaryStorefrontImage(item, index)}
+                      onRemove={(index) => onDeleteStorefrontImage && onDeleteStorefrontImage(item, index)}
+                    />
                   ) : (
                     <p className="text-sm text-slate-500">No item image uploaded yet.</p>
                   )}
                   <div className="flex flex-wrap gap-2">
-                    <label className="cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100">
+                    <label
+                      className={`rounded-md border border-slate-300 px-3 py-2 text-sm ${storefrontGallery.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT ? 'cursor-not-allowed bg-slate-100 text-slate-400' : 'cursor-pointer bg-white hover:bg-slate-100'}`}
+                      aria-disabled={storefrontGallery.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT}
+                    >
                       Add Item Images
                       <input
                         type="file"
@@ -1457,14 +1544,23 @@ export default function ItemFormModal({
                         multiple
                         className="hidden"
                         onChange={(event) => {
-                          const files = Array.from(event.target.files || []);
+                          const remainingSlots = STOREFRONT_ITEM_IMAGE_MAX_COUNT - storefrontGallery.length;
+                          const selectedFiles = Array.from(event.target.files || []);
+                          const files = selectedFiles.slice(0, Math.max(remainingSlots, 0));
+                          if (selectedFiles.length > files.length) {
+                            toast.error(`Only ${Math.max(remainingSlots, 0)} more item image${remainingSlots === 1 ? '' : 's'} can be uploaded. Galleries are limited to ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images.`);
+                          }
                           if (files.length && onUploadStorefrontImage) {
                             onUploadStorefrontImage(item, files);
                           }
                           event.target.value = '';
                         }}
+                        disabled={storefrontGallery.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT}
                       />
                     </label>
+                    <p className="basis-full text-xs text-slate-500">
+                      {Math.max(STOREFRONT_ITEM_IMAGE_MAX_COUNT - storefrontGallery.length, 0)} of {STOREFRONT_ITEM_IMAGE_MAX_COUNT} image slots remaining.
+                    </p>
                     <Button
                       type="button"
                       variant="outline"
@@ -1705,7 +1801,7 @@ export default function ItemFormModal({
             )}
           </div>
 
-          <DialogFooter className="wizard-footer pt-8 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+          <DialogFooter className="wizard-footer flex-shrink-0 border-t border-slate-200 pt-4 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
             <Button variant="outline" onClick={handleClose} disabled={isSaving}>Cancel</Button>
             {((item && item.status !== 'draft') || onSaveDraft) && (
               <Button

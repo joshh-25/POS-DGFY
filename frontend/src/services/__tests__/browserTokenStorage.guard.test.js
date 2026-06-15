@@ -1,19 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 
-const guardedFiles = [
-  'frontend/src/services/authService.js',
-  'frontend/src/services/api.js',
-  'frontend/src/services/dgfyAuthService.js',
-  'frontend/src/services/adminService.js',
-  'frontend/src/main.jsx',
-  'frontend/Pages/AcceptInvite.jsx',
-  'frontend/apps/store/src/StorefrontApp.jsx',
-  'frontend/apps/store/src/HospitalityBookingPanel.jsx'
+const guardedRoots = [
+  'frontend/src',
+  'frontend/Pages',
+  'frontend/apps/store/src'
 ];
 
 const forbiddenPatterns = [
@@ -23,12 +18,41 @@ const forbiddenPatterns = [
   /sessionStorage\.getItem\(['"`]admin_token['"`]/
 ];
 
+const shouldScanFile = (filePath) => (
+  /\.(js|jsx)$/.test(filePath)
+  && !filePath.includes('__tests__')
+  && !/\.test\.(js|jsx)$/.test(filePath)
+  && !/\.spec\.(js|jsx)$/.test(filePath)
+);
+
+const listSourceFiles = (relativeRoot) => {
+  const absoluteRoot = resolve(repoRoot, relativeRoot);
+  const files = [];
+  const visit = (directory) => {
+    for (const entry of readdirSync(directory)) {
+      const absolutePath = resolve(directory, entry);
+      const stat = statSync(absolutePath);
+      if (stat.isDirectory()) {
+        if (['node_modules', 'dist', 'build', 'coverage'].includes(entry)) continue;
+        visit(absolutePath);
+        continue;
+      }
+      if (stat.isFile() && shouldScanFile(absolutePath)) {
+        files.push(absolutePath);
+      }
+    }
+  };
+  visit(absoluteRoot);
+  return files;
+};
+
 describe('browser token storage guard', () => {
   it('does not persist privileged session tokens in browser-readable storage', () => {
     const violations = [];
+    const guardedFiles = guardedRoots.flatMap(listSourceFiles);
 
     for (const file of guardedFiles) {
-      const source = readFileSync(resolve(repoRoot, file), 'utf8');
+      const source = readFileSync(file, 'utf8');
       for (const pattern of forbiddenPatterns) {
         if (pattern.test(source)) {
           violations.push(`${file}: ${pattern}`);

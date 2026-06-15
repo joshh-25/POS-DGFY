@@ -15,9 +15,9 @@ const STORE_SETTINGS = [
     },
     {
         setting_key: 'store_is_visible',
-        setting_value: 'true',
+        setting_value: 'false',
         data_type: 'boolean',
-        description: 'Controls if tenant appears in public store discovery'
+        description: 'Controls whether tenant appears in public discovery and public storefront profile reads'
     },
     {
         setting_key: 'pos_open_status',

@@ -7,6 +7,7 @@ const getUserTenantMappingModel = () => dbStore.get('UserTenantMapping');
 const getPaymentModel = () => dbStore.get('Payment');
 const getEngagementEventModel = () => dbStore.get('EngagementEvent');
 const getAiUsageLogModel = () => dbStore.get('AiUsageLog');
+const getTenantAdminAuditLogModel = () => dbStore.get('TenantAdminAuditLog');
 
 const COMPLIANCE_TRANSITIONS = Object.freeze({
     non_compliant_active: new Set(['non_compliant_active', 'compliant_pending']),
@@ -52,6 +53,7 @@ export const tenantAdminRepository = {
                 'id',
                 'name',
                 'domain',
+                'db_name',
                 'company_token',
                 'status',
                 'admin_email',
@@ -101,6 +103,21 @@ export const tenantAdminRepository = {
             { setting_value: String(value) },
             { where: { setting_key: key } }
         );
+    },
+    createTenantAdminAuditLog(payload, options = {}) {
+        const TenantAdminAuditLog = getTenantAdminAuditLogModel();
+        return TenantAdminAuditLog.create(payload, options);
+    },
+    listTenantAdminAuditLogs(tenantId, { limit = 20 } = {}) {
+        const TenantAdminAuditLog = getTenantAdminAuditLogModel();
+        return TenantAdminAuditLog.findAll({
+            where: {
+                tenant_id: tenantId,
+                action: 'capability_update'
+            },
+            order: [['created_at', 'DESC']],
+            limit: Math.min(Math.max(Number.parseInt(limit, 10) || 20, 1), 100)
+        });
     }
 };
 

@@ -1,6 +1,6 @@
 import React, { Suspense, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
+import { HashRouter, Link, Route, Routes } from 'react-router-dom';
 import TerminalPage from '../../../src/features/pos/pages/TerminalPage.jsx';
 import ErrorBoundary from '../../../src/components/common/ErrorBoundary.jsx';
 import GlobalApiErrorListener from '../../../src/components/common/GlobalApiErrorListener.jsx';
@@ -8,6 +8,8 @@ import { PermissionProvider } from '../../../src/store/PermissionContext.jsx';
 import { WorkflowModeProvider } from '../../../src/features/settings/WorkflowModeContext.jsx';
 import { Toaster } from '@/components/ui/sonner';
 import { buildSkupervisorPath } from '../../../src/features/pos/utils/skupervisorHandoff.js';
+import { setBrowserSession } from '../../../src/services/browserSession.js';
+import { resolveApiBaseUrl } from '../../../src/utils/runtimeConfig.js';
 import '../../../src/index.css';
 
 function PosRouteNotFound() {
@@ -51,6 +53,7 @@ function SkupervisorSalesRedirect() {
 
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/';
 const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`;
+const runtimeApiBaseUrl = resolveApiBaseUrl(import.meta.env, typeof window !== 'undefined' ? window.location : undefined);
 
 const registerPosServiceWorker = async () => {
   if (typeof window === 'undefined') return;
@@ -73,31 +76,62 @@ const registerPosServiceWorker = async () => {
   }
 };
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <PermissionProvider>
-        <WorkflowModeProvider>
-          <BrowserRouter>
-            <GlobalApiErrorListener />
-            <Toaster position="top-right" />
-            <Suspense fallback={<div className="min-h-screen bg-slate-100 p-6 text-sm text-slate-500">Loading...</div>}>
-              <Routes>
-                <Route
-                  path="/sales"
-                  element={<SkupervisorSalesRedirect />}
-                />
-                <Route path="/" element={<TerminalPage />} />
-                <Route path="/terminal" element={<TerminalPage />} />
-                <Route path="/login" element={<TerminalPage />} />
-                <Route path="*" element={<PosRouteNotFound />} />
-              </Routes>
-            </Suspense>
-          </BrowserRouter>
-        </WorkflowModeProvider>
-      </PermissionProvider>
-    </ErrorBoundary>
-  </React.StrictMode>
-);
+const mountApp = () => {
+  ReactDOM.createRoot(document.getElementById('root')).render(
+    <React.StrictMode>
+      <ErrorBoundary>
+        <HashRouter>
+          <PermissionProvider>
+            <WorkflowModeProvider>
+              <GlobalApiErrorListener />
+              <Toaster position="top-right" />
+              <Suspense fallback={<div className="min-h-screen bg-slate-100 p-6 text-sm text-slate-500">Loading...</div>}>
+                <Routes>
+                  <Route
+                    path="/sales"
+                    element={<SkupervisorSalesRedirect />}
+                  />
+                  <Route path="/" element={<TerminalPage />} />
+                  <Route path="/terminal" element={<TerminalPage />} />
+                  <Route path="/login" element={<TerminalPage />} />
+                  <Route path="*" element={<PosRouteNotFound />} />
+                </Routes>
+              </Suspense>
+            </WorkflowModeProvider>
+          </PermissionProvider>
+        </HashRouter>
+      </ErrorBoundary>
+    </React.StrictMode>
+  );
+};
+
+if (import.meta.env.DEV) {
+  (async () => {
+    const companyToken = 'token-original';
+    try {
+      window.localStorage.setItem('pos_terminal_identity_v1', 'COUNTER-01');
+
+      const response = await fetch(`${runtimeApiBaseUrl}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-company-token': companyToken
+        },
+        body: JSON.stringify({ email: 'admin@test.com', password: 'Admin123!' })
+      });
+      const body = await response.json().catch(() => null);
+      if (response.ok && body?.success && body?.data?.token) {
+        setBrowserSession({ token: body.data.token, companyToken });
+        window.dispatchEvent(new CustomEvent('auth:login'));
+      }
+    } catch {
+      // Local POS auto-login is best-effort only.
+    } finally {
+      mountApp();
+    }
+  })();
+} else {
+  mountApp();
+}
 
 registerPosServiceWorker();

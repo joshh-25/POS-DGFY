@@ -154,7 +154,7 @@ npm run dev:store
 
 - Skupervisor: `http://localhost:5173/`
 - POS: `http://localhost:5174/`
-- Storefront discovery: `http://localhost:5175/tenant-store`
+- Storefront discovery: `http://localhost:5175/map-dgfy`
 - Backend health: `http://localhost:5000/health`
 
 ### 10. Verify Login/API Readiness
@@ -245,12 +245,6 @@ APP_URL=http://localhost:5173
 FRONTEND_URL=http://localhost:5173
 
 # Storefront defaults for newly activated tenants
-STOREFRONT_DEFAULT_LOCATION_NAME=Main Branch
-STOREFRONT_DEFAULT_LOCATION_ADDRESS=Iloilo City
-STOREFRONT_DEFAULT_LATITUDE=10.699817
-STOREFRONT_DEFAULT_LONGITUDE=122.559893
-STOREFRONT_DEFAULT_DELIVERY_RADIUS_KM=5
-STOREFRONT_DEFAULT_WAIT_MINUTES=15
 
 # Payments are off by default for local development
 PAYMENTS_ENABLED=false
@@ -416,8 +410,8 @@ Local URLs:
 - Backend API: `http://localhost:5000/api/v1`
 - Skupervisor app: `http://localhost:5173/`
 - POS app: `http://localhost:5174/`
-- Storefront discovery: `http://localhost:5175/tenant-store`
-- Tenant storefront page: `http://localhost:5175/tenant-store/<slug>`
+- Storefront discovery: `http://localhost:5175/map-dgfy`
+- Tenant storefront page: `http://localhost:5175/<slug>`
 
 ## Current Feature Flags And Rollout Defaults
 

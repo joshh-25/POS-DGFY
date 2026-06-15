@@ -94,6 +94,10 @@ export default (sequelize) => sequelize.define('CommercePaymentSession', {
     allowNull: false,
     defaultValue: 0
   },
+  fee_policy: {
+    type: DataTypes.JSON,
+    allowNull: true
+  },
   tenant_transfer_merchant_id: {
     type: DataTypes.STRING(120),
     allowNull: true

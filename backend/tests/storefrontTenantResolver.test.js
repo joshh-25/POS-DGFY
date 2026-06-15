@@ -35,7 +35,51 @@ beforeAll(async () => {
 describe('storefrontTenantResolver', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        getStorefrontDiscoveryCacheVersionMock.mockReturnValue(1);
+        getStorefrontDiscoverySharedSignatureMock.mockResolvedValue('1:1');
         clearStorefrontTenantResolverCache();
+    });
+
+    it('resolves tenant from slug using index rows', async () => {
+        findAllMock.mockResolvedValue([
+            {
+                tenant_id: 'tenant-1',
+                tenant_name: 'Acme',
+                tenant_company_token: 'secret-token',
+                slug: 'acme-store'
+            }
+        ]);
+
+        const result = await resolveTenantByStoreSlug('acme-store');
+        expect(result).toEqual({
+            id: 'tenant-1',
+            name: 'Acme',
+            company_token: 'secret-token'
+        });
+        expect(reconcileStorefrontDiscoveryIndexMock).not.toHaveBeenCalled();
+    });
+
+    it('runs one-time repair reconcile when index is empty', async () => {
+        findAllMock
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([
+                {
+                    tenant_id: 'tenant-2',
+                    tenant_name: 'Bravo',
+                    tenant_company_token: 'token-2',
+                    slug: 'bravo'
+                }
+            ]);
+        reconcileStorefrontDiscoveryIndexMock.mockResolvedValue({ status: 'healthy' });
+
+        const result = await resolveTenantByStoreSlug('bravo');
+        expect(reconcileStorefrontDiscoveryIndexMock).toHaveBeenCalledTimes(1);
+        expect(reconcileStorefrontDiscoveryIndexMock).toHaveBeenCalledWith();
+        expect(result).toEqual({
+            id: 'tenant-2',
+            name: 'Bravo',
+            company_token: 'token-2'
+        });
     });
 
     it('reconciles and retries once when the requested slug is missing from the warm cache', async () => {

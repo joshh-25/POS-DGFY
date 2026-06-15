@@ -1,4 +1,4 @@
-﻿import Joi from 'joi';
+import Joi from 'joi';
 import { WORKFLOW_MODE_VALUES } from '../modules/shared/constants/workflowModes.js';
 import {
   CUSTOMER_ACCESS_MODES,

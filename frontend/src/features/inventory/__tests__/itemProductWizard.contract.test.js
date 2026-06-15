@@ -77,6 +77,29 @@ describe('Item/Product wizard contracts', () => {
     expect(indexCssSource).toContain('.wizard-core-typography .wizard-footer button');
   });
 
+  it('keeps item and product create/edit modal dimensions fixed to the largest wizard frame', () => {
+    const itemFormSource = readFrontendFile('Components/items/ItemFormModal.jsx');
+    const productWizardSource = readFrontendFile('Components/products/ProductCreateWizard.jsx');
+    const indexCssSource = readFrontendFile('src/index.css');
+
+    expect(itemFormSource).toContain('DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography pb-0"');
+    expect(productWizardSource).toContain('DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography"');
+    expect(itemFormSource).toContain('DialogHeader className="flex-shrink-0"');
+    expect(productWizardSource).toContain('DialogHeader className="flex-shrink-0"');
+    expect(itemFormSource).toContain('wizard-step-content flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6');
+    expect(productWizardSource).toContain('wizard-step-content flex-1 overflow-y-auto py-4');
+    expect(itemFormSource).toContain('wizard-footer flex-shrink-0 border-t border-slate-200 pt-4 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end');
+    expect(productWizardSource).toContain('wizard-footer flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between');
+    expect(indexCssSource).toContain('width: min(95vw, 1100px) !important;');
+    expect(indexCssSource).toContain('max-width: min(95vw, 1100px) !important;');
+    expect(indexCssSource).toContain('height: 90vh;');
+    expect(indexCssSource).toContain('max-height: 90vh !important;');
+    expect(indexCssSource).toContain('@media (max-width: 640px)');
+    expect(itemFormSource).not.toContain('w-[95vw]');
+    expect(productWizardSource).not.toContain('w-[95vw]');
+    expect(itemFormSource).not.toContain('max-h-[90vh] max-w-4xl overflow-y-auto pb-6');
+  });
+
   it('uses expanded dropdown inventory data as SKU suggestion seed for both item and product wizards', () => {
     const itemsPageSource = readFrontendFile('src/features/inventory/pages/ItemsPage.jsx');
 
@@ -112,6 +135,66 @@ describe('Item/Product wizard contracts', () => {
     expect(itemsPageSource).toContain('throw error;');
   });
 
+  it('uses mode-derived product wizard steps with POS setup second and F&B manufacturing steps removed', () => {
+    const productWizardSource = readFrontendFile('Components/products/ProductCreateWizard.jsx');
+
+    expect(productWizardSource).toContain('PRODUCT_WIZARD_STEP_DEFINITIONS');
+    expect(productWizardSource).toContain("key: 'basic_info'");
+    expect(productWizardSource).toContain("key: 'pos_setup'");
+    expect(productWizardSource.indexOf("key: 'basic_info'")).toBeLessThan(productWizardSource.indexOf("key: 'pos_setup'"));
+    expect(productWizardSource.indexOf("key: 'pos_setup'")).toBeLessThan(productWizardSource.indexOf("key: 'recipe_ingredients'"));
+    expect(productWizardSource).toContain("key: 'physical_properties'");
+    expect(productWizardSource).toContain("excludeModes: ['fnb']");
+    expect(productWizardSource).toContain("key: 'quality_control'");
+    expect(productWizardSource).toContain('resolveProductWizardSteps');
+    expect(productWizardSource).toContain("filter((definition) => !(definition.excludeModes || []).includes(normalizedMode))");
+  });
+
+  it('clears manufacturing-only product wizard data for F&B saves without changing other modes', () => {
+    const productWizardSource = readFrontendFile('Components/products/ProductCreateWizard.jsx');
+
+    expect(productWizardSource).toContain('const clearFnbManufacturingFields = (payload, workflowMode) =>');
+    expect(productWizardSource).toContain("normalizeWorkflowMode(workflowMode) !== 'fnb'");
+    expect(productWizardSource).toContain('physical_properties: {}');
+    expect(productWizardSource).toContain('quality_control: {}');
+    expect(productWizardSource).toContain('const draftData = clearFnbManufacturingFields');
+    expect(productWizardSource).toContain('const finalData = clearFnbManufacturingFields');
+    expect(productWizardSource).toContain('return clearFnbManufacturingFields(sanitized, workflowMode);');
+  });
+
+  it('wires the shared step navigator into every multi-step modal surface', () => {
+    const productWizardSource = readFrontendFile('Components/products/ProductCreateWizard.jsx');
+    const poWizardSource = readFrontendFile('Components/po/POCreateWizard.jsx');
+    const csvImportSource = readFrontendFile('Components/items/CSVImportModal.jsx');
+    const supplierImportSource = readFrontendFile('Components/suppliers/SupplierImportModal.jsx');
+    const onboardingSource = readFrontendFile('src/features/onboarding/components/OnboardingSetupModal.jsx');
+
+    [productWizardSource, poWizardSource, csvImportSource, supplierImportSource, onboardingSource].forEach((source) => {
+      expect(source).toContain('WizardStepNavigator');
+    });
+
+    expect(productWizardSource).toContain('ariaLabel="Product wizard steps"');
+    expect(poWizardSource).toContain('ariaLabel="Purchase order wizard steps"');
+    expect(csvImportSource).toContain('ariaLabel="CSV import steps"');
+    expect(supplierImportSource).toContain('ariaLabel="Supplier import steps"');
+    expect(onboardingSource).toContain('ariaLabel="Tenant onboarding setup steps"');
+    expect(csvImportSource).toContain('disabledReason: \'Validate a CSV file before opening preview.\'');
+    expect(supplierImportSource).toContain('disabledReason: \'Confirm the import before opening results.\'');
+    expect(onboardingSource).toContain('maxReachableStepIndex');
+  });
+
+  it('preserves Storefront branch availability when saving item and product drafts', () => {
+    const itemsPageSource = readFrontendFile('src/features/inventory/pages/ItemsPage.jsx');
+
+    expect(itemsPageSource).toContain('const applyStorefrontLocationAvailabilityPatch = async (item, rows = []) =>');
+    expect(itemsPageSource).toContain('storefront_location_availability: storefrontLocationAvailabilityPatch = []');
+    expect(itemsPageSource).toContain('savedProduct = await createItemDraft(productPayload);');
+    expect(itemsPageSource).toContain('await applyStorefrontLocationAvailabilityPatch(savedProduct || editingProduct, storefrontLocationAvailabilityPatch);');
+    expect(itemsPageSource).toContain('const savedDraft = await createItemDraft(draftPayload);');
+    expect(itemsPageSource).toContain('await applyStorefrontLocationAvailabilityPatch(savedDraft, storefrontLocationAvailabilityPatch);');
+    expect(itemsPageSource).not.toContain('delete draftPayload.storefront_location_availability;');
+  });
+
   it('guards save actions and keeps wizard footers responsive', () => {
     const itemFormSource = readFrontendFile('Components/items/ItemFormModal.jsx');
     const productWizardSource = readFrontendFile('Components/products/ProductCreateWizard.jsx');
@@ -126,8 +209,10 @@ describe('Item/Product wizard contracts', () => {
     expect(productWizardSource).toContain('if (savingActionRef.current) return;');
 
     expect(productWizardSource).toContain('wizard-footer flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between');
-    expect(productWizardSource).toContain('flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end');
-    expect(itemFormSource).toContain('wizard-footer pt-8 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end');
+    expect(productWizardSource).toContain('order-1 flex flex-col gap-2 sm:order-none sm:flex-row sm:flex-wrap sm:justify-end');
+    expect(productWizardSource).toContain('className="order-1 w-full bg-teal-600 hover:bg-teal-700 sm:order-none sm:w-auto"');
+    expect(productWizardSource).toContain('className="order-3 w-full sm:order-none sm:w-auto"');
+    expect(itemFormSource).toContain('wizard-footer flex-shrink-0 border-t border-slate-200 pt-4 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end');
 
     expect(itemFormSource).toContain('disabled={isSaving}');
     expect(productWizardSource).toContain('disabled={isSaving}');
@@ -141,25 +226,43 @@ describe('Item/Product wizard contracts', () => {
     const itemFormSource = readFrontendFile('Components/items/ItemFormModal.jsx');
     const productPosSetupSource = readFrontendFile('Components/products/wizard/POSSetupStep.jsx');
     const itemsPageSource = readFrontendFile('src/features/inventory/pages/ItemsPage.jsx');
+    const storefrontImageCarouselSource = readFrontendFile('Components/items/StorefrontImageCarousel.jsx');
 
     expect(itemFormSource).toContain('Add Item Images');
     expect(itemFormSource).toContain('Remove All Item Images');
-    expect(itemFormSource).toContain('Set first');
+    expect(itemFormSource).toContain('STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5');
+    expect(itemFormSource).toContain('parseStorefrontImageGallery');
+    expect(itemFormSource).toContain('image slots remaining');
     expect(itemFormSource).toContain('No item image uploaded yet.');
     expect(itemFormSource).toContain('Enable in Storefront');
     expect(itemFormSource).toContain('Disable in Storefront');
+    expect(itemFormSource).toContain('<StorefrontImageCarousel');
+    expect(itemFormSource).toContain('variant="wizard"');
 
     expect(productPosSetupSource).toContain('Add Item Images');
     expect(productPosSetupSource).toContain('Remove All Item Images');
-    expect(productPosSetupSource).toContain('Set first');
+    expect(productPosSetupSource).toContain('STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5');
+    expect(productPosSetupSource).toContain('parseStorefrontImageGallery');
+    expect(productPosSetupSource).toContain('image slots remaining');
     expect(productPosSetupSource).toContain('No item image uploaded yet.');
     expect(productPosSetupSource).toContain('Enable in Storefront');
     expect(productPosSetupSource).toContain('Disable in Storefront');
+    expect(productPosSetupSource).toContain('<StorefrontImageCarousel');
+    expect(productPosSetupSource).toContain('variant="wizard"');
 
     expect(itemsPageSource).toContain('Item image updated for');
     expect(itemsPageSource).toContain('Primary storefront image updated for');
-    expect(itemsPageSource).toContain('deleteStorefrontCatalogGalleryImage');
+    expect(itemsPageSource).toContain('STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5');
+    expect(itemsPageSource).toContain('parseStorefrontImageGallery');
+    expect(itemsPageSource).toContain('updateStorefrontCatalogGallery(itemId, nextGallery)');
     expect(itemsPageSource).toContain('Failed to upload item image');
+    expect(itemsPageSource).toContain('<StorefrontImageCarousel');
+    expect(itemsPageSource).toContain('variant="table"');
+    expect(storefrontImageCarouselSource).toContain('Set first');
+    expect(storefrontImageCarouselSource).toContain('Remove');
+    expect(storefrontImageCarouselSource).toContain('aria-label="Previous item image"');
+    expect(storefrontImageCarouselSource).toContain('aria-label="Next item image"');
+    expect(storefrontImageCarouselSource).toContain('item-carousel-dot');
   });
 
   it('uses mode-aware item taxonomy and filtered UOM options in the item form', () => {

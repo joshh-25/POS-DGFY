@@ -79,12 +79,12 @@ export default function POSBarcodeScanner({
         setScannerModalOpen(true);
     };
 
-    const closeScannerModal = useCallback(() => {
+    const closeScannerModal = () => {
         if (scannerLoading) return;
         scannerBufferRef.current = '';
         setScannerModalOpen(false);
         setScannerCode('');
-    }, [scannerLoading]);
+    };
 
     useEffect(() => {
         if (!scannerModalOpen || sessionLocked || scannerLoading) return undefined;
@@ -108,6 +108,7 @@ export default function POSBarcodeScanner({
                     scannerBufferTimerRef.current = null;
                 }
                 setScannerCode(bufferedCode);
+                submitScan(bufferedCode);
                 return;
             }
 
@@ -143,7 +144,7 @@ export default function POSBarcodeScanner({
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [closeScannerModal, scannerModalOpen]);
+    }, [scannerLoading, scannerModalOpen]);
 
     return (
         <div data-pos-barcode-scan-form="true" className="contents">

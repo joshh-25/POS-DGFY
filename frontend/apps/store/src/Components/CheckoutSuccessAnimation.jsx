@@ -48,26 +48,26 @@ export const CheckoutSuccessAnimation = () => {
           }
         `}
       </style>
-      
+
       {/* Animated SVG Checkmark */}
       <svg width="100" height="100" viewBox="0 0 52 52" style={{ overflow: 'visible' }}>
         {/* Circle */}
-        <circle 
-          cx="26" cy="26" r="25" 
-          fill="none" 
-          stroke="#1a4e8d" 
+        <circle
+          cx="26" cy="26" r="25"
+          fill="none"
+          stroke="#1a4e8d"
           strokeWidth="3"
           strokeDasharray="157"
           strokeDashoffset="157"
           style={{ animation: 'drawCircle 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards' }}
         />
         {/* Checkmark Path */}
-        <path 
-          fill="none" 
-          stroke="#1a4e8d" 
-          strokeWidth="3" 
-          strokeLinecap="round" 
-          strokeLinejoin="round" 
+        <path
+          fill="none"
+          stroke="#1a4e8d"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
           d="M14.1 27.2l7.1 7.2 16.7-16.8"
           strokeDasharray="36"
           strokeDashoffset="36"
@@ -81,18 +81,18 @@ export const CheckoutSuccessAnimation = () => {
         opacity: 0,
         animation: showText ? 'slideUpFade 0.5s ease-out forwards' : 'none'
       }}>
-        <h2 style={{ 
-          margin: 0, 
-          fontSize: 28, 
-          fontWeight: 900, 
+        <h2 style={{
+          margin: 0,
+          fontSize: 28,
+          fontWeight: 900,
           color: '#0f172a',
           letterSpacing: '-0.02em'
         }}>
           Order Placed Successfully!
         </h2>
-        <p style={{ 
-          marginTop: 12, 
-          fontSize: 15, 
+        <p style={{
+          marginTop: 12,
+          fontSize: 15,
           color: '#1a4e8d',
           fontWeight: 600,
           animation: showText ? 'pulseText 2s infinite ease-in-out' : 'none',

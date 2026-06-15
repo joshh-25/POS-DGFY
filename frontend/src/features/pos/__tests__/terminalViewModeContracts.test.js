@@ -44,6 +44,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("'incoming_queue'");
     expect(terminalPageContent).toContain("'location_scope'");
     expect(terminalPageContent).toContain("'shift_controls'");
+    expect(terminalPageContent).toContain("'reports'");
   });
 
   it('blocks sidebar view switching while terminal is locked', () => {
@@ -73,7 +74,7 @@ describe('POS terminal view-mode contracts', () => {
 
   it('keeps cashier scroll-zone badge contextual to desktop sidebar usage', () => {
     expect(terminalWorkspaceSidebarContent).toContain('showScrollZoneBadge = true');
-    expect(terminalWorkspaceSidebarContent).not.toContain('Scroll zone');
+    expect(terminalWorkspaceSidebarContent).toContain('{showScrollZoneBadge && (');
     expect(terminalPageLayoutContent).toContain('showScrollZoneBadge={false}');
     expect(terminalPageLayoutContent).toContain('showScrollZoneBadge');
   });
@@ -91,10 +92,26 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsWorkspaceContent).toContain("title: 'Shift Controls'");
     expect(terminalOperationsWorkspaceContent).toContain("title: 'Cash Drawer Event'");
     expect(terminalOperationsWorkspaceContent).toContain("title: 'Close Shift'");
+    expect(terminalOperationsWorkspaceContent).toContain("title: 'Report'");
     expect(terminalOperationsWorkspaceContent).toContain("title: 'Sales Today'");
     expect(terminalOperationsWorkspaceContent).toContain("title: 'Terminal Setup Context'");
+    expect(terminalOperationsWorkspaceContent).toContain("case 'reports'");
     expect(terminalOperationsWorkspaceContent).toContain("case 'incoming_queue'");
     expect(terminalOperationsWorkspaceContent).toContain("case 'terminal_setup'");
+  });
+
+  it('adds report navigation with horizontal report tabs', () => {
+    expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-reports"');
+    expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode('reports')}");
+    expect(terminalOperationsWorkspaceContent).toContain('Daily Total Reports');
+    expect(terminalOperationsWorkspaceContent).toContain('Amount Charged');
+    expect(terminalOperationsWorkspaceContent).toContain('Discount Amount');
+    expect(terminalOperationsWorkspaceContent).toContain('Net Profit');
+    expect(terminalOperationsWorkspaceContent).toContain('Popular Item');
+    expect(terminalOperationsWorkspaceContent).toContain('Transaction');
+    expect(terminalOperationsWorkspaceContent).toContain("setSlideDirection(nextTabIndex > activeTabIndex ? 'forward' : 'backward')");
+    expect(terminalOperationsWorkspaceContent).toContain('data-slide-direction={slideDirection}');
+    expect(terminalOperationsWorkspaceContent).toContain('transition-transform duration-300 ease-out');
   });
 
   it('keeps receipt preview empty-state branch with history fallback action', () => {
@@ -109,8 +126,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(posHistoryPanelContent).toContain('All Sources');
     expect(posHistoryPanelContent).toContain('Online Store');
     expect(posHistoryPanelContent).not.toContain('Online (Legacy)');
-    expect(posHistoryPanelContent).toContain('aria-label={`Open actions for ${row.invoice_number || row.pos_transaction_id}`}');
-    expect(posHistoryPanelContent).toContain('data-testid={`pos-history-row-open-sales-report-${row.pos_transaction_id}`}');
+    expect(posHistoryPanelContent).toContain('aria-label={`View receipt for ${row.invoice_number || row.pos_transaction_id}`}');
     expect(posHistoryPanelContent).toContain('<caption className="sr-only">POS transaction history with receipt and sales report actions</caption>');
     expect(posHistoryPanelContent).toContain('event.stopPropagation();');
   });
@@ -156,7 +172,7 @@ describe('POS terminal view-mode contracts', () => {
   it('keeps scanner wedge capture and routed ticket feedback out of cart mutation', () => {
     expect(posCheckoutTerminalContent).toContain('POSBarcodeScanner');
     expect(posBarcodeScannerContent).toContain('scannerBufferRef');
-    expect(posBarcodeScannerContent).toContain('setScannerCode(nextCode);');
+    expect(posBarcodeScannerContent).toContain('submitScan(bufferedCode);');
     expect(posBarcodeScannerContent).toContain("result?.status === 'routed'");
     expect(posBarcodeScannerContent).toContain("tone: 'info'");
     expect(posBarcodeScannerContent).toContain('toast.info(message);');
@@ -196,19 +212,21 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalLockDrawerContent).toContain('registryEnforced ?');
     expect(terminalLockDrawerContent).toContain('Select configured terminal');
     expect(terminalLockDrawerContent).toContain('list="terminal-id-options"');
-    expect(terminalPageLayoutContent).not.toContain('normalizedActiveTerminalId');
+    expect(terminalPageLayoutContent).toContain('normalizedActiveTerminalId');
+    expect(terminalPageLayoutContent).toContain("normalizedActiveTerminalId || 'Not selected'");
     expect(terminalPageLayoutContent).not.toContain('Terminal identity: <span className="font-semibold text-slate-900">DGFY</span>');
     expect(posCheckoutTerminalContent).toContain('terminalId = \'\'');
     expect(posCheckoutTerminalContent).toContain('const terminalIdentityLabel = normalizedTerminalId');
     expect(posCheckoutTerminalContent).toContain('`Terminal ${normalizedTerminalId}`');
-    expect(posCheckoutTerminalContent).toContain('buildPosCheckoutPayload');
-    expect(posCheckoutTerminalContent).toContain('terminalId: normalizedTerminalId');
+    expect(posCheckoutTerminalContent).toContain('terminal_id: normalizedTerminalId || undefined');
   });
 
-  it('supports history/receipt handoff into unified sales report with preserved query params', () => {
+  it('keeps receipt modal sales-report handoff while history rows stay receipt-focused', () => {
     expect(posCheckoutTerminalContent).toContain('openInSalesReport');
-    expect(posHistoryPanelContent).toContain('data-testid="pos-history-open-sales-report"');
-    expect(posHistoryPanelContent).toContain('data-testid={`pos-history-row-open-sales-report-${row.pos_transaction_id}`}');
+    expect(posHistoryPanelContent).not.toContain('data-testid="pos-history-open-sales-report"');
+    expect(posHistoryPanelContent).not.toContain('data-testid={`pos-history-row-open-sales-report-${row.pos_transaction_id}`}');
+    expect(posHistoryPanelContent).toContain('<span>View</span>');
+    expect(posHistoryPanelContent).toContain('<span>Receipt</span>');
     expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-open-sales-report"');
     expect(posCheckoutTerminalContent).toContain("params.set('source', 'POS');");
     expect(posCheckoutTerminalContent).toContain("params.set('pos_order_source', historyOrderSource);");
@@ -222,9 +240,8 @@ describe('POS terminal view-mode contracts', () => {
 
   it('uses adaptive responsive layout primitives and avoids hard-coded viewport math', () => {
     expect(terminalPageLayoutContent).toContain('min-h-[100dvh]');
-    expect(terminalPageLayoutContent).toContain("xl:grid ${effectiveSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[244px_minmax(0,1fr)]'}");
     expect(posCheckoutTerminalContent).toContain('checkoutGridClassName');
-    expect(posCheckoutTerminalContent).not.toContain('splitPaneScrollClassName');
+    expect(posCheckoutTerminalContent).toContain('checkoutPaneClassName');
     expect(posCheckoutTerminalContent).not.toContain('calc(100vh-13.5rem)');
   });
 });

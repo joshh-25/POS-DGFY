@@ -21,94 +21,51 @@ import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
 // Guards every DDL path against invalid or maliciously crafted identifiers.
 const DB_NAME_PATTERN = /^sku_tenant_[a-z0-9]+_[a-z0-9]+$/;
 
-const readNumericEnv = (key, fallback, { min = Number.NEGATIVE_INFINITY, max = Number.POSITIVE_INFINITY } = {}) => {
-    const raw = process.env[key];
-    const value = Number(raw);
-    if (!Number.isFinite(value)) {
-        return fallback;
-    }
-    if (value < min || value > max) {
-        logger.warn('[Provisioning] Invalid storefront default env value; using fallback', {
-            key,
-            providedValue: raw,
-            min,
-            max,
-            fallback
-        });
-        return fallback;
-    }
-    return value;
-};
-
-const readTextEnv = (key, fallback) => {
-    const value = String(process.env[key] || '').trim();
-    return value || fallback;
-};
-
-const DEFAULT_STOREFRONT_LOCATION = Object.freeze({
-    name: readTextEnv('STOREFRONT_DEFAULT_LOCATION_NAME', 'Main Branch'),
-    address_line: readTextEnv('STOREFRONT_DEFAULT_LOCATION_ADDRESS', 'Iloilo City'),
-    latitude: readNumericEnv('STOREFRONT_DEFAULT_LATITUDE', 10.699817, { min: -90, max: 90 }),
-    longitude: readNumericEnv('STOREFRONT_DEFAULT_LONGITUDE', 122.559893, { min: -180, max: 180 }),
-    delivery_radius_km: readNumericEnv('STOREFRONT_DEFAULT_DELIVERY_RADIUS_KM', 5, { min: 0.1, max: 100 }),
-    current_wait_time_minutes: Math.round(readNumericEnv('STOREFRONT_DEFAULT_WAIT_MINUTES', 15, { min: 0, max: 240 }))
-});
-
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const ONBOARDING_STATE_SETTING_KEY = 'tenant_onboarding_state';
 const ONBOARDING_STARTED_AT_SETTING_KEY = 'tenant_onboarding_started_at';
 const ONBOARDING_COMPLETED_AT_SETTING_KEY = 'tenant_onboarding_completed_at';
 const ONBOARDING_PROGRESS_SETTING_KEY = 'tenant_onboarding_progress';
+const STORE_IS_VISIBLE_SETTING_KEY = 'store_is_visible';
 const CUSTOMER_ACCESS_MODE_SETTING_KEY = 'customer_access_mode';
 const INVENTORY_DISPLAY_MODE_SETTING_KEY = 'inventory_display_mode';
 const INVENTORY_LOW_STOCK_DISPLAY_THRESHOLD_SETTING_KEY = 'inventory_low_stock_display_threshold';
 
-const seedDefaultStorefrontLocation = async (tenantSequelize) => {
-    const { getTenantModels } = await import('../utils/tenantModelFactory.js');
-    const { TenantLocation } = getTenantModels(tenantSequelize);
-
-    if (!TenantLocation) {
-        return { status: 'skipped', reason: 'tenant_location_model_unavailable' };
-    }
-
-    const existingCount = await TenantLocation.count();
-    if (existingCount > 0) {
-        const currentPrimary = await TenantLocation.findOne({
-            where: {
-                is_active: true,
-                is_primary_storefront: true
-            }
-        });
-        if (!currentPrimary) {
-            const fallback = await TenantLocation.findOne({
-                where: { is_active: true },
-                order: [
-                    ['is_open', 'DESC'],
-                    ['updated_at', 'DESC'],
-                    ['location_id', 'DESC']
-                ]
-            });
-            if (fallback) {
-                await fallback.update({ is_primary_storefront: true });
-                return { status: 'updated_existing_primary', locationId: fallback.location_id || null };
+const buildRegisteredOnboardingProgress = () => ({
+    step_payloads: {
+        business_classification: {
+            legitimacy: {
+                registration_status: 'registered'
             }
         }
-        return { status: 'existing' };
+    },
+    classification_snapshot: {
+        payload: {
+            legitimacy: {
+                registration_status: 'registered'
+            }
+        }
+    },
+    checklist_snapshot: {
+        checklist: {
+            store_name_ready: true,
+            has_primary_storefront_location: false,
+            has_priced_starter_item: false
+        },
+        required_keys: [
+            'store_name_ready',
+            'has_primary_storefront_location',
+            'has_priced_starter_item'
+        ],
+        required_total: 3,
+        completed_required_count: 1,
+        is_ready: false,
+        missing_requirements: [
+            'has_primary_storefront_location',
+            'has_priced_starter_item'
+        ]
     }
-
-    const created = await TenantLocation.create({
-        ...DEFAULT_STOREFRONT_LOCATION,
-        is_open: true,
-        is_active: true,
-        is_primary_storefront: true,
-        allow_out_of_stock_sales: false,
-        supports_delivery: true,
-        supports_pickup: true,
-        supports_dine_in: true
-    });
-
-    return { status: 'created', locationId: created.location_id || null };
-};
+});
 
 const seedWorkflowModeSetting = async (tenantSequelize, workflowMode) => {
     const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
@@ -153,31 +110,7 @@ const seedDefaultOnboardingSettings = async (tenantSequelize) => {
         },
         {
             key: ONBOARDING_PROGRESS_SETTING_KEY,
-            value: JSON.stringify({
-                step_payloads: {},
-                checklist_snapshot: {
-                    checklist: {
-                        store_name_ready: true,
-                        has_active_location: false,
-                        has_primary_storefront_location: false,
-                        has_sellable_item: false
-                    },
-                    required_keys: [
-                        'store_name_ready',
-                        'has_active_location',
-                        'has_primary_storefront_location',
-                        'has_sellable_item'
-                    ],
-                    required_total: 4,
-                    completed_required_count: 1,
-                    is_ready: false,
-                    missing_requirements: [
-                        'has_active_location',
-                        'has_primary_storefront_location',
-                        'has_sellable_item'
-                    ]
-                }
-            }),
+            value: JSON.stringify(buildRegisteredOnboardingProgress()),
             dataType: 'json',
             description: 'Tenant onboarding progress and checklist snapshot'
         }
@@ -207,6 +140,13 @@ const seedDefaultOnboardingSettings = async (tenantSequelize) => {
 const seedDefaultCustomerAccessSettings = async (tenantSequelize) => {
     const defaults = [
         {
+            key: STORE_IS_VISIBLE_SETTING_KEY,
+            value: false,
+            dataType: 'boolean',
+            description: 'Controls whether the tenant appears in public discovery and public storefront profile reads',
+            overwriteExisting: true
+        },
+        {
             key: CUSTOMER_ACCESS_MODE_SETTING_KEY,
             value: DEFAULT_CUSTOMER_ACCESS_MODE,
             dataType: 'string',
@@ -231,7 +171,9 @@ const seedDefaultCustomerAccessSettings = async (tenantSequelize) => {
             `INSERT INTO system_settings (setting_key, setting_value, data_type, description, updated_at)
              VALUES (?, ?, ?, ?, NOW())
              ON DUPLICATE KEY UPDATE
-               setting_key = setting_key`,
+               ${setting.overwriteExisting === true
+                ? 'setting_value = VALUES(setting_value), data_type = VALUES(data_type), description = VALUES(description), updated_at = NOW()'
+                : 'setting_key = setting_key'}`,
             {
                 replacements: [
                     setting.key,
@@ -411,15 +353,6 @@ export const provisionTenant = async (options) => {
                 tenantId: uuid
             });
 
-            // 4.5 Seed a default primary storefront location so every active tenant
-            // immediately has a resolvable public storefront page.
-            const locationSeed = await seedDefaultStorefrontLocation(tenantSequelize);
-            logger.info('[Provisioning] Storefront location bootstrap completed', {
-                tenantId: uuid,
-                status: locationSeed.status,
-                locationId: locationSeed.locationId || null
-            });
-
             // 5. Update tenant status to active
             const Tenant = dbStore.get('Tenant');
             await Tenant.update({ status: 'active' }, { where: { id: uuid } });
@@ -432,8 +365,8 @@ export const provisionTenant = async (options) => {
                 logger.warn(`[Provisioning] Failed to create email-tenant mapping: ${mappingError.message}`);
             }
 
-            // 7. Bootstrap the storefront discovery index row immediately so
-            // the tenant slug route works right after registration/approval.
+            // 7. Run discovery bootstrap. New tenants default public-hidden, so
+            // this removes/skips the index row until the merchant opts in with a real pin.
             const storefrontSync = await syncStorefrontDiscoveryWithReliability({
                 tenantId: uuid,
                 source: 'tenant_provisioning_bootstrap'

@@ -1,4 +1,4 @@
-﻿import express from 'express';
+import express from 'express';
 import { authLimiter } from '../middleware/rateLimiter.js';
 import { authenticateAdmin } from '../middleware/auth.js';
 import { authenticateDgfyAccount } from '../middleware/dgfyAuth.js';

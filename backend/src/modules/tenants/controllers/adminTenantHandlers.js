@@ -8,6 +8,8 @@ import {
     getPricingSettingsUseCase,
     updatePricingSettingsUseCase,
     updateTenantUseCase,
+    updateTenantCapabilitiesUseCase,
+    listTenantCapabilityAuditLogsUseCase,
     deleteTenantUseCase,
     resubmitRegistrationUseCase,
     tenantAdminRepository
@@ -221,6 +223,54 @@ export const updateTenant = async (req, res) => {
         result,
         successMetadataResolver: () => ({
             tenant_id: req.params?.id || null
+        })
+    });
+    return sendUseCaseResult(res, result);
+};
+
+export const updateTenantCapabilities = async (req, res) => {
+    const result = await updateTenantCapabilitiesUseCase({
+        id: req.params?.id,
+        body: req.validatedData || req.body,
+        actor: {
+            username: req.admin?.username || req.user?.username || 'platform_admin'
+        },
+        metadata: {
+            request_id: req.requestId || req.headers['x-request-id'] || null,
+            ip_address: req.ip || null,
+            user_agent: req.get?.('user-agent') || req.headers['user-agent'] || null
+        }
+    });
+    await trackProductUsageFromResult({
+        req,
+        user: req.user,
+        eventType: 'admin_tenant_capabilities_updated',
+        surface: 'admin_tenants',
+        action: 'update_tenant_capabilities',
+        result,
+        successMetadataResolver: () => ({
+            tenant_id: req.params?.id || null,
+            keys: Object.keys(req.validatedData || req.body || {}).filter((key) => key !== 'reason')
+        })
+    });
+    return sendUseCaseResult(res, result);
+};
+
+export const listTenantCapabilityAuditLogs = async (req, res) => {
+    const result = await listTenantCapabilityAuditLogsUseCase({
+        id: req.params?.id,
+        limit: req.validatedQuery?.limit
+    });
+    await trackProductUsageFromResult({
+        req,
+        user: req.user,
+        eventType: 'admin_tenant_capability_audit_logs_viewed',
+        surface: 'admin_tenants',
+        action: 'list_tenant_capability_audit_logs',
+        result,
+        successMetadataResolver: (data) => ({
+            tenant_id: req.params?.id || null,
+            log_count: Array.isArray(data?.logs) ? data.logs.length : 0
         })
     });
     return sendUseCaseResult(res, result);

@@ -93,6 +93,58 @@ describe('tenantHandler email OTP invitation routing', () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
+  it('allows global DGFY account OTP requests without company token', async () => {
+    const req = {
+      path: '/api/v1/auth/email-otp/request',
+      headers: {},
+      body: {
+        purpose: 'dgfy_account_verification',
+        email: 'new-founder@example.test'
+      }
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn()
+    };
+    const next = jest.fn();
+
+    await tenantHandler(req, res, next);
+
+    expect(resolveInvitationTenantTokenByToken).not.toHaveBeenCalled();
+    expect(findTenantByToken).not.toHaveBeenCalled();
+    expect(dbRun).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'default',
+      tenantContextFailure: 'missing_token'
+    }), next);
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('still rejects tenant-scoped OTP requests without company token or invitation token', async () => {
+    const req = {
+      path: '/api/v1/auth/email-otp/request',
+      headers: {},
+      body: {
+        purpose: 'company_registration',
+        email: 'founder@example.test'
+      }
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn()
+    };
+    const next = jest.fn();
+
+    await tenantHandler(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      message: 'Company token is required for authentication.',
+      error_code: 'TENANT_TOKEN_REQUIRED'
+    }));
+  });
+
   it('recovers refresh-token tenant context from the signed refresh cookie when tenant context cookie is missing', async () => {
     const jwt = await import('jsonwebtoken');
     const refreshToken = jwt.default.sign({

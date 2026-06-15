@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveAssetOrigin, resolveAssetUrl } from '../assetUrl.js';
+import { resolveAppAssetUrl, resolveAssetOrigin, resolveAssetUrl } from '../assetUrl.js';
 
 describe('assetUrl utilities', () => {
   it('prefers VITE_ASSET_BASE_URL over API origins', () => {
@@ -32,5 +32,13 @@ describe('assetUrl utilities', () => {
       assetOrigin: 'https://api.surebizcorp.com'
     });
     expect(url).toBe('https://api.surebizcorp.com/uploads/pos-catalog/item-1.png');
+  });
+
+  it('resolves app-bundled assets against the desktop shell location', () => {
+    const url = resolveAppAssetUrl('/pos-items/coffee.jpg', {
+      baseHref: 'dgfypos://app/dist-apps/pos/index.html#/terminal'
+    });
+
+    expect(url).toBe('dgfypos://app/dist-apps/pos/pos-items/coffee.jpg');
   });
 });

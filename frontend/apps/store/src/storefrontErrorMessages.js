@@ -1,3 +1,5 @@
+import { getStorefrontAccessModeMessage } from '../../../src/utils/tenantCapabilityMessages.js';
+
 export const normalizeStorefrontErrorMessage = (error, fallback = 'Request failed.') => {
   if (error?.isNetworkError) {
     return 'Request failed before reaching API. Check store API proxy/CORS connectivity.';
@@ -7,6 +9,13 @@ export const normalizeStorefrontErrorMessage = (error, fallback = 'Request faile
   const baseMessage = String(error?.message || '').trim() || fallback;
   const details = error?.details || {};
   const reasonCode = String(details?.reason_code || '').trim().toUpperCase();
+
+  if (errorCode === 'CUSTOMER_ACCESS_MODE_BLOCKED') {
+    const effectiveMode = String(details?.effective_mode || details?.requested_mode || '').trim().toLowerCase();
+    const modeMessage = getStorefrontAccessModeMessage(effectiveMode);
+    if (modeMessage) return modeMessage;
+    return 'This Storefront action is not available in the current customer access mode.';
+  }
 
   if (reasonCode === 'FNB_RECIPE_INGREDIENT_SHORTFALL') {
     const product = details.product_name || 'Selected menu item';

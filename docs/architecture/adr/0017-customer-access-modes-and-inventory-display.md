@@ -42,6 +42,7 @@ Inventory display modes:
 
 ## Consequences
 - Storefront discovery and profile responses need additive access-mode metadata and cache invalidation after settings changes.
+- `store_is_visible=false` is stronger than Customer Access Mode: it hides the tenant from public discovery/map feeds and public storefront profile reads. Customer Access Mode applies only after the tenant is publicly visible.
 - Storefront catalog responses must continue hiding `cost_per_unit`; quantity fields must be normalized through inventory display policy instead of exposing raw stock by default.
 - Public Storefront catalog and checkout eligibility must read item-level storefront overrides when available. During additive rollout, a missing `storefront_catalog_overrides` table may fall back to the prior POS-derived policy with warning logging instead of returning `500`.
 - POS catalog responses and terminal eligibility must remain sourced from POS overrides only. Image upload/removal must not silently enable either POS or Storefront visibility.
@@ -77,7 +78,7 @@ Image replacement is also sequenced for deploy safety: POS and Storefront upload
 
 Storefront item media now supports an ordered gallery. The first uploaded image remains the primary `storefront_image_url` for backward compatibility, and the full customer-facing order is stored in `storefront_image_gallery`. Public catalog responses expose both `image_url` and `image_gallery`; older clients can continue rendering `image_url`, while F&B item details use `image_gallery` for carousel thumbnails and slide navigation.
 
-Inventory onboarding and item setup can upload multiple item images. Multi-image upload appends to the ordered gallery and preserves the existing first image as primary; if no gallery exists, the first accepted upload becomes primary. Item/product setup surfaces can promote any existing gallery image to the first/primary position and can remove one gallery image without clearing the whole gallery. Single-image upload remains backward-compatible replacement for older clients. Upload/removal still preserves `storefront_visible` and must not mutate POS menu image fields.
+Inventory onboarding and item setup can upload multiple item images, capped at 5 total Storefront item images per item. Multi-image upload appends to the ordered gallery and preserves the existing first image as primary; if no gallery exists, the first accepted upload becomes primary. Item/product setup surfaces can promote any existing gallery image to the first/primary position and can remove one gallery image without clearing the whole gallery. Single-image upload remains backward-compatible replacement for older clients. Upload/removal still preserves `storefront_visible` and must not mutate POS menu image fields.
 
 ## Addendum: Production Hardening And Default Enforcement (2026-05-04, updated 2026-05-15)
 
@@ -88,6 +89,10 @@ Public discovery index rows materialize Customer Access metadata (`customer_acce
 Settings updates, onboarding business-classification saves, tenant location changes, and storefront asset changes refresh storefront discovery after successful use-case results. Runtime schema readiness treats the discovery-index Customer Access migration and columns as required for environments that claim this rollout.
 
 Validation evidence must include targeted policy/settings/onboarding/store/service/discovery tests, Storefront helper tests, docs lint, architecture checks, Storefront build, SKUpervisor build, and whitespace diff checks before enabling the rollout broadly.
+
+## Addendum: Public Storefront Visibility Opt-In (2026-06-06)
+
+Newly provisioned tenants default to `store_is_visible=false`; provisioning must correct any migration-seeded `store_is_visible=true` value for the new tenant database before the discovery bootstrap runs and must not create a synthetic primary location from environment fallback coordinates. Onboarding and Settings are the supported merchant controls for opting into public exposure. When the switch is off, public discovery, map pins, third-party map feeds, and root-handle profile reads (`/:store_tenant_slug`) must not return the tenant. When the switch is on, discovery/profile publication still requires a valid active primary or legacy fallback tenant location with finite coordinates. Settings must warn when public visibility is enabled but no active primary pin exists, because publication may remain blocked until a real storefront pin is saved. Legacy `/store/:slug` and `/tenant-store/:slug` paths are compatibility routes and are not the canonical customer URL.
 
 ## Addendum: Storefront Price And Cost Boundary (2026-05-07)
 

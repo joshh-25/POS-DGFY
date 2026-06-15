@@ -1,26 +1,5 @@
-export const resolveAssetOrigin = (env = {}, windowOrigin = '') => {
-  const candidates = [
-    env.VITE_ASSET_BASE_URL,
-    env.VITE_API_BASE_URL,
-    env.VITE_API_URL,
-  ];
-
-  for (const candidate of candidates) {
-    const raw = String(candidate || '').trim();
-    if (!raw) continue;
-    if (raw.startsWith('/')) continue;
-
-    try {
-      const parsed = new URL(raw, windowOrigin || 'http://localhost');
-      if (!parsed.protocol.startsWith('http')) continue;
-      return parsed.origin;
-    } catch {
-      // Ignore invalid values and continue to next candidate.
-    }
-  }
-
-  return '';
-};
+import { resolveAssetOrigin } from './runtimeConfig.js';
+export { resolveAssetOrigin } from './runtimeConfig.js';
 
 const ASSET_ORIGIN = typeof window === 'undefined'
   ? ''
@@ -42,6 +21,31 @@ export const resolveAssetUrl = (value, options = {}) => {
   } catch {
     if (!raw.startsWith('/')) return raw;
     return assetOrigin ? `${assetOrigin}${raw}` : raw;
+  }
+};
+
+export const resolveAppAssetUrl = (value, options = {}) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const baseHref = String(options.baseHref || (typeof window !== 'undefined' ? window.location.href : '') || '').trim();
+
+  if (/^(data|blob):/i.test(raw)) return raw;
+
+  try {
+    const parsed = new URL(raw);
+    if (!['http:', 'https:', 'file:', 'dgfypos:'].includes(parsed.protocol)) return '';
+    return parsed.toString();
+  } catch {
+    if (!baseHref) {
+      return raw.startsWith('/') ? raw.slice(1) : raw;
+    }
+    const normalized = raw.startsWith('/') ? raw.slice(1) : raw;
+
+    try {
+      return new URL(normalized, baseHref).toString();
+    } catch {
+      return raw;
+    }
   }
 };
 

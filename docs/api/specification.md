@@ -154,7 +154,7 @@ Supported purposes:
 - `company_registration`: body requires `email`; retained for compatibility with older flows, but current DGFY company registration uses the signed-in DGFY account directly and does not ask for this second OTP.
 - `tenant_user_registration`: body requires `email` and a tenant context (`x-company-token`).
 - `invitation_acceptance`: body requires `invitation_token`; the backend resolves tenant context and invited email from the invitation when `x-company-token` is absent.
-- `dgfy_account_verification`: requested through the authenticated DGFY account endpoint to verify the global DGFY email.
+- `dgfy_account_verification`: body requires `email` for DGFY account registration before account creation. The public request is landlord-global, does not require a company token, and must ignore stale browser tenant context because `/dgfy/auth/register` verifies only a global OTP. Existing signed-in accounts can also request this purpose through the authenticated DGFY account endpoint.
 - `dgfy_password_reset`: requested through the DGFY password recovery flow before changing a global DGFY account password.
 
 Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 10), lock after `EMAIL_OTP_MAX_ATTEMPTS` (default 5), and are consumed with a conditional update so a concurrently submitted request cannot reuse a code after it is consumed. Production enables enforcement by default; `EMAIL_OTP_ENFORCEMENT_ENABLED=false` is the rollback switch.
@@ -1078,10 +1078,48 @@ List item-level Storefront catalog overrides for authenticated inventory setup s
     "storefront_image_gallery": [
       { "url": "/uploads/storefront-catalog/default/item-1.png", "is_primary": true, "sort_order": 0 }
     ],
+    "location_availability": [
+      {
+        "location_id": 1,
+        "name": "Main Branch",
+        "is_open": true,
+        "is_active": true,
+        "is_primary_storefront": true,
+        "storefront_available": true
+      },
+      {
+        "location_id": 2,
+        "name": "Branch 2",
+        "is_open": true,
+        "is_active": true,
+        "is_primary_storefront": false,
+        "storefront_available": false
+      }
+    ],
     "has_storefront_override": true
   }
 ]
 ```
+
+`location_availability` lists active tenant branches for IMS setup screens. Missing branch override rows default to `storefront_available=true` for additive rollout compatibility.
+
+### PATCH /items/:item_id/storefront-override
+Update item-level Storefront visibility and/or branch availability.
+
+**Permission**: `items:edit`
+
+**Request Body**
+```json
+{
+  "storefront_visible": true,
+  "location_availability": [
+    { "location_id": 1, "storefront_available": true },
+    { "location_id": 2, "storefront_available": false }
+  ]
+}
+```
+
+At least one of `storefront_visible` or `location_availability` is required. Branch availability does not bypass Storefront readiness, mode readiness, branch stock, or service capacity rules. Public `/store/catalog?location_id=<id>`, QR resolution, quote, checkout, and booking flows must hide or reject items explicitly disabled for the selected branch.
 
 **Notes**
 - This is an inventory-facing authenticated setup endpoint, not a public Storefront read.
@@ -1130,7 +1168,7 @@ Upload/replace the Storefront catalog primary image override. This endpoint rema
 Append images to the ordered Storefront catalog image gallery for one item.
 
 **Permission**: `items:edit`
-**Request**: `multipart/form-data` with up to 10 `images` file fields.
+**Request**: `multipart/form-data` with up to 5 `images` file fields.
 
 **Notes**
 - If no gallery exists, the first accepted image becomes the primary `storefront_image_url`.
@@ -2870,6 +2908,7 @@ Return tenant system settings for IMS Settings.
 
 **Response Notes**
 - Persisted settings are returned by key from tenant `system_settings`.
+- `store_is_visible.value=true` means the tenant may appear in public DGFY discovery/map feeds and public storefront profile reads once a valid active primary location exists. Enabling it does not create a location pin by itself. `store_is_visible.value=false` hides both the discovery/map listing and the canonical root-handle public profile page (`/:store_tenant_slug`). `/store/:slug` and `/tenant-store/:slug` are compatibility paths only.
 - `customer_access_modes_enabled` is an additive read-only virtual key, not a persisted tenant setting. It reflects the effective runtime Customer Access Mode enforcement state for the current tenant context.
 - `customer_access_modes_enabled.value=true` means public Storefront Customer Access Mode enforcement is active for the tenant.
 - `customer_access_modes_enabled.value=false` means the global rollback switch is active for the tenant. Operators should treat `CUSTOMER_ACCESS_MODES_ENABLED=false` as rollback-only and use `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` for tenant re-enablement while recovery evidence is gathered.
@@ -2981,6 +3020,7 @@ List publicly discoverable stores for list/grid/map storefront views.
 | `include_match_meta` | boolean | Optional, defaults `true`; when `false`, match metadata fields are omitted from each row |
 
 **Search Notes**
+- Tenants with `store_is_visible=false` are excluded from public discovery/map responses and public profile reads. This tenant-level public visibility switch is evaluated before Customer Access Mode; hidden tenants are not exposed as Map Listing Only entries.
 - Item-name search includes tenants that have matching catalog items from indexed storefront snapshots.
 - Search matching is index-backed and deterministic. It is not a general fuzzy-search engine; bounded alias expansion is shared between `item_search_snapshot` generation and discovery query matching so common public terms can match equivalent catalog/service wording without making unrelated short strings match.
 - Default item-search behavior is stock-aware (`in_stock_only`) unless caller explicitly requests `include_out_of_stock`.
@@ -3252,6 +3292,7 @@ Services Mode storefront routes are public or Store JWT-authenticated tenant rou
 
 **Booking/Ticket Contract**
 - Public service booking and waitlist mutations fail closed unless `access_capabilities.booking=true` while enforcement is active.
+- Public service catalog, availability, holds, bookings, and waitlist mutations accept/forward `location_id` when the customer has selected a branch. If tenant-local `storefront_location_item_overrides.storefront_available=false` for that service item and branch, public reads hide the service and mutations return not found before capacity is reserved.
 - Public service booking, booking-hold, and batch-booking mutations also fail closed when the requested `start_at`/`scheduled_for` is outside a valid weekly `storefront_hours` schedule, returning `422` with `reason_code=OUTSIDE_STOREFRONT_BUSINESS_HOURS` before service capacity is reserved.
 - Ticket means booking/order confirmation; receipt means payment proof.
 - Public booking lookup redacts customer contact details.
@@ -3259,7 +3300,7 @@ Services Mode storefront routes are public or Store JWT-authenticated tenant rou
 - Guests whose email has no existing StoreCustomer account receive a short-lived claim token plus image download.
 - Guests whose email already belongs to a StoreCustomer account are not prompted to register/sign in from the receipt prompt; image download remains available.
 - Required `intake_form_schema` fields must be answered before booking is accepted.
-- `GET /store/services/availability` accepts `service_item_id`, `date` (`YYYY-MM-DD`), optional `location_id`, optional `resource_id`, optional `provider_user_id`, `quantity` (`1+`), and `slot_interval_minutes`. It returns only slots that pass service bookability, positive sale price readiness, lead time, active assignment/resource matching, resource weekly availability, blackout dates, overlapping booking quantity capacity, and active unexpired hold quantity capacity. The response also includes `diagnostics.blocked_counts`, `diagnostics.dominant_blocker`, `diagnostics.setup_warnings`, and `diagnostics.guidance` so storefronts can explain missing slots without exposing private booking details. The response is customer guidance; booking creation still revalidates under the booking mutation.
+- `GET /store/services/availability` accepts `service_item_id`, `date` (`YYYY-MM-DD`), optional `location_id`, optional `resource_id`, optional `provider_user_id`, `quantity` (`1+`), and `slot_interval_minutes`. It returns only slots that pass branch Storefront availability, service bookability, positive sale price readiness, lead time, active assignment/resource matching, resource weekly availability, blackout dates, overlapping booking quantity capacity, and active unexpired hold quantity capacity. The response also includes `diagnostics.blocked_counts`, `diagnostics.dominant_blocker`, `diagnostics.setup_warnings`, and `diagnostics.guidance` so storefronts can explain missing slots without exposing private booking details. The response is customer guidance; booking creation still revalidates under the booking mutation.
 - `POST /store/services/holds` accepts `service_item_id`, `start_at`, optional `end_at` or `duration_minutes`, `quantity`, optional `location_id`/`resource_id`/`provider_user_id`, required `idempotency_key`, and optional `replace_hold_token`. Active unexpired holds reserve capacity briefly, can be replaced by an edited draft without self-blocking, and must be passed as `hold_token` to the final booking mutation to be consumed.
 - Public hold and booking mutations require `idempotency_key` (`8..120` chars). Matching retries replay the existing hold/booking response; reuse with a different request payload returns conflict.
 - `quantity` is accepted on service bookings and defaults to `1`; totals and capacity checks multiply by quantity. Quantity above `1` requires a capacity anchor, currently an active assigned service resource. Provider-only and location-only bookings remain effective capacity `1`.
@@ -3455,6 +3496,11 @@ Create a PayMongo QR Ph payment session for Storefront online checkout. This is 
     "expires_at": "2026-05-19T12:30:00.000Z",
     "service_fee_amount": 10,
     "service_fee_label": "DGFY convenience fee",
+    "fee_policy": {
+      "dgfy_fee_basis": "subtotal",
+      "dgfy_fee_charged_to": "customer",
+      "provider_fee_shoulder": "tenant_company"
+    },
     "total_amount": 1010
   }
 }
@@ -3464,6 +3510,7 @@ Create a PayMongo QR Ph payment session for Storefront online checkout. This is 
 - The Storefront quote remains authoritative for totals.
 - The mandatory DGFY 1% is stored as `service_fee_amount` and sent to PayMongo as a fixed split amount in centavos.
 - The tenant PayMongo child merchant receives the remaining net settlement through `transfer_to`.
+- PayMongo/provider processing, payout, bank, dispute, and related fees are not added to the DGFY 1%; they are shouldered by the tenant company and reduce company net settlement unless a signed provider contract says otherwise.
 - QR Ph sessions finalize the Storefront order only after PayMongo sends `payment.paid`.
 
 ### GET /store/checkout/payment-sessions/:payment_session_id
@@ -3486,7 +3533,7 @@ For local sandbox runs through ngrok, configure PayMongo with:
 https://NGROK-FORWARDING-HOST/api/v1/commerce-payments/paymongo/webhook
 ```
 
-Required events: `payment.paid`, `payment.failed`, `payment.refund.updated`, `payment.refunded`, and `qrph.expired`.
+Required events: `payment.paid`, `payment.failed`, `payment.refund.updated`, `payment.refunded`, `qrph.expired`, and linked-account activation/decline events (`account.*` or `merchant.*` as exposed by the PayMongo Dashboard for the account).
 
 Unsigned manual probes should return `401 Invalid PayMongo webhook signature`. That is expected and confirms the public URL reaches the webhook route while still rejecting forged payloads.
 
@@ -3515,7 +3562,25 @@ The production server must use `PAYMONGO_MODE=live` and `PAYMONGO_LIVE_WEBHOOK_S
 | `POST` | `/payment-sessions/:payment_session_id/retry-finalization` | Retry local order finalization for paid unresolved sessions without creating duplicate orders. |
 | `POST` | `/payment-sessions/:payment_session_id/refunds` | Submit a PayMongo refund for a paid/finalized session. |
 | `GET` | `/tenant-payment-accounts` | List tenant PayMongo child merchant readiness records. Supports `tenant_id`. |
+| `POST` | `/tenants/:tenant_id/paymongo-child-account` | Create a PayMongo merchant child account for an existing tenant and store it as pending readiness. |
+| `POST` | `/tenants/:tenant_id/paymongo-child-account/sync-requirements` | Pull current PayMongo child-merchant onboarding requirements into local readiness metadata. |
+| `POST` | `/tenants/:tenant_id/paymongo-child-account/submit-review` | Submit the PayMongo child merchant for provider review after required tenant/company details are completed. |
+| `POST` | `/tenants/:tenant_id/paymongo-child-account/activate` | Request PayMongo account activation and store only provider-evidenced readiness flags. |
 | `PUT` | `/tenants/:tenant_id/payment-account` | Create/update tenant PayMongo child merchant readiness. |
+
+**Create Tenant PayMongo Child Account Request**
+```json
+{
+  "trade_name": "Tenant Trading Name"
+}
+```
+
+`trade_name` is optional; when omitted the backend uses the tenant company name. The endpoint is idempotent when a tenant already has a `provider_merchant_id`. It stores the returned PayMongo child merchant ID as pending readiness and must not enable QR Ph/split/charges until PayMongo activation and wallet evidence are recorded.
+
+**Child Account Provider Actions**
+- `sync-requirements` stores the provider's current KYC/business requirement status so operators can see what is still missing.
+- `submit-review` asks PayMongo to review the child merchant after the tenant/company finishes the required information.
+- `activate` may mark `onboarding_status=active` and `qrph_enabled=true` only when PayMongo accepts activation. It must not mark wallet, split, or charge readiness unless the provider response contains explicit enabled wallet/capability evidence.
 
 **Tenant Payment Account Request**
 ```json
@@ -4499,10 +4564,10 @@ Clients must fail closed when account registration lacks `terms_version`, `priva
   "data": {
     "provider_clause": "DGFY is an e-marketplace/platform service provider...",
     "versions": {
-      "accountTerms": "dgfy-account-terms-2026-05-26",
-      "privacy": "dgfy-privacy-2026-05-26",
-      "marketplaceTerms": "dgfy-marketplace-provider-2026-05-26",
-      "companyTerms": "dgfy-company-terms-2026-05-26"
+      "accountTerms": "dgfy-account-terms-2026-06-08",
+      "privacy": "dgfy-privacy-2026-06-08",
+      "marketplaceTerms": "dgfy-marketplace-provider-2026-06-08",
+      "companyTerms": "dgfy-company-terms-2026-06-08"
     },
     "flows": {
       "account_registration": {
@@ -4537,14 +4602,15 @@ Create a global DGFY account used for customer account surfaces and business reg
   "phone": "+639123456789",
   "password": "minimum8",
   "confirm_password": "minimum8",
+  "email_otp_code": "123456",
   "accepted_terms": true,
-  "terms_version": "dgfy-account-terms-2026-05-26",
-  "privacy_version": "dgfy-privacy-2026-05-26",
-  "marketplace_terms_version": "dgfy-marketplace-provider-2026-05-26"
+  "terms_version": "dgfy-account-terms-2026-06-08",
+  "privacy_version": "dgfy-privacy-2026-06-08",
+  "marketplace_terms_version": "dgfy-marketplace-provider-2026-06-08"
 }
 ```
 
-Registration requires the current DGFY account terms, privacy terms, and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current`. The account row, mirrored DGFY invitation memberships, and acknowledgement evidence are written in one landlord transaction; persistence misconfiguration fails closed with `500 LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_UNAVAILABLE`. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
+Registration requires a prior global `dgfy_account_verification` code from `POST /auth/email-otp/request` for the submitted email, plus the current DGFY account terms, privacy terms, and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current`. The public OTP request does not require tenant context; tenant-scoped browser cookies/headers must not scope this OTP because the registration mutation consumes the email OTP with `tenant_id: null`, creates the account with `email_verified_at` set, and writes the account row, mirrored DGFY invitation memberships, and acknowledgement evidence in one landlord transaction. Persistence misconfiguration fails closed with `500 LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_UNAVAILABLE`. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
 
 The customer-facing registration order is Last Name, First Name, Optional Middle Name, email, contact number, password, and confirm password. Password fields expose visibility toggles. `middle_name` is optional and nullable; when present it is returned on account/profile/customer surfaces.
 
@@ -4563,6 +4629,8 @@ The customer-facing registration order is Last Name, First Name, Optional Middle
       "email": "ada@example.com",
       "phone": "+639123456789",
       "is_active": true,
+      "email_verified_at": "2026-05-21T10:03:00.000Z",
+      "is_email_verified": true,
       "last_login_at": null
     },
     "token": "dgfy-jwt",
@@ -4981,8 +5049,8 @@ Public company registration derives founder email, phone, username seed, and pas
   "name": "Example Foods",
   "workflowMode": "food_manufacturing",
   "accepted_company_terms": true,
-  "company_terms_version": "dgfy-company-terms-2026-05-26",
-  "marketplace_terms_version": "dgfy-marketplace-provider-2026-05-26"
+  "company_terms_version": "dgfy-company-terms-2026-06-08",
+  "marketplace_terms_version": "dgfy-marketplace-provider-2026-06-08"
 }
 ```
 Submit a public company registration request.
@@ -4991,16 +5059,16 @@ Submit a public company registration request.
 
 **Current policy**
 - All new registrations persist `plan: "premium"` by default so mode-specific premium-gated surfaces are available after activation.
-- `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` (default): public company registrations are provisioned immediately and return `status: "active"` with a `company_token`; the registration UI then shows a company-created confirmation page. When the founder clicks **Proceed to SKUpervisor**, the UI starts a normal SKUpervisor tenant session through the authenticated DGFY account membership handoff.
+- `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` (default): public company registrations are provisioned immediately and return `status: "active"` with a `company_token`; the registration UI then immediately starts a normal SKUpervisor tenant session through the authenticated DGFY account membership handoff.
 - `TENANT_REGISTRATION_APPROVAL_MODE=manual`: registrations return `status: "pending"` and require platform admin approval before login. Use this as an explicit rollback/admin-review mode.
 - Provider subscription registration remains disabled while `PAYMENTS_ENABLED=false`; payloads with `subscriptionId` return `503` with `PAYMENTS_DISABLED`.
 - Auto-standard and manual premium-capable registrations keep `subscription_status: "inactive"` while payments are paused. In that mode, premium route access is plan-driven and does not require an active subscription row.
 - Approval email delivery is non-blocking after provisioning; active responses include `email_sent`.
-- Active registration responses do not include tenant auth tokens. For active auto-standard responses, the frontend waits on the company-created confirmation page until the founder clicks **Proceed to SKUpervisor**, then calls `POST /api/v1/dgfy/auth/tenant-session` with the returned tenant identity while authenticated as the DGFY account; that endpoint sets the standard SKUpervisor session cookies and returns the normal tenant access token payload. If that exchange fails, the frontend routes the founder to manual sign-in with email/company token prefilled.
+- Active registration responses do not include tenant auth tokens. For active auto-standard responses, the frontend immediately calls `POST /api/v1/dgfy/auth/tenant-session` with the returned tenant identity while authenticated as the DGFY account; that endpoint sets the standard SKUpervisor session cookies and returns the normal tenant access token payload. If that exchange fails, the frontend routes the founder to manual sign-in with email/company token prefilled.
 - Storefront-originated business registration starts from the signed-in DGFY account surface. The storefront creates a short-lived one-time DGFY handoff token and routes to `/register-company?source=dgfy&auth=login&handoff_token=<token>#business-registration`; after exchange, the page focuses the business registration section.
 - Manual pending registrations create founder email lookup mappings during registration. Default auto-standard registrations rely on the provisioning path to create the mapping after successful activation.
 - Abuse control: public company registration is IP rate-limited by `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS` (production default: 5 requests per hour). Keep this strict because each accepted registration provisions an isolated tenant database by default.
-- Tenant-session fallback: if the DGFY tenant-session exchange fails after the founder clicks **Proceed to SKUpervisor**, the frontend routes the founder to manual sign-in with email/company token prefilled.
+- Tenant-session fallback: if the DGFY tenant-session exchange fails after active provisioning, the frontend routes the founder to manual sign-in with email/company token prefilled.
 - Founder contact and credentials: public company registration no longer accepts `adminEmail`, `adminPhone`, or `adminPassword`; the server derives them from the authenticated DGFY account.
 - Founder account source: public company registration requires a signed-in active DGFY account. The backend derives founder email, phone, username seed, and password hash from that account and does not require a separate DGFY email-code step or `email_verified_at` gate before tenant creation.
 - Legal acknowledgement: public company registration requires the current company terms and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current` before tenant creation. The backend fails closed before tenant creation if legal acknowledgement persistence is unavailable. After confirming there is a signed-in active DGFY account, the landlord tenant row, pending-founder membership when applicable, and acknowledgement evidence are written in one landlord transaction. The acknowledgement states that DGFY is an e-marketplace/platform service provider, the seller owns the product, sets the price, fulfills the order, remains seller of record, payment is processed by a licensed payment partner, and DGFY deducts disclosed fees before remitting the seller's net settlement. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
@@ -5057,6 +5125,19 @@ List all tenant registrations with their status.
       "compliance_mode_choice_required": true,
       "can_force_non_compliant": false,
       "force_non_compliant_block_reason": "Compliance mode has not been selected yet.",
+      "capabilities": {
+        "ims_enabled": true,
+        "pos_enabled": true,
+        "storefront_visible": false,
+        "customer_access_mode": "catalog",
+        "storefront_readiness": {
+          "has_active_primary_location": false,
+          "has_coordinates": false,
+          "publishable": false,
+          "visible_and_publishable": false,
+          "reason": "missing_active_primary_storefront_location"
+        }
+      },
       "created_at": "2026-02-06T..."
     }
   ]
@@ -5069,6 +5150,106 @@ List all tenant registrations with their status.
 - Admin UI should treat these fields as source-of-truth instead of recomputing eligibility from local assumptions.
 - `effective_plan`: authoritative plan value to render and use for admin presentation. Pending and active tenants return `premium` even if a historical stored `plan` value is still `standard`.
 - `plan_policy`: explains whether `effective_plan` came from stored metadata (`stored_plan`) or registered-tenant premium capability normalization (`registered_tenant_premium_capable`).
+- `capabilities`: active tenants include platform-admin capability settings. Missing tenant-local capability settings default to `ims_enabled=true`, `pos_enabled=true`, `storefront_visible=false`, and `customer_access_mode=catalog`.
+- `capabilities.storefront_readiness`: indicates whether public Storefront visibility can publish through an active primary storefront location with valid coordinates.
+
+### PATCH /admin/tenants/:id/capabilities
+Update platform-admin capability controls for an active tenant.
+
+**Request**
+```json
+{
+  "ims_enabled": true,
+  "pos_enabled": false,
+  "storefront_visible": true,
+  "customer_access_mode": "inquiry",
+  "reason": "Temporarily disable POS while the tenant completes terminal readiness remediation"
+}
+```
+
+**Validation**
+- At least one of `ims_enabled`, `pos_enabled`, `storefront_visible`, or `customer_access_mode` is required.
+- Boolean fields must be JSON booleans, not strings.
+- `customer_access_mode` must be one of `ghost`, `catalog`, `inquiry`, or `transaction`.
+- `reason` is required, trimmed, and must be 3-500 characters.
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "message": "Tenant capabilities updated successfully",
+  "data": {
+    "tenant_id": "tenant-uuid",
+    "capabilities": {
+      "ims_enabled": true,
+      "pos_enabled": false,
+      "storefront_visible": true,
+      "customer_access_mode": "inquiry",
+      "storefront_readiness": {
+        "has_active_primary_location": true,
+        "has_coordinates": true,
+        "publishable": true,
+        "visible_and_publishable": true,
+        "location_id": 12,
+        "location_name": "Main Branch",
+        "reason": null
+      }
+    }
+  }
+}
+```
+
+**Side Effects**
+- Writes tenant-local `system_settings` rows inside one tenant database transaction.
+- Persists a landlord `tenant_admin_audit_logs` row with platform-admin actor, request metadata, reason, and before/after capability snapshots.
+- Storefront visibility or access-mode changes refresh `storefront_discovery_index`. If that refresh fails, the backend rolls back the Storefront setting changes and returns an error instead of reporting success.
+
+### GET /admin/tenants/:id/capabilities/audit-logs
+List recent platform-admin capability changes for one tenant.
+
+**Query**
+- `limit`: optional integer from 1-100. Defaults to 20.
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "tenant_id": "tenant-uuid",
+    "logs": [
+      {
+        "id": 12,
+        "tenant_id": "tenant-uuid",
+        "action": "capability_update",
+        "actor_username": "skupervisor",
+        "reason": "Temporarily disable POS during terminal readiness remediation",
+        "request_id": "req-123",
+        "before_snapshot": {
+          "ims_enabled": true,
+          "pos_enabled": true,
+          "storefront_visible": true,
+          "customer_access_mode": "catalog"
+        },
+        "after_snapshot": {
+          "ims_enabled": true,
+          "pos_enabled": false,
+          "storefront_visible": true,
+          "customer_access_mode": "catalog"
+        },
+        "metadata": {
+          "changed_fields": ["tenant_pos_enabled"],
+          "storefront_sync_required": false
+        },
+        "created_at": "2026-06-07T03:00:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+**Notes**
+- The endpoint is tenant-scoped and requires platform-admin authentication.
+- Returned rows are ordered newest first.
 
 ### POST /admin/tenants/:id/approve
 Approve a pending tenant registration and provision their isolated database.
@@ -5499,6 +5680,11 @@ Persist onboarding progress for a step (idempotent).
 - `primary_location`
 - `bulk_items`
 
+For `primary_location`, the payload may include:
+- `public_storefront_visible` (`boolean`, strict JSON boolean): when `false`, the tenant remains hidden from DGFY discovery/map feeds and the canonical root-handle page (`/:store_tenant_slug`); no public pin is required for onboarding readiness. When `true`, the merchant must save a real active primary location before discovery/profile publication can expose the tenant.
+- `business_hours`: optional weekly Storefront business-hours schedule persisted to `storefront_hours`.
+- `location_id`, `name`, and `is_primary_storefront`: metadata for the saved tenant location when public visibility is enabled.
+
 ### POST /onboarding/items/bulk
 Create starter catalog items from the active workflow mode's onboarding presets.
 
@@ -5576,6 +5762,7 @@ Finalize onboarding if required readiness checks are satisfied.
 **Behavior**
 - Returns `422` with `missing_requirements[]` if readiness is incomplete.
 - Missing requirement keys are `store_name_ready`, `has_primary_storefront_location`, and `has_priced_starter_item`.
+- `has_primary_storefront_location` is required only while public map/page visibility is enabled. Hidden storefronts satisfy this readiness check until the merchant opts in.
 - Item image upload and stock quantity never block completion by themselves. The merchant-facing onboarding label is `Item image`; the existing Storefront catalog image upload/storage contract remains unchanged.
 - On success, sets onboarding state to `completed` and triggers storefront discovery sync.
 

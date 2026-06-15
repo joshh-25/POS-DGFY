@@ -1,4 +1,4 @@
-﻿const DAY_ORDER = Object.freeze(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']);
+const DAY_ORDER = Object.freeze(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']);
 const DAY_LABELS = Object.freeze({
     sun: 'Sun',
     mon: 'Mon',

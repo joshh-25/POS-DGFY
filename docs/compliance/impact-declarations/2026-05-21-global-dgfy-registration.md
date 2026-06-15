@@ -1,7 +1,7 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-05-21
+last_reviewed: 2026-06-10
 related_adr: docs/architecture/adr/0022-global-dgfy-account-business-registration.md
 declaration_id: 2026-05-21-global-dgfy-registration
 classification: regulatory
@@ -36,7 +36,7 @@ This declaration covers the current DGFY account registration and company-regist
 
 ## Compliance Preconditions
 
-1. Company registration must continue requiring `company_registration` email OTP for the authenticated DGFY account email.
+1. Superseded by ADR 0021/0022 and the 2026-05-28 declaration: company registration no longer requires a separate `company_registration` email OTP after DGFY account sign-in. DGFY account registration itself must require and consume a `dgfy_account_verification` OTP before account creation.
 2. Clients must not be able to override founder email, phone, password hash, plan, or compliance mode in the company-registration payload.
 3. New companies must start `non_compliant_active`; compliance activation remains a post-login Settings lifecycle.
 4. DGFY account records and tenant-local staff/customer records remain distinct even when linked.

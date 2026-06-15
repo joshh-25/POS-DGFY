@@ -170,6 +170,29 @@ describe('email OTP service', () => {
     }));
   });
 
+  it('does not match a tenant-scoped DGFY account OTP during global account registration verification', async () => {
+    mockEmailOtp.findOne.mockResolvedValue(null);
+
+    await expect(verifyEmailOtp({
+      purpose: EMAIL_OTP_PURPOSES.DGFY_ACCOUNT_VERIFICATION,
+      email: 'ada@example.test',
+      code: '286311',
+      tenantId: null
+    })).rejects.toMatchObject({
+      statusCode: 422,
+      code: 'EMAIL_OTP_EXPIRED'
+    });
+
+    expect(mockEmailOtp.findOne).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        purpose: EMAIL_OTP_PURPOSES.DGFY_ACCOUNT_VERIFICATION,
+        email: 'ada@example.test',
+        tenant_id: null,
+        consumed_at: null
+      })
+    }));
+  });
+
   it('rejects a matching code when another request already consumed it', async () => {
     const matchingOtp = {
       otp_id: 'otp-race',

@@ -40,10 +40,11 @@ import {
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 import { issueReviewInvitesForOrder } from '../../dgfy/utils/reviewInviteIssuer.js';
+import { isDateWithinStorefrontBusinessHours } from '../../shared/utils/storefrontBusinessHours.js';
 
 const INVOICE_COUNTER_KEY = 'POS_OR';
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
-const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer'];
+const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph'];
 const FNB_COURSES = new Set(['appetizer', 'main', 'dessert', 'drink', 'other']);
 const ORDER_METHOD_LOCATION_SUPPORT_MAP = Object.freeze({
     delivery: 'supports_delivery',
@@ -76,6 +77,7 @@ const parsePositiveInt = (value) => {
 };
 
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
+const toCentavos = (value) => Math.round(round4(value) * 100);
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const hashForLog = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex').slice(0, 16);
 const hashStableFingerprint = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex');
@@ -291,6 +293,11 @@ const serializeOrderBase = (order) => ({
     order_source: order?.order_source,
     order_method: order?.order_method,
     payment_type: order?.payment_type,
+    payment_status: order?.payment_status,
+    payment_reference: order?.payment_reference,
+    payment_checkout_url: order?.payment_checkout_url,
+    payment_provider: order?.payment_provider,
+    payment_session_reference: order?.payment_session_reference,
     fulfillment_status: order?.fulfillment_status,
     status_label: toStatusLabel(order?.fulfillment_status),
     status: order?.fulfillment_status,
@@ -494,91 +501,20 @@ const validateScheduledFor = (scheduledFor) => {
     return parsed;
 };
 
-const WEEKDAY_INDEX_BY_TOKEN = Object.freeze({
-    sun: 0,
-    sunday: 0,
-    mon: 1,
-    monday: 1,
-    tue: 2,
-    tues: 2,
-    tuesday: 2,
-    wed: 3,
-    wednesday: 3,
-    thu: 4,
-    thur: 4,
-    thurs: 4,
-    thursday: 4,
-    fri: 5,
-    friday: 5,
-    sat: 6,
-    saturday: 6
-});
-
-const toMinutesFrom12Hour = (hour, minute, meridiem) => {
-    const safeHour = Number.parseInt(hour, 10);
-    const safeMinute = Number.parseInt(minute, 10);
-    const normalizedMeridiem = String(meridiem || '').trim().toUpperCase();
-    if (!Number.isInteger(safeHour) || safeHour < 1 || safeHour > 12) return null;
-    if (!Number.isInteger(safeMinute) || safeMinute < 0 || safeMinute > 59) return null;
-    if (normalizedMeridiem !== 'AM' && normalizedMeridiem !== 'PM') return null;
-    let hour24 = safeHour % 12;
-    if (normalizedMeridiem === 'PM') hour24 += 12;
-    return (hour24 * 60) + safeMinute;
-};
-
-const parseStorefrontHoursWindow = (rawHours) => {
-    const text = String(rawHours || '').trim();
-    if (!text) return null;
-
-    const match = text.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)\s*-\s*(\d{1,2}):(\d{2})\s*(AM|PM)\s*(.*)$/i);
-    if (!match) return null;
-
-    const startMinutes = toMinutesFrom12Hour(match[1], match[2], match[3]);
-    const endMinutes = toMinutesFrom12Hour(match[4], match[5], match[6]);
-    if (startMinutes == null || endMinutes == null) return null;
-
-    const dayPart = String(match[7] || '').trim().toLowerCase();
-    let activeDays = new Set([0, 1, 2, 3, 4, 5, 6]);
-
-    if (dayPart && dayPart !== 'daily' && dayPart !== 'everyday' && dayPart !== 'all days') {
-        const tokens = dayPart
-            .split(',')
-            .map((entry) => entry.trim().replace(/\./g, '').toLowerCase())
-            .filter(Boolean);
-        if (tokens.length === 0) return null;
-        activeDays = new Set();
-        for (const token of tokens) {
-            const dayIndex = WEEKDAY_INDEX_BY_TOKEN[token];
-            if (dayIndex == null) return null;
-            activeDays.add(dayIndex);
-        }
-        if (activeDays.size === 0) return null;
-    }
-
-    return { activeDays, startMinutes, endMinutes };
-};
-
-const isScheduledTimeWithinStorefrontHours = (scheduledFor, parsedHoursWindow) => {
-    if (!scheduledFor || !parsedHoursWindow) return true;
-    if (!parsedHoursWindow.activeDays.has(scheduledFor.getDay())) return false;
-
-    const timeMinutes = (scheduledFor.getHours() * 60) + scheduledFor.getMinutes();
-    const { startMinutes, endMinutes } = parsedHoursWindow;
-    if (startMinutes === endMinutes) return true;
-    if (endMinutes > startMinutes) return timeMinutes >= startMinutes && timeMinutes <= endMinutes;
-    return timeMinutes >= startMinutes || timeMinutes <= endMinutes;
-};
-
-const assertScheduledForWithinStorefrontHours = ({ scheduledFor, settings }) => {
-    if (!scheduledFor) return;
-    const parsedHoursWindow = parseStorefrontHoursWindow(settings?.storefront_hours?.value);
-    if (!parsedHoursWindow) return;
-
-    if (!isScheduledTimeWithinStorefrontHours(scheduledFor, parsedHoursWindow)) {
+const assertCheckoutTimeWithinStorefrontHours = ({ scheduledFor, settings }) => {
+    const checkoutTime = scheduledFor || new Date();
+    if (!isDateWithinStorefrontBusinessHours(checkoutTime, settings?.storefront_hours?.value)) {
         throw new DomainError(
             DomainErrorCode.VALIDATION_FAILED,
-            'scheduled_for is outside store business hours',
-            { statusCode: 422 }
+            scheduledFor
+                ? 'scheduled_for is outside store business hours'
+                : 'Storefront is outside business hours and not accepting orders',
+            {
+                statusCode: 422,
+                details: {
+                    reason_code: 'OUTSIDE_STOREFRONT_BUSINESS_HOURS'
+                }
+            }
         );
     }
 };
@@ -901,6 +837,7 @@ const serializeStoreCatalogItem = (item = {}, accessPolicy = {}) => {
         default_sale_price: item.default_sale_price,
         vat_type: item.vat_type || 'vatable',
         image_url: item.image_url || null,
+        image_gallery: Array.isArray(item.image_gallery) ? item.image_gallery : [],
         service_detail: serviceDetail,
         allergens: serializeStorefrontAllergens(item.allergens),
         nutrition: serializeStorefrontNutrition(item.nutrition),
@@ -1118,7 +1055,7 @@ const resolveCheckoutContext = async ({
         settings,
         orderMethod
     });
-    assertScheduledForWithinStorefrontHours({
+    assertCheckoutTimeWithinStorefrontHours({
         scheduledFor,
         settings
     });
@@ -1890,6 +1827,254 @@ export const buildStoreCartQuoteUseCase = ({ storeRepository }) => {
     };
 };
 
+export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
+    return async ({ tenantId, payload, storeCustomer = null }) => {
+        if (!isPlainObject(payload)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'payload must be an object',
+                { statusCode: 400 }
+            ));
+        }
+
+        let normalizedTenantId;
+        try {
+            normalizedTenantId = ensureTenantContext(tenantId);
+        } catch (error) {
+            return fail(mapStoreUseCaseError(error, 'Failed to complete storefront checkout'));
+        }
+
+        const normalizedStoreCustomerId = parsePositiveInt(storeCustomer?.customer_id);
+        const normalizedStoreCustomer = normalizedStoreCustomerId
+            ? {
+                customer_id: normalizedStoreCustomerId,
+                dgfy_account_id: String(storeCustomer?.dgfy_account_id || '').trim() || null,
+                name: String(storeCustomer?.name || '').trim(),
+                email: String(storeCustomer?.email || '').trim().toLowerCase(),
+                phone: String(storeCustomer?.phone || '').trim()
+            }
+            : null;
+
+        const transaction = await storeRepository.beginTransaction();
+
+        try {
+            const pendingNormalized = buildNormalizedCheckoutRequest(payload, normalizedStoreCustomer);
+            const pendingIdempotencyKey = String(pendingNormalized.idempotency_key || '').trim();
+            if (!pendingIdempotencyKey) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'idempotency_key is required',
+                    { statusCode: 400 }
+                );
+            }
+            const existing = await storeRepository.findTransactionByIdempotencyKey(pendingIdempotencyKey, {
+                transaction,
+                lock: true
+            });
+            const idempotencyKey = pendingIdempotencyKey;
+            const resolved = await resolveCheckoutContext({
+                storeRepository,
+                payload,
+                storeCustomer: normalizedStoreCustomer,
+                options: { transaction, lock: true },
+                validateRecipeAvailability: !existing
+            });
+            const { normalized } = resolved;
+
+            const requestHash = hashPayload({
+                location_id: normalized.location_id,
+                order_method: normalized.order_method,
+                payment_type: normalized.payment_type,
+                customer_name: normalized.customer_name,
+                customer_phone: normalized.customer_phone,
+                customer_email: normalized.customer_email,
+                delivery_address: normalized.delivery_address,
+                delivery_latitude: normalized.delivery_latitude,
+                delivery_longitude: normalized.delivery_longitude,
+                scheduled_for: normalized.scheduled_for,
+                special_instructions: normalized.special_instructions,
+                lines: normalized.lines
+            });
+
+            if (existing) {
+                if (existing.request_hash !== requestHash) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'idempotency_key was already used with a different payload',
+                        { statusCode: 409 }
+                    );
+                }
+
+                const cancelProof = buildCancelProofForOrder({
+                    order: existing,
+                    tenantId: normalizedTenantId
+                });
+                const accountAction = await buildOrderAccountAction({
+                    storeRepository,
+                    order: existing,
+                    tenantId: normalizedTenantId,
+                    storeCustomer: normalizedStoreCustomer,
+                    options: { transaction }
+                });
+
+                await transaction.commit();
+                await recordDgfyOrderActivity({
+                    tenantId: normalizedTenantId,
+                    order: existing,
+                    storeCustomer: normalizedStoreCustomer
+                }).catch((error) => logger.warn('[DGFYCustomer] Failed to sync idempotent order activity', {
+                    error: error?.message,
+                    tracking_pin: existing?.tracking_pin
+                }));
+                return ok({
+                    idempotent_replay: true,
+                    order: serializeOrderForCustomer(existing),
+                    tracking_pin: existing.tracking_pin,
+                    account_action: accountAction,
+                    cancel_proof: cancelProof,
+                    cancel_proof_expires_in: cancelProof ? getStoreTokenConfig().cancelProofExpiresIn : null
+                });
+            }
+
+            if (normalized.payment_type === 'qrph' && payload.payment_webhook_confirmed !== true) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'QR Ph checkout must be finalized by the payment webhook.',
+                    { statusCode: 422 }
+                );
+            }
+
+            const trackingPin = await generateUniqueTrackingPin(storeRepository, {
+                transaction,
+                lock: true
+            });
+            const invoiceNumber = await storeRepository.nextInvoiceNumber(INVOICE_COUNTER_KEY, { transaction });
+
+            const orderId = await storeRepository.createOnlineTransactionWithLines({
+                header: {
+                    invoice_number: invoiceNumber,
+                    idempotency_key: idempotencyKey,
+                    request_hash: requestHash,
+                    cashier_id: null,
+                    shift_id: null,
+                    terminal_id: 'ONLINE_STORE',
+                    order_source: 'online_store',
+                    order_method: normalized.order_method,
+                    payment_type: normalized.payment_type,
+                    payment_status: payload.payment_status || 'paid',
+                    payment_reference: payload.payment_reference || null,
+                    payment_checkout_url: payload.payment_checkout_url || null,
+                    payment_provider: payload.payment_provider || null,
+                    payment_session_reference: payload.payment_session_reference || null,
+                    fulfillment_status: 'placed',
+                    subtotal_amount: resolved.prepared.subtotalAmount,
+                    vatable_sales: resolved.prepared.vatableSales,
+                    vat_amount: resolved.prepared.vatAmount,
+                    vat_exempt_sales: resolved.prepared.vatExemptSales,
+                    zero_rated_sales: resolved.prepared.zeroRatedSales,
+                    discount_amount: 0,
+                    discount_label_snapshot: null,
+                    discount_rate_snapshot: null,
+                    service_fee_amount: resolved.serviceFeeAmount,
+                    service_fee_label_snapshot: resolved.serviceFeeLabel,
+                    service_fee_method_snapshot: resolved.serviceFeeAmount > 0 ? normalized.order_method : null,
+                    service_fee_overridden: false,
+                    total_amount: resolved.totalAmount,
+                    status: 'completed',
+                    location_id: normalized.location_id,
+                    tracking_pin: trackingPin,
+                    customer_name: normalized.customer_name,
+                    customer_phone: normalized.customer_phone || null,
+                    customer_email: normalized.customer_email || null,
+                    delivery_address: normalized.delivery_address || null,
+                    delivery_latitude: normalized.delivery_latitude,
+                    delivery_longitude: normalized.delivery_longitude,
+                    scheduled_for: resolved.scheduledFor,
+                    special_instructions: normalized.special_instructions || null,
+                    delivery_fee: resolved.deliveryFee,
+                    store_customer_id: normalizedStoreCustomer?.customer_id || null,
+                    outside_radius_flag: resolved.outsideRadiusFlag,
+                    accepted_by: null,
+                    accepted_at: null
+                },
+                lines: resolved.prepared.preparedLines
+            }, { transaction });
+
+            const shouldCreateFnbKitchenOrder = (
+                resolved.recipePlan.allMovements.length > 0
+                || resolved.prepared.preparedLines.some((line) => line.fnb_course_snapshot || line.fnb_modifiers_snapshot)
+            );
+            if (shouldCreateFnbKitchenOrder) {
+                if (typeof storeRepository.createFnbKitchenOrderForOnlineTransaction !== 'function') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'F&B kitchen order persistence is unavailable for storefront checkout',
+                        {
+                            statusCode: 409,
+                            details: { reason_code: 'FNB_KITCHEN_ORDER_UNAVAILABLE' }
+                        }
+                    );
+                }
+                const kitchenOrder = await storeRepository.createFnbKitchenOrderForOnlineTransaction({
+                    pos_transaction_id: orderId,
+                    order_method: normalized.order_method,
+                    location_id: normalized.location_id,
+                    customer_name: normalized.customer_name,
+                    special_instructions: normalized.special_instructions,
+                    lines: resolved.prepared.preparedLines,
+                    recipe_movements: resolved.recipePlan.allMovements
+                }, { transaction });
+                if (!kitchenOrder) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'F&B kitchen order could not be created for storefront checkout',
+                        {
+                            statusCode: 409,
+                            details: { reason_code: 'FNB_KITCHEN_ORDER_UNAVAILABLE' }
+                        }
+                    );
+                }
+            }
+
+            const created = await storeRepository.getOrderById(orderId, { transaction });
+            const cancelProof = buildCancelProofForOrder({
+                order: created,
+                tenantId: normalizedTenantId
+            });
+            const accountAction = await buildOrderAccountAction({
+                storeRepository,
+                order: created,
+                tenantId: normalizedTenantId,
+                storeCustomer: normalizedStoreCustomer,
+                options: { transaction }
+            });
+            await transaction.commit();
+            await recordDgfyOrderActivity({
+                tenantId: normalizedTenantId,
+                order: created,
+                storeCustomer: normalizedStoreCustomer
+            }).catch((error) => logger.warn('[DGFYCustomer] Failed to sync order activity', {
+                error: error?.message,
+                tracking_pin: created?.tracking_pin
+            }));
+
+            return ok({
+                idempotent_replay: false,
+                tracking_pin: trackingPin,
+                order: serializeOrderForCustomer(created),
+                account_action: accountAction,
+                cancel_proof: cancelProof,
+                cancel_proof_expires_in: cancelProof ? getStoreTokenConfig().cancelProofExpiresIn : null
+            });
+        } catch (error) {
+            if (!transaction.finished) {
+                await transaction.rollback();
+            }
+            return fail(mapStoreUseCaseError(error, 'Failed to complete storefront checkout'));
+        }
+    };
+};
+
 const serializePaymentSession = (session = {}) => ({
     payment_session_id: session.public_reference,
     public_reference: session.public_reference,
@@ -1906,6 +2091,7 @@ const serializePaymentSession = (session = {}) => ({
     total_amount: session.total_amount,
     currency: session.currency || 'PHP',
     platform_fee_centavos: session.platform_fee_centavos,
+    fee_policy: session.fee_policy || null,
     tenant_transfer_merchant_id: session.tenant_transfer_merchant_id || null,
     tracking_pin: session.tracking_pin || null,
     pos_transaction_id: session.pos_transaction_id || null,
@@ -2042,6 +2228,15 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                     value: platformFeeCentavos
                 }]
             } : null;
+            const feePolicy = {
+                dgfy_fee_basis: 'subtotal',
+                dgfy_fee_rate: '0.01',
+                dgfy_fee_charged_to: 'customer',
+                provider_fee_shoulder: 'tenant_company',
+                provider_fee_customer_passthrough: false,
+                refund_policy: 'full_refund_reverses_dgfy_and_tenant_shares',
+                gross_sales_visibility: ['gross_sales', 'net_sales']
+            };
 
             const session = await commercePaymentRepository.createSession({
                 public_reference: publicReference,
@@ -2060,6 +2255,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                 currency: 'PHP',
                 total_amount_centavos: totalAmountCentavos,
                 platform_fee_centavos: platformFeeCentavos,
+                fee_policy: feePolicy,
                 tenant_transfer_merchant_id: account.provider_merchant_id,
                 split_payload: splitPayload
             });
@@ -2079,7 +2275,10 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                         commerce_payment_session: publicReference,
                         tenant_id: String(tenantId),
                         store_slug: storeSlug,
-                        platform_fee_centavos: String(platformFeeCentavos)
+                        platform_fee_centavos: String(platformFeeCentavos),
+                        dgfy_fee_basis: feePolicy.dgfy_fee_basis,
+                        dgfy_fee_charged_to: feePolicy.dgfy_fee_charged_to,
+                        provider_fee_shoulder: feePolicy.provider_fee_shoulder
                     },
                     splitPayment: splitPayload,
                     returnUrl: process.env.STOREFRONT_PAYMENT_RETURN_URL || null
@@ -2127,241 +2326,6 @@ export const buildGetStoreCheckoutPaymentSessionUseCase = ({ commercePaymentRepo
             return ok({ payment_session: serializePaymentSession(session) });
         } catch (error) {
             return fail(mapStoreUseCaseError(error, 'Failed to load QR Ph payment session'));
-        }
-    };
-};
-
-export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
-    return async ({ tenantId, payload, storeCustomer = null }) => {
-        if (!isPlainObject(payload)) {
-            return fail(new DomainError(
-                DomainErrorCode.VALIDATION_FAILED,
-                'payload must be an object',
-                { statusCode: 400 }
-            ));
-        }
-
-        let normalizedTenantId;
-        try {
-            normalizedTenantId = ensureTenantContext(tenantId);
-        } catch (error) {
-            return fail(mapStoreUseCaseError(error, 'Failed to complete storefront checkout'));
-        }
-
-        const normalizedStoreCustomerId = parsePositiveInt(storeCustomer?.customer_id);
-        const normalizedStoreCustomer = normalizedStoreCustomerId
-            ? {
-                customer_id: normalizedStoreCustomerId,
-                dgfy_account_id: String(storeCustomer?.dgfy_account_id || '').trim() || null,
-                name: String(storeCustomer?.name || '').trim(),
-                email: String(storeCustomer?.email || '').trim().toLowerCase(),
-                phone: String(storeCustomer?.phone || '').trim()
-            }
-            : null;
-
-        const transaction = await storeRepository.beginTransaction();
-
-        try {
-            const pendingNormalized = buildNormalizedCheckoutRequest(payload, normalizedStoreCustomer);
-            const pendingIdempotencyKey = String(pendingNormalized.idempotency_key || '').trim();
-            if (!pendingIdempotencyKey) {
-                throw new DomainError(
-                    DomainErrorCode.VALIDATION_FAILED,
-                    'idempotency_key is required',
-                    { statusCode: 400 }
-                );
-            }
-            const existing = await storeRepository.findTransactionByIdempotencyKey(pendingIdempotencyKey, {
-                transaction,
-                lock: true
-            });
-            const idempotencyKey = pendingIdempotencyKey;
-            const resolved = await resolveCheckoutContext({
-                storeRepository,
-                payload,
-                storeCustomer: normalizedStoreCustomer,
-                options: { transaction, lock: true },
-                validateRecipeAvailability: !existing
-            });
-            const { normalized } = resolved;
-
-            const requestHash = hashPayload({
-                location_id: normalized.location_id,
-                order_method: normalized.order_method,
-                payment_type: normalized.payment_type,
-                customer_name: normalized.customer_name,
-                customer_phone: normalized.customer_phone,
-                customer_email: normalized.customer_email,
-                delivery_address: normalized.delivery_address,
-                delivery_latitude: normalized.delivery_latitude,
-                delivery_longitude: normalized.delivery_longitude,
-                scheduled_for: normalized.scheduled_for,
-                special_instructions: normalized.special_instructions,
-                lines: normalized.lines
-            });
-
-            if (existing) {
-                if (existing.request_hash !== requestHash) {
-                    throw new DomainError(
-                        DomainErrorCode.CONFLICT,
-                        'idempotency_key was already used with a different payload',
-                        { statusCode: 409 }
-                    );
-                }
-
-                const cancelProof = buildCancelProofForOrder({
-                    order: existing,
-                    tenantId: normalizedTenantId
-                });
-                const accountAction = await buildOrderAccountAction({
-                    storeRepository,
-                    order: existing,
-                    tenantId: normalizedTenantId,
-                    storeCustomer: normalizedStoreCustomer,
-                    options: { transaction }
-                });
-
-                await transaction.commit();
-                await recordDgfyOrderActivity({
-                    tenantId: normalizedTenantId,
-                    order: existing,
-                    storeCustomer: normalizedStoreCustomer
-                }).catch((error) => logger.warn('[DGFYCustomer] Failed to sync idempotent order activity', {
-                    error: error?.message,
-                    tracking_pin: existing?.tracking_pin
-                }));
-                return ok({
-                    idempotent_replay: true,
-                    order: serializeOrderForCustomer(existing),
-                    tracking_pin: existing.tracking_pin,
-                    account_action: accountAction,
-                    cancel_proof: cancelProof,
-                    cancel_proof_expires_in: cancelProof ? getStoreTokenConfig().cancelProofExpiresIn : null
-                });
-            }
-
-            const trackingPin = await generateUniqueTrackingPin(storeRepository, {
-                transaction,
-                lock: true
-            });
-            const invoiceNumber = await storeRepository.nextInvoiceNumber(INVOICE_COUNTER_KEY, { transaction });
-
-            const orderId = await storeRepository.createOnlineTransactionWithLines({
-                header: {
-                    invoice_number: invoiceNumber,
-                    idempotency_key: idempotencyKey,
-                    request_hash: requestHash,
-                    cashier_id: null,
-                    shift_id: null,
-                    terminal_id: 'ONLINE_STORE',
-                    order_source: 'online_store',
-                    order_method: normalized.order_method,
-                    payment_type: normalized.payment_type,
-                    fulfillment_status: 'placed',
-                    subtotal_amount: resolved.prepared.subtotalAmount,
-                    vatable_sales: resolved.prepared.vatableSales,
-                    vat_amount: resolved.prepared.vatAmount,
-                    vat_exempt_sales: resolved.prepared.vatExemptSales,
-                    zero_rated_sales: resolved.prepared.zeroRatedSales,
-                    discount_amount: 0,
-                    discount_label_snapshot: null,
-                    discount_rate_snapshot: null,
-                    service_fee_amount: resolved.serviceFeeAmount,
-                    service_fee_label_snapshot: resolved.serviceFeeLabel,
-                    service_fee_method_snapshot: resolved.serviceFeeAmount > 0 ? normalized.order_method : null,
-                    service_fee_overridden: false,
-                    total_amount: resolved.totalAmount,
-                    status: 'completed',
-                    location_id: normalized.location_id,
-                    tracking_pin: trackingPin,
-                    customer_name: normalized.customer_name,
-                    customer_phone: normalized.customer_phone || null,
-                    customer_email: normalized.customer_email || null,
-                    delivery_address: normalized.delivery_address || null,
-                    delivery_latitude: normalized.delivery_latitude,
-                    delivery_longitude: normalized.delivery_longitude,
-                    scheduled_for: resolved.scheduledFor,
-                    special_instructions: normalized.special_instructions || null,
-                    delivery_fee: resolved.deliveryFee,
-                    store_customer_id: normalizedStoreCustomer?.customer_id || null,
-                    outside_radius_flag: resolved.outsideRadiusFlag,
-                    accepted_by: null,
-                    accepted_at: null
-                },
-                lines: resolved.prepared.preparedLines
-            }, { transaction });
-
-            const shouldCreateFnbKitchenOrder = (
-                resolved.recipePlan.allMovements.length > 0
-                || resolved.prepared.preparedLines.some((line) => line.fnb_course_snapshot || line.fnb_modifiers_snapshot)
-            );
-            if (shouldCreateFnbKitchenOrder) {
-                if (typeof storeRepository.createFnbKitchenOrderForOnlineTransaction !== 'function') {
-                    throw new DomainError(
-                        DomainErrorCode.CONFLICT,
-                        'F&B kitchen order persistence is unavailable for storefront checkout',
-                        {
-                            statusCode: 409,
-                            details: { reason_code: 'FNB_KITCHEN_ORDER_UNAVAILABLE' }
-                        }
-                    );
-                }
-                const kitchenOrder = await storeRepository.createFnbKitchenOrderForOnlineTransaction({
-                    pos_transaction_id: orderId,
-                    order_method: normalized.order_method,
-                    location_id: normalized.location_id,
-                    customer_name: normalized.customer_name,
-                    special_instructions: normalized.special_instructions,
-                    lines: resolved.prepared.preparedLines,
-                    recipe_movements: resolved.recipePlan.allMovements
-                }, { transaction });
-                if (!kitchenOrder) {
-                    throw new DomainError(
-                        DomainErrorCode.CONFLICT,
-                        'F&B kitchen order could not be created for storefront checkout',
-                        {
-                            statusCode: 409,
-                            details: { reason_code: 'FNB_KITCHEN_ORDER_UNAVAILABLE' }
-                        }
-                    );
-                }
-            }
-
-            const created = await storeRepository.getOrderById(orderId, { transaction });
-            const cancelProof = buildCancelProofForOrder({
-                order: created,
-                tenantId: normalizedTenantId
-            });
-            const accountAction = await buildOrderAccountAction({
-                storeRepository,
-                order: created,
-                tenantId: normalizedTenantId,
-                storeCustomer: normalizedStoreCustomer,
-                options: { transaction }
-            });
-            await transaction.commit();
-            await recordDgfyOrderActivity({
-                tenantId: normalizedTenantId,
-                order: created,
-                storeCustomer: normalizedStoreCustomer
-            }).catch((error) => logger.warn('[DGFYCustomer] Failed to sync order activity', {
-                error: error?.message,
-                tracking_pin: created?.tracking_pin
-            }));
-
-            return ok({
-                idempotent_replay: false,
-                tracking_pin: trackingPin,
-                order: serializeOrderForCustomer(created),
-                account_action: accountAction,
-                cancel_proof: cancelProof,
-                cancel_proof_expires_in: cancelProof ? getStoreTokenConfig().cancelProofExpiresIn : null
-            });
-        } catch (error) {
-            if (!transaction.finished) {
-                await transaction.rollback();
-            }
-            return fail(mapStoreUseCaseError(error, 'Failed to complete storefront checkout'));
         }
     };
 };

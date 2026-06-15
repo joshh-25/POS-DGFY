@@ -2,18 +2,18 @@ import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ArrowLeft, Building2, ShieldCheck, Store, UserRound, ChevronRight } from 'lucide-react';
 
-const providerClause = 'DGFY is an e-marketplace/platform service provider. The seller owns the product, sets the price, fulfills the order, and remains the seller of record. DGFY facilitates the sale, collects payment through a licensed payment partner, deducts disclosed fees, and remits the seller\'s net settlement.';
+const providerClause = 'DGFY is an e-marketplace/platform service provider. The seller owns the product, sets the price, fulfills the order, and remains the seller of record. Online payments are processed by licensed payment partners such as PayMongo; DGFY does not operate a stored-value wallet or hold seller settlement funds. When PayMongo QR Ph checkout is used, the disclosed DGFY platform fee is 1% of the item subtotal and is charged to the customer as an added platform fee. PayMongo/provider processing, payout, bank, dispute, and related provider fees are shouldered by the registered company and reduce the company net settlement unless a separate signed provider contract says otherwise.';
 
 const legalDocuments = {
     '/legal/dgfy-company-terms': {
         title: 'DGFY Company Registration Terms',
-        version: 'dgfy-company-terms-2026-05-26',
+        version: 'dgfy-company-terms-2026-06-08',
         icon: Building2,
         summary: 'These terms govern company registration, founder ownership, seller-of-record obligations, and the required business registration acknowledgement.',
         sections: [
             {
                 heading: 'Company owner of record',
-                body: 'The registered company remains responsible for the products, services, prices, fulfillment, customer support, tax obligations, and payout account ownership entered or operated through DGFY and SKUpervisor.'
+                body: 'The registered company remains responsible for the products, services, prices, fulfillment, customer support, tax obligations, payout account ownership, and PayMongo/provider fees for transactions entered or operated through DGFY and SKUpervisor.'
             },
             {
                 heading: 'Founder account source',
@@ -31,7 +31,7 @@ const legalDocuments = {
     },
     '/legal/dgfy-marketplace-provider-terms': {
         title: 'DGFY Marketplace Provider Terms',
-        version: 'dgfy-marketplace-provider-2026-05-26',
+        version: 'dgfy-marketplace-provider-2026-06-08',
         icon: Store,
         summary: 'These terms describe DGFY as a marketplace/platform service provider and preserve the seller-of-record boundary.',
         sections: [
@@ -45,7 +45,7 @@ const legalDocuments = {
             },
             {
                 heading: 'Payment handling',
-                body: 'Payments are processed through licensed payment partners. DGFY may collect payment on behalf of the seller, deduct disclosed platform or processing fees, and remit the seller\'s net settlement according to provider availability and applicable rules.'
+                body: 'Payments are processed through licensed payment partners such as PayMongo. For QR Ph checkout, the DGFY platform fee is 1% of item subtotal and is charged to the customer as an added platform fee. PayMongo/provider processing, payout, bank, dispute, and related provider fees are shouldered by the registered company and reduce company net settlement unless a separate signed provider contract says otherwise.'
             },
             {
                 heading: 'No stored-value promise',
@@ -55,7 +55,7 @@ const legalDocuments = {
     },
     '/legal/dgfy-account-terms': {
         title: 'DGFY Account Terms',
-        version: 'dgfy-account-terms-2026-05-26',
+        version: 'dgfy-account-terms-2026-06-08',
         icon: UserRound,
         summary: 'These terms govern the DGFY account used for customer activity, order tracking, company registration, and company invitations.',
         sections: [
@@ -79,7 +79,7 @@ const legalDocuments = {
     },
     '/privacy': {
         title: 'DGFY Privacy Policy',
-        version: 'dgfy-privacy-2026-05-26',
+        version: 'dgfy-privacy-2026-06-08',
         icon: ShieldCheck,
         summary: 'This policy summarizes how DGFY account, registration, order, verification, and support information is handled.',
         sections: [
@@ -147,7 +147,7 @@ export default function LegalDocument() {
                 {/* Background Pattern/Gradient */}
                 <div className="absolute inset-0 bg-gradient-to-br from-[#1A4E8D] to-[#0F172A] opacity-90"></div>
                 <div className="absolute -top-32 -right-32 h-[500px] w-[500px] rounded-full bg-white/5 blur-[100px]"></div>
-                
+
                 <div className="container mx-auto max-w-6xl relative z-10">
                     <Link to={returnTo} state={location.state || null} className="inline-flex items-center gap-2 text-sm font-semibold text-blue-200 hover:text-white transition-colors mb-8">
                         <ArrowLeft className="h-4 w-4" />
@@ -176,11 +176,11 @@ export default function LegalDocument() {
             {/* CONTENT LAYOUT */}
             <section className="container mx-auto max-w-6xl px-6 py-12 lg:py-20 flex-1">
                 <div className="flex flex-col lg:flex-row gap-12 lg:gap-16 relative items-start">
-                    
+
                     {/* LEFT: MAIN DOCUMENT */}
                     <main className="flex-1 min-w-0 bg-white p-8 lg:p-14 rounded-3xl shadow-sm border border-slate-200">
                         <div className="max-w-none">
-                            
+
                             <p className="text-lg text-slate-700 font-medium mb-10 pb-10 border-b border-slate-100">
                                 This document outlines the official terms and policies for DGFY. By proceeding with registration or use of our services, you acknowledge and agree to these terms.
                             </p>
@@ -216,12 +216,12 @@ export default function LegalDocument() {
                                     const isActive = activeSection === sectionId || (!activeSection && index === 0);
                                     return (
                                         <li key={sectionId}>
-                                            <a 
+                                            <a
                                                 href={`#${sectionId}`}
                                                 onClick={(e) => scrollToSection(e, sectionId)}
                                                 className={`flex text-sm font-medium transition-colors duration-200 group ${
-                                                    isActive 
-                                                    ? 'text-[#1A4E8D]' 
+                                                    isActive
+                                                    ? 'text-[#1A4E8D]'
                                                     : 'text-slate-500 hover:text-slate-900'
                                                 }`}
                                             >
@@ -234,9 +234,9 @@ export default function LegalDocument() {
                                     );
                                 })}
                             </ul>
-                            
+
                             <div className="mt-8 pt-8 border-t border-slate-100">
-                                <Link 
+                                <Link
                                     to={returnTo}
                                     state={location.state || null}
                                     className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#F8FAFC] px-5 py-3.5 text-sm font-semibold text-slate-700 hover:bg-[#E2E8F0] hover:text-slate-900 transition-colors border border-slate-200 shadow-sm"

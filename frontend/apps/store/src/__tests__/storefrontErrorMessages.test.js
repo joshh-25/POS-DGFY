@@ -26,6 +26,18 @@ describe('storefront error message normalization', () => {
     expect(message).toContain('Fix required');
   });
 
+  it('maps customer access mode blocks to Storefront mode copy', () => {
+    const message = normalizeStorefrontErrorMessage({
+      errorCode: 'CUSTOMER_ACCESS_MODE_BLOCKED',
+      message: 'Customer access mode does not allow quote_checkout',
+      details: {
+        requested_mode: 'catalog',
+        effective_mode: 'catalog'
+      }
+    });
+    expect(message).toBe('Customers can browse your catalog, but cart, quote, booking, and checkout are disabled.');
+  });
+
   it('maps F&B recipe shortfalls to ingredient-specific checkout copy', () => {
     const message = normalizeStorefrontErrorMessage({
       errorCode: 'VALIDATION_FAILED',

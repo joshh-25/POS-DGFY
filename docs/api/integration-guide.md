@@ -783,6 +783,14 @@ The production implementation now uses a root-level global API error notificatio
   - `timestamp`: ISO timestamp
 - Request-level opt-out flag: `skipGlobalErrorToast`
 - Temporary compatibility event for legacy listeners: `api:server-error` (server class only)
+- Tenant capability event: `tenant:capability-blocked`
+  - `kind`: `capability`
+  - `title`: `Platform admin changed your permissions`
+  - `message`: tenant-readable capability or customer-access-mode copy
+  - `code`: canonical backend code such as `TENANT_CAPABILITY_DISABLED` or `CUSTOMER_ACCESS_MODE_BLOCKED`
+  - `capability`: optional tenant capability key such as `tenant_ims_enabled`, `tenant_pos_enabled`, or `store_is_visible`
+  - `requestedAction`, `requestedMode`, `effectiveMode`: optional Storefront access-mode context
+  - `suppressToast`: `true` when the originating request used `skipGlobalErrorToast`; shell banners may still update, but global toast listeners must stay quiet
 
 Current implementation files:
 - `frontend/src/utils/errorHandler.js`
@@ -796,6 +804,8 @@ Handling rules:
 - Use local toasts for 4xx/domain-specific guidance (for example validation and permission messaging).
 - Let global handling own 5xx and network/no-response errors to avoid duplication.
 - If a flow intentionally handles an error locally, pass `skipGlobalErrorToast: true` in the request config.
+- Capability-block handlers must accept both canonical `code` and legacy/store transport `error_code` response fields. New backend responders should prefer `code`; existing public Storefront transport may still emit `error_code`.
+- `TENANT_CAPABILITY_DISABLED` and `CUSTOMER_ACCESS_MODE_BLOCKED` must replace generic `403` copy with tenant-readable "Platform admin changed your permissions" messages at the shell or action surface.
 
 ### Error Handling Utility
 

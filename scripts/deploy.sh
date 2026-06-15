@@ -41,7 +41,7 @@ FRONTEND_ASSET_PARITY_STRICT="${DEPLOY_FRONTEND_ASSET_PARITY_STRICT:-1}"
 STRICT_LEGACY_AUDIT="${DEPLOY_STRICT_LEGACY_AUDIT:-0}"
 WINDOWS_LOCK_CLEANUP_MODE="${DEPLOY_WINDOWS_LOCK_CLEANUP:-auto}"
 WINDOWS_LOCK_CLEANUP_DELAY_SECONDS="${DEPLOY_WINDOWS_LOCK_CLEANUP_DELAY_SECONDS:-2}"
-STORE_BASE_PATH="${DEPLOY_STORE_BASE_PATH:-/tenant-store/}"
+STORE_BASE_PATH="${DEPLOY_STORE_BASE_PATH:-/}"
 if [[ "$STORE_BASE_PATH" != /* ]]; then
     STORE_BASE_PATH="/$STORE_BASE_PATH"
 fi
@@ -87,7 +87,7 @@ while [[ $# -gt 0 ]]; do
             echo "Environment overrides:"
             echo "  PAYMENTS_ENABLED=true|false (read from backend/.env; default false)"
             echo "  DEPLOY_RUN_BILLING_VERIFY=auto|0|1 (default auto)"
-            echo "  DEPLOY_STORE_BASE_PATH=/tenant-store/"
+            echo "  DEPLOY_STORE_BASE_PATH=/"
             echo "  DEPLOY_VERIFY_PUBLIC_ENDPOINTS=1"
             echo "  DEPLOY_FRONTEND_ASSET_PARITY_STRICT=1"
             echo "  DEPLOY_STRICT_LEGACY_AUDIT=1"

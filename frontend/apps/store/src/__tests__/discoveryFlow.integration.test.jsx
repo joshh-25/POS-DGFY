@@ -7,9 +7,10 @@ import maplibregl from 'maplibre-gl';
 import { App } from '../main.jsx';
 
 vi.mock('maplibre-gl', () => {
-  function PopupApi() {
+  function PopupApi(options = {}) {
     const handlers = {};
     const api = {
+      options,
       node: null,
       html: '',
       on: vi.fn((eventName, handler) => {
@@ -62,16 +63,72 @@ vi.mock('maplibre-gl', () => {
     return api;
   }
   function MapApi(options = {}) {
-    return {
+    const sources = new Map();
+    const layers = new Map();
+    const images = new Set();
+    const layerHandlers = {};
+    const sourceApi = (source = {}) => {
+      const sourceInstance = { ...source };
+      sourceInstance.setData = vi.fn((data) => {
+        sourceInstance.data = data;
+      });
+      return sourceInstance;
+    };
+    const api = {
       container: options.container,
-      on: vi.fn().mockReturnThis(),
-      off: vi.fn().mockReturnThis(),
+      on: vi.fn((eventName, layerOrHandler, maybeHandler) => {
+        if (typeof layerOrHandler === 'string' && typeof maybeHandler === 'function') {
+          const key = `${eventName}:${layerOrHandler}`;
+          layerHandlers[key] = layerHandlers[key] || [];
+          layerHandlers[key].push(maybeHandler);
+        }
+        return api;
+      }),
+      once: vi.fn((eventName, handler) => {
+        if (typeof handler === 'function') handler();
+        return api;
+      }),
+      off: vi.fn((eventName, layerOrHandler, maybeHandler) => {
+        if (typeof layerOrHandler === 'string' && typeof maybeHandler === 'function') {
+          const key = `${eventName}:${layerOrHandler}`;
+          layerHandlers[key] = (layerHandlers[key] || []).filter((entry) => entry !== maybeHandler);
+        }
+        return api;
+      }),
       flyTo: vi.fn().mockReturnThis(),
       fitBounds: vi.fn().mockReturnThis(),
       getZoom: vi.fn(() => 13),
       resize: vi.fn(),
       remove: vi.fn(),
-      getCanvas: vi.fn(() => ({ style: {} }))
+      getCanvas: vi.fn(() => ({ style: {} })),
+      isStyleLoaded: vi.fn(() => true),
+      addSource: vi.fn((id, source) => {
+        sources.set(id, sourceApi(source));
+        return api;
+      }),
+      getSource: vi.fn((id) => sources.get(id)),
+      addLayer: vi.fn((layer) => {
+        layers.set(layer.id, layer);
+        return api;
+      }),
+      getLayer: vi.fn((id) => layers.get(id)),
+      hasImage: vi.fn((id) => images.has(id)),
+      addImage: vi.fn((id) => {
+        images.add(id);
+        return api;
+      }),
+      __sources: sources,
+      __layers: layers,
+      __emitLayer: (eventName, layerId, feature) => {
+        const key = `${eventName}:${layerId}`;
+        (layerHandlers[key] || []).forEach((handler) => handler({
+          preventDefault: vi.fn(),
+          features: feature ? [feature] : []
+        }));
+      }
+    };
+    return {
+      ...api
     };
   }
   return {
@@ -107,15 +164,15 @@ const dgfyLegalTerms = {
   flows: {
     account_registration: {
       snapshot: {
-        terms_version: 'dgfy-account-terms-2026-05-26',
-        privacy_version: 'dgfy-privacy-2026-05-26',
-        marketplace_terms_version: 'dgfy-marketplace-provider-2026-05-26',
+        terms_version: 'dgfy-account-terms-2026-06-08',
+        privacy_version: 'dgfy-privacy-2026-06-08',
+        marketplace_terms_version: 'dgfy-marketplace-provider-2026-06-08',
         acknowledgement_text: 'I agree to the DGFY Terms, Privacy Policy, and marketplace account terms.'
       },
       documents: [
-        { key: 'accountTerms', title: 'DGFY Account Terms', version: 'dgfy-account-terms-2026-05-26', summary: 'Account terms', href: '/legal/dgfy-account-terms' },
-        { key: 'privacy', title: 'DGFY Privacy Policy', version: 'dgfy-privacy-2026-05-26', summary: 'Privacy terms', href: '/privacy' },
-        { key: 'marketplaceTerms', title: 'DGFY Marketplace Provider Terms', version: 'dgfy-marketplace-provider-2026-05-26', summary: 'Marketplace terms', href: '/legal/dgfy-marketplace-provider-terms' }
+        { key: 'accountTerms', title: 'DGFY Account Terms', version: 'dgfy-account-terms-2026-06-08', summary: 'Account terms', href: '/legal/dgfy-account-terms' },
+        { key: 'privacy', title: 'DGFY Privacy Policy', version: 'dgfy-privacy-2026-06-08', summary: 'Privacy terms', href: '/privacy' },
+        { key: 'marketplaceTerms', title: 'DGFY Marketplace Provider Terms', version: 'dgfy-marketplace-provider-2026-06-08', summary: 'Marketplace terms', href: '/legal/dgfy-marketplace-provider-terms' }
       ]
     }
   }
@@ -133,11 +190,66 @@ const getLastDiscoveryParams = (fetchMock) => {
   return parsed.searchParams;
 };
 
+const getMapApis = () => maplibregl.Map.mock.results
+  .map((result) => result?.value)
+  .filter(Boolean);
+
+const getMapViewportCallCount = () => getMapApis().reduce((total, mapApi) => (
+  total + (mapApi.flyTo?.mock?.calls?.length || 0) + (mapApi.fitBounds?.mock?.calls?.length || 0)
+), 0);
+
+const getLatestMapApi = () => getMapApis().at(-1);
+
+const getDiscoveryPinFeatures = () => {
+  const source = getLatestMapApi()?.getSource?.('dgfy-discovery-pins');
+  return source?.data?.features || [];
+};
+
+const getDiscoveryUserFeatures = () => {
+  const source = getLatestMapApi()?.getSource?.('dgfy-discovery-user-location');
+  return source?.data?.features || [];
+};
+
+const waitForDiscoveryPinFeatures = async (count) => {
+  await waitFor(() => expect(getDiscoveryPinFeatures().length).toBe(count));
+  return getDiscoveryPinFeatures();
+};
+
+const emitDiscoveryPinClick = (feature) => {
+  const mapApi = getLatestMapApi();
+  mapApi?.__emitLayer('click', 'dgfy-discovery-pin-symbols', feature);
+};
+
+const emitDiscoveryPinMouseEnter = (feature) => {
+  const mapApi = getLatestMapApi();
+  mapApi?.__emitLayer('mouseenter', 'dgfy-discovery-pin-symbols', feature);
+};
+
+const emitDiscoveryPinMouseLeave = (feature) => {
+  const mapApi = getLatestMapApi();
+  mapApi?.__emitLayer('mouseleave', 'dgfy-discovery-pin-symbols', feature);
+};
+
 describe('storefront discovery integration flow', () => {
   let fetchMock;
 
   beforeEach(() => {
     window.history.pushState({}, '', '/');
+    const MockImage = class {
+      constructor(width, height) {
+        this.width = width;
+        this.height = height;
+      }
+      set src(_value) {
+        this._src = _value;
+        setTimeout(() => this.onload?.(), 0);
+      }
+      get src() {
+        return this._src;
+      }
+    };
+    vi.stubGlobal('Image', MockImage);
+    window.Image = MockImage;
     fetchMock = vi.fn(async (url) => {
       const normalized = String(url);
       if (normalized.includes('/api/v1/storefront/discovery?')) {
@@ -423,16 +535,12 @@ describe('storefront discovery integration flow', () => {
     expect(fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl).includes('/api/v1/storefront/geo-search'))).toBe(false);
   });
 
-  it('ignores stale geolocation callbacks from earlier search actions', async () => {
+  it('does not request geolocation or location-scope normal submitted searches', async () => {
     const user = userEvent.setup();
-    const pendingGeolocationRequests = [];
+    const getCurrentPosition = vi.fn();
     Object.defineProperty(window.navigator, 'geolocation', {
       configurable: true,
-      value: {
-        getCurrentPosition: vi.fn((success, error) => {
-          pendingGeolocationRequests.push({ success, error });
-        })
-      }
+      value: { getCurrentPosition }
     });
 
     render(<App />);
@@ -443,31 +551,71 @@ describe('storefront discovery integration flow', () => {
     const searchInput = screen.getByPlaceholderText('Search products, services or stores nearby...');
     await user.type(searchInput, 'milk');
     await user.click(screen.getByRole('button', { name: /^Search$/i }));
-    await user.clear(searchInput);
-    await user.type(searchInput, 'rice');
-    await user.click(screen.getByRole('button', { name: /^Search$/i }));
 
-    expect(pendingGeolocationRequests).toHaveLength(2);
-    pendingGeolocationRequests[0].success({ coords: { latitude: 1, longitude: 2 } });
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
-    let searchValues = getDiscoveryQueryUrls(fetchMock)
-      .map((requestUrl) => new URL(requestUrl, 'http://localhost').searchParams.get('search'))
-      .filter(Boolean);
-    expect(searchValues).not.toContain('milk');
-
-    pendingGeolocationRequests[1].success({ coords: { latitude: 10.7, longitude: 122.5 } });
     await waitFor(() => {
       const params = getLastDiscoveryParams(fetchMock);
-      expect(params.get('search')).toBe('rice');
-      expect(params.get('latitude')).toBe('10.7');
-      expect(params.get('longitude')).toBe('122.5');
+      expect(params.get('search')).toBe('milk');
+      expect(params.get('latitude')).toBeNull();
+      expect(params.get('longitude')).toBeNull();
+      expect(params.get('pin_scope')).toBe('tenant_primary');
     });
+    expect(getCurrentPosition).not.toHaveBeenCalled();
 
-    searchValues = getDiscoveryQueryUrls(fetchMock)
+    const searchValues = getDiscoveryQueryUrls(fetchMock)
       .map((requestUrl) => new URL(requestUrl, 'http://localhost').searchParams.get('search'))
       .filter(Boolean);
-    expect(searchValues).toContain('rice');
-    expect(searchValues).not.toContain('milk');
+    expect(searchValues).toContain('milk');
+  });
+
+  it('centers initial discovery on existing granted location permission without prompting denied users', async () => {
+    const getCurrentPosition = vi.fn((success) => {
+      success({ coords: { latitude: 10.7, longitude: 122.5 } });
+    });
+    Object.defineProperty(window.navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition }
+    });
+    Object.defineProperty(window.navigator, 'permissions', {
+      configurable: true,
+      value: {
+        query: vi.fn(async () => ({ state: 'granted' }))
+      }
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      const params = getLastDiscoveryParams(fetchMock);
+      expect(params.get('latitude')).toBe('10.7');
+      expect(params.get('longitude')).toBe('122.5');
+      expect(params.get('pin_scope')).toBe('tenant_primary');
+    });
+    expect(window.navigator.permissions.query).toHaveBeenCalledWith({ name: 'geolocation' });
+    expect(getCurrentPosition).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses prior explicit location success as a fallback when permissions API is unavailable', async () => {
+    window.localStorage.setItem('dgfy_storefront_discovery_location_permission_v1', 'granted');
+    const getCurrentPosition = vi.fn((success) => {
+      success({ coords: { latitude: 10.75, longitude: 122.55 } });
+    });
+    Object.defineProperty(window.navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition }
+    });
+    Object.defineProperty(window.navigator, 'permissions', {
+      configurable: true,
+      value: undefined
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      const params = getLastDiscoveryParams(fetchMock);
+      expect(params.get('latitude')).toBe('10.75');
+      expect(params.get('longitude')).toBe('122.55');
+    });
+    expect(getCurrentPosition).toHaveBeenCalledTimes(1);
   });
 
   it('sends the current discovery query contract by default', async () => {
@@ -493,7 +641,200 @@ describe('storefront discovery integration flow', () => {
     });
   });
 
-  it('renders match badges and opens store with preferred matching location id', async () => {
+  it('keeps item-search storefront results after a previous Near Me request', async () => {
+    const user = userEvent.setup();
+    const getCurrentPosition = vi.fn((success) => {
+      success({ coords: { latitude: 10.7, longitude: 122.5 } });
+    });
+    Object.defineProperty(window.navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition }
+    });
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        const parsed = new URL(normalized, 'http://localhost');
+        const search = parsed.searchParams.get('search');
+        return makeJsonResponse({
+          stores: search === 'aircon'
+            ? [
+                {
+                  tenant_id: 'tenant-ac',
+                  tenant_name: 'A/C Innovative Solutions',
+                  slug: 'ac-innovative-solutions',
+                  storefront_open: true,
+                  address_line: 'Iloilo City',
+                  latitude: 10.7001938,
+                  longitude: 122.5623094,
+                  catalog_count: 4,
+                  nearest_distance_km: 4.1,
+                  distance_km: 4.1,
+                  match_reasons: ['item'],
+                  matching_item_count: 1,
+                  matching_item_sample: ['Aircon cleaning'],
+                  has_in_stock_match: true,
+                  matching_location_ids: [11],
+                  nearest_matching_location_id: 11
+                }
+              ]
+            : [],
+          pagination: { page: 1, limit: 100, total: search === 'aircon' ? 1 : 0, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: parsed.searchParams.get('pin_scope') || 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Main Branch', address_line: 'Iloilo City', latitude: 10.7001938, longitude: 122.5623094, is_active: true, is_primary_storefront: true, is_open: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
+
+    await user.click(screen.getByTitle('Use my current location'));
+    await waitFor(() => {
+      const params = getLastDiscoveryParams(fetchMock);
+      expect(params.get('pin_scope')).toBe('nearest_matching_branch');
+      expect(params.get('latitude')).toBe('10.7');
+    });
+
+    await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'aircon');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+
+    await waitFor(() => expect(screen.getAllByText('A/C Innovative Solutions').length).toBeGreaterThan(0));
+    const features = await waitForDiscoveryPinFeatures(1);
+    expect(features.some((feature) => feature.properties?.highlighted === true)).toBe(true);
+    const params = getLastDiscoveryParams(fetchMock);
+    expect(params.get('search')).toBe('aircon');
+    expect(params.get('pin_scope')).toBe('tenant_primary');
+    expect(params.get('latitude')).toBeNull();
+    expect(params.get('longitude')).toBeNull();
+  });
+
+  it('moves to a new submitted result set once without refitting repeated identical searches', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        const parsed = new URL(normalized, 'http://localhost');
+        const search = parsed.searchParams.get('search');
+        const stores = search === 'space'
+          ? [
+              {
+                tenant_id: 'tenant-space',
+                tenant_name: 'Space Hardware',
+                slug: 'space-hardware',
+                storefront_open: true,
+                address_line: 'Iloilo City',
+                latitude: 10.73,
+                longitude: 122.58,
+                catalog_count: 3,
+                match_reasons: ['store']
+              }
+            ]
+          : search === 'aircon'
+            ? [
+                {
+                  tenant_id: 'tenant-ac',
+                  tenant_name: 'A/C Innovative Solutions',
+                  slug: 'ac-innovative-solutions',
+                  storefront_open: true,
+                  address_line: 'Iloilo City',
+                  latitude: 10.7001938,
+                  longitude: 122.5623094,
+                  catalog_count: 4,
+                  match_reasons: ['item'],
+                  matching_item_count: 1,
+                  has_in_stock_match: true
+                }
+              ]
+            : [];
+        return makeJsonResponse({
+          stores,
+          pagination: { page: 1, limit: 100, total: stores.length, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        const parsed = new URL(normalized, 'http://localhost');
+        const slug = parsed.searchParams.get('slug');
+        const isSpace = slug === 'space-hardware';
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            {
+              location_id: 11,
+              name: 'Main Branch',
+              address_line: 'Iloilo City',
+              latitude: isSpace ? 10.73 : 10.7001938,
+              longitude: isSpace ? 122.58 : 122.5623094,
+              is_active: true,
+              is_primary_storefront: true,
+              is_open: true
+            }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
+
+    const searchInput = screen.getByPlaceholderText('Search products, services or stores nearby...');
+    await user.type(searchInput, 'aircon');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+    await waitFor(() => expect(screen.getAllByText('A/C Innovative Solutions').length).toBeGreaterThan(0));
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl).includes('/api/v1/store/locations'))).toBe(true);
+    });
+    await waitFor(() => {
+      expect(getMapViewportCallCount()).toBeGreaterThan(0);
+    });
+    const firstSearchViewportCalls = getMapViewportCallCount();
+
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+    await waitFor(() => expect(getLastDiscoveryParams(fetchMock).get('search')).toBe('aircon'));
+    expect(getMapViewportCallCount()).toBe(firstSearchViewportCalls);
+
+    await user.clear(searchInput);
+    await user.type(searchInput, 'space');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+    await waitFor(() => expect(screen.getAllByText('Space Hardware').length).toBeGreaterThan(0));
+    expect(getMapViewportCallCount()).toBeGreaterThan(firstSearchViewportCalls);
+  });
+
+  it('keeps searched marker previews hover-owned and opens store with preferred matching location id', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: true,
+      media: '(hover: hover)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    })));
     fetchMock.mockImplementation(async (url) => {
       const normalized = String(url);
       if (normalized.includes('/api/v1/storefront/discovery?')) {
@@ -560,8 +901,19 @@ describe('storefront discovery integration flow', () => {
     await waitFor(() => expect(screen.getAllByText('Alpha Foods').length).toBeGreaterThan(0));
     await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'alpha');
     await user.click(screen.getByRole('button', { name: /^Search$/i }));
-    await waitFor(() => expect(screen.getAllByText('Store + Item match').length).toBeGreaterThan(0));
-    expect(screen.getAllByText('In-stock match').length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getAllByText('Alpha Foods').length).toBeGreaterThan(0));
+    const features = await waitForDiscoveryPinFeatures(1);
+    expect(features.some((feature) => feature.properties?.highlighted === true)).toBe(true);
+    expect(screen.queryByRole('dialog', { name: /Alpha Foods location preview/i })).toBeNull();
+    emitDiscoveryPinMouseEnter(features[0]);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Open storefront' })).toBeTruthy());
+    emitDiscoveryPinMouseLeave(features[0]);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Alpha Foods location preview/i })).toBeNull());
+    expect(maplibregl.Popup.mock.calls.some(([options]) => (
+      options?.anchor === 'bottom'
+      && options?.offset?.bottom?.[1] === -58
+      && options?.offset?.top?.[1] === 58
+    ))).toBe(true);
 
     await user.click(screen.getAllByRole('button', { name: 'View Store' })[0]);
     await waitFor(() => {
@@ -641,17 +993,13 @@ describe('storefront discovery integration flow', () => {
 
     const user = userEvent.setup();
     render(<App />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Main/i }).length).toBeGreaterThan(0));
-    const alphaMarkerCall = maplibregl.Marker.mock.calls.find(([options]) => (
-      options?.element?.getAttribute?.('aria-label') || ''
-    ).includes('Preview Alpha Foods at Main'));
-    expect(alphaMarkerCall?.[0]?.anchor).toBe('bottom');
-    const alphaMarkerElement = alphaMarkerCall?.[0]?.element;
-    expect(alphaMarkerElement).toBeTruthy();
+    const [alphaFeature] = await waitForDiscoveryPinFeatures(1);
+    expect(alphaFeature.properties?.markerKey).toContain('alpha');
+    expect(alphaFeature.geometry.coordinates).toEqual([122.56, 10.72]);
 
-    await user.click(alphaMarkerElement);
+    emitDiscoveryPinClick(alphaFeature);
     await waitFor(() => expect(screen.getAllByText('Main').length).toBeGreaterThan(0));
-    expect(screen.getAllByText('Iloilo City').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Open storefront' })).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: 'Open storefront' }));
     await waitFor(() => {
@@ -714,14 +1062,12 @@ describe('storefront discovery integration flow', () => {
     });
 
     render(<App />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Main/i }).length).toBeGreaterThan(0));
+    const [alphaFeature] = await waitForDiscoveryPinFeatures(1);
 
-    const marker = screen.getAllByRole('button', { name: /Preview Alpha Foods at Main/i })[0];
-    fireEvent.click(marker);
+    emitDiscoveryPinClick(alphaFeature);
     await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
 
     const action = screen.getByRole('button', { name: 'Open storefront' });
-    fireEvent.blur(marker, { relatedTarget: action });
     fireEvent.focusIn(action);
     await new Promise((resolve) => window.setTimeout(resolve, 220));
 
@@ -779,17 +1125,77 @@ describe('storefront discovery integration flow', () => {
       return makeJsonResponse({});
     });
 
-    const user = userEvent.setup();
     render(<App />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /Preview Alpha Foods at Main/i }).length).toBeGreaterThan(0));
+    const [alphaFeature] = await waitForDiscoveryPinFeatures(1);
 
-    const marker = screen.getAllByRole('button', { name: /Preview Alpha Foods at Main/i })[0];
-    await user.click(marker);
+    emitDiscoveryPinClick(alphaFeature);
     await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
 
-    fireEvent.pointerLeave(marker, { relatedTarget: document.body });
+    getMapApis()[0]?.__emitLayer?.('mouseleave', 'dgfy-discovery-pin-symbols', alphaFeature);
     await new Promise((resolve) => window.setTimeout(resolve, 220));
     expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy();
+  });
+
+  it('collapses hover-open marker previews when the pointer leaves the marker', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: true,
+      media: '(hover: hover)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    })));
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Alpha Foods',
+              slug: 'alpha',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              latitude: 10.72,
+              longitude: 122.56,
+              catalog_count: 2,
+              storefront_cover_image_url: '/uploads/storefront-assets/t1/cover.png',
+              storefront_profile_image_url: '/uploads/storefront-assets/t1/profile.png'
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Main', address_line: 'Main Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    const [alphaFeature] = await waitForDiscoveryPinFeatures(1);
+
+    emitDiscoveryPinMouseEnter(alphaFeature);
+    await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
+
+    fireEvent.mouseEnter(screen.getByRole('dialog', { name: /Alpha Foods location preview/i }));
+    emitDiscoveryPinMouseLeave(alphaFeature);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Alpha Foods location preview/i })).toBeNull());
   });
 
   it('renders duplicate-coordinate map pins as one exact-coordinate cluster marker', async () => {
@@ -849,22 +1255,28 @@ describe('storefront discovery integration flow', () => {
     });
 
     render(<App />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /2 storefronts at this location/i }).length).toBeGreaterThan(0));
+    const [clusterFeature] = await waitForDiscoveryPinFeatures(1);
+    expect(clusterFeature.geometry.coordinates).toEqual([122.56, 10.72]);
+    expect(clusterFeature.properties).toMatchObject({
+      coordinateKey: '10.720000:122.560000',
+      count: 2,
+      type: 'cluster'
+    });
+    expect(maplibregl.Marker).not.toHaveBeenCalledWith(expect.objectContaining({
+      anchor: 'bottom'
+    }));
+    expect(maplibregl.Popup).not.toHaveBeenCalled();
 
-    const clusterCallIndex = maplibregl.Marker.mock.calls.findIndex(([options]) => (
-      options?.element?.classList?.contains('discovery-result-cluster')
-    ));
-    expect(clusterCallIndex).toBeGreaterThanOrEqual(0);
-    expect(maplibregl.Marker.mock.calls[clusterCallIndex]?.[0]?.anchor).toBe('center');
-    expect(maplibregl.Marker.mock.results[clusterCallIndex]?.value?.setLngLat).toHaveBeenCalledWith([122.56, 10.72]);
-
-    fireEvent.click(screen.getAllByRole('button', { name: /2 storefronts at this location/i })[0]);
-    await waitFor(() => expect(screen.getByRole('button', { name: /Select Alpha Foods at Main Branch/i })).toBeTruthy());
-    expect(screen.getByRole('button', { name: /Select Beta Foods at Main Branch/i })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: /Select Alpha Foods at Main Branch/i }));
-    await waitFor(() => expect(screen.getByRole('dialog', { name: /Alpha Foods location preview/i })).toBeTruthy());
-    expect(screen.getByRole('button', { name: 'Open storefront' })).toBeTruthy();
+    emitDiscoveryPinClick(clusterFeature);
+    await waitFor(() => expect(screen.getByText('Stores At This Pin')).toBeTruthy());
+    await waitFor(() => expect(getMapApis().filter((api) => api?.container?.isConnected).length).toBe(1));
+    expect(screen.getByText('2 Stores Found')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /collapse results panel/i }));
+    expect(screen.getByRole('button', { name: /View Results \(2\)/i })).toBeTruthy();
+    expect(screen.getAllByText('Alpha Foods').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Beta Foods').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /Select Alpha Foods at Main Branch/i })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: /Alpha Foods location preview/i })).toBeNull();
   });
 
   it('keeps indexed discovery coordinates when tenant location enrichment is reused from another store', async () => {
@@ -935,22 +1347,10 @@ describe('storefront discovery integration flow', () => {
     });
 
     expect(screen.queryByRole('button', { name: /2 storefronts at this location/i })).toBeNull();
-    const markerAtAlphaCoordinate = maplibregl.Marker.mock.results.some((result) => (
-      result?.value?.setLngLat?.mock?.calls?.some(([coordinate]) => (
-        Array.isArray(coordinate)
-        && Number(coordinate[0]).toFixed(6) === '122.505141'
-        && Number(coordinate[1]).toFixed(6) === '10.726869'
-      ))
-    ));
-    const markerAtBetaCoordinate = maplibregl.Marker.mock.results.some((result) => (
-      result?.value?.setLngLat?.mock?.calls?.some(([coordinate]) => (
-        Array.isArray(coordinate)
-        && Number(coordinate[0]).toFixed(6) === '122.562100'
-        && Number(coordinate[1]).toFixed(6) === '10.720200'
-      ))
-    ));
-    expect(markerAtAlphaCoordinate).toBe(true);
-    expect(markerAtBetaCoordinate).toBe(true);
+    const features = await waitForDiscoveryPinFeatures(2);
+    const coordinates = features.map((feature) => feature.geometry.coordinates.map((value) => Number(value).toFixed(6)));
+    expect(coordinates).toContainEqual(['122.505141', '10.726869']);
+    expect(coordinates).toContainEqual(['122.562100', '10.720200']);
   });
 
   it('does not cluster storefronts at the default center when coordinate data is missing', async () => {
@@ -997,14 +1397,7 @@ describe('storefront discovery integration flow', () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText(/Coordinate Missing A/i)).toBeTruthy());
 
-    const markerAtDefaultCenter = maplibregl.Marker.mock.results.some((result) => (
-      result?.value?.setLngLat?.mock?.calls?.some(([coordinate]) => (
-        Array.isArray(coordinate)
-        && Number(coordinate[0]).toFixed(6) === '122.562100'
-        && Number(coordinate[1]).toFixed(6) === '10.720200'
-      ))
-    ));
-    expect(markerAtDefaultCenter).toBe(false);
+    await waitForDiscoveryPinFeatures(0);
   });
 
   it('does not render provisioned placeholder storefront coordinates as authoritative map pins', async () => {
@@ -1071,22 +1464,14 @@ describe('storefront discovery integration flow', () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText(/Placeholder A/i)).toBeTruthy());
 
-    const markerAtProvisionedDefault = maplibregl.Marker.mock.results.some((result) => (
-      result?.value?.setLngLat?.mock?.calls?.some(([coordinate]) => (
-        Array.isArray(coordinate)
-        && Number(coordinate[0]).toFixed(6) === '122.559893'
-        && Number(coordinate[1]).toFixed(6) === '10.699817'
-      ))
-    ));
-    expect(markerAtProvisionedDefault).toBe(false);
-    const markerAtConfiguredCoordinate = maplibregl.Marker.mock.results.some((result) => (
-      result?.value?.setLngLat?.mock?.calls?.some(([coordinate]) => (
-        Array.isArray(coordinate)
-        && Number(coordinate[0]).toFixed(6) === '122.562309'
-        && Number(coordinate[1]).toFixed(6) === '10.700194'
-      ))
-    ));
-    expect(markerAtConfiguredCoordinate).toBe(true);
+    await waitFor(() => {
+      const coordinates = getDiscoveryPinFeatures().map((feature) => feature.geometry.coordinates.map((value) => Number(value).toFixed(6)));
+      expect(coordinates).not.toContainEqual(['122.559893', '10.699817']);
+      expect(coordinates).toContainEqual(['122.562309', '10.700194']);
+    });
+    const coordinates = getDiscoveryPinFeatures().map((feature) => feature.geometry.coordinates.map((value) => Number(value).toFixed(6)));
+    expect(coordinates).not.toContainEqual(['122.559893', '10.699817']);
+    expect(coordinates).toContainEqual(['122.562309', '10.700194']);
   });
 
   it('discloses cluster overflow when more than eight storefronts share coordinates', async () => {
@@ -1127,11 +1512,18 @@ describe('storefront discovery integration flow', () => {
     });
 
     render(<App />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /10 storefronts at this location/i }).length).toBeGreaterThan(0));
+    const [clusterFeature] = await waitForDiscoveryPinFeatures(1);
+    expect(clusterFeature.properties).toMatchObject({
+      count: 10,
+      type: 'cluster'
+    });
 
-    fireEvent.click(screen.getAllByRole('button', { name: /10 storefronts at this location/i })[0]);
-    await waitFor(() => expect(screen.getByText('Showing all 10 storefronts at this exact pin')).toBeTruthy());
-    expect(screen.getByRole('button', { name: /Select Store 10 at Main Branch/i })).toBeTruthy();
+    emitDiscoveryPinClick(clusterFeature);
+    await waitFor(() => expect(screen.getByText('Stores At This Pin')).toBeTruthy());
+    expect(screen.getByText('10 Stores Found')).toBeTruthy();
+    expect(screen.getAllByText('Store 10').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Showing all 10 storefronts at this exact pin')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Select Store 10 at Main Branch/i })).toBeNull();
   });
 
   it('updates featured local merchants pagination dots when carousel arrows are clicked', async () => {
@@ -1272,6 +1664,11 @@ describe('storefront discovery integration flow', () => {
       expect(params.get('longitude')).toBe('122.5');
       expect(params.get('pin_scope')).toBe('nearest_matching_branch');
     });
+    await waitFor(() => expect(getDiscoveryUserFeatures()).toHaveLength(1));
+    expect(getDiscoveryUserFeatures()[0].geometry.coordinates).toEqual([122.5, 10.7]);
+    const mapApi = getMapApis()[0];
+    expect(mapApi.getLayer('dgfy-discovery-user-location')).toBeTruthy();
+    expect(mapApi.getLayer('dgfy-discovery-pin-symbols')).toBeTruthy();
   });
 
   it('Near Me failure falls back to discovery without coordinates', async () => {
@@ -1312,5 +1709,51 @@ describe('storefront discovery integration flow', () => {
     await waitFor(() => {
       expect(screen.getByText('No items are available to search yet')).toBeTruthy();
     });
+  });
+
+  it('loads root tenant URLs with the selected location_id catalog scope', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery/alpha')) {
+        return makeJsonResponse({
+          slug: 'alpha',
+          tenant_name: 'Alpha Foods',
+          workflow_mode: 'services',
+          location_id: 11,
+          location_name: 'Main',
+          address_line: 'Main Road',
+          storefront_open: true,
+          catalog_count: 1
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Main', address_line: 'Main Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true },
+            { location_id: 22, name: 'Branch', address_line: 'Branch Road', latitude: 10.73, longitude: 122.57, is_active: true, is_primary_storefront: false, is_open: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({ stores: [], pagination: { page: 1, limit: 100, total: 0, totalPages: 0 } });
+      }
+      return makeJsonResponse({});
+    });
+
+    window.history.pushState({}, '', '/alpha?location_id=22');
+    render(<App />);
+
+    await waitFor(() => {
+      const catalogCalls = fetchMock.mock.calls
+        .map(([requestUrl]) => String(requestUrl))
+        .filter((requestUrl) => requestUrl.includes('/api/v1/store/catalog?'));
+      expect(catalogCalls.some((requestUrl) => requestUrl.includes('location_id=22'))).toBe(true);
+    });
+    expect(window.location.pathname).toBe('/alpha');
+    expect(window.location.search).toBe('?location_id=22');
   });
 });

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DGFY POS Setup</title>
+    <link rel="stylesheet" href="./setup.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel">
+        <div class="copy">
+          <p class="eyebrow">Desktop Setup</p>
+          <h1>DGFY POS</h1>
+          <p class="body">
+            Enter the store-host backend URL and the terminal defaults for this workstation.
+          </p>
+        </div>
+
+        <form id="setup-form" class="form">
+          <label class="field">
+            <span>Backend URL</span>
+            <input id="backendOrigin" name="backendOrigin" type="url" placeholder="http://192.168.1.10:5001" required />
+          </label>
+
+          <label class="field">
+            <span>Company Token</span>
+            <input id="companyToken" name="companyToken" type="text" placeholder="token-original" />
+          </label>
+
+          <label class="field">
+            <span>Terminal ID</span>
+            <input id="terminalId" name="terminalId" type="text" placeholder="COUNTER-01" />
+          </label>
+
+          <p id="status" class="status" aria-live="polite"></p>
+
+          <button id="submit" type="submit">Save and Launch POS</button>
+        </form>
+      </section>
+    </main>
+
+    <script src="./setup.js"></script>
+  </body>
+</html>

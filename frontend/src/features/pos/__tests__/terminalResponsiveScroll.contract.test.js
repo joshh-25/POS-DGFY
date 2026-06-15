@@ -25,16 +25,16 @@ describe('POS terminal responsive scroll contracts', () => {
 
   it('lets checkout cards expand naturally and avoids legacy 100vh calc sizing', () => {
     expect(posCheckoutContent).toContain("const shellClassName = 'space-y-5';");
-    expect(posCheckoutContent).toContain("const checkoutGridClassName = 'grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_325px] 2xl:gap-6';");
+    expect(posCheckoutContent).toContain("const checkoutGridClassName = 'grid grid-cols-1 gap-4 2xl:grid-cols-12 2xl:gap-6';");
     expect(posCheckoutContent).toContain("const checkoutPaneClassName = '2xl:min-h-[32rem] 2xl:max-h-none';");
-    expect(posCheckoutContent).toContain("const catalogViewportClassName = 'min-h-0 flex-1 overflow-visible pr-0 pb-3';");
-    expect(posCheckoutContent).toContain("const currentSaleItemsListClassName = 'h-[17.25rem] overflow-y-auto pr-1';");
+    expect(posCheckoutContent).not.toContain('overflow-y-auto');
+    expect(posCheckoutContent).not.toContain('min-h-0 overflow-hidden');
     expect(posCheckoutContent).not.toContain('splitPaneScrollClassName');
     expect(posCheckoutContent).not.toContain('calc(100vh-13.5rem)');
   });
 
-  it('pins current-sale terminal actions in a dedicated footer action grid', () => {
-    expect(posCheckoutContent).toContain('grid grid-cols-2 gap-2 border-t border-slate-200 pt-3');
+  it('pins current-sale terminal actions with sticky footer controls', () => {
+    expect(posCheckoutContent).toContain('sticky bottom-0 z-20 grid grid-cols-1 gap-2');
     expect(posCheckoutContent).toContain('Checkout');
     expect(posCheckoutContent).toContain('Close Day / Z-Reading');
   });

@@ -8,12 +8,14 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, ArrowRight, ArrowLeft, Package, FileEdit } from 'lucide-react';
+import { Check, ArrowRight, ArrowLeft, Package, FileEdit, X } from 'lucide-react';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { validateComposition, showValidationErrors } from '../utils/compositionValidation';
 import { useLocations } from '@/src/hooks/useLocations.js';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { resolveBusinessModeProductDefaults } from '@/src/features/settings/businessModeTemplates.js';
+import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
+import WizardStepNavigator from '@/src/components/common/WizardStepNavigator.jsx';
 import { toast } from 'sonner';
 
 // Import step components
@@ -31,21 +33,41 @@ import RegulatoryComplianceStep from './wizard/RegulatoryComplianceStep';
 import POSSetupStep from './wizard/POSSetupStep';
 import SummaryStep from './wizard/SummaryStep';
 
-const STEPS = [
-  { id: 1, name: 'Basic Info', component: BasicInfoStep },
-  { id: 2, name: 'Recipe & Ingredients', component: RecipeFormulationStep },
-  { id: 3, name: 'Yield & Loss', component: YieldManagementStep },
-  { id: 4, name: 'Nutrition', component: NutritionalInfoStep },
-  { id: 5, name: 'Allergens', component: AllergenManagementStep },
-  { id: 6, name: 'Properties', component: PhysicalPropertiesStep },
-  { id: 7, name: 'Shelf Life', component: ShelfLifeStep },
-  { id: 8, name: 'Packaging', component: PackagingLabelingStep },
-  { id: 9, name: 'Costing', component: CostFinancialStep },
-  { id: 10, name: 'POS Setup', component: POSSetupStep },
-  { id: 11, name: 'Quality Control', component: QualityControlStep },
-  { id: 12, name: 'Compliance', component: RegulatoryComplianceStep },
-  { id: 13, name: 'Review', component: SummaryStep },
+export const PRODUCT_WIZARD_STEP_DEFINITIONS = [
+  { key: 'basic_info', name: 'Basic Info', description: 'Product identity, SKU, category, stock, and VAT setup.', component: BasicInfoStep },
+  { key: 'pos_setup', name: 'POS Setup', description: 'POS visibility, menu image, Storefront visibility, and item images.', component: POSSetupStep },
+  { key: 'recipe_ingredients', name: 'Recipe & Ingredients', description: 'Recipe composition, ingredient quantities, and product components.', component: RecipeFormulationStep },
+  { key: 'yield_loss', name: 'Yield & Loss', description: 'Batch size, yield percentage, and processing loss.', component: YieldManagementStep },
+  { key: 'nutrition', name: 'Nutrition', description: 'Nutrition facts and customer-facing dietary information.', component: NutritionalInfoStep },
+  { key: 'allergens', name: 'Allergens', description: 'Allergen declarations and may-contain warnings.', component: AllergenManagementStep },
+  { key: 'physical_properties', name: 'Properties', description: 'Physical and chemical manufacturing properties.', component: PhysicalPropertiesStep, excludeModes: ['fnb'] },
+  { key: 'shelf_life', name: 'Shelf Life', description: 'Shelf-life, storage, and expiry details.', component: ShelfLifeStep },
+  { key: 'packaging', name: 'Packaging', description: 'Packaging, labeling, and presentation details.', component: PackagingLabelingStep },
+  { key: 'costing', name: 'Costing', description: 'Costs, margin, and customer selling price.', component: CostFinancialStep },
+  { key: 'quality_control', name: 'Quality Control', description: 'Manufacturing quality checks and batch standards.', component: QualityControlStep, excludeModes: ['fnb'] },
+  { key: 'compliance', name: 'Compliance', description: 'Regulatory and compliance references.', component: RegulatoryComplianceStep },
+  { key: 'review', name: 'Review', description: 'Review product setup before saving.', component: SummaryStep },
 ];
+
+export const resolveProductWizardSteps = (workflowMode = 'manufacturing') => {
+  const normalizedMode = normalizeWorkflowMode(workflowMode);
+  return PRODUCT_WIZARD_STEP_DEFINITIONS
+    .filter((definition) => !(definition.excludeModes || []).includes(normalizedMode))
+    .map((definition, index) => ({
+      ...definition,
+      id: definition.key,
+      number: index + 1
+    }));
+};
+
+const clearFnbManufacturingFields = (payload, workflowMode) => {
+  if (normalizeWorkflowMode(workflowMode) !== 'fnb') return payload;
+  return {
+    ...payload,
+    physical_properties: {},
+    quality_control: {}
+  };
+};
 
 const BASE_PRODUCT_DATA = {
   category: 'product',
@@ -75,6 +97,7 @@ const BASE_PRODUCT_DATA = {
   quality_control: {},
   regulatory_compliance: {},
   production_notes: '',
+  storefront_location_availability: [],
   fifo_enabled: true
 };
 
@@ -101,6 +124,7 @@ export default function ProductCreateWizard({
   onUploadPosImage,
   onDeletePosImage,
   onToggleStorefrontVisibility,
+  onToggleStorefrontLocationAvailability,
   onUploadStorefrontImage,
   onSetPrimaryStorefrontImage,
   onDeleteStorefrontImage,
@@ -108,6 +132,10 @@ export default function ProductCreateWizard({
 }) {
   const [step, setStep] = useState(1);
   const [initialStep, setInitialStep] = useState(1);
+  const wizardSteps = useMemo(
+    () => resolveProductWizardSteps(workflowMode),
+    [workflowMode]
+  );
   const modeProductDefaults = useMemo(
     () => resolveBusinessModeProductDefaults(workflowMode),
     [workflowMode]
@@ -125,6 +153,12 @@ export default function ProductCreateWizard({
   const activeLocations = useMemo(
     () => (Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : []),
     [locations]
+  );
+  const activeLocationsKey = useMemo(
+    () => activeLocations
+      .map((location) => `${location?.location_id || ''}:${location?.is_active !== false ? '1' : '0'}`)
+      .join('|'),
+    [activeLocations]
   );
   const productLocationStockMap = useMemo(() => {
     const rows = Array.isArray(product?.item_location_stocks) ? product.item_location_stocks : [];
@@ -144,6 +178,12 @@ export default function ProductCreateWizard({
 
   const isEditingDraft = product?.status === 'draft';
   const isSaving = Boolean(savingAction);
+
+  useEffect(() => {
+    if (step > wizardSteps.length) {
+      setStep(wizardSteps.length);
+    }
+  }, [step, wizardSteps.length]);
 
   const runSaveAction = async (action, operation) => {
     if (savingActionRef.current) return;
@@ -248,7 +288,7 @@ export default function ProductCreateWizard({
 
       // Resume from last completed step if draft
       if (product.status === 'draft' && product.wizard_metadata?.last_completed_step) {
-        const resumeStep = product.wizard_metadata.last_completed_step + 1;
+        const resumeStep = Math.min(product.wizard_metadata.last_completed_step + 1, wizardSteps.length);
         setStep(resumeStep);
         setInitialStep(resumeStep);
       } else {
@@ -272,7 +312,7 @@ export default function ProductCreateWizard({
       setSkuManuallyEdited(false);
       setLastSuggestedSku('');
     }
-  }, [modeProductDefaults, product, open, activeLocations]);
+  }, [modeProductDefaults, product, open, activeLocationsKey, wizardSteps.length]);
 
   useEffect(() => {
     if (!open || skuManuallyEdited) return;
@@ -366,7 +406,7 @@ export default function ProductCreateWizard({
   };
 
   const handleNext = () => {
-    if (step < STEPS.length) setStep(step + 1);
+    if (step < wizardSteps.length) setStep(step + 1);
   };
 
   const handleBack = () => {
@@ -406,7 +446,7 @@ export default function ProductCreateWizard({
   };
 
   const handleSaveDraft = async () => {
-    const draftData = {
+    const draftData = clearFnbManufacturingFields({
       ...productData,
       status: 'draft',
       wizard_metadata: {
@@ -414,7 +454,7 @@ export default function ProductCreateWizard({
         steps_completed: Array.from({ length: step }, (_, i) => i + 1),
         last_saved_at: new Date().toISOString()
       }
-    };
+    }, workflowMode);
 
     if (onSaveDraft) {
       try {
@@ -449,12 +489,12 @@ export default function ProductCreateWizard({
       return;
     }
     const parsedLocationId = Number.parseInt(productData.location_id, 10);
-    const finalData = {
+    const finalData = clearFnbManufacturingFields({
       ...productData,
       location_id: hasStockAdjustment && Number.isInteger(parsedLocationId) && parsedLocationId > 0 ? parsedLocationId : null,
       status: 'active',
       wizard_metadata: null
-    };
+    }, workflowMode);
 
     try {
       await onSubmit(finalData);
@@ -529,7 +569,7 @@ export default function ProductCreateWizard({
         ? parsedLocationId
         : null;
 
-      return sanitized;
+      return clearFnbManufacturingFields(sanitized, workflowMode);
     };
 
     // Validate composition for nested products (circular dependencies and depth limits)
@@ -574,23 +614,37 @@ export default function ProductCreateWizard({
     onClose();
   };
 
-  const CurrentStepComponent = STEPS[step - 1].component;
+  const CurrentStepComponent = wizardSteps[step - 1]?.component || wizardSteps[0].component;
 
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography h-[90vh] max-h-[90vh] w-[95vw] max-w-5xl overflow-hidden flex flex-col">
+        <DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography">
           <DialogHeader className="flex-shrink-0">
-            <DialogTitle className="wizard-title flex items-center gap-2">
-              <Package className="w-5 h-5 text-teal-600" />
-              {product ? 'Edit Product' : 'Create New Product'}
-              {isEditingDraft && (
-                <Badge variant="outline" className="bg-slate-100 text-slate-700 border-slate-200 ml-2">
-                  <FileEdit className="w-3 h-3 mr-1" />
-                  Draft
-                </Badge>
-              )}
-            </DialogTitle>
+            <div className="flex items-start justify-between gap-4">
+              <DialogTitle className="wizard-title flex items-center gap-2">
+                <Package className="w-5 h-5 text-teal-600" />
+                {product ? 'Edit Product' : 'Create New Product'}
+                {isEditingDraft && (
+                  <Badge variant="outline" className="bg-slate-100 text-slate-700 border-slate-200 ml-2">
+                    <FileEdit className="w-3 h-3 mr-1" />
+                    Draft
+                  </Badge>
+                )}
+              </DialogTitle>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 shrink-0 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                onClick={() => handleClose(false)}
+                disabled={isSaving}
+                aria-label={product ? 'Close edit product modal' : 'Close create product modal'}
+                title="Close"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
             {isEditingDraft && initialStep > 1 && (
               <p className="text-sm text-slate-500 mt-2">
                 Resuming from Step {initialStep}
@@ -602,16 +656,24 @@ export default function ProductCreateWizard({
           <div className="border-b border-slate-200 py-3">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-slate-600">
-                Step {step} of {STEPS.length}
+                Step {step} of {wizardSteps.length}
               </span>
-              <span className="text-sm text-slate-500">{STEPS[step - 1].name}</span>
+              <span className="text-sm text-slate-500">{wizardSteps[step - 1]?.name}</span>
             </div>
             <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
               <div
                 className="h-full bg-teal-600 transition-all duration-300"
-                style={{ width: `${(step / STEPS.length) * 100}%` }}
+                style={{ width: `${(step / wizardSteps.length) * 100}%` }}
               />
             </div>
+            <WizardStepNavigator
+              steps={wizardSteps}
+              currentStep={step}
+              completedStep={step - 1}
+              onStepChange={setStep}
+              ariaLabel="Product wizard steps"
+              className="mt-2"
+            />
           </div>
 
           {/* Step Content */}
@@ -631,6 +693,7 @@ export default function ProductCreateWizard({
               onUploadPosImage={onUploadPosImage}
               onDeletePosImage={onDeletePosImage}
               onToggleStorefrontVisibility={onToggleStorefrontVisibility}
+              onToggleStorefrontLocationAvailability={onToggleStorefrontLocationAvailability}
               onUploadStorefrontImage={onUploadStorefrontImage}
               onSetPrimaryStorefrontImage={onSetPrimaryStorefrontImage}
               onDeleteStorefrontImage={onDeleteStorefrontImage}
@@ -640,28 +703,29 @@ export default function ProductCreateWizard({
 
           {/* Navigation */}
           <DialogFooter className="wizard-footer flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-h-10">
+            <div className="min-h-10 order-2 sm:order-none">
               {step > 1 && (
-                <Button variant="outline" onClick={handleBack} disabled={isSaving}>
+                <Button variant="outline" onClick={handleBack} disabled={isSaving} className="w-full sm:w-auto">
                   <ArrowLeft className="w-4 h-4 mr-2" /> Back
                 </Button>
               )}
             </div>
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
-              <Button variant="outline" onClick={() => handleClose(false)} disabled={isSaving}>Cancel</Button>
+            <div className="order-1 flex flex-col gap-2 sm:order-none sm:flex-row sm:flex-wrap sm:justify-end">
+              <Button variant="outline" onClick={() => handleClose(false)} disabled={isSaving} className="order-3 w-full sm:order-none sm:w-auto">Cancel</Button>
 
               {((product && product.status !== 'draft') || onSaveDraft) && (
                 <Button
                   variant="outline"
                   onClick={() => runSaveAction('save-exit', handleSaveAndExit)}
                   disabled={isSaving}
+                  className="order-2 w-full sm:order-none sm:w-auto"
                 >
                   {savingAction === 'save-exit' ? 'Saving...' : 'Save and exit'}
                 </Button>
               )}
 
-              {step < STEPS.length ? (
-                <Button onClick={handleNext} className="bg-teal-600 hover:bg-teal-700" disabled={isSaving}>
+              {step < wizardSteps.length ? (
+                <Button onClick={handleNext} className="order-1 w-full bg-teal-600 hover:bg-teal-700 sm:order-none sm:w-auto" disabled={isSaving}>
                   Next <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
               ) : (
@@ -669,7 +733,7 @@ export default function ProductCreateWizard({
                   {isEditingDraft ? (
                     <Button
                       onClick={() => runSaveAction('finalize', handleFinalize)}
-                      className="bg-teal-600 hover:bg-teal-700"
+                      className="order-1 w-full bg-teal-600 hover:bg-teal-700 sm:order-none sm:w-auto"
                       disabled={isSaving}
                     >
                       <Check className="w-4 h-4 mr-2" />
@@ -678,7 +742,7 @@ export default function ProductCreateWizard({
                   ) : (
                     <Button
                       onClick={() => runSaveAction('submit', handleSubmit)}
-                      className="bg-teal-600 hover:bg-teal-700"
+                      className="order-1 w-full bg-teal-600 hover:bg-teal-700 sm:order-none sm:w-auto"
                       disabled={isSaving}
                     >
                       <Check className="w-4 h-4 mr-2" />

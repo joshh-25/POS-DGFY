@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
     trackOnboardingEvent: vi.fn()
   },
   settingsServiceMock: {
+    getAllSettings: vi.fn(),
     uploadStorefrontAsset: vi.fn()
   },
   tenantLocationServiceMock: {
@@ -34,7 +35,21 @@ vi.mock('@/services/onboardingService.js', () => mocks.onboardingServiceMock);
 vi.mock('@/services/settingsService.js', () => mocks.settingsServiceMock);
 vi.mock('@/src/services/tenantLocationService.js', () => mocks.tenantLocationServiceMock);
 vi.mock('@/src/services/storefrontCatalogService.js', () => mocks.storefrontCatalogServiceMock);
+vi.mock('../../../services/onboardingService.js', () => mocks.onboardingServiceMock);
+vi.mock('../../../services/settingsService.js', () => mocks.settingsServiceMock);
+vi.mock('../../../services/tenantLocationService.js', () => mocks.tenantLocationServiceMock);
+vi.mock('../../../services/storefrontCatalogService.js', () => mocks.storefrontCatalogServiceMock);
 vi.mock('@/src/components/maps/MapPinPicker.jsx', () => ({
+  default: ({ onChange }) => (
+    <button
+      type="button"
+      onClick={() => onChange?.({ latitude: 14.599512, longitude: 120.984246 })}
+    >
+      Mock MapLibre Pin
+    </button>
+  )
+}));
+vi.mock('../../../components/maps/MapPinPicker.jsx', () => ({
   default: ({ onChange }) => (
     <button
       type="button"
@@ -99,6 +114,9 @@ describe('OnboardingSetupModal behavior', () => {
       ]
     }));
     mocks.settingsServiceMock.uploadStorefrontAsset.mockResolvedValue({});
+    mocks.settingsServiceMock.getAllSettings.mockResolvedValue({
+      store_is_visible: { value: false }
+    });
     mocks.tenantLocationServiceMock.listTenantLocations.mockResolvedValue([]);
     mocks.tenantLocationServiceMock.createTenantLocation.mockResolvedValue({ location_id: 5, name: 'Main' });
     mocks.tenantLocationServiceMock.updateTenantLocation.mockResolvedValue({ location_id: 5, name: 'Main' });
@@ -128,12 +146,43 @@ describe('OnboardingSetupModal behavior', () => {
     });
   });
 
+  it('unlocks saved reachable setup steps from server onboarding progress', async () => {
+    const user = userEvent.setup();
+    renderModal({
+      onboarding: {
+        ...baseOnboarding,
+        tenant_onboarding_progress: {
+          step_payloads: {
+            brand_assets: { skipped: true },
+            primary_location: {
+              location_id: 5,
+              public_storefront_visible: true
+            }
+          },
+          checklist_snapshot: {
+            required_total: 3,
+            completed_required_count: 2,
+            missing_requirements: ['has_priced_starter_item']
+          }
+        }
+      }
+    });
+
+    const starterStep = screen.getByRole('button', { name: /Step 3: Starter Items/i });
+    expect(starterStep.getAttribute('aria-disabled')).toBeNull();
+
+    await user.click(starterStep);
+
+    expect(screen.getByText(/3\) Starter Items/i)).toBeTruthy();
+  });
+
   it('creates a primary storefront location and saves onboarding progress', async () => {
     const user = userEvent.setup();
     renderModal();
 
     await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
     await screen.findByText(/2\) Main Storefront Location/i);
+    await user.click(screen.getByLabelText(/Show company on DGFY map and public storefront/i));
 
     await user.clear(screen.getByLabelText(/Location name/i));
     await user.type(screen.getByLabelText(/Location name/i), 'Main Branch');
@@ -155,6 +204,7 @@ describe('OnboardingSetupModal behavior', () => {
         stepKey: 'primary_location',
         payload: expect.objectContaining({
           location_id: 5,
+          public_storefront_visible: true,
           business_hours: expect.objectContaining({
             mode: 'weekly',
             weekly: expect.objectContaining({
@@ -173,6 +223,7 @@ describe('OnboardingSetupModal behavior', () => {
 
     await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
     await screen.findByText(/2\) Main Storefront Location/i);
+    await user.click(screen.getByLabelText(/Show company on DGFY map and public storefront/i));
     await user.click(screen.getByRole('button', { name: /Mock MapLibre Pin/i }));
 
     await waitFor(() => {
@@ -212,6 +263,7 @@ describe('OnboardingSetupModal behavior', () => {
     renderModal();
     await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
     await screen.findByText(/2\) Main Storefront Location/i);
+    await user.click(screen.getByLabelText(/Show company on DGFY map and public storefront/i));
     await user.clear(screen.getByLabelText(/Location name/i));
     await user.type(screen.getByLabelText(/Location name/i), 'Main Branch');
     await user.type(screen.getByLabelText(/Address/i), '123 Main Street');
@@ -253,13 +305,14 @@ describe('OnboardingSetupModal behavior', () => {
 
   it('retries optional item image upload without resubmitting the created item', async () => {
     const user = userEvent.setup();
-    mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImage
+    mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages
       .mockRejectedValueOnce({ response: { data: { message: 'Upload failed.' } } })
       .mockResolvedValueOnce({});
 
     renderModal();
     await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
     await screen.findByText(/2\) Main Storefront Location/i);
+    await user.click(screen.getByLabelText(/Show company on DGFY map and public storefront/i));
     await user.clear(screen.getByLabelText(/Location name/i));
     await user.type(screen.getByLabelText(/Location name/i), 'Main Branch');
     await user.type(screen.getByLabelText(/Address/i), '123 Main Street');
@@ -271,7 +324,7 @@ describe('OnboardingSetupModal behavior', () => {
     await user.type(screen.getByLabelText(/Item name/i), 'Starter Bread');
     await user.type(screen.getByLabelText(/Selling price/i), '25');
     await user.upload(
-      screen.getByLabelText(/Item image/i),
+      screen.getAllByLabelText(/Item image/i)[0],
       new File(['image'], 'starter.png', { type: 'image/png' })
     );
     await user.click(screen.getByRole('button', { name: /Save Items/i }));
@@ -281,7 +334,8 @@ describe('OnboardingSetupModal behavior', () => {
 
     await waitFor(() => {
       expect(mocks.onboardingServiceMock.bulkCreateOnboardingItems).toHaveBeenCalledTimes(1);
-      expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImage).toHaveBeenCalledTimes(2);
+      expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages).toHaveBeenCalledTimes(2);
+      expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages.mock.calls[0][1]).toHaveLength(1);
       expect(mocks.toastMock.success).toHaveBeenCalledWith('Item image uploaded.');
     });
   });
@@ -292,6 +346,7 @@ describe('OnboardingSetupModal behavior', () => {
     renderModal();
     await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
     await screen.findByText(/2\) Main Storefront Location/i);
+    await user.click(screen.getByLabelText(/Show company on DGFY map and public storefront/i));
     await user.clear(screen.getByLabelText(/Location name/i));
     await user.type(screen.getByLabelText(/Location name/i), 'Main Branch');
     await user.type(screen.getByLabelText(/Address/i), '123 Main Street');
@@ -302,16 +357,39 @@ describe('OnboardingSetupModal behavior', () => {
 
     await user.type(screen.getByLabelText(/Item name/i), 'Starter Bread');
     await user.type(screen.getByLabelText(/Selling price/i), '25');
-    const files = Array.from({ length: 11 }, (_, index) => (
+    const files = Array.from({ length: 6 }, (_, index) => (
       new File([`image-${index}`], `starter-${index}.png`, { type: 'image/png' })
     ));
-    await user.upload(screen.getByLabelText(/Item image/i), files);
+    await user.upload(screen.getAllByLabelText(/Item image/i)[0], files);
     await user.click(screen.getByRole('button', { name: /Save Items/i }));
 
     await waitFor(() => {
-      expect(mocks.toastMock.error).toHaveBeenCalledWith('Only the first 10 item images will be uploaded.');
+      expect(mocks.toastMock.error).toHaveBeenCalledWith('Only the first 5 item images will be uploaded.');
       expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages).toHaveBeenCalledTimes(1);
-      expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages.mock.calls[0][1]).toHaveLength(10);
+      expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages.mock.calls[0][1]).toHaveLength(5);
+    });
+  });
+
+  it('can keep the public storefront hidden without creating a default map pin', async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
+    await screen.findByText(/2\) Main Storefront Location/i);
+    expect(screen.getByLabelText(/Show company on DGFY map and public storefront/i).checked).toBe(false);
+
+    await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
+
+    await waitFor(() => {
+      expect(mocks.tenantLocationServiceMock.createTenantLocation).not.toHaveBeenCalled();
+      expect(mocks.onboardingServiceMock.saveOnboardingStep).toHaveBeenCalledWith({
+        stepKey: 'primary_location',
+        payload: expect.objectContaining({
+          location_id: null,
+          public_storefront_visible: false
+        })
+      });
+      expect(screen.getByText(/3\) Starter Items/i)).toBeTruthy();
     });
   });
 });

@@ -19,12 +19,12 @@ import {
   Trash2,
   Wand2
 } from 'lucide-react';
-import { Button } from "../components/ui/button.jsx";
-import { Input } from "../components/ui/input.jsx";
-import { Label } from "../components/ui/label.jsx";
-import { Switch } from "../components/ui/switch.jsx";
-import { Slider } from "../components/ui/slider.jsx";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card.jsx";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -32,9 +32,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle
-} from "../components/ui/dialog.jsx";
-import { Separator } from "../components/ui/separator.jsx";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs.jsx";
+} from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { cn } from "../src/lib/utils.js";
 import useStore from '../src/store/useStore.js';
@@ -193,7 +193,7 @@ const createDefaultSettings = ({ workflowMode = DEFAULT_WORKFLOW_MODE } = {}) =>
   opsWorkflowMode: workflowMode,
   storeDeliveryFee: 0,
   storeTenantSlug: '',
-  storeIsVisible: true,
+  storeIsVisible: false,
   posOpenStatus: true,
   posWaitTimeMinutes: 15,
   customerAccessMode: 'catalog',
@@ -925,7 +925,7 @@ export default function Settings() {
           opsWorkflowMode: normalizedWorkflowMode,
           storeDeliveryFee: Number(systemSettings.store_delivery_fee?.value ?? 0) || 0,
           storeTenantSlug: String(systemSettings.store_tenant_slug?.value || ''),
-          storeIsVisible: systemSettings.store_is_visible?.value ?? true,
+          storeIsVisible: systemSettings.store_is_visible?.value === true,
           posOpenStatus: systemSettings.pos_open_status?.value ?? true,
           posWaitTimeMinutes: Number(systemSettings.pos_wait_time_minutes?.value ?? 15) || 15,
           customerAccessMode: normalizeCustomerAccessMode(systemSettings.customer_access_mode?.value || 'catalog'),
@@ -2088,6 +2088,8 @@ export default function Settings() {
   };
 
   const primaryStorefrontLocation = tenantLocations.find((location) => location?.is_primary_storefront === true) || null;
+  const hasActivePrimaryStorefrontLocation = primaryStorefrontLocation?.is_active === true;
+  const publicVisibilityMissingPrimary = settings.storeIsVisible === true && !hasActivePrimaryStorefrontLocation;
   const primaryStorefrontLastSyncAt = (
     primaryStorefrontLocation?.storefront_last_synced_at
     || tenantLocations.find((location) => Boolean(location?.storefront_last_synced_at))?.storefront_last_synced_at
@@ -2495,7 +2497,7 @@ export default function Settings() {
                 Storefront Visibility & Ordering
               </CardTitle>
               <CardDescription>
-                Control the public store URL, discovery visibility, buyer-facing open status, wait time, and delivery fee.
+                Control the public store URL, public map/page visibility, buyer-facing open status, wait time, and delivery fee.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -2509,7 +2511,7 @@ export default function Settings() {
                     maxLength={80}
                   />
                   <p className="text-xs text-slate-500">
-                    Used for the public storefront URL path: `/store/:slug`.
+                    Used for the public storefront URL path: `/:slug`.
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -2524,14 +2526,20 @@ export default function Settings() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Public Store Visibility</Label>
+                  <Label>Public Map and Storefront Page</Label>
                   <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
-                    <span className="text-sm text-slate-600">Show this tenant in general store discovery</span>
+                    <span className="text-sm text-slate-600">Show this company on the DGFY map and public storefront page</span>
                     <Switch
+                      aria-label="Show company on DGFY map and public storefront page"
                       checked={settings.storeIsVisible === true}
                       onCheckedChange={(v) => handleChange('storeIsVisible', v)}
                     />
                   </div>
+                  {publicVisibilityMissingPrimary && (
+                    <p className="text-xs text-amber-700">
+                      Public visibility is on, but this company will not publish until an active primary storefront pin is saved below.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Storefront Open Status</Label>

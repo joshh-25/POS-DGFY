@@ -28,7 +28,7 @@ export default function DgfyAuthHero() {
         </div>
 
         {/* Floating Business Registration Card */}
-        <div 
+        <div
           className="mt-auto flex flex-col gap-4 rounded-3xl p-8 backdrop-blur-md shadow-2xl border border-white/20 sm:flex-row sm:items-center sm:gap-6"
           style={{ background: 'rgba(255, 255, 255, 0.9)' }}
         >

@@ -18,6 +18,8 @@ const NON_TENANT_MODEL_EXPORTS = new Set([
     'EngagementEvent',
     'AiUsageLog',
     'StorefrontDiscoveryIndex',
+    'StorefrontHandleReservation',
+    'TenantAdminAuditLog',
     'DgfyCustomerActivity',
     'DgfyCustomerAddress',
     'DgfyCustomerBackfillRun',

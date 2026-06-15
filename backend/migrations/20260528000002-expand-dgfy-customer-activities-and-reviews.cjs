@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const addColumnIfMissing = async (queryInterface, tableName, columnName, definition) => {
   const table = await queryInterface.describeTable(tableName).catch(() => null);

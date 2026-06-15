@@ -24,7 +24,7 @@ export function StorefrontShareQr({
     }
     QRCode.toDataURL(storeUrl, {
       margin: 1,
-      width: isMobileViewport ? 96 : 112,
+      width: isMobileViewport ? 88 : 112,
       errorCorrectionLevel: 'H',
       color: {
         dark: '#0f172a',
@@ -94,10 +94,10 @@ export function StorefrontShareQr({
     <div
       style={{
         position: 'absolute',
-        top: isMobileViewport ? 44 : 22,
-        left: 'auto',
-        right: isMobileViewport ? 16 : `max(41px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 41px))`,
-        transform: 'none',
+        top: isMobileViewport ? 48 : 22,
+        left: isMobileViewport ? '50%' : 'auto',
+        right: isMobileViewport ? 'auto' : `max(41px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 41px))`,
+        transform: isMobileViewport ? 'translateX(-50%)' : 'none',
         zIndex: 14,
         display: 'grid',
         gap: 8
@@ -108,14 +108,14 @@ export function StorefrontShareQr({
         onClick={copyStoreUrl}
         style={{
           position: 'relative',
-          width: isMobileViewport ? 82 : 116,
-          height: isMobileViewport ? 82 : 116,
-          borderRadius: isMobileViewport ? 18 : 22,
+          width: isMobileViewport ? 90 : 116,
+          height: isMobileViewport ? 90 : 116,
+          borderRadius: 22,
           border: '1px solid rgba(255,255,255,0.24)',
           background: 'rgba(255,255,255,0.96)',
           boxShadow: '0 18px 42px rgba(15, 23, 42, 0.18)',
           backdropFilter: 'blur(10px)',
-          padding: isMobileViewport ? 7 : 10,
+          padding: 10,
           cursor: 'pointer'
         }}
         aria-label="Copy storefront link"
@@ -137,8 +137,8 @@ export function StorefrontShareQr({
         >
           <div
             style={{
-              width: isMobileViewport ? 22 : 30,
-              height: isMobileViewport ? 22 : 30,
+              width: isMobileViewport ? 24 : 30,
+              height: isMobileViewport ? 24 : 30,
               borderRadius: 10,
               background: 'rgba(255,255,255,0.92)',
               border: '1px solid rgba(15,23,42,0.08)',
@@ -150,7 +150,7 @@ export function StorefrontShareQr({
             <img
               src={DGFY_LOGO_ICON_URL}
               alt=""
-              style={{ width: isMobileViewport ? 14 : 20, height: isMobileViewport ? 14 : 20, objectFit: 'contain', opacity: 0.96 }}
+              style={{ width: isMobileViewport ? 16 : 20, height: isMobileViewport ? 16 : 20, objectFit: 'contain', opacity: 0.96 }}
             />
           </div>
         </div>
@@ -164,8 +164,8 @@ export function StorefrontShareQr({
             position: 'absolute',
             right: -6,
             bottom: -6,
-            width: isMobileViewport ? 30 : 36,
-            height: isMobileViewport ? 30 : 36,
+            width: isMobileViewport ? 32 : 36,
+            height: isMobileViewport ? 32 : 36,
             borderRadius: 999,
             border: 'none',
             background: accentColor,

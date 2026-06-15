@@ -198,7 +198,7 @@ export const ModePresentationRegistry = Object.freeze({
     heroTheme: Object.freeze({
       displayFont: "'Outfit', 'Avenir Next', 'Segoe UI', sans-serif",
       menuTitleFont: "'Outfit', 'Avenir Next', 'Segoe UI', sans-serif",
-      bodyFont: "'Source Sans 3', 'Segoe UI', sans-serif",
+      bodyFont: "'Outfit', 'Avenir Next', 'Segoe UI', sans-serif",
       accent: '#FF8F00',
       accentDark: '#2E7D32',
       accentSoft: '#FFF8F0',

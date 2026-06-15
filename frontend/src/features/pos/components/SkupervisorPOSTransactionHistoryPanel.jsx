@@ -30,13 +30,13 @@ export default function POSTransactionHistoryPanel({
     historyRows,
     historyDetailLoading,
     openHistoryDetail,
-    openInSalesReport,
+    printHistoryReceipt,
     loadHistory,
     historyPage,
     historyPagination
 }) {
     return (
-        <section className="bg-white border border-slate-200 rounded-2xl p-4 space-y-4 shadow-sm">
+        <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
             <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
                 <div>
                     <h2 className="text-xl font-bold text-slate-900">POS Sales History</h2>
@@ -49,9 +49,6 @@ export default function POSTransactionHistoryPanel({
                         placeholder="Search by invoice number..."
                         className="sm:max-w-xs"
                     />
-                    <Button type="button" variant="outline" data-testid="pos-history-open-sales-report" onClick={() => openInSalesReport()}>
-                        Open in Sales Report
-                    </Button>
                 </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-3">
@@ -101,7 +98,7 @@ export default function POSTransactionHistoryPanel({
                             <th scope="col" className="text-right py-2">Vatable</th>
                             <th scope="col" className="text-right py-2">VAT</th>
                             <th scope="col" className="text-right py-2">Total</th>
-                            <th scope="col" className="text-right py-2">Action</th>
+                            <th scope="col" className="w-[5.75rem] py-2 text-center">Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -132,33 +129,26 @@ export default function POSTransactionHistoryPanel({
                                         <td className="py-2 text-right text-slate-600">PHP {money(row.vatable_sales)}</td>
                                         <td className="py-2 text-right text-slate-600">PHP {money(row.vat_amount)}</td>
                                         <td className="py-2 text-right font-semibold text-slate-900">PHP {money(row.total_amount)}</td>
-                                        <td className="py-2 text-right">
-                                            <div className="flex justify-end gap-2">
+                                        <td className="w-[5.75rem] py-2 text-center">
+                                            <div className="flex justify-center gap-2">
                                                 <Button
                                                     type="button"
                                                     size="sm"
                                                     variant="outline"
+                                                    className="flex h-12 w-[4.75rem] flex-col items-center justify-center gap-0.5 px-2 text-center text-[11px] font-extrabold leading-none"
                                                     onClick={(event) => {
                                                         event.stopPropagation();
-                                                        openHistoryDetail(row.pos_transaction_id);
+                                                        if (typeof printHistoryReceipt === 'function') {
+                                                            printHistoryReceipt(row.pos_transaction_id);
+                                                        } else {
+                                                            openHistoryDetail(row.pos_transaction_id);
+                                                        }
                                                     }}
                                                     disabled={historyDetailLoading}
-                                                    aria-label={`View POS history transaction ${row.invoice_number || row.pos_transaction_id}`}
+                                                    aria-label={`View receipt for ${row.invoice_number || row.pos_transaction_id}`}
                                                 >
-                                                    View
-                                                </Button>
-                                                <Button
-                                                    type="button"
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    data-testid={`pos-history-row-open-sales-report-${row.pos_transaction_id}`}
-                                                    onClick={(event) => {
-                                                        event.stopPropagation();
-                                                        openInSalesReport(row);
-                                                    }}
-                                                    aria-label={`Open ${row.invoice_number || row.pos_transaction_id} in sales report`}
-                                                >
-                                                    Sales
+                                                    <span>View</span>
+                                                    <span>Receipt</span>
                                                 </Button>
                                             </div>
                                         </td>

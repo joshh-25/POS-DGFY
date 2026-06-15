@@ -92,7 +92,7 @@ Notes:
 - Frontend builds included by deploy script:
   - `build:skupervisor`
   - `build:pos`
-  - `build:store` (with `/tenant-store/` base path)
+  - `build:store` (root-scoped Storefront build for `/map-dgfy` and `/:store_tenant_slug`; legacy `/tenant-store/*` remains compatibility only)
 
 Optional deep verification gate:
 ```bash
@@ -138,7 +138,7 @@ bash scripts/deploy-remote.sh
   - [ ] `https://skupervisor.surebizcorp.com`
   - [ ] `https://pos.surebizcorp.com`
   - [ ] `https://surebizcorp.com`
-  - [ ] `https://surebizcorp.com/tenant-store`
+  - [ ] `https://surebizcorp.com/map-dgfy`
   - [ ] `https://skupervisor.dgfy.ph`
   - [ ] `https://pos.dgfy.ph`
   - [ ] `https://dgfy.ph`
@@ -154,12 +154,14 @@ bash scripts/deploy-remote.sh
   - [ ] `https://skupervisor.dgfy.ph/uploads/...` returns `200 image/*`
   - [ ] `https://pos.dgfy.ph/uploads/...` returns `200 image/*`
   - [ ] `https://dgfy.ph/uploads/...` returns `200 image/*`
-- [ ] Tenant-store asset URLs from both root storefront domains resolve correctly:
-  - [ ] `https://surebizcorp.com/tenant-store`
-  - [ ] `https://dgfy.ph/tenant-store`
+- [ ] Storefront asset URLs from both root storefront domains resolve correctly:
+  - [ ] `https://surebizcorp.com/map-dgfy`
+  - [ ] `https://dgfy.ph/map-dgfy`
+  - [ ] At least one visible tenant root handle, for example `https://dgfy.ph/<store_tenant_slug>`
+  - [ ] Legacy compatibility path, for example `https://dgfy.ph/tenant-store/<store_tenant_slug>`, redirects/canonicalizes to the root handle after profile resolution
   - [ ] JS bundle URL returns JavaScript (not HTML fallback)
   - [ ] Manifest URL returns manifest/json (not HTML fallback)
-- [ ] Root storefront Nginx for `surebizcorp.com` and `dgfy.ph` applies `/tenant-store/` rewrite before proxying to `127.0.0.1:5175`
+- [ ] Root storefront Nginx for `surebizcorp.com` and `dgfy.ph` serves `/map-dgfy`, root tenant handles, and legacy `/tenant-store/*` compatibility paths through the Storefront app shell before proxying to `127.0.0.1:5175`
 - [ ] Latest deploy summary exists under `logs/deploy/`
 - [ ] Summary commit matches target commit:
   ```bash

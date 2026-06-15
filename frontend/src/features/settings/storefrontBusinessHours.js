@@ -1,4 +1,4 @@
-﻿export const STOREFRONT_BUSINESS_DAY_OPTIONS = Object.freeze([
+export const STOREFRONT_BUSINESS_DAY_OPTIONS = Object.freeze([
   { key: 'sun', label: 'Sun' },
   { key: 'mon', label: 'Mon' },
   { key: 'tue', label: 'Tue' },

@@ -27,15 +27,9 @@ jest.unstable_mockModule('../src/services/landlordService.js', () => ({
     addEmailTenantMapping: mockAddEmailTenantMapping
 }));
 
-describe('tenantProvisioning storefront bootstrap defaults', () => {
+describe('tenantProvisioning storefront public visibility defaults', () => {
     beforeEach(() => {
         jest.clearAllMocks();
-        process.env.STOREFRONT_DEFAULT_LOCATION_NAME = '  ';
-        process.env.STOREFRONT_DEFAULT_LOCATION_ADDRESS = '';
-        process.env.STOREFRONT_DEFAULT_LATITUDE = '999';
-        process.env.STOREFRONT_DEFAULT_LONGITUDE = '-999';
-        process.env.STOREFRONT_DEFAULT_DELIVERY_RADIUS_KM = '0';
-        process.env.STOREFRONT_DEFAULT_WAIT_MINUTES = '9999';
         mockTenantLocationCount.mockResolvedValue(0);
         mockTenantLocationCreate.mockResolvedValue({ location_id: 77 });
         mockSyncStorefrontDiscoveryWithReliability.mockResolvedValue({
@@ -47,12 +41,6 @@ describe('tenantProvisioning storefront bootstrap defaults', () => {
     });
 
     afterEach(() => {
-        delete process.env.STOREFRONT_DEFAULT_LOCATION_NAME;
-        delete process.env.STOREFRONT_DEFAULT_LOCATION_ADDRESS;
-        delete process.env.STOREFRONT_DEFAULT_LATITUDE;
-        delete process.env.STOREFRONT_DEFAULT_LONGITUDE;
-        delete process.env.STOREFRONT_DEFAULT_DELIVERY_RADIUS_KM;
-        delete process.env.STOREFRONT_DEFAULT_WAIT_MINUTES;
         jest.restoreAllMocks();
     });
 
@@ -60,7 +48,7 @@ describe('tenantProvisioning storefront bootstrap defaults', () => {
         try { await sequelize.close(); } catch (_) {}
     });
 
-    it('falls back to safe defaults and syncs discovery after provisioning', async () => {
+    it('seeds public visibility off and syncs discovery without creating a default pin', async () => {
         jest.spyOn(sequelize, 'query').mockResolvedValue([]);
         jest.spyOn(dbStore, 'get').mockReturnValue({
             update: jest.fn().mockResolvedValue([1])
@@ -82,15 +70,29 @@ describe('tenantProvisioning storefront bootstrap defaults', () => {
         });
 
         expect(result.status).toBe('active');
-        expect(mockTenantLocationCreate).toHaveBeenCalledWith(expect.objectContaining({
-            name: 'Main Branch',
-            address_line: 'Iloilo City',
-            latitude: 10.699817,
-            longitude: 122.559893,
-            delivery_radius_km: 5,
-            current_wait_time_minutes: 15,
-            is_primary_storefront: true
-        }));
+        expect(mockTenantLocationCreate).not.toHaveBeenCalled();
+        expect(Sequelize.prototype.query).toHaveBeenCalledWith(
+            expect.stringContaining('INSERT INTO system_settings'),
+            expect.objectContaining({
+                replacements: expect.arrayContaining([
+                    'store_is_visible',
+                    false,
+                    'boolean'
+                ])
+            })
+        );
+        const storeVisibilitySeedCall = Sequelize.prototype.query.mock.calls.find(([, options]) => (
+            Array.isArray(options?.replacements)
+            && options.replacements.includes('store_is_visible')
+        ));
+        expect(storeVisibilitySeedCall?.[0]).toContain('setting_value = VALUES(setting_value)');
+        const onboardingProgressSeedCall = Sequelize.prototype.query.mock.calls.find(([, options]) => (
+            Array.isArray(options?.replacements)
+            && options.replacements.includes('tenant_onboarding_progress')
+        ));
+        const onboardingProgress = JSON.parse(onboardingProgressSeedCall?.[1]?.replacements?.[1] || '{}');
+        expect(onboardingProgress.step_payloads.business_classification.legitimacy.registration_status).toBe('registered');
+        expect(onboardingProgress.classification_snapshot.payload.legitimacy.registration_status).toBe('registered');
         expect(mockSyncStorefrontDiscoveryWithReliability).toHaveBeenCalledWith(expect.objectContaining({
             tenantId: 'tenant-bootstrap-test-id',
             source: 'tenant_provisioning_bootstrap'

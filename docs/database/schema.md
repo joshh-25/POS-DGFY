@@ -17,8 +17,9 @@
 - [Food & Beverage Mode Addendum (2026-05-06)](#food--beverage-mode-addendum-2026-05-06)
 - [Item Financial Readiness Addendum (2026-05-07)](#item-financial-readiness-addendum-2026-05-07)
 - [Account Phone Contact Addendum (2026-05-15)](#account-phone-contact-addendum-2026-05-15)
-- [DGFY Legal Acknowledgement Addendum (2026-05-26)](#dgfy-legal-acknowledgement-addendum-2026-05-26)
+- [DGFY Legal Acknowledgement Addendum (2026-06-08)](#dgfy-legal-acknowledgement-addendum-2026-06-08)
 - [DGFY Customer Account Addendum (2026-05-24)](#dgfy-customer-account-addendum-2026-05-24)
+- [Platform Admin Capability Audit Addendum (2026-06-07)](#platform-admin-capability-audit-addendum-2026-06-07)
 
 ### Table Definitions
 - [1. Users Table](#1-users-table)
@@ -43,8 +44,9 @@
 - [20. POS Cash Drawer Events Table](#20-pos-cash-drawer-events-table)
 - [Food & Beverage Mode Addendum (2026-05-06)](#food--beverage-mode-addendum-2026-05-06)
 - [Item Financial Readiness Addendum (2026-05-07)](#item-financial-readiness-addendum-2026-05-07)
-- [DGFY Legal Acknowledgement Addendum (2026-05-26)](#dgfy-legal-acknowledgement-addendum-2026-05-26)
+- [DGFY Legal Acknowledgement Addendum (2026-06-08)](#dgfy-legal-acknowledgement-addendum-2026-06-08)
 - [DGFY Customer Account Addendum (2026-05-24)](#dgfy-customer-account-addendum-2026-05-24)
+- [Platform Admin Capability Audit Addendum (2026-06-07)](#platform-admin-capability-audit-addendum-2026-06-07)
 
 ### Database Administration
 - [Key Indexes & Performance Optimization](#key-indexes--performance-optimization)
@@ -145,6 +147,11 @@ Subscription notes:
   - `compliance_mode_selected_*`, `compliance_activated_at`
   - `compliance_mode_override_*`, `compliance_mode_revert_*`
 
+Tenant-local platform capability switches are stored in each tenant database's `system_settings` table:
+- `tenant_ims_enabled` (`boolean`, default if missing: `true`) gates authenticated IMS route groups without changing landlord tenant lifecycle status.
+- `tenant_pos_enabled` (`boolean`, default if missing: `true`) gates `/api/v1/pos/*` without changing item-level POS catalog visibility.
+- `store_is_visible` and `customer_access_mode` remain the Storefront publication/access-mode controls described in the Storefront contract.
+
 ## Account Phone Contact Addendum (2026-05-15)
 
 Company registration, direct company-user registration, and invitation acceptance now require account phone numbers.
@@ -173,7 +180,7 @@ Validation contract:
   - `20260422000001-add-compliance-downgrade-override-controls.cjs` adds governed downgrade columns, audit event types, and controlled downgrade trigger support.
   - `20260422000002-harden-compliance-downgrade-controls.cjs` tightens trigger invariants (same-update marker mutation, no mixed override+revert mutation, and tenant one-per-cycle enforcement parity).
 
-## DGFY Legal Acknowledgement Addendum (2026-05-26)
+## DGFY Legal Acknowledgement Addendum (2026-06-08)
 
 DGFY account registration and public company registration require versioned ToS/T&C acknowledgement before the mutation proceeds.
 
@@ -189,8 +196,8 @@ Operational contract:
 
 - Missing, false, or stale terms acknowledgement is rejected with `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
 - Legal acknowledgement persistence fails closed when the repository/transaction path is unavailable.
-- DGFY account registration writes the account row, invitation membership mirrors, and acknowledgement row in one landlord transaction.
-- Company registration checks legal-persistence availability before consuming the company-registration OTP. After OTP verification, the tenant row and acknowledgement row are written in one landlord transaction before tenant provisioning.
+- DGFY account registration consumes a `dgfy_account_verification` OTP, writes the verified account row, invitation membership mirrors, and acknowledgement row in one landlord transaction.
+- Company registration uses the authenticated verified DGFY account email and does not consume a second same-address company-registration OTP. The tenant row and acknowledgement row are written in one landlord transaction before tenant provisioning.
 - Company registration acknowledgement is captured before tenant provisioning and is tied to the authenticated DGFY account plus the landlord tenant row.
 - Acknowledgement copy preserves the marketplace-provider framing: DGFY facilitates the transaction through a licensed payment partner while the merchant remains seller of record and receives net settlement after disclosed fees.
 
@@ -226,6 +233,41 @@ Operational contract:
 - Phone verification remains deferred for the customer account rollout. Phone values are matching/contact data only and must not be treated as verified identity.
 - Platform-admin DGFY account management uses `dgfy_accounts.is_active` as `active`/`suspended`; `dgfy_accounts.deleted_at` marks a deleted/deidentified account. Suspended or deleted accounts cannot log in, and existing DGFY sessions fail on the next authenticated DGFY request when the account is reloaded.
 - Platform-admin DGFY delete/deidentify preserves the account row and evidence-bearing related rows while overwriting email, phone, username, names, and password hash with non-user placeholders. This releases the original credentials for re-registration without physically deleting legal acknowledgements, memberships, customer activity, reviews, loyalty, order/history, or admin audit evidence.
+
+## Platform Admin Capability Audit Addendum (2026-06-07)
+
+Platform-admin tenant capability changes are persisted in the landlord audit table `tenant_admin_audit_logs`. This table records capability switch changes for IMS, POS, and Storefront/Maps with before/after snapshots, actor identity, request metadata, and a required reason.
+
+```sql
+CREATE TABLE tenant_admin_audit_logs (
+    tenant_admin_audit_log_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id CHAR(36) NOT NULL,
+    action ENUM('capability_update') NOT NULL,
+    actor_username VARCHAR(120) NOT NULL,
+    reason VARCHAR(500) NOT NULL,
+    request_id VARCHAR(100) NULL,
+    ip_address VARCHAR(64) NULL,
+    user_agent VARCHAR(500) NULL,
+    before_snapshot JSON NULL,
+    after_snapshot JSON NULL,
+    metadata JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_tenant_admin_audit_tenant_time (tenant_id, created_at),
+    INDEX idx_tenant_admin_audit_action (action),
+    INDEX idx_tenant_admin_audit_actor (actor_username),
+    CONSTRAINT fk_tenant_admin_audit_tenant
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+);
+```
+
+The tenant-local capability switches themselves remain in each tenant database's `system_settings` table:
+
+- `tenant_ims_enabled`
+- `tenant_pos_enabled`
+- `store_is_visible`
+- `customer_access_mode`
 
 ### 2. Tenant Databases (Isolated Contexts)
 **Database Name Pattern**: `sku_tenant_[id]` or as specified in `tenants.db_name`
@@ -1260,8 +1302,8 @@ CREATE TABLE system_settings (
 
 Landlord-level payment routing tables support PayMongo QR Ph Storefront payments without coupling provider webhooks to tenant-local lookups:
 
-- `tenant_payment_accounts`: one row per UUID tenant/provider with PayMongo child merchant ID, wallet ID, wallet status (`unknown`, `closed_loop`, `enabled`, `restricted`), wallet verification timestamp, onboarding status, QR Ph readiness, split readiness, charge readiness, requirements snapshot, readiness evidence metadata, and last sync time.
-- `commerce_payment_sessions`: one row per Storefront online payment attempt with UUID `tenant_id`, immutable checkout payload, DGFY fee snapshot, total amount in pesos and centavos, PayMongo Payment Intent/Payment Method/Payment IDs, QR image URL, expiration, webhook state, split payload, final `pos_transaction_id`, and manual-resolution failure fields.
+- `tenant_payment_accounts`: one row per UUID tenant/provider with PayMongo child merchant ID, wallet ID, wallet status (`unknown`, `closed_loop`, `enabled`, `restricted`), wallet verification timestamp, onboarding status, QR Ph readiness, split readiness, charge readiness, requirements snapshot, readiness evidence metadata, fee-contract metadata, and last sync time.
+- `commerce_payment_sessions`: one row per Storefront online payment attempt with UUID `tenant_id`, immutable checkout payload, DGFY fee snapshot, `fee_policy` snapshot (`dgfy_fee_basis=subtotal`, `dgfy_fee_charged_to=customer`, `provider_fee_shoulder=tenant_company`), total amount in pesos and centavos, PayMongo Payment Intent/Payment Method/Payment IDs, QR image URL, expiration, webhook state, split payload, final `pos_transaction_id`, and manual-resolution failure fields.
 - `commerce_payment_refunds`: one row per PayMongo refund attempt with UUID `tenant_id`, public refund reference, linked commerce session, provider payment/refund IDs, amount in centavos, reason, notes, refund strategy, split-refund payload, provider payload, status, failure fields, and requester.
 - Admin settlement reporting is derived from `commerce_payment_sessions` plus `commerce_payment_refunds`; it is a reconciliation view over stored local payment evidence, not a PayMongo payout ledger.
 

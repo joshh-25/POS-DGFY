@@ -1,30 +1,37 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertCircle,
   AlertTriangle,
   Banknote,
+  BarChart3,
   CalendarDays,
+  Check,
   CheckCircle2,
   CircleDollarSign,
   ClipboardList,
+  Pencil,
   Info,
-  Lightbulb,
   MapPinned,
   RefreshCcw,
   Receipt,
   ShieldCheck,
   Store,
+  Trash2,
+  TrendingUp,
   Truck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useDeleteItem, useUpdateItem } from '@/hooks/useItems.js';
 import {
   FULFILLMENT_STATUS_LABELS,
   ORDER_METHOD_LABELS,
   PAYMENT_TYPE_LABELS,
   getNextStatusActions
 } from './orderFulfillmentUi.js';
+import { fetchPosCatalog, fetchPosTransactions, fetchTerminalTodayDashboard } from '../services/posService.js';
 
 const MODE_META = {
   incoming_queue: {
@@ -56,6 +63,16 @@ const MODE_META = {
     icon: Receipt,
     title: 'Sales Today',
     subtitle: 'Review live totals, payment mix, and order-method performance.'
+  },
+  reports: {
+    icon: BarChart3,
+    title: 'Report',
+    subtitle: 'Move between daily totals, popular items, and transaction reporting.'
+  },
+  items: {
+    icon: ClipboardList,
+    title: 'Items',
+    subtitle: 'Review SKUpervisor items and update the item name, price, and cost from POS.'
   },
   terminal_setup: {
     icon: CheckCircle2,
@@ -109,38 +126,17 @@ const QUEUE_OPERATION_LABELS = {
   order_status_update: 'Order Status Update'
 };
 
-function WorkspaceShell({ icon: Icon, title, subtitle, children, locked }) {
+function WorkspaceShell({ title, children, locked, className = 'p-5' }) {
   const isIncomingQueue = title === MODE_META.incoming_queue.title;
 
   if (isIncomingQueue) {
     return (
       <section className="space-y-4">
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/80">
-          <div className="flex items-center gap-4">
-            <div className="flex min-w-0 items-center gap-4">
-              <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-blue-50 text-[#1A4E8D]">
-                <Icon className="h-7 w-7" />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-2xl font-black tracking-tight text-[#0F172A]">{title}</h2>
-                <p className="mt-1 text-sm leading-5 text-[#475569]">{subtitle}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/80">
           {children}
           {locked && (
             <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
               Terminal is locked. Unlock to run protected operational actions.
-            </div>
-          )}
-          {!locked && (
-            <div className="mt-4 flex items-center gap-3 rounded-lg border border-cyan-100 bg-cyan-50/60 px-3 py-3 text-sm leading-5 text-[#334155]">
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-cyan-200 bg-cyan-50 text-teal-600">
-                <Lightbulb className="h-4 w-4" />
-              </span>
-              Right-side panel remains available for secondary context while this workspace is your primary active mode.
             </div>
           )}
         </div>
@@ -149,19 +145,8 @@ function WorkspaceShell({ icon: Icon, title, subtitle, children, locked }) {
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
-      <div className="border-b border-slate-100 pb-4">
-        <div className="flex items-start gap-3">
-          <div className="rounded-lg border border-blue-200 bg-blue-50 p-2 text-[#1A4E8D]">
-            <Icon className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <h2 className="text-xl font-black tracking-tight text-[#0F172A]">{title}</h2>
-            <p className="mt-1 text-sm leading-5 text-[#5B6B86]">{subtitle}</p>
-          </div>
-        </div>
-      </div>
-      <div className="pt-4">{children}</div>
+    <section className={`rounded-xl border border-slate-200 bg-white shadow-sm shadow-slate-200/70 ${className}`}>
+      {children}
     </section>
   );
 }
@@ -550,7 +535,7 @@ function ShiftControlsWorkspace({
   sectionId
 }) {
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
-  const [switchReason, setSwitchReason] = React.useState('');
+  const [switchReason, setSwitchReason] = useState('');
   const shiftLocationId = Number(shiftState?.shift?.location_id || 0) || null;
   const activeShift = shiftState?.shift || null;
   const shiftLocationLabel = activeShift?.location?.name || activeShift?.location_name || activeShift?.location_id || 'Unassigned';
@@ -600,51 +585,53 @@ function ShiftControlsWorkspace({
   ] : [];
 
   return (
-    <div id={sectionId} className="space-y-3">
-      <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm shadow-slate-200/70">
-        <div className="flex items-start gap-2.5">
-          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-blue-50 text-[#2563EB]">
+    <div id={sectionId} className="space-y-4">
+      <h2 className="sr-only">Shift Controls</h2>
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
+        <div className="flex items-start gap-3">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-blue-50 text-[#2563EB]">
             <MapPinned className="h-4.5 w-4.5" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[12px] font-black text-[#0F172A]">Operating Location</p>
-        <select
-              className="mt-2 h-10 w-full rounded-lg border border-blue-300 bg-white px-3 text-[12.5px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-          value={operatingLocationId || ''}
-          onChange={(event) => {
-            const nextValue = event.target.value ? Number(event.target.value) : null;
-            setOperatingLocationId(nextValue);
-          }}
-        >
-          {locations.map((location) => (
-            <option key={`shift-operating-location-${location.location_id}`} value={location.location_id}>
-              {location.name}
-            </option>
-          ))}
-        </select>
-            <p className="mt-1.5 text-[11.5px] leading-5 text-[#5B6B86]">
-          Catalog, checkout, and dashboard use this location scope.
-        </p>
+            <p className="text-[13px] font-black text-[#0F172A]">Operating Location</p>
+            <select
+              className="mt-2 h-11 w-full rounded-lg border border-blue-300 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+              value={operatingLocationId || ''}
+              onChange={(event) => {
+                const nextValue = event.target.value ? Number(event.target.value) : null;
+                setOperatingLocationId(nextValue);
+              }}
+            >
+              {locations.map((location) => (
+                <option key={`shift-operating-location-${location.location_id}`} value={location.location_id}>
+                  {location.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-2 text-[12px] leading-5 text-[#475569]">
+              Catalog, checkout, and dashboard use this location scope.
+            </p>
           </div>
         </div>
       </div>
+
       {shiftState.loading ? (
         <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Loading shift context...</p>
       ) : activeShift ? (
-        <div className="space-y-3">
-          <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm shadow-slate-200/70">
+        <div className="space-y-4">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
             <div className="grid gap-0 md:grid-cols-2">
               <div className="space-y-0 md:border-r md:border-slate-200 md:pr-4">
                 {summaryRows.slice(0, 4).map((row, index) => {
                   const RowIcon = row.icon;
                   return (
-                    <div key={`shift-summary-left-${row.label}`} className={`flex items-center gap-2.5 py-2.5 ${index < 3 ? 'border-b border-slate-100' : ''}`}>
-                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-slate-200 bg-slate-50 text-[#2563EB]">
-                        <RowIcon className="h-4 w-4" />
+                    <div key={`shift-summary-left-${row.label}`} className={`flex items-center gap-3 py-3 ${index < 3 ? 'border-b border-slate-100' : ''}`}>
+                      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-slate-50 text-[#2563EB]">
+                        <RowIcon className="h-4.5 w-4.5" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-[11.5px] font-medium text-[#5B6B86]">{row.label}</p>
-                        <p className={`${row.valueClassName} mt-0.5 break-words leading-5`}>{row.value}</p>
+                        <p className="text-[12px] font-medium text-[#5B6B86]">{row.label}</p>
+                        <p className={`${row.valueClassName} mt-0.5 break-words leading-6`}>{row.value}</p>
                       </div>
                     </div>
                   );
@@ -654,13 +641,13 @@ function ShiftControlsWorkspace({
                 {summaryRows.slice(4).map((row, index) => {
                   const RowIcon = row.icon;
                   return (
-                    <div key={`shift-summary-right-${row.label}`} className={`flex items-center gap-2.5 py-2.5 ${index < 2 ? 'border-b border-slate-100' : ''}`}>
-                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-slate-200 bg-slate-50 text-[#2563EB]">
-                        <RowIcon className="h-4 w-4" />
+                    <div key={`shift-summary-right-${row.label}`} className={`flex items-center gap-3 py-3 ${index < 2 ? 'border-b border-slate-100' : ''}`}>
+                      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-slate-50 text-[#2563EB]">
+                        <RowIcon className="h-4.5 w-4.5" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-[11.5px] font-medium text-[#5B6B86]">{row.label}</p>
-                        <p className={`${row.valueClassName} mt-0.5 break-words leading-5`}>{row.value}</p>
+                        <p className="text-[12px] font-medium text-[#5B6B86]">{row.label}</p>
+                        <p className={`${row.valueClassName} mt-0.5 break-words leading-6`}>{row.value}</p>
                       </div>
                     </div>
                   );
@@ -668,11 +655,12 @@ function ShiftControlsWorkspace({
               </div>
             </div>
           </div>
+
           {canSwitchPosLocation && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50/55 p-3.5 shadow-sm shadow-slate-200/50">
-              <p className="text-[12px] font-black text-[#0F172A]">Switch Shift Location</p>
+            <div className="rounded-xl border border-slate-200 bg-slate-50/55 p-4 shadow-sm shadow-slate-200/50">
+              <p className="text-[13px] font-black text-[#0F172A]">Switch Shift Location</p>
               <select
-                className="mt-2.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[12.5px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+                className="mt-3 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
                 value={operatingLocationId || ''}
                 onChange={(event) => {
                   const nextValue = event.target.value ? Number(event.target.value) : null;
@@ -686,7 +674,7 @@ function ShiftControlsWorkspace({
                 ))}
               </select>
               <Input
-                className="mt-2.5 h-10 rounded-lg border-slate-200 text-[12.5px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+                className="mt-3 h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
                 value={switchReason}
                 onChange={(event) => setSwitchReason(event.target.value)}
                 placeholder="Reason for location switch"
@@ -694,7 +682,7 @@ function ShiftControlsWorkspace({
               <Button
                 type="button"
                 variant="outline"
-                className="mt-2.5 h-9 rounded-lg border-slate-300 bg-white px-4 text-[12px] font-extrabold text-[#0F172A] hover:bg-slate-50"
+                className="mt-3 h-10 rounded-lg border-slate-300 bg-white px-4 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
                 disabled={shiftActionLoading.switchLocation || !operatingLocationId || Number(operatingLocationId) === Number(shiftLocationId)}
                 onClick={() => handleSwitchShiftLocation?.({
                   targetLocationId: operatingLocationId,
@@ -715,7 +703,7 @@ function ShiftControlsWorkspace({
             <Button
               type="button"
               onClick={refreshOperationalContext}
-              className="h-9 rounded-lg !bg-[#2563EB] px-4 text-[12px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
+              className="h-10 rounded-lg !bg-[#2563EB] px-5 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
             >
               <RefreshCcw className="mr-2 h-4 w-4" />
               Refresh Shift Data
@@ -723,14 +711,14 @@ function ShiftControlsWorkspace({
           </div>
         </div>
       ) : (
-        <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm shadow-slate-200/70">
-          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11.5px] text-amber-700">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
             No open shift. Open a shift to enable checkout.
           </p>
-          <div className="mt-3 space-y-2.5">
-            <Label className="text-[11.5px] font-black text-[#0F172A]">Opening Float ({terminalMeta.pettyCashSymbol})</Label>
+          <div className="mt-4 space-y-3">
+            <Label className="text-[12px] font-black text-[#0F172A]">Opening Float ({terminalMeta.pettyCashSymbol})</Label>
             <Input
-              className="h-10 rounded-lg border-slate-200 text-[12.5px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+              className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
               type="number"
               min="0"
               step="0.01"
@@ -738,16 +726,16 @@ function ShiftControlsWorkspace({
               onChange={(event) => setOpenShiftForm((prev) => ({ ...prev, openingFloatAmount: event.target.value }))}
               placeholder={money(terminalMeta.pettyCashAmount)}
             />
-            <Label className="text-[11.5px] font-black text-[#0F172A]">Opening Note (Optional)</Label>
+            <Label className="text-[12px] font-black text-[#0F172A]">Opening Note (Optional)</Label>
             <Input
-              className="h-10 rounded-lg border-slate-200 text-[12.5px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+              className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
               value={openShiftForm.openingNote}
               onChange={(event) => setOpenShiftForm((prev) => ({ ...prev, openingNote: event.target.value }))}
               placeholder="Opening shift cash note"
             />
             <Button
               type="button"
-              className="h-9 rounded-lg !bg-[#2563EB] px-4 text-[12px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
+              className="h-10 rounded-lg !bg-[#2563EB] px-5 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
               onClick={handleOpenShift}
               disabled={shiftActionLoading.open || locked || !canTransactPos}
             >
@@ -930,6 +918,966 @@ function SalesTodayWorkspace({ todayDashboard, terminalMeta, sectionId }) {
   );
 }
 
+const REPORT_TABS = [
+  { id: 'daily_total', label: 'Daily Total Reports' },
+  { id: 'popular_item', label: 'Popular Item' },
+  { id: 'transaction', label: 'Transaction' }
+];
+
+const POPULAR_ITEM_CHART_COLORS = ['#2F8CA3', '#C37A65', '#6FA586', '#C78150', '#1F7F85'];
+
+const getReportMetricNumber = (value) => {
+  const numeric = Number(value || 0);
+  return Number.isFinite(numeric) ? numeric : 0;
+};
+
+const formatShortReportDate = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString([], { day: 'numeric', month: 'short' });
+};
+
+const parseBusinessDateLocal = (value) => {
+  const normalized = String(value || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return null;
+  const [year, month, day] = normalized.split('-').map((part) => Number.parseInt(part, 10));
+  const date = new Date(year, month - 1, day);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const formatBusinessDateLocal = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatReportDate = (value) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+const formatReportTime = (value) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+};
+
+const downloadCsvFile = (filename, rows = []) => {
+  if (typeof window === 'undefined') return;
+  const csv = rows.map((row) => (
+    row.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(',')
+  )).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+};
+
+const buildDailyReportBars = (dailyTotals = [], reportEndBusinessDate = '', selectedBusinessDate = '') => {
+  const rows = Array.isArray(dailyTotals) ? dailyTotals : [];
+  const totalsByDate = new Map(rows.map((row) => [
+    String(row?.business_date || '').slice(0, 10),
+    row
+  ]));
+  const endDateValue = String(reportEndBusinessDate || '').slice(0, 10);
+  const selectedDateValue = String(selectedBusinessDate || endDateValue || '').slice(0, 10);
+  const endDate = parseBusinessDateLocal(endDateValue) || new Date();
+  const normalizedRows = Array.from({ length: 11 }, (_, index) => {
+    const date = new Date(endDate);
+    date.setDate(endDate.getDate() - (10 - index));
+    const businessDate = formatBusinessDateLocal(date);
+    const row = totalsByDate.get(businessDate) || {
+      business_date: businessDate,
+      total_amount: 0,
+      transaction_count: 0,
+      discount_amount: 0,
+      item_count: 0,
+      discount_item_count: 0,
+      total_cost: 0,
+      refund_amount: 0,
+      refunded_item_count: 0,
+      net_profit: 0
+    };
+    return row;
+  });
+  const maxAmount = Math.max(...normalizedRows.map((row) => getReportMetricNumber(row?.total_amount)), 0);
+  return normalizedRows.map((row, index) => {
+    const businessDate = String(row?.business_date || '').slice(0, 10);
+    const date = parseBusinessDateLocal(businessDate);
+    const amount = getReportMetricNumber(row?.total_amount);
+    const height = amount > 0 && maxAmount > 0 ? Math.min(100, Math.max(12, (amount / maxAmount) * 100)) : 2;
+    return {
+      key: `${businessDate || 'report-date'}-${index}`,
+      businessDate,
+      label: formatShortReportDate(date),
+      amount,
+      transactionCount: Number.parseInt(row?.transaction_count || 0, 10),
+      discountAmount: getReportMetricNumber(row?.discount_amount),
+      itemCount: getReportMetricNumber(row?.item_count || row?.total_item_count),
+      discountItemCount: getReportMetricNumber(row?.discount_item_count),
+      totalCost: getReportMetricNumber(row?.total_cost || row?.cost_amount),
+      refundAmount: getReportMetricNumber(row?.refund_amount),
+      refundedItemCount: getReportMetricNumber(row?.refunded_item_count),
+      netProfit: getReportMetricNumber(row?.net_profit),
+      height,
+      isActive: businessDate === selectedDateValue
+    };
+  });
+};
+
+function ReportMetricCard({ value, label, emphasize = false }) {
+  return (
+    <div className="grid min-h-[7rem] place-items-center rounded-2xl border border-slate-200 bg-white px-3 py-4 text-center shadow-sm shadow-slate-200/60">
+      <div>
+        <p className={`text-[18px] font-black tracking-tight ${emphasize ? 'text-[#1A4E8D]' : 'text-[#0F172A]'}`}>{value}</p>
+        <p className="mt-2 text-[11px] font-semibold leading-4 text-[#64748B]">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+const buildPopularItemChart = (items = []) => {
+  const topItems = (Array.isArray(items) ? items : [])
+    .slice(0, 5)
+    .map((item, index) => ({
+      key: `popular-chart-${item?.item_id || index}`,
+      label: String(item?.item_name || `Item #${item?.item_id || index + 1}`).trim(),
+      amount: getReportMetricNumber(item?.amount),
+      quantity: getReportMetricNumber(item?.quantity),
+      color: POPULAR_ITEM_CHART_COLORS[index % POPULAR_ITEM_CHART_COLORS.length]
+    }));
+  const totalAmount = topItems.reduce((sum, item) => sum + item.amount, 0);
+  const totalQuantity = topItems.reduce((sum, item) => sum + item.quantity, 0);
+  const basis = totalAmount > 0 ? 'amount' : 'quantity';
+  const totalBasis = basis === 'amount' ? totalAmount : totalQuantity;
+  let current = 0;
+  const gradientStops = totalBasis > 0
+    ? topItems.map((item) => {
+      const size = ((basis === 'amount' ? item.amount : item.quantity) / totalBasis) * 100;
+      const start = current;
+      const end = current + size;
+      current = end;
+      return `${item.color} ${start}% ${end}%`;
+    })
+    : ['#CBD5E1 0% 100%'];
+
+  return {
+    topItems,
+    totalAmount,
+    totalQuantity,
+    gradient: `conic-gradient(${gradientStops.join(', ')})`
+  };
+};
+
+function ReportWorkspace({ todayDashboard, terminalMeta, activeTerminalId = '', operatingLocationId = null, reportRefreshKey = 0, sectionId }) {
+  const [activeTab, setActiveTab] = useState('daily_total');
+  const [slideDirection, setSlideDirection] = useState('forward');
+  const [selectedDailyDate, setSelectedDailyDate] = useState('');
+  const [selectedDateSummary, setSelectedDateSummary] = useState(null);
+  const [selectedDateSummaryLoading, setSelectedDateSummaryLoading] = useState(false);
+  const [transactionDateFrom, setTransactionDateFrom] = useState('');
+  const [transactionDateTo, setTransactionDateTo] = useState('');
+  const [reportTransactions, setReportTransactions] = useState([]);
+  const [reportTransactionsLoading, setReportTransactionsLoading] = useState(false);
+  const activeTabIndex = Math.max(0, REPORT_TABS.findIndex((tab) => tab.id === activeTab));
+  const salesSummary = todayDashboard?.salesSummary || {};
+  const selectedDailyBusinessDate = selectedDailyDate || String(todayDashboard.businessDate || '').slice(0, 10);
+  const todayBusinessDate = String(todayDashboard.businessDate || '').slice(0, 10);
+  const selectedDateSalesSummary = selectedDateSummary?.sales_summary || null;
+  const popularItemsSource = selectedDailyBusinessDate && selectedDailyBusinessDate !== todayBusinessDate
+    ? (selectedDateSalesSummary || {})
+    : salesSummary;
+  const popularItems = Array.isArray(popularItemsSource.popular_items) ? popularItemsSource.popular_items : [];
+  const popularItemChart = buildPopularItemChart(popularItems);
+  const transactionDefaultDate = selectedDailyBusinessDate || String(todayDashboard.businessDate || '').slice(0, 10);
+  const dailyBars = buildDailyReportBars(salesSummary.daily_totals, todayDashboard.businessDate, selectedDailyBusinessDate);
+  const selectedDailyBar = dailyBars.find((bar) => bar.businessDate === selectedDailyBusinessDate) || dailyBars[dailyBars.length - 1] || null;
+  const amountCharged = getReportMetricNumber(selectedDailyBar?.amount ?? salesSummary.total_amount);
+  const discountAmount = getReportMetricNumber(selectedDailyBar?.discountAmount ?? salesSummary.discount_amount);
+  const transactionCount = getReportMetricNumber(selectedDailyBar?.transactionCount ?? salesSummary.transaction_count);
+  const itemCount = getReportMetricNumber(selectedDailyBar?.itemCount ?? salesSummary.item_count ?? salesSummary.total_item_count);
+  const totalCost = getReportMetricNumber(selectedDailyBar?.totalCost ?? salesSummary.total_cost ?? salesSummary.cost_amount);
+  const refundAmount = getReportMetricNumber(selectedDailyBar?.refundAmount ?? salesSummary.refund_amount);
+  const netProfit = getReportMetricNumber(selectedDailyBar?.netProfit ?? salesSummary.net_profit);
+  const discountItemCount = getReportMetricNumber(selectedDailyBar?.discountItemCount ?? salesSummary.discount_item_count);
+  const refundedItemCount = getReportMetricNumber(selectedDailyBar?.refundedItemCount ?? salesSummary.refunded_item_count);
+  const handleReportTabSelect = (nextTabId) => {
+    const nextTabIndex = Math.max(0, REPORT_TABS.findIndex((tab) => tab.id === nextTabId));
+    if (nextTabIndex === activeTabIndex) return;
+    setSlideDirection(nextTabIndex > activeTabIndex ? 'forward' : 'backward');
+    setActiveTab(nextTabId);
+  };
+
+  const handleTransactionDateFromChange = (event) => {
+    const nextDate = event.target.value;
+    setTransactionDateFrom(nextDate);
+    setTransactionDateTo((previousDate) => (
+      previousDate && nextDate && previousDate < nextDate ? nextDate : previousDate
+    ));
+  };
+
+  const handleTransactionDateToChange = (event) => {
+    const nextDate = event.target.value;
+    setTransactionDateTo(nextDate);
+    setTransactionDateFrom((previousDate) => (
+      previousDate && nextDate && previousDate > nextDate ? nextDate : previousDate
+    ));
+  };
+
+  useEffect(() => {
+    if (!todayBusinessDate) return;
+    setSelectedDailyDate((previous) => (
+      previous && previous !== todayBusinessDate ? todayBusinessDate : previous
+    ));
+  }, [reportRefreshKey, todayBusinessDate]);
+
+  useEffect(() => {
+    if (!transactionDefaultDate) return;
+    setTransactionDateFrom(transactionDefaultDate);
+    setTransactionDateTo(transactionDefaultDate);
+  }, [transactionDefaultDate]);
+
+  const transactionRows = useMemo(() => reportTransactions.map((row) => {
+    const totalAmount = getReportMetricNumber(row?.total_amount);
+    const serviceAmount = getReportMetricNumber(row?.service_fee_amount) + getReportMetricNumber(row?.restaurant_service_charge_amount);
+    const costAmount = getReportMetricNumber(row?.total_cost ?? row?.cost_amount);
+    return {
+      id: row?.pos_transaction_id || row?.invoice_number || row?.created_at,
+      createdAt: row?.created_at,
+      totalAmount,
+      serviceAmount,
+      costAmount,
+      profitAmount: totalAmount - serviceAmount - costAmount
+    };
+  }), [reportTransactions]);
+  const transactionReportTotals = useMemo(() => transactionRows.reduce((totals, row) => ({
+    totalAmount: totals.totalAmount + row.totalAmount,
+    serviceAmount: totals.serviceAmount + row.serviceAmount,
+    costAmount: totals.costAmount + row.costAmount,
+    profitAmount: totals.profitAmount + row.profitAmount
+  }), {
+    totalAmount: 0,
+    serviceAmount: 0,
+    costAmount: 0,
+    profitAmount: 0
+  }), [transactionRows]);
+  const downloadTransactionReport = () => {
+    const rows = [
+      ['Date', 'Time', 'Total', 'Service Amount', 'Cost', 'Profit'],
+      ...transactionRows.map((row) => [
+        formatReportDate(row.createdAt),
+        formatReportTime(row.createdAt),
+        money(row.totalAmount),
+        money(row.serviceAmount),
+        money(row.costAmount),
+        money(row.profitAmount)
+      ])
+    ];
+    const reportRangeName = transactionDateFrom && transactionDateTo
+      ? `${transactionDateFrom}-to-${transactionDateTo}`
+      : 'report';
+    downloadCsvFile(`dgfy-transactions-${reportRangeName}.csv`, rows);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    const terminalId = String(activeTerminalId || '').trim();
+
+    if (activeTab !== 'popular_item' || !selectedDailyBusinessDate || !terminalId) {
+      setSelectedDateSummary(null);
+      setSelectedDateSummaryLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (selectedDailyBusinessDate === todayBusinessDate) {
+      setSelectedDateSummary(null);
+      setSelectedDateSummaryLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadSelectedDateSummary = async () => {
+      setSelectedDateSummaryLoading(true);
+      try {
+        const result = await fetchTerminalTodayDashboard({
+          business_date: selectedDailyBusinessDate,
+          terminal_id: terminalId,
+          location_id: operatingLocationId || undefined
+        }, { skipGlobalErrorToast: true });
+        if (!cancelled) {
+          setSelectedDateSummary(result || null);
+        }
+      } catch {
+        if (!cancelled) {
+          setSelectedDateSummary(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setSelectedDateSummaryLoading(false);
+        }
+      }
+    };
+
+    loadSelectedDateSummary();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, activeTerminalId, operatingLocationId, reportRefreshKey, selectedDailyBusinessDate, todayDashboard.businessDate]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadReportTransactions = async () => {
+      if (activeTab !== 'transaction' || !transactionDateFrom || !transactionDateTo) {
+        setReportTransactions([]);
+        setReportTransactionsLoading(false);
+        return;
+      }
+      setReportTransactionsLoading(true);
+      try {
+        const result = await fetchPosTransactions({
+          date_from: transactionDateFrom,
+          date_to: transactionDateTo,
+          location_id: operatingLocationId || undefined,
+          status: 'completed',
+          limit: 100
+        });
+        if (!cancelled) {
+          setReportTransactions(Array.isArray(result?.transactions) ? result.transactions : []);
+        }
+      } catch {
+        if (!cancelled) {
+          setReportTransactions([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setReportTransactionsLoading(false);
+        }
+      }
+    };
+    loadReportTransactions();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, operatingLocationId, reportRefreshKey, transactionDateFrom, transactionDateTo]);
+
+  return (
+    <div id={sectionId} className="space-y-4 overflow-hidden">
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
+        <div className="relative grid grid-cols-3">
+          <span
+            className="absolute inset-y-1 left-0 rounded-lg bg-[#1A4E8D] shadow-sm shadow-blue-900/20 transition-transform duration-300 ease-out"
+            style={{ width: '33.333333%', transform: `translateX(${activeTabIndex * 100}%)` }}
+            aria-hidden="true"
+          />
+          {REPORT_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => handleReportTabSelect(tab.id)}
+              className={`relative z-10 min-h-11 rounded-lg px-2 py-2 text-center text-[12px] font-extrabold leading-4 transition-colors duration-200 ${
+                activeTab === tab.id ? 'text-white' : 'text-[#334155] hover:text-[#1A4E8D]'
+              }`}
+              aria-pressed={activeTab === tab.id}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {todayDashboard.loading ? (
+        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Refreshing reports...</p>
+      ) : (
+        <div
+          className="flex transition-transform duration-300 ease-out"
+          data-slide-direction={slideDirection}
+          style={{ width: '300%', transform: `translateX(-${activeTabIndex * 33.333333}%)` }}
+        >
+          <section className="w-1/3 shrink-0 pr-3">
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/60">
+                <div className="relative mb-3 flex min-h-8 items-center justify-between gap-3">
+                  <h3 className="text-[15px] font-black text-[#0F172A]">Daily Totals</h3>
+                  <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-xl bg-cyan-600 px-4 py-2 text-center text-sm font-black text-white shadow-lg shadow-cyan-900/20">
+                    {selectedDailyBar?.label || formatShortReportDate(todayDashboard.businessDate ? new Date(`${todayDashboard.businessDate}T00:00:00`) : new Date())}
+                  </span>
+                  <span className="absolute right-0 top-1/2 -translate-y-1/2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-extrabold text-[#1A4E8D]">
+                    {selectedDailyBar?.businessDate || todayDashboard.businessDate || 'Today'}
+                  </span>
+                </div>
+                <div className="relative min-h-[10rem] rounded-xl bg-slate-50 px-3 pb-3 pt-4">
+                  <div className="absolute left-3 right-3 top-1/2 border-t border-slate-200" />
+                  <div className="relative flex min-h-[8.5rem] items-end justify-between gap-2">
+                    {dailyBars.map((bar) => (
+                      <button
+                        key={bar.key}
+                        type="button"
+                        onClick={() => setSelectedDailyDate(bar.businessDate)}
+                        className="flex min-w-0 flex-1 flex-col items-center gap-2 rounded-md outline-none transition focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/30"
+                        aria-pressed={bar.isActive}
+                        aria-label={`Show daily total details for ${bar.label}`}
+                      >
+                        <div className="flex h-24 w-full items-end justify-center">
+                          <div
+                            className={`w-full max-w-[2.5rem] transition-all duration-300 ${bar.amount > 0 ? 'rounded-t-md' : 'rounded-sm'} ${bar.isActive ? 'bg-[#1A4E8D]' : (bar.amount > 0 ? 'bg-cyan-600/75' : 'bg-slate-300')}`}
+                            style={{ height: `${bar.height}%` }}
+                            title={`${bar.label}: ${terminalMeta.pettyCashSymbol}${money(bar.amount)}`}
+                          />
+                        </div>
+                        <span className={`text-[10px] font-semibold leading-3 ${bar.isActive ? 'text-[#1A4E8D]' : 'text-[#475569]'}`}>
+                          {bar.label}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+                <ReportMetricCard value={`${terminalMeta.pettyCashSymbol}${money(amountCharged)}`} label="Amount Charged" emphasize />
+                <ReportMetricCard value={`${terminalMeta.pettyCashSymbol}${money(discountAmount)}`} label="Discount Amount" />
+                <ReportMetricCard value={transactionCount} label="No. of Transactions" />
+                <ReportMetricCard value={discountItemCount} label="No. of Discount Items" />
+                <ReportMetricCard value={itemCount} label="No. of Items" />
+                <ReportMetricCard value={`${terminalMeta.pettyCashSymbol}${money(totalCost)}`} label="Total Cost" />
+                <ReportMetricCard value={`${terminalMeta.pettyCashSymbol}${money(refundAmount)}`} label="Refund Amount" />
+                <ReportMetricCard value={`${terminalMeta.pettyCashSymbol}${money(netProfit)}`} label="Net Profit" emphasize />
+                <ReportMetricCard value={refundedItemCount} label="No. of Items Refunded" />
+              </div>
+            </div>
+          </section>
+
+          <section className="w-1/3 shrink-0 px-3">
+            <div className="min-h-[24rem] rounded-xl border border-slate-200 bg-white p-4">
+              <div className="mb-4 grid grid-cols-3 items-center gap-3">
+                <p className="text-sm font-black text-[#0F172A]">Popular Item</p>
+                <div className="justify-self-center rounded-full border border-cyan-100 bg-cyan-50 px-4 py-1 text-center text-[11px] font-black text-cyan-700">
+                  {selectedDailyBusinessDate || todayDashboard.businessDate || 'Today'} - Top 5
+                </div>
+                <TrendingUp className="h-5 w-5 justify-self-end text-[#1A4E8D]" />
+              </div>
+              {selectedDateSummaryLoading ? (
+                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-12 text-center text-xs font-semibold text-[#64748B]">
+                  Loading popular items...
+                </p>
+              ) : popularItemChart.topItems.length > 0 ? (
+                <div className="grid min-h-[18rem] items-center gap-6 lg:grid-cols-[minmax(16rem,1fr)_minmax(12rem,0.8fr)]">
+                  <div className="flex flex-col items-center justify-center gap-4">
+                    <div
+                      className="relative h-56 w-56 rounded-full shadow-inner shadow-slate-300"
+                      style={{ background: popularItemChart.gradient }}
+                      aria-label="Top 5 popular items donut chart"
+                    >
+                      <div className="absolute inset-[4.2rem] grid place-items-center rounded-full bg-white shadow-sm shadow-slate-200">
+                        <div className="text-center">
+                          <p className="text-[11px] font-bold uppercase tracking-wide text-[#64748B]">Total</p>
+                          <p className="text-sm font-black text-[#0F172A]">{terminalMeta.pettyCashSymbol}{money(popularItemChart.totalAmount)}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-black text-[#0F172A]">Most Popular Items</p>
+                      <p className="mt-1 text-xs font-semibold text-[#64748B]">
+                        Qty {money(popularItemChart.totalQuantity)} / {terminalMeta.pettyCashSymbol}{money(popularItemChart.totalAmount)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    {popularItemChart.topItems.map((item) => (
+                      <div key={item.key} className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
+                          <span className="truncate text-xs font-black uppercase text-[#334155]">{item.label}</span>
+                        </div>
+                        <span className="shrink-0 text-xs font-black text-[#0F172A]">{terminalMeta.pettyCashSymbol}{money(item.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-12 text-center text-xs font-semibold text-[#64748B]">
+                  No item sales data for this date yet.
+                </p>
+              )}
+            </div>
+          </section>
+
+          <section className="w-1/3 shrink-0 pl-3">
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="mb-4 grid grid-cols-[minmax(18rem,1fr)_auto] items-start gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-black text-[#0F172A]">Transactions</p>
+                  <div className="mt-1 grid max-w-[22rem] grid-cols-2 gap-2">
+                    <Label className="space-y-0.5">
+                      <span className="block text-[9px] font-bold uppercase tracking-wide text-[#94A3B8]">From</span>
+                      <Input
+                        type="date"
+                        value={transactionDateFrom}
+                        max={transactionDateTo || undefined}
+                        onChange={handleTransactionDateFromChange}
+                        className="h-8 rounded-lg text-xs font-black text-[#0F172A]"
+                      />
+                    </Label>
+                    <Label className="space-y-0.5">
+                      <span className="block text-[9px] font-bold uppercase tracking-wide text-[#94A3B8]">To</span>
+                      <Input
+                        type="date"
+                        value={transactionDateTo}
+                        min={transactionDateFrom || undefined}
+                        onChange={handleTransactionDateToChange}
+                        className="h-8 rounded-lg text-xs font-black text-[#0F172A]"
+                      />
+                    </Label>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  className="justify-self-end bg-emerald-600 text-white hover:bg-emerald-700"
+                  onClick={downloadTransactionReport}
+                  disabled={reportTransactionsLoading || transactionRows.length === 0}
+                >
+                  Download Report
+                </Button>
+              </div>
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full min-w-[760px] text-sm">
+                  <thead className="bg-slate-50 text-[12px] font-black uppercase tracking-wide text-[#64748B]">
+                    <tr>
+                      <th className="px-4 py-3 text-left">Date and Time</th>
+                      <th className="px-4 py-3 text-right">Total</th>
+                      <th className="px-4 py-3 text-right">Service Amount</th>
+                      <th className="px-4 py-3 text-right">Cost</th>
+                      <th className="px-4 py-3 text-right">Profit</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {reportTransactionsLoading ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-10 text-center text-sm font-semibold text-[#64748B]">Loading transactions...</td>
+                      </tr>
+                    ) : transactionRows.length > 0 ? transactionRows.map((row) => (
+                      <tr key={row.id} className="text-[#334155]">
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-[#0F172A]">{formatReportDate(row.createdAt)}</div>
+                          <div className="mt-0.5 text-xs text-[#64748B]">{formatReportTime(row.createdAt)}</div>
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold">{terminalMeta.pettyCashSymbol}{money(row.totalAmount)}</td>
+                        <td className="px-4 py-3 text-right">{terminalMeta.pettyCashSymbol}{money(row.serviceAmount)}</td>
+                        <td className="px-4 py-3 text-right">{terminalMeta.pettyCashSymbol}{money(row.costAmount)}</td>
+                        <td className="px-4 py-3 text-right font-black text-[#1A4E8D]">{terminalMeta.pettyCashSymbol}{money(row.profitAmount)}</td>
+                      </tr>
+                    )) : (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-10 text-center text-sm font-semibold text-[#64748B]">No transactions found.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                  <tfoot className="border-t border-slate-200 bg-slate-50 text-sm font-black text-[#0F172A]">
+                    <tr>
+                      <td className="px-4 py-3">Total</td>
+                      <td className="px-4 py-3 text-right">{terminalMeta.pettyCashSymbol}{money(transactionReportTotals.totalAmount)}</td>
+                      <td className="px-4 py-3 text-right">{terminalMeta.pettyCashSymbol}{money(transactionReportTotals.serviceAmount)}</td>
+                      <td className="px-4 py-3 text-right">{terminalMeta.pettyCashSymbol}{money(transactionReportTotals.costAmount)}</td>
+                      <td className="px-4 py-3 text-right text-[#1A4E8D]">{terminalMeta.pettyCashSymbol}{money(transactionReportTotals.profitAmount)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ItemsWorkspace({ canViewPos, locked, sectionId }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const { updateItem, loading: savingItem } = useUpdateItem();
+  const { deleteItem, loading: deletingItem } = useDeleteItem();
+  const [editingItemId, setEditingItemId] = useState(null);
+  const [editForm, setEditForm] = useState({ name: '', default_sale_price: '', cost_per_unit: '' });
+  const [savedItemName, setSavedItemName] = useState('');
+  const [deletedItemName, setDeletedItemName] = useState('');
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState(null);
+
+  const loadItems = useCallback(async () => {
+    if (!canViewPos) {
+      setItems([]);
+      setError('');
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const data = await fetchPosCatalog({ limit: 200 });
+      setItems(Array.isArray(data) ? data : []);
+    } catch (loadError) {
+      setItems([]);
+      setError(loadError?.response?.data?.message || 'Failed to load POS-visible items.');
+    } finally {
+      setLoading(false);
+    }
+  }, [canViewPos]);
+
+  useEffect(() => {
+    loadItems();
+  }, [loadItems]);
+
+  const sortedItems = useMemo(
+    () => [...(Array.isArray(items) ? items : [])].sort((left, right) => String(left?.name || '').localeCompare(String(right?.name || ''))),
+    [items]
+  );
+
+  const activeEditItem = useMemo(
+    () => sortedItems.find((item) => Number(item?.item_id) === Number(editingItemId)) || null,
+    [editingItemId, sortedItems]
+  );
+
+  const openEdit = (item) => {
+    setEditingItemId(item?.item_id || null);
+    setEditForm({
+      name: String(item?.name || ''),
+      default_sale_price: String(item?.default_sale_price ?? ''),
+      cost_per_unit: String(item?.cost_per_unit ?? '')
+    });
+  };
+
+  const closeEdit = () => {
+    if (savingItem) return;
+    setEditingItemId(null);
+    setEditForm({ name: '', default_sale_price: '', cost_per_unit: '' });
+  };
+
+  const handleSave = async () => {
+    if (!activeEditItem) return;
+    const name = String(editForm.name || '').trim();
+    if (!name) {
+      toast.error('Item name is required.');
+      return;
+    }
+    try {
+      await updateItem(activeEditItem.item_id, {
+        name,
+        default_sale_price: Number(editForm.default_sale_price || 0),
+        cost_per_unit: Number(editForm.cost_per_unit || 0)
+      });
+      const savedName = name;
+      closeEdit();
+      await loadItems();
+      setSavedItemName(savedName);
+    } catch (updateError) {
+      toast.error(updateError?.response?.data?.message || 'Failed to update item.');
+    }
+  };
+
+  const closeDeleteConfirm = () => {
+    if (deletingItem) return;
+    setDeleteConfirmItem(null);
+  };
+
+  const handleDelete = async (item = deleteConfirmItem) => {
+    if (!item?.item_id) return;
+    const itemName = String(item?.name || 'this item').trim();
+    try {
+      await deleteItem(item.item_id);
+      const removedName = itemName;
+      closeDeleteConfirm();
+      if (Number(editingItemId) === Number(item.item_id)) {
+        closeEdit();
+      }
+      await loadItems();
+      setDeletedItemName(removedName);
+    } catch (deleteError) {
+      toast.error(deleteError?.response?.data?.message || 'Failed to delete item.');
+    }
+  };
+
+  if (!canViewPos) {
+    return (
+      <p id={sectionId} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+        You need POS view permission to access SKUpervisor items.
+      </p>
+    );
+  }
+
+  return (
+    <div id={sectionId} className="space-y-4">
+      {error ? (
+        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {error}
+        </p>
+      ) : null}
+
+      {loading && sortedItems.length === 0 ? (
+        <p className="rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-500">Loading POS-visible items...</p>
+      ) : sortedItems.length === 0 ? (
+        <p className="rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-500">No items found yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {sortedItems.map((item) => (
+            <div
+              key={item.item_id}
+              className="grid grid-cols-[auto_auto_minmax(0,1fr)_minmax(6rem,auto)_minmax(6rem,auto)] items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm shadow-slate-200/60"
+            >
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => openEdit(item)}
+                disabled={locked || savingItem || deletingItem}
+                className="h-10 w-10 rounded-lg border-slate-200 text-[#1A4E8D]"
+                title={`Edit ${item.name || 'item'}`}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setDeleteConfirmItem(item)}
+                  disabled={locked || savingItem || deletingItem}
+                  className="h-10 w-10 rounded-lg border-rose-200 text-rose-600 hover:bg-rose-50"
+                  title={`Delete ${item.name || 'item'}`}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-black text-[#0F172A]">{item.name || 'Unnamed item'}</p>
+                <p className="mt-1 text-xs text-[#64748B]">SKU: {item.sku_code || 'Not set'}</p>
+              </div>
+              <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-right">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#64748B]">Price</p>
+                <p className="text-sm font-black text-[#1A4E8D]">PHP {money(item.default_sale_price)}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-right">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#64748B]">Cost</p>
+                <p className="text-sm font-black text-[#0F172A]">PHP {money(item.cost_per_unit)}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {activeEditItem && typeof document !== 'undefined' && createPortal((
+        <div
+          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pos-items-edit-modal-title"
+          onClick={closeEdit}
+        >
+          <div
+            className="flex h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/25 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p id="pos-items-edit-modal-title" className="text-lg font-black text-[#0F172A]">Edit Item</p>
+                <p className="mt-1 text-sm text-[#64748B]">Update the SKUpervisor item name, price, and cost from POS.</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeEdit}
+                disabled={savingItem}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-[#334155] hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+            <div className="mt-4 grid gap-4">
+              <label className="block">
+                <span className="text-[13px] font-semibold text-[#334155]">Item Name</span>
+                <Input
+                  value={editForm.name}
+                  onChange={(event) => setEditForm((current) => ({ ...current, name: event.target.value }))}
+                  className="mt-2 h-11"
+                  disabled={savingItem}
+                />
+              </label>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-[13px] font-semibold text-[#334155]">Price</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={editForm.default_sale_price}
+                    onChange={(event) => setEditForm((current) => ({ ...current, default_sale_price: event.target.value }))}
+                    className="mt-2 h-11"
+                    disabled={savingItem}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[13px] font-semibold text-[#334155]">Cost</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={editForm.cost_per_unit}
+                    onChange={(event) => setEditForm((current) => ({ ...current, cost_per_unit: event.target.value }))}
+                    className="mt-2 h-11"
+                    disabled={savingItem}
+                  />
+                </label>
+              </div>
+            </div>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button type="button" variant="outline" onClick={closeEdit} disabled={savingItem} className="h-11 rounded-lg">
+                Cancel
+              </Button>
+              <Button type="button" onClick={handleSave} disabled={savingItem} className="h-11 rounded-lg bg-[#1A4E8D] text-white hover:bg-[#143F73]">
+                {savingItem ? 'Saving...' : 'Save Item'}
+              </Button>
+            </div>
+          </div>
+          </div>
+        </div>
+      ), document.body)}
+
+      {savedItemName && typeof document !== 'undefined' && createPortal((
+        <div
+          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pos-items-saved-modal-title"
+          onClick={() => setSavedItemName('')}
+        >
+          <div
+            className="flex h-[calc(100dvh-1.5rem)] w-full max-w-md flex-col overflow-hidden rounded-xl border border-emerald-200 bg-white shadow-2xl shadow-slate-950/25 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="p-5">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                <Check className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p id="pos-items-saved-modal-title" className="text-lg font-black text-[#0F172A]">Item saved</p>
+                <p className="mt-1 text-sm text-[#64748B]">
+                  <span className="font-bold text-[#0F172A]">{savedItemName}</span> was updated in POS and SKUpervisor.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end">
+              <Button
+                type="button"
+                onClick={() => setSavedItemName('')}
+                className="h-11 rounded-lg bg-[#1A4E8D] px-5 text-white hover:bg-[#143F73]"
+              >
+                OK
+              </Button>
+            </div>
+          </div>
+          </div>
+        </div>
+      ), document.body)}
+
+      {deleteConfirmItem && typeof document !== 'undefined' && createPortal((
+        <div
+          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pos-items-delete-confirm-modal-title"
+          onClick={closeDeleteConfirm}
+        >
+          <div
+            className="flex h-[calc(100dvh-1.5rem)] w-full max-w-md flex-col overflow-hidden rounded-xl border border-rose-200 bg-white shadow-2xl shadow-slate-950/25 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-rose-100 text-rose-700">
+                  <Trash2 className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p id="pos-items-delete-confirm-modal-title" className="text-lg font-black text-[#0F172A]">Delete item?</p>
+                  <p className="mt-1 text-sm text-[#64748B]">
+                    <span className="font-bold text-[#0F172A]">{deleteConfirmItem.name || 'This item'}</span> will be removed from POS and SKUpervisor.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={closeDeleteConfirm}
+                  disabled={deletingItem}
+                  className="h-11 rounded-lg"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => handleDelete(deleteConfirmItem)}
+                  disabled={deletingItem}
+                  className="h-11 rounded-lg bg-rose-600 text-white hover:bg-rose-700"
+                >
+                  {deletingItem ? 'Deleting...' : 'Delete Item'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ), document.body)}
+
+      {deletedItemName && typeof document !== 'undefined' && createPortal((
+        <div
+          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pos-items-deleted-modal-title"
+          onClick={() => setDeletedItemName('')}
+        >
+          <div
+            className="flex h-[calc(100dvh-1.5rem)] w-full max-w-md flex-col overflow-hidden rounded-xl border border-rose-200 bg-white shadow-2xl shadow-slate-950/25 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="p-5">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-rose-100 text-rose-700">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p id="pos-items-deleted-modal-title" className="text-lg font-black text-[#0F172A]">Item deleted</p>
+                <p className="mt-1 text-sm text-[#64748B]">
+                  <span className="font-bold text-[#0F172A]">{deletedItemName}</span> was removed from POS and SKUpervisor.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end">
+              <Button
+                type="button"
+                onClick={() => setDeletedItemName('')}
+                className="h-11 rounded-lg bg-[#1A4E8D] px-5 text-white hover:bg-[#143F73]"
+              >
+                OK
+              </Button>
+            </div>
+          </div>
+          </div>
+        </div>
+      ), document.body)}
+    </div>
+  );
+}
+
 function TerminalSetupWorkspace({ terminalMeta, sectionId }) {
   const readiness = terminalMeta?.locationBindingReadiness || null;
   const unresolvedCount = Number(readiness?.unresolved_count || 0);
@@ -992,10 +1940,13 @@ function TerminalSetupWorkspace({ terminalMeta, sectionId }) {
 export default function TerminalOperationsWorkspace({
   viewMode,
   isMsmeMode = false,
+  terminalUser,
   locked,
   terminalMeta,
   shiftState,
   todayDashboard,
+  reportRefreshKey = 0,
+  activeTerminalId = '',
   canViewPos,
   canTransactPos,
   canSwitchPosLocation = false,
@@ -1037,7 +1988,7 @@ export default function TerminalOperationsWorkspace({
   isOnline = true,
   sectionIds = {}
 }) {
-  const restrictedMsmeModes = new Set(['incoming_queue', 'location_scope', 'cash_drawer', 'sales_today', 'terminal_setup']);
+  const restrictedMsmeModes = new Set(['incoming_queue', 'location_scope', 'cash_drawer', 'reports', 'sales_today', 'terminal_setup']);
   const effectiveViewMode = (isMsmeMode && restrictedMsmeModes.has(viewMode))
     ? 'shift_controls'
     : viewMode;
@@ -1134,6 +2085,25 @@ export default function TerminalOperationsWorkspace({
           sectionId={sectionIds.salesToday}
         />
       );
+    case 'reports':
+      return (
+        <ReportWorkspace
+          todayDashboard={todayDashboard}
+          terminalMeta={terminalMeta}
+          activeTerminalId={activeTerminalId}
+          operatingLocationId={operatingLocationId}
+          reportRefreshKey={reportRefreshKey}
+          sectionId={sectionIds.reports}
+        />
+      );
+    case 'items':
+      return (
+        <ItemsWorkspace
+          canViewPos={canViewPos}
+          locked={locked}
+          sectionId={sectionIds.items}
+        />
+      );
     case 'terminal_setup':
       return (
         <TerminalSetupWorkspace
@@ -1199,14 +2169,18 @@ export default function TerminalOperationsWorkspace({
     queueLocationScopeId,
     refreshIncomingOrders,
     refreshOperationalContext,
+    reportRefreshKey,
     sectionIds.activeShift,
     sectionIds.cashDrawer,
     sectionIds.closeShift,
     sectionIds.incomingOrders,
+    sectionIds.items,
     sectionIds.locationScope,
+    sectionIds.reports,
     sectionIds.salesToday,
     sectionIds.syncQueue,
     sectionIds.terminalSetup,
+    activeTerminalId,
     setOperatingLocationId,
     setQueueLocationScopeId,
     setCashEventForm,
@@ -1224,18 +2198,14 @@ export default function TerminalOperationsWorkspace({
       icon={modeMeta.icon}
       title={modeMeta.title}
       subtitle={modeMeta.subtitle}
+      terminalUser={terminalUser}
       locked={locked}
+      className={effectiveViewMode === 'items' ? 'px-5 pb-5 pt-2' : 'p-5'}
     >
       {content}
       {locked && !isIncomingQueueView && (
         <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
           Terminal is locked. Unlock to run protected operational actions.
-        </div>
-      )}
-      {!locked && !isIncomingQueueView && (
-        <div className="mt-4 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          <AlertCircle className="h-4 w-4 text-slate-500" />
-          Right-side panel remains available for secondary context while this workspace is your primary active mode.
         </div>
       )}
     </WorkspaceShell>

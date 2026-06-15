@@ -21,9 +21,17 @@ import {
 import { isStockExemptServiceItem } from '../../shared/utils/stockBearingPolicy.js';
 
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
-const toDateStart = (value) => new Date(`${String(value).slice(0, 10)}T00:00:00.000Z`);
-const toDateEnd = (value) => new Date(`${String(value).slice(0, 10)}T23:59:59.999Z`);
-const MANILA_UTC_OFFSET_HOURS = 8;
+const normalizeBusinessDateValue = (value) => {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value.toISOString().slice(0, 10);
+    }
+
+    const normalized = String(value || '').trim();
+    const dateMatch = normalized.match(/^(\d{4}-\d{2}-\d{2})/);
+    return dateMatch ? dateMatch[1] : '';
+};
+const toDateStart = (value) => new Date(`${normalizeBusinessDateValue(value)}T00:00:00.000+08:00`);
+const toDateEnd = (value) => new Date(`${normalizeBusinessDateValue(value)}T23:59:59.999+08:00`);
 const toPositiveInt = (value) => {
     const normalized = Number.parseInt(value, 10);
     return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
@@ -49,25 +57,6 @@ const parseJsonLoosely = (value) => {
     } catch {
         return null;
     }
-};
-const stableStringify = (value) => {
-    if (Array.isArray(value)) {
-        return `[${value.map((item) => stableStringify(item)).join(',')}]`;
-    }
-    if (value && typeof value === 'object') {
-        const keys = Object.keys(value).sort();
-        return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
-    }
-    return JSON.stringify(value);
-};
-const hashPayload = (payload) => crypto.createHash('sha256').update(stableStringify(payload)).digest('hex');
-const buildManilaMonthRange = (reportMonth) => {
-    const [year, month] = String(reportMonth || '').split('-').map((part) => Number.parseInt(part, 10));
-    if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) return null;
-    return {
-        startAt: new Date(Date.UTC(year, month - 1, 1, -MANILA_UTC_OFFSET_HOURS, 0, 0, 0)),
-        endAt: new Date(Date.UTC(year, month, 1, -MANILA_UTC_OFFSET_HOURS, 0, 0, 0))
-    };
 };
 const normalizeTerminalRegistry = (rawValue) => {
     const parsed = parseJsonLoosely(rawValue);
@@ -349,6 +338,12 @@ const applyLocationStockMap = (items = [], locationStockMap = new Map()) => (
     })
 );
 
+const computeTransactionTotalCost = (lines = []) => round4(
+    (Array.isArray(lines) ? lines : []).reduce((sum, line) => (
+        sum + (Number(line?.quantity || 0) * Number(line?.cost_snapshot || 0))
+    ), 0)
+);
+
 const buildTransactionInclude = () => ([
     {
         model: dbStore.get('PosTransactionLine'),
@@ -429,16 +424,6 @@ const buildTransactionInclude = () => ([
             'opened_at',
             'closed_at'
         ]
-    },
-    {
-        model: dbStore.get('PosFiscalPrintEvent'),
-        as: 'fiscalPrintEvents',
-        required: false
-    },
-    {
-        model: dbStore.get('PosFiscalEvent'),
-        as: 'fiscalEvents',
-        required: false
     }
 ]);
 
@@ -635,216 +620,6 @@ export const posRepository = {
         await PosTransactionLine.bulkCreate(lineRows, { transaction });
 
         return created.pos_transaction_id;
-    },
-
-    async getVerifiedFiscalTerminalRegistration(terminalId, options = {}) {
-        const PosFiscalTerminalRegistration = safeGetModel('PosFiscalTerminalRegistration');
-        if (!PosFiscalTerminalRegistration) return null;
-        const normalizedTerminalId = String(terminalId || '').trim().toUpperCase();
-        if (!normalizedTerminalId) return null;
-        return toPlain(await PosFiscalTerminalRegistration.findOne({
-            where: {
-                terminal_id: normalizedTerminalId,
-                accreditation_status: 'verified'
-            },
-            transaction: options.transaction,
-            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
-        }));
-    },
-
-    async upsertFiscalTerminalRegistration(payload = {}, options = {}) {
-        const PosFiscalTerminalRegistration = dbStore.get('PosFiscalTerminalRegistration');
-        const terminalId = String(payload.terminal_id || '').trim().toUpperCase();
-        const existing = await PosFiscalTerminalRegistration.findOne({
-            where: { terminal_id: terminalId },
-            transaction: options.transaction,
-            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
-        });
-        const nextPayload = {
-            ...payload,
-            terminal_id: terminalId
-        };
-        if (existing) {
-            await existing.update(nextPayload, { transaction: options.transaction });
-            return toPlain(existing);
-        }
-        return toPlain(await PosFiscalTerminalRegistration.create(nextPayload, {
-            transaction: options.transaction
-        }));
-    },
-
-    async listFiscalTerminalRegistrations(options = {}) {
-        const PosFiscalTerminalRegistration = dbStore.get('PosFiscalTerminalRegistration');
-        const rows = await PosFiscalTerminalRegistration.findAll({
-            order: [['terminal_id', 'ASC']],
-            transaction: options.transaction
-        });
-        return rows.map(toPlain);
-    },
-
-    async getLatestFiscalEvent(options = {}) {
-        const PosFiscalEvent = safeGetModel('PosFiscalEvent');
-        if (!PosFiscalEvent) return null;
-        return toPlain(await PosFiscalEvent.findOne({
-            order: [['event_sequence', 'DESC'], ['pos_fiscal_event_id', 'DESC']],
-            transaction: options.transaction,
-            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
-        }));
-    },
-
-    async listFiscalEvents(options = {}) {
-        const PosFiscalEvent = safeGetModel('PosFiscalEvent');
-        if (!PosFiscalEvent) return [];
-        const limit = toPositiveInt(options.limit) || 5000;
-        const rows = await PosFiscalEvent.findAll({
-            order: [['event_sequence', 'ASC'], ['pos_fiscal_event_id', 'ASC']],
-            limit,
-            transaction: options.transaction
-        });
-        return rows.map(toPlain);
-    },
-
-    async createFiscalEvent(payload = {}, options = {}) {
-        const PosFiscalEvent = dbStore.get('PosFiscalEvent');
-        const previous = await this.getLatestFiscalEvent({
-            transaction: options.transaction,
-            lock: true
-        });
-        const occurredAt = payload.occurred_at || new Date();
-        const eventPayload = payload.payload && typeof payload.payload === 'object'
-            ? payload.payload
-            : {};
-        const eventSequence = Number.isInteger(Number(payload.event_sequence)) && Number(payload.event_sequence) > 0
-            ? Number(payload.event_sequence)
-            : Number(previous?.event_sequence || 0) + 1;
-        const eventHash = payload.event_hash || hashPayload({
-            event_sequence: eventSequence,
-            event_type: payload.event_type,
-            pos_transaction_id: payload.pos_transaction_id || null,
-            invoice_number: payload.invoice_number || null,
-            terminal_id: payload.terminal_id || null,
-            previous_event_hash: previous?.event_hash || null,
-            payload: eventPayload,
-            occurred_at: occurredAt instanceof Date ? occurredAt.toISOString() : String(occurredAt)
-        });
-        return toPlain(await PosFiscalEvent.create({
-            ...payload,
-            event_sequence: eventSequence,
-            payload: eventPayload,
-            previous_event_hash: previous?.event_hash || null,
-            event_hash: eventHash,
-            occurred_at: occurredAt
-        }, { transaction: options.transaction }));
-    },
-
-    async countFiscalPrintEvents(posTransactionId, options = {}) {
-        const PosFiscalPrintEvent = dbStore.get('PosFiscalPrintEvent');
-        return PosFiscalPrintEvent.count({
-            where: { pos_transaction_id: posTransactionId },
-            transaction: options.transaction
-        });
-    },
-
-    async createFiscalPrintEvent(payload = {}, options = {}) {
-        const PosFiscalPrintEvent = dbStore.get('PosFiscalPrintEvent');
-        return toPlain(await PosFiscalPrintEvent.create(payload, {
-            transaction: options.transaction
-        }));
-    },
-
-    async updateTransactionLifecycle(posTransactionId, payload = {}, options = {}) {
-        const PosTransaction = dbStore.get('PosTransaction');
-        const row = await PosTransaction.findByPk(posTransactionId, {
-            transaction: options.transaction,
-            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
-        });
-        if (!row) return null;
-        await row.update(payload, { transaction: options.transaction });
-        return toPlain(row);
-    },
-
-    async listStockMovementsForPosTransaction(posTransactionId, options = {}) {
-        const StockMovement = safeGetModel('StockMovement');
-        if (!StockMovement) return [];
-        const normalizedId = toPositiveInt(posTransactionId);
-        if (!normalizedId) return [];
-        const rows = await StockMovement.findAll({
-            where: {
-                reference_type: 'POS',
-                reference_id: String(normalizedId)
-            },
-            order: [['movement_id', 'ASC']],
-            transaction: options.transaction,
-            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
-        });
-        return rows.map(toPlain);
-    },
-
-    async listFiscalTransactionsForMonth(reportMonth, options = {}) {
-        const PosTransaction = dbStore.get('PosTransaction');
-        const range = buildManilaMonthRange(reportMonth);
-        if (!range) return [];
-        const { startAt, endAt } = range;
-        const rows = await PosTransaction.findAll({
-            where: {
-                document_type: 'fiscal_invoice',
-                created_at: {
-                    [Op.gte]: startAt,
-                    [Op.lt]: endAt
-                }
-            },
-            include: buildTransactionInclude(),
-            order: [['created_at', 'ASC']],
-            transaction: options.transaction
-        });
-        return rows.map(toPlain);
-    },
-
-    async upsertESalesReport(payload = {}, options = {}) {
-        const PosESalesReport = dbStore.get('PosESalesReport');
-        const reportMonth = String(payload.report_month || '').trim();
-        const existing = await PosESalesReport.findOne({
-            where: { report_month: reportMonth },
-            transaction: options.transaction,
-            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
-        });
-        if (existing) {
-            await existing.update(payload, { transaction: options.transaction });
-            return toPlain(existing);
-        }
-        return toPlain(await PosESalesReport.create(payload, { transaction: options.transaction }));
-    },
-
-    async listESalesReports(options = {}) {
-        const PosESalesReport = dbStore.get('PosESalesReport');
-        const rows = await PosESalesReport.findAll({
-            order: [['report_month', 'DESC']],
-            transaction: options.transaction
-        });
-        return rows.map(toPlain);
-    },
-
-    async findESalesReportById(reportId, options = {}) {
-        const PosESalesReport = dbStore.get('PosESalesReport');
-        const normalizedId = toPositiveInt(reportId);
-        if (!normalizedId) return null;
-        return toPlain(await PosESalesReport.findByPk(normalizedId, {
-            transaction: options.transaction,
-            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
-        }));
-    },
-
-    async updateESalesReportStatus(reportId, payload = {}, options = {}) {
-        const PosESalesReport = dbStore.get('PosESalesReport');
-        const normalizedId = toPositiveInt(reportId);
-        if (!normalizedId) return null;
-        const row = await PosESalesReport.findByPk(normalizedId, {
-            transaction: options.transaction,
-            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
-        });
-        if (!row) return null;
-        await row.update(payload, { transaction: options.transaction });
-        return toPlain(row);
     },
 
     async listProductCompositionsForItems(itemIds = [], options = {}) {
@@ -1140,15 +915,27 @@ export const posRepository = {
                     model: dbStore.get('PosTerminalShift'),
                     as: 'shift',
                     attributes: ['pos_terminal_shift_id', 'business_date', 'terminal_id', 'location_id', 'status']
+                },
+                {
+                    model: dbStore.get('PosTransactionLine'),
+                    as: 'lines',
+                    attributes: ['line_id', 'pos_transaction_id', 'quantity', 'cost_snapshot']
                 }
             ],
+            distinct: true,
             order: [['created_at', 'DESC']],
             limit,
             offset
         });
 
         return {
-            transactions: rows,
+            transactions: rows.map((row) => {
+                const payload = toPlain(row);
+                return {
+                    ...payload,
+                    total_cost: computeTransactionTotalCost(payload.lines)
+                };
+            }),
             pagination: {
                 page,
                 limit,
@@ -1160,6 +947,8 @@ export const posRepository = {
 
     async getZReadingSummary({ startAt, endAt, terminalId = null, cashierId = null, shiftId = null, locationId = null }, options = {}) {
         const PosTransaction = dbStore.get('PosTransaction');
+        const PosTransactionLine = dbStore.get('PosTransactionLine');
+        const Item = dbStore.get('Item');
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
         const where = buildFinanciallyRecognizedSalesWhere({
@@ -1214,16 +1003,171 @@ export const posRepository = {
             transaction: options.transaction
         });
 
+        const lineSummaryRows = PosTransactionLine
+            ? await PosTransactionLine.findAll({
+                include: [{
+                    model: PosTransaction,
+                    as: 'transaction',
+                    attributes: [],
+                    required: true,
+                    where
+                }],
+                attributes: [
+                    [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('quantity')), 0), 'item_count'],
+                    [
+                        sequelize.literal('COALESCE(SUM(`PosTransactionLine`.`quantity` * COALESCE(`PosTransactionLine`.`cost_snapshot`, 0)), 0)'),
+                        'total_cost'
+                    ],
+                    [
+                        sequelize.literal('COALESCE(SUM(CASE WHEN `transaction`.`discount_amount` > 0 THEN `PosTransactionLine`.`quantity` ELSE 0 END), 0)'),
+                        'discount_item_count'
+                    ]
+                ],
+                raw: true,
+                transaction: options.transaction
+            })
+            : [];
+
+        const lineSummary = lineSummaryRows[0] || {};
+
+        const popularItemRows = PosTransactionLine
+            ? await PosTransactionLine.findAll({
+                include: [
+                    {
+                        model: PosTransaction,
+                        as: 'transaction',
+                        attributes: [],
+                        required: true,
+                        where
+                    },
+                    ...(Item ? [{
+                        model: Item,
+                        as: 'item',
+                        attributes: [],
+                        required: false
+                    }] : [])
+                ],
+                attributes: [
+                    'item_id',
+                    ...(Item ? [
+                        [sequelize.col('item.name'), 'item_name'],
+                        [sequelize.col('item.sku_code'), 'sku_code']
+                    ] : []),
+                    [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('quantity')), 0), 'quantity'],
+                    [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('line_subtotal')), 0), 'amount'],
+                    [
+                        sequelize.literal('COALESCE(SUM(`PosTransactionLine`.`quantity` * COALESCE(`PosTransactionLine`.`cost_snapshot`, 0)), 0)'),
+                        'cost'
+                    ]
+                ],
+                group: [
+                    'PosTransactionLine.item_id',
+                    ...(Item ? ['item.name', 'item.sku_code'] : [])
+                ],
+                order: [[sequelize.literal('quantity'), 'DESC']],
+                limit: 10,
+                raw: true,
+                transaction: options.transaction
+            })
+            : [];
+
+        const dailyStartAt = new Date(startAt.getTime() - (10 * 24 * 60 * 60 * 1000));
+        const dailyWhere = buildFinanciallyRecognizedSalesWhere({
+            created_at: {
+                [Op.gte]: dailyStartAt,
+                [Op.lt]: endAt
+            }
+        });
+        if (terminalId) dailyWhere.terminal_id = terminalId;
+        if (cashierId) dailyWhere.cashier_id = cashierId;
+        if (shiftId) dailyWhere.shift_id = shiftId;
+        if (locationId) dailyWhere.location_id = locationId;
+
+        const dailyTransactionBusinessDate = sequelize.literal("DATE_FORMAT(DATE_ADD(`PosTransaction`.`created_at`, INTERVAL 8 HOUR), '%Y-%m-%d')");
+        const dailyLineBusinessDate = sequelize.literal("DATE_FORMAT(DATE_ADD(`transaction`.`created_at`, INTERVAL 8 HOUR), '%Y-%m-%d')");
+
+        const dailyTotalRows = await PosTransaction.findAll({
+            where: dailyWhere,
+            attributes: [
+                [dailyTransactionBusinessDate, 'business_date'],
+                [sequelize.fn('COUNT', sequelize.col('pos_transaction_id')), 'transaction_count'],
+                [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('discount_amount')), 0), 'discount_amount'],
+                [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('total_amount')), 0), 'total_amount']
+            ],
+            group: [dailyTransactionBusinessDate],
+            order: [[dailyTransactionBusinessDate, 'ASC']],
+            raw: true,
+            transaction: options.transaction
+        });
+        const dailyLineRows = PosTransactionLine
+            ? await PosTransactionLine.findAll({
+                include: [{
+                    model: PosTransaction,
+                    as: 'transaction',
+                    attributes: [],
+                    required: true,
+                    where: dailyWhere
+                }],
+                attributes: [
+                    [dailyLineBusinessDate, 'business_date'],
+                    [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('quantity')), 0), 'item_count'],
+                    [
+                        sequelize.literal('COALESCE(SUM(`PosTransactionLine`.`quantity` * COALESCE(`PosTransactionLine`.`cost_snapshot`, 0)), 0)'),
+                        'total_cost'
+                    ],
+                    [
+                        sequelize.literal('COALESCE(SUM(CASE WHEN `transaction`.`discount_amount` > 0 THEN `PosTransactionLine`.`quantity` ELSE 0 END), 0)'),
+                        'discount_item_count'
+                    ]
+                ],
+                group: [dailyLineBusinessDate],
+                raw: true,
+                transaction: options.transaction
+            })
+            : [];
+        const dailyLinesByDate = new Map(dailyLineRows.map((row) => [
+            String(row?.business_date || '').slice(0, 10),
+            row
+        ]));
+
         return {
             transaction_count: Number.parseInt(summaryRow?.transaction_count || 0, 10),
             subtotal_amount: round4(summaryRow?.subtotal_amount),
             discount_amount: round4(summaryRow?.discount_amount),
             service_fee_total: round4(summaryRow?.service_fee_total),
+            restaurant_service_charge_total: round4(summaryRow?.restaurant_service_charge_total),
             vatable_sales: round4(summaryRow?.vatable_sales),
             vat_amount: round4(summaryRow?.vat_amount),
             vat_exempt_sales: round4(summaryRow?.vat_exempt_sales),
             zero_rated_sales: round4(summaryRow?.zero_rated_sales),
             total_amount: round4(summaryRow?.total_amount),
+            item_count: round4(lineSummary?.item_count),
+            discount_item_count: round4(lineSummary?.discount_item_count),
+            total_cost: round4(lineSummary?.total_cost),
+            refund_amount: 0,
+            refunded_item_count: 0,
+            net_profit: round4(summaryRow?.total_amount) - round4(lineSummary?.total_cost),
+            daily_totals: dailyTotalRows.map((row) => ({
+                business_date: row.business_date,
+                transaction_count: Number.parseInt(row.transaction_count || 0, 10),
+                total_amount: round4(row.total_amount),
+                discount_amount: round4(row.discount_amount),
+                item_count: round4(dailyLinesByDate.get(String(row.business_date || '').slice(0, 10))?.item_count),
+                discount_item_count: round4(dailyLinesByDate.get(String(row.business_date || '').slice(0, 10))?.discount_item_count),
+                total_cost: round4(dailyLinesByDate.get(String(row.business_date || '').slice(0, 10))?.total_cost),
+                refund_amount: 0,
+                refunded_item_count: 0,
+                net_profit: round4(row.total_amount) - round4(dailyLinesByDate.get(String(row.business_date || '').slice(0, 10))?.total_cost)
+            })),
+            popular_items: popularItemRows.map((row) => ({
+                item_id: toPositiveInt(row.item_id),
+                item_name: row.item_name || `Item #${row.item_id}`,
+                sku_code: row.sku_code || null,
+                quantity: round4(row.quantity),
+                amount: round4(row.amount),
+                cost: round4(row.cost),
+                net_profit: round4(row.amount) - round4(row.cost)
+            })),
             payment_breakdown: paymentBreakdownRows.map((row) => ({
                 payment_type: row.payment_type,
                 count: Number.parseInt(row.count || 0, 10),
@@ -1897,6 +1841,18 @@ export const posRepository = {
     async createCashDrawerEvent(payload = {}, options = {}) {
         const PosCashDrawerEvent = dbStore.get('PosCashDrawerEvent');
         return PosCashDrawerEvent.create(payload, { transaction: options.transaction });
+    },
+
+    async createAuditLog(payload = {}, options = {}) {
+        const AuditLog = dbStore.get('AuditLog');
+        if (!AuditLog) {
+            throw new Error('AuditLog model is unavailable');
+        }
+
+        const created = await AuditLog.create(payload, {
+            transaction: options.transaction
+        });
+        return toPlain(created);
     },
 
     async listCashDrawerEventsByShiftId(shiftId, options = {}) {

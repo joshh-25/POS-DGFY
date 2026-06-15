@@ -1,11 +1,13 @@
 import {
   createCommercePaymentRefundUseCase,
+  createTenantPayMongoChildAccountUseCase,
   getCommercePaymentSessionUseCase,
   getCommerceSettlementReportUseCase,
   getPayMongoSandboxCertificationUseCase,
   handlePayMongoCommerceWebhookUseCase,
   listCommercePaymentSessionsUseCase,
   listTenantPaymentAccountsUseCase,
+  operateTenantPayMongoChildAccountUseCase,
   retryCommercePaymentFinalizationUseCase,
   upsertTenantPaymentAccountUseCase
 } from '../index.js';
@@ -101,6 +103,33 @@ export const createPaymentSessionRefund = async (req, res, next) => {
       actor: req.admin?.username || req.user?.email || req.user?.username || null
     });
     return sendResult(res, result, 201);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createTenantPayMongoChildAccount = async (req, res, next) => {
+  try {
+    const result = await createTenantPayMongoChildAccountUseCase({
+      tenantId: (req.validatedParams || req.params).tenant_id,
+      payload: req.validatedBody || req.body || {},
+      actor: req.admin?.username || req.user?.email || req.user?.username || null
+    });
+    return sendResult(res, result, 201);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const operateTenantPayMongoChildAccount = async (req, res, next) => {
+  try {
+    const params = req.validatedParams || req.params;
+    const result = await operateTenantPayMongoChildAccountUseCase({
+      tenantId: params.tenant_id,
+      action: params.action,
+      actor: req.admin?.username || req.user?.email || req.user?.username || null
+    });
+    return sendResult(res, result);
   } catch (error) {
     next(error);
   }

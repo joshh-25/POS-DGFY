@@ -5,7 +5,9 @@ import { buildUpdateSettingsUseCase } from '../src/modules/settings/usecases/upd
 import { buildUpdateSettingByKeyUseCase } from '../src/modules/settings/usecases/updateSettingByKeyUseCase.js';
 import { buildResetSettingsToDefaultUseCase } from '../src/modules/settings/usecases/resetSettingsToDefaultUseCase.js';
 import { resolveChangedSettingKeys } from '../src/modules/settings/usecases/settingsChangeSet.js';
+import { assertPublicStorefrontHandleAvailable } from '../src/modules/settings/usecases/publicStorefrontHandlePolicy.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
+import dbStore from '../src/utils/dbStore.js';
 
 describe('settings use-cases application result contract', () => {
   it('getAllSettings returns success envelope', async () => {
@@ -79,6 +81,84 @@ describe('settings use-cases application result contract', () => {
     expect(result.success).toBe(false);
     expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
     expect(result.error.message).toBe('settingsData must be an object');
+  });
+
+  it('updateSettings rejects reserved public storefront handles', async () => {
+    const updateSettings = jest.fn();
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: {
+        updateSettings
+      }
+    });
+
+    const result = await useCase({
+      settingsData: { store_tenant_slug: 'map-dgfy' },
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.details).toEqual(expect.objectContaining({
+      reason_code: 'STOREFRONT_HANDLE_RESERVED',
+      handle: 'map-dgfy'
+    }));
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('updateSettings reserves clean storefront handles before tenant settings write', async () => {
+    const updateSettings = jest.fn().mockResolvedValue({ store_tenant_slug: 'space-bar' });
+    const reservePublicStorefrontHandle = jest.fn().mockRejectedValue(Object.assign(
+      new Error('Store tenant slug is already used by another company.'),
+      {
+        statusCode: 409,
+        details: {
+          reason_code: 'STOREFRONT_HANDLE_NOT_UNIQUE',
+          handle: 'space-bar'
+        }
+      }
+    ));
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: {
+        updateSettings,
+        reservePublicStorefrontHandle
+      }
+    });
+
+    const result = await useCase({
+      settingsData: { store_tenant_slug: 'space-bar' },
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.CONFLICT);
+    expect(result.error.details).toEqual(expect.objectContaining({
+      reason_code: 'STOREFRONT_HANDLE_NOT_UNIQUE',
+      handle: 'space-bar'
+    }));
+    expect(reservePublicStorefrontHandle).toHaveBeenCalledWith('space-bar');
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('public storefront handle policy rejects handles owned by another tenant', async () => {
+    const findPublicStorefrontHandleOwner = jest.fn().mockResolvedValue({
+      tenant_id: 'tenant-a',
+      slug: 'space-bar'
+    });
+
+    await dbStore.run({ tenantId: 'tenant-b' }, async () => {
+      await expect(assertPublicStorefrontHandleAvailable({
+        handleValue: 'space-bar',
+        settingsRepository: { findPublicStorefrontHandleOwner }
+      })).rejects.toMatchObject({
+        code: DomainErrorCode.CONFLICT,
+        details: expect.objectContaining({
+          reason_code: 'STOREFRONT_HANDLE_NOT_UNIQUE',
+          handle: 'space-bar'
+        })
+      });
+    });
+
+    expect(findPublicStorefrontHandleOwner).toHaveBeenCalledWith('space-bar');
   });
 
   it('resolveChangedSettingKeys ignores unchanged fiscal keys in bulk settings payloads', async () => {

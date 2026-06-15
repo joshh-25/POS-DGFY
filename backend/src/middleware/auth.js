@@ -358,12 +358,37 @@ export const checkPermission = (requiredPermission) => {
   };
 };
 
+const isPosPermission = (permission) => String(permission || '').startsWith('pos:');
+
+const filterCapabilityDisabledPermissions = async (req, permissions = []) => {
+  if (!permissions.some(isPosPermission)) {
+    return permissions;
+  }
+
+  const store = dbStore.getStore?.() || {};
+  const SystemSetting = store.SystemSetting || null;
+  if (!SystemSetting || !req.tenant || req.tenant.status !== 'active') {
+    return permissions;
+  }
+
+  const setting = await SystemSetting.findOne({
+    where: { setting_key: 'tenant_pos_enabled' },
+    attributes: ['setting_value']
+  });
+  const posEnabled = parseCapabilityBoolean(setting?.setting_value, true);
+  if (posEnabled) {
+    return permissions;
+  }
+
+  return permissions.filter((permission) => !isPosPermission(permission));
+};
+
 export const checkAnyPermission = (requiredPermissions) => {
   const permissions = Array.isArray(requiredPermissions)
     ? requiredPermissions.filter(Boolean)
     : [requiredPermissions].filter(Boolean);
 
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
@@ -375,16 +400,21 @@ export const checkAnyPermission = (requiredPermissions) => {
       return next();
     }
 
-    const userPermissions = Array.isArray(req.user.permissions) ? req.user.permissions : [];
-    if (permissions.some((permission) => userPermissions.includes(permission))) {
-      return next();
-    }
+    try {
+      const userPermissions = Array.isArray(req.user.permissions) ? req.user.permissions : [];
+      const effectivePermissions = await filterCapabilityDisabledPermissions(req, permissions);
+      if (effectivePermissions.some((permission) => userPermissions.includes(permission))) {
+        return next();
+      }
 
-    return res.status(403).json({
-      success: false,
-      message: 'Access denied: Insufficient permissions',
-      required: permissions
-    });
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: Insufficient permissions',
+        required: effectivePermissions
+      });
+    } catch (error) {
+      return next(error);
+    }
   };
 };
 
@@ -561,4 +591,48 @@ export const requirePremium = (req, res, next) => {
   }
 
   return next();
+};
+
+const parseCapabilityBoolean = (value, fallback = true) => {
+  if (value === true || value === 1) return true;
+  if (value === false || value === 0) return false;
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+  if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+};
+
+export const requireTenantCapability = (settingKey, capabilityLabel = 'This feature') => {
+  const normalizedSettingKey = String(settingKey || '').trim();
+  return async (req, res, next) => {
+    try {
+      if (!normalizedSettingKey || !req.tenant || req.tenant.status !== 'active') {
+        return next();
+      }
+
+      const store = dbStore.getStore?.() || {};
+      const SystemSetting = store.SystemSetting || null;
+      if (!SystemSetting) {
+        return next();
+      }
+
+      const setting = await SystemSetting.findOne({
+        where: { setting_key: normalizedSettingKey },
+        attributes: ['setting_value']
+      });
+      const enabled = parseCapabilityBoolean(setting?.setting_value, true);
+      if (enabled) {
+        return next();
+      }
+
+      return res.status(403).json({
+        success: false,
+        message: `${capabilityLabel} is disabled for this tenant by platform admin.`,
+        code: 'TENANT_CAPABILITY_DISABLED',
+        capability: normalizedSettingKey
+      });
+    } catch (error) {
+      return next(error);
+    }
+  };
 };

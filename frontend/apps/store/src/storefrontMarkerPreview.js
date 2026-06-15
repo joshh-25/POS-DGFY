@@ -40,7 +40,7 @@ const coordinateBucketKey = (store) => {
   const lat = Number(store?.latitude);
   const lng = Number(store?.longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return '';
-  return `${lat.toFixed(5)}:${lng.toFixed(5)}`;
+  return `${lat.toFixed(6)}:${lng.toFixed(6)}`;
 };
 
 const markerIdentityKey = (store, fallbackIndex) => String(
@@ -62,17 +62,8 @@ export const buildMarkerDisplayOffsets = (stores = [], {
 
   grouped.forEach((entries) => {
     if (!Array.isArray(entries) || entries.length === 0) return;
-    if (entries.length === 1) {
-      const { store, index } = entries[0];
+    entries.forEach(({ store, index }) => {
       offsets.set(markerIdentityKey(store, index), [0, 0]);
-      return;
-    }
-    const radius = 0.00014;
-    entries.forEach(({ store, index }, groupIndex) => {
-      const theta = (Math.PI * 2 * groupIndex) / entries.length;
-      const latOffset = Number((Math.sin(theta) * radius).toFixed(7));
-      const lngOffset = Number((Math.cos(theta) * radius).toFixed(7));
-      offsets.set(markerIdentityKey(store, index), [latOffset, lngOffset]);
     });
   });
 
@@ -94,13 +85,19 @@ export const buildStoreMarkerPreviewModel = (store = {}, {
   const catalogCount = Number(store?.catalog_count);
   const matchingItemCount = Number(store?.matching_item_count);
   const statusLabel = store?.storefront_open === false || store?.is_open === false ? 'Closed' : 'Open';
-  const branchName = trimText(store?.location_name, trimText(store?.branch_label, 'Storefront location'));
+  const branchName = trimText(store?.location_name, trimText(store?.nearest_location_name, trimText(store?.branch_label, 'Storefront location')));
   const tenantName = trimText(store?.tenant_name, 'Storefront');
+
+  const address = trimText(store?.address_line, 'Address unavailable');
+  const displayAddress = trimText(
+    store?.primary_location_address_line || store?.nearest_location_address_line || store?.location_address_line,
+    address
+  );
 
   return {
     tenantName,
     branchName,
-    address: trimText(store?.address_line, 'Address unavailable'),
+    address: displayAddress,
     coverImageUrl: resolveAssetUrl(store?.storefront_cover_image_url) || '',
     profileImageUrl: resolveAssetUrl(store?.storefront_profile_image_url) || '',
     statusLabel,

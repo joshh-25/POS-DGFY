@@ -10,6 +10,8 @@ const mockUpdatePricingSettingsUseCase = jest.fn();
 const mockUpdateTenantUseCase = jest.fn();
 const mockDeleteTenantUseCase = jest.fn();
 const mockResubmitRegistrationUseCase = jest.fn();
+const mockUpdateTenantCapabilitiesUseCase = jest.fn();
+const mockListTenantCapabilityAuditLogsUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
 const mockSetupPayPalRecurringUseCase = jest.fn();
 const mockChangePlanUseCase = jest.fn();
@@ -25,6 +27,8 @@ jest.unstable_mockModule('../src/modules/tenants/index.js', () => ({
   updateTenantUseCase: mockUpdateTenantUseCase,
   deleteTenantUseCase: mockDeleteTenantUseCase,
   resubmitRegistrationUseCase: mockResubmitRegistrationUseCase,
+  updateTenantCapabilitiesUseCase: mockUpdateTenantCapabilitiesUseCase,
+  listTenantCapabilityAuditLogsUseCase: mockListTenantCapabilityAuditLogsUseCase,
   tenantAdminRepository: {
     findTenantById: jest.fn(),
     updateTenant: jest.fn()

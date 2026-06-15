@@ -1,4 +1,4 @@
-﻿import {
+import {
   formatStorefrontBusinessHoursDisplay,
   isDateWithinStorefrontBusinessHours
 } from '../src/modules/shared/utils/storefrontBusinessHours.js';

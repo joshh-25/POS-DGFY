@@ -7,6 +7,11 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
+    "start:device-bridge": "node device-bridge/server.js",
+    "dev:device-bridge": "nodemon device-bridge/server.js",
+    "device:printers": "node device-bridge/printers/list-printers.js",
+    "device:test-print": "node device-bridge/printers/test-print.js",
+    "device:open-drawer": "node device-bridge/drawer/test-open-drawer.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand",
     "test:legacy:payments": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand --testPathIgnorePatterns=^$ --runTestsByPath tests/paypalUpgradeValidation.legacy.test.js tests/paymentSubscriptionLifecycle.usecases.legacy.test.js tests/billingFunnelTelemetry.usecases.legacy.test.js tests/paypalSandboxCanary.e2e.legacy.test.js",
     "test:frontend-session-e2e": "cross-env RUN_BROWSER_E2E=true node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand tests/frontend.sessionIsolation.e2e.test.js",
@@ -43,6 +48,7 @@
     "audit:location-stock-parity": "node scripts/audit-location-stock-parity.js",
     "audit:location-stock-parity:allow-missing": "node scripts/audit-location-stock-parity.js --allow-missing-tables",
     "audit:location-stock-parity:repair": "node scripts/audit-location-stock-parity.js --repair-current-stock --allow-missing-tables",
+    "audit:storefront-public-visibility": "node scripts/audit-storefront-public-visibility.js",
     "audit:tenant-index-headroom": "node scripts/audit-tenant-index-headroom.js",
     "reconcile:storefront-discovery": "node scripts/reconcile-storefront-discovery-index.js",
     "remediate:tenant-redundant-indexes": "node scripts/remediate-tenant-redundant-indexes.js",
@@ -76,6 +82,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@node-escpos/core": "^0.6.0",
+    "@node-escpos/usb-adapter": "^0.3.1",
     "archiver": "^7.0.1",
     "axios": "^1.16.1",
     "bcryptjs": "^2.4.3",

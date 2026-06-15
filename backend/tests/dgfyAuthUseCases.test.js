@@ -49,7 +49,8 @@ describe('dgfyAuthUseCases', () => {
         };
         const useCase = buildRegisterDgfyAccountUseCase({
             repository,
-            hashPassword: jest.fn().mockResolvedValue('hashed-password')
+            hashPassword: jest.fn().mockResolvedValue('hashed-password'),
+            verifyEmailOtp: jest.fn().mockResolvedValue({ verified: true })
         });
 
         const result = await useCase({
@@ -61,6 +62,7 @@ describe('dgfyAuthUseCases', () => {
                 phone: '+63 912 345 6789',
                 password: 'password123',
                 confirm_password: 'password123',
+                email_otp_code: '123456',
                 accepted_terms: true,
                 terms_version: DGFY_LEGAL_TERM_VERSIONS.accountTerms,
                 privacy_version: DGFY_LEGAL_TERM_VERSIONS.privacy,
@@ -84,6 +86,9 @@ describe('dgfyAuthUseCases', () => {
             email: 'ada@example.test',
             phone: '+63 912 345 6789'
         }), { transaction: 'tx-account' });
+        expect(repository.create).toHaveBeenCalledWith(expect.objectContaining({
+            email_verified_at: expect.any(Date)
+        }), { transaction: 'tx-account' });
         expect(result.data.payload.data.token).toBeTruthy();
         expect(result.data.payload.data.account.middle_name).toBe('Byron');
         expect(repository.mirrorPendingInvitationsForAccount).toHaveBeenCalledWith(expect.anything(), { transaction: 'tx-account' });
@@ -98,6 +103,91 @@ describe('dgfyAuthUseCases', () => {
             user_agent: 'vitest',
             request_id: 'req-dgfy-register'
         }), { transaction: 'tx-account' });
+    });
+
+    it('rejects DGFY account registration without an email verification code', async () => {
+        const repository = {
+            transaction: jest.fn(),
+            findByEmail: jest.fn(),
+            findByPhone: jest.fn(),
+            create: jest.fn(),
+            recordLegalAcknowledgement: jest.fn()
+        };
+        const verifyEmailOtp = jest.fn().mockRejectedValue(Object.assign(
+            new Error('A valid 6-digit email verification code is required'),
+            { statusCode: 422 }
+        ));
+        const useCase = buildRegisterDgfyAccountUseCase({
+            repository,
+            hashPassword: jest.fn(),
+            verifyEmailOtp
+        });
+
+        const result = await useCase({
+            body: {
+                first_name: 'Ada',
+                last_name: 'Lovelace',
+                email: 'ada@example.test',
+                phone: '+63 912 345 6789',
+                password: 'password123',
+                confirm_password: 'password123',
+                accepted_terms: true,
+                terms_version: DGFY_LEGAL_TERM_VERSIONS.accountTerms,
+                privacy_version: DGFY_LEGAL_TERM_VERSIONS.privacy,
+                marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
+            }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+        expect(result.error.message).toBe('A valid 6-digit email verification code is required');
+        expect(verifyEmailOtp).toHaveBeenCalledWith(expect.objectContaining({
+            purpose: 'dgfy_account_verification',
+            email: 'ada@example.test',
+            tenantId: null
+        }));
+        expect(repository.findByEmail).toHaveBeenCalledWith('ada@example.test');
+        expect(repository.findByPhone).toHaveBeenCalledWith('+63 912 345 6789');
+        expect(repository.create).not.toHaveBeenCalled();
+    });
+
+    it('does not consume DGFY registration email OTP when the email already exists', async () => {
+        const existingAccount = createAccount();
+        const repository = {
+            transaction: jest.fn(),
+            findByEmail: jest.fn().mockResolvedValue(existingAccount),
+            findByPhone: jest.fn(),
+            create: jest.fn(),
+            recordLegalAcknowledgement: jest.fn()
+        };
+        const verifyEmailOtp = jest.fn();
+        const useCase = buildRegisterDgfyAccountUseCase({
+            repository,
+            hashPassword: jest.fn(),
+            verifyEmailOtp
+        });
+
+        const result = await useCase({
+            body: {
+                first_name: 'Ada',
+                last_name: 'Lovelace',
+                email: 'ada@example.test',
+                phone: '+63 912 345 6789',
+                password: 'password123',
+                confirm_password: 'password123',
+                email_otp_code: '123456',
+                accepted_terms: true,
+                terms_version: DGFY_LEGAL_TERM_VERSIONS.accountTerms,
+                privacy_version: DGFY_LEGAL_TERM_VERSIONS.privacy,
+                marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
+            }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(409);
+        expect(verifyEmailOtp).not.toHaveBeenCalled();
+        expect(repository.findByPhone).not.toHaveBeenCalled();
+        expect(repository.create).not.toHaveBeenCalled();
     });
 
     it('fails closed when legal acknowledgement persistence is unavailable', async () => {

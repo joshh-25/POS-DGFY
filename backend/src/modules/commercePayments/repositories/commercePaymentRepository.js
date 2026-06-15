@@ -11,6 +11,17 @@ export const commercePaymentRepository = {
     }).then(toPlain);
   },
 
+  findTenantPaymentAccountByProviderMerchantId(providerMerchantId, options = {}) {
+    return db.TenantPaymentAccount.findOne({
+      where: {
+        provider: 'paymongo',
+        provider_merchant_id: providerMerchantId
+      },
+      transaction: options.transaction,
+      lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+    }).then(toPlain);
+  },
+
   async upsertTenantPaymentAccount(payload = {}, options = {}) {
     const where = {
       tenant_id: payload.tenant_id,

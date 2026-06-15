@@ -88,6 +88,7 @@ module.exports = {
         currency: { type: Sequelize.STRING(3), allowNull: false, defaultValue: 'PHP' },
         total_amount_centavos: { type: Sequelize.INTEGER, allowNull: false, defaultValue: 0 },
         platform_fee_centavos: { type: Sequelize.INTEGER, allowNull: false, defaultValue: 0 },
+        fee_policy: { type: Sequelize.JSON, allowNull: true },
         tenant_transfer_merchant_id: { type: Sequelize.STRING(120), allowNull: true },
         provider_payment_intent_id: { type: Sequelize.STRING(120), allowNull: true },
         provider_payment_method_id: { type: Sequelize.STRING(120), allowNull: true },

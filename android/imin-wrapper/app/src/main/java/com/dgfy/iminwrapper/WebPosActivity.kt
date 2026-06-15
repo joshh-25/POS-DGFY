@@ -1,0 +1,285 @@
+package com.dgfy.iminwrapper
+
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Intent
+import android.os.Build
+import android.os.Bundle
+import android.view.View
+import android.webkit.ConsoleMessage
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.view.animation.AccelerateDecelerateInterpolator
+import android.widget.Button
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+
+class WebPosActivity : AppCompatActivity() {
+    private lateinit var webView: WebView
+    private lateinit var statusOverlay: LinearLayout
+    private lateinit var statusLogo: ImageView
+    private lateinit var statusSpinner: ProgressBar
+    private lateinit var statusTitle: TextView
+    private lateinit var statusMessage: TextView
+    private lateinit var statusRetryButton: Button
+    private lateinit var drawerController: DrawerController
+    private var runtimeCleanupCompleted = true
+    private var webPosReadyReceived = false
+    private var logoAnimating = false
+    private var lastLoadedUrl: String? = null
+
+    @SuppressLint("SetJavaScriptEnabled")
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_web_pos)
+
+        webView = findViewById(R.id.webview)
+        statusOverlay = findViewById(R.id.status_overlay)
+        statusLogo = findViewById(R.id.status_logo)
+        statusSpinner = findViewById(R.id.status_spinner)
+        statusTitle = findViewById(R.id.status_title)
+        statusMessage = findViewById(R.id.status_message)
+        statusRetryButton = findViewById(R.id.status_retry_button)
+        drawerController = DrawerController(this)
+        requestBluetoothPermissions()
+        statusRetryButton.setOnClickListener { clearWebRuntimeAndReload() }
+
+        webView.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            cacheMode = WebSettings.LOAD_DEFAULT
+            allowFileAccess = false
+            allowContentAccess = false
+            databaseEnabled = true
+            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            mediaPlaybackRequiresUserGesture = false
+            userAgentString = "$userAgentString DGFY-iMin-WebView"
+            builtInZoomControls = false
+            displayZoomControls = false
+        }
+
+        webView.addJavascriptInterface(
+            IminBridge(drawerController) {
+                runOnUiThread { handleWebPosReady() }
+            },
+            "iMinBridge"
+        )
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                val message = consoleMessage?.message().orEmpty()
+                if (
+                    consoleMessage?.messageLevel() == ConsoleMessage.MessageLevel.ERROR ||
+                    message.contains("error", ignoreCase = true) ||
+                    message.contains("failed", ignoreCase = true)
+                ) {
+                    showStatus(
+                        title = "Web POS script error",
+                        message = message.ifBlank { "Unknown WebView JavaScript error" },
+                        showRetry = true,
+                        showSpinner = false
+                    )
+                }
+                return super.onConsoleMessage(consoleMessage)
+            }
+        }
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                webPosReadyReceived = false
+                lastLoadedUrl = url
+                showLoadingStatus()
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                webView.postDelayed({
+                    if (!webPosReadyReceived && webView.progress >= 100) {
+                        showStatus(
+                            title = "POS startup timeout",
+                            message = buildTimeoutMessage(url ?: lastLoadedUrl),
+                            showRetry = true,
+                            showSpinner = false
+                        )
+                    }
+                }, READY_SIGNAL_FALLBACK_MS)
+            }
+
+            override fun shouldOverrideUrlLoading(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): Boolean {
+                val targetUrl = request?.url ?: return false
+                return if (isAllowedHost(targetUrl.host)) {
+                    false
+                } else {
+                    startActivity(Intent(Intent.ACTION_VIEW, targetUrl))
+                    true
+                }
+            }
+
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: WebResourceError?
+            ) {
+                if (request?.isForMainFrame == true) {
+                    showStatus(
+                        title = "POS failed to load",
+                        message = "WebView error: ${error?.description ?: "unknown error"}",
+                        showRetry = true,
+                        showSpinner = false
+                    )
+                }
+            }
+        }
+
+        webView.loadUrl(AppConfig.hostedWebPosUrl())
+    }
+
+    override fun onDestroy() {
+        drawerController.release()
+        super.onDestroy()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (webView.canGoBack()) {
+            webView.goBack()
+        } else {
+            super.onBackPressed()
+        }
+    }
+
+    private fun isAllowedHost(host: String?): Boolean {
+        return host != null && AppConfig.allowedHosts().contains(host)
+    }
+
+    private fun showStatus(
+        title: String,
+        message: String,
+        showRetry: Boolean = false,
+        showSpinner: Boolean = true
+    ) {
+        startLogoAnimation()
+        statusTitle.text = title
+        statusMessage.text = message
+        statusSpinner.visibility = if (showSpinner) View.VISIBLE else View.GONE
+        statusRetryButton.visibility = if (showRetry) View.VISIBLE else View.GONE
+        statusOverlay.visibility = View.VISIBLE
+    }
+
+    private fun showLoadingStatus() {
+        showStatus(
+            title = "DGFY POS",
+            message = "Preparing your terminal...",
+            showRetry = false,
+            showSpinner = true
+        )
+    }
+
+    private fun buildTimeoutMessage(url: String?): String {
+        val targetUrl = url?.takeIf { it.isNotBlank() } ?: AppConfig.hostedWebPosUrl(0L)
+        return "POS did not become ready within 10 seconds.\nCheck device network, confirm the POS server is online, and verify this URL is reachable:\n$targetUrl"
+    }
+
+    private fun handleWebPosReady() {
+        if (!runtimeCleanupCompleted) return
+        webPosReadyReceived = true
+        hideStatusOverlay()
+    }
+
+    private fun hideStatusOverlay() {
+        stopLogoAnimation()
+        statusOverlay.visibility = View.GONE
+    }
+
+    private fun startLogoAnimation() {
+        if (logoAnimating) return
+        logoAnimating = true
+        pulseLogo()
+    }
+
+    private fun pulseLogo() {
+        statusLogo.animate()
+            .scaleX(1.06f)
+            .scaleY(1.06f)
+            .setDuration(650L)
+            .setInterpolator(AccelerateDecelerateInterpolator())
+            .withEndAction {
+                statusLogo.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(650L)
+                    .setInterpolator(AccelerateDecelerateInterpolator())
+                    .withEndAction {
+                        if (logoAnimating && statusOverlay.visibility == View.VISIBLE) {
+                            pulseLogo()
+                        }
+                    }
+                    .start()
+            }
+            .start()
+    }
+
+    private fun stopLogoAnimation() {
+        logoAnimating = false
+        statusLogo.animate().cancel()
+        statusLogo.scaleX = 1f
+        statusLogo.scaleY = 1f
+    }
+
+    private fun clearWebRuntimeAndReload() {
+        webPosReadyReceived = false
+        showLoadingStatus()
+        val cleanupScript = """
+            (async function () {
+              try {
+                if ('serviceWorker' in navigator) {
+                  const registrations = await navigator.serviceWorker.getRegistrations();
+                  await Promise.all(registrations.map(function (registration) {
+                    return registration.unregister();
+                  }));
+                }
+                if ('caches' in window) {
+                  const keys = await caches.keys();
+                  await Promise.all(keys.map(function (key) {
+                    return caches.delete(key);
+                  }));
+                }
+                try { localStorage.removeItem('vite-pwa-register'); } catch (error) {}
+              } catch (error) {}
+              return true;
+            })();
+        """.trimIndent()
+
+        webView.evaluateJavascript(cleanupScript) {
+            webView.clearCache(true)
+            webView.clearHistory()
+            webView.postDelayed(
+                { webView.loadUrl(AppConfig.hostedWebPosUrl()) },
+                250L
+            )
+        }
+    }
+
+    private fun requestBluetoothPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.BLUETOOTH_CONNECT),
+                BLUETOOTH_PERMISSION_REQUEST_CODE
+            )
+        }
+    }
+
+    companion object {
+        private const val BLUETOOTH_PERMISSION_REQUEST_CODE = 7001
+        private const val READY_SIGNAL_FALLBACK_MS = 10_000L
+    }
+}

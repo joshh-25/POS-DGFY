@@ -18,6 +18,7 @@ import {
     assertStrictBindingReadiness
 } from './posTerminalLocationBindingPolicy.js';
 import { resolveChangedSettingKeys } from './settingsChangeSet.js';
+import { assertPublicStorefrontHandlePatch } from './publicStorefrontHandlePolicy.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 
@@ -71,6 +72,13 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository }) => {
 
         try {
             assertWorkflowModeAuthorization({ settingsData, actorUser });
+            await assertPublicStorefrontHandlePatch({ settingsData, settingsRepository });
+            if (
+                Object.prototype.hasOwnProperty.call(settingsData, 'store_tenant_slug')
+                && typeof settingsRepository?.reservePublicStorefrontHandle === 'function'
+            ) {
+                await settingsRepository.reservePublicStorefrontHandle(settingsData.store_tenant_slug);
+            }
             const requestedStrictBinding = settingsData[POS_TERMINAL_LOCATION_BINDING_ENFORCED_KEY] === true;
             const currentBindingSetting = requestedStrictBinding
                 && typeof settingsRepository?.getSettingsByKeys === 'function'

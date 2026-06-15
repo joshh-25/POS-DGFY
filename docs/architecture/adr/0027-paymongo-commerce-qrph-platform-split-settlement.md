@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-05-20
+last_reviewed: 2026-06-08
 applies_to: storefront_commerce_payments
 topic: paymongo_qrph_platform_split_settlement
 ---
@@ -34,6 +34,11 @@ ADR 0012 defines a mandatory `DGFY convenience fee` equal to `round4(gross_subto
 16. PayMongo API calls use the documented unified `https://api.paymongo.com/v1` base URL for both test and live keys unless `PAYMONGO_API_BASE_URL` is intentionally overridden for a verified PayMongo environment.
 17. Landlord commerce payment tables use UUID `tenant_id` values to match `tenants.id`; readiness APIs and reporting filters must not coerce tenant IDs to integers.
 18. Webhook signature verification is enforced by default, must use the raw request body, and must reject stale timestamps outside the configured tolerance.
+19. The DGFY platform fee contract is explicit: the 1% is computed from item subtotal only, is added to the customer's checkout total, and is not computed from PayMongo net settlement.
+20. PayMongo/provider processing, payout, bank, dispute, and related provider fees are the tenant/company responsibility and reduce the tenant/company net settlement unless a separate signed PayMongo/provider contract states otherwise.
+21. DGFY must not be modeled as holding seller funds. PayMongo handles collection, wallet/settlement movement, split routing, and payout rails; the app stores local evidence and requests provider operations.
+22. Full refunds reverse the payment according to the stored split/refund policy: the DGFY 1% and tenant/company share are both returned through PayMongo refund/split-refund behavior, subject to provider status reconciliation.
+23. Tenant PayMongo child merchant creation may be initiated after tenant database provisioning, but customer-visible QR Ph must remain disabled until PayMongo activation/readiness evidence is recorded by webhook or operator evidence.
 
 ## Consequences
 1. ADR 0012 remains the pricing source of truth; this ADR governs settlement and provider handoff.
@@ -44,6 +49,8 @@ ADR 0012 defines a mandatory `DGFY convenience fee` equal to `round4(gross_subto
 6. Production go-live remains blocked until PayMongo sandbox evidence covers dynamic QR payment confirmation, split settlement, refund behavior, and child merchant readiness.
 7. Manual readiness setup is now evidence-gated, but it remains a bridge until PayMongo hosted/API onboarding and automated capability sync are implemented.
 8. Wallet readiness is now part of the go-live contract; manual child-merchant readiness without enabled-wallet evidence is not sufficient for split/charge checkout.
+9. Terms and conditions must disclose the customer-paid DGFY 1% platform fee and tenant/company responsibility for PayMongo/provider fees before company registration and checkout enablement.
+10. Tenant onboarding automation can reduce manual dashboard entry, but PayMongo account activation, KYC/requirements due, wallet status, and live-payout readiness remain provider-controlled external facts.
 
 ## Original Scope Evaluation Backlog
 The following items are considered part of the original PayMongo QR Ph commerce-payment program for completion evaluation, even when delivered in later implementation slices:

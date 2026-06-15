@@ -1,4 +1,4 @@
-﻿import { DataTypes, Model } from 'sequelize';
+import { DataTypes, Model } from 'sequelize';
 
 export default (sequelize) => {
     class DgfyCustomerBackfillRun extends Model { }

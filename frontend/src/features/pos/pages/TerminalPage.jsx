@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   closeTerminalShift,
@@ -6,6 +6,7 @@ import {
   fetchIncomingOnlineOrders,
   fetchCurrentTerminalShift,
   fetchTerminalTodayDashboard,
+  openPosDeviceDrawer,
   openTerminalShift,
   switchTerminalShiftLocation,
   recordCashDrawerEvent,
@@ -37,8 +38,8 @@ import {
   pruneTerminalOperationHistory
 } from '../services/terminalOperationQueueStore.js';
 
-const TerminalPageLayout = lazy(() => import('../components/TerminalPageLayout'));
-const OnboardingSetupModal = lazy(() => import('../../onboarding/components/OnboardingSetupModal.jsx'));
+import TerminalPageLayout from '../components/TerminalPageLayout.jsx';
+import OnboardingSetupModal from '../../onboarding/components/OnboardingSetupModal.jsx';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 
 const DEFAULT_CURRENCY = 'PHP';
@@ -57,11 +58,13 @@ const OPERATIONS_VIEW_MODES = [
   'shift_controls',
   'cash_drawer',
   'close_shift',
+  'reports',
+  'items',
   'sales_today',
   'terminal_setup',
   'sync_queue'
 ];
-const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift', 'sync_queue'];
+const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift', 'items', 'sync_queue'];
 const TERMINAL_SECTION_IDS = {
   checkoutWorkspace: 'pos-checkout-workspace',
   terminalSetup: 'pos-section-terminal-setup',
@@ -70,6 +73,8 @@ const TERMINAL_SECTION_IDS = {
   closeShift: 'pos-section-close-shift',
   locationScope: 'pos-section-location-scope',
   incomingOrders: 'pos-section-incoming-orders',
+  reports: 'pos-section-reports',
+  items: 'pos-section-items',
   salesToday: 'pos-section-sales-today',
   syncQueue: 'pos-section-sync-queue'
 };
@@ -208,6 +213,8 @@ const computeRetryBackoffMs = (attemptCount = 1) => {
   return Math.min(90_000, (baseMs * (2 ** Math.max(0, attemptCount - 1))) + jitterMs);
 };
 
+const SUPPRESS_GLOBAL_ERROR_TOAST = Object.freeze({ skipGlobalErrorToast: true });
+
 const lookupCompanyToken = async (email) => {
   const response = await api.post('/auth/lookup', { email }, { skipGlobalErrorToast: true });
   const tenant = response?.data?.data;
@@ -220,6 +227,22 @@ const isCompanyTokenResolutionError = (error) => {
     return message.includes('company token') || message.includes('tenant');
   }
   return status === 400 && message.includes('company token');
+};
+
+const resolveTerminalLoginErrorMessage = (error) => {
+  const responseMessage = String(error?.response?.data?.message || '').trim();
+  if (responseMessage) return responseMessage;
+
+  const status = Number(error?.response?.status || 0);
+  if (!status) {
+    return 'Unable to reach the POS backend. Check the server connection and try again.';
+  }
+
+  if (status === 401) return 'Invalid email or password.';
+  if (status === 403) return 'Your account is not allowed to unlock this terminal.';
+  if (status === 404) return 'Email not registered in any company.';
+
+  return 'Unable to sign in to terminal.';
 };
 
 const parseUserPermissions = (user) => {
@@ -312,6 +335,7 @@ export default function TerminalPage() {
     businessDate: null,
     salesSummary: null
   });
+  const [reportRefreshKey, setReportRefreshKey] = useState(0);
   const [openShiftForm, setOpenShiftForm] = useState({
     openingFloatAmount: '',
     openingNote: ''
@@ -346,6 +370,7 @@ export default function TerminalPage() {
   const [incomingOrderActionState, setIncomingOrderActionState] = useState({});
   const [receiptRequestId, setReceiptRequestId] = useState(null);
   const [incomingReceiptOpeningId, setIncomingReceiptOpeningId] = useState(null);
+  const [receiptReturnViewMode, setReceiptReturnViewMode] = useState(null);
   const [historyRequestQuery, setHistoryRequestQuery] = useState('');
   const [incomingHistoryOpeningId, setIncomingHistoryOpeningId] = useState(null);
   const [catalogSearchPrefill, setCatalogSearchPrefill] = useState(() => {
@@ -465,10 +490,12 @@ export default function TerminalPage() {
     return intentId;
   }, [refreshTerminalOperationQueue, requestBackgroundQueueReplay]);
 
-  const hydrateTerminalMeta = useCallback(async () => {
+  const hydrateTerminalMeta = useCallback(async ({ suppressGlobalErrors = false } = {}) => {
     setTerminalMeta((prev) => ({ ...prev, loading: true }));
     try {
-      const allSettings = await getAllSettings();
+      const allSettings = await getAllSettings({
+        requestConfig: suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
+      });
       const pettyCashSymbol = String(allSettings?.pos_petty_cash_symbol?.value || DEFAULT_CURRENCY).trim() || DEFAULT_CURRENCY;
       const pettyCashAmount = Number(allSettings?.pos_petty_cash_amount?.value ?? 0);
       const normalizedRegistry = normalizeTerminalRegistry(allSettings?.pos_terminal_registry?.value || []);
@@ -529,7 +556,7 @@ export default function TerminalPage() {
     }
   }, []);
 
-  const refreshComplianceGate = useCallback(async () => {
+  const refreshComplianceGate = useCallback(async ({ suppressGlobalErrors = false } = {}) => {
     if (locked) {
       setComplianceGate({
         loading: false,
@@ -545,7 +572,9 @@ export default function TerminalPage() {
 
     setComplianceGate((prev) => ({ ...prev, loading: true }));
     try {
-      const profile = await getComplianceProfile();
+      const profile = await getComplianceProfile(
+        suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
+      );
       const checklist = profile?.checklist || {};
       const requirements = Array.isArray(checklist.requirements) ? checklist.requirements : [];
       const derivedMissingCount = requirements.length > 0
@@ -585,7 +614,10 @@ export default function TerminalPage() {
     }
   }, [locked]);
 
-  const refreshOperationalContext = useCallback(async ({ terminalIdOverride = null } = {}) => {
+  const refreshOperationalContext = useCallback(async ({
+    terminalIdOverride = null,
+    suppressGlobalErrors = false
+  } = {}) => {
     if (locked || !canViewPos) {
       setShiftState((prev) => ({ ...prev, loading: false }));
       setTodayDashboard((prev) => ({ ...prev, loading: false }));
@@ -609,8 +641,14 @@ export default function TerminalPage() {
     setTodayDashboard((prev) => ({ ...prev, loading: true }));
     try {
       const [currentShiftResult, dashboardResult] = await Promise.all([
-        fetchCurrentTerminalShift({ terminal_id: terminalId, location_id: scopedOperatingLocationId }),
-        fetchTerminalTodayDashboard({ terminal_id: terminalId, location_id: scopedOperatingLocationId })
+        fetchCurrentTerminalShift(
+          { terminal_id: terminalId, location_id: scopedOperatingLocationId },
+          suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
+        ),
+        fetchTerminalTodayDashboard(
+          { terminal_id: terminalId, location_id: scopedOperatingLocationId },
+          suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
+        )
       ]);
 
       const shiftPayload = currentShiftResult?.shift || null;
@@ -640,17 +678,20 @@ export default function TerminalPage() {
     } catch (error) {
       setShiftState((prev) => ({ ...prev, loading: false }));
       setTodayDashboard((prev) => ({ ...prev, loading: false }));
-      if (error?.response?.status !== 403) {
+      if (!suppressGlobalErrors && error?.response?.status !== 403) {
         toast.error(error?.response?.data?.message || 'Failed to load terminal operational context.');
       }
     }
   }, [activeTerminalId, canViewPos, locked, operatingLocationId]);
 
-  const refreshTenantLocations = useCallback(async () => {
+  const refreshTenantLocations = useCallback(async ({ suppressGlobalErrors = false } = {}) => {
     if (locked) return;
     setLocationsState((prev) => ({ ...prev, loading: true }));
     try {
-      const rows = await listTenantLocations({ include_inactive: false });
+      const rows = await listTenantLocations(
+        { include_inactive: false },
+        suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
+      );
       const activeLocations = (Array.isArray(rows) ? rows : [])
         .filter((location) => location?.is_active !== false)
         .sort((a, b) => {
@@ -924,10 +965,14 @@ export default function TerminalPage() {
     toast.success('Queued operation marked as manually resolved.');
   }, [refreshTerminalOperationQueue]);
 
-  const hydrateUser = useCallback(async () => {
+  const hydrateUser = useCallback(async ({ suppressGlobalErrors = false } = {}) => {
     let token = getAccessToken();
     if (!token) {
-      token = await refreshBrowserSession().catch(() => '');
+      try {
+        token = await refreshBrowserSession();
+      } catch {
+        token = '';
+      }
     }
     if (!token) {
       setTerminalUser(null);
@@ -938,7 +983,9 @@ export default function TerminalPage() {
 
     setLoadingUser(true);
     try {
-      const user = await fetchCurrentUser();
+      const user = await fetchCurrentUser(
+        suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
+      );
       if (!user) {
         setTerminalUser(null);
         setLocked(true);
@@ -1174,7 +1221,10 @@ export default function TerminalPage() {
         }
       }
       try {
-        await loginWithCredentials({ email, password, companyToken: resolvedCompanyToken });
+        await loginWithCredentials(
+          { email, password, companyToken: resolvedCompanyToken },
+          SUPPRESS_GLOBAL_ERROR_TOAST
+        );
       } catch (error) {
         if (isCompanyTokenResolutionError(error)) {
           resolvedCompanyToken = String(await lookupCompanyToken(email) || '').trim();
@@ -1182,7 +1232,10 @@ export default function TerminalPage() {
             toast.error('Unable to resolve company token for this account.');
             return;
           }
-          await loginWithCredentials({ email, password, companyToken: resolvedCompanyToken });
+          await loginWithCredentials(
+            { email, password, companyToken: resolvedCompanyToken },
+            SUPPRESS_GLOBAL_ERROR_TOAST
+          );
         } else {
           throw error;
         }
@@ -1196,16 +1249,20 @@ export default function TerminalPage() {
         }
       }
       setActiveTerminalId(selectedTerminalId);
-      await hydrateUser();
+      await hydrateUser({ suppressGlobalErrors: true });
       await Promise.all([
-        hydrateTerminalMeta(),
-        refreshOperationalContext({ terminalIdOverride: selectedTerminalId }),
-        refreshComplianceGate()
+        hydrateTerminalMeta({ suppressGlobalErrors: true }),
+        refreshTenantLocations({ suppressGlobalErrors: true }),
+        refreshOperationalContext({
+          terminalIdOverride: selectedTerminalId,
+          suppressGlobalErrors: true
+        }),
+        refreshComplianceGate({ suppressGlobalErrors: true })
       ]);
       setFormData((prev) => ({ ...prev, password: '', terminalId: selectedTerminalId }));
       toast.success(selectedTerminalId ? `Terminal unlocked (${selectedTerminalId}).` : 'Terminal unlocked.');
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Unable to sign in to terminal.');
+      toast.error(resolveTerminalLoginErrorMessage(error));
     } finally {
       setSubmitting(false);
     }
@@ -1389,6 +1446,22 @@ export default function TerminalPage() {
     try {
       await recordCashDrawerEvent(activeShiftId, payload);
       toast.success('Cash drawer event recorded.');
+      if (payload.event_type === 'cash_in') {
+        try {
+          await openPosDeviceDrawer({
+            idempotency_key: createIdempotencyKey('pos-cash-event-drawer'),
+            shift_id: activeShiftId,
+            terminal_id: sanitizeTerminalId(activeTerminalId) || undefined,
+            reason: 'cash_in_event_recorded'
+          });
+          toast.success('Cash drawer opened.');
+        } catch (drawerError) {
+          toast.error(
+            drawerError?.response?.data?.message
+            || 'Cash event was recorded, but the cash drawer did not open.'
+          );
+        }
+      }
       setCashEventForm((prev) => ({ ...prev, amount: '', reason: '' }));
       await refreshOperationalContext();
     } catch (error) {
@@ -1533,8 +1606,8 @@ export default function TerminalPage() {
     if (incomingReceiptOpeningId !== null) return;
 
     setIncomingReceiptOpeningId(normalizedId);
+    setReceiptReturnViewMode(posViewMode);
     setReceiptRequestId(normalizedId);
-    setPosViewMode('receipt');
     if (workspacePaneRef.current) {
       workspacePaneRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -1571,6 +1644,7 @@ export default function TerminalPage() {
 
   const handleCheckoutCompleted = useCallback(async () => {
     await refreshOperationalContext();
+    setReportRefreshKey((previous) => previous + 1);
   }, [refreshOperationalContext]);
 
   const handleCatalogSearchHydrated = useCallback(() => {
@@ -1769,6 +1843,7 @@ export default function TerminalPage() {
           canTransactPos={canTransactPos}
           terminalMeta={terminalMeta}
           todayDashboard={todayDashboard}
+          reportRefreshKey={reportRefreshKey}
           openShiftForm={openShiftForm}
           setOpenShiftForm={setOpenShiftForm}
           cashEventForm={cashEventForm}
@@ -1811,6 +1886,8 @@ export default function TerminalPage() {
           dismissModeChangeNotice={dismissModeChangeNotice}
           receiptRequestId={receiptRequestId}
           setReceiptRequestId={setReceiptRequestId}
+          receiptReturnViewMode={receiptReturnViewMode}
+          setReceiptReturnViewMode={setReceiptReturnViewMode}
           setIncomingReceiptOpeningId={setIncomingReceiptOpeningId}
           historyRequestQuery={historyRequestQuery}
           setHistoryRequestQuery={setHistoryRequestQuery}

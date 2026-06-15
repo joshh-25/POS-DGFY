@@ -31,6 +31,34 @@ const getEventResource = (body = {}) => (
 );
 
 const getAttributes = (resource = {}) => resource?.attributes || resource || {};
+const getAccountId = (resource = {}) => {
+  const attrs = getAttributes(resource);
+  return resource?.id || attrs.account_id || attrs.merchant_id || attrs.id || null;
+};
+const hasExplicitEnabledWalletEvidence = (resource = {}) => {
+  const attrs = getAttributes(resource);
+  const wallet = attrs.wallet || {};
+  const status = String(attrs.wallet_status || wallet.status || '').toLowerCase();
+  return ['enabled', 'activated', 'active'].includes(status);
+};
+const hasExplicitSplitEvidence = (resource = {}) => {
+  const attrs = getAttributes(resource);
+  const capabilities = attrs.capabilities || {};
+  const features = Array.isArray(attrs.features) ? attrs.features.map((feature) => String(feature).toLowerCase()) : [];
+  return attrs.split_enabled === true
+    || attrs.split_payments_enabled === true
+    || capabilities.split_payments === 'active'
+    || features.includes('split_payments')
+    || features.includes('split_payment');
+};
+const hasExplicitChargeEvidence = (resource = {}) => {
+  const attrs = getAttributes(resource);
+  const capabilities = attrs.capabilities || {};
+  return attrs.charges_enabled === true
+    || attrs.payments_enabled === true
+    || capabilities.payments === 'active'
+    || capabilities.charges === 'active';
+};
 
 const getPaymentIntentId = (resource = {}) => {
   const attrs = getAttributes(resource);
@@ -116,6 +144,73 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
     return ok({ handled: true, status: 'refund_updated', payment_session: session.public_reference });
   };
 
+  const handleAccountLifecycleEvent = async ({ eventType, resource, providerEventId }) => {
+    const accountId = getAccountId(resource);
+    const account = accountId
+      ? await commercePaymentRepository.findTenantPaymentAccountByProviderMerchantId?.(accountId)
+      : null;
+    if (!account) {
+      logger?.warn?.('PayMongo account lifecycle webhook ignored: tenant payment account not found', {
+        eventType,
+        providerEventId,
+        accountId
+      });
+      return ok({ handled: false, reason: 'payment_account_not_found' });
+    }
+
+    const attrs = getAttributes(resource);
+    const activated = ['account.activated', 'merchant.activated', 'consumer.activated'].includes(eventType);
+    const declined = ['account.declined', 'merchant.declined', 'consumer.declined'].includes(eventType);
+    const accountRow = toPlain(account);
+    const walletEnabled = hasExplicitEnabledWalletEvidence(resource);
+    const splitEnabled = walletEnabled && hasExplicitSplitEvidence(resource);
+    const chargesEnabled = walletEnabled && hasExplicitChargeEvidence(resource);
+    const updated = await commercePaymentRepository.upsertTenantPaymentAccount({
+      tenant_id: accountRow.tenant_id,
+      provider: accountRow.provider || 'paymongo',
+      provider_merchant_id: accountRow.provider_merchant_id,
+      provider_wallet_id: accountRow.provider_wallet_id || attrs.wallet_id || attrs.wallet?.id || null,
+      onboarding_status: activated ? 'active' : (declined ? 'restricted' : accountRow.onboarding_status),
+      qrph_enabled: activated ? true : Boolean(accountRow.qrph_enabled),
+      split_enabled: splitEnabled ? true : Boolean(accountRow.split_enabled),
+      charges_enabled: chargesEnabled ? true : Boolean(accountRow.charges_enabled),
+      wallet_status: walletEnabled ? 'enabled' : (attrs.wallet_status || accountRow.wallet_status || 'unknown'),
+      wallet_verified_at: walletEnabled ? new Date() : accountRow.wallet_verified_at,
+      requirements_due: attrs.requirements_due || attrs.requirements || accountRow.requirements_due || null,
+      metadata: {
+        ...(accountRow.metadata || {}),
+        verification_reference: providerEventId || accountRow.metadata?.verification_reference || `paymongo:${eventType}:${accountId}`,
+        verified_at: activated ? new Date().toISOString() : accountRow.metadata?.verified_at || null,
+        verified_by: 'paymongo_webhook',
+        provider_status: attrs.status || eventType,
+        provider_event_id: providerEventId || null,
+        last_account_webhook_type: eventType,
+        wallet_evidence_detected: walletEnabled,
+        split_evidence_detected: splitEnabled,
+        charge_evidence_detected: chargesEnabled
+      },
+      last_synced_at: new Date()
+    });
+
+    await commercePaymentRepository.createAuditLog?.({
+      user_id: null,
+      entity_type: 'CommercePayment',
+      entity_id: updated.account_id,
+      action: 'UPDATE',
+      changes: {
+        event: 'tenant_paymongo_account_lifecycle_webhook',
+        provider_event_id: providerEventId,
+        event_type: eventType,
+        provider_merchant_id: accountId,
+        onboarding_status: updated.onboarding_status,
+        wallet_status: updated.wallet_status
+      },
+      user_agent: 'PayMongo Commerce Webhook'
+    });
+
+    return ok({ handled: true, status: updated.onboarding_status, payment_account: updated.account_id });
+  };
+
   const findSessionForResource = async (resource) => {
     const sessionReference = getSessionReference(resource);
     if (sessionReference) {
@@ -147,6 +242,9 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
       const eventType = getEventType(body);
       const providerEventId = getEventId(body, headers);
       const resource = toPlain(getEventResource(body));
+      if (['account.activated', 'account.declined', 'merchant.activated', 'merchant.declined', 'consumer.activated', 'consumer.declined'].includes(eventType)) {
+        return handleAccountLifecycleEvent({ eventType, resource, providerEventId });
+      }
       if (eventType === 'payment.refunded' || eventType === 'payment.refund.updated') {
         return handleRefundEvent({ resource, providerEventId });
       }
