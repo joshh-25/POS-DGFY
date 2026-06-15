@@ -66,6 +66,7 @@ export default function POSSetupStep({
       sort_order: index
     }));
   }, [storefrontConfig]);
+  const primaryItemImageUrl = storefrontGallery[0]?.url || storefrontConfig?.storefront_image_url || null;
   const storefrontLocationAvailability = React.useMemo(() => {
     const activeLocations = (Array.isArray(locations) ? locations : [])
       .filter((location) => location?.is_active !== false);
@@ -169,14 +170,14 @@ export default function POSSetupStep({
 
         {productItem ? (
           <div className="space-y-3">
-            {posConfig?.pos_image_url ? (
+            {primaryItemImageUrl || posConfig?.pos_image_url ? (
               <img
-                src={resolveAssetUrl(posConfig.pos_image_url)}
-                alt={`${productItem?.name || 'Product'} POS menu`}
+                src={resolveAssetUrl(primaryItemImageUrl || posConfig.pos_image_url)}
+                alt={`${productItem?.name || 'Product'} item`}
                 className="h-28 w-40 rounded-md border border-slate-200 object-cover"
               />
             ) : (
-              <p className="text-sm text-slate-500">No POS image uploaded yet.</p>
+              <p className="text-sm text-slate-500">No item image uploaded yet.</p>
             )}
             <div className="flex flex-wrap gap-2">
               <label className="cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100">
@@ -187,7 +188,9 @@ export default function POSSetupStep({
                   className="hidden"
                   onChange={(event) => {
                     const file = event.target.files?.[0];
-                    if (file && onUploadPosImage) {
+                    if (file && onUploadStorefrontImage) {
+                      onUploadStorefrontImage(productItem, [file]);
+                    } else if (file && onUploadPosImage) {
                       onUploadPosImage(productItem, file);
                     }
                     event.target.value = '';
@@ -197,8 +200,14 @@ export default function POSSetupStep({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => onDeletePosImage && onDeletePosImage(productItem)}
-                disabled={!posConfig?.pos_image_url || !onDeletePosImage}
+                onClick={() => {
+                  if (onDeleteStorefrontImage) {
+                    onDeleteStorefrontImage(productItem);
+                  } else if (onDeletePosImage) {
+                    onDeletePosImage(productItem);
+                  }
+                }}
+                disabled={!(primaryItemImageUrl || posConfig?.pos_image_url) || (!onDeleteStorefrontImage && !onDeletePosImage)}
               >
                 Remove Image
               </Button>
@@ -216,7 +225,7 @@ export default function POSSetupStep({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <Label>Storefront Catalog</Label>
-            <p className="text-xs text-slate-500">Customer-facing visibility and item image are independent from POS.</p>
+            <p className="text-xs text-slate-500">Customer-facing visibility stays separate while item images are shared with POS.</p>
           </div>
           {productItem && (
             <Button

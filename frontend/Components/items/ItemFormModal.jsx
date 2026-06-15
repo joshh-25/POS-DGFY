@@ -286,6 +286,7 @@ export default function ItemFormModal({
       sort_order: index
     }));
   }, [storefrontConfig]);
+  const primaryItemImageUrl = storefrontGallery[0]?.url || storefrontConfig?.storefront_image_url || null;
   const configuredStorefrontLocationAvailability = useMemo(() => {
     const configuredRows = Array.isArray(storefrontConfig?.location_availability)
       ? storefrontConfig.location_availability
@@ -1425,14 +1426,14 @@ export default function ItemFormModal({
 
               {item ? (
                 <div className="space-y-3">
-                  {posConfig?.pos_image_url ? (
+                  {primaryItemImageUrl || posConfig?.pos_image_url ? (
                     <img
-                      src={resolveAssetUrl(posConfig.pos_image_url)}
-                      alt={`${item.name} POS menu`}
+                      src={resolveAssetUrl(primaryItemImageUrl || posConfig.pos_image_url)}
+                      alt={`${item.name} item`}
                       className="h-28 w-40 rounded-md border border-slate-200 object-cover"
                     />
                   ) : (
-                    <p className="text-sm text-slate-500">No POS image uploaded yet.</p>
+                    <p className="text-sm text-slate-500">No item image uploaded yet.</p>
                   )}
                   <div className="flex flex-wrap gap-2">
                     <label className="cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100">
@@ -1443,7 +1444,9 @@ export default function ItemFormModal({
                         className="hidden"
                         onChange={(event) => {
                           const file = event.target.files?.[0];
-                          if (file && onUploadPosImage) {
+                          if (file && onUploadStorefrontImage) {
+                            onUploadStorefrontImage(item, [file]);
+                          } else if (file && onUploadPosImage) {
                             onUploadPosImage(item, file);
                           }
                           event.target.value = '';
@@ -1453,8 +1456,14 @@ export default function ItemFormModal({
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => onDeletePosImage && onDeletePosImage(item)}
-                      disabled={!posConfig?.pos_image_url || !onDeletePosImage}
+                      onClick={() => {
+                        if (onDeleteStorefrontImage) {
+                          onDeleteStorefrontImage(item);
+                        } else if (onDeletePosImage) {
+                          onDeletePosImage(item);
+                        }
+                      }}
+                      disabled={!(primaryItemImageUrl || posConfig?.pos_image_url) || (!onDeleteStorefrontImage && !onDeletePosImage)}
                     >
                       Remove Image
                     </Button>
@@ -1473,7 +1482,7 @@ export default function ItemFormModal({
                 <div>
                   <Label>Storefront Catalog (Optional)</Label>
                   <p className="text-xs text-slate-500">
-                    Configure customer-facing catalog visibility and item image independently from POS.
+                    Configure customer-facing catalog visibility separately while sharing item images with POS.
                   </p>
                 </div>
                 {item && (

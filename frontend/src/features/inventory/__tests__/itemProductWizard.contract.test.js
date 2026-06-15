@@ -75,6 +75,9 @@ describe('Item/Product wizard contracts', () => {
     expect(indexCssSource).toContain('.wizard-core-typography .wizard-title');
     expect(indexCssSource).toContain('.wizard-core-typography .wizard-step-content label');
     expect(indexCssSource).toContain('.wizard-core-typography .wizard-footer button');
+    expect(indexCssSource).toContain('.wizard-step-navigator__button');
+    expect(indexCssSource).toContain('.wizard-step-navigator__tooltip');
+    expect(indexCssSource).toContain('.wizard-step-navigator__connector');
   });
 
   it('keeps item and product create/edit modal dimensions fixed to the largest wizard frame', () => {
@@ -234,6 +237,8 @@ describe('Item/Product wizard contracts', () => {
     expect(itemFormSource).toContain('parseStorefrontImageGallery');
     expect(itemFormSource).toContain('image slots remaining');
     expect(itemFormSource).toContain('No item image uploaded yet.');
+    expect(itemFormSource).toContain('onUploadStorefrontImage(item, [file])');
+    expect(itemFormSource).toContain('primaryItemImageUrl || posConfig?.pos_image_url');
     expect(itemFormSource).toContain('Enable in Storefront');
     expect(itemFormSource).toContain('Disable in Storefront');
     expect(itemFormSource).toContain('<StorefrontImageCarousel');
@@ -245,6 +250,8 @@ describe('Item/Product wizard contracts', () => {
     expect(productPosSetupSource).toContain('parseStorefrontImageGallery');
     expect(productPosSetupSource).toContain('image slots remaining');
     expect(productPosSetupSource).toContain('No item image uploaded yet.');
+    expect(productPosSetupSource).toContain('onUploadStorefrontImage(productItem, [file])');
+    expect(productPosSetupSource).toContain('primaryItemImageUrl || posConfig?.pos_image_url');
     expect(productPosSetupSource).toContain('Enable in Storefront');
     expect(productPosSetupSource).toContain('Disable in Storefront');
     expect(productPosSetupSource).toContain('<StorefrontImageCarousel');

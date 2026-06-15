@@ -144,6 +144,13 @@ const isMissingPosCatalogOverrideTableError = (error) => {
     return code === 'ER_NO_SUCH_TABLE' || message.includes('pos_catalog_overrides');
 };
 
+const isMissingStorefrontCatalogOverrideTableError = (error) => {
+    if (!error) return false;
+    const code = error.original?.code || error.parent?.code || error.code;
+    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
+    return code === 'ER_NO_SUCH_TABLE' || message.includes('storefront_catalog_overrides');
+};
+
 const isMissingItemLocationStockSchemaError = (error) => {
     if (!error) return false;
     const code = error.original?.code || error.parent?.code || error.code;
@@ -267,20 +274,54 @@ const loadCatalogOverridesMap = async (itemIds = [], options = {}) => {
     }
 };
 
+const loadStorefrontCatalogImageMap = async (itemIds = [], options = {}) => {
+    if (!Array.isArray(itemIds) || itemIds.length === 0) {
+        return new Map();
+    }
+
+    const StorefrontCatalogOverride = safeGetModel('StorefrontCatalogOverride');
+    if (!StorefrontCatalogOverride) {
+        return new Map();
+    }
+
+    try {
+        const rows = await StorefrontCatalogOverride.findAll({
+            where: { item_id: { [Op.in]: itemIds } },
+            attributes: ['item_id', 'storefront_image_path', 'storefront_image_url', 'storefront_image_gallery'],
+            transaction: options.transaction
+        });
+
+        return new Map(rows.map((row) => {
+            const payload = toPlain(row);
+            return [payload.item_id, payload];
+        }));
+    } catch (error) {
+        if (isMissingStorefrontCatalogOverrideTableError(error)) {
+            return new Map();
+        }
+        throw error;
+    }
+};
+
 const applyCatalogOverrides = async (items, options = {}) => {
     const normalizedItems = (Array.isArray(items) ? items : []).map((item) => toPlain(item));
     const itemIds = normalizedItems.map((item) => item.item_id);
     const overrideMap = await loadCatalogOverridesMap(itemIds, options);
+    const storefrontImageMap = await loadStorefrontCatalogImageMap(itemIds, options);
 
     return normalizedItems
         .map((item) => {
             const override = overrideMap.get(item.item_id);
+            const storefrontImage = storefrontImageMap.get(item.item_id);
             const posVisible = resolveCatalogVisibility({ item, override, surface: 'pos' });
             return {
                 ...item,
                 pos_visible: posVisible,
                 pos_image_path: override?.pos_image_path || null,
-                pos_image_url: override?.pos_image_url || null
+                pos_image_url: override?.pos_image_url || storefrontImage?.storefront_image_url || null,
+                storefront_image_path: storefrontImage?.storefront_image_path || null,
+                storefront_image_url: storefrontImage?.storefront_image_url || null,
+                storefront_image_gallery: storefrontImage?.storefront_image_gallery || null
             };
         })
         .filter((item) => item.pos_visible !== false);
