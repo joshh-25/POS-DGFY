@@ -193,7 +193,7 @@ Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 
 ### POST /auth/login
 Authenticate user and establish a browser session.
 
-Tenant-local login remains selected by the `x-company-token` request header. Standalone POS terminal unlock must first call `POST /api/v1/auth/lookup` for the submitted email and then send `/auth/login` with the resolved company token. The current browser company token may be reused only when it is one of the lookup tenants, or as a temporary fallback when lookup fails because of a network/server outage. Missing email-to-tenant mapping, multiple-tenant ambiguity, lookup rate limiting, and invalid password must remain distinguishable operator outcomes.
+Tenant-local login remains selected by the `x-company-token` request header. Standalone POS terminal unlock must first call `POST /api/v1/auth/lookup` for the submitted email and then send `/auth/login` with the resolved company token. The current browser company token may be reused only when it is one of the lookup tenants, or as a temporary fallback when lookup fails because of a network/server outage. Missing email-to-tenant mapping, multiple-tenant ambiguity, lookup rate limiting, and invalid password must remain distinguishable operator outcomes. Lookup rate limiting is scoped by client IP plus normalized email and returns retry metadata so POS can tell the operator when to try again without falling back to stale tenant context.
 
 **Request**
 ```json

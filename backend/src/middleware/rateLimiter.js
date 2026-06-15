@@ -12,6 +12,8 @@ const maxRequests = isDevelopment
   : Math.max(parsedGeneralMax || 100, minProdGeneralMax);
 const authWindowMs = parseInt(process.env.RATE_LIMIT_AUTH_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
 const authMaxRequests = parseInt(process.env.RATE_LIMIT_AUTH_MAX_REQUESTS) || (isDevelopment ? 50 : 5); // 50 in dev, 5 in prod
+const lookupWindowMs = parseInt(process.env.RATE_LIMIT_LOOKUP_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
+const lookupMaxRequests = parseInt(process.env.RATE_LIMIT_LOOKUP_MAX_REQUESTS) || (isDevelopment ? 50 : 5);
 const emailOtpWindowMs = parseInt(process.env.RATE_LIMIT_EMAIL_OTP_WINDOW_MS) || 10 * 60 * 1000; // 10 minutes
 const emailOtpMaxRequests = parseInt(process.env.RATE_LIMIT_EMAIL_OTP_MAX_REQUESTS) || (isDevelopment ? 12 : 3);
 const adminAuthWindowMs = parseInt(process.env.RATE_LIMIT_ADMIN_AUTH_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
@@ -688,23 +690,27 @@ export const onboardingEventsLimiter = rateLimit({
 
 // Strictest rate limiter for email lookup to prevent enumeration
 export const lookupLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to 5 requests per window
+  windowMs: lookupWindowMs,
+  max: lookupMaxRequests,
   message: createRateLimitError('Too many email lookup attempts. For security reasons, please try again in 15 minutes.'),
   standardHeaders: true,
   legacyHeaders: false,
   validate: { trustProxy: false },
   store: new DynamicStore('lookup'),
-  keyGenerator: (req) => firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip',
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const email = normalizeEmail(req.body?.email);
+    return email ? `lookup:${ip}:${email}` : `lookup:${ip}:unknown-email`;
+  },
   handler: (req, res, _next, options) => {
     const response = buildRateLimitResponse(
       req,
       options,
       'Too many email lookup attempts. For security reasons, please try again in 15 minutes.',
       'auth_lookup',
-      'ip'
+      'ip_email'
     );
-    logRateLimitEvent(req, 'auth_lookup', response.retryAfterSeconds, 'ip');
+    logRateLimitEvent(req, 'auth_lookup', response.retryAfterSeconds, 'ip_email');
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },

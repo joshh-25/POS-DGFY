@@ -34,6 +34,26 @@ const getErrorCode = (error) => {
   return String(data?.code || data?.error_code || data?.error?.code || error?.code || '').trim();
 };
 
+const getRetryAfterSeconds = (error) => {
+  const data = getResponseData(error);
+  const candidates = [
+    data?.retryAfterSeconds,
+    error?.response?.headers?.['retry-after'],
+    error?.response?.headers?.['Retry-After']
+  ];
+  const retryAfter = candidates
+    .map((candidate) => Number(candidate))
+    .find((candidate) => Number.isFinite(candidate) && candidate > 0);
+  return retryAfter || null;
+};
+
+const formatRetryAfter = (seconds) => {
+  if (!seconds) return '';
+  if (seconds < 60) return ` Try again in about ${Math.ceil(seconds)} second${Math.ceil(seconds) === 1 ? '' : 's'}.`;
+  const minutes = Math.ceil(seconds / 60);
+  return ` Try again in about ${minutes} minute${minutes === 1 ? '' : 's'}.`;
+};
+
 const getCapability = (error) => {
   const data = getResponseData(error);
   return String(data?.capability || data?.details?.capability || '').trim();
@@ -99,7 +119,7 @@ export const resolveTerminalLoginErrorMessage = (error) => {
     return 'Your account is not allowed to unlock this terminal.';
   }
   if (status === 404) return 'No company is registered for this POS login email. Check the email or sign in from SKUpervisor first.';
-  if (status === 429) return 'Too many terminal login attempts. Wait a moment, then try again.';
+  if (status === 429) return `Too many terminal login attempts.${formatRetryAfter(getRetryAfterSeconds(error)) || ' Wait a moment, then try again.'}`;
 
   if (responseMessage && status < 500) return responseMessage;
   if (status >= 500) return 'Unable to reach the POS backend. Check the server connection and try again.';

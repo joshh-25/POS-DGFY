@@ -6,6 +6,7 @@ const originalEnv = { ...process.env };
 
 let generalLimiter;
 let authLimiter;
+let lookupLimiter;
 let tenantRegistrationLimiter;
 let logger;
 
@@ -15,6 +16,8 @@ beforeAll(async () => {
   process.env.RATE_LIMIT_MAX_REQUESTS = '1';
   process.env.RATE_LIMIT_AUTH_WINDOW_MS = '60000';
   process.env.RATE_LIMIT_AUTH_MAX_REQUESTS = '1';
+  process.env.RATE_LIMIT_LOOKUP_WINDOW_MS = '60000';
+  process.env.RATE_LIMIT_LOOKUP_MAX_REQUESTS = '1';
   process.env.RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS = '60000';
   process.env.RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS = '1';
   process.env.RATE_LIMIT_ALERT_THRESHOLD = '999999';
@@ -25,6 +28,7 @@ beforeAll(async () => {
   const limiterModule = await import('../src/middleware/rateLimiter.js');
   generalLimiter = limiterModule.generalLimiter;
   authLimiter = limiterModule.authLimiter;
+  lookupLimiter = limiterModule.lookupLimiter;
   tenantRegistrationLimiter = limiterModule.tenantRegistrationLimiter;
 });
 
@@ -102,6 +106,35 @@ describe('Rate limiter behavior', () => {
     await request(app)
       .post('/api/v1/auth/login')
       .send({ email: 'beta@example.com', password: 'x' })
+      .expect(200);
+  });
+
+  it('keys lookup limiter by ip+email so shared POS networks do not cross-throttle different cashiers', async () => {
+    const app = express();
+    app.use(express.json());
+    app.post('/api/v1/auth/lookup', lookupLimiter, (_req, res) => res.status(200).json({ ok: true }));
+
+    await request(app)
+      .post('/api/v1/auth/lookup')
+      .send({ email: 'cashier-a@example.com' })
+      .expect(200);
+
+    const sameEmail = await request(app)
+      .post('/api/v1/auth/lookup')
+      .send({ email: 'cashier-a@example.com' })
+      .expect(429);
+
+    expect(sameEmail.body).toEqual(expect.objectContaining({
+      success: false,
+      message: 'Too many email lookup attempts. For security reasons, please try again in 15 minutes.',
+      limitScope: 'auth_lookup',
+      limitKeyType: 'ip_email',
+      retryAfterSeconds: expect.any(Number),
+    }));
+
+    await request(app)
+      .post('/api/v1/auth/lookup')
+      .send({ email: 'cashier-b@example.com' })
       .expect(200);
   });
 

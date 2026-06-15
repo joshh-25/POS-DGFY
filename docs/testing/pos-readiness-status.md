@@ -167,6 +167,7 @@ Overall status: in_progress
 43. POS terminal unlock resolves tenant context from email before password validation:
 - the terminal calls `POST /api/v1/auth/lookup` for the submitted email and prefers the current browser company token only when it is one of the returned tenants
 - single-tenant lookup results provide the login company token; multi-tenant lookup blocks with a deterministic operator message; missing mapping and rate-limit failures no longer silently reuse a stale browser tenant
+- auth lookup throttling is scoped by client IP plus normalized email and can be tuned with `RATE_LIMIT_LOOKUP_WINDOW_MS` / `RATE_LIMIT_LOOKUP_MAX_REQUESTS`, so shared store networks do not cross-throttle different cashier emails
 - fallback to the current browser company token is limited to transient lookup outages (`network`, timeout, or `5xx`) so wrong-tenant contexts do not mask account/mapping issues
 - terminal unlock diagnostics now classify invalid credentials, missing tenant mapping, multiple tenant membership, POS capability disabled, POS permission denial, rate limiting, and optional `/pos/device/status` bridge `503` separately
 - standalone POS development auto-login is opt-in through `VITE_POS_DEV_AUTO_LOGIN=true`; development no longer auto-binds every POS session to the legacy `token-original` tenant by default
