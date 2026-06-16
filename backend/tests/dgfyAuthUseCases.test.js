@@ -48,7 +48,8 @@ describe('dgfyAuthUseCases', () => {
             findByPhone: jest.fn().mockResolvedValue(null),
             create: jest.fn().mockImplementation(async (payload) => createAccount(payload)),
             recordLegalAcknowledgement: jest.fn().mockResolvedValue({ acknowledgement_id: 'ack-1' }),
-            mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([])
+            mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([]),
+            mirrorLegacyFounderMembershipsForAccount: jest.fn().mockResolvedValue([])
         };
         const useCase = buildRegisterDgfyAccountUseCase({
             repository,
@@ -95,6 +96,7 @@ describe('dgfyAuthUseCases', () => {
         expect(result.data.payload.data.token).toBeTruthy();
         expect(result.data.payload.data.account.middle_name).toBe('Byron');
         expect(repository.mirrorPendingInvitationsForAccount).toHaveBeenCalledWith(expect.anything(), { transaction: 'tx-account' });
+        expect(repository.mirrorLegacyFounderMembershipsForAccount).toHaveBeenCalledWith(expect.anything(), { transaction: 'tx-account' });
         expect(repository.recordLegalAcknowledgement).toHaveBeenCalledWith(expect.objectContaining({
             flow: 'dgfy_account_registration',
             dgfy_account_id: 'dgfy-1',
@@ -269,7 +271,8 @@ describe('dgfyAuthUseCases', () => {
             findByEmail: jest.fn().mockResolvedValue(account),
             findById: jest.fn().mockResolvedValue(account),
             updateLastLogin: jest.fn().mockResolvedValue(null),
-            mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([])
+            mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([]),
+            mirrorLegacyFounderMembershipsForAccount: jest.fn().mockResolvedValue([])
         };
         const useCase = buildLoginDgfyAccountUseCase({
             repository,
@@ -285,6 +288,8 @@ describe('dgfyAuthUseCases', () => {
 
         expect(result.success).toBe(true);
         expect(repository.updateLastLogin).toHaveBeenCalledWith(account);
+        expect(repository.mirrorPendingInvitationsForAccount).toHaveBeenCalledWith(account);
+        expect(repository.mirrorLegacyFounderMembershipsForAccount).toHaveBeenCalledWith(account);
         expect(result.data.payload.data.account.email).toBe('ada@example.test');
         expect(result.data.payload.data.token).toBeTruthy();
     });
@@ -333,7 +338,8 @@ describe('dgfyAuthUseCases', () => {
             repository: {
                 consumeHandoff,
                 findById: jest.fn().mockResolvedValue(account),
-                mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([])
+                mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([]),
+                mirrorLegacyFounderMembershipsForAccount: jest.fn().mockResolvedValue([])
             }
         });
 
@@ -450,6 +456,7 @@ describe('dgfyAuthUseCases', () => {
         }];
         const repository = {
             mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([]),
+            mirrorLegacyFounderMembershipsForAccount: jest.fn().mockResolvedValue([]),
             listMemberships: jest.fn().mockResolvedValue(membershipRows)
         };
         const useCase = buildListDgfyAccountCompaniesUseCase({ repository });
@@ -460,6 +467,12 @@ describe('dgfyAuthUseCases', () => {
         });
 
         expect(result.success).toBe(true);
+        expect(repository.mirrorPendingInvitationsForAccount).toHaveBeenCalledWith(expect.objectContaining({
+            email: 'ada@example.test'
+        }));
+        expect(repository.mirrorLegacyFounderMembershipsForAccount).toHaveBeenCalledWith(expect.objectContaining({
+            email: 'ada@example.test'
+        }));
         expect(result.data.payload.data.accepted_count).toBe(1);
         expect(result.data.payload.data.pending_count).toBe(1);
         expect(result.data.payload.data.companies[0]).toEqual(expect.objectContaining({

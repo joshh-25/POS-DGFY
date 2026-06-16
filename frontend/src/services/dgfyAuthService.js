@@ -30,6 +30,29 @@ const dgfyBusinessRequestConfig = (token = getStoredDgfyToken()) => {
   };
 };
 
+const isInvalidDgfyBusinessSessionError = (error, token) => {
+  if (!String(token || '').trim()) return false;
+  if (error?.response?.status !== 401) return false;
+  const message = String(error?.response?.data?.message || '').trim().toLowerCase();
+  return [
+    'invalid dgfy account token',
+    'invalid dgfy account session',
+    'dgfy session has been revoked',
+    'dgfy account is unavailable'
+  ].some((fragment) => message.includes(fragment));
+};
+
+const callDgfyBusinessEndpoint = async (requestFn, token = getStoredDgfyToken()) => {
+  const normalizedToken = String(token || '').trim();
+  try {
+    return await requestFn(dgfyBusinessRequestConfig(normalizedToken));
+  } catch (error) {
+    if (!isInvalidDgfyBusinessSessionError(error, normalizedToken)) throw error;
+    clearDgfySession();
+    return requestFn(dgfyBusinessRequestConfig(''));
+  }
+};
+
 export const getStoredDgfyToken = () => {
   return dgfyToken;
 };
@@ -144,17 +167,26 @@ export const exchangeDgfyHandoff = async (handoffToken, { softFail = false } = {
 };
 
 export const acceptDgfyInvitation = async (membershipId, token = getStoredDgfyToken()) => {
-  const response = await api.post(`/dgfy/invitations/${membershipId}/accept`, {}, dgfyBusinessRequestConfig(token));
+  const response = await callDgfyBusinessEndpoint(
+    (config) => api.post(`/dgfy/invitations/${membershipId}/accept`, {}, config),
+    token
+  );
   return response.data.data;
 };
 
 export const requestDgfyBusinessStepUp = async (token = getStoredDgfyToken()) => {
-  const response = await api.post('/dgfy/account/business-step-up/request', {}, dgfyBusinessRequestConfig(token));
+  const response = await callDgfyBusinessEndpoint(
+    (config) => api.post('/dgfy/account/business-step-up/request', {}, config),
+    token
+  );
   return response.data.data;
 };
 
 export const listDgfyAccountCompanies = async (token = getStoredDgfyToken()) => {
-  const response = await api.get('/dgfy/account/companies', dgfyBusinessRequestConfig(token));
+  const response = await callDgfyBusinessEndpoint(
+    (config) => api.get('/dgfy/account/companies', config),
+    token
+  );
   return response.data.data;
 };
 
@@ -162,9 +194,12 @@ export const acceptDgfyCompanyInvitation = async ({
   membershipId,
   emailOtpCode
 } = {}, token = getStoredDgfyToken()) => {
-  const response = await api.post(`/dgfy/invitations/${membershipId}/accept`, {
-    email_otp_code: emailOtpCode
-  }, dgfyBusinessRequestConfig(token));
+  const response = await callDgfyBusinessEndpoint(
+    (config) => api.post(`/dgfy/invitations/${membershipId}/accept`, {
+      email_otp_code: emailOtpCode
+    }, config),
+    token
+  );
   return response.data.data;
 };
 
@@ -172,9 +207,12 @@ export const switchDgfyCompany = async ({
   tenantId,
   emailOtpCode
 } = {}, token = getStoredDgfyToken()) => {
-  const response = await api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/switch`, {
-    email_otp_code: emailOtpCode
-  }, dgfyBusinessRequestConfig(token));
+  const response = await callDgfyBusinessEndpoint(
+    (config) => api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/switch`, {
+      email_otp_code: emailOtpCode
+    }, config),
+    token
+  );
   const data = response.data.data;
   clearClientSession({
     reason: 'company_switch',

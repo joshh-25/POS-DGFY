@@ -7,6 +7,7 @@ import {
     DgfyAccountTenantMembership,
     DgfyLegalAcknowledgement,
     Tenant,
+    UserTenantMapping,
     UserInvitation
 } from '../../../models/index.js';
 import dbStore from '../../../utils/dbStore.js';
@@ -318,6 +319,54 @@ export const dgfyAccountRepository = {
             }, options);
             mirrored.push(membership);
         }
+        return mirrored;
+    },
+
+    async mirrorLegacyFounderMembershipsForAccount(account, options = {}) {
+        if (!account?.id || !account?.email || !account?.email_verified_at) return [];
+
+        const email = normalizeEmail(account.email);
+        const mappings = await UserTenantMapping.findAll({
+            where: { email },
+            include: [{
+                model: Tenant,
+                as: 'tenant',
+                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'db_name']
+            }],
+            ...options
+        });
+
+        const mirrored = [];
+        for (const mapping of mappings) {
+            const tenant = mapping.tenant;
+            if (!tenant || tenant.status !== 'active') continue;
+
+            try {
+                const sequelizeInstance = await tenantConnector.getConnection(tenant);
+                const tenantModels = getTenantModels(sequelizeInstance);
+                const User = tenantModels.User;
+                const user = await User.findOne({ where: { email } });
+
+                if (!user || normalizeEmail(user.email) !== email) continue;
+                if (!user.is_active || user.deleted_at || user.is_master_admin !== true) continue;
+
+                const membership = await this.upsertFounderMembership({
+                    dgfyAccountId: account.id,
+                    tenantId: tenant.id,
+                    tenantUserId: user.user_id,
+                    role: user.role || 'admin'
+                }, options);
+                mirrored.push(membership);
+            } catch (error) {
+                logger.warn('[DGFY] Legacy founder membership mirror skipped', {
+                    dgfy_account_id: account.id,
+                    tenant_id: tenant.id,
+                    email,
+                    error: error?.message
+                });
+            }
+        }
+
         return mirrored;
     },
 

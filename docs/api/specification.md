@@ -156,6 +156,7 @@ Supported purposes:
 - `invitation_acceptance`: body requires `invitation_token`; the backend resolves tenant context and invited email from the invitation when `x-company-token` is absent.
 - `dgfy_account_verification`: body requires `email` for DGFY account registration before account creation. The public request is landlord-global, does not require a company token, and must ignore stale browser tenant context because `/dgfy/auth/register` verifies only a global OTP. Existing signed-in accounts can also request this purpose through the authenticated DGFY account endpoint.
 - `dgfy_password_reset`: requested through the DGFY password recovery flow before changing a global DGFY account password.
+- `dgfy_business_step_up`: requested through the authenticated DGFY business-management surface before accepting an invitation or switching companies. This version is email-only and does not use mobile/SMS OTP.
 
 Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 10), lock after `EMAIL_OTP_MAX_ATTEMPTS` (default 5), and are consumed with a conditional update so a concurrently submitted request cannot reuse a code after it is consumed. Production enables enforcement by default; `EMAIL_OTP_ENFORCEMENT_ENABLED=false` is the rollback switch.
 
@@ -4692,7 +4693,7 @@ Sign in to a global DGFY account.
 
 ### POST /dgfy/auth/logout
 
-Requires `Authorization: Bearer <dgfy-account-token>`.
+Requires an authenticated DGFY account JWT or `sku_dgfy_session` cookie.
 
 Blacklist the current DGFY account JWT. Tenant-local SKUpervisor and Store JWT sessions are separate and are not revoked by this route.
 
@@ -4873,7 +4874,7 @@ Public, rate-limited. Verify a `dgfy_password_reset` code and set the new DGFY a
 
 ### POST /dgfy/invitations/:membership_id/accept
 
-Requires `Authorization: Bearer <dgfy-account-token>`.
+Requires an authenticated DGFY account JWT, `sku_dgfy_session` cookie, or a normal IMS tenant session whose current tenant user is explicitly linked to an accepted `DgfyAccountTenantMembership`.
 
 Accept a pending company invitation from the DGFY account notification surface. This path does not require an invitation link, company token in the URL, or a tenant-local password setup form. The backend activates the matching tenant-local invitation row from the authenticated DGFY account, copies the DGFY email/phone/password hash into that tenant user, writes the landlord email-to-tenant mapping, and marks the DGFY membership accepted. The request requires a `dgfy_business_step_up` email OTP code sent to the DGFY account email unless the account has a still-valid recent business step-up.
 
@@ -4911,7 +4912,7 @@ Accept a pending company invitation from the DGFY account notification surface. 
 
 Requires an authenticated DGFY account JWT, `sku_dgfy_session` cookie, or a normal IMS tenant session whose current tenant user is explicitly linked to an accepted `DgfyAccountTenantMembership`.
 
-Return companies connected to the DGFY account. Accepted active memberships are switchable. Pending IMS email invitations are visible but not switchable until accepted. The response does not expose tenant `company_token`.
+Return companies connected to the DGFY account. Accepted active memberships are switchable. Pending IMS email invitations are visible but not switchable until accepted. Verified DGFY accounts may also mirror legacy founder/master-admin companies into accepted `source='founder'` memberships before listing, but only after the landlord email mapping, active tenant, active non-deleted tenant-local user, exact normalized email match, and `is_master_admin=true` checks pass. The response does not expose tenant `company_token`.
 
 The IMS tenant-session path is available for the SKUpervisor company switcher after direct IMS login. It resolves the DGFY account only through the accepted membership row for the current `tenant_id` and tenant-local `user_id`; email or mobile matches alone are rejected.
 

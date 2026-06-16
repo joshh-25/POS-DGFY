@@ -9,23 +9,27 @@ const sendDgfyAuthError = (res, status, message) => res.status(status).json({
     message
 });
 
-const getDgfyToken = (req) => {
+const getBearerToken = (req) => {
     const authHeader = req.headers.authorization;
-    return authHeader?.startsWith('Bearer ')
-        ? authHeader.substring(7)
-        : getCookie(req, SESSION_COOKIE_NAMES.dgfy);
+    return authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : '';
 };
 
-const attachDgfyAccountFromToken = async (req, token) => {
-    if (await isTokenBlacklisted(token)) {
-        const error = new Error('DGFY session has been revoked.');
+const getDgfyCookieToken = (req) => getCookie(req, SESSION_COOKIE_NAMES.dgfy);
+
+const getDgfyToken = (req) => {
+    return getBearerToken(req) || getDgfyCookieToken(req);
+};
+
+const attachDgfyAccountFromToken = async (req, token, decodedToken = null) => {
+    const decoded = decodedToken || verifyToken(token);
+    if (decoded?.token_scope !== 'dgfy' || !decoded?.dgfy_account_id) {
+        const error = new Error('Invalid DGFY account token.');
         error.statusCode = 401;
         throw error;
     }
 
-    const decoded = verifyToken(token);
-    if (decoded?.token_scope !== 'dgfy' || !decoded?.dgfy_account_id) {
-        const error = new Error('Invalid DGFY account token.');
+    if (await isTokenBlacklisted(token)) {
+        const error = new Error('DGFY session has been revoked.');
         error.statusCode = 401;
         throw error;
     }
@@ -55,12 +59,7 @@ export const authenticateDgfyAccount = async (req, res, next) => {
     }
 };
 
-export const authenticateDgfyAccountOrTenantMembership = async (req, res, next) => {
-    const token = getDgfyToken(req);
-    if (token) {
-        return authenticateDgfyAccount(req, res, next);
-    }
-
+const authenticateThroughTenantMembership = (req, res, next) => {
     return authenticate(req, res, async (error) => {
         if (error) return next(error);
 
@@ -85,4 +84,26 @@ export const authenticateDgfyAccountOrTenantMembership = async (req, res, next) 
             return next(lookupError);
         }
     });
+};
+
+export const authenticateDgfyAccountOrTenantMembership = async (req, res, next) => {
+    const bearerToken = getBearerToken(req);
+    if (bearerToken) {
+        try {
+            const decoded = verifyToken(bearerToken);
+            if (decoded?.token_scope === 'dgfy') {
+                await attachDgfyAccountFromToken(req, bearerToken, decoded);
+                return next();
+            }
+            return authenticateThroughTenantMembership(req, res, next);
+        } catch (error) {
+            return sendDgfyAuthError(res, error.statusCode || 401, error.message || 'Invalid DGFY account session.');
+        }
+    }
+
+    if (getDgfyCookieToken(req)) {
+        return authenticateDgfyAccount(req, res, next);
+    }
+
+    return authenticateThroughTenantMembership(req, res, next);
 };

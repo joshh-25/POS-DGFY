@@ -320,6 +320,7 @@ export const buildRegisterDgfyAccountUseCase = ({
             }, { transaction });
 
             await repository.mirrorPendingInvitationsForAccount?.(createdAccount, { transaction });
+            await repository.mirrorLegacyFounderMembershipsForAccount?.(createdAccount, { transaction });
             await repository.recordLegalAcknowledgement({
                 ...legalAcknowledgement,
                 dgfy_account_id: createdAccount.id,
@@ -377,6 +378,7 @@ export const buildLoginDgfyAccountUseCase = ({
     await repository.updateLastLogin(account);
     const reloaded = await repository.findById(account.id);
     await repository.mirrorPendingInvitationsForAccount?.(reloaded || account);
+    await repository.mirrorLegacyFounderMembershipsForAccount?.(reloaded || account);
     const token = generateDgfyToken(reloaded || account);
     return ok({
         payload: {
@@ -392,6 +394,7 @@ export const buildLoginDgfyAccountUseCase = ({
 
 export const buildGetDgfyMeUseCase = ({ repository }) => async ({ account }) => {
     await repository.mirrorPendingInvitationsForAccount?.(account);
+    await repository.mirrorLegacyFounderMembershipsForAccount?.(account);
     const memberships = await repository.listMemberships(account.id);
     return ok({
         payload: {
@@ -740,6 +743,7 @@ export const buildExchangeDgfyHandoffUseCase = ({ repository }) => async ({ body
         }
 
         await repository.mirrorPendingInvitationsForAccount?.(account);
+        await repository.mirrorLegacyFounderMembershipsForAccount?.(account);
         const token = generateDgfyToken(account);
         return ok({
             payload: {
@@ -763,6 +767,7 @@ export const buildExchangeDgfyHandoffUseCase = ({ repository }) => async ({ body
 
 export const buildListDgfyAccountCompaniesUseCase = ({ repository }) => async ({ account, currentTenantToken = '' }) => {
     await repository.mirrorPendingInvitationsForAccount?.(account);
+    await repository.mirrorLegacyFounderMembershipsForAccount?.(account);
     const memberships = await repository.listMemberships(account.id);
     const companies = memberships.map((membership) => serializeCompanyMembership(membership, { currentTenantToken }));
     return ok({

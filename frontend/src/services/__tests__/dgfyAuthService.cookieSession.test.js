@@ -161,6 +161,48 @@ describe('dgfyAuthService cookie session rehydration', () => {
     });
   });
 
+  it('clears stale DGFY business tokens and retries switcher loading through the tenant auth bridge', async () => {
+    apiGet
+      .mockRejectedValueOnce({
+        response: {
+          status: 401,
+          data: {
+            message: 'Invalid DGFY account token.'
+          }
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            companies: [{
+              tenant_id: 'tenant-1',
+              company_name: 'Kate Store',
+              can_switch: true
+            }],
+            business_step_up: { verified: true }
+          }
+        }
+      });
+
+    const service = await import('../dgfyAuthService.js');
+    service.storeDgfySession({
+      token: 'stale-dgfy-token',
+      account: { id: 'acct-stale' }
+    });
+    const result = await service.listDgfyAccountCompanies();
+
+    expect(apiGet).toHaveBeenNthCalledWith(1, '/dgfy/account/companies', {
+      headers: {
+        Authorization: 'Bearer stale-dgfy-token'
+      },
+      ...dgfyCookieConfig
+    });
+    expect(apiGet).toHaveBeenNthCalledWith(2, '/dgfy/account/companies', dgfyBusinessBridgeConfig);
+    expect(service.getStoredDgfyToken()).toBe('');
+    expect(service.getStoredDgfyAccount()).toBe(null);
+    expect(result.companies[0].company_name).toBe('Kate Store');
+  });
+
   it('switches DGFY companies with cookie credentials and resets tenant client state', async () => {
     apiPost.mockResolvedValueOnce({
       data: {
