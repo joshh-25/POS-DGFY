@@ -2672,7 +2672,7 @@ Open a terminal shift for cashier operations.
   - `data.replay_outcome` (`processed` or `idempotent_replay`)
   - `data.terminal_identity_policy` with mode/registry context and optional warning metadata
 - Idempotency conflict/blocked outcomes return error payloads with `errors.idempotency.outcome` (`conflict` or `blocked`).
-- Frontend contract: terminal unlock/sign-in must collect user-selected `terminal_id` and forward it to shift/dashboard/checkout flows (UI should not rely on hard-coded terminal identity).
+- Frontend contract: terminal unlock/sign-in must resolve and forward a concrete `terminal_id` to shift/dashboard/checkout flows. The backend still requires `terminal_id` for shift opening. In `warn` registry mode, a first-use tenant with no active registry entry and no stored terminal may resolve `COUNTER-01` as the default terminal identity before storing terminal state. In `enforce` mode, the frontend must block unlock/shift actions until an admin configures an active terminal in Settings > POS Setup > Terminal Registry.
 - Registry policy is mode-driven:
   - `warn`: operation continues with warning reason codes (`TERMINAL_ID_MISSING_WARN`, `TERMINAL_ID_UNREGISTERED_WARN`)
   - `enforce`: operation is denied when registry controls fail (`TERMINAL_REGISTRY_REQUIRED`, `TERMINAL_ID_REQUIRED_FOR_ENFORCED_REGISTRY`, `TERMINAL_ID_NOT_REGISTERED`)

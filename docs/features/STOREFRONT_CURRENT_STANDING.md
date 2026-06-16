@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: frontend
-last_reviewed: 2026-06-10
+last_reviewed: 2026-06-16
 applies_to: storefront_all_modes
 topic: storefront_current_standing
 ---
@@ -109,13 +109,13 @@ Targeted matrix result:
 - June 9 cluster panel/strict-hover follow-up slice: `PASS` (`39/39` targeted frontend tests). Coverage includes strict hover-preview dismissal when the pointer leaves a pin, click-preview persistence, duplicate-coordinate and 13-meter cluster count pins, cluster click routing into the existing results panel instead of a map list widget, and non-scaling View Results pulse CSS.
 - June 9 non-PayMongo frontend polish deployment slice: `PASS` (`42/42` targeted frontend tests). Coverage includes Storefront results-panel collapse behavior, route-aware tenant permission reload after login navigation, and fixed IMS item modal dimensions.
 - June 9 IMS item/product wizard sizing follow-up: `PASS` (`12/12` targeted frontend tests plus SKUpervisor build). Coverage includes the CSS-owned fixed wizard shell and standardized create/edit item/product modal dimensions across wizard steps.
-- June 15 runtime standing: latest production evidence available in this workspace records deployed code SHA `52c8dfc8f232aa5e3e926ea75f2baf96d389d425`; at proof time remote `HEAD`, remote `origin/master`, and `.deploy-state/last_deployed_commit` matched that SHA. The Storefront gallery preservation work from `5e327ba74fd83aa457339233536232efdd8fa8d0` and later wizard image-upload corrections are included in that production runtime evidence.
+- June 16 runtime standing: latest production evidence available in this workspace records deployed code SHA `14de6e0f0d4497d7821e047704a66705b6164f29`; at proof time remote `HEAD`, remote `origin/master`, and `.deploy-state/last_deployed_commit` matched that SHA. The Storefront gallery preservation work from `5e327ba74fd83aa457339233536232efdd8fa8d0`, later wizard image-upload corrections, and the Storefront access-mode ceiling UI correction are included in that production runtime evidence. Space Bar remains requested `transaction` but effective `catalog`; checkout is intentionally unavailable until registration readiness permits effective `transaction`.
 - Storefront discovery flow, map DOM, marker preview, and presentation suites: `PASS` (`42/42` targeted tests). npm printed the existing unknown `--pool` warning but executed the suites.
 - Backend Storefront discovery repository and map-pin use-case suites: `PASS` (`19/19` targeted tests), including union store/item matching, out-of-stock inclusion, nearest matching branches, and degraded snapshot behavior.
 - Storefront production build: `PASS`
 - Architecture guardrails and controller-boundary checks: `PASS`
 - Diff whitespace check: `PASS`
-- Local rendered route health: `PASS` for `/map-dgfy` page identity, desktop search controls, map region, overlay-free render, search-field interaction, and zero relevant console warnings/errors. Production route smoke passed for `https://dgfy.ph/map-dgfy` after deploying SHA `f72d5e93c3e96ee2f0b1ee305c32c37856016ca6`. The latest production evidence available in this workspace is deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260615_153953.summary.txt` for SHA `52c8dfc8f232aa5e3e926ea75f2baf96d389d425`, reporting Storefront runtime, public endpoint, tenant-store asset integrity, and frontend asset parity passing. Seeded-data zoom QA remains useful for real-pin placement evidence.
+- Local rendered route health: `PASS` for `/map-dgfy` page identity, desktop search controls, map region, overlay-free render, search-field interaction, and zero relevant console warnings/errors. Production route smoke passed for `https://dgfy.ph/map-dgfy` after deploying SHA `f72d5e93c3e96ee2f0b1ee305c32c37856016ca6`. The latest production evidence available in this workspace is deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260616_021931.summary.txt` for SHA `14de6e0f0d4497d7821e047704a66705b6164f29`, reporting Storefront runtime, public endpoint, tenant-store asset integrity, and frontend asset parity passing. Seeded-data zoom QA remains useful for real-pin placement evidence.
 
 ## Notes
 - This file intentionally tracks the frontend standing and test evidence snapshot only.

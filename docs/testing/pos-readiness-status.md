@@ -1,14 +1,14 @@
 # POS Readiness Status (Canonical)
 
 Status: authoritative-for-pos-readiness
-Last updated: 2026-06-15
+Last updated: 2026-06-16
 Overall status: in_progress
 
 ## 1) Canonical Blockers
 
 1. Human cashier/admin UAT signoff is pending.
 2. Release-gate/nightly browser E2E evidence is configured but still needs sustained green history capture.
-3. Terminal identity is policy-driven (`warn`/`enforce`) but centralized admin-managed registry governance still requires operational rollout discipline.
+3. Terminal identity is policy-driven (`warn`/`enforce`) but centralized admin-managed registry governance still requires operational rollout discipline. Warn-mode first-use tenants with no active registry and no stored terminal default to `COUNTER-01`; enforce-mode tenants still require an admin-configured active terminal before unlock/shift operations.
 4. Source-separation manual UAT parity proof (POS History source filter vs Sales POS channel filter vs CSV `pos_order_source`) is pending human evidence capture.
 5. Strict location-binding rollout cutover remains gated until legacy shift-location remediation evidence is fully reviewed and accepted by operations.
 6. PR #11 DGFY POS surface split local release blockers are closed as of this pass: POS-specific lint, full frontend lint errors, frontend budget drift, shared checkout contract drift, local release gate, production deploy, exact deployed-SHA verification, and production POS smoke now pass. Production readiness still requires human operator UAT.
@@ -35,69 +35,74 @@ Overall status: in_progress
 6. Terminal identity policy is now explicit in runtime responses:
 - `warn`: continues with warning reason code (`TERMINAL_ID_MISSING_WARN`, `TERMINAL_ID_UNREGISTERED_WARN`)
 - `enforce`: blocks with deterministic reason code (`TERMINAL_REGISTRY_REQUIRED`, `TERMINAL_ID_REQUIRED_FOR_ENFORCED_REGISTRY`, `TERMINAL_ID_NOT_REGISTERED`)
-7. Incoming online queue UI distinguishes access states:
+7. POS terminal first-use defaults are explicit:
+- backend shift-open still requires `terminal_id`
+- warn-mode tenants without an active registry or stored terminal resolve `COUNTER-01` as the actual `activeTerminalId`, form value, and stored terminal identity
+- if an operator leaves Terminal ID blank in warn mode and no registry entry exists, login stores `COUNTER-01` before refreshing terminal context
+- enforce-mode tenants with no active registry remain blocked with admin setup guidance for Settings > POS Setup > Terminal Registry
+8. Incoming online queue UI distinguishes access states:
 - no `pos:view` -> permission message (not empty queue)
 - load failure -> explicit error state
 - zero records -> explicit empty queue state
-8. Incoming queue polling now suppresses duplicate global error toasts during silent refresh while keeping explicit on-screen error state.
-9. Incoming order status actions are disabled when `pos:transact` is missing.
-10. Locked terminal disables navigation mode switching until terminal unlock.
-11. POS history supports direct handoff to Sales (`Open in Sales Report`) with preserved query context.
-12. Sales export now provides explicit export completion feedback tied to active filters.
-13. POS/store checkout validation errors (`422`) now surface structured field-level messages instead of generic failure copy.
-14. POS/Sales transaction tables no longer rely on row-level `role="button"` semantics for primary detail actions.
-15. Settings remediation navigation is deterministic across POS/compliance surfaces:
+9. Incoming queue polling now suppresses duplicate global error toasts during silent refresh while keeping explicit on-screen error state.
+10. Incoming order status actions are disabled when `pos:transact` is missing.
+11. Locked terminal disables navigation mode switching until terminal unlock.
+12. POS history supports direct handoff to Sales (`Open in Sales Report`) with preserved query context.
+13. Sales export now provides explicit export completion feedback tied to active filters.
+14. POS/store checkout validation errors (`422`) now surface structured field-level messages instead of generic failure copy.
+15. POS/Sales transaction tables no longer rely on row-level `role="button"` semantics for primary detail actions.
+16. Settings remediation navigation is deterministic across POS/compliance surfaces:
 - known `/settings?tab=...#...` targets are normalized/resolved
 - malformed hash targets fail safely without blocking page actions
 - final-review `Fix now` targets remain scrollable in `compliant_active`
-16. Workflow-mode-aware UX is active:
+17. Workflow-mode-aware UX is active:
 - tenant workflow mode now supports expanded template values (`retail`, `services`, `manufacturing`, `food_manufacturing`, `fnb`, `hospitality`, `healthcare`, `ticketing_transport`, `logistics_distribution`, `education_institutions`, `msme`)
 - runtime route/wizard compatibility remains family-safe (`manufacturing`/`msme`) and independent from compliance lifecycle
 - MSME uses simplified inventory/POS surfaces while preserving manufacturing data
-17. Single-item POS setup is wizard-first:
+18. Single-item POS setup is wizard-first:
 - item cards are compact and do not host single-item POS setup widgets
 - enabling POS visibility is readiness-gated with deterministic denial metadata (`reason_code`, `missing_requirements`)
-18. Final Review documentary readiness is tenant self-serve:
+19. Final Review documentary readiness is tenant self-serve:
 - requirements are completed in Settings > Compliance > Final review (upload or external URL)
 - `Go to step` targets deep-link to per-document anchors (`#final-review-doc-...`)
-19. POS/storefront source separation is now explicit on read UX/contracts:
+20. POS/storefront source separation is now explicit on read UX/contracts:
 - POS history supports explicit source badge/filter (`in_store`, `online_store`)
 - unified sales includes POS channel discriminator (`pos_order_source`) while preserving `source=POS`
 - sales CSV export includes `pos_order_source`
 - storefront quote/checkout/track error copy is normalized for actionable operator/customer feedback
-20. Sales transactions route now enforces strict query validation (including `pos_order_source`) before use-case execution.
-21. Settings deep-link resolver now supports dynamic final-review document anchors (`#final-review-doc-*`) without hash resolution drift.
-22. POS operational surfaces now share centralized fulfillment label/action mapping (`ready_for_pickup` displayed as `Ready for pickup`).
-23. Storefront error normalization is extracted into a dedicated utility with direct unit coverage.
-24. Legacy POS shift-location remediation is implemented with deterministic precedence and provenance:
+21. Sales transactions route now enforces strict query validation (including `pos_order_source`) before use-case execution.
+22. Settings deep-link resolver now supports dynamic final-review document anchors (`#final-review-doc-*`) without hash resolution drift.
+23. POS operational surfaces now share centralized fulfillment label/action mapping (`ready_for_pickup` displayed as `Ready for pickup`).
+24. Storefront error normalization is extracted into a dedicated utility with direct unit coverage.
+25. Legacy POS shift-location remediation is implemented with deterministic precedence and provenance:
 - precedence: `transaction_unique_location` -> `terminal_home_location` -> `tenant_primary_location` -> `active_location_fallback`
 - remediation writes per-shift provenance rows to `pos_shift_location_backfill_audit`
 - strict-binding activation is blocked when unresolved/low-confidence readiness remains
 - terminal setup context surfaces `location_binding_readiness` for operator visibility
-25. POS pane keyboard scrolling is centralized and directly unit-tested:
+26. POS pane keyboard scrolling is centralized and directly unit-tested:
 - shared scroll key handler utility covers `ArrowUp/Down`, `PageUp/Down`, `Home/End`
 - contract coverage still enforces focus-target and independent scroll-zone behavior
-26. DGFY fee/branding rollout is active across POS + storefront:
+27. DGFY fee/branding rollout is active across POS + storefront:
 - mandatory fee policy is fixed at `1%` of gross subtotal (`DGFY convenience fee`)
 - POS checkout ignores caller `service_fee_amount` overrides at runtime
 - storefront quote and checkout persist deterministic DGFY fee label snapshots
 - receipt header keeps legal issuer prominence while preserving DGFY brand line and acronym footer
-27. Terminal fee-policy UX is explicit and no longer method-count based:
+28. Terminal fee-policy UX is explicit and no longer method-count based:
 - operational widgets now expose global policy state (`DGFY Global Fee Policy: Active/Inactive`)
 - legacy "Fee Methods Enabled" count semantics are retired from operator-facing summaries
-28. API route naming clarity is now explicit in docs:
+29. API route naming clarity is now explicit in docs:
 - canonical external routes are documented as `/api/v1/pos/checkouts`, `/api/v1/store/cart/quote`, `/api/v1/store/checkout`
 - singular `/api/v1/pos/checkout` is documented as non-canonical
-29. POS checkout offline replay now uses the same durable sync contract as other terminal operations:
+30. POS checkout offline replay now uses the same durable sync contract as other terminal operations:
 - queue storage: IndexedDB-first with fallback compatibility path
 - statuses: `queued`, `replaying`, `replayed`, `failed_manual_resolution_required`
 - replay ownership in terminal workspace mode is centralized to prevent duplicate replay loops
-30. SKUpervisor/admin PWA infrastructure is now explicit:
+31. SKUpervisor/admin PWA infrastructure is now explicit:
 - root admin and `apps/skupervisor` builds publish manifests and service workers
 - admin service-worker registration is production-only and non-blocking
 - `/api/` and `/uploads/` bypass service-worker caching to avoid stale authenticated data and stale tenant uploads
 - POS and Storefront keep their existing service-worker entrypoints
-31. POS and Storefront catalog controls keep visibility split while sharing Storefront Catalog item images:
+32. POS and Storefront catalog controls keep visibility split while sharing Storefront Catalog item images:
 - POS visibility uses `pos_catalog_overrides.pos_visible`; POS Controls does not expose an image upload action in item/product setup.
 - Storefront visibility uses `storefront_catalog_overrides.storefront_visible`; image upload/removal preserves the existing visibility state.
 - In item/product setup wizards, Storefront Catalog `Add Item Images` is the single appendable item-image gallery action.
@@ -105,17 +110,17 @@ Overall status: in_progress
 - Bulk POS and Storefront SKU-filename image imports remain separate endpoints for operational batch setup.
 - Public Storefront catalog payloads expose customer price through `default_sale_price` and must not expose `current_stock`, `cost_per_unit`, FIFO cost, weighted cost, or raw inventory value.
 - Public Storefront catalog listing and QR item resolution suppress/block otherwise visible rows when `default_sale_price` is missing or zero. Image upload may preserve hidden setup rows, but cannot publish a visible price-less row.
-32. Storefront catalog fallback boundaries are now explicit:
+33. Storefront catalog fallback boundaries are now explicit:
 - When `storefront_catalog_overrides` exists, a missing per-item Storefront override row uses Storefront default policy and must not inherit POS visibility or POS image state.
 - POS-derived Storefront membership/media is allowed only as table-missing rollout compatibility fallback, with warning logging.
 - Public `/store/catalog` retries without optional Storefront/POS/service include tables when those tables are unavailable during additive rollout, instead of returning `500`.
-33. POS and Storefront image replacement is failure-aware:
+34. POS and Storefront image replacement is failure-aware:
 - upload stores the new file, commits the override update, then best-effort removes the previous file
 - if the override update fails after storage succeeds, the newly stored file is removed and the old image remains referenced
-34. Inventory UI Storefront controls are permission-aware:
+35. Inventory UI Storefront controls are permission-aware:
 - `Show in Storefront` and Storefront item image controls are shown only when the user can configure item Storefront catalog state
 - users without `items:edit` do not see disabled Storefront controls backed only by inferred default data
-35. Barcode scan routing is now POS-readiness gated:
+36. Barcode scan routing is now POS-readiness gated:
 - `/pos/scan` resolves barcodes through the POS use case layer and returns deterministic `resolved`, `blocked`, or `routed` status.
 - Package/case aliases apply `quantity_multiplier` only as a suggested cart quantity.
 - Blocked scans return reason codes such as `BARCODE_NOT_FOUND`, `BARCODE_CONFLICT`, `BARCODE_SCOPE_NOT_POS`, `TICKET_SCAN_NOT_CARTABLE`, `NOT_POS_VISIBLE`, `ITEM_INACTIVE`, `MISSING_PRICE`, `OUT_OF_STOCK`, `LOCATION_CONTEXT_REQUIRED`, `UNAUTHORIZED_LOCATION`, `COMPLIANCE_BLOCKED`, and `SERVICE_UNAVAILABLE`.
@@ -123,12 +128,12 @@ Overall status: in_progress
 - Services Mode barcode scans remain stock-exempt when the resolved row is `category=service`.
 - Service booking/ticket QR scans return `SERVICE_BOOKING_SCAN_ROUTED` and route to Services booking context instead of adding cart lines.
 - Label print payloads include normalized type, browser-print layout metadata, and audited `barcode.label_print_intent`.
-36. Food & Beverage POS metadata is additive:
+37. Food & Beverage POS metadata is additive:
 - `/api/v1/fnb/*` owns tables, checks, kitchen tickets, reservations/waitlist requests, reservation table assignments, modifiers, and restaurant service-charge settings.
 - POS checkout accepts F&B table/check/server/guest/course/modifier/kitchen-station metadata and stores immutable snapshots on `pos_transactions` and `pos_transaction_lines`.
 - Restaurant service charge is stored in `restaurant_service_charge_*` fields and `fnb_restaurant_service_charge_snapshots`; DGFY convenience fee remains `service_fee_amount`.
 - F&B hides job-order and dispatch-order UI, but keeps stock movements available for ingredient/menu inventory.
-37. Food & Beverage hardening is active:
+38. Food & Beverage hardening is active:
 - F&B check lifecycle now exposes table transfer, line-level split, and check merge actions behind the existing `fnbDining` route guard.
 - F&B item modifier groups and item kitchen routes have authenticated assignment APIs and IMS controls; IMS assignment now uses menu-item selectors instead of raw item IDs.
 - POS checkout validates F&B line modifiers against assigned database groups/options, snapshots server-owned modifier names/deltas, includes taxable restaurant service charge in VATable gross, allows kitchen-station line overrides, and deducts recipe ingredients from `product_composition` when present.
@@ -137,47 +142,47 @@ Overall status: in_progress
 - Reservation windows now carry duration and reset-buffer minutes. Confirmed/seated reservations block overlap on any assigned table; requested/waitlisted requests remain non-blocking capacity leads. Combined-table bookings reject party sizes above selected seat capacity.
 - Storefront splits the F&B reservation panel and map components out of the primary Storefront entry; the remaining large chunk is the isolated lazy MapLibre vendor chunk.
 - Final F&B readiness ratings must run `npm run qa:fnb-readiness` first. The gate is documented in `docs/testing/fnb-operational-readiness-qa.md` and covers recipe shortfall diagnostics, POS/Storefront recipe checkout contracts, kitchen-ticket idempotency/lifecycle behavior, kitchen queue display contracts, production builds, architecture checks, docs lint, and diff hygiene.
-38. Storefront delivery saved-location pins are additive to the existing checkout pin paths:
+39. Storefront delivery saved-location pins are additive to the existing checkout pin paths:
 - DGFY account saved locations can carry readable address text plus optional latitude/longitude coordinates.
 - Storefront checkout still supports account-saved location, temporary checkout location, recommended store or branch location, current GPS location, manual map pin, and text-address fallback as separate choices.
 - Text-only delivery checkout remains valid when map/geolocation is unavailable; coordinates are preferred for driver routing but are not mandatory.
 - Mode-aware location copy is source-current: F&B uses drop-off/driver language, simple delivery uses delivery address/pin language, and services/on-site flows use service/site/technician language when location fields are exposed.
 - Online Store delivery orders that include coordinates surface address text, coordinate text, and the existing map-navigation link in the live POS incoming queue. Text-only delivery orders surface the address without rendering a broken map link.
 - This is included in the deployed commit chain; production operator UAT should still verify coordinate-backed and text-only delivery orders in the POS incoming queue.
-39. Mode-aware RBAC is active:
+40. Mode-aware RBAC is active:
 - `users.role_preset_key` stores the mode-native preset while preserving legacy `users.role`, `users.permissions`, and `is_master_admin`.
 - `GET /api/v1/users/role-catalog` returns the active tenant mode's role presets and visible permission groups for User Management.
 - Services and F&B route guards prefer mode-native `services:*` and `fnb:*` permissions, with generic fallback controlled by `MODE_RBAC_GENERIC_FALLBACK_ENABLED` only for legacy remapping.
 - Assigned-scope presets require location grants when the tenant has multiple active locations; single role updates and bulk role assignment save preset and location grants as one operator intent.
 - Legacy users without a preset remain operational and display as `Legacy <role>` until remapped; presets from a previous tenant mode are surfaced as mode mismatch for admin review.
-40. Tenant provisioning/model-clone hardening is active:
+41. Tenant provisioning/model-clone hardening is active:
 - fresh tenant databases clone tenant-local models from the canonical backend model registry while excluding landlord-only models
 - tenant-local foreign-key references are covered by tenant model factory tests so mode-specific tables such as Services and F&B cannot be omitted from new tenant schemas
 - approval/auto-approval provisioning failures restore a valid retryable landlord status and drop zombie tenant databases before the admin retries approval
 - future workflow modes must include provisioning graph and disposable schema sync proof before readiness is claimed
-41. DGFY POS/SKUpervisor surface split is production-deployed with UAT pending:
+42. DGFY POS/SKUpervisor surface split is production-deployed with UAT pending:
 - standalone POS (`frontend/apps/pos`) owns the cashier terminal route and redirects Sales reporting to SKUpervisor through `skupervisorHandoff`
 - SKUpervisor IMS `/pos` now loads `SkupervisorPOSPage` and keeps Services/F&B/Hospitality panels in the admin app
 - both checkout surfaces now use a shared checkout payload and DGFY fee-label/rate contract for terminal identity, payment handoff, discount, F&B metadata, modifiers, scan metadata, and receipt fee fallback
 - the split preserves backend POS checkout contracts and local POS/backend/checkout-surface contract tests pass
 - production deploy completed through the governed `scripts/deploy-remote.sh --yes` path; exact deployed-head verification and production POS smoke pass, while human cashier/admin UAT remains the final readiness gate
-42. DGFY POS software identity is platform-admin controlled:
+43. DGFY POS software identity is platform-admin controlled:
 - tenant admins can submit receipt metadata edits, but they land in `pos_receipt_metadata_pending_changes` until platform admin approves them
 - platform admin configures software name, software version, and software serial number through the tenant POS Metadata function, and those fields are not shown on the tenant admin settings form
-43. POS terminal unlock resolves tenant context from email before password validation:
+44. POS terminal unlock resolves tenant context from email before password validation:
 - the terminal calls `POST /api/v1/auth/lookup` for the submitted email and prefers the current browser company token only when it is one of the returned tenants
 - single-tenant lookup results provide the login company token; multi-tenant lookup blocks with a deterministic operator message; missing mapping and rate-limit failures no longer silently reuse a stale browser tenant
 - auth lookup throttling is scoped by client IP plus normalized email and can be tuned with `RATE_LIMIT_LOOKUP_WINDOW_MS` / `RATE_LIMIT_LOOKUP_MAX_REQUESTS`, so shared store networks do not cross-throttle different cashier emails
 - fallback to the current browser company token is limited to transient lookup outages (`network`, timeout, or `5xx`) so wrong-tenant contexts do not mask account/mapping issues
 - terminal unlock diagnostics now classify invalid credentials, missing tenant mapping, multiple tenant membership, POS capability disabled, POS permission denial, rate limiting, and optional `/pos/device/status` bridge `503` separately
 - standalone POS development auto-login is opt-in through `VITE_POS_DEV_AUTO_LOGIN=true`; development no longer auto-binds every POS session to the legacy `token-original` tenant by default
-44. POS fiscal-prep runtime schema drift is now guarded:
+45. POS fiscal-prep runtime schema drift is now guarded:
 - the runtime doctor checks the June 2026 RMO fiscal-prep migration plus nullable fiscal buyer/snapshot columns such as `pos_transactions.buyer_tin`
 - non-compliant/non-fiscal checkout keeps buyer fiscal fields nullable and persists them as `null`; a missing `buyer_tin` column is deployment/migration drift, not a customer buyer-TIN requirement
 - `/api/v1/compliance/profile` or `/api/v1/pos/incoming-orders` `500` responses after deployment must trigger migration/doctor/restart verification before cashier UAT
-45. Deployment scope note for the current branch:
-- Production web/source deploy is current at SHA `52c8dfc8f232aa5e3e926ea75f2baf96d389d425` with deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260615_153953.summary.txt`.
-- Backend, IMS, POS, Store, public endpoint, tenant-store asset integrity, frontend asset parity, tenant schema, tenant index headroom, permission backfill, Storefront discovery, and PM2 reload checks passed during that deploy.
+46. Deployment scope note for the current branch:
+- Production web/source deploy is current at SHA `14de6e0f0d4497d7821e047704a66705b6164f29` with deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260616_021931.summary.txt`.
+- Backend, IMS, POS, Store, public endpoint, tenant-store asset integrity, frontend asset parity, tenant schema, permission backfill, Storefront discovery, PM2 reload, and `tenant_index_headroom_strict=0` report-mode checks passed during that deploy.
 - The deploy used the auditable emergency no-staging bypass only for stale QA deployed-head evidence; QA smoke, rollback drill, restore drill, docs lint, and architecture checks passed for the target SHA.
 - Android iMin wrapper source now routes physical-device builds to `https://pos.dgfy.ph`, but installed iMin devices do not change until the APK is rebuilt, installed, and smoke-tested on device hardware.
 - Human cashier/admin UAT, source-separation parity proof, and strict location-binding operational acceptance remain non-technical readiness blockers.

@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-06-15
+last_reviewed: 2026-06-16
 applies_to: customer_access_modes_and_storefront_inventory_display
 topic: customer_access_modes_inventory_display
 ---
@@ -301,7 +301,7 @@ Validated on 2026-06-10 for inventory modal consistency and Storefront gallery p
 - Product and item create/edit modals expose the same top-right close affordance while retaining footer `Cancel`, `Save and exit`, and step navigation actions.
 - Wizard modal dimensions are standardized so moving between product steps does not resize the dialog unexpectedly.
 - Storefront catalog reads preserve ordered `storefront_image_gallery` JSON data and use legacy single-image fields only as fallback, keeping F&B gallery carousels populated when multiple item images exist.
-- Later production runtime evidence in this workspace records deployed code SHA `52c8dfc8f232aa5e3e926ea75f2baf96d389d425` with deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260615_153953.summary.txt`; the June 10 modal consistency and Storefront gallery preservation behavior remains included in that deployed chain.
+- Later production runtime evidence in this workspace records deployed code SHA `14de6e0f0d4497d7821e047704a66705b6164f29` with deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260616_021931.summary.txt`; the June 10 modal consistency and Storefront gallery preservation behavior remains included in that deployed chain.
 
 Validated on 2026-06-15 for modal wizard stepper styling, appendable item images, and POS terminal image fallback:
 - Shared wizard step navigation CSS renders circular numbered controls, connector lines, active/completed states, and hover/focus tooltips instead of exposing raw tooltip text inline.
@@ -309,7 +309,7 @@ Validated on 2026-06-15 for modal wizard stepper styling, appendable item images
 - Storefront gallery override reads include the primary key before update, so existing galleries can append more than one image up to the five-image limit without Sequelize rejecting the save.
 - POS terminal catalog rows prefer legacy `pos_image_url` when configured and otherwise display the shared Storefront primary item image.
 - Focused validation passed: `npm exec vitest run src/features/inventory/__tests__/itemProductWizard.contract.test.js src/features/inventory/__tests__/ProductCreateWizard.behavior.test.jsx --pool=threads` from `frontend/`; `npm --prefix backend test -- --runInBand tests/inventoryItemRepository.test.js tests/posRepository.catalogImages.test.js`; `npm --prefix frontend run build:skupervisor`; `npm --prefix frontend run build:pos`; `npm run lint:docs`; `npm run check:architecture`; `git diff --check`.
-- Production deploy on 2026-06-15 advanced this source to SHA `52c8dfc8f232aa5e3e926ea75f2baf96d389d425`; deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260615_153953.summary.txt` records backend, IMS, POS, Store, public endpoint, tenant-store asset integrity, frontend asset parity, tenant schema, permission backfill, Storefront discovery, and PM2 reload checks passing.
+- Production deploy on 2026-06-16 advanced this source to SHA `14de6e0f0d4497d7821e047704a66705b6164f29`; deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260616_021931.summary.txt` records backend, IMS, POS, Store, public endpoint, tenant-store asset integrity, frontend asset parity, tenant schema, permission backfill, Storefront discovery, PM2 reload, and `tenant_index_headroom_strict=0` report-mode checks passing. This later deploy also includes the Storefront access-mode ceiling UI correction while keeping backend quote/checkout/booking/payment enforcement gated by effective `transaction` mode. Space Bar production proof remains requested `transaction` / effective `catalog` because registration stage `informal` allows up to catalog mode.
 
 Validated on 2026-06-07 for root handles, main-branch pinning, and branch-scoped catalog/services:
 - Landlord `storefront_handle_reservations` now owns clean `store_tenant_slug` uniqueness so hidden tenants retain their public handle claim while absent from discovery. Discovery index slugs mirror the reservation for visible tenants.
