@@ -30,6 +30,8 @@ The controlled production mutation UAT passed on June 13, 2026 with dedicated QA
 
 The UAT ratings recorded by the gate are DGFY account UI shell `9.2`, DGFY signup/business registration `9.2`, e-commerce Storefront checkout `9.2`, POS order/inventory flow `9.2`, admin/payment/capability operations `9.1`, and production readiness `9.2`. The QA tenant, item, location, order, and account records are retained for audit cleanup and must not be treated as customer/operator data.
 
+The DGFY multi-company switching and email-only business step-up rollout is production-deployed at SHA `039f048033577cad1de7470e79a162eabc3e5e75` with deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260616_163311.summary.txt`. The deployed contract includes IMS company switching, Storefront account Business / Your Businesses invitation visibility, pending invitation acceptance after `dgfy_business_step_up`, selected-company opening into SKUpervisor, and no `company_token` exposure in the new switcher or invitation-acceptance payloads. Production migration status reports `up 20260616000001-add-dgfy-company-switching.cjs`; unauthenticated route smoke for `/api/v1/dgfy/account/companies` and `/api/v1/dgfy/account/business-step-up/request` returned `401` rather than `404`, proving the routes are mounted and protected.
+
 ## Guest Users
 
 Guest users can:

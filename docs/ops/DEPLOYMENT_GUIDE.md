@@ -273,6 +273,7 @@ Tenant schema/index risk controls:
 - `DEPLOY_TENANT_SCHEMA_SYNC_MODE=report|alter` (default: `report`)
 - `DEPLOY_TENANT_SYNC_REQUIRE_ZERO=0|1` (default: `1`; set `0` only for controlled exception windows)
 - `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0|1` (default: `1`; set `0` only for controlled exception windows)
+  - `scripts/deploy-remote.sh` forwards this override to the production-side `scripts/deploy.sh`; the June 16, 2026 DGFY company-switching deploy used `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0` because redundant-index warnings remained a tracked cleanup concern while tenant schema sync, health, PM2 reload, public endpoints, and asset parity passed.
 
 Deterministic install retry controls:
 - `DEPLOY_NPM_CI_RETRIES=<n>` (default: `3`)
