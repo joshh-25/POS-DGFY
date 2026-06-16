@@ -162,9 +162,22 @@ Use this focused gate when changing the shared IMS MapLibre picker used by onboa
 2. `npm --prefix frontend test -- --run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx`
 
 Evidence semantics:
-1. The focused MapLibre suite proves the picker initializes with the inline OpenStreetMap raster style contract, preserves click/geolocation/drag coordinate updates, disables MapLibre's internal resize tracker for modal/panel teardown safety, skips unsafe hidden-container resize calls, and keeps the coordinate fallback usable when tile resource requests emit MapLibre errors.
+1. The focused MapLibre suite proves the picker initializes with the inline OpenStreetMap raster style contract, preserves click/geolocation/drag coordinate updates, reverse-geocodes selected pins into the editable address field when possible, keeps coordinate updates usable when reverse geocoding fails, disables MapLibre's internal resize tracker for modal/panel teardown safety, skips unsafe hidden-container resize calls, and keeps the coordinate fallback usable when tile resource requests emit MapLibre errors.
 2. The onboarding and Settings suites prove both user-facing surfaces still wire the shared picker into their location forms.
 3. These gates do not prove live tile-provider availability, browser WebGL support, or production CSP/proxy parity; rendered browser QA remains required before claiming visual map parity.
+
+## Item Image Carousel Gate
+
+Use this focused gate when changing onboarding starter-item images, Storefront Catalog item images, or the shared selected-image carousel:
+
+Commands:
+1. `npm --prefix frontend test -- --run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx src/features/inventory/__tests__/itemProductWizard.contract.test.js`
+
+Expected evidence:
+1. F&B onboarding exposes `Menu Item` as the first-login starter choice and submits the customer-facing `menu_item` preset.
+2. Onboarding file selections append up to the five-image cap instead of replacing the existing selected set.
+3. Onboarding and item create/edit surfaces render the selected-image carousel with a focused image, count/filename context, and one-by-one focused removal.
+4. Storefront Catalog remains the single wizard image upload surface; POS Controls must not reintroduce a separate image uploader.
 
 ## Storefront Public Visibility Gate
 
