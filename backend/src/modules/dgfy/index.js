@@ -15,11 +15,14 @@ import {
     buildCompleteDgfyPasswordResetUseCase,
     buildCreateDgfyHandoffUseCase,
     buildExchangeDgfyHandoffUseCase,
+    buildListDgfyAccountCompaniesUseCase,
     buildGetDgfyMeUseCase,
     buildLoginDgfyAccountUseCase,
+    buildRequestDgfyBusinessStepUpUseCase,
     buildRequestDgfyPasswordResetUseCase,
     buildRequestDgfyEmailVerificationUseCase,
     buildStartDgfyTenantSessionUseCase,
+    buildSwitchDgfyCompanyUseCase,
     buildUpdateDgfyProfileUseCase,
     buildVerifyDgfyEmailUseCase,
     buildRegisterDgfyAccountUseCase
@@ -116,11 +119,35 @@ export const exchangeDgfyHandoffUseCase = buildExchangeDgfyHandoffUseCase({
 });
 
 export const acceptDgfyInvitationUseCase = buildAcceptDgfyInvitationUseCase({
-    repository: dgfyAccountRepository
+    repository: dgfyAccountRepository,
+    verifyEmailOtp,
+    emailOtpPurposes: {
+        DGFY_BUSINESS_STEP_UP: 'dgfy_business_step_up'
+    }
 });
 
 export const startDgfyTenantSessionUseCase = buildStartDgfyTenantSessionUseCase({
     createTenantSessionForDgfyAccount
+});
+
+export const listDgfyAccountCompaniesUseCase = buildListDgfyAccountCompaniesUseCase({
+    repository: dgfyAccountRepository
+});
+
+export const requestDgfyBusinessStepUpUseCase = buildRequestDgfyBusinessStepUpUseCase({
+    requestEmailOtp,
+    emailOtpPurposes: {
+        DGFY_BUSINESS_STEP_UP: 'dgfy_business_step_up'
+    }
+});
+
+export const switchDgfyCompanyUseCase = buildSwitchDgfyCompanyUseCase({
+    repository: dgfyAccountRepository,
+    createTenantSessionForDgfyAccount,
+    verifyEmailOtp,
+    emailOtpPurposes: {
+        DGFY_BUSINESS_STEP_UP: 'dgfy_business_step_up'
+    }
 });
 
 export const listAdminDgfyAccountsUseCase = buildListAdminDgfyAccountsUseCase({

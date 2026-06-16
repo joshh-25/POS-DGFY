@@ -47,6 +47,10 @@ export default (sequelize) => {
         accepted_at: {
             type: DataTypes.DATE,
             allowNull: true
+        },
+        last_selected_at: {
+            type: DataTypes.DATE,
+            allowNull: true
         }
     }, {
         sequelize,

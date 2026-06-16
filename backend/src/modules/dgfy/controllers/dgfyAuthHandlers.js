@@ -5,12 +5,15 @@ import {
     createDgfyHandoffUseCase,
     exchangeDgfyHandoffUseCase,
     getDgfyLegalTermsUseCase,
+    listDgfyAccountCompaniesUseCase,
     registerDgfyAccountUseCase,
     loginDgfyAccountUseCase,
     getDgfyMeUseCase,
+    requestDgfyBusinessStepUpUseCase,
     requestDgfyPasswordResetUseCase,
     requestDgfyEmailVerificationUseCase,
     startDgfyTenantSessionUseCase,
+    switchDgfyCompanyUseCase,
     updateDgfyProfileUseCase,
     verifyDgfyEmailUseCase
 } from '../index.js';
@@ -27,6 +30,22 @@ import {
 const setDgfyCookieFromResult = (res, result) => {
     const token = result?.data?.payload?.data?.token || result?.data?.token;
     if (token) setBearerSessionCookie(res, SESSION_COOKIE_NAMES.dgfy, token);
+};
+
+const buildRequestMetadata = (req) => ({
+    request_id: req.headers['x-request-id'] || req.requestId || null,
+    ip_address: req.ip || null,
+    user_agent: req.get?.('user-agent') || req.headers['user-agent'] || null
+});
+
+const stripTenantSessionRefreshPayload = (result, fallbackMessage = 'SKUpervisor session started.') => {
+    const session = { ...(result.data?.payload?.data || {}) };
+    delete session.refreshToken;
+    return {
+        success: true,
+        data: session,
+        message: result.data?.payload?.message || fallbackMessage
+    };
 };
 
 export const getDgfyLegalTerms = async (req, res) => {
@@ -62,6 +81,26 @@ export const loginDgfyAccount = async (req, res) => {
 export const getDgfyMe = async (req, res) => {
     const result = await getDgfyMeUseCase({ account: req.dgfyAccount });
     return sendUseCaseResult(res, result);
+};
+
+export const listDgfyAccountCompanies = async (req, res) => {
+    const result = await listDgfyAccountCompaniesUseCase({
+        account: req.dgfyAccount,
+        currentTenantToken: req.headers?.['x-company-token'] || getCookie(req, SESSION_COOKIE_NAMES.tenantContext) || ''
+    });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'DGFY company list lookup failed'
+    });
+};
+
+export const requestDgfyBusinessStepUp = async (req, res) => {
+    const result = await requestDgfyBusinessStepUpUseCase({
+        account: req.dgfyAccount,
+        metadata: buildRequestMetadata(req)
+    });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'DGFY business security code request failed'
+    });
 };
 
 export const updateDgfyProfile = async (req, res) => {
@@ -162,10 +201,33 @@ export const logoutDgfyAccount = async (req, res) => {
 export const acceptDgfyInvitation = async (req, res) => {
     const result = await acceptDgfyInvitationUseCase({
         account: req.dgfyAccount,
-        membershipId: req.params.membership_id
+        membershipId: req.params.membership_id,
+        body: req.body,
+        metadata: buildRequestMetadata(req)
     });
     return sendUseCaseResult(res, result, {
         fallbackErrorMessage: 'DGFY invitation acceptance failed'
+    });
+};
+
+export const switchDgfyCompany = async (req, res) => {
+    const result = await switchDgfyCompanyUseCase({
+        account: req.dgfyAccount,
+        tenantId: req.params.tenant_id,
+        body: req.body,
+        metadata: buildRequestMetadata(req)
+    });
+
+    if (result?.success) {
+        setTenantSessionCookies(res, {
+            refreshToken: result.data?.payload?.data?.refreshToken,
+            tenantToken: result.data?.payload?.data?.company?.token || null
+        });
+    }
+
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'DGFY company switch failed',
+        successPayloadResolver: (resolvedResult) => stripTenantSessionRefreshPayload(resolvedResult, 'Company switched.')
     });
 };
 
@@ -185,13 +247,7 @@ export const startDgfyTenantSession = async (req, res) => {
     return sendUseCaseResult(res, result, {
         fallbackErrorMessage: 'DGFY tenant session handoff failed',
         successPayloadResolver: () => {
-            const session = { ...(result.data?.payload?.data || {}) };
-            delete session.refreshToken;
-            return {
-                success: true,
-                data: session,
-                message: result.data?.payload?.message || 'SKUpervisor session started.'
-            };
+            return stripTenantSessionRefreshPayload(result, 'SKUpervisor session started.');
         }
     });
 };

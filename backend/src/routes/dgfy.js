@@ -10,11 +10,14 @@ import {
     exchangeDgfyHandoff,
     getDgfyLegalTerms,
     getDgfyMe,
+    listDgfyAccountCompanies,
     loginDgfyAccount,
     logoutDgfyAccount,
+    requestDgfyBusinessStepUp,
     requestDgfyPasswordReset,
     requestDgfyEmailVerification,
     startDgfyTenantSession,
+    switchDgfyCompany,
     updateDgfyProfile,
     verifyDgfyEmail,
     registerDgfyAccount
@@ -67,6 +70,9 @@ router.post('/auth/email-verification/request', authLimiter, authenticateDgfyAcc
 router.post('/auth/email-verification/verify', authLimiter, authenticateDgfyAccount, verifyDgfyEmail);
 router.post('/auth/handoff', authenticateDgfyAccount, createDgfyHandoff);
 router.post('/auth/tenant-session', authLimiter, authenticateDgfyAccount, startDgfyTenantSession);
+router.get('/account/companies', authenticateDgfyAccount, listDgfyAccountCompanies);
+router.post('/account/business-step-up/request', authLimiter, authenticateDgfyAccount, requestDgfyBusinessStepUp);
+router.post('/account/companies/:tenant_id/switch', authLimiter, authenticateDgfyAccount, switchDgfyCompany);
 router.post('/invitations/:membership_id/accept', authenticateDgfyAccount, acceptDgfyInvitation);
 
 router.get('/admin/accounts', authenticateAdmin, listAdminDgfyAccounts);

@@ -6,10 +6,13 @@ import {
     buildCreateDgfyHandoffUseCase,
     buildExchangeDgfyHandoffUseCase,
     buildGetDgfyMeUseCase,
+    buildListDgfyAccountCompaniesUseCase,
     buildLoginDgfyAccountUseCase,
+    buildRequestDgfyBusinessStepUpUseCase,
     buildRequestDgfyPasswordResetUseCase,
     buildRequestDgfyEmailVerificationUseCase,
     buildStartDgfyTenantSessionUseCase,
+    buildSwitchDgfyCompanyUseCase,
     buildUpdateDgfyProfileUseCase,
     buildVerifyDgfyEmailUseCase,
     buildRegisterDgfyAccountUseCase
@@ -409,6 +412,259 @@ describe('dgfyAuthUseCases', () => {
         expect(result.success).toBe(false);
         expect(result.error.statusCode).toBe(400);
         expect(createTenantSessionForDgfyAccount).not.toHaveBeenCalled();
+    });
+
+    it('lists DGFY account companies without exposing company tokens', async () => {
+        const membershipRows = [{
+            id: 10,
+            tenant_id: 'tenant-1',
+            tenant_user_id: 5,
+            role: 'admin',
+            status: 'accepted',
+            source: 'founder',
+            accepted_at: new Date('2026-06-16T10:00:00.000Z'),
+            last_selected_at: new Date('2026-06-16T10:10:00.000Z'),
+            tenant: {
+                id: 'tenant-1',
+                name: 'Accepted Foods',
+                company_token: 'secret-company-token',
+                status: 'active',
+                plan: 'premium'
+            }
+        }, {
+            id: 11,
+            tenant_id: 'tenant-2',
+            tenant_user_id: 6,
+            role: 'staff',
+            status: 'pending',
+            source: 'invite',
+            accepted_at: null,
+            last_selected_at: null,
+            tenant: {
+                id: 'tenant-2',
+                name: 'Pending Coffee',
+                company_token: 'secret-pending-token',
+                status: 'active',
+                plan: 'standard'
+            }
+        }];
+        const repository = {
+            mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([]),
+            listMemberships: jest.fn().mockResolvedValue(membershipRows)
+        };
+        const useCase = buildListDgfyAccountCompaniesUseCase({ repository });
+
+        const result = await useCase({
+            account: createAccount(),
+            currentTenantToken: 'secret-company-token'
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.payload.data.accepted_count).toBe(1);
+        expect(result.data.payload.data.pending_count).toBe(1);
+        expect(result.data.payload.data.companies[0]).toEqual(expect.objectContaining({
+            company_name: 'Accepted Foods',
+            can_switch: true,
+            is_current: true,
+            requires_action: null
+        }));
+        expect(result.data.payload.data.companies[1]).toEqual(expect.objectContaining({
+            company_name: 'Pending Coffee',
+            can_switch: false,
+            requires_action: 'accept_invitation'
+        }));
+        expect(JSON.stringify(result.data.payload.data)).not.toContain('secret-company-token');
+        expect(JSON.stringify(result.data.payload.data)).not.toContain('secret-pending-token');
+        expect(result.data.payload.data.business_step_up).toEqual(expect.objectContaining({
+            verified: false,
+            verified_at: null,
+            expires_at: null
+        }));
+    });
+
+    it('requests a DGFY business step-up code for the account email', async () => {
+        const requestEmailOtp = jest.fn().mockResolvedValue({
+            otp_id: 'otp-step-up',
+            purpose: 'dgfy_business_step_up',
+            email: 'ada@example.test'
+        });
+        const useCase = buildRequestDgfyBusinessStepUpUseCase({ requestEmailOtp });
+
+        const result = await useCase({
+            account: createAccount(),
+            metadata: { request_id: 'req-step-up' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(requestEmailOtp).toHaveBeenCalledWith(expect.objectContaining({
+            purpose: 'dgfy_business_step_up',
+            email: 'ada@example.test',
+            tenantId: null,
+            metadata: { request_id: 'req-step-up' }
+        }));
+    });
+
+    it('switches DGFY companies only after business email step-up', async () => {
+        const account = createAccount();
+        const membership = {
+            id: 12,
+            tenant_id: 'tenant-1',
+            tenant: {
+                id: 'tenant-1',
+                name: 'Switch Foods',
+                company_token: 'secret-switch-token',
+                status: 'active',
+                plan: 'premium'
+            }
+        };
+        const session = {
+            token: 'tenant-access',
+            refreshToken: 'tenant-refresh',
+            company: { id: 'tenant-1', name: 'Switch Foods', token: 'secret-switch-token' }
+        };
+        const repository = {
+            findMembershipForAccount: jest.fn().mockResolvedValue(membership),
+            updateMembershipLastSelected: jest.fn().mockResolvedValue(null),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const verifyEmailOtp = jest.fn().mockResolvedValue({ verified: true });
+        const createTenantSessionForDgfyAccount = jest.fn().mockResolvedValue(session);
+        const useCase = buildSwitchDgfyCompanyUseCase({
+            repository,
+            createTenantSessionForDgfyAccount,
+            verifyEmailOtp
+        });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-1',
+            body: { email_otp_code: '123456' },
+            metadata: { request_id: 'req-switch' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(verifyEmailOtp).toHaveBeenCalledWith(expect.objectContaining({
+            purpose: 'dgfy_business_step_up',
+            email: account.email,
+            code: '123456',
+            tenantId: null
+        }));
+        expect(createTenantSessionForDgfyAccount).toHaveBeenCalledWith({
+            account,
+            tenantId: 'tenant-1'
+        });
+        expect(repository.updateMembershipLastSelected).toHaveBeenCalledWith(membership);
+        expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'company_switch_success',
+            result: 'success',
+            request_id: 'req-switch'
+        }));
+        expect(result.data.payload.data).toEqual(session);
+    });
+
+    it('switches DGFY companies with a recent business step-up without consuming another OTP', async () => {
+        const account = createAccount({
+            business_step_up_verified_at: new Date()
+        });
+        const membership = {
+            id: 12,
+            tenant_id: 'tenant-1',
+            tenant: {
+                id: 'tenant-1',
+                name: 'Switch Foods',
+                company_token: 'secret-switch-token',
+                status: 'active',
+                plan: 'premium'
+            }
+        };
+        const session = {
+            token: 'tenant-access',
+            refreshToken: 'tenant-refresh',
+            company: { id: 'tenant-1', name: 'Switch Foods', token: 'secret-switch-token' }
+        };
+        const repository = {
+            findMembershipForAccount: jest.fn().mockResolvedValue(membership),
+            updateMembershipLastSelected: jest.fn().mockResolvedValue(null),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null),
+            markBusinessStepUpVerified: jest.fn()
+        };
+        const verifyEmailOtp = jest.fn();
+        const createTenantSessionForDgfyAccount = jest.fn().mockResolvedValue(session);
+        const useCase = buildSwitchDgfyCompanyUseCase({
+            repository,
+            createTenantSessionForDgfyAccount,
+            verifyEmailOtp
+        });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-1',
+            body: {}
+        });
+
+        expect(result.success).toBe(true);
+        expect(verifyEmailOtp).not.toHaveBeenCalled();
+        expect(repository.markBusinessStepUpVerified).not.toHaveBeenCalled();
+        expect(createTenantSessionForDgfyAccount).toHaveBeenCalledWith({
+            account,
+            tenantId: 'tenant-1'
+        });
+    });
+
+    it('accepts a pending DGFY invitation with email step-up and does not return a company token', async () => {
+        const account = createAccount();
+        const membership = {
+            id: 21,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-1',
+            tenant_user_id: 6,
+            role: 'staff',
+            status: 'pending',
+            source: 'invite',
+            tenant: {
+                id: 'tenant-1',
+                name: 'Invited Foods',
+                company_token: 'secret-invite-token',
+                status: 'active',
+                plan: 'standard'
+            }
+        };
+        const acceptedMembership = {
+            ...membership,
+            status: 'accepted',
+            accepted_at: new Date('2026-06-16T11:00:00.000Z')
+        };
+        const repository = {
+            findMembershipById: jest.fn().mockResolvedValue(membership),
+            acceptInvitationMembership: jest.fn().mockResolvedValue(acceptedMembership),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null),
+            markBusinessStepUpVerified: jest.fn().mockResolvedValue(null)
+        };
+        const verifyEmailOtp = jest.fn().mockResolvedValue({ verified: true });
+        const useCase = buildAcceptDgfyInvitationUseCase({
+            repository,
+            verifyEmailOtp
+        });
+
+        const result = await useCase({
+            account,
+            membershipId: '21',
+            body: { email_otp_code: '123456' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(verifyEmailOtp).toHaveBeenCalledWith(expect.objectContaining({
+            purpose: 'dgfy_business_step_up',
+            email: account.email,
+            code: '123456',
+            tenantId: null
+        }));
+        expect(repository.acceptInvitationMembership).toHaveBeenCalledWith({ membership, account });
+        expect(JSON.stringify(result.data.payload.data)).not.toContain('secret-invite-token');
+        expect(result.data.payload.data.membership.company).toEqual(expect.objectContaining({
+            id: 'tenant-1',
+            name: 'Invited Foods'
+        }));
     });
 
     it('updates the DGFY profile and clears phone verification when phone changes', async () => {

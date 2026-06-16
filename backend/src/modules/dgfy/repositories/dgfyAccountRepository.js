@@ -2,6 +2,7 @@ import { Op } from 'sequelize';
 import {
     DgfyAccount,
     DgfyAccountAdminAuditLog,
+    DgfyAccountBusinessAuditLog,
     DgfyAccountHandoff,
     DgfyAccountTenantMembership,
     DgfyLegalAcknowledgement,
@@ -12,6 +13,7 @@ import dbStore from '../../../utils/dbStore.js';
 import tenantConnector from '../../../utils/TenantConnector.js';
 import { getTenantModels } from '../../../utils/tenantModelFactory.js';
 import * as landlordService from '../../../services/landlordService.js';
+import logger from '../../../config/logger.js';
 import { DEFAULT_ROLE_PERMISSIONS } from '../../../config/permissions.js';
 import { normalizePhoneNumber } from '../../../utils/phoneNumber.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
@@ -131,7 +133,7 @@ export const dgfyAccountRepository = {
             model: DgfyAccountTenantMembership,
             as: 'tenantMemberships',
             required: normalizedMembership === 'has_membership',
-            attributes: ['id', 'tenant_id', 'tenant_user_id', 'role', 'status', 'source', 'accepted_at', 'created_at'],
+            attributes: ['id', 'tenant_id', 'tenant_user_id', 'role', 'status', 'source', 'accepted_at', 'last_selected_at', 'created_at'],
             include: [{
                 model: Tenant,
                 as: 'tenant',
@@ -188,7 +190,7 @@ export const dgfyAccountRepository = {
             include: [{
                 model: DgfyAccountTenantMembership,
                 as: 'tenantMemberships',
-                attributes: ['id', 'tenant_id', 'tenant_user_id', 'role', 'status', 'source', 'accepted_at', 'created_at', 'updated_at'],
+                attributes: ['id', 'tenant_id', 'tenant_user_id', 'role', 'status', 'source', 'accepted_at', 'last_selected_at', 'created_at', 'updated_at'],
                 include: [{
                     model: Tenant,
                     as: 'tenant',
@@ -224,6 +226,19 @@ export const dgfyAccountRepository = {
 
     createAdminAuditLog(payload, options = {}) {
         return DgfyAccountAdminAuditLog.create(payload, options);
+    },
+
+    createBusinessAuditLog(payload, options = {}) {
+        return DgfyAccountBusinessAuditLog.create(payload, options).catch((error) => {
+            logger.warn('[DGFY] Business audit log write failed', {
+                action: payload?.action,
+                result: payload?.result,
+                dgfy_account_id: payload?.dgfy_account_id,
+                tenant_id: payload?.tenant_id,
+                error: error?.message
+            });
+            return null;
+        });
     },
 
     createHandoff({ jti, dgfyAccountId, expiresAt }) {
@@ -355,6 +370,23 @@ export const dgfyAccountRepository = {
         return DgfyAccountTenantMembership.findByPk(id, options);
     },
 
+    findMembershipForAccount({ dgfyAccountId, tenantId, status = null }, options = {}) {
+        const where = {
+            dgfy_account_id: dgfyAccountId,
+            tenant_id: tenantId
+        };
+        if (status) where.status = status;
+        return DgfyAccountTenantMembership.findOne({
+            where,
+            include: [{
+                model: Tenant,
+                as: 'tenant',
+                attributes: ['id', 'name', 'company_token', 'status', 'plan']
+            }],
+            ...options
+        });
+    },
+
     async acceptInvitationMembership({ membership, account }) {
         const tenant = membership?.tenant;
         if (!tenant || !tenant.company_token || tenant.status !== 'active') {
@@ -468,8 +500,22 @@ export const dgfyAccountRepository = {
                 as: 'tenant',
                 attributes: ['id', 'name', 'company_token', 'status', 'plan']
             }],
-            order: [['created_at', 'DESC']]
+            order: [
+                ['last_selected_at', 'DESC'],
+                ['updated_at', 'DESC'],
+                ['created_at', 'DESC']
+            ]
         });
+    },
+
+    updateMembershipLastSelected(membership, options = {}) {
+        if (!membership) return null;
+        return membership.update({ last_selected_at: new Date() }, options);
+    },
+
+    markBusinessStepUpVerified(account, verifiedAt = new Date(), options = {}) {
+        if (!account) return null;
+        return account.update({ business_step_up_verified_at: verifiedAt }, options);
     }
 };
 

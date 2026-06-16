@@ -34,7 +34,7 @@ export const authenticateDgfyAccount = async (req, res, next) => {
         }
 
         const account = await dgfyAccountRepository.findById(decoded.dgfy_account_id);
-        if (!account || !account.is_active) {
+        if (!account || !account.is_active || account.deleted_at) {
             return res.status(401).json({
                 success: false,
                 data: null,
