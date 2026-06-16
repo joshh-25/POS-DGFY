@@ -4,3 +4,8 @@ When to use:
 1. Production checklists and operational runbooks
 2. Readiness and incident-prevention controls
 3. System operations assurance procedures
+
+Key runbooks:
+1. `docs/ops/PRODUCTION_CHECKLIST.md`
+2. `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
+3. `docs/ops/PRODUCTION_OBSERVABILITY_RUNBOOK.md`

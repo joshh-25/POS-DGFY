@@ -546,3 +546,22 @@ Command:
 
 Output:
 1. `.tmp/release-gates/<sha>/local_readiness.json`
+
+## Production Observability Evidence
+
+Use this gate to attach production traceability evidence to local and no-staging release artifacts.
+
+Command:
+1. `npm run gate:release:observability`
+
+Output:
+1. `.tmp/release-gates/<sha>/observability_evidence.json`
+
+Default behavior:
+1. Report mode, non-blocking for the first rollout.
+2. Checks `/health`, request/trace header round-trip, `/metrics` when enabled, structured request logging configuration, incident bundle dry-run, deploy SHA evidence, and stale QA deploy-head review.
+3. Set `OBSERVABILITY_GATE_MODE=enforce` after one successful production release proves the evidence workflow.
+
+Incident bundle command:
+1. `npm run evidence:incident -- --request-id <request_id> --since <iso> --until <iso> --surface <surface>`
+2. Output: `.tmp/incident-bundles/<timestamp>-<slug>/`

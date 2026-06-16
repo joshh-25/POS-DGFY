@@ -36,10 +36,11 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 10. `npm run gate:release:local`
 11. `npm run gate:release:no-staging:qa-env` or the dot-sourced `.env.qa.local` / `.env.qa.secrets.local` wrapper documented in `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
 12. `node scripts/verify-release-verdict.js --file ".tmp/release-gates/<sha>/release_verdict.json" --sha "<sha>"`
-13. `npm run gate:release:prod-contracts:env` or an equivalent exported production contract environment
-14. `npm run audit:location-stock-parity`
-15. `npm run audit:fifo-drift`
-16. `npm run audit:tenant-index-headroom -- --redundant-groups-threshold=0`
+13. `npm run gate:release:observability`
+14. `npm run gate:release:prod-contracts:env` or an equivalent exported production contract environment
+15. `npm run audit:location-stock-parity`
+16. `npm run audit:fifo-drift`
+17. `npm run audit:tenant-index-headroom -- --redundant-groups-threshold=0`
 
 ## Latest Technical Evidence (2026-06-16)
 
