@@ -35,10 +35,10 @@ The UAT ratings recorded by the gate are DGFY account UI shell `9.2`, DGFY signu
 Guest users can:
 
 - Browse discovery, tenant storefronts, catalogs, services, and mode-specific storefront views.
-- Quote and checkout when Customer Access Mode allows transactions.
-- Receive a tracking PIN or public booking reference.
-- Complete checkout or booking as a guest when the storefront policy allows it.
-- Track a known reference.
+- Build a cart or booking draft before signing in.
+- View the inline account-required gate before customer-details or submit steps.
+- Launch create-account or sign-in from the canonical `/dgfy/auth` route and return to step 1 of the same storefront draft after auth.
+- Track a known reference only for older compatibility flows that already exist; guest tracking is no longer the intended primary path for new storefront transactions.
 - Request tracking recovery with an email or phone lookup. Production responses are always generic and do not expose whether a match or delivery channel exists.
 - Submit a fulfilled-order guest review only when the completed tracking response returns a valid review invite. Guest review invites are token-scoped, single-use, and separate from signed-in DGFY account history.
 - Create or sign in to a DGFY account from the canonical `/dgfy/auth` route after launching from the storefront or discovery customer-account surface. Registration collects Last Name, First Name, Optional Middle Name, email, contact number, password, and confirm password, with password visibility toggles.
@@ -57,6 +57,7 @@ Signed-in DGFY users can:
 - Submit typed reviews only for eligible paid or completed account activity. Supported targets are `product`, `service`, `hospitality_booking`, `fnb_order`, and `fnb_item`; reviews start as pending approval and duplicate account/activity/target reviews are rejected.
 - Manage global saved delivery locations, including create, update, delete, set default, readable address text, and optional exact latitude/longitude pin coordinates.
 - Storefront pages with an existing DGFY customer token or HttpOnly `sku_dgfy_session` cookie auto-load the signed-in customer context. Before tenant context is available, the aggregate `/api/v1/dgfy/customer/dashboard` can supply account/profile/address context; once a tenant store context is active, Storefront quote, checkout, booking, follow/status, and authenticated Store routes use the DGFY-capable Store auth bridge before falling back to tenant-local Store JWTs. Empty checkout contact fields are prefilled from the signed-in profile, and an empty delivery address is prefilled from the default saved address when the customer is on a delivery checkout/booking path. The sign-in dialog's **Remember me** behavior is cookie-session rehydration only; the frontend must not persist DGFY tokens in `localStorage` or `sessionStorage`.
+- Storefront checkout and booking are account-required from the customer-details step onward. Signed-out customers can browse, add items, and build booking drafts, but they must authenticate before entering customer details or submitting the transaction. The storefront preserves only non-sensitive draft state across the auth redirect, returns the customer to step 1 of the active order or booking flow after auth, and uses the signed-in DGFY account identity as read-only checkout contact data.
 - Storefront-originated customer sign-in/signup uses the same DGFY handoff endpoint as business registration when the auth page returns to an absolute Storefront URL such as `/map-dgfy?dgfy_account=1`. The DGFY auth page creates the short-lived handoff token after successful login/signup or existing-session detection, appends it to the Storefront return URL, and falls back to the original return URL if handoff creation fails. The Storefront consumes the token before the unauthenticated `/api/v1/dgfy/auth/me` probe so a successful signup does not reopen the guest launcher.
 - Account page loading validates `/api/v1/dgfy/auth/me` before loading dashboard, activity, or loyalty data. When the in-memory DGFY token is empty after a browser reload, the frontend must still call `/api/v1/dgfy/auth/me` with `credentials: include` so the backend can authenticate the HttpOnly cookie. A `401` clears stale browser token/session state and shows a sign-in-required account page instead of repeatedly calling account dashboard endpoints with an invalid session.
 - Successful authenticated checkout or booking refreshes the DGFY account panel so active orders, order history, bookings, saved locations, loyalty, and current tracking can reflect the latest POS/storefront transaction without requiring a full page reload.
@@ -71,14 +72,13 @@ Signed-in DGFY users can:
 
 ## Checkout And Booking Account Actions
 
-Storefront order checkout and Services booking responses return `account_action` so the UI can separate customers with accounts from guests:
+Storefront order checkout and Services booking are now account-required before customer details and submit:
 
-- `linked_authenticated`: the transaction is linked to the signed-in DGFY account.
-- `offer_signup`: the guest email does not currently match a DGFY account, so the customer can create one to save future activity.
-- `existing_account_download_only`: the guest email already belongs to a DGFY account, so the customer should sign in instead of creating a duplicate account.
-- `download_only_guest_no_email`: no usable email/account signal exists; the customer receives only the downloadable/tracking confirmation.
-
-Copy must be order- or booking-specific. Guest service bookings should not be described as generic checkout orders.
+- Signed-out customers may browse and build drafts only.
+- The inline checkout gate must offer `Create DGFY Account` and `Log in to DGFY`.
+- Successful auth must return the customer to the same storefront draft and resume at step 1 of the active flow.
+- Authenticated checkout should display read-only account name, contact number, and email instead of asking the customer to retype those values.
+- Completed order and booking activity is account-owned from creation time and must appear only on the signed-in customer dashboard linked to that DGFY account.
 
 ## Fulfilled Guest Review Invites
 
@@ -136,7 +136,7 @@ Current validation must include:
 - `npm run backfill:dgfy-customer-activity -- --tenant-page-size 1 --transaction-limit-per-tenant 1`
 - `npm run backfill:dgfy-customer-activity -- --all-transactions --require-activity-types=order,service_booking,hospitality_booking,fnb_order` when production release evidence must prove all customer-facing modes are present.
 - `npm run uat:production:dgfy` when controlled production mutation UAT is approved and a dedicated QA account, tenant, item, checkout, POS operator path, inventory record, and cleanup/signoff rule are available.
-- DGFY auth and Storefront checkout/order regression tests.
+- DGFY auth and Storefront checkout/order regression tests, including account-required checkout and post-auth draft resume.
 - `npm --prefix frontend run build:store`
 - Rendered desktop and mobile storefront smoke checks for the discovery auth dialog, routed account page, recovery panel, address controls, loyalty summary, order actions, and company-registration separation.
 - `npm --prefix frontend test -- --run src/features/pos/__tests__/terminalLocationScope.integration.test.jsx`

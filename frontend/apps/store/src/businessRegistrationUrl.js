@@ -8,8 +8,8 @@ const resolveLocalOriginForPort = (port) => {
 };
 
 const resolveDevSkupervisorOrigin = () => (
-  resolveLocalOriginForPort(String(import.meta.env?.VITE_SKUPERVISOR_DEV_PORT || '5180').trim() || '5180')
-  || 'http://127.0.0.1:5180'
+  resolveLocalOriginForPort(String(import.meta.env?.VITE_SKUPERVISOR_DEV_PORT || '5173').trim() || '5173')
+  || 'http://127.0.0.1:5173'
 );
 
 const DEFAULT_BUSINESS_REGISTRATION_URL = isDev

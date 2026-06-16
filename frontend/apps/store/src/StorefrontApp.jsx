@@ -1275,6 +1275,7 @@ const DGFY_CUSTOMER_AUTH_TOKEN_KEYS = ['dgfy_customer_account_token', 'dgfy_acco
 const STOREFRONT_RECENT_STORES_STORAGE_KEY = 'dgfy_store_recent_stores';
 const STOREFRONT_LAST_STORE_STORAGE_KEY = 'dgfy_store_last_store_slug';
 const STOREFRONT_SAVED_DETAILS_STORAGE_KEY = 'dgfy_store_saved_customer_details_v1';
+const STOREFRONT_CHECKOUT_AUTH_RESUME_KEY = 'dgfy_store_checkout_auth_resume_v1';
 const STOREFRONT_LAST_TRACKING_PIN_KEY_PREFIX = 'dgfy_store_last_tracking_pin_v1';
 const STOREFRONT_TRACKED_ORDERS_KEY_PREFIX = 'dgfy_store_tracked_orders_v1';
 const TERMINAL_TRACKING_STATUSES = new Set(['completed', 'cancelled', 'rejected']);
@@ -1369,6 +1370,69 @@ const writeSavedCustomerDetails = (value) => {
 const clearSavedCustomerDetails = () => {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem(STOREFRONT_SAVED_DETAILS_STORAGE_KEY);
+};
+
+const normalizeCheckoutAuthResumeDraft = (value) => {
+  if (!value || typeof value !== 'object') return null;
+  const routeSlug = toSlug(value.routeSlug || value.storeSlug || '');
+  const checkoutTab = String(value.checkoutTab || '').trim();
+  const cart = Array.isArray(value.cart) ? value.cart : [];
+  if (!routeSlug || !checkoutTab || cart.length === 0) return null;
+  return {
+    version: 1,
+    routeSlug,
+    returnTo: String(value.returnTo || '').trim(),
+    checkoutTab,
+    fnbOrderStep: Number(value.fnbOrderStep || 0) || null,
+    simpleOrderStep: Number(value.simpleOrderStep || 0) || null,
+    serviceBookingStep: Number(value.serviceBookingStep || 0) || null,
+    selectedLocationId: Number.isFinite(Number(value.selectedLocationId)) ? Number(value.selectedLocationId) : null,
+    selectedSavedLocationId: String(value.selectedSavedLocationId || '').trim(),
+    orderMethod: String(value.orderMethod || '').trim(),
+    fnbScheduledFor: String(value.fnbScheduledFor || '').trim(),
+    fnbScheduleMode: String(value.fnbScheduleMode || '').trim(),
+    fnbSpecialInstructions: String(value.fnbSpecialInstructions || '').trim(),
+    serviceAppointmentAt: String(value.serviceAppointmentAt || '').trim(),
+    servicePaymentTiming: String(value.servicePaymentTiming || '').trim(),
+    customerAddress: String(value.customerAddress || '').trim(),
+    resolvedDeliveryAddress: String(value.resolvedDeliveryAddress || '').trim(),
+    deliveryLocationAction: String(value.deliveryLocationAction || '').trim(),
+    customerPin: value.customerPin && Number.isFinite(Number(value.customerPin.latitude)) && Number.isFinite(Number(value.customerPin.longitude))
+      ? {
+        latitude: Number(value.customerPin.latitude),
+        longitude: Number(value.customerPin.longitude)
+      }
+      : null,
+    serviceIntakeResponses: value.serviceIntakeResponses && typeof value.serviceIntakeResponses === 'object'
+      ? value.serviceIntakeResponses
+      : {},
+    cart,
+    selectedServiceItemId: Number.isFinite(Number(value.selectedServiceItemId)) ? Number(value.selectedServiceItemId) : null,
+    savedAt: Number(value.savedAt) || Date.now()
+  };
+};
+
+const readCheckoutAuthResumeDraft = () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(STOREFRONT_CHECKOUT_AUTH_RESUME_KEY) || 'null');
+    return normalizeCheckoutAuthResumeDraft(parsed);
+  } catch {
+    return null;
+  }
+};
+
+const writeCheckoutAuthResumeDraft = (value) => {
+  if (typeof window === 'undefined') return null;
+  const normalized = normalizeCheckoutAuthResumeDraft(value);
+  if (!normalized) return null;
+  window.sessionStorage.setItem(STOREFRONT_CHECKOUT_AUTH_RESUME_KEY, JSON.stringify(normalized));
+  return normalized;
+};
+
+const clearCheckoutAuthResumeDraft = () => {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.removeItem(STOREFRONT_CHECKOUT_AUTH_RESUME_KEY);
 };
 
 const getLastTrackingPinStorageKey = (slug = '') => `${STOREFRONT_LAST_TRACKING_PIN_KEY_PREFIX}:${toSlug(slug)}`;
@@ -5421,6 +5485,7 @@ export default function StorefrontApp() {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [checkoutTab, setCheckoutTab] = useState('checkout');
   const [pendingOrderInitialTab, setPendingOrderInitialTab] = useState('');
+  const [hasAppliedCheckoutAuthResume, setHasAppliedCheckoutAuthResume] = useState(false);
   const [followState, setFollowState] = useState({
     loading: false,
     isFollowing: false,
@@ -5630,6 +5695,34 @@ export default function StorefrontApp() {
     dgfySessionAccount?.username,
     savedCustomerDetails?.name
   ]);
+  const accountIdentityRawName = useMemo(() => {
+    const accountFirstName = String(accountPanel.me?.first_name || '').trim();
+    const accountLastName = String(accountPanel.me?.last_name || '').trim();
+    const accountJoined = [accountFirstName, accountLastName].filter(Boolean).join(' ').trim();
+    if (accountJoined) return accountJoined;
+    const accountName = String(accountPanel.me?.name || '').trim();
+    if (accountName) return accountName;
+    const sessionFirstName = String(dgfySessionAccount?.first_name || '').trim();
+    const sessionLastName = String(dgfySessionAccount?.last_name || '').trim();
+    const sessionJoined = [sessionFirstName, sessionLastName].filter(Boolean).join(' ').trim();
+    if (sessionJoined) return sessionJoined;
+    const sessionName = String(dgfySessionAccount?.name || '').trim();
+    if (sessionName) return sessionName;
+    return '';
+  }, [
+    accountPanel.me?.first_name,
+    accountPanel.me?.last_name,
+    accountPanel.me?.name,
+    dgfySessionAccount?.first_name,
+    dgfySessionAccount?.last_name,
+    dgfySessionAccount?.name
+  ]);
+  const accountIdentityRawPhone = useMemo(() => (
+    String(accountPanel.me?.phone || dgfySessionAccount?.phone || '').trim()
+  ), [accountPanel.me?.phone, dgfySessionAccount?.phone]);
+  const accountIdentityRawEmail = useMemo(() => (
+    String(accountPanel.me?.email || dgfySessionAccount?.email || '').trim()
+  ), [accountPanel.me?.email, dgfySessionAccount?.email]);
   const accountIdentityName = useMemo(() => (
     accountDisplayName
   ), [accountDisplayName]);
@@ -5682,6 +5775,26 @@ export default function StorefrontApp() {
     setSavedCustomerDetails(null);
     toast.success('Saved details cleared.');
   }, []);
+  useEffect(() => {
+    if (!isDgfyCustomerSignedIn) return;
+    if (accountIdentityRawName && !String(customerName || '').trim()) {
+      setCustomerName(accountIdentityRawName);
+    }
+    if (accountIdentityRawPhone && !String(customerPhone || '').trim()) {
+      setCustomerPhone(accountIdentityRawPhone);
+    }
+    if (accountIdentityRawEmail && !String(customerEmail || '').trim()) {
+      setCustomerEmail(accountIdentityRawEmail);
+    }
+  }, [
+    accountIdentityRawEmail,
+    accountIdentityRawName,
+    accountIdentityRawPhone,
+    customerEmail,
+    customerName,
+    customerPhone,
+    isDgfyCustomerSignedIn
+  ]);
   const renderSavedDetailsCard = () => (
     <div style={{ border: '1px solid #dbe5ee', borderRadius: 12, padding: '10px 12px', background: '#f8fafc', display: 'grid', gap: 10 }}>
       {hasSavedCustomerDetails ? (
@@ -5712,6 +5825,121 @@ export default function StorefrontApp() {
       </label>
       <div style={{ fontSize: 11, color: '#64748b' }}>Saved details are used only to speed up your checkout.</div>
     </div>
+  );
+  const renderAccountOwnedIdentitySummary = ({
+    title = 'Account Details',
+    subtitle = 'Your DGFY account details will be used for this order.',
+    showVerifiedBadge = true
+  } = {}) => {
+    const hasName = String(accountIdentityRawName || customerName || '').trim().length > 0;
+    const hasPhone = String(accountIdentityRawPhone || customerPhone || '').trim().length > 0;
+    const hasEmail = String(accountIdentityRawEmail || customerEmail || '').trim().length > 0;
+    const resolvedName = String(accountIdentityRawName || customerName || '').trim();
+    const resolvedPhone = String(accountIdentityRawPhone || customerPhone || '').trim();
+    const resolvedEmail = String(accountIdentityRawEmail || customerEmail || '').trim();
+    return (
+      <section style={{ border: '1px solid #dbeafe', borderRadius: 16, background: 'linear-gradient(135deg,#eff6ff,#ffffff)', padding: isMobileViewport ? 14 : 16, display: 'grid', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'grid', gap: 4 }}>
+            <div style={{ fontSize: 15, fontWeight: 900, color: '#0f172a' }}>{title}</div>
+            <div style={{ fontSize: 12, color: '#64748b' }}>{subtitle}</div>
+          </div>
+          {showVerifiedBadge && (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 999, border: '1px solid #bfdbfe', background: '#ffffff', color: '#1d4ed8', padding: '6px 10px', fontSize: 12, fontWeight: 800 }}>
+              <CheckCircle2 size={14} />
+              Account linked
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
+          <div style={{ borderRadius: 14, border: '1px solid #dbe5ee', background: '#fff', padding: '12px 13px', display: 'grid', gap: 6 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 800, color: '#475569' }}>
+              <User size={14} />
+              Name
+            </div>
+            {hasName ? (
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', wordBreak: 'break-word' }}>{resolvedName}</div>
+            ) : (
+              <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Enter your full name" style={{ minHeight: 44, border: '1px solid #cbd5e1', borderRadius: 12, padding: '10px 12px', background: '#fff' }} />
+            )}
+          </div>
+          <div style={{ borderRadius: 14, border: '1px solid #dbe5ee', background: '#fff', padding: '12px 13px', display: 'grid', gap: 6 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 800, color: '#475569' }}>
+              <Phone size={14} />
+              Contact Number
+            </div>
+            {hasPhone ? (
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', wordBreak: 'break-word' }}>{resolvedPhone}</div>
+            ) : (
+              <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="Enter your contact number" style={{ minHeight: 44, border: '1px solid #cbd5e1', borderRadius: 12, padding: '10px 12px', background: '#fff' }} />
+            )}
+          </div>
+          <div style={{ borderRadius: 14, border: '1px solid #dbe5ee', background: '#fff', padding: '12px 13px', display: 'grid', gap: 6 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 800, color: '#475569' }}>
+              <Mail size={14} />
+              Email Address
+            </div>
+            {hasEmail ? (
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', wordBreak: 'break-word' }}>{resolvedEmail}</div>
+            ) : (
+              <input value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} placeholder="Enter your email address" style={{ minHeight: 44, border: '1px solid #cbd5e1', borderRadius: 12, padding: '10px 12px', background: '#fff' }} />
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  };
+  const renderCheckoutAccountGate = ({
+    title = 'Continue to your order',
+    description = 'Create an account or log in to continue your order.',
+    createLabel = 'Create DGFY Account',
+    loginLabel = 'Have an account? Log in to DGFY',
+    createMode = 'create-account',
+    resumeTarget = {}
+  } = {}) => (
+    <section style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: isMobileViewport ? 16 : 22, background: '#ffffff', boxShadow: '0 8px 24px rgba(15,23,42,.04)', display: 'grid', gap: 16 }}>
+      <div style={{ borderRadius: 16, border: '1px solid #dbeafe', background: 'linear-gradient(135deg,#eff6ff,#f8fbff)', padding: isMobileViewport ? 16 : 18, display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1.15fr 180px', gap: 16, alignItems: 'center' }}>
+        <div style={{ display: 'grid', gap: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: '#1a4e8d', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            Account Required
+          </div>
+          <div style={{ fontSize: isMobileViewport ? 24 : 28, fontWeight: 900, color: '#0f172a', lineHeight: 1.08 }}>
+            Sign in or create your DGFY Account
+          </div>
+          <div style={{ fontSize: 14, color: '#64748b', lineHeight: 1.6 }}>
+            Use your DGFY account to continue this order or booking and keep it under your own customer dashboard.
+          </div>
+        </div>
+        <div style={{ justifySelf: isMobileViewport ? 'stretch' : 'end', width: isMobileViewport ? '100%' : 160, minHeight: 116, borderRadius: 18, background: 'linear-gradient(135deg,#dbeafe,#eff6ff)', display: 'grid', placeItems: 'center', color: '#1a4e8d' }}>
+          <ShoppingBag size={isMobileViewport ? 34 : 40} />
+        </div>
+      </div>
+      <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#fff', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 14 }}>
+        <div style={{ textAlign: 'center', display: 'grid', gap: 6 }}>
+          <div style={{ fontSize: isMobileViewport ? 20 : 22, fontWeight: 800, color: '#0f172a' }}>{title}</div>
+          <div style={{ fontSize: 13, color: '#64748b' }}>{description}</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => openCheckoutAuthFlow(createMode, resumeTarget)}
+          style={{ minHeight: 48, borderRadius: 12, border: 'none', background: '#1a4e8d', color: '#fff', fontWeight: 800, cursor: 'pointer', boxShadow: '0 10px 24px rgba(26,78,141,.18)' }}
+        >
+          {createLabel}
+        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>or</span>
+          <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+        </div>
+        <button
+          type="button"
+          onClick={() => openCheckoutAuthFlow('sign-in', resumeTarget)}
+          style={{ minHeight: 46, borderRadius: 12, border: '1px solid #1a4e8d', background: '#fff', color: '#1a4e8d', fontWeight: 800, cursor: 'pointer' }}
+        >
+          {loginLabel}
+        </button>
+      </div>
+    </section>
   );
 
 
@@ -8117,17 +8345,71 @@ export default function StorefrontApp() {
     target.searchParams.set('dgfy_account', '1');
     return target.toString();
   }, []);
-  const openCanonicalDgfyAuth = useCallback((intent = 'customer') => {
+  const persistCheckoutAuthResume = useCallback((resumeTarget = {}) => {
+    writeCheckoutAuthResumeDraft({
+      routeSlug: selectedStore?.slug || routeSlug,
+      returnTo: buildStorefrontAccountReturnUrl(),
+      checkoutTab: resumeTarget.checkoutTab || checkoutTab || 'checkout',
+      fnbOrderStep: resumeTarget.fnbOrderStep ?? fnbOrderStep,
+      simpleOrderStep: resumeTarget.simpleOrderStep ?? simpleOrderStep,
+      serviceBookingStep: resumeTarget.serviceBookingStep ?? serviceBookingStep,
+      selectedLocationId,
+      selectedSavedLocationId,
+      orderMethod,
+      fnbScheduledFor,
+      fnbScheduleMode,
+      fnbSpecialInstructions,
+      serviceAppointmentAt,
+      servicePaymentTiming,
+      customerAddress,
+      resolvedDeliveryAddress,
+      deliveryLocationAction,
+      customerPin,
+      serviceIntakeResponses,
+      cart,
+      selectedServiceItemId: selectedServiceDetail?.item_id || firstServiceLine?.item_id || null,
+      savedAt: Date.now()
+    });
+  }, [
+    buildStorefrontAccountReturnUrl,
+    cart,
+    checkoutTab,
+    customerAddress,
+    customerPin,
+    deliveryLocationAction,
+    fnbOrderStep,
+    fnbScheduleMode,
+    fnbScheduledFor,
+    fnbSpecialInstructions,
+    firstServiceLine?.item_id,
+    orderMethod,
+    resolvedDeliveryAddress,
+    routeSlug,
+    selectedLocationId,
+    selectedSavedLocationId,
+    selectedServiceDetail?.item_id,
+    selectedStore?.slug,
+    serviceAppointmentAt,
+    serviceBookingStep,
+    serviceIntakeResponses,
+    servicePaymentTiming,
+    simpleOrderStep
+  ]);
+  const openCanonicalDgfyAuth = useCallback((intent = 'customer', mode = 'sign-in') => {
     if (typeof window === 'undefined') return;
     const normalizedIntent = String(intent || '').trim() === 'register-business' ? 'register-business' : 'customer';
     window.location.href = buildDgfyAuthUrl({
       intent: normalizedIntent,
-      mode: 'sign-in',
+      mode: String(mode || '').trim() === 'create-account' ? 'create-account' : 'sign-in',
       returnTo: normalizedIntent === 'customer'
         ? buildStorefrontAccountReturnUrl()
         : '/register-company#business-registration'
     });
   }, [buildStorefrontAccountReturnUrl]);
+  const openCheckoutAuthFlow = useCallback((mode = 'create-account', resumeTarget = {}) => {
+    persistCheckoutAuthResume(resumeTarget);
+    openCanonicalDgfyAuth('customer', mode);
+  }, [openCanonicalDgfyAuth, persistCheckoutAuthResume]);
   const openBusinessRegistrationFlow = useCallback(async () => {
     if (typeof window === 'undefined') return;
     if (!isDgfyCustomerSignedIn) {
@@ -8650,6 +8932,20 @@ export default function StorefrontApp() {
     if (!selectedStore) return;
     setCheckoutError('');
     setCheckoutResult(null);
+    if (!isDgfyCustomerSignedIn) {
+      const resumeTarget = hasServiceCart || (isServicesMode && activeBookingService)
+        ? { checkoutTab: 'checkout', serviceBookingStep: serviceBookingStep || 1 }
+        : isFnbMode
+          ? { checkoutTab: 'cart', fnbOrderStep: Math.max(3, Number(fnbOrderStep || 3)) }
+          : isSimpleMode
+            ? { checkoutTab: 'checkout', simpleOrderStep: Math.max(2, Number(simpleOrderStep || 2)) }
+            : { checkoutTab: checkoutTab || 'checkout' };
+      persistCheckoutAuthResume(resumeTarget);
+      const message = 'Sign in or create a DGFY account to continue.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
     const serviceBookingLine = hasServiceCart
       ? firstServiceLine
       : (isServicesMode && activeBookingService
@@ -8826,6 +9122,7 @@ export default function StorefrontApp() {
           orderSuccessAnimationTimerRef.current = null;
         }, 1200);
       }
+      clearCheckoutAuthResumeDraft();
       toast.success(hasServiceCart ? 'Booking created.' : 'Checkout completed.');
     } catch (error) {
       const violation = extractStockViolation(error);
@@ -9141,6 +9438,52 @@ export default function StorefrontApp() {
       window.history.replaceState({}, '', currentUrl.toString());
     }
   }, [isDgfyCustomerSignedIn]);
+  useEffect(() => {
+    if (typeof window === 'undefined' || hasAppliedCheckoutAuthResume || !isDgfyCustomerSignedIn) return;
+    const draft = readCheckoutAuthResumeDraft();
+    const normalizedDraftSlug = toSlug(draft?.routeSlug || '');
+    const normalizedCurrentSlug = toSlug(selectedStore?.slug || routeSlug || '');
+    if (!draft || !normalizedDraftSlug || !normalizedCurrentSlug || normalizedDraftSlug !== normalizedCurrentSlug) return;
+    setCart(Array.isArray(draft.cart) ? draft.cart : []);
+    if (draft.selectedLocationId != null) setSelectedLocationId(draft.selectedLocationId);
+    if (draft.selectedSavedLocationId) setSelectedSavedLocationId(draft.selectedSavedLocationId);
+    if (draft.orderMethod) setOrderMethod(draft.orderMethod);
+    if (draft.fnbScheduledFor) setFnbScheduledFor(draft.fnbScheduledFor);
+    if (draft.fnbScheduleMode) setFnbScheduleMode(draft.fnbScheduleMode);
+    if (draft.fnbSpecialInstructions) setFnbSpecialInstructions(draft.fnbSpecialInstructions);
+    if (draft.serviceAppointmentAt) setServiceAppointmentAt(draft.serviceAppointmentAt);
+    if (draft.servicePaymentTiming) setServicePaymentTiming(draft.servicePaymentTiming);
+    if (draft.customerAddress) setCustomerAddress(draft.customerAddress);
+    if (draft.resolvedDeliveryAddress) setResolvedDeliveryAddress(draft.resolvedDeliveryAddress);
+    if (draft.deliveryLocationAction) setDeliveryLocationAction(draft.deliveryLocationAction);
+    if (draft.customerPin) setCustomerPin(draft.customerPin);
+    if (draft.serviceIntakeResponses && typeof draft.serviceIntakeResponses === 'object') {
+      setServiceIntakeResponses(draft.serviceIntakeResponses);
+    }
+    const nextFnbStep = draft.checkoutTab === 'cart' ? 2 : null;
+    const nextSimpleStep = draft.checkoutTab === 'checkout' && !draft.selectedServiceItemId ? 1 : null;
+    const nextServiceStep = draft.selectedServiceItemId ? 1 : null;
+    if (Number.isInteger(nextFnbStep) && nextFnbStep > 0) setFnbOrderStep(nextFnbStep);
+    if (Number.isInteger(nextSimpleStep) && nextSimpleStep > 0) setSimpleOrderStep(nextSimpleStep);
+    if (Number.isInteger(nextServiceStep) && nextServiceStep > 0) setServiceBookingStep(nextServiceStep);
+    if (draft.checkoutTab) {
+      setCheckoutTab(draft.selectedServiceItemId ? 'checkout' : draft.checkoutTab);
+    }
+    if (draft.selectedServiceItemId && Array.isArray(catalog) && catalog.length > 0) {
+      const matchedService = catalog.find((item) => Number(item?.item_id) === Number(draft.selectedServiceItemId)) || null;
+      if (matchedService) setSelectedServiceDetail(matchedService);
+    }
+    setIsCheckoutOpen(true);
+    setHasAppliedCheckoutAuthResume(true);
+    clearCheckoutAuthResumeDraft();
+    toast.success('Signed in. Resuming your checkout.');
+  }, [
+    catalog,
+    hasAppliedCheckoutAuthResume,
+    isDgfyCustomerSignedIn,
+    routeSlug,
+    selectedStore?.slug
+  ]);
   const handleStorefrontSignOut = useCallback(async () => {
     const dgfyToken = readDgfyAuthToken();
     try {
@@ -9340,6 +9683,7 @@ export default function StorefrontApp() {
   const simpleHasPrimaryContact = String(customerPhone || '').trim().length > 0 || String(customerEmail || '').trim().length > 0;
   const simpleHasDeliveryAddress = !isDeliveryOrder || String(customerAddress || '').trim().length > 0;
   const simpleCustomerStepComplete = simpleHasCustomerName && simpleHasPrimaryContact && simpleHasDeliveryAddress;
+  const simpleStepOneReady = isDgfyCustomerSignedIn ? (cart.length > 0 && simpleCustomerStepComplete) : cart.length > 0;
   const simpleCheckoutAllowed = checkoutAllowed && simpleCustomerStepComplete;
   const discoveryResultsPerPage = useMemo(() => {
     if (viewMode === 'list') return 3;
@@ -13164,6 +13508,8 @@ export default function StorefrontApp() {
 
                                 {serviceBookingStep === 1 && (
                                   <div style={{ display: 'grid', gap: 20 }}>
+                                    {isDgfyCustomerSignedIn ? (
+                                      <>
                                     <div>
                                       <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark, fontFamily: servicesDisplayFont }}>Step 1: Customer and Service Information</div>
                                       <div style={{ marginTop: 4, fontSize: 13, color: STYLES.colors.muted }}>
@@ -13174,20 +13520,11 @@ export default function StorefrontApp() {
                                     <div style={{ display: 'grid', gap: 18 }}>
                                       <section style={{ display: 'grid', gap: 14 }}>
                                         <div style={{ fontSize: 13, fontWeight: 900, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Customer Information</div>
-                                        {renderSavedDetailsCard()}
+                                        {renderAccountOwnedIdentitySummary({
+                                          title: 'Customer Account',
+                                          subtitle: 'Your signed-in DGFY account will be used for this booking.'
+                                        })}
                                         <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
-                                          <label ref={registerBookingFieldRef('customer_name')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
-                                            Customer Name *
-                                            <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Who is booking this service?" style={BOOKING_FIELD_STYLE} />
-                                          </label>
-                                          <label ref={registerBookingFieldRef('customer_phone')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
-                                            Contact Number *
-                                            <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="Mobile number" style={BOOKING_FIELD_STYLE} />
-                                          </label>
-                                          <label ref={registerBookingFieldRef('customer_email')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0 }}>
-                                            Email{bookingFieldPlan.emailField?.required ? ' *' : ''}
-                                            <input value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} placeholder="For confirmations or booking updates" style={BOOKING_FIELD_STYLE} />
-                                          </label>
                                           {bookingFieldPlan.requiresAddress && (
                                             <label ref={registerBookingFieldRef('customer_address')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0, gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
                                               Full Address{isAddressRequired ? ' *' : ''}
@@ -13375,6 +13712,16 @@ export default function StorefrontApp() {
                                         Continue to Payment
                                       </PrimaryButton>
                                     </div>
+                                      </>
+                                    ) : renderCheckoutAccountGate({
+                                      title: 'Continue to your booking',
+                                      description: 'Create an account or log in to continue this booking.',
+                                      resumeTarget: {
+                                        checkoutTab: 'checkout',
+                                        serviceBookingStep: 1,
+                                        selectedServiceItemId: activeBookingService?.item_id ?? null
+                                      }
+                                    })}
                                   </div>
                                 )}
 
@@ -15482,7 +15829,7 @@ return (
           <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr 1fr' : 'repeat(4, minmax(0, 1fr))', gap: 10 }}>
             {[
               { realStep: 1, displayStep: 1, label: 'Fulfillment', allow: true },
-              { realStep: 2, displayStep: 2, label: 'Customer', allow: cart.length > 0 },
+              { realStep: 2, displayStep: 2, label: isDgfyCustomerSignedIn ? 'Account' : 'Customer', allow: cart.length > 0 },
               { realStep: 3, displayStep: 3, label: 'Review & Pay', allow: cart.length > 0 && simpleCustomerStepComplete },
               { realStep: 4, displayStep: 4, label: 'Confirmation', allow: Boolean(checkoutResult) }
             ].map((item) => {
@@ -15494,7 +15841,7 @@ return (
                   type="button"
                   onClick={() => {
                     if (!item.allow) return;
-                    setSimpleOrderStep(item.realStep);
+                    setSimpleOrderStep(isDgfyCustomerSignedIn && item.realStep === 2 ? 1 : item.realStep);
                   }}
                   disabled={!item.allow}
                   style={{
@@ -15520,9 +15867,14 @@ return (
 
           {simpleOrderStep === 1 && (
             <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.45fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
+              {isDgfyCustomerSignedIn ? (
               <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
                 <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Step 1: Fulfillment</div>
                 <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Choose how the customer will receive the order, then add optional timing or notes once.</div>
+                {renderAccountOwnedIdentitySummary({
+                  title: 'Customer Account',
+                  subtitle: 'Your signed-in DGFY account will be used for this order.'
+                })}
                 {storeLocations.length > 0 && (
                   <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
                     Fulfillment Location
@@ -15567,6 +15919,37 @@ return (
                     <textarea value={fnbSpecialInstructions} onChange={(event) => setFnbSpecialInstructions(event.target.value)} placeholder="Packing notes, landmark hints, or pickup reminders." rows={3} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical' }} />
                   </label>
                 </div>
+                {isDeliveryOrder && (
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                      Delivery Address *
+                      <textarea value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} placeholder="House no., street, barangay, landmark" rows={3} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical' }} />
+                    </label>
+                    <div style={{ border: '1px solid #d9e4e8', borderRadius: 14, padding: 12, background: 'linear-gradient(180deg,#f8fffe 0%,#ffffff 100%)', display: 'grid', gap: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>Delivery Pin</div>
+                          <div style={{ fontSize: 12, color: '#64748b' }}>Optional, but recommended for faster handoff.</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <button type="button" onClick={handlePinMyLocation} disabled={pinLocationLoading} style={{ borderRadius: 12, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 700, cursor: 'pointer' }}>
+                            {pinLocationLoading ? 'Pinning...' : 'Pin My Location'}
+                          </button>
+                          <button type="button" onClick={() => setCustomerPin(null)} disabled={!customerPin} style={{ borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '8px 12px', fontWeight: 700, cursor: !customerPin ? 'not-allowed' : 'pointer' }}>
+                            Clear Pin
+                          </button>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 12, color: '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '9px 12px' }}>
+                        {customerPin
+                          ? `Pinned at ${Number(customerPin.latitude).toFixed(6)}, ${Number(customerPin.longitude).toFixed(6)}`
+                          : 'No pin selected yet. Tap the map or use your current location.'}
+                      </div>
+                      <DeliveryPinMap pin={customerPin} onPinChange={setCustomerPin} disabled={false} />
+                      {pinLocationError && <p style={{ margin: 0, fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</p>}
+                    </div>
+                  </div>
+                )}
                 {selectedLocation?.is_open === false && (
                   <div style={{ fontSize: 12, color: '#b45309', fontWeight: 700, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 12px' }}>
                     Selected location is closed and cannot accept orders right now.
@@ -15574,9 +15957,22 @@ return (
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
                   <button type="button" onClick={goStoreCatalogPage} style={{ minHeight: 42, minWidth: isMobileViewport ? 156 : 172, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 18px', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>Back to Catalog</button>
-                  <button type="button" onClick={() => setSimpleOrderStep(2)} disabled={cart.length === 0} style={{ minHeight: 42, minWidth: isMobileViewport ? 140 : 156, borderRadius: 12, border: 'none', background: cart.length > 0 ? '#ea580c' : '#cbd5e1', color: '#fff', padding: '0 18px', fontWeight: 800, cursor: cart.length > 0 ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>Continue</button>
+                  <button type="button" onClick={() => setSimpleOrderStep(3)} disabled={!simpleStepOneReady} style={{ minHeight: 42, minWidth: isMobileViewport ? 140 : 156, borderRadius: 12, border: 'none', background: simpleStepOneReady ? '#ea580c' : '#cbd5e1', color: '#fff', padding: '0 18px', fontWeight: 800, cursor: simpleStepOneReady ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>Continue</button>
                 </div>
+                {!simpleCustomerStepComplete && (
+                  <div style={{ fontSize: 12, color: '#b45309' }}>
+                    Complete the delivery address when delivery is selected before continuing.
+                  </div>
+                )}
               </section>
+              ) : renderCheckoutAccountGate({
+                title: 'Continue to your order',
+                description: 'Create an account or log in to continue this order.',
+                resumeTarget: {
+                  checkoutTab: 'checkout',
+                  simpleOrderStep: 1
+                }
+              })}
               <aside style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 10, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Summary</div>
                 <div style={{ fontSize: 38, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{money(totalsForDisplay.total_amount)}</div>
@@ -15591,30 +15987,22 @@ return (
 
           {simpleOrderStep === 2 && (
             <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.45fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
+              {isDgfyCustomerSignedIn ? (
               <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
-                <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Step 2: Customer Details</div>
-                <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Ask only for one name, one contact method, and a delivery address when delivery is selected.</div>
-                {renderSavedDetailsCard()}
-                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
-                  <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-                    Customer Name *
-                    <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Ex. Juan Dela Cruz" style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
-                  </label>
-                  <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-                    Contact Number
-                    <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="09XX XXX XXXX" style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
-                  </label>
-                  <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
-                    Email {String(customerPhone || '').trim() ? '(optional)' : '*'}
-                    <input value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} placeholder="name@email.com" style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
-                  </label>
-                  {isDeliveryOrder && (
-                    <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
+                <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Step 2: Delivery Details</div>
+                <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Your account details are already linked. Only the order-specific delivery details remain editable here.</div>
+                {renderAccountOwnedIdentitySummary({
+                  title: 'Customer Account',
+                  subtitle: 'These account details will be used for this checkout.'
+                })}
+                {isDeliveryOrder && (
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
                       Delivery Address *
                       <textarea value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} placeholder="House no., street, barangay, landmark" rows={3} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical' }} />
                     </label>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {isDeliveryOrder && (
                   <div style={{ border: '1px solid #d9e4e8', borderRadius: 14, padding: 12, background: 'linear-gradient(180deg,#f8fffe 0%,#ffffff 100%)', display: 'grid', gap: 10 }}>
@@ -15652,6 +16040,14 @@ return (
                   </div>
                 )}
               </section>
+              ) : renderCheckoutAccountGate({
+                title: 'Continue to your order',
+                description: 'Create an account or log in to continue this order.',
+                resumeTarget: {
+                  checkoutTab: 'checkout',
+                  simpleOrderStep: 2
+                }
+              })}
               <aside style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 10, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Summary</div>
                 <div style={{ fontSize: 38, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{money(totalsForDisplay.total_amount)}</div>
@@ -17169,7 +17565,7 @@ return (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0, borderBottom: '1px solid #e2e8f0', background: '#fff', borderRadius: '12px 12px 0 0', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                   {[
                     { realStep: 2, displayStep: 1, label: 'Fulfillment' },
-                    { realStep: 3, displayStep: 2, label: 'Customer' },
+                    { realStep: 3, displayStep: 2, label: isDgfyCustomerSignedIn ? 'Account' : 'Customer' },
                     { realStep: 4, displayStep: 3, label: 'Payment' }
                   ].map((item) => {
                     const isActive = fnbOrderStep === item.realStep;
@@ -17184,7 +17580,7 @@ return (
                             return;
                           }
                           if (item.realStep === 3 && cart.length > 0) {
-                            setFnbOrderStep(3);
+                            setFnbOrderStep(isDgfyCustomerSignedIn ? 2 : 3);
                             return;
                           }
                           if (item.realStep === 4 && cart.length > 0 && fnbCustomerStepComplete) {
@@ -17225,6 +17621,10 @@ return (
                   <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.5fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
                     <section style={{ border: isFnbOrderResponsiveFlow ? 'none' : '1px solid #e2e8f0', borderRadius: isFnbOrderResponsiveFlow ? 0 : 18, background: '#fff', padding: isFnbOrderResponsiveFlow ? 0 : isMobileViewport ? 16 : 18, display: 'grid', gap: isFnbOrderResponsiveFlow ? 24 : 20, boxShadow: isFnbOrderResponsiveFlow ? 'none' : '0 10px 24px rgba(15,23,42,.04)', width: '100%', maxWidth: '100%', minWidth: 0, margin: isFnbOrderResponsiveFlow ? 0 : undefined, boxSizing: 'border-box' }}>
                       {!isFnbOrderResponsiveFlow && <div style={{ fontSize: 18, fontWeight: 900, color: '#1e293b' }}>Step 1: Fulfillment</div>}
+                      {isDgfyCustomerSignedIn && renderAccountOwnedIdentitySummary({
+                        title: 'Customer Account',
+                        subtitle: 'Your signed-in DGFY account will be used for this order.'
+                      })}
                       <div style={{ display: 'grid', gridTemplateColumns: isFnbOrderResponsiveFlow ? '1fr' : '1fr 1fr', gap: 20, alignItems: 'start' }}>
                         {/* Question 1: How would you like to receive your order? */}
                         <div style={{ display: 'grid', gap: 16 }}>
@@ -17624,7 +18024,7 @@ return (
                       {!isFnbOrderResponsiveFlow && (
                         <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12, marginTop: 4 }}>
                           <button type="button" onClick={goStoreCatalogPage} style={{ minHeight: 50, borderRadius: 14, border: '1px solid #dbe5ee', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 15 }}><ArrowLeft size={17} strokeWidth={2.5} />Back to Menu</button>
-                          <button type="button" onClick={() => setFnbOrderStep(3)} style={{ minHeight: 50, borderRadius: 14, border: 'none', background: `linear-gradient(135deg, ${fnbOrderBrand} 0%, ${fnbOrderBrandDark} 100%)`, color: '#fff', fontWeight: 800, boxShadow: `0 14px 28px ${fnbOrderBrandShadowStrong}`, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 15 }}>Continue <ChevronRight size={17} strokeWidth={2.5} /></button>
+                          <button type="button" onClick={() => setFnbOrderStep(isDgfyCustomerSignedIn ? 4 : 3)} style={{ minHeight: 50, borderRadius: 14, border: 'none', background: `linear-gradient(135deg, ${fnbOrderBrand} 0%, ${fnbOrderBrandDark} 100%)`, color: '#fff', fontWeight: 800, boxShadow: `0 14px 28px ${fnbOrderBrandShadowStrong}`, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 15 }}>Continue <ChevronRight size={17} strokeWidth={2.5} /></button>
                         </div>
                       )}
                     </section>
@@ -17695,23 +18095,15 @@ return (
 
                 {fnbOrderStep === 3 && (
                   <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.5fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
+                    {isDgfyCustomerSignedIn ? (
                     <section style={{ border: '1px solid #e2e8f0', borderRadius: isFnbOrderResponsiveFlow ? 20 : 16, background: '#fff', padding: isFnbOrderResponsiveFlow ? 16 : isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
                       {!isFnbOrderResponsiveFlow && <div style={{ fontSize: 18, fontWeight: 900, color: '#1e293b' }}>Customer Details</div>}
-                      {!isFnbOrderResponsiveFlow && <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Provide one contact method: mobile number or email.</div>}
-                      {renderSavedDetailsCard()}
-                      <div style={{ display: 'grid', gridTemplateColumns: isFnbOrderResponsiveFlow ? '1fr' : '1fr 1fr', gap: 10 }}>
-                        <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-                          Customer Name *
-                          <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Ex. Juan Dela Cruz" style={{ minHeight: 50, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', boxSizing: 'border-box' }} />
-                        </label>
-                        <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-                          Contact Number *
-                          <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="09XX XXX XXXX" style={{ minHeight: 50, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', boxSizing: 'border-box' }} />
-                        </label>
-                        <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', gridColumn: isFnbOrderResponsiveFlow ? 'auto' : '1 / -1' }}>
-                          Email (optional)
-                          <input value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} placeholder="name@email.com" style={{ minHeight: 50, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', boxSizing: 'border-box' }} />
-                        </label>
+                      {!isFnbOrderResponsiveFlow && <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Your account details are already linked. Only order-specific instructions remain editable here.</div>}
+                      {renderAccountOwnedIdentitySummary({
+                        title: 'Customer Account',
+                        subtitle: 'These account details will be used for this order.'
+                      })}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
                         <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', gridColumn: isFnbOrderResponsiveFlow ? 'auto' : '1 / -1' }}>
                           Special Instructions (optional)
                           <textarea value={fnbSpecialInstructions} onChange={(event) => setFnbSpecialInstructions(event.target.value.slice(0, 250))} placeholder="Ex. Less ice, no onions, gate color and unit number." rows={3} style={{ minHeight: 96, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical', boxSizing: 'border-box' }} />
@@ -17731,6 +18123,14 @@ return (
                         </div>
                       )}
                     </section>
+                    ) : renderCheckoutAccountGate({
+                      title: 'Continue to your order',
+                      description: 'Create an account or log in to continue this menu order.',
+                      resumeTarget: {
+                        checkoutTab: 'cart',
+                        fnbOrderStep: 3
+                      }
+                    })}
                     {isDesktopCheckout && <aside style={{ display: 'grid', gap: 14, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
                       <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 18, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 14 }}>
                         <div style={{ fontSize: 12, fontWeight: 800, color: fnbOrderBrand, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Summary</div>
@@ -18030,7 +18430,7 @@ return (
                             type="button"
                             onClick={() => {
                               if (fnbOrderStep === 2) {
-                                setFnbOrderStep(3);
+                                setFnbOrderStep(isDgfyCustomerSignedIn ? 4 : 3);
                                 return;
                               }
                               if (fnbOrderStep === 3) {
@@ -18463,6 +18863,7 @@ return (
 
             {checkoutTab === 'checkout' && !isFnbOrderSubpage && !isFnbMode && !(isSimpleMode && isResolvedOrderSubpage) && (
               <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.5fr) minmax(340px, 420px)' : '1fr', gap: 16, alignItems: 'start' }}>
+                {isDgfyCustomerSignedIn ? (
                 <section style={{ display: 'grid', gap: 14 }}>
                   <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 14, background: '#ffffff', boxShadow: '0 8px 24px rgba(15,23,42,.04)' }}>
                     <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 4 }}>{hasServiceCart ? 'Customer Details' : 'Delivery Details'}</div>
@@ -18641,6 +19042,16 @@ return (
                     </div>
                   )}
                 </section>
+                ) : renderCheckoutAccountGate({
+                  title: hasServiceCart ? 'Continue to your booking' : 'Continue to your order',
+                  description: hasServiceCart
+                    ? 'Create an account or log in to continue this booking.'
+                    : 'Create an account or log in to continue this order.',
+                  resumeTarget: {
+                    checkoutTab: 'checkout',
+                    serviceBookingStep: hasServiceCart ? 1 : serviceBookingStep
+                  }
+                })}
 
                 <section style={{ display: 'grid', gap: 12, position: isDesktopCheckout ? 'sticky' : 'static', top: 0 }}>
                   <div style={{ border: '1px solid #d9e4e8', borderRadius: 20, padding: 14, background: '#ffffff', boxShadow: '0 12px 32px rgba(15,23,42,.06)' }}>

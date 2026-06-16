@@ -96,6 +96,29 @@ describe('Food & Beverage storefront contract', () => {
     expect(solutionsSource).not.toContain("window.location.href = 'https://skupervisor.dgfy.ph/register-company'");
   });
 
+  it('gates checkout and booking behind the canonical DGFY account flow while preserving draft resume state', () => {
+    const source = appSource();
+
+    expect(source).toContain('STOREFRONT_CHECKOUT_AUTH_RESUME_KEY');
+    expect(source).toContain('writeCheckoutAuthResumeDraft');
+    expect(source).toContain('clearCheckoutAuthResumeDraft');
+    expect(source).toContain('renderCheckoutAccountGate');
+    expect(source).toContain('renderAccountOwnedIdentitySummary');
+    expect(source).toContain('Create DGFY Account');
+    expect(source).toContain('Have an account? Log in to DGFY');
+    expect(source).toContain('Sign in or create a DGFY account to continue.');
+    expect(source).toContain("toast.success('Signed in. Resuming your checkout.')");
+    expect(source).toContain("description: 'Create an account or log in to continue this menu order.'");
+    expect(source).toContain("description: hasServiceCart");
+    expect(source).toContain("const nextFnbStep = draft.checkoutTab === 'cart' ? 2 : null;");
+    expect(source).toContain("const nextSimpleStep = draft.checkoutTab === 'checkout' && !draft.selectedServiceItemId ? 1 : null;");
+    expect(source).toContain("const nextServiceStep = draft.selectedServiceItemId ? 1 : null;");
+    expect(source).toContain("setSimpleOrderStep(isDgfyCustomerSignedIn ? 3 : 2)");
+    expect(source).toContain("setFnbOrderStep(isDgfyCustomerSignedIn ? 4 : 3)");
+    expect(source).toContain("Your signed-in DGFY account will be used for this order.");
+    expect(source).toContain("Your signed-in DGFY account will be used for this booking.");
+  });
+
   it('adds item-level reviews to the F&B detail experience without redesigning the page shell', () => {
     const source = appSource();
 
