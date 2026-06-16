@@ -799,6 +799,58 @@ export default function POSCheckoutTerminal({
         }
     }, [canViewHistory, search, selectedFolderId, selectedLocationId, sessionLocked]);
 
+    const loadHistory = useCallback(async (page = 1) => {
+        if (sessionLocked || !canViewHistory) {
+            setHistoryRows([]);
+            setHistoryPagination(null);
+            return;
+        }
+        setHistoryLoading(true);
+        try {
+            const result = await fetchPosTransactions({
+                page,
+                limit: 20,
+                search: historySearch || undefined,
+                status: historyStatus === 'all' ? undefined : historyStatus,
+                payment_type: historyPaymentType === 'all' ? undefined : historyPaymentType,
+                order_method: historyOrderMethod === 'all' ? undefined : historyOrderMethod,
+                order_source: historyOrderSource === 'all' ? undefined : historyOrderSource,
+                cashier_id: historyCashierId || undefined,
+                date_from: historyDateFrom || undefined,
+                date_to: historyDateTo || undefined
+            });
+            const rows = Array.isArray(result?.transactions) ? result.transactions : [];
+            setHistoryRows(rows);
+            setHistoryPagination(result?.pagination || null);
+            setHistoryPage(page);
+        } catch (error) {
+            if (!error?.response) {
+                setHistoryRows([]);
+                setHistoryPagination({
+                    page,
+                    limit: 20,
+                    total: 0,
+                    totalPages: 1
+                });
+                setHistoryPage(page);
+            }
+            toast.error(error?.response?.data?.message || 'Failed to load POS transaction history');
+        } finally {
+            setHistoryLoading(false);
+        }
+    }, [
+        canViewHistory,
+        historyCashierId,
+        historyDateFrom,
+        historyDateTo,
+        historyOrderMethod,
+        historyOrderSource,
+        historyPaymentType,
+        historySearch,
+        historyStatus,
+        sessionLocked
+    ]);
+
     const replayQueuedCheckouts = useCallback(async ({ toastIfEmpty = false } = {}) => {
         if (sessionLocked) return;
         if (checkoutBlockedReason) return;
@@ -973,58 +1025,6 @@ export default function POSCheckoutTerminal({
             setDeviceStatusLoading(false);
         }
     }, [sessionLocked]);
-
-    const loadHistory = useCallback(async (page = 1) => {
-        if (sessionLocked || !canViewHistory) {
-            setHistoryRows([]);
-            setHistoryPagination(null);
-            return;
-        }
-        setHistoryLoading(true);
-        try {
-            const result = await fetchPosTransactions({
-                page,
-                limit: 20,
-                search: historySearch || undefined,
-                status: historyStatus === 'all' ? undefined : historyStatus,
-                payment_type: historyPaymentType === 'all' ? undefined : historyPaymentType,
-                order_method: historyOrderMethod === 'all' ? undefined : historyOrderMethod,
-                order_source: historyOrderSource === 'all' ? undefined : historyOrderSource,
-                cashier_id: historyCashierId || undefined,
-                date_from: historyDateFrom || undefined,
-                date_to: historyDateTo || undefined
-            });
-            const rows = Array.isArray(result?.transactions) ? result.transactions : [];
-            setHistoryRows(rows);
-            setHistoryPagination(result?.pagination || null);
-            setHistoryPage(page);
-        } catch (error) {
-            if (!error?.response) {
-                setHistoryRows([]);
-                setHistoryPagination({
-                    page,
-                    limit: 20,
-                    total: 0,
-                    totalPages: 1
-                });
-                setHistoryPage(page);
-            }
-            toast.error(error?.response?.data?.message || 'Failed to load POS transaction history');
-        } finally {
-            setHistoryLoading(false);
-        }
-    }, [
-        canViewHistory,
-        historyCashierId,
-        historyDateFrom,
-        historyDateTo,
-        historyOrderMethod,
-        historyOrderSource,
-        historyPaymentType,
-        historySearch,
-        historyStatus,
-        sessionLocked
-    ]);
 
     const openHistoryDetail = async (posTransactionId, { switchToReceipt = false, openModal = true } = {}) => {
         setHistoryDetailLoading(true);

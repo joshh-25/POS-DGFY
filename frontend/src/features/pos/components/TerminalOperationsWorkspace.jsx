@@ -586,6 +586,7 @@ function ShiftControlsWorkspace({
 
   return (
     <div id={sectionId} className="space-y-4">
+      <h2 className="sr-only">Shift Controls</h2>
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
         <div className="flex items-start gap-3">
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-blue-50 text-[#2563EB]">

@@ -10,17 +10,8 @@ const readRuntimeCompanyToken = () => {
   return String(runtime?.companyToken || '').trim();
 };
 
-const readStoredCompanyToken = () => {
-  if (typeof window === 'undefined') return '';
-  try {
-    return String(localStorage.getItem('companyToken') || '').trim();
-  } catch {
-    return '';
-  }
-};
-
 const resolveCompanyToken = () => {
-  const resolved = companyToken || readStoredCompanyToken() || readRuntimeCompanyToken();
+  const resolved = companyToken || readRuntimeCompanyToken();
   if (resolved && resolved !== companyToken) {
     companyToken = resolved;
   }

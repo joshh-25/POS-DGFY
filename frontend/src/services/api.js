@@ -1,4 +1,11 @@
 import axios from 'axios';
+import {
+  getAccessToken,
+  getCompanyToken,
+  getAuthHeaders,
+  refreshBrowserSession,
+  setBrowserSession
+} from './browserSession.js';
 import { clearClientSession } from './sessionCleanup.js';
 import { emitGlobalApiError } from '../utils/errorHandler.js';
 import { resolveApiBaseUrl, getRuntimeConfig } from '../utils/runtimeConfig.js';
@@ -67,6 +74,36 @@ const getPhoneCompletionRedirect = () => (
   RUNTIME_CONFIG.isDesktopShell
     ? buildDesktopHashRedirect('/settings', '?tab=profile&reason=phone_required')
     : '/settings?tab=profile&reason=phone_required'
+);
+
+const resolveRequestPath = (url = '') => {
+  try {
+    return new URL(String(url || ''), 'http://local').pathname;
+  } catch {
+    return String(url || '');
+  }
+};
+
+const isSessionRefreshRequest = (url = '') => resolveRequestPath(url).endsWith('/auth/refresh-token');
+
+const isPublicOrAuthRequest = (url = '') => {
+  const path = resolveRequestPath(url);
+  return (
+    path.endsWith('/auth/login') ||
+    path.endsWith('/auth/register') ||
+    path.endsWith('/auth/email-otp/request') ||
+    path.includes('/dgfy/auth/') ||
+    path.endsWith('/dgfy/legal-terms/current') ||
+    path.startsWith('/store/') ||
+    path.startsWith('/stores/') ||
+    path.startsWith('/public/')
+  );
+};
+
+const shouldPreflightBrowserSession = (config = {}) => (
+  !config.skipAuthRefresh &&
+  !isSessionRefreshRequest(config.url) &&
+  !isPublicOrAuthRequest(config.url)
 );
 
 const isAlreadyOnPhoneCompletionRoute = () => {
@@ -140,12 +177,20 @@ if (authChannel) {
     }
     if (data.type === 'token-refresh-success') {
       // Another tab completed the refresh — adopt the new tokens and drain our queue.
-      localStorage.setItem('authToken', data.token);
-      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
-      if (isRefreshing) {
-        processQueue(null, data.token);
-        isRefreshing = false;
-      }
+      const finishCrossTabRefresh = async () => {
+        const nextToken = data.token || await refreshBrowserSession().catch(() => '');
+        if (nextToken) {
+          setBrowserSession({
+            token: nextToken,
+            companyToken: data.companyToken
+          });
+        }
+        if (isRefreshing) {
+          processQueue(null, nextToken || null);
+          isRefreshing = false;
+        }
+      };
+      finishCrossTabRefresh();
     }
     if (data.type === 'session-expired' || data.type === 'auth:logout') {
       // Another tab's refresh failed, or the user logged out in another tab.
@@ -173,9 +218,14 @@ if (typeof window !== 'undefined') {
 
 // Request interceptor - Add JWT token to headers
 api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('authToken');
-    const companyToken = localStorage.getItem('companyToken');
+  async (config) => {
+    let token = getAccessToken();
+    let companyToken = getCompanyToken();
+
+    if (!token && shouldPreflightBrowserSession(config)) {
+      token = await refreshBrowserSession().catch(() => '');
+      companyToken = getCompanyToken();
+    }
 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -201,21 +251,12 @@ api.interceptors.response.use(
     const originalRequest = error.config;
 
     // Handle 401 errors (unauthorized)
-    if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.skipAuthRefresh) {
-      const storedRefreshToken = localStorage.getItem('refreshToken');
-
-      // No refresh token at all — immediate logout, no attempt
-      if (!storedRefreshToken) {
-        authChannel?.postMessage({ type: 'session-expired' });
-        clearClientSession({
-          reason: 'session_expired',
-          broadcast: false,
-          emitAuthEvents: false,
-          redirectTo: getSessionExpiredRedirect()
-        });
-        return Promise.reject(error);
-      }
-
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !originalRequest.skipAuthRefresh &&
+      !isPublicOrAuthRequest(originalRequest.url)
+    ) {
       // A refresh is already in-flight (either started by this tab or by another tab
       // that broadcast 'token-refresh-started') — queue this request so it retries
       // with the new token once the single refresh completes.
@@ -231,7 +272,7 @@ api.interceptors.response.use(
           originalRequest._retry = true; // prevent double-refresh if this retry also gets a 401
           originalRequest.headers.Authorization = `Bearer ${token}`;
           if (!originalRequest.headers['x-company-token']) {
-            const ct = localStorage.getItem('companyToken');
+            const ct = getCompanyToken();
             if (ct) originalRequest.headers['x-company-token'] = ct;
           }
           return api(originalRequest);
@@ -245,30 +286,39 @@ api.interceptors.response.use(
       authChannel?.postMessage({ type: 'token-refresh-started' }); // tell other tabs to queue
 
       return new Promise((resolve, reject) => {
-        const companyToken = localStorage.getItem('companyToken');
-        const refreshConfig = companyToken
-          ? { headers: { 'x-company-token': companyToken } }
-          : {};
+        const companyToken = getCompanyToken();
 
         logDebug('🔄 [Auth] Refreshing token...', { companyToken });
 
         axios.post(
           `${API_BASE_URL}/auth/refresh-token`,
-          { refreshToken: storedRefreshToken },
-          { ...refreshConfig, timeout: 15000 } // bare axios has no timeout — enforce one so .finally() always runs
+          {},
+          {
+            headers: getAuthHeaders({ includeCsrf: true }),
+            timeout: 15000,
+            withCredentials: true
+          }
         )
           .then(({ data }) => {
-            const { token, refreshToken: newRefreshToken } = data.data;
-            localStorage.setItem('authToken', token);
-            if (newRefreshToken) localStorage.setItem('refreshToken', newRefreshToken);
+            const session = data?.data || {};
+            const token = session.token || '';
+            const resolvedCompanyToken = session.company?.token || getCompanyToken();
+            setBrowserSession({
+              token,
+              companyToken: resolvedCompanyToken
+            });
 
             // Broadcast success BEFORE draining the local queue so that other tabs
             // adopt the new token and drain their own queues concurrently.
-            authChannel?.postMessage({ type: 'token-refresh-success', token, refreshToken: newRefreshToken });
+            authChannel?.postMessage({
+              type: 'token-refresh-success',
+              token,
+              companyToken: resolvedCompanyToken
+            });
 
             originalRequest.headers.Authorization = `Bearer ${token}`;
-            if (companyToken && !originalRequest.headers['x-company-token']) {
-              originalRequest.headers['x-company-token'] = companyToken;
+            if (resolvedCompanyToken && !originalRequest.headers['x-company-token']) {
+              originalRequest.headers['x-company-token'] = resolvedCompanyToken;
             }
 
             processQueue(null, token); // unblock all queued requests with new token

@@ -1,4 +1,5 @@
 import api from './api.js';
+import { getAccessToken, refreshBrowserSession, setBrowserSession } from './browserSession.js';
 import { clearClientSession } from './sessionCleanup.js';
 
 export const register = async (userData, companyToken) => {
@@ -11,9 +12,8 @@ export const register = async (userData, companyToken) => {
 
   const response = await api.post('/auth/register', userData, config);
 
-  // Store company token for future requests
   if (companyToken) {
-    localStorage.setItem('companyToken', companyToken);
+    setBrowserSession({ companyToken });
   }
 
   return response.data.data;
@@ -58,12 +58,13 @@ export const login = async (credentials, requestConfig = {}) => {
     password: credentials.password
   }, config);
 
-  const { token, refreshToken } = response.data.data;
-  localStorage.setItem('authToken', token);
-  localStorage.setItem('refreshToken', refreshToken);
-  // Store company token for future requests
+  const { token } = response.data.data;
+  setBrowserSession({
+    token,
+    companyToken: resolvedCompanyToken
+  });
   if (resolvedCompanyToken) {
-    localStorage.setItem('companyToken', resolvedCompanyToken);
+    setBrowserSession({ companyToken: resolvedCompanyToken });
   }
 
   // Dispatch custom event to notify PermissionContext to reload
@@ -93,18 +94,14 @@ export const logout = async () => {
 };
 
 export const refreshToken = async () => {
-  const refreshToken = localStorage.getItem('refreshToken');
-  const response = await api.post('/auth/refresh-token', { refreshToken });
-  const { token, refreshToken: newRefreshToken } = response.data.data;
-  localStorage.setItem('authToken', token);
-  if (newRefreshToken) {
-    localStorage.setItem('refreshToken', newRefreshToken);
-  }
-  return token;
+  return refreshBrowserSession();
 };
 
 export const getCurrentUser = async (requestConfig = {}) => {
-  const token = localStorage.getItem('authToken');
+  let token = getAccessToken();
+  if (!token) {
+    token = await refreshBrowserSession().catch(() => '');
+  }
   if (!token) return null;
 
   try {

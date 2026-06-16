@@ -97,6 +97,20 @@ export const getToken = () => {
     return sessionStorage.getItem(ADMIN_TOKEN_KEY);
 };
 
+const requireAdminAuthConfig = () => {
+    const token = getToken();
+
+    if (!token) {
+        throw new Error('Admin authentication required');
+    }
+
+    return {
+        headers: {
+            Authorization: `Bearer ${token}`
+        }
+    };
+};
+
 /**
  * Get feedback with optional filters
  */
@@ -258,6 +272,148 @@ export const deleteTenant = async (tenantId) => {
         }
     });
 
+    return response.data;
+};
+
+export const updateTenantCapabilities = async (tenantId, payload = {}) => {
+    const response = await adminApi.patch(
+        `/admin/tenants/${tenantId}/capabilities`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const listTenantCapabilityAuditLogs = async (tenantId, params = {}) => {
+    const response = await adminApi.get(`/admin/tenants/${tenantId}/capabilities/audit-logs`, {
+        ...requireAdminAuthConfig(),
+        params
+    });
+    return response.data;
+};
+
+export const listDgfyAccounts = async (params = {}) => {
+    const response = await adminApi.get('/dgfy/admin/accounts', {
+        ...requireAdminAuthConfig(),
+        params
+    });
+    return response.data;
+};
+
+export const getDgfyAccount = async (accountId) => {
+    const response = await adminApi.get(`/dgfy/admin/accounts/${accountId}`, requireAdminAuthConfig());
+    return response.data;
+};
+
+export const updateDgfyAccountProfile = async (accountId, payload = {}) => {
+    const response = await adminApi.patch(
+        `/dgfy/admin/accounts/${accountId}/profile`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const suspendDgfyAccount = async (accountId, payload = {}) => {
+    const response = await adminApi.post(
+        `/dgfy/admin/accounts/${accountId}/suspend`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const reactivateDgfyAccount = async (accountId, payload = {}) => {
+    const response = await adminApi.post(
+        `/dgfy/admin/accounts/${accountId}/reactivate`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const deleteDgfyAccount = async (accountId, payload = {}) => {
+    const response = await adminApi.delete(`/dgfy/admin/accounts/${accountId}`, {
+        ...requireAdminAuthConfig(),
+        data: payload
+    });
+    return response.data;
+};
+
+export const listCommercePaymentSessions = async (params = {}) => {
+    const response = await adminApi.get('/commerce-payments/admin/payment-sessions', {
+        ...requireAdminAuthConfig(),
+        params
+    });
+    return response.data;
+};
+
+export const getCommerceSettlementReport = async (params = {}) => {
+    const response = await adminApi.get('/commerce-payments/admin/settlement-report', {
+        ...requireAdminAuthConfig(),
+        params
+    });
+    return response.data;
+};
+
+export const getPayMongoSandboxCertification = async () => {
+    const response = await adminApi.get(
+        '/commerce-payments/admin/certification/paymongo-sandbox',
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const listTenantPaymentAccounts = async (params = {}) => {
+    const response = await adminApi.get('/commerce-payments/admin/tenant-payment-accounts', {
+        ...requireAdminAuthConfig(),
+        params
+    });
+    return response.data;
+};
+
+export const upsertTenantPaymentAccount = async (tenantId, payload = {}) => {
+    const response = await adminApi.put(
+        `/commerce-payments/admin/tenants/${tenantId}/payment-account`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const createTenantPayMongoChildAccount = async (tenantId, payload = {}) => {
+    const response = await adminApi.post(
+        `/commerce-payments/admin/tenants/${tenantId}/paymongo-child-account`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const operateTenantPayMongoChildAccount = async (tenantId, action) => {
+    const response = await adminApi.post(
+        `/commerce-payments/admin/tenants/${tenantId}/paymongo-child-account/${action}`,
+        {},
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const createCommercePaymentRefund = async (paymentSessionId, payload = {}) => {
+    const response = await adminApi.post(
+        `/commerce-payments/admin/payment-sessions/${paymentSessionId}/refunds`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const retryCommercePaymentFinalization = async (paymentSessionId) => {
+    const response = await adminApi.post(
+        `/commerce-payments/admin/payment-sessions/${paymentSessionId}/retry-finalization`,
+        {},
+        requireAdminAuthConfig()
+    );
     return response.data;
 };
 

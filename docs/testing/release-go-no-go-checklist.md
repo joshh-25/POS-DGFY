@@ -1,11 +1,11 @@
 # Release Go/No-Go Checklist (Current)
 
 Status: reference  
-Last updated: 2026-06-11
+Last updated: 2026-06-13
 
 ## Current Release State
 
-1. Latest production deployment evidence available in this workspace is runtime code target SHA `8b03dfea4f9615d665baa14df59a78de5c797a60`, deployed on June 10, 2026 for DGFY OTP-first account signup, global DGFY OTP scoping, no-company-token OTP request access, and automatic IMS tenant-session handoff. Backend/IMS/POS/Store health checks, public IMS/POS/Storefront/Tenant Store endpoint checks, tenant-store asset integrity, frontend asset parity, tenant schema sync, tenant schema sync regression gate, tenant index headroom, permission backfill, and Storefront discovery index reconciliation passed. Remote `HEAD`, remote `origin/master`, and `.deploy-state/last_deployed_commit` matched this SHA at proof time. The release used the explicit emergency no-staging bypass because stale QA deployed-head evidence was the sole failed gate after QA smoke, rollback, restore, docs, and architecture passed.
+1. Latest production deployment evidence available in this workspace is runtime code target SHA `b40f2d96e513a1a259d423df91d0ccf406521c6c`, deployed on June 13, 2026 for DGFY account/admin service integration, POS browser-session hardening, commerce payment admin route mounting, dependency-lock determinism, and the production DGFY/Storefront/POS read-only route smoke pass. Backend/IMS/POS/Store health checks, public IMS/POS/Storefront/Tenant Store endpoint checks, tenant-store asset integrity, frontend asset parity, tenant schema sync, tenant schema sync regression gate, tenant index headroom, permission backfill, Storefront discovery index reconciliation, and PM2 reload passed. Remote `HEAD`, `origin/master`, and `.deploy-state/last_deployed_commit` matched this SHA at proof time. The release used the explicit emergency no-staging bypass because stale QA deployed-head evidence was the sole failed gate after QA smoke, rollback, restore, docs, and architecture passed. Production mutation UAT remains separate and requires approved QA account, tenant, item, checkout, POS, inventory, and cleanup data.
 2. June 2, 2026 audit state: dependency vulnerabilities are resolved and the dependency audit commands below return zero current npm advisories for locked root/backend/frontend trees.
 3. The local release gate now includes dependency audits and a focused frontend contract gate before docs, architecture, compliance, backend, frontend, and budget gates.
 4. Current open audit package: `System_Audit/README.md`.

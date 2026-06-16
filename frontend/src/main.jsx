@@ -28,7 +28,7 @@ const applyDesktopShellBootstrap = () => {
 
   try {
     if (runtimeConfig.companyToken) {
-      window.localStorage.setItem('companyToken', runtimeConfig.companyToken)
+      setBrowserSession({ companyToken: runtimeConfig.companyToken })
     }
     if (runtimeConfig.terminalId) {
       window.localStorage.setItem('pos_terminal_identity_v1', runtimeConfig.terminalId)
@@ -76,6 +76,8 @@ const Settings = lazy(() => import('../Pages/Settings.jsx'))
 const Login = lazy(() => import('../Pages/Login.jsx'))
 const Register = lazy(() => import('../Pages/Register.jsx'))
 const RegisterCompany = lazy(() => import('../Pages/RegisterCompany.jsx'))
+const DgfyAuthPage = lazy(() => import('../Pages/DgfyAuthPage.jsx'))
+const DgfyResetPasswordPage = lazy(() => import('../Pages/DgfyResetPasswordPage.jsx'))
 const LegalDocument = lazy(() => import('../Pages/LegalDocument.jsx'))
 const AcceptInvite = lazy(() => import('../Pages/AcceptInvite.jsx'))
 const Reactivate = lazy(() => import('../Pages/Reactivate.jsx'))
@@ -114,6 +116,8 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/register-company" element={<RegisterCompany />} />
+        <Route path="/dgfy/auth" element={<DgfyAuthPage />} />
+        <Route path="/dgfy/reset-password" element={<DgfyResetPasswordPage />} />
         <Route path="/legal/:slug" element={<LegalDocument />} />
         <Route path="/privacy" element={<LegalDocument />} />
         <Route path="/accept-invite" element={<AcceptInvite />} />

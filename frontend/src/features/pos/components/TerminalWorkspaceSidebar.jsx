@@ -253,6 +253,12 @@ export default function TerminalWorkspaceSidebar({
           )}
         </div>
 
+        {showScrollZoneBadge && (
+          <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] font-semibold text-[#1A4E8D]">
+            Scroll for more terminal tools.
+          </div>
+        )}
+
         {locked ? (
           <Button type="button" className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#1A4E8D] text-[13px] font-extrabold text-white hover:bg-[#143F73]" onClick={onUnlock}>
             <LogIn className="h-4 w-4" />

@@ -1,12 +1,18 @@
 import React from 'react';
 import { useState } from 'react';
 import {
+  Award,
+  Bell,
   CalendarDays,
   ChevronRight,
   Clock3,
+  HeadphonesIcon,
+  Home,
   HelpCircle,
   LogOut,
   MapPin,
+  Menu,
+  Package,
   RotateCcw,
   ShieldCheck,
   ShoppingBag,
@@ -103,6 +109,22 @@ export function DgfyCustomerAccountPage({
   const [editingAddressId, setEditingAddressId] = useState(null);
   const [editingAddressDraft, setEditingAddressDraft] = useState({ label: '', address_line: '', is_default: false });
   const [pendingCancelOrder, setPendingCancelOrder] = useState(null);
+  const [activeNav, setActiveNav] = useState('overview');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const navItems = [
+    { id: 'overview', label: 'Overview', icon: Home },
+    { id: 'orders', label: 'Orders', icon: Package },
+    { id: 'bookings', label: 'Bookings', icon: CalendarDays },
+    { id: 'addresses', label: 'Addresses', icon: MapPin },
+    { id: 'loyalty', label: 'Loyalty', icon: Award },
+    { id: 'account', label: 'Account', icon: User },
+    { id: 'business', label: 'Business', icon: Store }
+  ];
+  const showOverview = activeNav === 'overview';
+  const showOrders = showOverview || activeNav === 'orders';
+  const showBookings = showOverview || activeNav === 'bookings';
+  const showAddresses = showOverview || activeNav === 'addresses';
+  const showLoyalty = showOverview || activeNav === 'loyalty';
   const resetAddressDraft = () => setAddressDraft({ label: 'Home', address_line: '', is_default: allAddresses.length === 0 });
   const startEditAddress = (address = {}) => {
     setEditingAddressId(address.address_id);
@@ -149,7 +171,10 @@ export function DgfyCustomerAccountPage({
           boxShadow: isPage ? 'none' : '0 32px 72px rgba(15,23,42,0.16)',
           display: 'grid',
           gridTemplateRows: 'auto 1fr',
-          overflow: isPage ? 'visible' : 'hidden',
+          overflow: isPage ? (isMobileViewport ? 'hidden' : 'visible') : 'hidden',
+          width: '100%',
+          maxWidth: '100vw',
+          boxSizing: 'border-box',
           minHeight: isPage ? '100vh' : undefined
         }}
       >
@@ -161,6 +186,7 @@ export function DgfyCustomerAccountPage({
             padding: isMobileViewport ? '24px 18px 18px' : '28px 32px 24px',
             borderBottom: `1px solid ${BORDER}`,
             display: 'flex',
+            flexDirection: isMobileViewport ? 'column' : 'row',
             alignItems: 'flex-start',
             justifyContent: 'space-between',
             gap: 18,
@@ -188,41 +214,74 @@ export function DgfyCustomerAccountPage({
               <h1 style={{ margin: 0, fontSize: isMobileViewport ? 30 : 32, fontWeight: 700, lineHeight: 1.04, color: TEXT, letterSpacing: '-0.03em' }}>
                 My Account
               </h1>
-              <div style={{ marginTop: 10, fontSize: isMobileViewport ? 15 : 16, lineHeight: 1.6, color: MUTED, maxWidth: 720 }}>
+              <div style={{ marginTop: 10, fontSize: isMobileViewport ? 15 : 16, lineHeight: 1.6, color: MUTED, maxWidth: isMobileViewport ? '100%' : 720, overflowWrap: 'anywhere' }}>
                 View your orders, bookings, tracking references, saved addresses, and loyalty activity across DGFY stores.
               </div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={isPage ? 'Back to storefront' : 'Close customer account page'}
-            style={{
-              width: isMobileViewport ? 48 : 54,
-              height: isMobileViewport ? 48 : 54,
-              borderRadius: '50%',
-              border: `1px solid ${BORDER}`,
-              background: '#F8FAFC',
-              color: TEXT,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              flexShrink: 0
-            }}
-          >
-            {isPage ? <ChevronRight size={isMobileViewport ? 22 : 24} strokeWidth={2.3} style={{ transform: 'rotate(180deg)' }} /> : <X size={isMobileViewport ? 22 : 24} strokeWidth={2.3} />}
-          </button>
+          {isPage ? (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Back to Discovery"
+              style={{
+                minHeight: isMobileViewport ? 44 : 48,
+                borderRadius: 16,
+                border: `1px solid ${BORDER}`,
+                background: '#F8FAFC',
+                color: TEXT,
+                padding: isMobileViewport ? '0 14px' : '0 18px',
+                fontSize: isMobileViewport ? 14 : 15,
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                width: isMobileViewport ? '100%' : 'auto',
+                cursor: 'pointer',
+                flexShrink: 0,
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <ChevronRight size={18} strokeWidth={2.3} style={{ transform: 'rotate(180deg)' }} />
+              Back to Discovery
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close customer account page"
+              style={{
+                width: isMobileViewport ? 48 : 54,
+                height: isMobileViewport ? 48 : 54,
+                borderRadius: '50%',
+                border: `1px solid ${BORDER}`,
+                background: '#F8FAFC',
+                color: TEXT,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                flexShrink: 0
+              }}
+            >
+              <X size={isMobileViewport ? 22 : 24} strokeWidth={2.3} />
+            </button>
+          )}
         </header>
 
         <div
           style={{
             overflowY: 'auto',
+            overflowX: 'hidden',
             background: SURFACE,
             padding: isMobileViewport ? '18px 16px 20px' : '24px 32px 28px',
             display: 'grid',
             gap: 24,
-            alignContent: 'start'
+            alignContent: 'start',
+            width: '100%',
+            maxWidth: '100vw',
+            boxSizing: 'border-box'
           }}
         >
           <section
@@ -317,6 +376,166 @@ export function DgfyCustomerAccountPage({
             )}
           </section>
 
+          <section
+            aria-label="DGFY account dashboard navigation"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: isMobileViewport ? '1fr' : '260px minmax(0, 1fr)',
+              gap: isMobileViewport ? 14 : 24,
+              alignItems: 'start'
+            }}
+          >
+            <aside
+              style={{
+                borderRadius: 24,
+                border: `1px solid ${BORDER}`,
+                background: '#FFFFFF',
+                boxShadow: '0 18px 42px rgba(15,23,42,0.06)',
+                overflow: 'hidden',
+                position: isMobileViewport ? 'static' : 'sticky',
+                top: isMobileViewport ? 'auto' : 108
+              }}
+            >
+              <div
+                style={{
+                  padding: '18px 18px 14px',
+                  borderBottom: `1px solid ${BORDER}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: PRIMARY, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    DGFY Account
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 13, color: MUTED, lineHeight: 1.45 }}>
+                    Dashboard sections
+                  </div>
+                </div>
+                {isMobileViewport ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsMobileMenuOpen((open) => !open)}
+                    aria-expanded={isMobileMenuOpen}
+                    aria-label="Toggle account sections"
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 14,
+                      border: `1px solid ${BORDER}`,
+                      background: SOFT_SURFACE,
+                      color: TEXT,
+                      display: 'grid',
+                      placeItems: 'center',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Menu size={18} strokeWidth={2.2} />
+                  </button>
+                ) : null}
+              </div>
+              <nav
+                style={{
+                  display: isMobileViewport && !isMobileMenuOpen ? 'none' : 'grid',
+                  gap: 4,
+                  padding: 10
+                }}
+              >
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  const selected = activeNav === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveNav(item.id);
+                        setIsMobileMenuOpen(false);
+                      }}
+                      aria-current={selected ? 'page' : undefined}
+                      style={{
+                        minHeight: 46,
+                        border: 'none',
+                        borderLeft: `4px solid ${selected ? PRIMARY : 'transparent'}`,
+                        borderRadius: '0 14px 14px 0',
+                        background: selected ? '#EAF2FF' : 'transparent',
+                        color: selected ? PRIMARY : MUTED,
+                        padding: '0 14px',
+                        fontSize: 14,
+                        fontWeight: selected ? 800 : 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        textAlign: 'left',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Icon size={18} strokeWidth={2.2} />
+                      {item.label}
+                    </button>
+                  );
+                })}
+                <div style={{ height: 1, background: BORDER, margin: '8px 6px' }} />
+                <button
+                  type="button"
+                  onClick={onHelp}
+                  style={{ minHeight: 44, border: 'none', background: 'transparent', color: MUTED, padding: '0 18px', fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
+                >
+                  <HeadphonesIcon size={18} strokeWidth={2.1} />
+                  Contact Support
+                </button>
+                <button
+                  type="button"
+                  onClick={onSignOut}
+                  style={{ minHeight: 44, border: 'none', background: 'transparent', color: '#EF4444', padding: '0 18px', fontSize: 14, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
+                >
+                  <LogOut size={18} strokeWidth={2.2} />
+                  Sign out
+                </button>
+              </nav>
+            </aside>
+
+            <div style={{ display: 'grid', gap: 24, minWidth: 0 }}>
+              <header
+                style={{
+                  borderRadius: 24,
+                  border: `1px solid ${BORDER}`,
+                  background: '#FFFFFF',
+                  padding: isMobileViewport ? 18 : 22,
+                  display: 'flex',
+                  alignItems: isMobileViewport ? 'flex-start' : 'center',
+                  justifyContent: 'space-between',
+                  gap: 16,
+                  boxShadow: '0 18px 42px rgba(15,23,42,0.05)'
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: PRIMARY, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    {navItems.find((item) => item.id === activeNav)?.label || 'Overview'}
+                  </div>
+                  <h2 style={{ margin: '6px 0 0', fontSize: isMobileViewport ? 24 : 28, lineHeight: 1.1, fontWeight: 800, color: TEXT }}>
+                    Customer dashboard
+                  </h2>
+                  <div style={{ marginTop: 8, fontSize: 14, color: MUTED, lineHeight: 1.55 }}>
+                    Manage orders, bookings, addresses, loyalty, account details, and business registration from one DGFY account.
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button
+                    type="button"
+                    aria-label="Notifications"
+                    style={{ width: 42, height: 42, borderRadius: 14, border: `1px solid ${BORDER}`, background: SOFT_SURFACE, color: TEXT, display: 'grid', placeItems: 'center', cursor: 'pointer' }}
+                  >
+                    <Bell size={18} strokeWidth={2.1} />
+                  </button>
+                  <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#EAF2FF', color: PRIMARY, display: 'grid', placeItems: 'center', fontSize: 15, fontWeight: 800 }}>
+                    {accountIdentityInitials}
+                  </div>
+                </div>
+              </header>
+
           {accountPanel?.error ? (
             <div style={{ borderRadius: 18, border: '1px solid #FECACA', background: '#FEF2F2', color: '#B42318', padding: '14px 16px', fontSize: 14, lineHeight: 1.6 }}>
               {accountPanel.error}
@@ -329,7 +548,7 @@ export function DgfyCustomerAccountPage({
             </div>
           ) : null}
 
-          {activeOrders.length > 0 && (
+          {showOrders && activeOrders.length > 0 && (
             <section style={{ display: 'grid', gap: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ width: 42, height: 42, borderRadius: 14, background: '#EFF6FF', color: PRIMARY, display: 'grid', placeItems: 'center' }}>
@@ -396,7 +615,7 @@ export function DgfyCustomerAccountPage({
             </section>
           )}
 
-          {trackedCustomerActivity || customerTrackError ? (
+          {showOrders && (trackedCustomerActivity || customerTrackError) ? (
             <section style={{ borderRadius: 22, border: `1px solid ${BORDER}`, background: SOFT_SURFACE, padding: isMobileViewport ? 18 : 20, display: 'grid', gap: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ width: 40, height: 40, borderRadius: 14, background: '#FFFFFF', color: PRIMARY, display: 'grid', placeItems: 'center' }}>
@@ -436,8 +655,8 @@ export function DgfyCustomerAccountPage({
             </section>
           ) : null}
 
-          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.15fr) minmax(0, 0.85fr)', gap: 24 }}>
-            <section style={{ display: 'grid', gap: 14 }}>
+          <div style={{ display: ['overview', 'orders', 'bookings', 'addresses', 'loyalty'].includes(activeNav) ? 'grid' : 'none', gridTemplateColumns: isMobileViewport || !showOverview ? '1fr' : 'minmax(0, 1.15fr) minmax(0, 0.85fr)', gap: 24 }}>
+            <section style={{ display: showOrders ? 'grid' : 'none', gap: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ width: 42, height: 42, borderRadius: 14, background: '#EFF6FF', color: PRIMARY, display: 'grid', placeItems: 'center' }}>
                   <Ticket size={18} strokeWidth={2.1} />
@@ -486,8 +705,8 @@ export function DgfyCustomerAccountPage({
               </div>
             </section>
 
-            <section style={{ display: 'grid', gap: 24 }}>
-              <div style={{ display: 'grid', gap: 14 }}>
+            <section style={{ display: showBookings || showAddresses || showLoyalty ? 'grid' : 'none', gap: 24 }}>
+              <div style={{ display: showBookings ? 'grid' : 'none', gap: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ width: 42, height: 42, borderRadius: 14, background: '#EFF6FF', color: PRIMARY, display: 'grid', placeItems: 'center' }}>
                     <CalendarDays size={18} strokeWidth={2.1} />
@@ -515,7 +734,7 @@ export function DgfyCustomerAccountPage({
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gap: 14 }}>
+              <div style={{ display: showAddresses ? 'grid' : 'none', gap: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ width: 42, height: 42, borderRadius: 14, background: '#EFF6FF', color: PRIMARY, display: 'grid', placeItems: 'center' }}>
                     <MapPin size={18} strokeWidth={2.1} />
@@ -693,7 +912,7 @@ export function DgfyCustomerAccountPage({
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gap: 14 }}>
+              <div style={{ display: showLoyalty ? 'grid' : 'none', gap: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ width: 42, height: 42, borderRadius: 14, background: '#EFF6FF', color: PRIMARY, display: 'grid', placeItems: 'center' }}>
                     <Zap size={18} strokeWidth={2.1} />
@@ -733,6 +952,60 @@ export function DgfyCustomerAccountPage({
               </div>
             </section>
           </div>
+
+          {activeNav === 'account' ? (
+            <section style={{ borderRadius: 24, border: `1px solid ${BORDER}`, background: '#FFFFFF', padding: isMobileViewport ? 18 : 24, display: 'grid', gap: 18, boxShadow: '0 18px 42px rgba(15,23,42,0.05)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 16, background: '#EFF6FF', color: PRIMARY, display: 'grid', placeItems: 'center' }}>
+                  <User size={20} strokeWidth={2.2} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: TEXT }}>Profile Overview</div>
+                  <div style={{ marginTop: 4, fontSize: 14, color: MUTED }}>Your DGFY identity used across participating storefronts.</div>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 14 }}>
+                {[
+                  ['Name', accountIdentityName],
+                  ['Contact', accountIdentityContact],
+                  ['Email status', accountPanel?.me?.is_email_verified ? 'Verified' : 'Unverified'],
+                  ['Account scope', 'Global DGFY customer']
+                ].map(([label, value]) => (
+                  <div key={label} style={{ borderRadius: 18, border: `1px solid ${BORDER}`, background: SOFT_SURFACE, padding: '14px 16px', display: 'grid', gap: 5 }}>
+                    <div style={{ fontSize: 12, color: MUTED, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{label}</div>
+                    <div style={{ fontSize: 15, color: TEXT, fontWeight: 700, lineHeight: 1.45 }}>{value || 'Not available'}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ borderRadius: 18, border: `1px solid ${BORDER}`, background: '#F8FAFC', padding: '14px 16px', fontSize: 14, lineHeight: 1.6, color: MUTED }}>
+                DGFY account activity only shows orders, bookings, addresses, and loyalty events explicitly linked to this account. Guest history is not auto-adopted by email or phone.
+              </div>
+            </section>
+          ) : null}
+
+          {activeNav === 'business' ? (
+            <section style={{ borderRadius: 24, border: `1px solid ${BORDER}`, background: '#FFFFFF', padding: isMobileViewport ? 20 : 28, display: 'grid', gap: 18, textAlign: 'center', justifyItems: 'center', boxShadow: '0 18px 42px rgba(15,23,42,0.05)' }}>
+              <div style={{ width: 76, height: 76, borderRadius: '50%', background: '#EAF2FF', color: PRIMARY, display: 'grid', placeItems: 'center' }}>
+                <Store size={34} strokeWidth={2.2} />
+              </div>
+              <div>
+                <div style={{ fontSize: isMobileViewport ? 24 : 28, fontWeight: 800, color: TEXT, lineHeight: 1.1 }}>Register your business</div>
+                <div style={{ marginTop: 10, maxWidth: 560, fontSize: 15, lineHeight: 1.65, color: MUTED }}>
+                  Use this DGFY account to create and manage your business profile. Company registration remains separate from customer login.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onRegisterBusiness}
+                style={{ minHeight: 48, borderRadius: 16, border: 'none', background: PRIMARY, color: '#FFFFFF', padding: '0 22px', fontSize: 15, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer' }}
+              >
+                <Store size={17} strokeWidth={2.2} />
+                Register Your Business
+              </button>
+            </section>
+          ) : null}
+            </div>
+          </section>
         </div>
 
         <footer
@@ -742,7 +1015,7 @@ export function DgfyCustomerAccountPage({
             zIndex: 2,
             borderTop: `1px solid ${BORDER}`,
             padding: isMobileViewport ? '14px 16px' : '16px 32px',
-            display: 'flex',
+            display: isMobileViewport ? 'flex' : 'none',
             justifyContent: 'space-between',
             alignItems: 'center',
             gap: 12,

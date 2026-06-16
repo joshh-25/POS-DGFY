@@ -80,9 +80,9 @@ const mountApp = () => {
   ReactDOM.createRoot(document.getElementById('root')).render(
     <React.StrictMode>
       <ErrorBoundary>
-        <PermissionProvider>
-          <WorkflowModeProvider>
-            <HashRouter>
+        <HashRouter>
+          <PermissionProvider>
+            <WorkflowModeProvider>
               <GlobalApiErrorListener />
               <Toaster position="top-right" />
               <Suspense fallback={<div className="min-h-screen bg-slate-100 p-6 text-sm text-slate-500">Loading...</div>}>
@@ -97,9 +97,9 @@ const mountApp = () => {
                   <Route path="*" element={<PosRouteNotFound />} />
                 </Routes>
               </Suspense>
-            </HashRouter>
-          </WorkflowModeProvider>
-        </PermissionProvider>
+            </WorkflowModeProvider>
+          </PermissionProvider>
+        </HashRouter>
       </ErrorBoundary>
     </React.StrictMode>
   );
@@ -109,7 +109,6 @@ if (import.meta.env.DEV) {
   (async () => {
     const companyToken = 'token-original';
     try {
-      window.localStorage.setItem('companyToken', companyToken);
       window.localStorage.setItem('pos_terminal_identity_v1', 'COUNTER-01');
 
       const response = await fetch(`${runtimeApiBaseUrl}/auth/login`, {
@@ -123,10 +122,6 @@ if (import.meta.env.DEV) {
       const body = await response.json().catch(() => null);
       if (response.ok && body?.success && body?.data?.token) {
         setBrowserSession({ token: body.data.token, companyToken });
-        window.localStorage.setItem('authToken', body.data.token);
-        if (body.data.refreshToken) {
-          window.localStorage.setItem('refreshToken', body.data.refreshToken);
-        }
         window.dispatchEvent(new CustomEvent('auth:login'));
       }
     } catch {
