@@ -93,7 +93,8 @@ import {
   canUseProductCart,
   canViewCatalog,
   getAccessCapabilities,
-  getInventoryDisplayLabel
+  getInventoryDisplayLabel,
+  getStorefrontAccessBlockMessage
 } from './customerAccess.js';
 import { getFoodBeverageStorefrontViewModel } from './fnbStorefrontViewModel.js';
 import { getBusinessModePinMeta, renderBusinessModePinSvg } from './businessModePins.js';
@@ -2637,6 +2638,58 @@ const buildFnbFallbackReasons = ({ fnbViewModel = null, categories = [] } = {}) 
   return [...new Set(reasons.map((entry) => String(entry || '').trim()).filter(Boolean))].slice(0, 4);
 };
 
+const buildFnbContentReadinessItems = ({
+  heroSectionModel = {},
+  fnbViewModel = {},
+  selectedStore = null,
+  deliveryPlatformLinks = []
+} = {}) => {
+  const totalItems = Number(fnbViewModel?.totalItems || selectedStore?.catalog_count || 0);
+  const menuSectionCount = Number(fnbViewModel?.menuSectionCount || 0);
+  const beverageCount = Number(fnbViewModel?.beverageCount || 0);
+  const readyNowCount = Number(fnbViewModel?.readyNowCount || 0);
+  const hasGallery = Array.isArray(heroSectionModel?.galleryImages) && heroSectionModel.galleryImages.length > 0;
+  const hasAbout = String(heroSectionModel?.aboutText || '').trim().length > 0;
+  const hasPromo = heroSectionModel?.promo?.active === true;
+  const hasDelivery = Array.isArray(deliveryPlatformLinks) && deliveryPlatformLinks.length > 0;
+
+  return [
+    totalItems > 0 ? `${totalItems} menu items published` : '',
+    menuSectionCount > 0 ? `${menuSectionCount} menu sections organized` : '',
+    readyNowCount > 0 ? `${readyNowCount} items marked ready now` : '',
+    beverageCount > 0 ? `${beverageCount} beverage options` : '',
+    hasGallery ? 'Storefront gallery is available' : '',
+    hasAbout ? 'Store profile copy is available' : '',
+    hasPromo ? 'Promo content is active' : '',
+    hasDelivery ? 'Delivery partner links are available' : ''
+  ].filter(Boolean).slice(0, 5);
+};
+
+const buildFnbOverviewFallbackCopy = ({
+  storeName = '',
+  fnbViewModel = {},
+  selectedStore = null
+} = {}) => {
+  const name = String(storeName || selectedStore?.tenant_name || 'This menu').trim();
+  const totalItems = Number(fnbViewModel?.totalItems || selectedStore?.catalog_count || 0);
+  const sectionCount = Number(fnbViewModel?.menuSectionCount || 0);
+  const beverageCount = Number(fnbViewModel?.beverageCount || 0);
+  const parts = [];
+  if (totalItems > 0) {
+    parts.push(`${totalItems} published menu item${totalItems === 1 ? '' : 's'}`);
+  }
+  if (sectionCount > 0) {
+    parts.push(`${sectionCount} organized section${sectionCount === 1 ? '' : 's'}`);
+  }
+  if (beverageCount > 0) {
+    parts.push(`${beverageCount} drink option${beverageCount === 1 ? '' : 's'}`);
+  }
+  if (parts.length === 0) {
+    return `${name} shares menu highlights, store details, and contact options for customers browsing the storefront.`;
+  }
+  return `${name} offers ${parts.join(', ')} for customers browsing the storefront.`;
+};
+
 const FnbHero = ({
   modeAdapter,
   heroSectionModel,
@@ -2682,6 +2735,11 @@ const FnbHero = ({
   const displayHours = String(heroSectionModel.hours || '').trim();
   const hasMobileStoreDetailsSummary = Boolean(displayHours) || deliveryPlatformLinks.length > 0;
   const showMobilePrimaryInfoCard = hasAboutSection || hasMobileStoreDetailsSummary;
+  const overviewFallbackCopy = buildFnbOverviewFallbackCopy({
+    storeName: heroSectionModel.name,
+    fnbViewModel,
+    selectedStore
+  });
   const hasAboutToggle = aboutText.length > 180;
   const hasAddress = Boolean(addressText);
   const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
@@ -2757,6 +2815,12 @@ const FnbHero = ({
     if (!selectedStore?.slug) return '';
     return buildPublicStorefrontUrl(selectedStore.slug);
   }, [selectedStore?.slug]);
+  const contentReadinessItems = useMemo(() => buildFnbContentReadinessItems({
+    heroSectionModel,
+    fnbViewModel,
+    selectedStore,
+    deliveryPlatformLinks
+  }), [heroSectionModel, fnbViewModel, selectedStore, deliveryPlatformLinks]);
 
   return (
     <section style={{ marginBottom: 40 }}>
@@ -3036,7 +3100,7 @@ const FnbHero = ({
                           margin: 0, fontSize: 13, lineHeight: 1.6, color: '#475569', fontFamily: heroTheme.bodyFont,
                           display: '-webkit-box', WebkitLineClamp: expandedMobileCard === 'about' ? 'unset' : 3, WebkitBoxOrient: 'vertical', overflow: 'hidden'
                         }}>
-                          {aboutText}
+                          {aboutText || overviewFallbackCopy}
                         </p>
                         {hasAboutToggle && expandedMobileCard !== 'about' && (
                           <button type="button" onClick={() => setExpandedMobileCard('about')} style={{ background: 'none', border: 'none', padding: 0, color: '#f97316', fontSize: 13, fontWeight: 700, marginTop: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
@@ -3245,7 +3309,7 @@ const FnbHero = ({
                     overflow: hasAboutToggle ? 'hidden' : 'visible',
                     fontFamily: heroTheme.bodyFont
                   }}>
-                    {aboutText}
+                    {aboutText || overviewFallbackCopy}
                   </p>
                 </div>
               )}
@@ -3373,6 +3437,20 @@ const FnbHero = ({
                       <Sparkles size={14} />
                     </div>
                     <div style={{ color: '#334155', fontWeight: 600 }}>{item}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {contentReadinessItems.length > 0 && (
+            <div style={{ border: '1px solid #e2e8f0', borderRadius: 14, background: '#f8fafc', padding: 14, display: 'grid', gap: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: heroTheme.bodyFont }}>Menu at a glance</div>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {contentReadinessItems.map((item) => (
+                  <div key={item} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, lineHeight: 1.5, color: '#475569', fontWeight: 650, fontFamily: heroTheme.bodyFont }}>
+                    <CheckCircle2 size={14} color={heroTheme.accent || '#f97316'} style={{ marginTop: 2, flexShrink: 0 }} />
+                    <span>{item}</span>
                   </div>
                 ))}
               </div>
@@ -4313,7 +4391,7 @@ const ServicesHero = ({
                     overflow: 'hidden',
                     fontFamily: servicesBodyFont
                   }}>
-                    {aboutText}
+                    {aboutText || overviewFallbackCopy}
                   </p>
                   {hasAboutToggle && (
                     <button type="button" onClick={() => setIsAboutExpanded((previous) => !previous)} style={{ border: 'none', background: 'transparent', color: servicesPrimary, fontWeight: 700, fontSize: 13, cursor: 'pointer', padding: 0, justifySelf: 'start', fontFamily: servicesBodyFont }}>
@@ -6481,9 +6559,23 @@ export default function StorefrontApp() {
     setRouteServiceItemId(null);
     setRouteItemId(null);
   };
-  const goStoreOrderForDiscovery = (slug, locationId = null) => {
+  const goStoreOrderForDiscovery = (slug, locationId = null, storeContext = null) => {
     const normalized = toSlug(slug);
     if (!normalized || typeof window === 'undefined') return;
+    const contextWorkflowMode = String(storeContext?.workflow_mode || storeContext?.business_mode || '').trim().toLowerCase();
+    const hasStoreContext = storeContext && typeof storeContext === 'object';
+    const shouldUseCanonicalStorefront = hasStoreContext && (contextWorkflowMode === 'fnb' || !canUseCheckout(storeContext));
+    if (shouldUseCanonicalStorefront) {
+      goStore(normalized, locationId);
+      if (!canUseCheckout(storeContext)) {
+        const message = getStorefrontAccessBlockMessage(storeContext);
+        if (message) toast.error(message);
+      }
+      window.requestAnimationFrame(() => {
+        document.getElementById('storefront-catalog-section')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+      });
+      return;
+    }
     const persistedTrackedOrders = readTrackedOrdersForStore(normalized).filter((entry) => !TERMINAL_TRACKING_STATUSES.has(String(entry.status || '').trim().toLowerCase()));
     const persistedTrackingPin = readLastTrackingPinForStore(normalized);
     const resolvedInitialTab = 'checkout';
@@ -9938,7 +10030,7 @@ export default function StorefrontApp() {
 				              </div>
 				              <div style={{ display: 'grid', gap: isMobileGridView ? 8 : 10, gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', marginTop: isMobileGridView ? 0 : 2 }}>
 		                <button type="button" className="discovery-grid-action discovery-grid-action-secondary" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
-		                <button type="button" className="discovery-grid-action discovery-grid-action-primary" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={actionButtonStyle('primary')}>Order Now</button>
+		                <button type="button" className="discovery-grid-action discovery-grid-action-primary" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId, store)} style={actionButtonStyle('primary')}>Order Now</button>
 		              </div>
 		            </div>
 		          </article>
@@ -10027,7 +10119,7 @@ export default function StorefrontApp() {
 	                </div>
 	              </div>
               <div style={{ display: 'grid', gap: 8, gridTemplateColumns: '1fr 1fr' }}>
-                <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={actionButtonStyle('primary')}>Order Now</button>
+                <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId, store)} style={actionButtonStyle('primary')}>Order Now</button>
                 <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
               </div>
             </article>
@@ -10163,31 +10255,31 @@ export default function StorefrontApp() {
                 {etaLabel}
               </span>
             </div>
-					            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-						              {branchLabel && <span style={{ fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#64748b' }}>{branchLabel}</span>}
-						              {Number(store?.catalog_count || 0) > 0 && <span style={{ fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#94a3b8' }}>{Number(store.catalog_count)} item(s)</span>}
-					            </div>
-					            {!isStoreOpenNow && (
-					              <div style={{ fontSize: isGridView ? 10 : 11, fontWeight: 700, color: '#b45309' }}>
-					                {closedStoreNote}
-					              </div>
-					            )}
-				          </div>
-		
-	          <div style={{ display: 'grid', gap: 8, alignSelf: isMobileListView ? 'start' : 'stretch', alignContent: isDesktopListView ? 'end' : 'start', justifyContent: isDesktopListView ? 'end' : 'stretch', gridTemplateColumns: isGridView ? '1fr 1fr' : '1fr', gridColumn: 'auto', marginTop: isGridView ? 2 : 0, minWidth: isMobileListView ? 104 : (isDesktopListView ? 126 : 0) }}>
-	            {isGridView ? (
-	              <>
-	                <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
-	                <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={actionButtonStyle('primary')}>Order Now</button>
-	              </>
-	            ) : (
-	              <>
-	                <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={actionButtonStyle('primary')}>Order Now</button>
-	                <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
-	              </>
-	            )}
-	          </div>
-	        </article>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {branchLabel && <span style={{ fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#64748b' }}>{branchLabel}</span>}
+              {Number(store?.catalog_count || 0) > 0 && <span style={{ fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#94a3b8' }}>{Number(store.catalog_count)} item(s)</span>}
+                      </div>
+                      {!isStoreOpenNow && (
+                        <div style={{ fontSize: isGridView ? 10 : 11, fontWeight: 700, color: '#b45309' }}>
+                          {closedStoreNote}
+                        </div>
+                      )}
+                  </div>
+
+            <div style={{ display: 'grid', gap: 8, alignSelf: isMobileListView ? 'start' : 'stretch', alignContent: isDesktopListView ? 'end' : 'start', justifyContent: isDesktopListView ? 'end' : 'stretch', gridTemplateColumns: isGridView ? '1fr 1fr' : '1fr', gridColumn: 'auto', marginTop: isGridView ? 2 : 0, minWidth: isMobileListView ? 104 : (isDesktopListView ? 126 : 0) }}>
+              {isGridView ? (
+                <>
+                  <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
+                  <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId, store)} style={actionButtonStyle('primary')}>Order Now</button>
+                </>
+              ) : (
+                <>
+                  <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId, store)} style={actionButtonStyle('primary')}>Order Now</button>
+                  <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={actionButtonStyle('secondary')}>View Store</button>
+                </>
+              )}
+            </div>
+          </article>
           )
 	      );
 	    };
@@ -12232,7 +12324,7 @@ export default function StorefrontApp() {
                                   </div>
                                   <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                                     <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={{ flex: 1, borderRadius: 8, border: '1px solid #dbeafe', background: '#fff', color: '#1a4e8d', padding: '7px 0', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>View Store</button>
-                                    <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId)} style={{ flex: 1, borderRadius: 8, border: 'none', background: '#ff8a1f', color: '#fff', padding: '7px 0', fontWeight: 700, cursor: 'pointer', fontSize: 12, boxShadow: '0 4px 10px rgba(249,115,22,.20)' }}>Order Now</button>
+                                    <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId, store)} style={{ flex: 1, borderRadius: 8, border: 'none', background: '#ff8a1f', color: '#fff', padding: '7px 0', fontWeight: 700, cursor: 'pointer', fontSize: 12, boxShadow: '0 4px 10px rgba(249,115,22,.20)' }}>Order Now</button>
                                   </div>
                                 </div>
                               </article>

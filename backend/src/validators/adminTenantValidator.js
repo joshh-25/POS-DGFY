@@ -1,14 +1,24 @@
 import Joi from 'joi';
 
 const CUSTOMER_ACCESS_MODES = ['ghost', 'catalog', 'inquiry', 'transaction'];
+const CUSTOMER_ACCESS_REGISTRATION_STAGES = ['informal', 'partial', 'registered'];
 
 const capabilityPatchSchema = Joi.object({
     ims_enabled: Joi.boolean().strict().optional(),
     pos_enabled: Joi.boolean().strict().optional(),
     storefront_visible: Joi.boolean().strict().optional(),
     customer_access_mode: Joi.string().trim().lowercase().valid(...CUSTOMER_ACCESS_MODES).optional(),
+    platform_max_customer_access_mode: Joi.string().trim().lowercase().valid(...CUSTOMER_ACCESS_MODES).optional(),
+    customer_access_registration_stage: Joi.string().trim().lowercase().valid(...CUSTOMER_ACCESS_REGISTRATION_STAGES).optional(),
     reason: Joi.string().trim().min(3).max(500).required()
-}).or('ims_enabled', 'pos_enabled', 'storefront_visible', 'customer_access_mode').unknown(false);
+}).or(
+    'ims_enabled',
+    'pos_enabled',
+    'storefront_visible',
+    'customer_access_mode',
+    'platform_max_customer_access_mode',
+    'customer_access_registration_stage'
+).unknown(false);
 
 const capabilityAuditLogQuerySchema = Joi.object({
     limit: Joi.number().integer().min(1).max(100).default(20)

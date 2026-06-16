@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-06-11
+last_reviewed: 2026-06-16
 applies_to: customer_access_modes_and_storefront_inventory_display
 topic: customer_access_modes_inventory_display
 ---
@@ -13,6 +13,15 @@ topic: customer_access_modes_inventory_display
 Customer Access Mode replaces the old merchant-facing "Visibility Mode" wording with a capability contract: what customers can see and do after finding a business. Inventory Display is a separate Storefront control for how much stock information customers can see. Item-level `Show in Storefront` is a third control: it determines whether an individual item is included in the customer-facing catalog when the tenant's effective Customer Access Mode allows catalog browsing.
 
 This contract is enforced by default. Public Storefront APIs use the effective Customer Access Mode from tenant settings to decide whether customers can browse catalog rows, contact the tenant, request quotes, book services, or complete checkout. `CUSTOMER_ACCESS_MODES_ENABLED=false` is now an explicit rollback switch only; when it is set, `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` may still re-enable enforcement for selected canary tenants.
+
+Customer Access Mode uses a governed ceiling model:
+
+- `customer_access_mode` is the company/tenant requested mode.
+- `platform_max_customer_access_mode` is the platform-admin configured ceiling.
+- Registration readiness contributes its own ceiling from onboarding/legitimacy state.
+- `effective_customer_access_mode` is the most restrictive mode across the company request, platform ceiling, registration readiness, and runtime enforcement gates.
+
+Company admins may downgrade their requested mode at any time, but cannot make the public Storefront more permissive than the platform-admin ceiling. Platform admins may raise or lower the platform ceiling and registration readiness through audited Tenant Manager capability controls. Public quote, booking, cart, checkout, and payment actions remain available only when the effective mode is `transaction` and the existing stock, branch, payment, compliance, and business-hours gates also pass.
 
 Authoritative docs used for this plan:
 
@@ -52,7 +61,7 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 ## Implemented Integration
 1. Backend domain and settings
 - Shared policy helpers live in `backend/src/modules/shared/utils/customerAccessPolicy.js`.
-- Tenant-local settings are persisted in `system_settings`: `customer_access_mode`, `inventory_display_mode`, and `inventory_low_stock_display_threshold`.
+- Tenant-local settings are persisted in `system_settings`: `customer_access_mode`, `platform_max_customer_access_mode`, `inventory_display_mode`, and `inventory_low_stock_display_threshold`.
 - Existing tenants keep their persisted `store_is_visible` value. Newly provisioned tenants default to `store_is_visible=false`, `customer_access_mode=catalog`, `inventory_display_mode=availability`, and low-stock threshold `5`. Provisioning must overwrite a migration-seeded `store_is_visible=true` row for the new tenant before discovery bootstrap runs.
 - `store_is_visible=false` hides the tenant from public discovery/map feeds and public storefront profile reads. This tenant-level public visibility switch is evaluated before Customer Access Mode; a hidden tenant is not exposed as a Map Listing Only entry.
 - Settings validation and normalization accept the new keys through the modular Settings flow. Controllers remain transport-only. Bulk Settings saves compare incoming keys with persisted values before compliance preflight, so unchanged fiscal POS fields included by the full Settings form do not block unrelated Storefront/profile/system changes for non-compliant tenants.
@@ -70,11 +79,18 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - Settings > Storefront exposes the same public map/page visibility switch through `store_is_visible`. Turning it off hides both public discovery/map pins and the public root-handle tenant page (`/:store_tenant_slug`). Turning it on does not create a pin by itself; Settings warns when no active primary storefront pin exists because public publication remains blocked until a real pin is saved.
 - `store_tenant_slug` is the tenant's unique public handle. Duplicate company display names are allowed, but duplicate handles and reserved DGFY root paths are rejected so clean URLs such as `https://dgfy.ph/space-bar` remain deterministic. Handle uniqueness is reserved in landlord `storefront_handle_reservations`, not only in the public discovery index, so hidden tenants keep their clean URL claim while absent from map/search results. `/tenant-store/:slug` and `/store/:slug` remain compatibility paths only.
 - The section shows requested mode, effective mode, max allowed mode, limitation copy, and a runtime enforcement status sourced from `GET /settings` key `customer_access_modes_enabled`.
+- `GET /settings` also exposes runtime access metadata for tenant Settings: `requested_customer_access_mode`, `effective_customer_access_mode`, `max_customer_access_mode`, `platform_max_customer_access_mode`, `registration_stage_max_customer_access_mode`, `customer_access_registration_stage`, `customer_access_limitation_reason`, and `customer_access_capabilities`.
 - `customer_access_modes_enabled` is a virtual runtime setting derived from `CUSTOMER_ACCESS_MODES_ENABLED` and tenant allowlisting. It is read-only and must not be persisted in `system_settings`.
-- Modes above the declared onboarding registration stage are disabled in normal tenant UI; backend runtime still enforces public actions.
+- `platform_max_customer_access_mode` and `customer_access_registration_stage` are platform-admin controlled. Tenant Settings may read them, but tenant Settings mutations must not write them.
+- Tenant Settings disables modes above the platform-admin ceiling, but may request a mode above current registration readiness. The backend still computes the effective mode with registration readiness and blocks quote, checkout, booking, and payment until effective mode is `transaction`.
 - Item-level storefront catalog controls live on inventory item setup surfaces, not Settings. Settings controls whether the Storefront can browse/order overall; `Show in Storefront` controls one item.
 
-4. Storefront public APIs
+4. Tenant Manager platform controls
+- Tenant Manager separates the platform-admin ceiling from the company-requested mode. `Platform max allowed` is the maximum mode a company admin may request.
+- Tenant Manager also exposes `Registration readiness` as an audited platform-admin control with `informal`, `partial`, and `registered` states. It updates the tenant onboarding progress legitimacy payload used by the runtime policy.
+- A tenant becomes transaction-capable only when company requested mode is `transaction`, platform max is `transaction`, registration readiness is `registered`, runtime enforcement is enabled, and the existing checkout readiness gates pass. Setting only one of these values to `transaction` does not enable checkout.
+
+5. Storefront public APIs
 - Discovery/profile/catalog responses include additive access metadata. The landlord discovery index materializes `customer_access_mode`, `effective_customer_access_mode`, `inventory_display_mode`, `access_capabilities`, limitation metadata, and runtime enforcement state so discovery cards can suppress Order Now without a tenant DB fanout. Tenants with `store_is_visible=false` are removed from the index and public profile reads return not found.
 - For `ghost`, discovery/profile still work, item-search snapshots are suppressed during discovery indexing, and `/store/catalog` returns no public items while enforcement is active.
 - For `catalog` and `inquiry`, `/store/catalog` returns public rows but quote/checkout/booking mutations fail closed while enforcement is active.
@@ -83,13 +99,13 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - Public product quote and checkout aggregate requested quantity by stock-bearing `item_id` before stock validation. This applies across MSME/product, Food Manufacturing finished products, F&B menu or packaged rows with separate modifier lines, physical Services Mode add-ons, and future stock-bearing mode rows. Pure service rows remain stock-exempt here and use Services booking capacity/hold validation instead.
 - `/store/catalog` item membership and checkout item eligibility use `storefront_catalog_overrides.storefront_visible` plus branch availability from `storefront_location_item_overrides` when a `location_id` is selected. Services public catalog, availability, hold, booking, and waitlist flows use the same branch availability table for service items. `pos_catalog_overrides.pos_visible` remains POS-only after backfill, with a temporary missing-table fallback for additive rollout safety.
 - Branch availability is additive to inventory and mode rules. An item or service disabled for a branch is hidden before stock/availability labels or service slots are computed; an enabled row must still pass Storefront visibility, customer price, mode readiness, branch stock, and service capacity checks.
-- Storefront catalog images use `storefront_catalog_overrides.storefront_image_url` for the primary image and `storefront_catalog_overrides.storefront_image_gallery` for ordered detail images. Inventory item/product setup treats POS Upload Image and Storefront Add Item Images as the same item-image gallery action, so POS terminal catalog cards use the shared primary item image when no legacy POS-only image is configured.
+- Storefront catalog images use `storefront_catalog_overrides.storefront_image_url` for the primary image and `storefront_catalog_overrides.storefront_image_gallery` for ordered detail images. Inventory item/product setup exposes item-image uploads only in Storefront Catalog; POS Controls no longer has a separate image uploader. POS terminal catalog cards use the shared primary item image when no legacy POS-only image is configured.
 - Merchant image upload supports appendable Storefront galleries: selecting multiple Storefront item images adds them after the existing ordered images. The first gallery entry is primary and is mirrored to `storefront_image_url`; item/product setup can promote another image to first position or remove one image without clearing the whole gallery. Drag-and-drop ordering is not required because explicit `Set first` covers the primary customer-facing image and per-image deletion covers cleanup. Storefront gallery reads preserve JSON-column gallery data before falling back to legacy image fields so multi-image galleries are not collapsed to a single primary image.
 - Onboarding `Item image` uploads use the same Storefront catalog image/gallery contract as inventory item setup. Onboarding copy is merchant-facing only; backend fields remain `storefront_image_url` and `storefront_image_gallery`.
 - When the Storefront override table exists but an individual item has no Storefront override row, public Storefront reads use the Storefront default policy rather than inheriting POS state. For products, finished goods default visible and non-finished goods default hidden; services follow service storefront metadata.
 - POS and Storefront image replacement is visibility-preserving and failure-aware: upload stores the new file, commits the override update, then removes the old file. A failed override update cleans up the newly stored file and leaves the old image path intact.
 
-5. Storefront UI
+6. Storefront UI
 - Map Listing Only: shows map/profile/contact and hides catalog, cart, quote, checkout, booking, and Order Now.
 - Catalog Only: shows catalog browse UI and hides cart, booking, quote, checkout, and Order Now.
 - Inquiry Mode: shows catalog plus existing contact channels and hides cart, booking, quote, and checkout.
@@ -102,7 +118,7 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - `modePresentationRegistry.js` supplies mode-specific labels, catalog headings, search placeholders, and primary action copy for generic and services storefronts.
 - `normalizeStorefrontPageModel.js` and `servicesStorefrontViewModel.js` normalize public storefront payloads before rendering service-first sections, service-family tabs, booking page content, review sections, and footer content.
 - F&B storefronts can expose a reservation tab and carry menu line modifiers into checkout payloads without changing the backend customer-access enforcement rules.
-- Item cards and item setup modals in inventory expose separate `Show in POS` and `Show in Storefront` controls. Merchant-facing image upload copy says `Item image`; backend/API fields and services still use the Storefront catalog image contract (`storefront_catalog_overrides.storefront_image_url` plus `storefront_catalog_overrides.storefront_image_gallery`). Uploading, promoting, or removing item images through the POS or Storefront setup controls must not mutate either visibility flag.
+- Item cards and item setup modals in inventory expose separate `Show in POS` and `Show in Storefront` controls. Merchant-facing image upload copy says `Item image`; backend/API fields and services still use the Storefront catalog image contract (`storefront_catalog_overrides.storefront_image_url` plus `storefront_catalog_overrides.storefront_image_gallery`). Uploading, promoting, or removing item images through Storefront Catalog must not mutate either visibility flag, and POS terminal cards read the resulting shared primary image.
 - Item/product setup modals expose branch availability toggles for active tenant locations during creation and editing. New item/product forms keep the toggles as draft setup state until the item is saved, then persist `location_availability` through the Storefront override endpoint. Existing item/product forms update the override directly. These toggles determine which branch catalogs can show the item/service; they do not move stock, allocate FIFO batches, or change POS visibility.
 - Item and product create/edit flows expose `Save and exit` in the footer and a top-right close control in the dialog header. For new rows and existing draft rows `Save and exit` saves draft data and closes without finalizing; for existing active rows it saves the update and closes. The header close button follows the cancel path and must remain visible at all wizard steps so users are not trapped in long edit flows. `Finalize Item`, `Finalize Product`, `Create`, and `Update` remain separate actions. Dialog dimensions are standardized across item and product wizard steps, and footer/header buttons are guarded while saves are in flight to prevent duplicate submits or step navigation during a pending save.
 - Multi-step item/product, purchase order, import, and onboarding modals use the shared numbered step navigator when there is more than one step. The navigator renders circular step numbers in a horizontally scrollable strip, supports active/completed/inactive/disabled states, and exposes hover/focus tooltip labels for step contents. Product and purchase-order wizards allow direct step navigation. Import and onboarding flows may show future steps while keeping unsafe future navigation disabled until their required data exists.
@@ -290,14 +306,15 @@ Validated on 2026-06-10 for inventory modal consistency and Storefront gallery p
 - Product and item create/edit modals expose the same top-right close affordance while retaining footer `Cancel`, `Save and exit`, and step navigation actions.
 - Wizard modal dimensions are standardized so moving between product steps does not resize the dialog unexpectedly.
 - Storefront catalog reads preserve ordered `storefront_image_gallery` JSON data and use legacy single-image fields only as fallback, keeping F&B gallery carousels populated when multiple item images exist.
-- Latest production runtime evidence available in this workspace records deployed code SHA `8b03dfea4f9615d665baa14df59a78de5c797a60`. Documentation-only commits after this June 11 refresh do not change this feature's runtime state until separately pushed and promoted.
+- Later production runtime evidence in this workspace records deployed code SHA `14de6e0f0d4497d7821e047704a66705b6164f29` with deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260616_021931.summary.txt`; the June 10 modal consistency and Storefront gallery preservation behavior remains included in that deployed chain.
 
 Validated on 2026-06-15 for modal wizard stepper styling, appendable item images, and POS terminal image fallback:
 - Shared wizard step navigation CSS renders circular numbered controls, connector lines, active/completed states, and hover/focus tooltips instead of exposing raw tooltip text inline.
-- Item/product POS Upload Image and Storefront Add Item Images write through the same single-item item-image gallery when the shared uploader is available, while `Show in POS` and `Show in Storefront` remain separate visibility controls.
+- Item/product setup exposes one wizard image uploader under Storefront Catalog. POS Controls has no image uploader; `Show in POS` and `Show in Storefront` remain separate visibility controls, and POS terminal cards adopt the shared Storefront primary item image.
 - Storefront gallery override reads include the primary key before update, so existing galleries can append more than one image up to the five-image limit without Sequelize rejecting the save.
 - POS terminal catalog rows prefer legacy `pos_image_url` when configured and otherwise display the shared Storefront primary item image.
 - Focused validation passed: `npm exec vitest run src/features/inventory/__tests__/itemProductWizard.contract.test.js src/features/inventory/__tests__/ProductCreateWizard.behavior.test.jsx --pool=threads` from `frontend/`; `npm --prefix backend test -- --runInBand tests/inventoryItemRepository.test.js tests/posRepository.catalogImages.test.js`; `npm --prefix frontend run build:skupervisor`; `npm --prefix frontend run build:pos`; `npm run lint:docs`; `npm run check:architecture`; `git diff --check`.
+- Production deploy on 2026-06-16 advanced this source to SHA `14de6e0f0d4497d7821e047704a66705b6164f29`; deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260616_021931.summary.txt` records backend, IMS, POS, Store, public endpoint, tenant-store asset integrity, frontend asset parity, tenant schema, permission backfill, Storefront discovery, PM2 reload, and `tenant_index_headroom_strict=0` report-mode checks passing. This later deploy also includes the Storefront access-mode ceiling UI correction while keeping backend quote/checkout/booking/payment enforcement gated by effective `transaction` mode. Space Bar production proof remains requested `transaction` / effective `catalog` because registration stage `informal` allows up to catalog mode.
 
 Validated on 2026-06-07 for root handles, main-branch pinning, and branch-scoped catalog/services:
 - Landlord `storefront_handle_reservations` now owns clean `store_tenant_slug` uniqueness so hidden tenants retain their public handle claim while absent from discovery. Discovery index slugs mirror the reservation for visible tenants.

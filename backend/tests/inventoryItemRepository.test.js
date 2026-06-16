@@ -208,6 +208,7 @@ describe('inventory itemRepository', () => {
   it('loads Storefront override primary key before updating gallery images', async () => {
     const StorefrontCatalogOverride = {
       findOne: jest.fn().mockResolvedValue({
+        storefront_catalog_override_id: 77,
         item_id: 901,
         storefront_visible: true,
         storefront_image_path: 'storefront/iced-tea.png',
@@ -226,7 +227,7 @@ describe('inventory itemRepository', () => {
 
     expect(StorefrontCatalogOverride.findOne).toHaveBeenCalledWith(expect.objectContaining({
       where: { item_id: 901 },
-      attributes: expect.arrayContaining(['item_id'])
+      attributes: expect.arrayContaining(['storefront_catalog_override_id', 'item_id'])
     }));
   });
 

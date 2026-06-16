@@ -14,6 +14,12 @@ const apiError = ({ status, data = {}, url = '/auth/login', message = 'Request f
   config: { url }
 });
 
+const apiErrorWithHeaders = ({ status, data = {}, headers = {}, url = '/auth/login' } = {}) => ({
+  message: 'Request failed',
+  response: status ? { status, data, headers } : undefined,
+  config: { url }
+});
+
 describe('terminal unlock diagnostics', () => {
   it('normalizes single and multi-tenant lookup payloads', () => {
     expect(normalizeLookupTenantOptions({ company_token: 'token-space' })).toEqual([
@@ -56,6 +62,10 @@ describe('terminal unlock diagnostics', () => {
     expect(resolveTerminalLoginErrorMessage(apiError({ status: 429 }))).toBe(
       'Too many terminal login attempts. Wait a moment, then try again.'
     );
+    expect(resolveTerminalLoginErrorMessage(apiErrorWithHeaders({
+      status: 429,
+      data: { retryAfterSeconds: 125 }
+    }))).toBe('Too many terminal login attempts. Try again in about 3 minutes.');
     expect(resolveTerminalLoginErrorMessage(apiError({
       status: 403,
       data: { message: 'Missing pos:view permission' }

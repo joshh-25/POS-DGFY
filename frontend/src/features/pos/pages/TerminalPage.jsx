@@ -45,6 +45,14 @@ import {
   markTerminalOperationRetryScheduled,
   pruneTerminalOperationHistory
 } from '../services/terminalOperationQueueStore.js';
+import {
+  DEFAULT_TERMINAL_ID_OPTIONS,
+  TERMINAL_REGISTRY_MODES,
+  normalizeTerminalRegistry,
+  resolveLoginTerminalId,
+  resolvePreferredTerminalId,
+  sanitizeTerminalId
+} from '../utils/terminalIdentity.js';
 
 import TerminalPageLayout from '../components/TerminalPageLayout.jsx';
 import OnboardingSetupModal from '../../onboarding/components/OnboardingSetupModal.jsx';
@@ -52,8 +60,6 @@ const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 
 const DEFAULT_CURRENCY = 'PHP';
 const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
-const DEFAULT_TERMINAL_ID_OPTIONS = ['COUNTER-01', 'COUNTER-02', 'KIOSK-01'];
-const TERMINAL_REGISTRY_MODES = new Set(['warn', 'enforce']);
 const ONLINE_ORDER_POLL_INTERVAL_MS = 12000;
 const QUEUE_HISTORY_LIMIT = 250;
 const TERMINAL_OPERATION_MAX_RETRIES = 5;
@@ -127,81 +133,16 @@ const createIdempotencyKey = (prefix = 'pos-terminal') => {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 };
 
-const sanitizeTerminalId = (value) => String(value || '')
-  .trim()
-  .replace(/\s+/g, '-')
-  .replace(/[^A-Za-z0-9._-]/g, '')
-  .toUpperCase();
-const normalizeTerminalRegistry = (rawRegistry) => {
-  let parsed = rawRegistry;
-  if (typeof parsed === 'string') {
-    try {
-      parsed = JSON.parse(parsed);
-    } catch {
-      parsed = [];
-    }
-  }
-  if (!Array.isArray(parsed)) return [];
-
-  const seen = new Set();
-  const normalized = [];
-  parsed.forEach((entry) => {
-    const terminalId = sanitizeTerminalId(entry?.terminal_id);
-    if (!terminalId) return;
-    if (seen.has(terminalId)) return;
-    seen.add(terminalId);
-
-    const isActive = entry?.is_active !== false;
-    normalized.push({
-      terminal_id: terminalId,
-      label: String(entry?.label || '').trim(),
-      location_id: Number.isInteger(Number(entry?.location_id)) ? Number(entry?.location_id) : null,
-      is_active: isActive,
-      is_default: isActive && entry?.is_default === true
-    });
-  });
-
-  if (normalized.length === 0) return [];
-
-  const defaultIndex = normalized.findIndex((entry) => entry.is_default === true);
-  if (defaultIndex >= 0) {
-    normalized.forEach((entry, index) => {
-      if (index !== defaultIndex) {
-        entry.is_default = false;
-      }
-    });
-  } else {
-    const firstActiveIndex = normalized.findIndex((entry) => entry.is_active);
-    if (firstActiveIndex >= 0) {
-      normalized[firstActiveIndex].is_default = true;
-    }
-  }
-
-  return normalized;
-};
-
-const resolvePreferredTerminalId = (registryEntries = [], preferredTerminalId = '') => {
-  const activeEntries = Array.isArray(registryEntries)
-    ? registryEntries.filter((entry) => entry?.is_active !== false)
-    : [];
-  if (activeEntries.length === 0) {
-    return sanitizeTerminalId(preferredTerminalId);
-  }
-
-  const normalizedPreferred = sanitizeTerminalId(preferredTerminalId);
-  if (normalizedPreferred && activeEntries.some((entry) => entry.terminal_id === normalizedPreferred)) {
-    return normalizedPreferred;
-  }
-
-  const defaultEntry = activeEntries.find((entry) => entry.is_default === true);
-  if (defaultEntry?.terminal_id) return defaultEntry.terminal_id;
-  return activeEntries[0]?.terminal_id || '';
-};
-
 const readStoredTerminalId = () => {
   if (typeof window === 'undefined') return '';
   return sanitizeTerminalId(window.localStorage.getItem(TERMINAL_ID_STORAGE_KEY) || '');
 };
+
+const readInitialTerminalId = () => resolvePreferredTerminalId(
+  [],
+  readStoredTerminalId(),
+  { registryMode: 'warn' }
+);
 
 const isRetryableTerminalOperationError = (error) => {
   if (!error?.response) return true;
@@ -296,7 +237,7 @@ export default function TerminalPage() {
   const [terminalUser, setTerminalUser] = useState(null);
   const [onboardingSetupOpen, setOnboardingSetupOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [activeTerminalId, setActiveTerminalId] = useState(() => readStoredTerminalId());
+  const [activeTerminalId, setActiveTerminalId] = useState(() => readInitialTerminalId());
   const [terminalRegistry, setTerminalRegistry] = useState([]);
   const [terminalRegistryMode, setTerminalRegistryMode] = useState('warn');
   const [terminalMeta, setTerminalMeta] = useState({
@@ -319,7 +260,7 @@ export default function TerminalPage() {
   const [formData, setFormData] = useState({
     email: '',
     password: '',
-    terminalId: readStoredTerminalId()
+    terminalId: readInitialTerminalId()
   });
 
   const [shiftState, setShiftState] = useState({
@@ -522,7 +463,8 @@ export default function TerminalPage() {
 
       const preferredTerminalId = resolvePreferredTerminalId(
         normalizedRegistry,
-        readStoredTerminalId()
+        readStoredTerminalId(),
+        { registryMode: normalizedRegistryMode }
       );
       if (preferredTerminalId) {
         setActiveTerminalId((prev) => (prev === preferredTerminalId ? prev : preferredTerminalId));
@@ -549,6 +491,22 @@ export default function TerminalPage() {
     } catch {
       setTerminalRegistry([]);
       setTerminalRegistryMode('warn');
+      const preferredTerminalId = resolvePreferredTerminalId(
+        [],
+        readStoredTerminalId(),
+        { registryMode: 'warn' }
+      );
+      if (preferredTerminalId) {
+        setActiveTerminalId((prev) => (prev === preferredTerminalId ? prev : preferredTerminalId));
+        setFormData((prev) => (
+          prev.terminalId === preferredTerminalId
+            ? prev
+            : { ...prev, terminalId: preferredTerminalId }
+        ));
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, preferredTerminalId);
+        }
+      }
       setTerminalMeta((prev) => ({ ...prev, loading: false }));
     }
   }, []);
@@ -1103,7 +1061,11 @@ export default function TerminalPage() {
 
   useEffect(() => {
     if (!registryEnforced) return;
-    const preferredTerminalId = resolvePreferredTerminalId(activeTerminalRegistry, activeTerminalId);
+    const preferredTerminalId = resolvePreferredTerminalId(
+      activeTerminalRegistry,
+      activeTerminalId,
+      { registryMode: terminalRegistryMode }
+    );
     if (!preferredTerminalId || preferredTerminalId === activeTerminalId) return;
 
     setActiveTerminalId(preferredTerminalId);
@@ -1115,7 +1077,7 @@ export default function TerminalPage() {
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, preferredTerminalId);
     }
-  }, [activeTerminalId, activeTerminalRegistry, registryEnforced]);
+  }, [activeTerminalId, activeTerminalRegistry, registryEnforced, terminalRegistryMode]);
 
   const headerSubtitle = useMemo(() => {
     const terminalLabel = activeTerminalId || 'No terminal selected';
@@ -1186,11 +1148,20 @@ export default function TerminalPage() {
     event.preventDefault();
     const email = String(formData.email || '').trim();
     const password = String(formData.password || '');
-    const selectedTerminalId = sanitizeTerminalId(formData.terminalId);
+    const selectedTerminalId = resolveLoginTerminalId({
+      selectedTerminalId: formData.terminalId,
+      registryEnforced,
+      registryEntries: activeTerminalRegistry,
+      registryMode: terminalRegistryMode
+    });
     const registryEntry = terminalRegistryLookup.get(selectedTerminalId);
 
     if (!email || !password) {
       toast.error('Email and password are required.');
+      return;
+    }
+    if (registryEnforced && activeTerminalRegistry.length === 0) {
+      toast.error('No active terminals configured. Add one in Settings > POS Setup > Terminal Registry.');
       return;
     }
     if (registryEnforced && !selectedTerminalId) {

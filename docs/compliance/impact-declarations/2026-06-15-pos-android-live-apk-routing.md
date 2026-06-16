@@ -8,7 +8,7 @@ classification: major
 surfaces: pos,terminal,android-apk
 reason_codes_impacted: ALLOWED,AUTHENTICATION_FAILED,TENANT_CAPABILITY_DISABLED,VALIDATION_FAILED
 policy_version: 2026.06.15
-verification_evidence: npm run lint:docs,npm run check:architecture,npm run check:compliance,npm --prefix frontend run build:pos,android/imin-wrapper gradlew assembleDebug,git diff --check
+verification_evidence: npm run lint:docs,npm run check:architecture,npm run check:compliance,npm --prefix frontend run build:pos,android/imin-wrapper gradlew assembleDebug,android/imin-wrapper gradlew assembleRelease,git diff --check,production deploy summary /var/www/skupervisor/logs/deploy/deploy_20260615_153953.summary.txt
 rollback_note: Revert the Android wrapper live-origin routing and manifest cleartext hardening together if the iMin APK cannot load the production POS origin.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -48,10 +48,12 @@ Required validation for this branch:
 2. `npm run check:architecture`
 3. `npm run check:compliance`
 4. `npm --prefix frontend run build:pos`
-5. `cd android/imin-wrapper && ./gradlew assembleDebug`
-6. `git diff --check`
-7. Real iMin install smoke: launch, login, catalog, checkout, receipt/history, stock deduction, session expiry/recovery, and network reconnect behavior.
+5. `cd android/imin-wrapper && .\gradlew.bat assembleDebug`
+6. `cd android/imin-wrapper && .\gradlew.bat assembleRelease --no-daemon`
+7. `git diff --check`
+8. Production deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260615_153953.summary.txt`
+9. Real iMin install smoke: launch, login, catalog, checkout, receipt/history, stock deduction, session expiry/recovery, and network reconnect behavior.
 
 ## Deployment Note
 
-Production web deployment is already the source of truth for the hosted POS app. The APK change becomes live only after the Android APK is rebuilt, installed on the target iMin device, and validated against the production tenant.
+Production web deployment is already the source of truth for the hosted POS app. The repository state for this APK routing change is production-deployed at SHA `52c8dfc8f232aa5e3e926ea75f2baf96d389d425`. Sequential local debug and unsigned release APK builds passed after local Android SDK setup and produced `android/imin-wrapper/app/build/outputs/apk/debug/app-debug.apk` and `android/imin-wrapper/app/build/outputs/apk/release/app-release-unsigned.apk`; generated outputs were cleaned afterward. Device runtime changes only after the rebuilt APK is installed on the target iMin device and validated against the production tenant.

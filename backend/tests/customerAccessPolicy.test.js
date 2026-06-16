@@ -51,6 +51,47 @@ describe('customerAccessPolicy', () => {
         expect(registered.access_capabilities.checkout).toBe(true);
     });
 
+    it('preserves requested transaction while exposing a catalog effective cap from onboarding progress', () => {
+        const resolved = resolveAccessPolicyFromSettings({
+            customer_access_mode: 'transaction',
+            tenant_onboarding_progress: {
+                step_payloads: {
+                    business_classification: {
+                        legitimacy: { registration_status: 'informal' }
+                    }
+                }
+            }
+        });
+
+        expect(resolved.requested_customer_access_mode).toBe('transaction');
+        expect(resolved.effective_customer_access_mode).toBe('catalog');
+        expect(resolved.max_customer_access_mode).toBe('catalog');
+        expect(resolved.limitation_reason).toBe('Registration stage informal allows up to catalog mode.');
+        expect(resolved.access_capabilities.checkout).toBe(false);
+    });
+
+    it('caps requested mode by platform maximum even when registration permits transaction', () => {
+        const resolved = resolveAccessPolicyFromSettings({
+            customer_access_mode: 'transaction',
+            platform_max_customer_access_mode: 'inquiry',
+            tenant_onboarding_progress: {
+                step_payloads: {
+                    business_classification: {
+                        legitimacy: { registration_status: 'registered' }
+                    }
+                }
+            }
+        });
+
+        expect(resolved.requested_customer_access_mode).toBe('transaction');
+        expect(resolved.platform_max_customer_access_mode).toBe('inquiry');
+        expect(resolved.registration_stage_max_customer_access_mode).toBe('transaction');
+        expect(resolved.effective_customer_access_mode).toBe('inquiry');
+        expect(resolved.max_customer_access_mode).toBe('inquiry');
+        expect(resolved.limitation_reason).toBe('Platform maximum allows up to inquiry mode.');
+        expect(resolved.access_capabilities.checkout).toBe(false);
+    });
+
     it('enforces saved modes by default when no rollout flag is configured', () => {
         const resolved = resolveAccessPolicyFromSettings({
             customer_access_mode: 'ghost',

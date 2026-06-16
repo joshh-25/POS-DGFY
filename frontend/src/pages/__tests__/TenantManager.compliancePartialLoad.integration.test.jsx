@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
     rejectTenant: vi.fn(),
     adminReactivateTenant: vi.fn(),
     forceTenantNonCompliant: vi.fn(),
+    selectTenantComplianceMode: vi.fn(),
+    upgradeTenantComplianceMode: vi.fn(),
     listTenantComplianceArtifacts: vi.fn(),
     listTenantCompliancePeripherals: vi.fn(),
     getTenantComplianceChecklist: vi.fn(),

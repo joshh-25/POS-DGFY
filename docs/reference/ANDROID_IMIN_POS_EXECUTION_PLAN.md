@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: mobile
-last_reviewed: 2026-06-03
+last_reviewed: 2026-06-15
 applies_to: android_imin_pos_wrapper
 topic: android_studio_execution_plan
 ---
@@ -42,6 +42,7 @@ Current wrapper responsibilities:
 - host allowlist
 - JavaScript bridge
 - drawer controller stub
+- live-origin routing for physical iMin devices
 
 ## Runtime Topology
 
@@ -162,9 +163,9 @@ Build tasks:
 
 Current Android settings:
 
-- `compileSdk = 34`
-- `targetSdk = 34`
-- `minSdk = 26`
+- `compileSdk = 36.1`
+- `targetSdk = 36`
+- `minSdk = 28`
 - Kotlin + AndroidX WebKit
 
 ## Phase 7: Real Device Validation
@@ -174,12 +175,18 @@ Run on the actual iMin device.
 Required checks:
 
 1. app launches to POS
-2. POS login works against LAN backend
+2. POS login works against `https://pos.dgfy.ph`
 3. catalog and images load
 4. cart and checkout work
 5. session expiry is recoverable
 6. app resumes cleanly after backgrounding
 7. network loss and reconnect behavior are acceptable
+
+Latest workstation build evidence:
+
+- `.\gradlew.bat assembleDebug --no-daemon` -> PASS on 2026-06-15, producing `android/imin-wrapper/app/build/outputs/apk/debug/app-debug.apk`.
+- `.\gradlew.bat assembleRelease --no-daemon` -> PASS on 2026-06-15, producing `android/imin-wrapper/app/build/outputs/apk/release/app-release-unsigned.apk`.
+- APK install and real iMin smoke remain pending.
 
 ## Phase 8: Device Capabilities
 

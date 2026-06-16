@@ -2,7 +2,7 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Settings from '../../../Pages/Settings.jsx';
 
@@ -136,7 +136,14 @@ describe('Settings deep-linking and action wiring', () => {
     mocks.settingsServiceMock.getAllSettings.mockResolvedValue({
       storefront_cover_image_url: { value: '/uploads/storefront-assets/t1/cover.png' },
       storefront_profile_image_url: { value: '/uploads/storefront-assets/t1/profile.png' },
-      store_is_visible: { value: false, data_type: 'boolean' }
+      store_is_visible: { value: false, data_type: 'boolean' },
+      customer_access_mode: { value: 'catalog', data_type: 'string' },
+      effective_customer_access_mode: { value: 'catalog', data_type: 'string', source: 'runtime' },
+      max_customer_access_mode: { value: 'catalog', data_type: 'string', source: 'runtime' },
+      platform_max_customer_access_mode: { value: 'transaction', data_type: 'string', source: 'runtime_default' },
+      registration_stage_max_customer_access_mode: { value: 'catalog', data_type: 'string', source: 'runtime' },
+      customer_access_registration_stage: { value: 'informal', data_type: 'string', source: 'runtime' },
+      customer_access_limitation_reason: { value: '', data_type: 'string', source: 'runtime' }
     });
     mocks.settingsServiceMock.getCompanyInfo.mockResolvedValue({ company_token: 'TOKEN-123' });
     mocks.settingsServiceMock.updateSettings.mockResolvedValue({});
@@ -217,6 +224,85 @@ describe('Settings deep-linking and action wiring', () => {
 
     expect(await screen.findByText(/Runtime enforcement: Enforced/i)).toBeTruthy();
     expect(screen.getByText(/Public Storefront access-mode enforcement is active for this tenant/i)).toBeTruthy();
+  });
+
+  it('uses backend-computed customer access metadata for effective and max mode display', async () => {
+    mocks.settingsServiceMock.getAllSettings.mockResolvedValueOnce({
+      storefront_cover_image_url: { value: '/uploads/storefront-assets/t1/cover.png' },
+      storefront_profile_image_url: { value: '/uploads/storefront-assets/t1/profile.png' },
+      store_is_visible: { value: true, data_type: 'boolean' },
+      customer_access_mode: { value: 'transaction', data_type: 'string' },
+      effective_customer_access_mode: { value: 'catalog', data_type: 'string', source: 'runtime' },
+      max_customer_access_mode: { value: 'catalog', data_type: 'string', source: 'runtime' },
+      platform_max_customer_access_mode: { value: 'transaction', data_type: 'string', source: 'runtime_default' },
+      registration_stage_max_customer_access_mode: { value: 'catalog', data_type: 'string', source: 'runtime' },
+      customer_access_registration_stage: { value: 'informal', data_type: 'string', source: 'runtime' },
+      customer_access_limitation_reason: {
+        value: 'Registration stage informal allows up to catalog mode.',
+        data_type: 'string',
+        source: 'runtime'
+      }
+    });
+
+    renderSettings('/settings?tab=storefront#storefront-access-settings');
+
+    expect(await screen.findByText(/Effective mode:/i)).toBeTruthy();
+    const accessModeSelect = screen.getByLabelText('Customer Access Mode');
+    expect(within(accessModeSelect).getByRole('option', { name: 'Transaction' }).disabled).toBe(false);
+    expect(screen.getByText(/Max allowed:/i)).toBeTruthy();
+    expect(screen.getByText(/Platform max:/i)).toBeTruthy();
+    expect(screen.getByText(/Registration max:/i)).toBeTruthy();
+    expect(screen.getByText(/Company admins can request modes up to platform max/i)).toBeTruthy();
+    expect(screen.getByText('Registration stage informal allows up to catalog mode.')).toBeTruthy();
+  });
+
+  it('refreshes backend-computed customer access metadata after saving a requested mode', async () => {
+    const user = userEvent.setup();
+    mocks.settingsServiceMock.getAllSettings
+      .mockResolvedValueOnce({
+        storefront_cover_image_url: { value: '/uploads/storefront-assets/t1/cover.png' },
+        storefront_profile_image_url: { value: '/uploads/storefront-assets/t1/profile.png' },
+        store_is_visible: { value: true, data_type: 'boolean' },
+        customer_access_mode: { value: 'catalog', data_type: 'string' },
+        effective_customer_access_mode: { value: 'catalog', data_type: 'string', source: 'runtime' },
+        max_customer_access_mode: { value: 'catalog', data_type: 'string', source: 'runtime' },
+        platform_max_customer_access_mode: { value: 'transaction', data_type: 'string', source: 'runtime_default' },
+        registration_stage_max_customer_access_mode: { value: 'catalog', data_type: 'string', source: 'runtime' },
+        customer_access_registration_stage: { value: 'informal', data_type: 'string', source: 'runtime' },
+        customer_access_limitation_reason: { value: '', data_type: 'string', source: 'runtime' }
+      })
+      .mockResolvedValueOnce({
+        storefront_cover_image_url: { value: '/uploads/storefront-assets/t1/cover.png' },
+        storefront_profile_image_url: { value: '/uploads/storefront-assets/t1/profile.png' },
+        store_is_visible: { value: true, data_type: 'boolean' },
+        customer_access_mode: { value: 'transaction', data_type: 'string' },
+        effective_customer_access_mode: { value: 'catalog', data_type: 'string', source: 'runtime' },
+        max_customer_access_mode: { value: 'catalog', data_type: 'string', source: 'runtime' },
+        platform_max_customer_access_mode: { value: 'transaction', data_type: 'string', source: 'runtime_default' },
+        registration_stage_max_customer_access_mode: { value: 'catalog', data_type: 'string', source: 'runtime' },
+        customer_access_registration_stage: { value: 'informal', data_type: 'string', source: 'runtime' },
+        customer_access_limitation_reason: {
+          value: 'Registration stage informal allows up to catalog mode.',
+          data_type: 'string',
+          source: 'runtime'
+        }
+      });
+
+    renderSettings('/settings?tab=storefront#storefront-access-settings');
+    const accessModeSelect = await screen.findByLabelText('Customer Access Mode');
+
+    await user.selectOptions(accessModeSelect, 'transaction');
+    await user.click(screen.getByRole('button', { name: /Save Changes/i }));
+
+    await waitFor(() => {
+      expect(mocks.settingsServiceMock.updateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ customer_access_mode: 'transaction' })
+      );
+      expect(mocks.settingsServiceMock.getAllSettings).toHaveBeenLastCalledWith({ force: true });
+    });
+    expect(accessModeSelect.value).toBe('transaction');
+    expect(screen.getByText('Registration stage informal allows up to catalog mode.')).toBeTruthy();
+    expect(screen.getByText(/Effective mode:/i).textContent).toContain('catalog');
   });
 
   it('persists public map and storefront page visibility from Settings', async () => {

@@ -22,7 +22,7 @@ preflight_request_ref: POS-METADATA-TERMINAL-UNLOCK-2026-06-15
 
 Regulatory.
 
-This declaration covers source-current POS changes that are expected to deploy together unless deliberately split before promotion:
+This declaration covers POS changes deployed in the current production commit chain:
 
 1. POS receipt/configuration metadata governance.
 2. Standalone POS terminal tenant-context login hardening.
@@ -58,7 +58,8 @@ The metadata stream is compliance-sensitive because receipt identity, PTU/MIN/ac
 5. `/pos/device/status` `503` remains an optional hardware bridge availability issue and must not be classified as authentication failure.
 6. Fiscal lifecycle evidence endpoints must remain permission-gated with existing POS fiscal permissions (`pos:reprint`, `pos:void`, `pos:fiscal_terminals:manage`, `pos:esales:manage`, `pos:view`).
 7. `/api/v1/compliance/profile` or `/api/v1/pos/incoming-orders` `500` after deploy must be treated as schema/runtime readiness failure until migrations, `doctor:runtime`, and backend restart evidence prove otherwise.
-8. These source-current changes are not production-live until a deployment records a new deployed SHA, POS asset identity, backend health, POS smoke, and relevant admin/cashier UAT evidence.
+8. These changes are production-deployed at SHA `52c8dfc8f232aa5e3e926ea75f2baf96d389d425`, but relevant admin/cashier UAT evidence remains required before raising POS operational readiness.
+9. The June 15 Space Bar POS banner failure was verified as tenant schema drift, not a missing compliant-mode activation. Tenant DB `sku_tenant_spacebar_8ddb3350` now contains nullable `buyer_tin`, `buyer_business_style`, and `buyer_address` plus non-null `fiscal_lifecycle_state`.
 
 ## Verification Evidence
 
@@ -73,8 +74,9 @@ Required validation for this branch:
 7. `npm run check:architecture`
 8. `npm run check:compliance`
 9. `git diff --check`
-10. `npm --prefix backend run doctor:runtime`
-11. DGFY account, Storefront checkout, POS incoming queue, and tracking smoke for saved delivery locations with and without exact coordinates.
+10. Production deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260615_153953.summary.txt`
+11. `npm --prefix backend run doctor:runtime`
+12. DGFY account, Storefront checkout, POS incoming queue, and tracking smoke for saved delivery locations with and without exact coordinates.
 
 ## Deployment Note
 

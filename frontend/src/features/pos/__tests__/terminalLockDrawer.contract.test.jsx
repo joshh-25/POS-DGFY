@@ -33,11 +33,13 @@ describe('TerminalLockDrawer contract', () => {
     expect(screen.queryByPlaceholderText(/Auto-lookup runs when left blank/i)).toBeNull();
   });
 
-  it('shows terminal ID as optional in warn mode', () => {
+  it('shows terminal ID as required for shift and checkout in warn mode', () => {
     render(<TerminalLockDrawer {...buildProps({ registryEnforced: false, terminalRegistryMode: 'warn' })} />);
 
-    expect(screen.getByText('Terminal ID (Optional)')).toBeTruthy();
-    expect(screen.getByText(/Warn mode: terminal ID is optional at unlock/i)).toBeTruthy();
+    expect(screen.getByText('Terminal ID')).toBeTruthy();
+    expect(screen.queryByText('Terminal ID (Optional)')).toBeNull();
+    expect(screen.getByText(/Use COUNTER-01 if no terminals are configured yet/i)).toBeTruthy();
+    expect(screen.getByText(/Terminal ID is required for shifts and checkout/i)).toBeTruthy();
   });
 
   it('shows terminal ID as required select in enforce mode', () => {
@@ -47,5 +49,15 @@ describe('TerminalLockDrawer contract', () => {
     expect(screen.getByRole('option', { name: /Select configured terminal/i })).toBeTruthy();
     expect(screen.getByText(/Required in enforce mode/i)).toBeTruthy();
   });
-});
 
+  it('shows setup guidance when enforce mode has no active terminals', () => {
+    render(<TerminalLockDrawer {...buildProps({
+      registryEnforced: true,
+      terminalRegistryMode: 'enforce',
+      terminalRegistry: []
+    })} />);
+
+    expect(screen.getByRole('option', { name: /No active terminals configured/i })).toBeTruthy();
+    expect(screen.getByText(/Settings > POS Setup > Terminal Registry/i)).toBeTruthy();
+  });
+});

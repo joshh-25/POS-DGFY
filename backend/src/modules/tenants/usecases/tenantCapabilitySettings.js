@@ -2,22 +2,37 @@ import dbStore from '../../../utils/dbStore.js';
 import { getTenantModels } from '../../../utils/tenantModelFactory.js';
 import {
     CUSTOMER_ACCESS_MODES,
+    CUSTOMER_ACCESS_SETTING_KEYS,
     DEFAULT_CUSTOMER_ACCESS_MODE,
-    normalizeCustomerAccessMode
+    normalizeCustomerAccessMode,
+    normalizeRegistrationStage,
+    resolveAccessPolicyFromSettings
 } from '../../shared/utils/customerAccessPolicy.js';
 
 export const TENANT_CAPABILITY_SETTING_KEYS = Object.freeze({
     ims: 'tenant_ims_enabled',
     pos: 'tenant_pos_enabled',
     storefrontVisible: 'store_is_visible',
-    customerAccessMode: 'customer_access_mode'
+    customerAccessMode: 'customer_access_mode',
+    platformMaxCustomerAccessMode: 'platform_max_customer_access_mode',
+    onboardingProgress: 'tenant_onboarding_progress'
 });
+
+export const CUSTOMER_ACCESS_REGISTRATION_STAGES = Object.freeze(['informal', 'partial', 'registered']);
+
+const TENANT_CAPABILITY_READ_KEYS = Object.freeze([
+    TENANT_CAPABILITY_SETTING_KEYS.ims,
+    TENANT_CAPABILITY_SETTING_KEYS.pos,
+    TENANT_CAPABILITY_SETTING_KEYS.storefrontVisible,
+    ...CUSTOMER_ACCESS_SETTING_KEYS
+]);
 
 const DEFAULT_CAPABILITIES = Object.freeze({
     ims_enabled: true,
     pos_enabled: true,
     storefront_visible: false,
-    customer_access_mode: DEFAULT_CUSTOMER_ACCESS_MODE
+    customer_access_mode: DEFAULT_CUSTOMER_ACCESS_MODE,
+    platform_max_customer_access_mode: 'transaction'
 });
 
 const parseBoolean = (value, fallback = true) => {
@@ -90,24 +105,64 @@ const toSettingsMap = (rows = []) => {
     rows.forEach((row) => {
         const plain = typeof row?.get === 'function' ? row.get({ plain: true }) : row;
         if (plain?.setting_key) {
-            map[plain.setting_key] = plain.setting_value;
+            map[plain.setting_key] = {
+                ...plain,
+                value: parseSettingValue(plain.setting_value)
+            };
         }
     });
     return map;
 };
 
+const parseSettingValue = (value) => {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    if (!trimmed) return trimmed;
+    if (!['{', '[', '"'].includes(trimmed.charAt(0))) return value;
+    try {
+        return JSON.parse(trimmed);
+    } catch {
+        return value;
+    }
+};
+
 export const normalizeTenantCapabilities = (settings = {}) => ({
-    ims_enabled: parseBoolean(settings[TENANT_CAPABILITY_SETTING_KEYS.ims], DEFAULT_CAPABILITIES.ims_enabled),
-    pos_enabled: parseBoolean(settings[TENANT_CAPABILITY_SETTING_KEYS.pos], DEFAULT_CAPABILITIES.pos_enabled),
+    ims_enabled: parseBoolean(
+        settings[TENANT_CAPABILITY_SETTING_KEYS.ims]?.value ?? settings[TENANT_CAPABILITY_SETTING_KEYS.ims],
+        DEFAULT_CAPABILITIES.ims_enabled
+    ),
+    pos_enabled: parseBoolean(
+        settings[TENANT_CAPABILITY_SETTING_KEYS.pos]?.value ?? settings[TENANT_CAPABILITY_SETTING_KEYS.pos],
+        DEFAULT_CAPABILITIES.pos_enabled
+    ),
     storefront_visible: parseBoolean(
-        settings[TENANT_CAPABILITY_SETTING_KEYS.storefrontVisible],
+        settings[TENANT_CAPABILITY_SETTING_KEYS.storefrontVisible]?.value ?? settings[TENANT_CAPABILITY_SETTING_KEYS.storefrontVisible],
         DEFAULT_CAPABILITIES.storefront_visible
     ),
     customer_access_mode: normalizeCustomerAccessMode(
-        settings[TENANT_CAPABILITY_SETTING_KEYS.customerAccessMode],
+        settings[TENANT_CAPABILITY_SETTING_KEYS.customerAccessMode]?.value ?? settings[TENANT_CAPABILITY_SETTING_KEYS.customerAccessMode],
         DEFAULT_CAPABILITIES.customer_access_mode
+    ),
+    platform_max_customer_access_mode: normalizeCustomerAccessMode(
+        settings[TENANT_CAPABILITY_SETTING_KEYS.platformMaxCustomerAccessMode]?.value ?? settings[TENANT_CAPABILITY_SETTING_KEYS.platformMaxCustomerAccessMode],
+        DEFAULT_CAPABILITIES.platform_max_customer_access_mode
     )
 });
+
+export const buildCustomerAccessCapabilityMetadata = (settings = {}) => {
+    const accessPolicy = resolveAccessPolicyFromSettings(settings);
+    return {
+        requested_customer_access_mode: accessPolicy.requested_customer_access_mode,
+        effective_customer_access_mode: accessPolicy.effective_customer_access_mode,
+        max_customer_access_mode: accessPolicy.max_customer_access_mode,
+        platform_max_customer_access_mode: accessPolicy.platform_max_customer_access_mode,
+        registration_stage_max_customer_access_mode: accessPolicy.registration_stage_max_customer_access_mode,
+        registration_stage: accessPolicy.registration_stage,
+        customer_access_limitation_reason: accessPolicy.limitation_reason,
+        customer_access_modes_enabled: accessPolicy.customer_access_modes_enabled,
+        access_capabilities: accessPolicy.access_capabilities
+    };
+};
 
 export const readTenantCapabilities = async ({ tenant, tenantConnector }) => {
     if (!tenant?.db_name) {
@@ -136,13 +191,16 @@ export const readTenantCapabilities = async ({ tenant, tenantConnector }) => {
     }, async () => {
         const SystemSetting = dbStore.get('SystemSetting');
         const rows = await SystemSetting.findAll({
-            where: { setting_key: Object.values(TENANT_CAPABILITY_SETTING_KEYS) },
+            where: { setting_key: TENANT_CAPABILITY_READ_KEYS },
             attributes: ['setting_key', 'setting_value']
         });
-        const capabilities = normalizeTenantCapabilities(toSettingsMap(rows));
+        const settingsMap = toSettingsMap(rows);
+        const capabilities = normalizeTenantCapabilities(settingsMap);
+        const customerAccessMetadata = buildCustomerAccessCapabilityMetadata(settingsMap);
         const storefront_readiness = await buildStorefrontReadiness();
         return {
             ...capabilities,
+            ...customerAccessMetadata,
             storefront_readiness: {
                 ...storefront_readiness,
                 visible_and_publishable: capabilities.storefront_visible === true && storefront_readiness.publishable === true
@@ -178,6 +236,20 @@ export const normalizeTenantCapabilityPatch = (payload = {}) => {
             throw new Error(`customer_access_mode must be one of: ${CUSTOMER_ACCESS_MODES.join(', ')}`);
         }
         patch[TENANT_CAPABILITY_SETTING_KEYS.customerAccessMode] = normalized;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'platform_max_customer_access_mode')) {
+        const normalized = String(payload.platform_max_customer_access_mode || '').trim().toLowerCase();
+        if (!CUSTOMER_ACCESS_MODES.includes(normalized)) {
+            throw new Error(`platform_max_customer_access_mode must be one of: ${CUSTOMER_ACCESS_MODES.join(', ')}`);
+        }
+        patch[TENANT_CAPABILITY_SETTING_KEYS.platformMaxCustomerAccessMode] = normalized;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'customer_access_registration_stage')) {
+        const normalized = String(payload.customer_access_registration_stage || '').trim().toLowerCase();
+        if (!CUSTOMER_ACCESS_REGISTRATION_STAGES.includes(normalized)) {
+            throw new Error(`customer_access_registration_stage must be one of: ${CUSTOMER_ACCESS_REGISTRATION_STAGES.join(', ')}`);
+        }
+        patch.customer_access_registration_stage = normalizeRegistrationStage(normalized);
     }
 
     return patch;

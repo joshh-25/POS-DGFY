@@ -618,6 +618,36 @@ export const forceTenantNonCompliant = async (tenantId, payload) => {
 };
 
 /**
+ * Platform-admin action: select compliance mode for a tenant that still requires mode choice.
+ */
+export const selectTenantComplianceMode = async (tenantId, payload) => {
+    const token = getToken();
+    if (!token) throw new Error('Admin authentication required');
+
+    const response = await adminApi.post(
+        `/admin/tenants/${tenantId}/compliance/mode/select`,
+        payload,
+        { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data;
+};
+
+/**
+ * Platform-admin action: move a tenant into compliant pending mode.
+ */
+export const upgradeTenantComplianceMode = async (tenantId, payload) => {
+    const token = getToken();
+    if (!token) throw new Error('Admin authentication required');
+
+    const response = await adminApi.post(
+        `/admin/tenants/${tenantId}/compliance/mode/upgrade`,
+        payload,
+        { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data;
+};
+
+/**
  * Platform-admin verification action for tenant compliance artifact
  */
 export const updateTenantComplianceArtifactVerification = async (tenantId, artifactId, payload) => {

@@ -929,6 +929,110 @@ describe('storefront discovery integration flow', () => {
     });
   });
 
+  it('routes capped F&B Order Now to the canonical storefront instead of the order shell', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-space',
+              tenant_name: 'Space Bar',
+              slug: 'space-bar-8ddb33',
+              storefront_open: true,
+              workflow_mode: 'fnb',
+              business_mode: 'fnb',
+              address_line: 'Iloilo City',
+              latitude: 10.72,
+              longitude: 122.56,
+              catalog_count: 116,
+              estimated_wait_minutes: 15,
+              customer_access_mode: 'transaction',
+              requested_customer_access_mode: 'transaction',
+              effective_customer_access_mode: 'catalog',
+              max_customer_access_mode: 'catalog',
+              access_limitation_reason: 'Registration stage informal allows up to catalog mode.',
+              access_capabilities: {
+                profile: true,
+                contact: true,
+                catalog: true,
+                inventory: true,
+                cart: false,
+                quote: false,
+                checkout: false,
+                booking: false,
+                payment: false
+              },
+              storefront_cover_image_url: '/uploads/storefront-assets/space/cover.png',
+              storefront_profile_image_url: '/uploads/storefront-assets/space/profile.png'
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'all_matching_branches',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 33,
+          locations: [
+            { location_id: 33, name: 'Space Bar Bernwood', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true, supports_delivery: true, supports_pickup: true, supports_dine_in: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/storefront/discovery/space-bar-8ddb33')) {
+        return makeJsonResponse({
+          slug: 'space-bar-8ddb33',
+          tenant_name: 'Space Bar',
+          location_id: 33,
+          address_line: 'Iloilo City',
+          storefront_open: true,
+          catalog_count: 116,
+          customer_access_mode: 'transaction',
+          requested_customer_access_mode: 'transaction',
+          effective_customer_access_mode: 'catalog',
+          access_limitation_reason: 'Registration stage informal allows up to catalog mode.',
+          access_capabilities: {
+            profile: true,
+            contact: true,
+            catalog: true,
+            inventory: true,
+            cart: false,
+            quote: false,
+            checkout: false,
+            booking: false,
+            payment: false
+          },
+          storefront_cover_image_url: '/uploads/storefront-assets/space/cover.png',
+          storefront_profile_image_url: '/uploads/storefront-assets/space/profile.png'
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getAllByText('Space Bar').length).toBeGreaterThan(0));
+    await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'space');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+    await waitFor(() => expect(screen.getAllByText('Space Bar').length).toBeGreaterThan(1));
+    await user.click(screen.getByRole('button', { name: /View Results \(1\)/i }));
+
+    await user.click(screen.getAllByRole('button', { name: 'Order Now' })[0]);
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/space-bar-8ddb33');
+    });
+    expect(window.location.pathname).not.toBe('/space-bar-8ddb33/order');
+  });
+
   it('opens a marker preview first and routes the card action with the pinned location id', async () => {
     fetchMock.mockImplementation(async (url) => {
       const normalized = String(url);

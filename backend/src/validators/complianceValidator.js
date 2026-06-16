@@ -4,6 +4,12 @@ const modeChoiceSchema = Joi.object({
     mode_choice: Joi.string().trim().valid('non_compliant', 'compliant').required()
 });
 
+const adminModeChoiceSchema = Joi.object({
+    mode_choice: Joi.string().trim().valid('non_compliant', 'compliant').required(),
+    reason: Joi.string().trim().min(3).max(255).required(),
+    context: Joi.object().unknown(true).default({})
+}).unknown(false);
+
 const modeDowngradeSchema = Joi.object({
     reason: Joi.string().trim().min(3).max(255).required(),
     context: Joi.object().unknown(true).default({})
@@ -221,6 +227,8 @@ const validateSchema = (schema, source, target, options = {}) => (req, res, next
 };
 
 export const validateComplianceModeChoice = validateSchema(modeChoiceSchema, 'body', 'validatedData');
+export const validateAdminComplianceModeChoice = validateSchema(adminModeChoiceSchema, 'body', 'validatedData', { stripUnknown: false });
+export const validateAdminComplianceModeUpgrade = validateSchema(modeDowngradeSchema, 'body', 'validatedData', { stripUnknown: false });
 export const validateComplianceModeDowngrade = validateSchema(modeDowngradeSchema, 'body', 'validatedData', { stripUnknown: false });
 export const validateComplianceProfilePatch = validateSchema(profilePatchSchema, 'body', 'validatedData', { stripUnknown: false });
 export const validateComplianceActivateMode = validateSchema(activateCompliantModeSchema, 'body', 'validatedData', { stripUnknown: false });

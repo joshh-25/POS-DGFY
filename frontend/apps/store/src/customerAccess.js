@@ -1,3 +1,5 @@
+import { getStorefrontAccessModeMessage } from '../../../src/utils/tenantCapabilityMessages.js';
+
 const DEFAULT_CAPABILITIES = Object.freeze({
   profile: true,
   contact: true,
@@ -26,4 +28,30 @@ export const canViewCatalog = (store = null) => getAccessCapabilities(store).cat
 export const getInventoryDisplayLabel = (item = {}) => {
   const label = item?.inventory_display?.label;
   return typeof label === 'string' && label.trim() ? label.trim() : null;
+};
+
+export const getStorefrontAccessBlockMessage = (store = null) => {
+  const requestedMode = String(
+    store?.requested_customer_access_mode
+      || store?.customer_access_mode
+      || ''
+  ).trim().toLowerCase();
+  const effectiveMode = String(
+    store?.effective_customer_access_mode
+      || requestedMode
+      || ''
+  ).trim().toLowerCase();
+  if (requestedMode === 'transaction' && effectiveMode && effectiveMode !== 'transaction') {
+    return 'Online ordering is requested, but checkout is capped by registration readiness.';
+  }
+  const mode = effectiveMode || requestedMode;
+  const modeMessage = getStorefrontAccessModeMessage(mode);
+  if (modeMessage) {
+    return modeMessage;
+  }
+  const capabilities = getAccessCapabilities(store);
+  if (capabilities.checkout !== true || capabilities.booking !== true || capabilities.cart !== true) {
+    return 'This Storefront action is not available right now.';
+  }
+  return null;
 };
