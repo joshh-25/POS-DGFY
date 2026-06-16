@@ -550,6 +550,7 @@ describe('store use-cases application result contract', () => {
     it('listStoreLocations returns active locations with primary pointer', async () => {
         const useCase = buildListStoreLocationsUseCase({
             storeRepository: {
+                getSettingsByKeys: jest.fn().mockResolvedValue([]),
                 listActiveLocations: jest.fn().mockResolvedValue([
                     {
                         location_id: 2,
@@ -579,6 +580,29 @@ describe('store use-cases application result contract', () => {
             location_id: 2,
             is_primary_storefront: true
         }));
+    });
+
+    it('listStoreLocations hides preserved locations when store has no public map location', async () => {
+        const listActiveLocations = jest.fn();
+        const useCase = buildListStoreLocationsUseCase({
+            storeRepository: {
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    { setting_key: 'store_has_no_location', setting_value: 'true' }
+                ]),
+                listActiveLocations
+            }
+        });
+
+        const result = await useCase();
+
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(expect.objectContaining({
+            locations: [],
+            primary_location_id: null,
+            store_has_no_location: true,
+            map_publication_disabled: true
+        }));
+        expect(listActiveLocations).not.toHaveBeenCalled();
     });
 
     it('registerStoreCustomer validates payload shape', async () => {

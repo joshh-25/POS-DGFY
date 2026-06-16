@@ -921,9 +921,13 @@ const appendLocationQuery = (query = '', locationId = null) => {
 };
 const storePath = (slug, subpage = null, query = '', locationId = null) => `/${encodeURIComponent(toSlug(slug))}${subpage ? `/${subpage}` : ''}${appendLocationQuery(query, locationId)}`;
 const toNumberOrNull = (value) => {
+  if (value === null || value === undefined || value === '') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
+const hasCoordinatePair = ({ latitude, longitude } = {}) => (
+  toNumberOrNull(latitude) !== null && toNumberOrNull(longitude) !== null
+);
 const normalizeCoordinatePair = ({ latitude, longitude } = {}) => {
   if (latitude == null || longitude == null || latitude === '' || longitude === '') return null;
   const parsedLatitude = toNumberOrNull(latitude);
@@ -1256,6 +1260,9 @@ const sanitizeExternalLink = (value) => {
 };
 
 const normalizeProfileLocations = (profile = {}) => (
+  profile?.map_publication_disabled === true || profile?.store_has_no_location === true
+    ? []
+    :
   (Array.isArray(profile?.active_location_snapshot) ? profile.active_location_snapshot : [])
     .map((location) => ({
       location_id: location.location_id ?? null,
@@ -2661,8 +2668,10 @@ const FnbHero = ({
     selectedStore
   });
   const hasAboutToggle = aboutText.length > 180;
-  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
-    && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
+  const hasMapData = hasCoordinatePair({
+    latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
+    longitude: selectedLocation?.longitude ?? selectedStore?.longitude
+  });
   const whyChooseUs = Array.isArray(heroSectionModel.whyChooseUs) && heroSectionModel.whyChooseUs.length > 0
     ? heroSectionModel.whyChooseUs
     : buildFnbFallbackReasons({
@@ -3387,8 +3396,10 @@ const ServicesHero = ({
   const previewImages = isServiceGalleryExpanded ? galleryImages : galleryImages.slice(0, 4);
   const aboutText = String(serviceHeroModel.aboutText || '').trim();
   const hasAboutToggle = aboutText.length > 180;
-  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
-    && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
+  const hasMapData = hasCoordinatePair({
+    latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
+    longitude: selectedLocation?.longitude ?? selectedStore?.longitude
+  });
   const visibleWhyChooseUs = Array.isArray(serviceHeroModel.whyChooseUs) ? serviceHeroModel.whyChooseUs.slice(0, MAX_STOREFRONT_WHY_CHOOSE_US) : [];
   const visibleContactRows = useMemo(() => buildVisibleStorefrontContactRows({
     contactRows: serviceHeroModel.contactRows,
@@ -3733,9 +3744,9 @@ const ServicesHero = ({
 };
 
 const buildGoogleMapsDirectionsUrl = ({ latitude, longitude, addressLine }) => {
-  const lat = Number(latitude);
-  const lng = Number(longitude);
-  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+  const lat = toNumberOrNull(latitude);
+  const lng = toNumberOrNull(longitude);
+  if (lat !== null && lng !== null) {
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`;
   }
   const address = String(addressLine || '').trim();
@@ -4005,8 +4016,10 @@ const SimpleHero = ({
   const addressText = String(simpleHeroModel.addressLine || simpleHeroModel.locationLabel || '').trim();
   const aboutText = String(simpleHeroModel.aboutText || '').trim();
   const hasAboutToggle = aboutText.length > 180;
-  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
-    && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
+  const hasMapData = hasCoordinatePair({
+    latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
+    longitude: selectedLocation?.longitude ?? selectedStore?.longitude
+  });
   const visibleWhyChooseUs = Array.isArray(simpleHeroModel.whyChooseUs) ? simpleHeroModel.whyChooseUs.slice(0, MAX_STOREFRONT_WHY_CHOOSE_US) : [];
   const visibleContactRows = useMemo(() => buildVisibleStorefrontContactRows({
     contactRows: simpleHeroModel.contactRows,
@@ -5128,7 +5141,9 @@ export default function StorefrontApp() {
       try {
         const locationsData = await requestJson('/api/v1/store/locations', { storeSlug: profile.slug, cache: 'no-store' });
         if (requestSequence !== storeLoadRequestSequenceRef.current) return;
-        const apiLocations = Array.isArray(locationsData?.locations) ? locationsData.locations : [];
+        const apiLocations = profile?.map_publication_disabled === true || profile?.store_has_no_location === true
+          ? []
+          : (Array.isArray(locationsData?.locations) ? locationsData.locations : []);
         const useProfileSnapshot = !locationsMatchProfileSnapshot(apiLocations, profile);
         const locations = useProfileSnapshot ? profileLocations : apiLocations;
         const nextPrimaryLocationId = useProfileSnapshot
@@ -5172,9 +5187,12 @@ export default function StorefrontApp() {
         const fallbackRouteLocation = routeLocationId == null
           ? null
           : (profileLocations.find((location) => Number(location.location_id) === Number(routeLocationId)) || null);
-        setStoreLocations(profileLocations);
-        setPrimaryLocationId(fallbackPrimaryLocationId);
-        resolvedCatalogLocationId = fallbackRouteLocation?.location_id ?? fallbackPrimaryLocationId;
+        const fallbackLocations = profile?.map_publication_disabled === true || profile?.store_has_no_location === true
+          ? []
+          : profileLocations;
+        setStoreLocations(fallbackLocations);
+        setPrimaryLocationId(fallbackLocations.length > 0 ? fallbackPrimaryLocationId : null);
+        resolvedCatalogLocationId = fallbackLocations.length > 0 ? (fallbackRouteLocation?.location_id ?? fallbackPrimaryLocationId) : null;
         setSelectedLocationId(resolvedCatalogLocationId);
       }
 
@@ -9396,7 +9414,12 @@ export default function StorefrontApp() {
         const reviewSummary = normalizeStorefrontReviewSummary(store?.storefront_review_summary);
         const ratingValue = Number.isFinite(Number(reviewSummary?.score)) ? Number(reviewSummary.score).toFixed(1) : '0.0';
         const ratingCount = Number(reviewSummary?.total_count || store?.matching_item_count || 0);
-      const distanceLabel = Number.isFinite(Number(store?.nearest_distance_km)) ? `${Number(store.nearest_distance_km).toFixed(1)} km away` : 'Distance unavailable';
+      const hasStoreMapPin = hasCoordinatePair({ latitude: store?.latitude, longitude: store?.longitude })
+        && store?.map_publication_disabled !== true
+        && store?.store_has_no_location !== true;
+      const distanceLabel = hasStoreMapPin && Number.isFinite(Number(store?.nearest_distance_km))
+        ? `${Number(store.nearest_distance_km).toFixed(1)} km away`
+        : (hasStoreMapPin ? 'Distance unavailable' : 'Searchable storefront, no map pin');
       const waitBase = Number(store?.estimated_wait_minutes || 10);
       const etaLabel = `${waitBase}-${waitBase + 5} min`;
         const branchCount = Number(store?.active_location_count || 0);

@@ -2910,7 +2910,8 @@ Return tenant system settings for IMS Settings.
 
 **Response Notes**
 - Persisted settings are returned by key from tenant `system_settings`.
-- `store_is_visible.value=true` means the tenant may appear in public DGFY discovery/map feeds and public storefront profile reads once a valid active primary location exists. Enabling it does not create a location pin by itself. `store_is_visible.value=false` hides both the discovery/map listing and the canonical root-handle public profile page (`/:store_tenant_slug`). `/store/:slug` and `/tenant-store/:slug` are compatibility paths only.
+- `store_is_visible.value=true` means the tenant may appear in public DGFY discovery search and public storefront profile reads. A map pin requires a valid active primary location unless `store_has_no_location.value=true`, in which case the storefront remains searchable/profile-readable but is excluded from map pins, embedded profile maps, directions links, and public branch-location responses. `store_is_visible.value=false` hides both discovery and the canonical root-handle public profile page (`/:store_tenant_slug`). `/store/:slug` and `/tenant-store/:slug` are compatibility paths only.
+- `store_has_no_location.value=true` is a reversible merchant setting. It preserves saved IMS tenant locations but public Storefront APIs must treat the storefront as search/profile-only until the setting is turned off and a primary pin is published.
 - `customer_access_modes_enabled` is an additive read-only virtual key, not a persisted tenant setting. It reflects the effective runtime Customer Access Mode enforcement state for the current tenant context.
 - `customer_access_modes_enabled.value=true` means public Storefront Customer Access Mode enforcement is active for the tenant.
 - `customer_access_modes_enabled.value=false` means the global rollback switch is active for the tenant. Operators should treat `CUSTOMER_ACCESS_MODES_ENABLED=false` as rollback-only and use `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` for tenant re-enablement while recovery evidence is gathered.
@@ -3023,6 +3024,7 @@ List publicly discoverable stores for list/grid/map storefront views.
 
 **Search Notes**
 - Tenants with `store_is_visible=false` are excluded from public discovery/map responses and public profile reads. This tenant-level public visibility switch is evaluated before Customer Access Mode; hidden tenants are not exposed as Map Listing Only entries.
+- Tenants with `store_is_visible=true` and `store_has_no_location=true` are included only when the customer expresses search/filter intent. Their discovery/profile coordinates are nullable, `/storefront/discovery/map-pins` excludes them, and clients must not coerce nullable coordinates to `0`.
 - Item-name search includes tenants that have matching catalog items from indexed storefront snapshots.
 - Search matching is index-backed and deterministic. It is not a general fuzzy-search engine; bounded alias expansion is shared between `item_search_snapshot` generation and discovery query matching so common public terms can match equivalent catalog/service wording without making unrelated short strings match.
 - Default item-search behavior is stock-aware (`in_stock_only`) unless caller explicitly requests `include_out_of_stock`.
@@ -5757,7 +5759,8 @@ Persist onboarding progress for a step (idempotent).
 - `bulk_items`
 
 For `primary_location`, the payload may include:
-- `public_storefront_visible` (`boolean`, strict JSON boolean): when `false`, the tenant remains hidden from DGFY discovery/map feeds and the canonical root-handle page (`/:store_tenant_slug`); no public pin is required for onboarding readiness. When `true`, the merchant must save a real active primary location before discovery/profile publication can expose the tenant.
+- `public_storefront_visible` (`boolean`, strict JSON boolean): when `false`, the tenant remains hidden from DGFY discovery/map feeds and the canonical root-handle page (`/:store_tenant_slug`); no public pin is required for onboarding readiness. When `true`, the merchant must either save a real active primary location for map publication or set `store_has_no_location=true` for a searchable/profile-only storefront.
+- `store_has_no_location` (`boolean`, strict JSON boolean): when paired with `public_storefront_visible=true`, the tenant can be searched and opened by slug but public map pins, embedded maps, directions links, and public branch-location responses remain disabled.
 - `business_hours`: optional weekly Storefront business-hours schedule persisted to `storefront_hours`.
 - `location_id`, `name`, and `is_primary_storefront`: metadata for the saved tenant location when public visibility is enabled.
 

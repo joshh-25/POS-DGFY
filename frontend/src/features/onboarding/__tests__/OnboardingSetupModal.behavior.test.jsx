@@ -182,7 +182,7 @@ describe('OnboardingSetupModal behavior', () => {
 
     await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
     await screen.findByText(/2\) Main Storefront Location/i);
-    await user.click(screen.getByLabelText(/Show company on DGFY map and public storefront/i));
+    await user.click(screen.getByLabelText(/Make storefront searchable to customers/i));
 
     await user.clear(screen.getByLabelText(/Location name/i));
     await user.type(screen.getByLabelText(/Location name/i), 'Main Branch');
@@ -223,7 +223,7 @@ describe('OnboardingSetupModal behavior', () => {
 
     await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
     await screen.findByText(/2\) Main Storefront Location/i);
-    await user.click(screen.getByLabelText(/Show company on DGFY map and public storefront/i));
+    await user.click(screen.getByLabelText(/Make storefront searchable to customers/i));
     await user.click(screen.getByRole('button', { name: /Mock MapLibre Pin/i }));
 
     await waitFor(() => {
@@ -263,7 +263,7 @@ describe('OnboardingSetupModal behavior', () => {
     renderModal();
     await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
     await screen.findByText(/2\) Main Storefront Location/i);
-    await user.click(screen.getByLabelText(/Show company on DGFY map and public storefront/i));
+    await user.click(screen.getByLabelText(/Make storefront searchable to customers/i));
     await user.clear(screen.getByLabelText(/Location name/i));
     await user.type(screen.getByLabelText(/Location name/i), 'Main Branch');
     await user.type(screen.getByLabelText(/Address/i), '123 Main Street');
@@ -312,7 +312,7 @@ describe('OnboardingSetupModal behavior', () => {
     renderModal();
     await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
     await screen.findByText(/2\) Main Storefront Location/i);
-    await user.click(screen.getByLabelText(/Show company on DGFY map and public storefront/i));
+    await user.click(screen.getByLabelText(/Make storefront searchable to customers/i));
     await user.clear(screen.getByLabelText(/Location name/i));
     await user.type(screen.getByLabelText(/Location name/i), 'Main Branch');
     await user.type(screen.getByLabelText(/Address/i), '123 Main Street');
@@ -346,7 +346,7 @@ describe('OnboardingSetupModal behavior', () => {
     renderModal();
     await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
     await screen.findByText(/2\) Main Storefront Location/i);
-    await user.click(screen.getByLabelText(/Show company on DGFY map and public storefront/i));
+    await user.click(screen.getByLabelText(/Make storefront searchable to customers/i));
     await user.clear(screen.getByLabelText(/Location name/i));
     await user.type(screen.getByLabelText(/Location name/i), 'Main Branch');
     await user.type(screen.getByLabelText(/Address/i), '123 Main Street');
@@ -376,7 +376,7 @@ describe('OnboardingSetupModal behavior', () => {
 
     await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
     await screen.findByText(/2\) Main Storefront Location/i);
-    expect(screen.getByLabelText(/Show company on DGFY map and public storefront/i).checked).toBe(false);
+    expect(screen.getByLabelText(/Make storefront searchable to customers/i).checked).toBe(false);
 
     await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
 
@@ -387,6 +387,32 @@ describe('OnboardingSetupModal behavior', () => {
         payload: expect.objectContaining({
           location_id: null,
           public_storefront_visible: false
+        })
+      });
+      expect(screen.getByText(/3\) Starter Items/i)).toBeTruthy();
+    });
+  });
+
+  it('saves a searchable no-location storefront without creating a map pin', async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
+    await screen.findByText(/2\) Main Storefront Location/i);
+    await user.click(screen.getByLabelText(/Make storefront searchable to customers/i));
+    await user.click(screen.getByLabelText(/This Store Has No Location/i));
+    expect(screen.queryByRole('button', { name: /Mock MapLibre Pin/i })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
+
+    await waitFor(() => {
+      expect(mocks.tenantLocationServiceMock.createTenantLocation).not.toHaveBeenCalled();
+      expect(mocks.onboardingServiceMock.saveOnboardingStep).toHaveBeenCalledWith({
+        stepKey: 'primary_location',
+        payload: expect.objectContaining({
+          location_id: null,
+          public_storefront_visible: true,
+          store_has_no_location: true
         })
       });
       expect(screen.getByText(/3\) Starter Items/i)).toBeTruthy();

@@ -113,6 +113,7 @@ const STOREFRONT_PROFILE_SETTING_KEYS = Object.freeze([
     'storefront_follow_enabled',
     'storefront_share_enabled',
     'storefront_review_summary',
+    'store_has_no_location',
     ...CUSTOMER_ACCESS_SETTING_KEYS
 ]);
 const DISCOVERY_PROFILE_SETTINGS_REDIS_CACHE_TTL_SECONDS = Math.max(
@@ -135,9 +136,21 @@ const distanceKm = (lat1, lng1, lat2, lng2) => {
 };
 
 const toNumber = (value, fallback = 0) => {
+    if (value === null || value === undefined || value === '') return fallback;
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
 };
+
+const hasUsableCoordinates = (entry = {}) => (
+    entry.latitude !== null
+    && entry.latitude !== undefined
+    && entry.latitude !== ''
+    && entry.longitude !== null
+    && entry.longitude !== undefined
+    && entry.longitude !== ''
+    && Number.isFinite(Number(entry.latitude))
+    && Number.isFinite(Number(entry.longitude))
+);
 
 const parseJsonArray = (value) => {
     if (Array.isArray(value)) return value;
@@ -376,6 +389,8 @@ const readStorefrontProfileSettings = async ({ tenantId, cacheVersion, cacheSign
         storefront_follow_enabled: parseBoolean(settingsMap.storefront_follow_enabled, false),
         storefront_share_enabled: parseBoolean(settingsMap.storefront_share_enabled, false),
         storefront_review_summary: normalizeStorefrontReviewSummary(settingsMap.storefront_review_summary),
+        store_has_no_location: parseBoolean(settingsMap.store_has_no_location, false),
+        map_publication_disabled: parseBoolean(settingsMap.store_has_no_location, false),
         customer_access_mode: accessPolicy.customer_access_mode,
         effective_customer_access_mode: accessPolicy.effective_customer_access_mode,
         max_customer_access_mode: accessPolicy.max_customer_access_mode,
@@ -700,9 +715,7 @@ const loadAllEntries = async ({ cacheVersion = null, cacheSignature = null } = {
         logger.warn('[StorefrontDiscovery] Index is empty and fan-out fallback was requested, but fallback path is removed.');
     }
 
-    const entries = (rows || []).map(toPlainEntry).filter((entry) => (
-        Number.isFinite(entry.latitude) && Number.isFinite(entry.longitude)
-    ));
+    const entries = (rows || []).map(toPlainEntry);
     cache = {
         entries,
         expiresAt: now + CACHE_TTL_MS,
@@ -900,6 +913,8 @@ const applyDiscoveryQuery = async (entries = [], query = {}) => {
             if (resultMode === 'store_only') return storeMatch;
             return storeMatch || itemEligible;
         });
+    } else {
+        rows = rows.filter(hasUsableCoordinates);
     }
 
     rows = rows.map((entry) => {
@@ -928,9 +943,14 @@ const applyDiscoveryQuery = async (entries = [], query = {}) => {
                 ? resolveLocationById(entry, nearestMatchingLocationId)
                 : null
         );
-        const anchorLatitude = Number.isFinite(Number(anchorLocation?.latitude)) ? Number(anchorLocation.latitude) : Number(entry.latitude);
-        const anchorLongitude = Number.isFinite(Number(anchorLocation?.longitude)) ? Number(anchorLocation.longitude) : Number(entry.longitude);
-        const distance = withDistance
+        const anchorLatitude = Number.isFinite(Number(anchorLocation?.latitude))
+            ? Number(anchorLocation.latitude)
+            : (hasUsableCoordinates(entry) ? Number(entry.latitude) : null);
+        const anchorLongitude = Number.isFinite(Number(anchorLocation?.longitude))
+            ? Number(anchorLocation.longitude)
+            : (hasUsableCoordinates(entry) ? Number(entry.longitude) : null);
+        const hasAnchorCoordinates = Number.isFinite(anchorLatitude) && Number.isFinite(anchorLongitude);
+        const distance = withDistance && hasAnchorCoordinates
             ? Number(distanceKm(lat, lng, anchorLatitude, anchorLongitude).toFixed(2))
             : null;
 
@@ -1054,7 +1074,6 @@ export const storefrontDiscoveryRepository = {
         if (!row) return null;
         const hasMaterializedProfileFields = hasMaterializedStorefrontProfileColumns(row);
         const entry = toPlainEntry(row);
-        if (!Number.isFinite(entry.latitude) || !Number.isFinite(entry.longitude)) return null;
         let profileSettings = await readStorefrontProfileSettings({
             tenantId: entry.tenant_id,
             cacheVersion: version,
@@ -1070,11 +1089,20 @@ export const storefrontDiscoveryRepository = {
                     'inventory_low_stock_display_threshold',
                     'access_capabilities',
                     'access_limitation_reason',
-                    'customer_access_modes_enabled'
+                    'customer_access_modes_enabled',
+                    'store_has_no_location',
+                    'map_publication_disabled'
                 ].includes(key)
             )));
         }
-        const enriched = { ...entry, ...profileSettings };
+        const indexedAsNoLocation = !hasUsableCoordinates(entry)
+            && (entry.location_id === null || entry.location_id === undefined || entry.location_id === '');
+        const enriched = {
+            ...entry,
+            ...profileSettings,
+            store_has_no_location: profileSettings.store_has_no_location === true || indexedAsNoLocation,
+            map_publication_disabled: profileSettings.map_publication_disabled === true || indexedAsNoLocation
+        };
         await writeRedisCacheEntry(cacheKey, enriched, DISCOVERY_PROFILE_REDIS_CACHE_TTL_SECONDS);
         return enriched;
     }

@@ -179,7 +179,7 @@ Required commands:
 7. `git diff --check`
 
 Evidence semantics:
-1. The audit proves the current tenant data has no hidden tenant still indexed, no invalid or missing explicit `store_is_visible` setting, no visible tenant missing an active primary pin, no stale indexed location, and no legacy fallback-location publication beyond the governed compatibility path.
+1. The audit proves the current tenant data has no hidden tenant still indexed, no invalid or missing explicit `store_is_visible` setting, no visible map-published tenant missing an active primary pin, no stale indexed location, no legacy fallback-location publication beyond the governed compatibility path, and no `store_has_no_location=true` tenant still publishing public coordinates.
 2. `-- --fail-on warning` may be used as a stricter pre-release gate when fallback-location publication should block promotion.
 3. `-- --repair-missing-settings` only backfills an explicit setting that preserves current discovery-index exposure. It must not be used as a substitute for deciding whether a tenant should be public.
 4. A green local audit does not prove production tenant data is clean. Production or canary release evidence must include the same audit against the target data plus public discovery/profile smoke for hidden and visible tenants.

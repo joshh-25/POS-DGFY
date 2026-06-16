@@ -641,6 +641,120 @@ describe('storefront discovery integration flow', () => {
     });
   });
 
+  it('renders no-location search results as list cards without map features or coordinate fallback', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        const parsed = new URL(normalized, 'http://localhost');
+        const search = parsed.searchParams.get('search');
+        return makeJsonResponse({
+          stores: search === 'calamansi'
+            ? [
+                {
+                  tenant_id: 'tenant-search-only',
+                  tenant_name: 'Search Only Kitchen',
+                  slug: 'search-only-kitchen',
+                  storefront_open: true,
+                  location_id: null,
+                  location_name: null,
+                  address_line: null,
+                  latitude: null,
+                  longitude: null,
+                  catalog_count: 2,
+                  store_has_no_location: true,
+                  map_publication_disabled: true,
+                  match_reasons: ['item'],
+                  matching_item_count: 1,
+                  matching_item_sample: ['Calamansi Juice'],
+                  matching_location_ids: [],
+                  nearest_matching_location_id: null
+                }
+              ]
+            : [],
+          pagination: { page: 1, limit: 100, total: search === 'calamansi' ? 1 : 0, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({ locations: [], primary_location_id: null, store_has_no_location: true, map_publication_disabled: true });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
+    const viewportCallsBeforeSearch = getMapViewportCallCount();
+
+    await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'calamansi');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+
+    await waitFor(() => expect(screen.getAllByText('Search Only Kitchen').length).toBeGreaterThan(0));
+    expect(screen.getAllByText(/Searchable storefront, no map pin/i).length).toBeGreaterThan(0);
+    await waitFor(() => expect(getDiscoveryPinFeatures()).toHaveLength(0));
+    expect(maplibregl.Popup).not.toHaveBeenCalled();
+    expect(getMapViewportCallCount()).toBe(viewportCallsBeforeSearch);
+  });
+
+  it('renders no-location storefront profiles without public map or directions', async () => {
+    window.history.pushState({}, '', '/search-only-kitchen');
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery/search-only-kitchen')) {
+        return makeJsonResponse({
+          slug: 'search-only-kitchen',
+          tenant_name: 'Search Only Kitchen',
+          storefront_open: true,
+          location_id: null,
+          location_name: null,
+          address_line: null,
+          latitude: null,
+          longitude: null,
+          catalog_count: 1,
+          store_has_no_location: true,
+          map_publication_disabled: true,
+          active_location_snapshot: [
+            { location_id: 11, name: 'Saved Branch', address_line: 'Saved Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true }
+          ],
+          access_capabilities: { profile: true, contact: true, catalog: true, cart: false, checkout: false, booking: false, payment: false },
+          effective_customer_access_mode: 'catalog'
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Saved Branch', address_line: 'Saved Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true }
+          ],
+          store_has_no_location: true,
+          map_publication_disabled: true
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [{ item_id: 1, name: 'Calamansi Juice', default_sale_price: 80, image_url: '' }] });
+      }
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({ stores: [], pagination: { page: 1, limit: 100, total: 0, totalPages: 1 } });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getAllByText('Search Only Kitchen').length).toBeGreaterThan(0));
+    expect(screen.queryByLabelText(/Open large map/i)).toBeNull();
+    expect(screen.queryByText(/Get directions/i)).toBeNull();
+    expect(fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl).includes('location_id=11'))).toBe(false);
+  });
+
   it('keeps item-search storefront results after a previous Near Me request', async () => {
     const user = userEvent.setup();
     const getCurrentPosition = vi.fn((success) => {

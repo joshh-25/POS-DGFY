@@ -40,6 +40,17 @@ const buildMapPinDescription = (store = {}) => {
     return parts.join(' ').slice(0, 500);
 };
 
+const hasMapCoordinates = (store = {}) => (
+    store.latitude !== null
+    && store.latitude !== undefined
+    && store.latitude !== ''
+    && store.longitude !== null
+    && store.longitude !== undefined
+    && store.longitude !== ''
+    && Number.isFinite(Number(store.latitude))
+    && Number.isFinite(Number(store.longitude))
+);
+
 export const toMapPinSourceRow = (store = {}) => ({
     title: String(store.tenant_name || '').trim(),
     latitude: Number(store.latitude),
@@ -145,7 +156,7 @@ export const buildListStorefrontMapPinsUseCase = ({ storefrontDiscoveryRepositor
                 include_match_meta: false
             });
             const rows = (result.rows || [])
-                .filter((store) => Number.isFinite(Number(store.latitude)) && Number.isFinite(Number(store.longitude)))
+                .filter(hasMapCoordinates)
                 .map((store) => toMapPinSourceRowWithItems(store, {
                     includeItems: includeItems === true,
                     itemLimit

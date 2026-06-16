@@ -69,12 +69,11 @@ import {
   WORKFLOW_MODE_SELECT_VALUES
 } from '../src/features/settings/workflowMode.js';
 import {
-  STOREFRONT_BUSINESS_DAY_OPTIONS,
   createDefaultStorefrontBusinessHours,
-  formatStorefrontBusinessHoursDisplay,
   normalizeStorefrontBusinessHours,
   serializeStorefrontBusinessHours
 } from '../src/features/settings/storefrontBusinessHours.js';
+import StorefrontBusinessHoursScheduler from '../src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import resolveAssetUrl from '../src/utils/assetUrl.js';
 import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../src/utils/phoneNumber.js';
 import { generateReadablePassword, isPasswordLongEnough } from '../src/utils/passwordPolicy.js';
@@ -195,6 +194,7 @@ const createDefaultSettings = ({ workflowMode = DEFAULT_WORKFLOW_MODE } = {}) =>
   storeDeliveryFee: 0,
   storeTenantSlug: '',
   storeIsVisible: false,
+  storeHasNoLocation: false,
   posOpenStatus: true,
   posWaitTimeMinutes: 15,
   customerAccessMode: 'catalog',
@@ -314,6 +314,7 @@ const SETTINGS_FIELD_LABELS = {
   ops_workflow_mode: 'Business Mode',
   store_delivery_fee: 'Store Delivery Fee',
   store_tenant_slug: 'Storefront Slug',
+  store_has_no_location: 'Store Has No Location',
   pos_wait_time_minutes: 'Customer Wait Time',
   storefront_tagline: 'Storefront Tagline',
   storefront_about: 'Storefront About',
@@ -927,6 +928,7 @@ export default function Settings() {
           storeDeliveryFee: Number(systemSettings.store_delivery_fee?.value ?? 0) || 0,
           storeTenantSlug: String(systemSettings.store_tenant_slug?.value || ''),
           storeIsVisible: systemSettings.store_is_visible?.value === true,
+          storeHasNoLocation: systemSettings.store_has_no_location?.value === true,
           posOpenStatus: systemSettings.pos_open_status?.value ?? true,
           posWaitTimeMinutes: Number(systemSettings.pos_wait_time_minutes?.value ?? 15) || 15,
           ...mapCustomerAccessRuntimeSettings(systemSettings),
@@ -1093,42 +1095,6 @@ export default function Settings() {
       const next = Array.isArray(prev.storefrontWhyChooseUs) ? [...prev.storefrontWhyChooseUs] : [''];
       next[index] = String(value || '');
       return { ...prev, storefrontWhyChooseUs: next };
-    });
-  };
-
-  const handleStorefrontHoursDayChange = (dayKey, patch) => {
-    setSettings((prev) => {
-      const current = normalizeStorefrontBusinessHours(prev.storefrontHours);
-      return {
-        ...prev,
-        storefrontHours: {
-          ...current,
-          weekly: {
-            ...current.weekly,
-            [dayKey]: {
-              ...current.weekly[dayKey],
-              ...patch
-            }
-          }
-        }
-      };
-    });
-  };
-
-  const copyStorefrontHoursToAllDays = (sourceDayKey = 'mon') => {
-    setSettings((prev) => {
-      const current = normalizeStorefrontBusinessHours(prev.storefrontHours);
-      const source = current.weekly[sourceDayKey] || current.weekly.mon;
-      return {
-        ...prev,
-        storefrontHours: {
-          ...current,
-          weekly: STOREFRONT_BUSINESS_DAY_OPTIONS.reduce((acc, day) => {
-            acc[day.key] = { ...source };
-            return acc;
-          }, {})
-        }
-      };
     });
   };
 
@@ -1875,6 +1841,7 @@ export default function Settings() {
         store_delivery_fee: Number(settings.storeDeliveryFee || 0),
         store_tenant_slug: String(settings.storeTenantSlug || '').trim().toLowerCase(),
         store_is_visible: settings.storeIsVisible === true,
+        store_has_no_location: settings.storeHasNoLocation === true,
         pos_open_status: settings.posOpenStatus === true,
         pos_wait_time_minutes: Number(settings.posWaitTimeMinutes || 0),
         customer_access_mode: normalizeCustomerAccessMode(settings.customerAccessMode),
@@ -2100,7 +2067,7 @@ export default function Settings() {
 
   const primaryStorefrontLocation = tenantLocations.find((location) => location?.is_primary_storefront === true) || null;
   const hasActivePrimaryStorefrontLocation = primaryStorefrontLocation?.is_active === true;
-  const publicVisibilityMissingPrimary = settings.storeIsVisible === true && !hasActivePrimaryStorefrontLocation;
+  const publicVisibilityMissingPrimary = settings.storeIsVisible === true && settings.storeHasNoLocation !== true && !hasActivePrimaryStorefrontLocation;
   const primaryStorefrontLastSyncAt = (
     primaryStorefrontLocation?.storefront_last_synced_at
     || tenantLocations.find((location) => Boolean(location?.storefront_last_synced_at))?.storefront_last_synced_at
@@ -2690,6 +2657,30 @@ export default function Settings() {
                 <p className="text-sm font-semibold text-sky-900">{primaryStorefrontHealthCopy}</p>
                 <p className="text-xs text-sky-700">Discovery last synced: {primaryStorefrontLastSyncCopy}</p>
               </div>
+              <div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <Label>This Store Has No Location</Label>
+                    <p className="mt-1 text-xs text-slate-500">
+                      The storefront remains public and searchable, but it is excluded from map pins until this is turned off and a primary location is published.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={settings.storeHasNoLocation === true}
+                    onCheckedChange={(checked) => {
+                      const nextHasNoLocation = checked === true;
+                      handleChange('storeHasNoLocation', nextHasNoLocation);
+                      if (!nextHasNoLocation && !hasActivePrimaryStorefrontLocation) {
+                        setLocationForm((prev) => (
+                          prev.is_active === false
+                            ? prev
+                            : { ...prev, is_primary_storefront: true }
+                        ));
+                      }
+                    }}
+                  />
+                </div>
+              </div>
               <div className="rounded-lg border border-slate-200 bg-white px-3 py-3 space-y-2">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-slate-900">Storefront Sync Health</p>
@@ -2709,6 +2700,14 @@ export default function Settings() {
                   </p>
                 )}
               </div>
+              {settings.storeHasNoLocation === true ? (
+                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4">
+                  <p className="text-sm font-semibold text-slate-900">Map publication is disabled for this store.</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Saved locations are preserved. Turn off "This Store Has No Location" to edit pins or publish a primary storefront location.
+                  </p>
+                </div>
+              ) : (
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Location Name</Label>
@@ -2822,7 +2821,9 @@ export default function Settings() {
                   </div>
                 </div>
               </div>
+              )}
 
+              {settings.storeHasNoLocation !== true && (
               <div className="flex flex-wrap items-center gap-2">
                 <Button type="button" onClick={handleSaveLocation} disabled={locationSaving}>
                   {locationSaving ? 'Saving...' : editingLocationId ? 'Update Location' : 'Add Location'}
@@ -2836,6 +2837,7 @@ export default function Settings() {
                   Refresh List
                 </Button>
               </div>
+              )}
 
               <div className="space-y-2">
                 <Label>Configured Locations</Label>
@@ -2876,57 +2878,61 @@ export default function Settings() {
                         <p>Radius: {location.delivery_radius_km} km</p>
                         <p>Wait: {location.current_wait_time_minutes} min</p>
                       </div>
-                      <div className="flex gap-2">
-                        <Button type="button" size="sm" variant="outline" onClick={() => handleEditLocation(location)}>
-                          Edit
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleSetPrimaryLocation(location)}
-                          disabled={locationSaving || location.is_active !== true || location.is_primary_storefront === true}
-                        >
-                          {location.is_primary_storefront === true ? 'Primary' : 'Set Primary'}
-                        </Button>
-                        {location.is_active ? (
+                      {settings.storeHasNoLocation === true ? (
+                        <p className="text-xs text-slate-500">Location actions are paused while the store is excluded from map pins.</p>
+                      ) : (
+                        <div className="flex gap-2">
+                          <Button type="button" size="sm" variant="outline" onClick={() => handleEditLocation(location)}>
+                            Edit
+                          </Button>
                           <Button
                             type="button"
                             size="sm"
                             variant="outline"
-                            onClick={() => handleDeactivateLocation(location.location_id)}
-                            disabled={locationSaving}
+                            onClick={() => handleSetPrimaryLocation(location)}
+                            disabled={locationSaving || location.is_active !== true || location.is_primary_storefront === true}
                           >
-                            Deactivate
+                            {location.is_primary_storefront === true ? 'Primary' : 'Set Primary'}
                           </Button>
-                        ) : (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleReactivateLocation(location.location_id)}
-                            disabled={locationSaving}
-                          >
-                            Reactivate
-                          </Button>
-                        )}
-                        {location.is_active ? (
-                          <span className="self-center text-xs text-slate-500">
-                            Deactivate before permanent delete
-                          </span>
-                        ) : (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="border-red-200 text-red-700 hover:bg-red-50"
-                            onClick={() => openDeleteLocationDialog(location)}
-                            disabled={locationSaving}
-                          >
-                            Delete Pin
-                          </Button>
-                        )}
-                      </div>
+                          {location.is_active ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDeactivateLocation(location.location_id)}
+                              disabled={locationSaving}
+                            >
+                              Deactivate
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleReactivateLocation(location.location_id)}
+                              disabled={locationSaving}
+                            >
+                              Reactivate
+                            </Button>
+                          )}
+                          {location.is_active ? (
+                            <span className="self-center text-xs text-slate-500">
+                              Deactivate before permanent delete
+                            </span>
+                          ) : (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="border-red-200 text-red-700 hover:bg-red-50"
+                              onClick={() => openDeleteLocationDialog(location)}
+                              disabled={locationSaving}
+                            >
+                              Delete Pin
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))
                 )}
@@ -2974,52 +2980,10 @@ export default function Settings() {
                 </div>
               </div>
               <div className="space-y-3 rounded-lg border border-slate-200 p-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <Label>Business Hours</Label>
-                    <p className="mt-1 text-xs text-slate-500">These hours appear on the storefront and gate checkout availability. Times use Asia/Manila.</p>
-                    <p className="mt-1 text-xs font-semibold text-slate-700">Preview: {formatStorefrontBusinessHoursDisplay(settings.storefrontHours)}</p>
-                  </div>
-                  <Button type="button" variant="outline" size="sm" onClick={() => copyStorefrontHoursToAllDays('mon')}>
-                    <Copy className="w-4 h-4 mr-1" />Copy Mon
-                  </Button>
-                </div>
-                <div className="grid gap-2">
-                  {STOREFRONT_BUSINESS_DAY_OPTIONS.map((day) => {
-                    const dayHours = normalizeStorefrontBusinessHours(settings.storefrontHours).weekly[day.key];
-                    const isAllDay = dayHours.enabled && dayHours.open === dayHours.close;
-                    return (
-                      <div key={day.key} className="grid grid-cols-[48px_1fr_1fr_auto_auto] items-center gap-2 rounded-md bg-slate-50 px-3 py-2">
-                        <span className="text-xs font-semibold text-slate-700">{day.label}</span>
-                        <Input
-                          type="time"
-                          value={dayHours.open}
-                          disabled={!dayHours.enabled}
-                          onChange={(e) => handleStorefrontHoursDayChange(day.key, { open: e.target.value })}
-                          className="h-9"
-                        />
-                        <Input
-                          type="time"
-                          value={dayHours.close}
-                          disabled={!dayHours.enabled}
-                          onChange={(e) => handleStorefrontHoursDayChange(day.key, { close: e.target.value })}
-                          className="h-9"
-                        />
-                        <Switch
-                          checked={dayHours.enabled}
-                          onCheckedChange={(checked) => handleStorefrontHoursDayChange(day.key, { enabled: checked === true })}
-                        />
-                        <button
-                          type="button"
-                          className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
-                          onClick={() => handleStorefrontHoursDayChange(day.key, isAllDay ? { open: '09:00', close: '18:00' } : { enabled: true, open: '00:00', close: '00:00' })}
-                        >
-                          {isAllDay ? '24h' : (dayHours.enabled ? 'Set 24h' : 'Closed')}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                <StorefrontBusinessHoursScheduler
+                  value={settings.storefrontHours}
+                  onChange={(nextHours) => handleChange('storefrontHours', nextHours)}
+                />
               </div>
               <div className="space-y-2">
                 <Label>About</Label>

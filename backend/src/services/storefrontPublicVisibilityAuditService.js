@@ -4,6 +4,7 @@ import tenantConnector from '../utils/TenantConnector.js';
 import { getTenantModels } from '../utils/tenantModelFactory.js';
 
 const VISIBILITY_SETTING_KEY = 'store_is_visible';
+const STORE_HAS_NO_LOCATION_SETTING_KEY = 'store_has_no_location';
 
 const parseBooleanSetting = (value) => {
     if (value === true || value === false) return value;
@@ -20,6 +21,12 @@ const toPlain = (entry) => {
     return entry;
 };
 
+const toNumberOrNull = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
 const normalizeLocation = (entry) => {
     const plain = toPlain(entry) || {};
     const locationId = Number(plain.location_id);
@@ -30,13 +37,13 @@ const normalizeLocation = (entry) => {
         is_primary_storefront: plain.is_primary_storefront === true
             || plain.is_primary_storefront === 1
             || plain.is_primary_storefront === '1',
-        latitude: Number(plain.latitude),
-        longitude: Number(plain.longitude)
+        latitude: toNumberOrNull(plain.latitude),
+        longitude: toNumberOrNull(plain.longitude)
     };
 };
 
 const hasFiniteCoordinates = (location) => (
-    Number.isFinite(Number(location?.latitude)) && Number.isFinite(Number(location?.longitude))
+    toNumberOrNull(location?.latitude) !== null && toNumberOrNull(location?.longitude) !== null
 );
 
 const addIssue = (issues, severity, code, message) => {
@@ -60,11 +67,17 @@ const inspectTenant = async ({
     const tenantId = tenantPlain.id || null;
     const indexRow = toPlain(await indexModel.findOne({ where: { tenant_id: tenantId } }));
     const indexIsVisible = indexRow?.is_visible === true || indexRow?.is_visible === 1 || indexRow?.is_visible === '1';
-    const indexLocationId = Number(indexRow?.location_id);
+    const rawIndexLocationId = toNumberOrNull(indexRow?.location_id);
+    const indexLocationId = Number.isInteger(rawIndexLocationId) && rawIndexLocationId > 0
+        ? rawIndexLocationId
+        : null;
+    const indexHasCoordinates = hasFiniteCoordinates(indexRow);
 
     const issues = [];
     let settingValue = null;
     let settingMissing = true;
+    let noLocationSettingValue = null;
+    let noLocationSettingMissing = true;
     let locations = [];
     let repairedMissingSetting = false;
 
@@ -73,11 +86,18 @@ const inspectTenant = async ({
         const { SystemSetting, TenantLocation } = tenantModelFactory(tenantSequelize);
 
         const settingsRows = await SystemSetting.findAll({
-            where: { setting_key: VISIBILITY_SETTING_KEY }
+            where: { setting_key: { [Op.in]: [VISIBILITY_SETTING_KEY, STORE_HAS_NO_LOCATION_SETTING_KEY] } }
         });
-        const settingRow = toPlain((settingsRows || [])[0]);
+        const settingRowsByKey = new Map((settingsRows || []).map((row) => {
+            const plain = toPlain(row);
+            return [plain?.setting_key, plain];
+        }));
+        const settingRow = settingRowsByKey.get(VISIBILITY_SETTING_KEY);
+        const noLocationSettingRow = settingRowsByKey.get(STORE_HAS_NO_LOCATION_SETTING_KEY);
         settingMissing = !settingRow;
         settingValue = parseBooleanSetting(settingRow?.setting_value);
+        noLocationSettingMissing = !noLocationSettingRow;
+        noLocationSettingValue = parseBooleanSetting(noLocationSettingRow?.setting_value);
 
         if (settingMissing && repairMissingSettings) {
             const repairedValue = indexIsVisible === true;
@@ -160,11 +180,31 @@ const inspectTenant = async ({
     }
 
     if (settingValue === true && !activePrimary) {
+        if (noLocationSettingValue === true) {
+            // Searchable no-location storefronts are explicitly valid without a public map pin.
+        } else if (indexRow && indexIsVisible && !indexHasCoordinates && indexLocationId === null) {
+            addIssue(
+                issues,
+                'critical',
+                'missing_store_has_no_location_setting_for_nullable_index',
+                'Tenant has a nullable-coordinate discovery row but is not explicitly marked as a no-location storefront'
+            );
+        } else {
         addIssue(
             issues,
             'warning',
             'visible_without_active_primary_pin',
             'Tenant is public-visible but has no active primary storefront pin with finite coordinates'
+        );
+        }
+    }
+
+    if (settingValue === true && noLocationSettingValue === true && indexRow && indexIsVisible && (indexHasCoordinates || indexLocationId !== null)) {
+        addIssue(
+            issues,
+            'critical',
+            'no_location_store_indexed_with_coordinates',
+            'Tenant is marked as no-location but discovery index still publishes a map location'
         );
     }
 
@@ -177,7 +217,16 @@ const inspectTenant = async ({
         );
     }
 
-    if (indexRow && indexIsVisible && activeIndexedLocation && activeIndexedLocation.is_primary_storefront !== true) {
+    if (settingValue === true && noLocationSettingValue === true && !indexRow) {
+        addIssue(
+            issues,
+            'warning',
+            'visible_no_location_store_not_indexed',
+            'Tenant is public-visible and marked no-location but has no searchable discovery index row'
+        );
+    }
+
+    if (indexRow && indexIsVisible && noLocationSettingValue !== true && activeIndexedLocation && activeIndexedLocation.is_primary_storefront !== true) {
         addIssue(
             issues,
             'warning',
@@ -186,7 +235,7 @@ const inspectTenant = async ({
         );
     }
 
-    if (indexRow && indexIsVisible && !activeIndexedLocation) {
+    if (indexRow && indexIsVisible && noLocationSettingValue !== true && !activeIndexedLocation) {
         addIssue(
             issues,
             'critical',
@@ -202,10 +251,12 @@ const inspectTenant = async ({
         slug: indexRow?.slug || null,
         store_is_visible: settingValue,
         store_is_visible_missing: settingMissing,
+        store_has_no_location: noLocationSettingValue,
+        store_has_no_location_missing: noLocationSettingMissing,
         store_is_visible_repaired: repairedMissingSetting,
         discovery_indexed: Boolean(indexRow),
         discovery_index_visible: indexIsVisible,
-        discovery_location_id: Number.isInteger(indexLocationId) && indexLocationId > 0 ? indexLocationId : null,
+        discovery_location_id: indexLocationId,
         active_primary_location_id: activePrimary?.location_id || null,
         active_location_count: locations.filter((location) => location.is_active === true).length,
         issues,
