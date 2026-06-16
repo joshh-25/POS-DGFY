@@ -4875,7 +4875,15 @@ Public, rate-limited. Verify a `dgfy_password_reset` code and set the new DGFY a
 
 Requires `Authorization: Bearer <dgfy-account-token>`.
 
-Accept a pending company invitation from the DGFY account notification surface. This path does not require an invitation link, company token in the URL, or a tenant-local password setup form. The backend activates the matching tenant-local invitation row from the authenticated DGFY account, copies the DGFY email/phone/password hash into that tenant user, writes the landlord email-to-tenant mapping, and marks the DGFY membership accepted.
+Accept a pending company invitation from the DGFY account notification surface. This path does not require an invitation link, company token in the URL, or a tenant-local password setup form. The backend activates the matching tenant-local invitation row from the authenticated DGFY account, copies the DGFY email/phone/password hash into that tenant user, writes the landlord email-to-tenant mapping, and marks the DGFY membership accepted. The request requires a `dgfy_business_step_up` email OTP code sent to the DGFY account email unless the account has a still-valid recent business step-up.
+
+**Request**
+
+```json
+{
+  "email_otp_code": "123456"
+}
+```
 
 **Response (200)**
 
@@ -4891,11 +4899,72 @@ Accept a pending company invitation from the DGFY account notification surface. 
       "status": "accepted",
       "source": "invite",
       "company": {
-        "name": "Example Foods",
-        "company_token": "tenant-token"
+        "id": "tenant-uuid",
+        "name": "Example Foods"
       }
     }
   }
+}
+```
+
+### GET /dgfy/account/companies
+
+Requires an authenticated DGFY account JWT or `sku_dgfy_session` cookie.
+
+Return companies connected to the DGFY account. Accepted active memberships are switchable. Pending IMS email invitations are visible but not switchable until accepted. The response does not expose tenant `company_token`.
+
+**Response (200)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "accepted_count": 1,
+    "pending_count": 1,
+    "business_step_up": {
+      "verified": false,
+      "verified_at": null,
+      "expires_at": null
+    },
+    "companies": [
+      {
+        "membership_id": 12,
+        "tenant_id": "tenant-uuid",
+        "tenant_user_id": 7,
+        "company_name": "Example Foods",
+        "role": "admin",
+        "source": "founder",
+        "membership_status": "accepted",
+        "tenant_status": "active",
+        "plan": "premium",
+        "accepted_at": "2026-06-16T10:00:00.000Z",
+        "last_selected_at": "2026-06-16T10:15:00.000Z",
+        "is_current": true,
+        "can_switch": true,
+        "requires_action": null
+      }
+    ]
+  }
+}
+```
+
+### POST /dgfy/account/business-step-up/request
+
+Requires an authenticated DGFY account JWT or `sku_dgfy_session` cookie.
+
+Send a six-digit `dgfy_business_step_up` email OTP to the DGFY account email for business-sensitive actions. This version is email-only and does not use mobile/SMS OTP. A successfully verified business action refreshes a short recent-step-up window; while that window is valid, additional business switching/invitation actions do not require another code.
+
+### POST /dgfy/account/companies/:tenant_id/switch
+
+Requires an authenticated DGFY account JWT or `sku_dgfy_session` cookie.
+
+Switch into an accepted active company membership after email OTP step-up, or while the account has a still-valid recent business step-up window. The response sets normal SKUpervisor tenant refresh/company cookies and returns the standard tenant access session payload without exposing the refresh token.
+
+**Request**
+
+```json
+{
+  "email_otp_code": "123456"
 }
 ```
 

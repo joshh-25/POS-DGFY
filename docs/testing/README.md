@@ -39,6 +39,7 @@ Required commands:
 2. `npm --prefix backend test -- --runTestsByPath tests/rtr_verification.test.js`
 3. `npm --prefix frontend test -- --run src/services/__tests__/browserTokenStorage.guard.test.js`
 4. For DGFY-to-SKUpervisor tenant-session handoff or tenant refresh routing changes: `npm --prefix backend test -- --runTestsByPath tests/tenantHandler.emailOtp.test.js tests/dgfyTenantSession.transport.test.js tests/browserSessionCookies.test.js`
+5. For DGFY account company switching or invitation Business-tab changes: include backend DGFY company-list/switch/invitation tests, frontend IMS switcher tests, Storefront account Business-tab tests, and browser storage guards proving DGFY, refresh, tenant, and company tokens are not persisted in browser-readable storage.
 
 Evidence semantics:
 1. Backend cookie tests prove refresh/session authority is issued and cleared with the ADR 0026 cookie attributes.
