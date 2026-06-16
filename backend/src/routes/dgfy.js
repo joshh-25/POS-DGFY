@@ -1,7 +1,7 @@
 import express from 'express';
 import { authLimiter } from '../middleware/rateLimiter.js';
 import { authenticateAdmin } from '../middleware/auth.js';
-import { authenticateDgfyAccount } from '../middleware/dgfyAuth.js';
+import { authenticateDgfyAccount, authenticateDgfyAccountOrTenantMembership } from '../middleware/dgfyAuth.js';
 import {
     acceptDgfyInvitation,
     changeDgfyPassword,
@@ -10,11 +10,14 @@ import {
     exchangeDgfyHandoff,
     getDgfyLegalTerms,
     getDgfyMe,
+    listDgfyAccountCompanies,
     loginDgfyAccount,
     logoutDgfyAccount,
+    requestDgfyBusinessStepUp,
     requestDgfyPasswordReset,
     requestDgfyEmailVerification,
     startDgfyTenantSession,
+    switchDgfyCompany,
     updateDgfyProfile,
     verifyDgfyEmail,
     registerDgfyAccount
@@ -67,7 +70,10 @@ router.post('/auth/email-verification/request', authLimiter, authenticateDgfyAcc
 router.post('/auth/email-verification/verify', authLimiter, authenticateDgfyAccount, verifyDgfyEmail);
 router.post('/auth/handoff', authenticateDgfyAccount, createDgfyHandoff);
 router.post('/auth/tenant-session', authLimiter, authenticateDgfyAccount, startDgfyTenantSession);
-router.post('/invitations/:membership_id/accept', authenticateDgfyAccount, acceptDgfyInvitation);
+router.get('/account/companies', authenticateDgfyAccountOrTenantMembership, listDgfyAccountCompanies);
+router.post('/account/business-step-up/request', authLimiter, authenticateDgfyAccountOrTenantMembership, requestDgfyBusinessStepUp);
+router.post('/account/companies/:tenant_id/switch', authLimiter, authenticateDgfyAccountOrTenantMembership, switchDgfyCompany);
+router.post('/invitations/:membership_id/accept', authenticateDgfyAccountOrTenantMembership, acceptDgfyInvitation);
 
 router.get('/admin/accounts', authenticateAdmin, listAdminDgfyAccounts);
 router.get('/admin/accounts/:account_id', authenticateAdmin, getAdminDgfyAccount);

@@ -108,12 +108,12 @@ export const tenantAdminRepository = {
         const TenantAdminAuditLog = getTenantAdminAuditLogModel();
         return TenantAdminAuditLog.create(payload, options);
     },
-    listTenantAdminAuditLogs(tenantId, { limit = 20 } = {}) {
+    listTenantAdminAuditLogs(tenantId, { limit = 20, action = 'capability_update' } = {}) {
         const TenantAdminAuditLog = getTenantAdminAuditLogModel();
         return TenantAdminAuditLog.findAll({
             where: {
                 tenant_id: tenantId,
-                action: 'capability_update'
+                action
             },
             order: [['created_at', 'DESC']],
             limit: Math.min(Math.max(Number.parseInt(limit, 10) || 20, 1), 100)

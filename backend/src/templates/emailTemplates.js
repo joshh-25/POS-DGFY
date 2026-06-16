@@ -103,7 +103,7 @@ export const getInvitationTemplate = ({ inviterName, role, invitationToken, tena
 
               <!-- Description -->
               <p style="margin: 0 0 32px; color: #6b7280; font-size: 14px; text-align: center;">
-                Click the button below to accept the invitation and set up your account:
+                Click the button below to accept the invitation and set up your account. If you already use DGFY with this email, you can also accept it from your DGFY account Business tab:
               </p>
 
               <!-- CTA Button -->

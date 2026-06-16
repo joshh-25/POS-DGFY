@@ -38,6 +38,7 @@ const NON_FISCAL_COUNTER_KEY = 'POS_NFS';
 const FISCAL_LIFETIME_COUNTER_KEY = 'POS_FISCAL_LIFETIME_TOTAL_CENTS';
 const Z_READING_COUNTER_KEY = 'POS_Z_READING_COUNTER';
 const RESET_COUNTER_KEY = 'POS_RESET_COUNTER';
+const FISCAL_DOCUMENT_TEMPLATE_VERSION = 'rmo-24-2023-prep-v1';
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'appointment'];
 const FNB_COURSES = new Set(['appetizer', 'main', 'dessert', 'drink', 'other']);
 const ONLINE_ORDER_SOURCE = 'online_store';
@@ -97,6 +98,7 @@ const TERMINAL_POLICY_REASON_CODES = Object.freeze({
     WARN_UNREGISTERED_ID: 'TERMINAL_ID_UNREGISTERED_WARN'
 });
 const TERMINAL_POLICY_ALLOWED_REASON_CODE = 'TERMINAL_ID_ALLOWED';
+const ESALES_REPORT_STATUSES = new Set(['generated', 'submitted', 'accepted', 'rejected']);
 const LOCATION_SCOPE_REASON_CODES = Object.freeze({
     LOCATION_CONTEXT_REQUIRED: 'POS_LOCATION_CONTEXT_REQUIRED',
     LOCATION_SCOPE_UNRESOLVED: 'POS_LOCATION_SCOPE_UNRESOLVED',
@@ -192,6 +194,16 @@ const stableStringify = (value) => {
 };
 
 const hashPayload = (payload) => crypto.createHash('sha256').update(stableStringify(payload)).digest('hex');
+
+const settingString = (settings = {}, key) => String(settings?.[key]?.value ?? '').trim();
+
+const settingBoolean = (settings = {}, key) => {
+    const value = settings?.[key]?.value;
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value === 1;
+    const normalized = String(value ?? '').trim().toLowerCase();
+    return ['1', 'true', 'yes', 'on'].includes(normalized);
+};
 
 const normalizeOptionalIdempotencyKey = (value) => {
     const normalized = String(value || '').trim();
@@ -1351,6 +1363,110 @@ const buildTransactionSpecialInstructions = ({
     return JSON.stringify(payload);
 };
 
+const normalizeBuyerFiscalDetails = (payload = {}) => ({
+    name: String(payload.buyer_name || payload.customer_name || '').trim() || null,
+    tin: String(payload.buyer_tin || '').trim() || null,
+    business_style: String(payload.buyer_business_style || '').trim() || null,
+    address: String(payload.buyer_address || '').trim() || null
+});
+
+const assertBuyerFiscalDetailsReady = ({ buyer, settings, isFiscal }) => {
+    if (!isFiscal || !settingBoolean(settings, 'pos_fiscal_buyer_details_required')) return;
+
+    const missing = [];
+    if (!buyer.name) missing.push('buyer_name');
+    if (!buyer.tin) missing.push('buyer_tin');
+    if (!buyer.business_style) missing.push('buyer_business_style');
+    if (!buyer.address) missing.push('buyer_address');
+    if (missing.length === 0) return;
+
+    throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        `Fiscal checkout requires buyer details: ${missing.join(', ')}`,
+        {
+            statusCode: 422,
+            details: { missing_fields: missing }
+        }
+    );
+};
+
+const resolveVerifiedFiscalTerminalRegistration = async ({ posRepository, terminalId, transaction }) => {
+    if (typeof posRepository.getVerifiedFiscalTerminalRegistration !== 'function') return null;
+
+    return posRepository.getVerifiedFiscalTerminalRegistration({
+        terminal_id: terminalId || null
+    }, { transaction, lock: true });
+};
+
+const buildFiscalDocumentSnapshot = ({
+    invoiceNumber,
+    receiptContract,
+    settings,
+    terminalRegistration,
+    buyer,
+    lines,
+    totals,
+    paymentType
+}) => ({
+    template_version: FISCAL_DOCUMENT_TEMPLATE_VERSION,
+    document: {
+        invoice_number: invoiceNumber,
+        document_type: receiptContract.document_type,
+        document_context: receiptContract.document_context
+    },
+    seller: {
+        registered_name: settingString(settings, 'pos_registered_name'),
+        business_name: settingString(settings, 'pos_business_name'),
+        business_style: settingString(settings, 'pos_business_style'),
+        taxpayer_type: settingString(settings, 'pos_taxpayer_type'),
+        tin_branch: settingString(settings, 'pos_tin_branch'),
+        address: settingString(settings, 'pos_address'),
+        ptu_number: settingString(settings, 'pos_ptu_number') || String(terminalRegistration?.ptu_number || '').trim(),
+        min_number: settingString(settings, 'pos_min_number') || String(terminalRegistration?.min_number || '').trim(),
+        accreditation_number: settingString(settings, 'pos_accreditation_number'),
+        software_name: settingString(settings, 'pos_software_name'),
+        software_version: settingString(settings, 'pos_software_version') || String(terminalRegistration?.software_version || '').trim(),
+        software_serial_number: settingString(settings, 'pos_software_serial_number') || String(terminalRegistration?.software_serial_number || '').trim()
+    },
+    terminal: {
+        terminal_id: String(terminalRegistration?.terminal_id || '').trim() || null,
+        min_number: String(terminalRegistration?.min_number || '').trim() || null,
+        machine_serial_number: String(terminalRegistration?.machine_serial_number || '').trim() || null,
+        ptu_number: String(terminalRegistration?.ptu_number || '').trim() || null,
+        software_version: String(terminalRegistration?.software_version || '').trim() || null,
+        software_serial_number: String(terminalRegistration?.software_serial_number || '').trim() || null
+    },
+    buyer: {
+        name: buyer.name,
+        tin: buyer.tin,
+        business_style: buyer.business_style,
+        address: buyer.address
+    },
+    totals: {
+        subtotal_amount: totals.subtotalAmount,
+        vatable_sales: totals.vatableSales,
+        vat_amount: totals.vatAmount,
+        vat_exempt_sales: totals.vatExemptSales,
+        zero_rated_sales: totals.zeroRatedSales,
+        discount_amount: totals.discountAmount,
+        service_fee_amount: totals.serviceFeeAmount,
+        restaurant_service_charge_amount: totals.restaurantServiceChargeAmount,
+        total_amount: totals.totalAmount,
+        payment_type: paymentType
+    },
+    lines: lines.map((line, index) => ({
+        sequence: index + 1,
+        item_id: line.item_id,
+        item_name: line.item_name,
+        quantity: line.quantity,
+        unit_of_measure: line.unit_of_measure,
+        sale_price: line.sale_price,
+        line_subtotal: line.line_subtotal,
+        vat_type: line.vat_type_snapshot,
+        vat_rate: line.vat_rate_snapshot
+    }))
+});
+
 export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService }) => {
     return async ({ payload, userId, user }) => {
         const normalizedUserId = parsePositiveInt(userId);
@@ -1412,6 +1528,7 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
         const fnbGuestCount = parsePositiveInt(payload.fnb_guest_count || payload.guest_count);
         const fnbServerId = parsePositiveInt(payload.fnb_server_id || payload.server_id);
         const fnbTableLabelSnapshot = String(payload.fnb_table_label_snapshot || payload.table_label_snapshot || '').trim().slice(0, 120) || null;
+        const buyerFiscalDetails = normalizeBuyerFiscalDetails(payload);
         const hasFnbLineContext = lines.some((line) => (
             normalizeFnbCourse(line?.course)
             || Array.isArray(line?.line_modifiers)
@@ -1445,6 +1562,10 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             customer_name: String(payload.customer_name || '').trim() || null,
             customer_email: String(payload.customer_email || '').trim().toLowerCase() || null,
             customer_phone: String(payload.customer_phone || '').trim() || null,
+            buyer_name: buyerFiscalDetails.name,
+            buyer_tin: buyerFiscalDetails.tin,
+            buyer_business_style: buyerFiscalDetails.business_style,
+            buyer_address: buyerFiscalDetails.address,
             special_instructions: String(payload.special_instructions || '').trim() || null,
             discount_beneficiary: isPlainObject(payload.discount_beneficiary)
                 ? {
@@ -1566,6 +1687,12 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 ...receiptContract,
                 document_context: resolvedDocumentContext
             };
+            const isFiscalReceipt = resolvedReceiptContract.document_type === 'fiscal_invoice';
+            assertBuyerFiscalDetailsReady({
+                buyer: buyerFiscalDetails,
+                settings,
+                isFiscal: isFiscalReceipt
+            });
 
             const existing = await posRepository.findTransactionByIdempotencyKey(
                 idempotencyKey,
@@ -1582,13 +1709,20 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 }
 
                 await transaction.commit();
+                const replayDocumentType = String(existing.document_type || '').trim().toLowerCase() === 'fiscal_invoice'
+                    ? 'fiscal_invoice'
+                    : 'non_fiscal_slip';
+                const replayDocumentContext = String(existing.document_context || '').trim().toLowerCase()
+                    || (replayDocumentType === 'fiscal_invoice' ? 'fiscal' : 'non_fiscal');
                 return ok({
                     idempotent_replay: true,
                     compliance_decision: complianceDecision,
                     terminal_identity_policy: terminalPolicyContext,
                     receipt_contract: {
-                        ...resolvedReceiptContract,
-                        document_context: String(existing.document_context || resolvedReceiptContract.document_context || '').trim().toLowerCase() || 'non_fiscal'
+                        version: RECEIPT_CONTRACT_VERSION,
+                        document_type: replayDocumentType,
+                        document_context: replayDocumentContext,
+                        label: replayDocumentType === 'fiscal_invoice' ? 'FISCAL INVOICE' : 'NON-FISCAL SLIP'
                     },
                     transaction: toSerializable(existing)
                 });
@@ -1889,6 +2023,23 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 invoiceCounterKey,
                 { transaction, prefix: invoicePrefix }
             );
+            const fiscalTerminalRegistration = isFiscalReceipt
+                ? await resolveVerifiedFiscalTerminalRegistration({
+                    posRepository,
+                    terminalId: normalizedTerminalId,
+                    transaction
+                })
+                : null;
+            if (isFiscalReceipt && typeof posRepository.getVerifiedFiscalTerminalRegistration === 'function' && !fiscalTerminalRegistration) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Verified fiscal terminal registration is required for fiscal checkout',
+                    {
+                        statusCode: 422,
+                        details: { reason_code: 'FISCAL_TERMINAL_REGISTRATION_REQUIRED' }
+                    }
+                );
+            }
             const fnbTableSnapshot = fnbTableId
                 ? await posRepository.getFnbTableById(fnbTableId, { transaction })
                 : null;
@@ -1902,6 +2053,29 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
             const resolvedFnbTableLabel = fnbTableSnapshot
                 ? String(fnbTableSnapshot.label || fnbTableSnapshot.table_number || '').trim().slice(0, 120) || fnbTableLabelSnapshot
                 : fnbTableLabelSnapshot;
+            const fiscalDocumentSnapshot = isFiscalReceipt
+                ? buildFiscalDocumentSnapshot({
+                    invoiceNumber,
+                    receiptContract: resolvedReceiptContract,
+                    settings,
+                    terminalRegistration: fiscalTerminalRegistration,
+                    buyer: buyerFiscalDetails,
+                    lines: preparedLines,
+                    totals: {
+                        subtotalAmount,
+                        vatableSales,
+                        vatAmount,
+                        vatExemptSales,
+                        zeroRatedSales,
+                        discountAmount,
+                        serviceFeeAmount,
+                        restaurantServiceChargeAmount,
+                        totalAmount
+                    },
+                    paymentType: payload.payment_type || 'cash'
+                })
+                : null;
+            const fiscalDocumentHash = fiscalDocumentSnapshot ? hashPayload(fiscalDocumentSnapshot) : null;
 
             const posTransactionId = await posRepository.createTransactionWithLines({
                 header: {
@@ -1920,6 +2094,9 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                     customer_name: String(payload.customer_name || '').trim() || null,
                     customer_email: String(payload.customer_email || '').trim().toLowerCase() || null,
                     customer_phone: String(payload.customer_phone || '').trim() || null,
+                    buyer_tin: isFiscalReceipt ? buyerFiscalDetails.tin : null,
+                    buyer_business_style: isFiscalReceipt ? buyerFiscalDetails.business_style : null,
+                    buyer_address: isFiscalReceipt ? buyerFiscalDetails.address : null,
                     special_instructions: transactionSpecialInstructions,
                     payment_type: payload.payment_type || 'cash',
                     subtotal_amount: subtotalAmount,
@@ -1961,10 +2138,30 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                         : null,
                     total_amount: totalAmount,
                     delivery_fee: 0,
-                    status: 'completed'
+                    status: 'completed',
+                    fiscal_document_template_version: isFiscalReceipt ? FISCAL_DOCUMENT_TEMPLATE_VERSION : null,
+                    fiscal_document_hash: fiscalDocumentHash,
+                    fiscal_document_snapshot: fiscalDocumentSnapshot
                 },
                 lines: preparedLines
             }, { transaction });
+
+            if (isFiscalReceipt && typeof posRepository.createFiscalEvent === 'function') {
+                await posRepository.createFiscalEvent({
+                    pos_transaction_id: posTransactionId,
+                    event_type: 'checkout_issued',
+                    document_type: resolvedReceiptContract.document_type,
+                    invoice_number: invoiceNumber,
+                    terminal_id: normalizedTerminalId || fiscalTerminalRegistration?.terminal_id || null,
+                    fiscal_document_hash: fiscalDocumentHash,
+                    payload: {
+                        receipt_contract: resolvedReceiptContract,
+                        fiscal_document_hash: fiscalDocumentHash,
+                        fiscal_document_template_version: FISCAL_DOCUMENT_TEMPLATE_VERSION
+                    },
+                    actor_user_id: normalizedUserId
+                }, { transaction });
+            }
 
             if (restaurantServiceChargeAmount > 0) {
                 await posRepository.createFnbServiceChargeSnapshot({
@@ -2079,6 +2276,485 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 await transaction.rollback();
             }
             return fail(mapPosUseCaseError(error, 'Failed to complete POS checkout'));
+        }
+    };
+};
+
+export const buildRecordFiscalPrintEventUseCase = ({ posRepository }) => {
+    return async ({ posTransactionId, payload = {}, user = {} } = {}) => {
+        const normalizedTransactionId = parsePositiveInt(posTransactionId);
+        const actorUserId = parsePositiveInt(user?.user_id);
+        if (!normalizedTransactionId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'posTransactionId must be a positive integer',
+                { statusCode: 400 }
+            ));
+        }
+
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        const transaction = await sequelize.transaction();
+        try {
+            const existing = await posRepository.getTransactionById(normalizedTransactionId, { transaction, lock: true });
+            if (!existing || existing.document_type !== 'fiscal_invoice') {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Fiscal print evidence can only be recorded for fiscal invoices',
+                    { statusCode: 422 }
+                );
+            }
+
+            const existingPrintCount = typeof posRepository.countFiscalPrintEvents === 'function'
+                ? await posRepository.countFiscalPrintEvents(normalizedTransactionId, { transaction })
+                : 0;
+            const printSequence = existingPrintCount + 1;
+            const printType = printSequence === 1 ? 'original' : 'reprint';
+            const reason = String(payload.reason || '').trim() || null;
+            if (printType === 'reprint' && (!reason || reason.length < 3)) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Reprint reason is required',
+                    { statusCode: 422 }
+                );
+            }
+
+            const printEvent = await posRepository.createFiscalPrintEvent({
+                pos_transaction_id: normalizedTransactionId,
+                print_type: printType,
+                print_sequence: printSequence,
+                reason,
+                fiscal_document_hash: existing.fiscal_document_hash || null,
+                actor_user_id: actorUserId
+            }, { transaction });
+            const fiscalEvent = typeof posRepository.createFiscalEvent === 'function'
+                ? await posRepository.createFiscalEvent({
+                    pos_transaction_id: normalizedTransactionId,
+                    event_type: printType === 'original' ? 'print_original' : 'print_reprint',
+                    document_type: existing.document_type,
+                    invoice_number: existing.invoice_number,
+                    terminal_id: existing.terminal_id || null,
+                    fiscal_document_hash: existing.fiscal_document_hash || null,
+                    payload: {
+                        print_type: printType,
+                        print_sequence: printSequence,
+                        reason,
+                        fiscal_document_hash: existing.fiscal_document_hash || null
+                    },
+                    actor_user_id: actorUserId
+                }, { transaction })
+                : null;
+            if (printType === 'reprint' && typeof posRepository.updateTransactionLifecycle === 'function') {
+                await posRepository.updateTransactionLifecycle(normalizedTransactionId, {
+                    fiscal_reprint_count: Math.max(0, printSequence - 1)
+                }, { transaction });
+            }
+
+            await transaction.commit();
+            return ok({
+                ...toSerializable(printEvent),
+                print_type: printType,
+                fiscal_event_hash: fiscalEvent?.event_hash || null
+            });
+        } catch (error) {
+            if (!transaction.finished) {
+                await transaction.rollback();
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to record fiscal print event'));
+        }
+    };
+};
+
+export const buildVoidPosTransactionUseCase = ({ posRepository, stockMovementService }) => {
+    return async ({ posTransactionId, payload = {}, user = {} } = {}) => {
+        const normalizedTransactionId = parsePositiveInt(posTransactionId);
+        const actorUserId = parsePositiveInt(user?.user_id);
+        const reason = String(payload.reason || '').trim();
+        if (!normalizedTransactionId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'posTransactionId must be a positive integer',
+                { statusCode: 400 }
+            ));
+        }
+        if (reason.length < 3) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Void reason is required',
+                { statusCode: 422 }
+            ));
+        }
+
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        const transaction = await sequelize.transaction();
+        try {
+            const existing = await posRepository.getTransactionById(normalizedTransactionId, { transaction, lock: true });
+            if (!existing || existing.status === 'voided') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'POS transaction is not available for voiding',
+                    { statusCode: 409 }
+                );
+            }
+
+            const stockMovements = typeof posRepository.listStockMovementsForPosTransaction === 'function'
+                ? await posRepository.listStockMovementsForPosTransaction(normalizedTransactionId, { transaction })
+                : [];
+            const stockReversals = [];
+            for (const movement of stockMovements || []) {
+                const quantity = Math.abs(Number(movement.quantity || 0));
+                if (quantity <= 0) continue;
+                const reversal = await stockMovementService.createStockMovement({
+                    item_id: movement.item_id,
+                    quantity,
+                    movement_type: 'return',
+                    location_id: movement.location_id || existing.location_id || null,
+                    reference_type: 'POS',
+                    reference_id: String(normalizedTransactionId),
+                    notes: `POS void reversal for ${existing.invoice_number}`
+                }, actorUserId, transaction);
+                stockReversals.push({
+                    original_movement_id: movement.movement_id || null,
+                    reversal_movement_id: reversal?.movement_id || null
+                });
+            }
+
+            const fiscalEvent = existing.document_type === 'fiscal_invoice' && typeof posRepository.createFiscalEvent === 'function'
+                ? await posRepository.createFiscalEvent({
+                    pos_transaction_id: normalizedTransactionId,
+                    event_type: 'void',
+                    document_type: existing.document_type,
+                    invoice_number: existing.invoice_number,
+                    terminal_id: existing.terminal_id || null,
+                    fiscal_document_hash: existing.fiscal_document_hash || null,
+                    payload: {
+                        reason,
+                        fiscal_document_hash: existing.fiscal_document_hash || null
+                    },
+                    actor_user_id: actorUserId
+                }, { transaction })
+                : null;
+            const updated = await posRepository.updateTransactionLifecycle(normalizedTransactionId, {
+                status: 'voided',
+                voided_at: new Date(),
+                voided_by: actorUserId,
+                void_reason: reason,
+                fiscal_lifecycle_state: existing.document_type === 'fiscal_invoice' ? 'voided' : existing.fiscal_lifecycle_state,
+                fiscal_void_event_hash: fiscalEvent?.event_hash || existing.fiscal_void_event_hash || null
+            }, { transaction });
+
+            await transaction.commit();
+            return ok({
+                transaction: toSerializable(updated),
+                stock_reversals: stockReversals
+            });
+        } catch (error) {
+            if (!transaction.finished) {
+                await transaction.rollback();
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to void POS transaction'));
+        }
+    };
+};
+
+export const buildGenerateESalesReportUseCase = ({ posRepository }) => {
+    return async ({ payload = {}, user = {} } = {}) => {
+        const reportMonth = String(payload.report_month || '').trim();
+        const actorUserId = parsePositiveInt(user?.user_id);
+        if (!/^\d{4}-\d{2}$/.test(reportMonth)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'report_month must use YYYY-MM format',
+                { statusCode: 422 }
+            ));
+        }
+
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        const transaction = await sequelize.transaction();
+        try {
+            const rows = await posRepository.listFiscalTransactionsForMonth(reportMonth, { transaction });
+            const transactions = (Array.isArray(rows) ? rows : []).map(toSerializable);
+            const completed = transactions.filter((row) => row.status !== 'voided');
+            const voided = transactions.filter((row) => row.status === 'voided');
+            const sum = (list, key) => round4(list.reduce((total, row) => total + Number(row?.[key] || 0), 0));
+            const reportPayload = {
+                report_month: reportMonth,
+                generated_at: new Date().toISOString(),
+                summary: {
+                    transaction_count: completed.length,
+                    voided_transaction_count: voided.length,
+                    gross_total_amount: sum(transactions, 'total_amount'),
+                    voided_total_amount: sum(voided, 'total_amount'),
+                    net_total_amount: sum(completed, 'total_amount'),
+                    vatable_sales: sum(completed, 'vatable_sales'),
+                    vat_amount: sum(completed, 'vat_amount'),
+                    vat_exempt_sales: sum(completed, 'vat_exempt_sales'),
+                    zero_rated_sales: sum(completed, 'zero_rated_sales')
+                },
+                transactions: transactions.map((row) => ({
+                    pos_transaction_id: row.pos_transaction_id,
+                    invoice_number: row.invoice_number,
+                    created_at: row.created_at,
+                    terminal_id: row.terminal_id,
+                    buyer_tin: row.buyer_tin || null,
+                    vatable_sales: Number(row.vatable_sales || 0),
+                    vat_amount: Number(row.vat_amount || 0),
+                    vat_exempt_sales: Number(row.vat_exempt_sales || 0),
+                    zero_rated_sales: Number(row.zero_rated_sales || 0),
+                    total_amount: Number(row.total_amount || 0),
+                    status: row.status,
+                    fiscal_document_hash: row.fiscal_document_hash || null,
+                    fiscal_document_snapshot: row.fiscal_document_snapshot || null
+                }))
+            };
+            const payloadHash = hashPayload(reportPayload);
+            const report = await posRepository.upsertESalesReport({
+                report_month: reportMonth,
+                status: 'generated',
+                payload: reportPayload,
+                payload_hash: payloadHash,
+                generated_by: actorUserId
+            }, { transaction });
+            if (typeof posRepository.createFiscalEvent === 'function') {
+                await posRepository.createFiscalEvent({
+                    event_type: 'esales_export',
+                    payload: {
+                        report_month: reportMonth,
+                        payload_hash: payloadHash,
+                        status: 'generated'
+                    },
+                    actor_user_id: actorUserId
+                }, { transaction });
+            }
+
+            await transaction.commit();
+            return ok({ report: toSerializable(report) });
+        } catch (error) {
+            if (!transaction.finished) {
+                await transaction.rollback();
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to generate eSales report'));
+        }
+    };
+};
+
+export const buildListESalesReportsUseCase = ({ posRepository }) => {
+    return async () => {
+        try {
+            const reports = typeof posRepository.listESalesReports === 'function'
+                ? await posRepository.listESalesReports()
+                : [];
+            return ok({ reports: (reports || []).map(toSerializable) });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to list eSales reports'));
+        }
+    };
+};
+
+export const buildUpdateESalesReportStatusUseCase = ({ posRepository }) => {
+    return async ({ reportId, payload = {}, user = {} } = {}) => {
+        const normalizedReportId = parsePositiveInt(reportId);
+        const status = String(payload.status || '').trim().toLowerCase();
+        const actorUserId = parsePositiveInt(user?.user_id);
+        if (!normalizedReportId || !ESALES_REPORT_STATUSES.has(status) || status === 'generated') {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Valid report id and status are required',
+                { statusCode: 422 }
+            ));
+        }
+
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        const transaction = await sequelize.transaction();
+        try {
+            const existing = await posRepository.findESalesReportById(normalizedReportId, { transaction, lock: true });
+            if (!existing) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'eSales report not found',
+                    { statusCode: 404 }
+                );
+            }
+            const updatePayload = {
+                status,
+                status_evidence_ref: String(payload.status_evidence_ref || '').trim() || null,
+                status_note: String(payload.status_note || '').trim() || null
+            };
+            if (status === 'submitted') {
+                updatePayload.submitted_by = actorUserId;
+                updatePayload.submitted_at = new Date();
+            }
+            const report = await posRepository.updateESalesReportStatus(normalizedReportId, updatePayload, { transaction });
+            if (typeof posRepository.createFiscalEvent === 'function') {
+                await posRepository.createFiscalEvent({
+                    event_type: 'esales_export',
+                    payload: {
+                        report_id: normalizedReportId,
+                        report_month: existing.report_month,
+                        payload_hash: existing.payload_hash || null,
+                        status,
+                        status_evidence_ref: updatePayload.status_evidence_ref,
+                        status_note: updatePayload.status_note
+                    },
+                    actor_user_id: actorUserId
+                }, { transaction });
+            }
+
+            await transaction.commit();
+            return ok({ report: toSerializable(report) });
+        } catch (error) {
+            if (!transaction.finished) {
+                await transaction.rollback();
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to update eSales report status'));
+        }
+    };
+};
+
+export const buildUpsertFiscalTerminalRegistrationUseCase = ({ posRepository }) => {
+    return async ({ payload = {}, user = {} } = {}) => {
+        const terminalId = String(payload.terminal_id || '').trim().toUpperCase();
+        const status = String(payload.accreditation_status || 'draft').trim().toLowerCase();
+        const actorUserId = parsePositiveInt(user?.user_id);
+        if (!terminalId || !TERMINAL_ID_PATTERN.test(terminalId)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'terminal_id is required',
+                { statusCode: 422 }
+            ));
+        }
+        if (status === 'verified') {
+            const missing = [
+                ['min_number', payload.min_number],
+                ['machine_serial_number', payload.machine_serial_number],
+                ['software_serial_number', payload.software_serial_number],
+                ['ptu_number', payload.ptu_number]
+            ].filter(([, value]) => !String(value || '').trim()).map(([key]) => key);
+            if (missing.length) {
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Fiscal terminal verification is incomplete',
+                    {
+                        statusCode: 422,
+                        details: {
+                            reason_code: 'FISCAL_TERMINAL_VERIFICATION_INCOMPLETE',
+                            missing_fields: missing
+                        }
+                    }
+                ));
+            }
+        }
+
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        const transaction = await sequelize.transaction();
+        try {
+            const registration = await posRepository.upsertFiscalTerminalRegistration({
+                terminal_id: terminalId,
+                location_id: parsePositiveInt(payload.location_id),
+                min_number: String(payload.min_number || '').trim() || null,
+                machine_serial_number: String(payload.machine_serial_number || '').trim() || null,
+                software_version: String(payload.software_version || '').trim() || null,
+                software_serial_number: String(payload.software_serial_number || '').trim() || null,
+                ptu_number: String(payload.ptu_number || '').trim() || null,
+                receipt_printer_binding: String(payload.receipt_printer_binding || '').trim() || null,
+                cash_drawer_binding: String(payload.cash_drawer_binding || '').trim() || null,
+                accreditation_status: status,
+                evidence_ref: String(payload.evidence_ref || '').trim() || null,
+                registered_by: actorUserId,
+                verified_by: status === 'verified' ? actorUserId : null,
+                verified_at: status === 'verified' ? new Date() : null
+            }, { transaction });
+            if (typeof posRepository.createFiscalEvent === 'function') {
+                await posRepository.createFiscalEvent({
+                    event_type: 'terminal_registration',
+                    terminal_id: terminalId,
+                    payload: {
+                        terminal_id: terminalId,
+                        accreditation_status: status
+                    },
+                    actor_user_id: actorUserId
+                }, { transaction });
+            }
+
+            await transaction.commit();
+            return ok({ registration: toSerializable(registration) });
+        } catch (error) {
+            if (!transaction.finished) {
+                await transaction.rollback();
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to save fiscal terminal registration'));
+        }
+    };
+};
+
+export const buildListFiscalTerminalRegistrationsUseCase = ({ posRepository }) => {
+    return async () => {
+        try {
+            const registrations = typeof posRepository.listFiscalTerminalRegistrations === 'function'
+                ? await posRepository.listFiscalTerminalRegistrations()
+                : [];
+            return ok({ registrations: (registrations || []).map(toSerializable) });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to list fiscal terminal registrations'));
+        }
+    };
+};
+
+export const buildVerifyFiscalEventLedgerUseCase = ({ posRepository }) => {
+    return async () => {
+        try {
+            const events = (await posRepository.listFiscalEvents()) || [];
+            const issues = [];
+            let previousHash = null;
+            let expectedSequence = 1;
+            for (const rawEvent of events.map(toSerializable)) {
+                const sequence = Number.parseInt(rawEvent.event_sequence, 10);
+                if (sequence !== expectedSequence) {
+                    issues.push({
+                        code: 'FISCAL_EVENT_SEQUENCE_GAP',
+                        event_id: rawEvent.pos_fiscal_event_id || null,
+                        expected_sequence: expectedSequence,
+                        actual_sequence: sequence
+                    });
+                    expectedSequence = sequence;
+                }
+                if ((rawEvent.previous_event_hash || null) !== previousHash) {
+                    issues.push({
+                        code: 'FISCAL_EVENT_PREVIOUS_HASH_MISMATCH',
+                        event_id: rawEvent.pos_fiscal_event_id || null,
+                        expected_previous_hash: previousHash,
+                        actual_previous_hash: rawEvent.previous_event_hash || null
+                    });
+                }
+                const recomputedHash = hashPayload({
+                    event_sequence: sequence,
+                    previous_event_hash: rawEvent.previous_event_hash || null,
+                    event_type: rawEvent.event_type,
+                    pos_transaction_id: rawEvent.pos_transaction_id || null,
+                    document_type: rawEvent.document_type || null,
+                    invoice_number: rawEvent.invoice_number || null,
+                    terminal_id: rawEvent.terminal_id || null,
+                    payload: rawEvent.payload || {},
+                    actor_user_id: rawEvent.actor_user_id || null
+                });
+                if (rawEvent.event_hash !== recomputedHash) {
+                    issues.push({
+                        code: 'FISCAL_EVENT_HASH_MISMATCH',
+                        event_id: rawEvent.pos_fiscal_event_id || null,
+                        expected_hash: recomputedHash,
+                        actual_hash: rawEvent.event_hash || null
+                    });
+                }
+                previousHash = rawEvent.event_hash || null;
+                expectedSequence += 1;
+            }
+
+            return ok({
+                ready: issues.length === 0,
+                checked_event_count: events.length,
+                issues
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to verify fiscal event ledger'));
         }
     };
 };

@@ -111,6 +111,52 @@ export const normalizeStorefrontBusinessHours = (value) => {
   };
 };
 
+export const setStorefrontBusinessHoursOpenAllDay = (hours, enabled = true) => {
+  const current = normalizeStorefrontBusinessHours(hours);
+  return {
+    ...current,
+    weekly: STOREFRONT_BUSINESS_DAY_OPTIONS.reduce((acc, day) => {
+      acc[day.key] = {
+        enabled: enabled === true,
+        open: '00:00',
+        close: '00:00'
+      };
+      return acc;
+    }, {})
+  };
+};
+
+export const applyStorefrontBusinessHoursRange = (hours, {
+  open = '09:00',
+  close = '17:00',
+  dayKeys = []
+} = {}) => {
+  const current = normalizeStorefrontBusinessHours(hours);
+  const selectedDays = new Set((Array.isArray(dayKeys) ? dayKeys : [])
+    .map((dayKey) => String(dayKey || '').trim().toLowerCase())
+    .filter((dayKey) => STOREFRONT_BUSINESS_DAY_OPTIONS.some((day) => day.key === dayKey)));
+  const nextOpen = TIME_PATTERN.test(String(open || '').trim()) ? String(open).trim() : '09:00';
+  const nextClose = TIME_PATTERN.test(String(close || '').trim()) ? String(close).trim() : '17:00';
+
+  return {
+    ...current,
+    weekly: STOREFRONT_BUSINESS_DAY_OPTIONS.reduce((acc, day) => {
+      acc[day.key] = selectedDays.has(day.key)
+        ? { enabled: true, open: nextOpen, close: nextClose }
+        : { ...current.weekly[day.key] };
+      return acc;
+    }, {})
+  };
+};
+
+export const isStorefrontBusinessHoursAlwaysOpen = (hours) => {
+  const current = normalizeStorefrontBusinessHours(hours);
+  return STOREFRONT_BUSINESS_DAY_OPTIONS.every((day) => {
+    const entry = current.weekly[day.key];
+    return entry?.enabled === true && entry.open === '00:00' && entry.close === '00:00';
+  });
+};
+
 const formatMinutes = (time) => {
   const [hourRaw, minuteRaw] = String(time || '00:00').split(':');
   const hour24 = Number.parseInt(hourRaw, 10);

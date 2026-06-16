@@ -1,18 +1,33 @@
 import api from './api.js';
 import { setBrowserSession } from './browserSession.js';
+import { clearClientSession } from './sessionCleanup.js';
 
 let dgfyToken = '';
 let dgfyAccount = null;
 
 const dgfyRequestConfig = (token = getStoredDgfyToken()) => {
   const normalizedToken = String(token || '').trim();
+  const base = {
+    skipTenantAuthHeaders: true,
+    skipAuthRefresh: true,
+    withCredentials: true
+  };
   return normalizedToken
     ? {
+      ...base,
       headers: {
         Authorization: `Bearer ${normalizedToken}`
       }
     }
-    : {};
+    : base;
+};
+
+const dgfyBusinessRequestConfig = (token = getStoredDgfyToken()) => {
+  const normalizedToken = String(token || '').trim();
+  if (normalizedToken) return dgfyRequestConfig(normalizedToken);
+  return {
+    withCredentials: true
+  };
 };
 
 export const getStoredDgfyToken = () => {
@@ -72,40 +87,24 @@ export const fetchDgfyMe = async (token = getStoredDgfyToken()) => {
 };
 
 export const updateDgfyProfile = async (payload, token = getStoredDgfyToken()) => {
-  const response = await api.patch('/dgfy/auth/me', payload, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  });
+  const response = await api.patch('/dgfy/auth/me', payload, dgfyRequestConfig(token));
   const data = response.data.data;
   if (data?.account) storeDgfySession({ token, account: data.account });
   return data;
 };
 
 export const changeDgfyPassword = async (payload, token = getStoredDgfyToken()) => {
-  const response = await api.post('/dgfy/auth/password/change', payload, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  });
+  const response = await api.post('/dgfy/auth/password/change', payload, dgfyRequestConfig(token));
   return response.data.data;
 };
 
 export const requestDgfyEmailVerification = async (token = getStoredDgfyToken()) => {
-  const response = await api.post('/dgfy/auth/email-verification/request', {}, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  });
+  const response = await api.post('/dgfy/auth/email-verification/request', {}, dgfyRequestConfig(token));
   return response.data.data;
 };
 
 export const verifyDgfyEmail = async (code, token = getStoredDgfyToken()) => {
-  const response = await api.post('/dgfy/auth/email-verification/verify', { code }, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  });
+  const response = await api.post('/dgfy/auth/email-verification/verify', { code }, dgfyRequestConfig(token));
   const data = response.data.data;
   if (data?.account) storeDgfySession({ token, account: data.account });
   return data;
@@ -145,12 +144,71 @@ export const exchangeDgfyHandoff = async (handoffToken, { softFail = false } = {
 };
 
 export const acceptDgfyInvitation = async (membershipId, token = getStoredDgfyToken()) => {
-  const response = await api.post(`/dgfy/invitations/${membershipId}/accept`, {}, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  });
+  const response = await api.post(`/dgfy/invitations/${membershipId}/accept`, {}, dgfyBusinessRequestConfig(token));
   return response.data.data;
+};
+
+export const requestDgfyBusinessStepUp = async (token = getStoredDgfyToken()) => {
+  const response = await api.post('/dgfy/account/business-step-up/request', {}, dgfyBusinessRequestConfig(token));
+  return response.data.data;
+};
+
+export const listDgfyAccountCompanies = async (token = getStoredDgfyToken()) => {
+  const response = await api.get('/dgfy/account/companies', dgfyBusinessRequestConfig(token));
+  return response.data.data;
+};
+
+export const acceptDgfyCompanyInvitation = async ({
+  membershipId,
+  emailOtpCode
+} = {}, token = getStoredDgfyToken()) => {
+  const response = await api.post(`/dgfy/invitations/${membershipId}/accept`, {
+    email_otp_code: emailOtpCode
+  }, dgfyBusinessRequestConfig(token));
+  return response.data.data;
+};
+
+export const switchDgfyCompany = async ({
+  tenantId,
+  emailOtpCode
+} = {}, token = getStoredDgfyToken()) => {
+  const response = await api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/switch`, {
+    email_otp_code: emailOtpCode
+  }, dgfyBusinessRequestConfig(token));
+  const data = response.data.data;
+  clearClientSession({
+    reason: 'company_switch',
+    broadcast: false,
+    emitAuthEvents: false,
+    redirectTo: null
+  });
+  setBrowserSession({
+    token: data?.token,
+    companyToken: data?.company?.token
+  });
+  if (typeof window !== 'undefined') {
+    const event = typeof CustomEvent === 'function'
+      ? new CustomEvent('auth:tenant-switched', {
+        detail: {
+          tenantId: data?.company?.id || tenantId,
+          companyName: data?.company?.name || ''
+        }
+      })
+      : new Event('auth:tenant-switched');
+    window.dispatchEvent(event);
+    try {
+      const channel = new BroadcastChannel('sku_auth');
+      channel.postMessage({
+        type: 'tenant-switched',
+        tenantId: data?.company?.id || tenantId,
+        companyName: data?.company?.name || ''
+      });
+      channel.close();
+    } catch {
+      // Cross-tab notification is best-effort and carries no secrets.
+    }
+  }
+  return data;
 };
 
 export const startDgfyTenantSession = async ({

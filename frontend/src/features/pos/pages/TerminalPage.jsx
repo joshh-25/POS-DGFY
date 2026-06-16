@@ -23,6 +23,14 @@ import { useWorkflowMode } from '../../settings/WorkflowModeContext.jsx';
 import { getWorkflowModeLabel, isMsmeWorkflowMode } from '../../settings/workflowMode.js';
 import { resolveBusinessModePosDefaults } from '../../settings/businessModeTemplates.js';
 import {
+  POS_TERMINAL_LOGIN_ERROR_CODES,
+  createTerminalLoginError,
+  isCompanyTokenResolutionError,
+  normalizeLookupTenantOptions,
+  resolveTerminalLoginErrorMessage,
+  shouldFallbackToCurrentCompanyTokenAfterLookupError
+} from '../utils/terminalUnlockDiagnostics.js';
+import {
   TERMINAL_QUEUE_STATUS,
   enqueueTerminalOperationIntent as persistTerminalOperationIntent,
   getReplayCandidateEntries,
@@ -37,6 +45,14 @@ import {
   markTerminalOperationRetryScheduled,
   pruneTerminalOperationHistory
 } from '../services/terminalOperationQueueStore.js';
+import {
+  DEFAULT_TERMINAL_ID_OPTIONS,
+  TERMINAL_REGISTRY_MODES,
+  normalizeTerminalRegistry,
+  resolveLoginTerminalId,
+  resolvePreferredTerminalId,
+  sanitizeTerminalId
+} from '../utils/terminalIdentity.js';
 
 import TerminalPageLayout from '../components/TerminalPageLayout.jsx';
 import OnboardingSetupModal from '../../onboarding/components/OnboardingSetupModal.jsx';
@@ -44,8 +60,6 @@ const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 
 const DEFAULT_CURRENCY = 'PHP';
 const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
-const DEFAULT_TERMINAL_ID_OPTIONS = ['COUNTER-01', 'COUNTER-02', 'KIOSK-01'];
-const TERMINAL_REGISTRY_MODES = new Set(['warn', 'enforce']);
 const ONLINE_ORDER_POLL_INTERVAL_MS = 12000;
 const QUEUE_HISTORY_LIMIT = 250;
 const TERMINAL_OPERATION_MAX_RETRIES = 5;
@@ -119,81 +133,16 @@ const createIdempotencyKey = (prefix = 'pos-terminal') => {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 };
 
-const sanitizeTerminalId = (value) => String(value || '')
-  .trim()
-  .replace(/\s+/g, '-')
-  .replace(/[^A-Za-z0-9._-]/g, '')
-  .toUpperCase();
-const normalizeTerminalRegistry = (rawRegistry) => {
-  let parsed = rawRegistry;
-  if (typeof parsed === 'string') {
-    try {
-      parsed = JSON.parse(parsed);
-    } catch {
-      parsed = [];
-    }
-  }
-  if (!Array.isArray(parsed)) return [];
-
-  const seen = new Set();
-  const normalized = [];
-  parsed.forEach((entry) => {
-    const terminalId = sanitizeTerminalId(entry?.terminal_id);
-    if (!terminalId) return;
-    if (seen.has(terminalId)) return;
-    seen.add(terminalId);
-
-    const isActive = entry?.is_active !== false;
-    normalized.push({
-      terminal_id: terminalId,
-      label: String(entry?.label || '').trim(),
-      location_id: Number.isInteger(Number(entry?.location_id)) ? Number(entry?.location_id) : null,
-      is_active: isActive,
-      is_default: isActive && entry?.is_default === true
-    });
-  });
-
-  if (normalized.length === 0) return [];
-
-  const defaultIndex = normalized.findIndex((entry) => entry.is_default === true);
-  if (defaultIndex >= 0) {
-    normalized.forEach((entry, index) => {
-      if (index !== defaultIndex) {
-        entry.is_default = false;
-      }
-    });
-  } else {
-    const firstActiveIndex = normalized.findIndex((entry) => entry.is_active);
-    if (firstActiveIndex >= 0) {
-      normalized[firstActiveIndex].is_default = true;
-    }
-  }
-
-  return normalized;
-};
-
-const resolvePreferredTerminalId = (registryEntries = [], preferredTerminalId = '') => {
-  const activeEntries = Array.isArray(registryEntries)
-    ? registryEntries.filter((entry) => entry?.is_active !== false)
-    : [];
-  if (activeEntries.length === 0) {
-    return sanitizeTerminalId(preferredTerminalId);
-  }
-
-  const normalizedPreferred = sanitizeTerminalId(preferredTerminalId);
-  if (normalizedPreferred && activeEntries.some((entry) => entry.terminal_id === normalizedPreferred)) {
-    return normalizedPreferred;
-  }
-
-  const defaultEntry = activeEntries.find((entry) => entry.is_default === true);
-  if (defaultEntry?.terminal_id) return defaultEntry.terminal_id;
-  return activeEntries[0]?.terminal_id || '';
-};
-
 const readStoredTerminalId = () => {
   if (typeof window === 'undefined') return '';
   return sanitizeTerminalId(window.localStorage.getItem(TERMINAL_ID_STORAGE_KEY) || '');
 };
+
+const readInitialTerminalId = () => resolvePreferredTerminalId(
+  [],
+  readStoredTerminalId(),
+  { registryMode: 'warn' }
+);
 
 const isRetryableTerminalOperationError = (error) => {
   if (!error?.response) return true;
@@ -215,34 +164,23 @@ const computeRetryBackoffMs = (attemptCount = 1) => {
 
 const SUPPRESS_GLOBAL_ERROR_TOAST = Object.freeze({ skipGlobalErrorToast: true });
 
-const lookupCompanyToken = async (email) => {
+const lookupCompanyToken = async (email, preferredCompanyToken = '') => {
   const response = await api.post('/auth/lookup', { email }, { skipGlobalErrorToast: true });
-  const tenant = response?.data?.data;
-  return tenant?.company_token || null;
-};
-const isCompanyTokenResolutionError = (error) => {
-  const status = Number(error?.response?.status || 0);
-  const message = String(error?.response?.data?.message || '').toLowerCase();
-  if (status === 404) {
-    return message.includes('company token') || message.includes('tenant');
+  const tenants = normalizeLookupTenantOptions(response?.data?.data);
+  const normalizedPreferred = String(preferredCompanyToken || '').trim();
+  if (normalizedPreferred && tenants.some((tenant) => tenant?.company_token === normalizedPreferred)) {
+    return normalizedPreferred;
   }
-  return status === 400 && message.includes('company token');
-};
-
-const resolveTerminalLoginErrorMessage = (error) => {
-  const responseMessage = String(error?.response?.data?.message || '').trim();
-  if (responseMessage) return responseMessage;
-
-  const status = Number(error?.response?.status || 0);
-  if (!status) {
-    return 'Unable to reach the POS backend. Check the server connection and try again.';
+  if (tenants.length === 1) {
+    return tenants[0]?.company_token || null;
   }
-
-  if (status === 401) return 'Invalid email or password.';
-  if (status === 403) return 'Your account is not allowed to unlock this terminal.';
-  if (status === 404) return 'Email not registered in any company.';
-
-  return 'Unable to sign in to terminal.';
+  if (tenants.length > 1) {
+    throw createTerminalLoginError(
+      'This email belongs to multiple companies. Sign in from SKUpervisor once, then reopen POS for the selected company.',
+      POS_TERMINAL_LOGIN_ERROR_CODES.MULTIPLE_TENANTS
+    );
+  }
+  return null;
 };
 
 const parseUserPermissions = (user) => {
@@ -299,7 +237,7 @@ export default function TerminalPage() {
   const [terminalUser, setTerminalUser] = useState(null);
   const [onboardingSetupOpen, setOnboardingSetupOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [activeTerminalId, setActiveTerminalId] = useState(() => readStoredTerminalId());
+  const [activeTerminalId, setActiveTerminalId] = useState(() => readInitialTerminalId());
   const [terminalRegistry, setTerminalRegistry] = useState([]);
   const [terminalRegistryMode, setTerminalRegistryMode] = useState('warn');
   const [terminalMeta, setTerminalMeta] = useState({
@@ -322,7 +260,7 @@ export default function TerminalPage() {
   const [formData, setFormData] = useState({
     email: '',
     password: '',
-    terminalId: readStoredTerminalId()
+    terminalId: readInitialTerminalId()
   });
 
   const [shiftState, setShiftState] = useState({
@@ -525,7 +463,8 @@ export default function TerminalPage() {
 
       const preferredTerminalId = resolvePreferredTerminalId(
         normalizedRegistry,
-        readStoredTerminalId()
+        readStoredTerminalId(),
+        { registryMode: normalizedRegistryMode }
       );
       if (preferredTerminalId) {
         setActiveTerminalId((prev) => (prev === preferredTerminalId ? prev : preferredTerminalId));
@@ -552,6 +491,22 @@ export default function TerminalPage() {
     } catch {
       setTerminalRegistry([]);
       setTerminalRegistryMode('warn');
+      const preferredTerminalId = resolvePreferredTerminalId(
+        [],
+        readStoredTerminalId(),
+        { registryMode: 'warn' }
+      );
+      if (preferredTerminalId) {
+        setActiveTerminalId((prev) => (prev === preferredTerminalId ? prev : preferredTerminalId));
+        setFormData((prev) => (
+          prev.terminalId === preferredTerminalId
+            ? prev
+            : { ...prev, terminalId: preferredTerminalId }
+        ));
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, preferredTerminalId);
+        }
+      }
       setTerminalMeta((prev) => ({ ...prev, loading: false }));
     }
   }, []);
@@ -1106,7 +1061,11 @@ export default function TerminalPage() {
 
   useEffect(() => {
     if (!registryEnforced) return;
-    const preferredTerminalId = resolvePreferredTerminalId(activeTerminalRegistry, activeTerminalId);
+    const preferredTerminalId = resolvePreferredTerminalId(
+      activeTerminalRegistry,
+      activeTerminalId,
+      { registryMode: terminalRegistryMode }
+    );
     if (!preferredTerminalId || preferredTerminalId === activeTerminalId) return;
 
     setActiveTerminalId(preferredTerminalId);
@@ -1118,7 +1077,7 @@ export default function TerminalPage() {
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, preferredTerminalId);
     }
-  }, [activeTerminalId, activeTerminalRegistry, registryEnforced]);
+  }, [activeTerminalId, activeTerminalRegistry, registryEnforced, terminalRegistryMode]);
 
   const headerSubtitle = useMemo(() => {
     const terminalLabel = activeTerminalId || 'No terminal selected';
@@ -1189,11 +1148,20 @@ export default function TerminalPage() {
     event.preventDefault();
     const email = String(formData.email || '').trim();
     const password = String(formData.password || '');
-    const selectedTerminalId = sanitizeTerminalId(formData.terminalId);
+    const selectedTerminalId = resolveLoginTerminalId({
+      selectedTerminalId: formData.terminalId,
+      registryEnforced,
+      registryEntries: activeTerminalRegistry,
+      registryMode: terminalRegistryMode
+    });
     const registryEntry = terminalRegistryLookup.get(selectedTerminalId);
 
     if (!email || !password) {
       toast.error('Email and password are required.');
+      return;
+    }
+    if (registryEnforced && activeTerminalRegistry.length === 0) {
+      toast.error('No active terminals configured. Add one in Settings > POS Setup > Terminal Registry.');
       return;
     }
     if (registryEnforced && !selectedTerminalId) {
@@ -1210,15 +1178,23 @@ export default function TerminalPage() {
 
     setSubmitting(true);
     try {
-      let resolvedCompanyToken = String(
-        getCompanyToken() || ''
-      ).trim();
-      if (!resolvedCompanyToken) {
-        resolvedCompanyToken = String(await lookupCompanyToken(email) || '').trim();
-        if (!resolvedCompanyToken) {
-          toast.error('Unable to resolve company token for this account.');
+      const currentCompanyToken = String(getCompanyToken() || '').trim();
+      let resolvedCompanyToken = '';
+      try {
+        resolvedCompanyToken = String(await lookupCompanyToken(email, currentCompanyToken) || '').trim();
+      } catch (lookupError) {
+        if (!currentCompanyToken || !shouldFallbackToCurrentCompanyTokenAfterLookupError(lookupError)) {
+          toast.error(resolveTerminalLoginErrorMessage(lookupError));
           return;
         }
+        resolvedCompanyToken = currentCompanyToken;
+      }
+      if (!resolvedCompanyToken) {
+        toast.error(resolveTerminalLoginErrorMessage(createTerminalLoginError(
+          'Unable to resolve company token for this account.',
+          POS_TERMINAL_LOGIN_ERROR_CODES.COMPANY_TOKEN_UNRESOLVED
+        )));
+        return;
       }
       try {
         await loginWithCredentials(

@@ -29,12 +29,20 @@ export const getInventoryDisplayLabel = (item = {}) => {
 };
 
 export const getStorefrontAccessBlockMessage = (store = null) => {
-  const mode = String(
-    store?.effective_customer_access_mode
+  const requestedMode = String(
+    store?.requested_customer_access_mode
       || store?.customer_access_mode
-      || store?.requested_customer_access_mode
       || ''
   ).trim().toLowerCase();
+  const effectiveMode = String(
+    store?.effective_customer_access_mode
+      || requestedMode
+      || ''
+  ).trim().toLowerCase();
+  if (requestedMode === 'transaction' && effectiveMode && effectiveMode !== 'transaction') {
+    return 'Online ordering is requested, but checkout is capped by registration readiness.';
+  }
+  const mode = effectiveMode || requestedMode;
   const modeMessage = getStorefrontAccessModeMessage(mode);
   if (modeMessage) {
     return modeMessage;

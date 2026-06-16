@@ -259,6 +259,13 @@ export const dgfyCustomerRepository = {
         return rows.map(toPlain);
     },
 
+    async getAddress(dgfyAccountId, addressId) {
+        const row = await DgfyCustomerAddress.findOne({
+            where: { dgfy_account_id: dgfyAccountId, address_id: addressId }
+        });
+        return toPlain(row);
+    },
+
     async createAddress(dgfyAccountId, payload = {}) {
         if (payload.is_default === true) {
             await DgfyCustomerAddress.update({ is_default: false }, { where: { dgfy_account_id: dgfyAccountId } });

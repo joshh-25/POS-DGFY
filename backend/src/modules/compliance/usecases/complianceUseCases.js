@@ -837,7 +837,14 @@ export const buildGetComplianceProfileUseCase = ({ complianceRepository, getSett
 };
 
 export const buildSelectComplianceModeUseCase = ({ complianceRepository, logger }) => {
-    return async ({ tenantId, modeChoice, actorUser = null }) => {
+    return async ({
+        tenantId,
+        modeChoice,
+        actorUser = null,
+        reason = null,
+        context = {},
+        requirePrimaryAudit = false
+    }) => {
         if (!tenantId) {
             return fail(new DomainError(
                 DomainErrorCode.TENANT_CONTEXT_MISSING,
@@ -858,6 +865,7 @@ export const buildSelectComplianceModeUseCase = ({ complianceRepository, logger 
         const nextState = normalizedModeChoice === COMPLIANCE_MODE_CHOICES.COMPLIANT
             ? COMPLIANCE_MODE_STATE.COMPLIANT_PENDING
             : COMPLIANCE_MODE_STATE.NON_COMPLIANT_ACTIVE;
+        const normalizedReason = String(reason || '').trim();
 
         try {
             assertMasterAdminLevelActor(actorUser);
@@ -900,7 +908,7 @@ export const buildSelectComplianceModeUseCase = ({ complianceRepository, logger 
                     lock: true
                 });
 
-                await persistAuditLogWithFallback({
+                const auditPersistence = await persistAuditLogWithFallback({
                     complianceRepository,
                     logger,
                     auditPayload: {
@@ -913,7 +921,9 @@ export const buildSelectComplianceModeUseCase = ({ complianceRepository, logger 
                         metadata: {
                             mode_choice: normalizedModeChoice,
                             mode_state: nextState,
-                            compliance_cycle_version: shouldIncrementCycle ? currentCycleVersion + 1 : currentCycleVersion
+                            compliance_cycle_version: shouldIncrementCycle ? currentCycleVersion + 1 : currentCycleVersion,
+                            ...(normalizedReason ? { reason: normalizedReason } : {}),
+                            context: context && typeof context === 'object' ? context : {}
                         }
                     },
                     fallbackContext: {
@@ -922,6 +932,13 @@ export const buildSelectComplianceModeUseCase = ({ complianceRepository, logger 
                     },
                     primaryOptions: { transaction }
                 });
+                if (requirePrimaryAudit && auditPersistence?.persisted !== 'primary') {
+                    throw new DomainError(
+                        DomainErrorCode.INTERNAL_ERROR,
+                        'Failed to persist compliance audit trail for mode selection operation',
+                        { statusCode: 500 }
+                    );
+                }
 
                 await transaction.commit();
                 return ok({
@@ -943,7 +960,13 @@ export const buildSelectComplianceModeUseCase = ({ complianceRepository, logger 
 };
 
 export const buildUpgradeToCompliantUseCase = ({ complianceRepository, logger }) => {
-    return async ({ tenantId, actorUser = null }) => {
+    return async ({
+        tenantId,
+        actorUser = null,
+        reason = null,
+        context = {},
+        requirePrimaryAudit = false
+    }) => {
         if (!tenantId) {
             return fail(new DomainError(
                 DomainErrorCode.TENANT_CONTEXT_MISSING,
@@ -951,6 +974,7 @@ export const buildUpgradeToCompliantUseCase = ({ complianceRepository, logger })
                 { statusCode: 400 }
             ));
         }
+        const normalizedReason = String(reason || '').trim();
 
         try {
             assertMasterAdminLevelActor(actorUser);
@@ -1000,7 +1024,7 @@ export const buildUpgradeToCompliantUseCase = ({ complianceRepository, logger })
                     lock: true
                 });
 
-                await persistAuditLogWithFallback({
+                const auditPersistence = await persistAuditLogWithFallback({
                     complianceRepository,
                     logger,
                     auditPayload: {
@@ -1013,7 +1037,9 @@ export const buildUpgradeToCompliantUseCase = ({ complianceRepository, logger })
                         metadata: {
                             previous_mode_state: tenant.compliance_mode_state,
                             next_mode_state: COMPLIANCE_MODE_STATE.COMPLIANT_PENDING,
-                            compliance_cycle_version: currentCycleVersion + 1
+                            compliance_cycle_version: currentCycleVersion + 1,
+                            ...(normalizedReason ? { reason: normalizedReason } : {}),
+                            context: context && typeof context === 'object' ? context : {}
                         }
                     },
                     fallbackContext: {
@@ -1022,6 +1048,13 @@ export const buildUpgradeToCompliantUseCase = ({ complianceRepository, logger })
                     },
                     primaryOptions: { transaction }
                 });
+                if (requirePrimaryAudit && auditPersistence?.persisted !== 'primary') {
+                    throw new DomainError(
+                        DomainErrorCode.INTERNAL_ERROR,
+                        'Failed to persist compliance audit trail for compliant upgrade operation',
+                        { statusCode: 500 }
+                    );
+                }
 
                 await transaction.commit();
                 return ok({

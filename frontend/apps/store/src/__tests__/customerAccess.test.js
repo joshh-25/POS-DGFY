@@ -63,6 +63,14 @@ describe('store customer access helpers', () => {
     })).toBe('Customers can browse your catalog, but cart, quote, booking, and checkout are disabled.');
   });
 
+  it('returns registration-readiness cap copy when online ordering is requested but not effective', () => {
+    expect(getStorefrontAccessBlockMessage({
+      requested_customer_access_mode: 'transaction',
+      customer_access_mode: 'transaction',
+      effective_customer_access_mode: 'catalog'
+    })).toBe('Online ordering is requested, but checkout is capped by registration readiness.');
+  });
+
   it('returns Inquiry Mode blocked-action copy', () => {
     expect(getStorefrontAccessBlockMessage({
       effective_customer_access_mode: 'inquiry'

@@ -428,6 +428,64 @@ describe('store use-cases application result contract', () => {
         }));
     });
 
+    it('storeCartQuote reports requested transaction when registration readiness caps effective checkout to catalog', async () => {
+        process.env.CUSTOMER_ACCESS_MODES_ENABLED = 'true';
+        const useCase = buildStoreCartQuoteUseCase({
+            storeRepository: {
+                findSellableItemsByIds: jest.fn(),
+                findLocationById: jest.fn().mockResolvedValue({
+                    location_id: 3,
+                    name: 'Main',
+                    address_line: 'Test',
+                    latitude: 14.5,
+                    longitude: 121.0,
+                    delivery_radius_km: 5,
+                    is_open: true,
+                    is_active: true,
+                    supports_delivery: true,
+                    supports_pickup: true,
+                    supports_dine_in: true,
+                    allow_out_of_stock_sales: false
+                }),
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    { setting_key: 'customer_access_mode', setting_value: 'transaction' },
+                    {
+                        setting_key: 'tenant_onboarding_progress',
+                        setting_value: JSON.stringify({
+                            step_payloads: {
+                                business_classification: {
+                                    legitimacy: { registration_status: 'informal' }
+                                }
+                            }
+                        })
+                    },
+                    { setting_key: 'store_delivery_fee', setting_value: '0' },
+                    { setting_key: 'pos_open_status', setting_value: 'true' }
+                ])
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                location_id: 3,
+                order_method: 'pickup',
+                payment_type: 'cash',
+                customer_name: 'Buyer',
+                customer_phone: '0917',
+                lines: [{ item_id: 1, quantity: 1 }]
+            }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.CUSTOMER_ACCESS_MODE_BLOCKED);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            requested_action: 'quote_checkout',
+            requested_mode: 'transaction',
+            effective_mode: 'catalog',
+            limitation_reason: 'Registration stage informal allows up to catalog mode.'
+        }));
+    });
+
     it('listStoreCatalog adds inventory_display labels without exposing stock', async () => {
         const useCase = buildListStoreCatalogUseCase({
             storeRepository: {
@@ -492,6 +550,7 @@ describe('store use-cases application result contract', () => {
     it('listStoreLocations returns active locations with primary pointer', async () => {
         const useCase = buildListStoreLocationsUseCase({
             storeRepository: {
+                getSettingsByKeys: jest.fn().mockResolvedValue([]),
                 listActiveLocations: jest.fn().mockResolvedValue([
                     {
                         location_id: 2,
@@ -521,6 +580,29 @@ describe('store use-cases application result contract', () => {
             location_id: 2,
             is_primary_storefront: true
         }));
+    });
+
+    it('listStoreLocations hides preserved locations when store has no public map location', async () => {
+        const listActiveLocations = jest.fn();
+        const useCase = buildListStoreLocationsUseCase({
+            storeRepository: {
+                getSettingsByKeys: jest.fn().mockResolvedValue([
+                    { setting_key: 'store_has_no_location', setting_value: 'true' }
+                ]),
+                listActiveLocations
+            }
+        });
+
+        const result = await useCase();
+
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(expect.objectContaining({
+            locations: [],
+            primary_location_id: null,
+            store_has_no_location: true,
+            map_publication_disabled: true
+        }));
+        expect(listActiveLocations).not.toHaveBeenCalled();
     });
 
     it('registerStoreCustomer validates payload shape', async () => {

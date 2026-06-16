@@ -39,22 +39,30 @@ Execution support artifacts:
 6. Cashier role has POS permissions (`pos:view`, plus `pos:transact` for checkout flows).
 7. Admin role has settings + reports/sales visibility permissions.
 8. Terminal identity policy is known for the test tenant (`warn` or `enforce`) and at least one active registry entry exists when `enforce` is enabled.
+9. If testing a DGFY-created company account, confirm `POST /api/v1/auth/lookup` resolves the cashier/admin email to the intended tenant before password validation.
 
 ## 3) Admin UAT Scenarios
 
-### 3.1 POS Setup Save/Reload
+### 3.1 POS Setup Save/Review/Reload
 1. Open `Settings > POS Setup`.
-2. Edit all POS metadata fields.
-3. Save and refresh browser.
-4. Confirm values persist exactly.
+2. Edit tenant-reviewable receipt metadata fields only, such as registered name, TIN/branch, PTU, MIN, accreditation, buyer fiscal detail requirement, or footer message.
+3. Save and confirm the tenant settings page shows the pending review fields and proposed values.
+4. As platform admin, open `Tenant Manager > POS Metadata`, compare current vs requested values, enter a reason of at least 3 characters, and approve.
+5. Refresh the tenant settings page and confirm approved receipt metadata values persist exactly.
+6. In `Tenant Manager > POS Metadata`, update software name, software version, and software serial number with a required reason, then confirm those values are used by DGFY POS but are not shown on the tenant settings form.
 
 Expected:
-1. Save returns success.
-2. Reloaded form shows saved values.
+1. Tenant save returns success without making receipt metadata live before approval.
+2. Platform approval applies only requested changed receipt metadata fields through the normal settings/compliance path.
+3. Platform-admin software identity save creates a POS metadata audit record.
+4. Reloaded tenant form shows approved receipt metadata values and never exposes software identity fields.
 
 Evidence:
 - Screenshot before save
-- Screenshot after reload
+- Screenshot showing tenant pending proposed values
+- Screenshot showing platform-admin current vs requested review
+- Screenshot after approval and reload
+- POS metadata audit record with reason
 
 ### 3.2 Compliance Gate (Dual-Mode Lifecycle)
 1. For a tenant in `compliant_pending`, clear one required checklist field (example: PTU).
@@ -81,6 +89,24 @@ Evidence:
 - Screenshot of successful checkout after fix
 
 ## 4) Cashier UAT Scenarios
+
+### 4.0 Terminal Unlock Tenant Context
+1. Open the standalone POS terminal while another company session or stale tenant context may exist in the browser.
+2. Enter the cashier/admin email for the test tenant and the correct password manually.
+3. Confirm the terminal sends login with the company token returned by `/auth/lookup` for that email, not an unrelated stale browser token.
+4. Repeat with an intentionally wrong password and confirm the UI shows invalid-credential copy rather than a tenant/company-token error.
+5. If the account belongs to multiple companies, confirm unlock is blocked with the multi-company instruction instead of guessing a tenant.
+
+Expected:
+1. Correct credentials unlock the intended tenant terminal.
+2. Wrong password returns `401` and displays `Invalid email or password.`
+3. Missing email-to-tenant mapping displays a company-resolution message and does not reuse a stale token.
+4. Optional `/pos/device/status` `503` is treated as a hardware bridge availability issue, not as an auth/unlock failure.
+
+Evidence:
+- Browser Network capture for `/api/v1/auth/lookup` and `/api/v1/auth/login` with email visible and company token redacted
+- Screenshot of successful intended-tenant unlock
+- Screenshot or log capture of the wrong-password negative case
 
 ### 4.1 POS Catalog + Cart
 1. Open POS terminal page.
@@ -125,7 +151,7 @@ Evidence:
 
 Expected:
 1. Invoice number generated.
-2. Receipt header shows business/TIN/address/PTU/MIN/accreditation.
+2. Receipt header shows business/TIN/address/PTU/MIN/accreditation and platform-admin software name/version/serial when the receipt contract is fiscal.
 3. VAT totals show:
    - vatable sales
    - VAT amount

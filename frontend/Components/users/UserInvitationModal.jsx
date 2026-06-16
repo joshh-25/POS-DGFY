@@ -192,6 +192,9 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
                                 autoFocus
                             />
                         </div>
+                        <p className="text-xs text-slate-500">
+                            If this email belongs to a DGFY account, the invite also appears in that user&apos;s DGFY account Business tab.
+                        </p>
                     </div>
 
                     <div className="grid gap-2">

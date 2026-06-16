@@ -13,6 +13,9 @@ export {
     updateTenant,
     updateTenantCapabilities,
     listTenantCapabilityAuditLogs,
+    getTenantPosMetadata,
+    listTenantPosMetadataAuditLogs,
+    updateTenantPosMetadata,
     deleteTenant,
     setupPayPalRecurring,
     adminChangePlan,
@@ -27,6 +30,8 @@ export {
     adminUpdateComplianceFinalReviewDocumentReview,
     adminAcknowledgeComplianceSecurityIncident,
     adminResolveComplianceSecurityIncident,
+    adminSelectComplianceMode,
+    adminUpgradeComplianceMode,
     adminForceNonCompliant,
     resubmitRegistration
 } from '../modules/tenants/controllers/adminTenantHandlers.js';
@@ -42,6 +47,9 @@ import {
     updateTenant,
     updateTenantCapabilities,
     listTenantCapabilityAuditLogs,
+    getTenantPosMetadata,
+    listTenantPosMetadataAuditLogs,
+    updateTenantPosMetadata,
     deleteTenant,
     setupPayPalRecurring,
     adminChangePlan,
@@ -56,6 +64,8 @@ import {
     adminUpdateComplianceFinalReviewDocumentReview,
     adminAcknowledgeComplianceSecurityIncident,
     adminResolveComplianceSecurityIncident,
+    adminSelectComplianceMode,
+    adminUpgradeComplianceMode,
     adminForceNonCompliant,
     resubmitRegistration
 } from '../modules/tenants/controllers/adminTenantHandlers.js';
@@ -71,6 +81,9 @@ export default {
     updateTenant,
     updateTenantCapabilities,
     listTenantCapabilityAuditLogs,
+    getTenantPosMetadata,
+    listTenantPosMetadataAuditLogs,
+    updateTenantPosMetadata,
     deleteTenant,
     setupPayPalRecurring,
     adminChangePlan,
@@ -85,6 +98,8 @@ export default {
     adminUpdateComplianceFinalReviewDocumentReview,
     adminAcknowledgeComplianceSecurityIncident,
     adminResolveComplianceSecurityIncident,
+    adminSelectComplianceMode,
+    adminUpgradeComplianceMode,
     adminForceNonCompliant,
     resubmitRegistration
 };

@@ -231,6 +231,20 @@ const resolveChangedFiles = () => {
     }
   }
 
+  const staged = splitLines(runCommand('git diff --cached --name-only', { allowFail: true }));
+  const worktree = splitLines(runCommand('git diff --name-only', { allowFail: true }));
+  const untracked = splitLines(runCommand('git ls-files --others --exclude-standard', { allowFail: true }));
+  const localFiles = unique([...staged, ...worktree, ...untracked]);
+  const isCiDiffContext = Boolean(
+    process.env.GITHUB_BASE_REF
+      || process.env.GITHUB_EVENT_BEFORE
+      || process.env.CI_COMMIT_BEFORE_SHA
+  );
+
+  if (!isCiDiffContext && localFiles.length > 0) {
+    return localFiles;
+  }
+
   if (files.length === 0) {
     const baseRef = process.env.GITHUB_BASE_REF;
     if (baseRef) {
@@ -257,10 +271,7 @@ const resolveChangedFiles = () => {
     files = splitLines(runCommand('git diff --name-only HEAD~1...HEAD', { allowFail: true }));
   }
 
-  const staged = splitLines(runCommand('git diff --cached --name-only', { allowFail: true }));
-  const worktree = splitLines(runCommand('git diff --name-only', { allowFail: true }));
-  const untracked = splitLines(runCommand('git ls-files --others --exclude-standard', { allowFail: true }));
-  return unique([...files, ...staged, ...worktree, ...untracked]);
+  return unique([...files, ...localFiles]);
 };
 
 const isSensitiveFile = (filePath) => getMatchingRules(filePath).length > 0;

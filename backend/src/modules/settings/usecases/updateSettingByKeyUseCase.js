@@ -19,8 +19,15 @@ import {
 } from './posTerminalLocationBindingPolicy.js';
 import { resolveChangedSettingKeys } from './settingsChangeSet.js';
 import { assertPublicStorefrontHandleAvailable } from './publicStorefrontHandlePolicy.js';
+import {
+    POS_RECEIPT_METADATA_PENDING_SETTING_KEY,
+    buildPendingPosReceiptMetadata,
+    isPlatformControlledPosSoftwareKey,
+    isTenantReviewedPosReceiptKey
+} from './posReceiptMetadataApprovalPolicy.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
+const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
 
 const getTenantComplianceSnapshot = () => {
     const store = dbStore.getStore() || {};
@@ -55,6 +62,61 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository }) => {
         try {
             let normalizedValue = value;
             let strictBindingRegistryPatch = null;
+            if (key === PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY) {
+                return fail(new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'Platform maximum Customer Access Mode is controlled by platform admin.',
+                    {
+                        statusCode: 403,
+                        details: {
+                            reason_code: 'CUSTOMER_ACCESS_PLATFORM_MAX_PLATFORM_CONTROLLED',
+                            setting_keys: [PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY]
+                        }
+                    }
+                ));
+            }
+            if (actorUser?.is_platform_admin !== true && isPlatformControlledPosSoftwareKey(key)) {
+                return fail(new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'Software name, software version, and software serial number are configured by platform admin for DGFY POS.',
+                    {
+                        statusCode: 403,
+                        details: {
+                            reason_code: 'POS_SOFTWARE_IDENTITY_PLATFORM_CONTROLLED',
+                            setting_keys: [key]
+                        }
+                    }
+                ));
+            }
+            if (actorUser?.is_platform_admin !== true && isTenantReviewedPosReceiptKey(key)) {
+                const changedSettingKeys = await resolveChangedSettingKeys({
+                    settingsRepository,
+                    settingsData: { [key]: value }
+                });
+                if (changedSettingKeys.length === 0) {
+                    return ok({
+                        setting_key: key,
+                        value,
+                        pending_review_keys: []
+                    });
+                }
+                const current = typeof settingsRepository?.getSettingByKey === 'function'
+                    ? await settingsRepository.getSettingByKey(POS_RECEIPT_METADATA_PENDING_SETTING_KEY).catch(() => null)
+                    : null;
+                const pending = buildPendingPosReceiptMetadata({
+                    requestedChanges: { [key]: value },
+                    currentPending: current?.value,
+                    actorUser
+                });
+                const updatedSetting = await settingsRepository.updateSettingByKey(
+                    POS_RECEIPT_METADATA_PENDING_SETTING_KEY,
+                    pending
+                );
+                return ok({
+                    ...updatedSetting,
+                    pending_review_keys: [key]
+                });
+            }
             if (key === WORKFLOW_MODE_SETTING_KEY) {
                 if (!isWorkflowMode(value)) {
                     return fail(new DomainError(

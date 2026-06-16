@@ -234,15 +234,15 @@ Operational contract:
 - Platform-admin DGFY account management uses `dgfy_accounts.is_active` as `active`/`suspended`; `dgfy_accounts.deleted_at` marks a deleted/deidentified account. Suspended or deleted accounts cannot log in, and existing DGFY sessions fail on the next authenticated DGFY request when the account is reloaded.
 - Platform-admin DGFY delete/deidentify preserves the account row and evidence-bearing related rows while overwriting email, phone, username, names, and password hash with non-user placeholders. This releases the original credentials for re-registration without physically deleting legal acknowledgements, memberships, customer activity, reviews, loyalty, order/history, or admin audit evidence.
 
-## Platform Admin Capability Audit Addendum (2026-06-07)
+## Platform Admin Tenant Audit Addendum (2026-06-07; updated 2026-06-15)
 
-Platform-admin tenant capability changes are persisted in the landlord audit table `tenant_admin_audit_logs`. This table records capability switch changes for IMS, POS, and Storefront/Maps with before/after snapshots, actor identity, request metadata, and a required reason.
+Platform-admin tenant capability and DGFY POS metadata changes are persisted in the landlord audit table `tenant_admin_audit_logs`. This table records capability switch changes for IMS, POS, and Storefront/Maps, plus POS software identity saves and tenant receipt metadata approvals/rejections, with before/after snapshots, actor identity, request metadata, and a required reason.
 
 ```sql
 CREATE TABLE tenant_admin_audit_logs (
     tenant_admin_audit_log_id BIGINT AUTO_INCREMENT PRIMARY KEY,
     tenant_id CHAR(36) NOT NULL,
-    action ENUM('capability_update') NOT NULL,
+    action ENUM('capability_update', 'pos_metadata_update') NOT NULL,
     actor_username VARCHAR(120) NOT NULL,
     reason VARCHAR(500) NOT NULL,
     request_id VARCHAR(100) NULL,
@@ -347,7 +347,7 @@ Primary migration:
 
 1. `20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs`
 
-`pos_transactions` fiscal snapshot additions:
+`pos_transactions` fiscal snapshot additions. These columns are required runtime schema fields because the POS model selects them on normal reads, but they remain nullable unless noted by the migration. Non-fiscal/non-compliant checkout stores buyer fiscal details and fiscal document snapshot fields as `null`; missing columns are migration drift, not a customer-facing buyer-TIN requirement.
 
 1. `buyer_tin`
 2. `buyer_business_style`
@@ -1277,12 +1277,17 @@ CREATE TABLE system_settings (
   - `pos_ptu_number`
   - `pos_min_number`
   - `pos_accreditation_number`
+  - `pos_software_name` (platform-admin managed; not tenant-admin editable)
+  - `pos_software_version` (platform-admin managed; not tenant-admin editable)
+  - `pos_software_serial_number` (platform-admin managed; not tenant-admin editable)
   - `pos_receipt_footer_message`
+  - `pos_receipt_metadata_pending_changes` (JSON review payload for tenant-submitted receipt metadata edits awaiting platform-admin approval)
   - `pos_discount_profiles` (JSON array with named percentage presets)
   - `pos_order_method_fees` (deprecated, retained only for historical compatibility; no runtime pricing effect)
   - `pos_petty_cash_symbol` (string, e.g. `PHP`)
   - `pos_petty_cash_amount` (number, operational float for reconciliation)
 - Compliance lifecycle is tenant-level (`tenants.compliance_mode_state`, `tenants.compliance_mode_choice_required`, `tenants.compliance_profile`) and no longer driven by a strict-toggle setting.
+- Tenant admins submit receipt identity edits for platform-admin approval. Platform admins own DGFY POS software name, software version, and software serial number through `/admin/tenants/:id/pos-metadata`; approved tenant edits are applied back into tenant-local `system_settings`.
 
 - POS discount and service-fee audit snapshots are stored in `pos_transactions`:
   - `discount_label_snapshot` (string, nullable)

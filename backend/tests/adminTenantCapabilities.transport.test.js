@@ -34,6 +34,9 @@ jest.unstable_mockModule('../src/controllers/adminTenantController.js', () => ({
     updateTenant: noopHandler,
     updateTenantCapabilities: mockUpdateTenantCapabilities,
     listTenantCapabilityAuditLogs: mockListTenantCapabilityAuditLogs,
+    getTenantPosMetadata: noopHandler,
+    listTenantPosMetadataAuditLogs: noopHandler,
+    updateTenantPosMetadata: noopHandler,
     deleteTenant: noopHandler,
     setupPayPalRecurring: noopHandler,
     adminChangePlan: noopHandler,
@@ -48,6 +51,8 @@ jest.unstable_mockModule('../src/controllers/adminTenantController.js', () => ({
     adminUpdateComplianceFinalReviewDocumentReview: noopHandler,
     adminAcknowledgeComplianceSecurityIncident: noopHandler,
     adminResolveComplianceSecurityIncident: noopHandler,
+    adminSelectComplianceMode: noopHandler,
+    adminUpgradeComplianceMode: noopHandler,
     adminForceNonCompliant: noopHandler,
     resubmitRegistration: noopHandler
 }));
@@ -110,7 +115,9 @@ describe('tenant capability admin transport contracts', () => {
                 ims_enabled: true,
                 pos_enabled: false,
                 storefront_visible: true,
-                customer_access_mode: 'inquiry'
+                customer_access_mode: 'inquiry',
+                platform_max_customer_access_mode: 'transaction',
+                customer_access_registration_stage: 'registered'
             });
 
         expect(response.status).toBe(200);
@@ -122,9 +129,26 @@ describe('tenant capability admin transport contracts', () => {
                 ims_enabled: true,
                 pos_enabled: false,
                 storefront_visible: true,
-                customer_access_mode: 'inquiry'
+                customer_access_mode: 'inquiry',
+                platform_max_customer_access_mode: 'transaction',
+                customer_access_registration_stage: 'registered'
             }
         }));
+    });
+
+    it('rejects unsupported registration readiness stages', async () => {
+        const response = await request(app)
+            .patch('/api/v1/admin/tenants/tenant-1/capabilities')
+            .send({
+                reason: 'Platform reviewed storefront readiness',
+                customer_access_registration_stage: 'verified'
+            });
+
+        expect(response.status).toBe(422);
+        expect(response.body.errors.map((error) => error.field)).toEqual(expect.arrayContaining([
+            'customer_access_registration_stage'
+        ]));
+        expect(mockUpdateTenantCapabilities).not.toHaveBeenCalled();
     });
 
     it('normalizes audit log limit before calling the handler', async () => {

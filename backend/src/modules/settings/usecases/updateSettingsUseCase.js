@@ -19,8 +19,32 @@ import {
 } from './posTerminalLocationBindingPolicy.js';
 import { resolveChangedSettingKeys } from './settingsChangeSet.js';
 import { assertPublicStorefrontHandlePatch } from './publicStorefrontHandlePolicy.js';
+import {
+    POS_RECEIPT_METADATA_PENDING_SETTING_KEY,
+    buildPendingPosReceiptMetadata,
+    isPlatformControlledPosSoftwareKey,
+    isTenantReviewedPosReceiptKey
+} from './posReceiptMetadataApprovalPolicy.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
+const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
+
+const assertTenantSettingsDoNotMutatePlatformAccessCeiling = ({ settingsData }) => {
+    if (!Object.prototype.hasOwnProperty.call(settingsData, PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY)) {
+        return;
+    }
+    throw new DomainError(
+        DomainErrorCode.AUTHORIZATION_FAILED,
+        'Platform maximum Customer Access Mode is controlled by platform admin.',
+        {
+            statusCode: 403,
+            details: {
+                reason_code: 'CUSTOMER_ACCESS_PLATFORM_MAX_PLATFORM_CONTROLLED',
+                setting_keys: [PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY]
+            }
+        }
+    );
+};
 
 const assertWorkflowModeAuthorization = ({ settingsData, actorUser }) => {
     if (!Object.prototype.hasOwnProperty.call(settingsData, WORKFLOW_MODE_SETTING_KEY)) {
@@ -61,6 +85,64 @@ const getTenantComplianceSnapshot = () => {
     };
 };
 
+const extractTenantReviewedPosReceiptChanges = async ({ settingsRepository, settingsData, actorUser }) => {
+    if (actorUser?.is_platform_admin === true) {
+        return { settingsData, pendingReviewKeys: [] };
+    }
+
+    const nextSettingsData = { ...settingsData };
+    const reviewedSettingsData = {};
+    const blockedSoftwareKeys = [];
+
+    Object.keys(settingsData).forEach((key) => {
+        if (isPlatformControlledPosSoftwareKey(key)) {
+            blockedSoftwareKeys.push(key);
+            delete nextSettingsData[key];
+            return;
+        }
+        if (isTenantReviewedPosReceiptKey(key)) {
+            reviewedSettingsData[key] = settingsData[key];
+            delete nextSettingsData[key];
+        }
+    });
+
+    if (blockedSoftwareKeys.length > 0) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'Software name, software version, and software serial number are configured by platform admin for DGFY POS.',
+            {
+                statusCode: 403,
+                details: {
+                    reason_code: 'POS_SOFTWARE_IDENTITY_PLATFORM_CONTROLLED',
+                    setting_keys: blockedSoftwareKeys
+                }
+            }
+        );
+    }
+
+    const pendingReviewKeys = await resolveChangedSettingKeys({
+        settingsRepository,
+        settingsData: reviewedSettingsData
+    });
+    if (pendingReviewKeys.length === 0) {
+        return { settingsData: nextSettingsData, pendingReviewKeys };
+    }
+
+    const pendingChanges = pendingReviewKeys.reduce((acc, key) => {
+        acc[key] = reviewedSettingsData[key];
+        return acc;
+    }, {});
+    const current = typeof settingsRepository?.getSettingByKey === 'function'
+        ? await settingsRepository.getSettingByKey(POS_RECEIPT_METADATA_PENDING_SETTING_KEY).catch(() => null)
+        : null;
+    nextSettingsData[POS_RECEIPT_METADATA_PENDING_SETTING_KEY] = buildPendingPosReceiptMetadata({
+        requestedChanges: pendingChanges,
+        currentPending: current?.value,
+        actorUser
+    });
+    return { settingsData: nextSettingsData, pendingReviewKeys };
+};
+
 export const buildUpdateSettingsUseCase = ({ settingsRepository }) => {
     return async ({ settingsData, actorUser = null }) => {
         if (!settingsData || typeof settingsData !== 'object' || Array.isArray(settingsData)) {
@@ -71,6 +153,14 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository }) => {
         }
 
         try {
+            const posMetadataReview = await extractTenantReviewedPosReceiptChanges({
+                settingsRepository,
+                settingsData,
+                actorUser
+            });
+            settingsData = posMetadataReview.settingsData;
+
+            assertTenantSettingsDoNotMutatePlatformAccessCeiling({ settingsData });
             assertWorkflowModeAuthorization({ settingsData, actorUser });
             await assertPublicStorefrontHandlePatch({ settingsData, settingsRepository });
             if (
@@ -125,8 +215,21 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository }) => {
                 }
             }
 
+            if (Object.keys(settingsData).length === 0) {
+                return ok({
+                    message: posMetadataReview.pendingReviewKeys.length > 0
+                        ? 'Receipt metadata changes submitted for platform admin approval'
+                        : 'No settings changes detected',
+                    updated: 0,
+                    pending_review_keys: posMetadataReview.pendingReviewKeys
+                });
+            }
+
             const result = await settingsRepository.updateSettings(settingsData);
-            return ok(result);
+            return ok({
+                ...result,
+                pending_review_keys: posMetadataReview.pendingReviewKeys
+            });
         } catch (error) {
             return fail(mapSettingsUseCaseError(error, 'Failed to update settings'));
         }

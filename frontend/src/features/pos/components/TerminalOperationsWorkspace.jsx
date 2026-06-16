@@ -95,6 +95,16 @@ const parseIsoDateTime = (value) => {
   return date.toLocaleString();
 };
 const parseDeliveryCoords = (order = {}) => {
+  if (
+    order?.delivery_latitude === null
+    || order?.delivery_latitude === undefined
+    || order?.delivery_latitude === ''
+    || order?.delivery_longitude === null
+    || order?.delivery_longitude === undefined
+    || order?.delivery_longitude === ''
+  ) {
+    return null;
+  }
   const lat = Number(order?.delivery_latitude);
   const lng = Number(order?.delivery_longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;

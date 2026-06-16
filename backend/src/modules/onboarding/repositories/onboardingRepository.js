@@ -19,6 +19,7 @@ const POS_BUSINESS_NAME_KEY = 'pos_business_name';
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const STOREFRONT_HOURS_KEY = 'storefront_hours';
 const STORE_IS_VISIBLE_KEY = 'store_is_visible';
+const STORE_HAS_NO_LOCATION_KEY = 'store_has_no_location';
 const ONBOARDING_COMPLETION_PRESETS_BY_MODE = Object.freeze({
   food_manufacturing: new Set(['finished_product']),
   msme: new Set(['product']),
@@ -272,7 +273,12 @@ const computeChecklist = async ({ storeNameBaseline = '', transaction = null } =
     transaction,
     defaultValue: 'false'
   });
+  const storeHasNoLocation = await readSettingValue(SystemSetting, STORE_HAS_NO_LOCATION_KEY, {
+    transaction,
+    defaultValue: 'false'
+  });
   const publicStorefrontEnabled = storeIsVisible === true || String(storeIsVisible || '').trim().toLowerCase() === 'true';
+  const publicStorefrontWithoutMapPin = storeHasNoLocation === true || String(storeHasNoLocation || '').trim().toLowerCase() === 'true';
   const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
 
   const [primaryActiveLocationCount, pricedStarterItemCount] = await Promise.all([
@@ -289,7 +295,7 @@ const computeChecklist = async ({ storeNameBaseline = '', transaction = null } =
 
   return normalizeChecklist({
     store_name_ready: resolvedStoreName.length > 0,
-    has_primary_storefront_location: publicStorefrontEnabled ? primaryActiveLocationCount > 0 : true,
+    has_primary_storefront_location: publicStorefrontEnabled && !publicStorefrontWithoutMapPin ? primaryActiveLocationCount > 0 : true,
     has_priced_starter_item: pricedStarterItemCount > 0
   });
 };
@@ -446,7 +452,7 @@ export const onboardingRepository = {
         safeStepKey === 'primary_location'
         && Object.prototype.hasOwnProperty.call(normalizedPayload, 'public_storefront_visible')
       ) {
-        const storefrontVisibilityMap = await getSettingRows(SystemSetting, [STORE_IS_VISIBLE_KEY], { transaction });
+        const storefrontVisibilityMap = await getSettingRows(SystemSetting, [STORE_IS_VISIBLE_KEY, STORE_HAS_NO_LOCATION_KEY], { transaction });
         await upsertSetting(SystemSetting, storefrontVisibilityMap, {
           key: STORE_IS_VISIBLE_KEY,
           value: normalizedPayload.public_storefront_visible === true,
@@ -454,6 +460,15 @@ export const onboardingRepository = {
           description: 'Controls whether the tenant appears in public discovery and public storefront profile reads',
           transaction
         });
+        if (Object.prototype.hasOwnProperty.call(normalizedPayload, 'store_has_no_location')) {
+          await upsertSetting(SystemSetting, storefrontVisibilityMap, {
+            key: STORE_HAS_NO_LOCATION_KEY,
+            value: normalizedPayload.store_has_no_location === true,
+            dataType: 'boolean',
+            description: 'Keeps the public storefront searchable while excluding it from map pins until a location is published',
+            transaction
+          });
+        }
       }
       const refreshedChecklist = await computeChecklist({ storeNameBaseline, transaction });
       const refreshedProgress = {

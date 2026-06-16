@@ -10,6 +10,9 @@ import {
     updateTenantUseCase,
     updateTenantCapabilitiesUseCase,
     listTenantCapabilityAuditLogsUseCase,
+    listTenantPosMetadataAuditLogsUseCase,
+    getTenantPosMetadataUseCase,
+    updateTenantPosMetadataUseCase,
     deleteTenantUseCase,
     resubmitRegistrationUseCase,
     tenantAdminRepository
@@ -23,6 +26,8 @@ import {
     listComplianceSecurityIncidentsUseCase,
     updateComplianceArtifactVerificationUseCase,
     updateCompliancePeripheralVerificationUseCase,
+    selectComplianceModeUseCase,
+    upgradeToCompliantUseCase,
     forceNonCompliantModeUseCase,
     reviewFinalReviewDocumentUseCase,
     updateComplianceSecurityIncidentStatusUseCase
@@ -276,6 +281,82 @@ export const listTenantCapabilityAuditLogs = async (req, res) => {
     return sendUseCaseResult(res, result);
 };
 
+export const getTenantPosMetadata = async (req, res) => {
+    const result = await getTenantPosMetadataUseCase({
+        id: req.params?.id
+    });
+    await trackProductUsageFromResult({
+        req,
+        user: req.user,
+        eventType: 'admin_tenant_pos_metadata_viewed',
+        surface: 'admin_tenants',
+        action: 'view_tenant_pos_metadata',
+        result,
+        successMetadataResolver: () => ({
+            tenant_id: req.params?.id || null
+        })
+    });
+    return sendUseCaseResult(res, result, {
+        successPayloadResolver: (useCaseResult) => ({
+            success: true,
+            data: useCaseResult.data
+        })
+    });
+};
+
+export const listTenantPosMetadataAuditLogs = async (req, res) => {
+    const result = await listTenantPosMetadataAuditLogsUseCase({
+        id: req.params?.id,
+        limit: req.validatedQuery?.limit
+    });
+    await trackProductUsageFromResult({
+        req,
+        user: req.user,
+        eventType: 'admin_tenant_pos_metadata_audit_logs_viewed',
+        surface: 'admin_tenants',
+        action: 'list_tenant_pos_metadata_audit_logs',
+        result,
+        successMetadataResolver: (data) => ({
+            tenant_id: req.params?.id || null,
+            log_count: Array.isArray(data?.logs) ? data.logs.length : 0
+        })
+    });
+    return sendUseCaseResult(res, result);
+};
+
+export const updateTenantPosMetadata = async (req, res) => {
+    const result = await updateTenantPosMetadataUseCase({
+        id: req.params?.id,
+        body: req.validatedData || req.body,
+        actor: {
+            username: req.admin?.username || req.user?.username || 'platform_admin'
+        },
+        metadata: {
+            request_id: req.requestId || req.headers['x-request-id'] || null,
+            ip_address: req.ip || null,
+            user_agent: req.get?.('user-agent') || req.headers['user-agent'] || null
+        }
+    });
+    await trackProductUsageFromResult({
+        req,
+        user: req.user,
+        eventType: 'admin_tenant_pos_metadata_updated',
+        surface: 'admin_tenants',
+        action: 'update_tenant_pos_metadata',
+        result,
+        successMetadataResolver: () => ({
+            tenant_id: req.params?.id || null,
+            pending_action: (req.validatedData || req.body || {}).pending_action || null
+        })
+    });
+    return sendUseCaseResult(res, result, {
+        successPayloadResolver: (useCaseResult) => ({
+            success: true,
+            data: useCaseResult.data
+        })
+    });
+};
+
 /**
  * ADMIN: Permanently delete a tenant and their database
  */
@@ -484,6 +565,97 @@ export const adminResolveComplianceSecurityIncident = async (req, res) => {
 };
 
 /**
+ * ADMIN: Select compliance mode for tenants that still require mode choice.
+ */
+export const adminSelectComplianceMode = async (req, res) => {
+    const payload = req.validatedData || req.body || {};
+    const actorUser = buildPlatformAdminActor(req);
+    const result = await selectComplianceModeUseCase({
+        tenantId: req.params?.id,
+        modeChoice: payload.mode_choice,
+        reason: payload.reason,
+        context: {
+            source: 'platform_admin_tenant_manager',
+            ...(payload.context || {})
+        },
+        actorUser,
+        requirePrimaryAudit: true
+    });
+
+    await trackProductUsageFromResult({
+        req,
+        user: actorUser,
+        eventType: 'admin_compliance_mode_select_attempted',
+        surface: 'admin_tenants',
+        action: 'select_compliance_mode',
+        result,
+        successMetadataResolver: () => ({
+            tenant_id: req.params?.id || null,
+            mode_choice: payload.mode_choice || null,
+            requested_reason_length: String(payload.reason || '').trim().length || 0
+        }),
+        failureMetadataResolver: (error) => ({
+            tenant_id: req.params?.id || null,
+            mode_choice: payload.mode_choice || null,
+            status_code: error?.statusCode || null,
+            error_code: error?.code || null
+        })
+    });
+
+    if (result?.success) {
+        invalidateTenantLookupCache({ tenantId: req.params?.id || null });
+    }
+
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to select tenant compliance mode'
+    });
+};
+
+/**
+ * ADMIN: Move a non-compliant tenant into compliant pending mode.
+ */
+export const adminUpgradeComplianceMode = async (req, res) => {
+    const payload = req.validatedData || req.body || {};
+    const actorUser = buildPlatformAdminActor(req);
+    const result = await upgradeToCompliantUseCase({
+        tenantId: req.params?.id,
+        reason: payload.reason,
+        context: {
+            source: 'platform_admin_tenant_manager',
+            ...(payload.context || {})
+        },
+        actorUser,
+        requirePrimaryAudit: true
+    });
+
+    await trackProductUsageFromResult({
+        req,
+        user: actorUser,
+        eventType: 'admin_compliance_mode_upgrade_attempted',
+        surface: 'admin_tenants',
+        action: 'upgrade_compliance_mode',
+        result,
+        successMetadataResolver: () => ({
+            tenant_id: req.params?.id || null,
+            requested_reason_length: String(payload.reason || '').trim().length || 0
+        }),
+        failureMetadataResolver: (error) => ({
+            tenant_id: req.params?.id || null,
+            status_code: error?.statusCode || null,
+            error_code: error?.code || null
+        })
+    });
+
+    if (result?.success) {
+        invalidateTenantLookupCache({ tenantId: req.params?.id || null });
+    }
+
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to move tenant to compliant pending mode'
+    });
+};
+
+/**
  * ADMIN: Force tenant back to non-compliant mode from compliant states.
  */
 export const adminForceNonCompliant = async (req, res) => {
@@ -603,6 +775,9 @@ export default {
     getPricingSettings,
     updatePricingSettings,
     updateTenant,
+    getTenantPosMetadata,
+    listTenantPosMetadataAuditLogs,
+    updateTenantPosMetadata,
     deleteTenant,
     setupPayPalRecurring,
     adminChangePlan,
@@ -617,6 +792,8 @@ export default {
     adminUpdateComplianceFinalReviewDocumentReview,
     adminAcknowledgeComplianceSecurityIncident,
     adminResolveComplianceSecurityIncident,
+    adminSelectComplianceMode,
+    adminUpgradeComplianceMode,
     adminForceNonCompliant,
     resubmitRegistration
 };

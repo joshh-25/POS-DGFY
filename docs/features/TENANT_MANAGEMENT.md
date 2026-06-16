@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-06-11
+last_reviewed: 2026-06-16
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -167,7 +167,7 @@ CREATE TABLE Tenants (
 
 The `UserTenantMapping` table in the main DB maps email addresses to tenant IDs. This powers the login pre-screen: users enter their email and the system resolves which company (or companies) they belong to, returning the `company_token` without the user needing to memorize it.
 
-`POST /api/v1/auth/lookup` is a pre-login identification endpoint. It remains rate-limited to reduce tenant enumeration risk, but it must not require CSRF even when the browser still carries stale HttpOnly session cookies from a previous login; otherwise users can be blocked before they can identify their company or enter a manual token.
+`POST /api/v1/auth/lookup` is a pre-login identification endpoint. It remains rate-limited to reduce tenant enumeration risk, but it must not require CSRF even when the browser still carries stale HttpOnly session cookies from a previous login; otherwise users can be blocked before they can identify their company or enter a manual token. The lookup limiter is scoped by client IP plus normalized email, not IP alone, so shared store networks do not cross-throttle different POS cashiers while repeated lookup attempts for the same email remain controlled.
 
 ### Endpoint
 ```
@@ -211,6 +211,7 @@ Body: { "email": "user@example.com" }
 - Email is **case-normalized** (lowercased) before lookup — `USER@EXAMPLE.COM` and `user@example.com` resolve identically.
 - Only tenants with status `'active'` or `'pending'` are returned. Rejected/inactive tenants are excluded.
 - Rate-limited to **5 requests per 15-minute window** in production (bypassed in `NODE_ENV=test`).
+- Standalone POS terminal unlock uses this lookup before password validation. If lookup returns one tenant, POS logs in with that company token. If the current browser token is present, POS may reuse it only when it matches one of the lookup tenants. Multiple-tenant lookup blocks with an explicit operator instruction, and missing mappings or rate-limit responses must not silently fall back to an unrelated stale browser tenant. Fallback to the current browser token is reserved for transient lookup outages.
 
 ### Mapping management
 Mappings are created automatically when:
@@ -306,5 +307,16 @@ Located at `/admin/tenants`.
 - **Capability Controls**: IMS/POS controls are grouped as core workspace access, while Storefront/Maps visibility and Customer Access Mode are grouped as public Storefront controls. Changes open a confirmation modal and require a reason persisted to the platform-admin audit trail. Storefront/Maps shows readiness when the tenant is visible but lacks an active primary mapped location.
 - **Tenant Impact Preview**: Capability confirmation modals show the tenant/customer-facing consequence before the platform admin submits the audit reason, using the same "Platform admin changed your permissions" copy that tenants see for disabled IMS/POS access or downgraded Storefront modes.
 - **Capability Audit Trail**: Active tenant cards expose recent platform-admin capability changes from `GET /admin/tenants/:id/capabilities/audit-logs`, including actor, reason, timestamp, and before/after capability state.
-- **Compliance Safety Guard**: `Force non-compliant` is available only when backend eligibility indicates allowed (`can_force_non_compliant=true`). For blocked states, UI uses server-provided `force_non_compliant_block_reason` to render disabled helper text.
+- **Compliance Lifecycle Control**: Tenant cards expose exactly one backend-authoritative compliance action from `admin_compliance_mode_action`: set the mode for legacy/no-mode tenants, move `non_compliant_active` tenants to `compliant_pending`, or force `compliant_pending` / `compliant_active` tenants back to `non_compliant_active`. Each action opens a confirmation modal with the POS/fiscal effect and requires a reason for immutable audit evidence.
+- **Compliance Safety Guard**: `Force non-compliant` remains available only when backend eligibility indicates allowed (`can_force_non_compliant=true`). For blocked states, UI uses server-provided helper text to render the disabled reason. Moving a tenant toward compliance never bypasses fiscal readiness: Platform Admin can move the tenant to `compliant_pending`, while `compliant_active` still requires the normal checklist activation flow.
 - **Stats**: Total tenants, active vs pending counts.
+
+### Tenant Schema Sync Caveat
+
+Tenant schema sync is expected to remain zero-failure because `backend/config/deploy/tenant-schema-sync-failure-baseline.json` is intentionally empty. The June 15 POS remediation isolated four older/test-like active tenant databases with foreign-key drift during `alter` mode. That drift is not part of the compliance lifecycle switch and must be handled as an ops/schema-health slice:
+
+1. Classify each affected tenant as real/customer or abandoned/test data.
+2. Repair customer tenant FK/schema drift with tenant-specific idempotent remediation.
+3. Deactivate/archive abandoned test tenants deliberately before relying on exclusion from active-tenant sync.
+4. Do not add failures to the baseline unless there is an explicit accepted-risk decision.
+5. Validate with `node backend/scripts/sync-tenant-schemas.js --mode alter --report-file <path>` and `node backend/scripts/check-tenant-schema-sync-regressions.js --report-file <path> --baseline-file backend/config/deploy/tenant-schema-sync-failure-baseline.json --require-zero`.

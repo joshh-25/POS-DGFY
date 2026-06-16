@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: qa
-last_reviewed: 2026-06-13
+last_reviewed: 2026-06-14
 applies_to: dgfy_account, business_registration, onboarding, storefront_checkout, pos_fulfillment, inventory_records
 topic: dgfy_full_flow_e2e_verification
 ---
@@ -59,8 +59,8 @@ Verify the current DGFY account, business registration, onboarding, Storefront c
 | D1 | POS order approval and status transitions | Storefront checkout appears in POS, can be accepted, and transitions through accepted/preparing/ready/delivered according to POS contracts. | `tests/posHandlers.transport.test.js`, `tests/posCheckout.db.integration.test.js`, `tests/posUsecases.applicationResult.test.js`, `tests/posValidator.transactionsQuery.test.js` | `src/features/pos/__tests__/terminalViewModeContracts.test.js`, `src/features/pos/__tests__/receiptContractConformance.contract.test.js` | POS terminal route renders and can inspect order/status controls with local fixture data. | Requires approved QA POS user and QA order. | PASS automated; live POS UAT pending | POS transport mock and terminal UI contracts restored. |
 | D2 | Customer tracking after POS updates | Customer tracking/account activity reflects POS order status changes and references remain account-linked only when explicit DGFY ownership exists. | `tests/customerActivityRecorder.test.js`, `tests/dgfyCustomerUseCases.test.js`, `tests/posSalesReconciliation.db.integration.test.js` | `apps/store/src/__tests__/profileLauncher.integration.test.jsx`, `apps/store/src/__tests__/checkoutRules.test.js` | Local tracking/account page updates after POS status fixture, or blocker recorded. | Requires approved QA order lifecycle. | PASS automated; live order lifecycle UAT pending | No automated blocker remains. |
 | D3 | Inventory movement and records | Fulfilled or accepted checkout changes stock or creates a durable movement/sales record according to current POS/inventory contract. | `tests/posCheckout.db.integration.test.js`, `tests/posRepository.locationStockFallback.test.js`, `tests/posSalesReconciliation.db.integration.test.js`, `tests/inventoryItemRepository.test.js` | `src/features/inventory/__tests__/itemProductWizard.contract.test.js`, `src/features/pos/__tests__/terminalLocationScope.integration.test.jsx` | IMS inventory/POS screens show expected stock or sales record after local QA order fixture. | Requires approved QA inventory item and cleanup/signoff. | PASS automated; live inventory UAT pending | Scanner-wedge submission and terminal location contracts restored. |
-| E1 | Production-safe public route health | Public deployed routes load current assets without blank page or framework overlay. | Health endpoints and deploy summaries only. | Built asset parity and route smoke. | Not applicable. | `https://skupervisor.dgfy.ph/dgfy/auth`, `https://skupervisor.dgfy.ph/dgfy/reset-password`, `https://skupervisor.dgfy.ph/register-company`, `https://dgfy.ph/map-dgfy`, `https://dgfy.ph/map-dgfy/account`, `https://pos.dgfy.ph` read-only smoke. | PASS read-only | Runtime code SHA `b40f2d96e513a1a259d423df91d0ccf406521c6c` is deployed; public routes return `200`, render expected text, and show no framework overlay. Guest/locked pages still emit expected unauthenticated API responses. |
-| E2 | Controlled production UAT | Full live DGFY signup, business registration, onboarding, store checkout, POS fulfillment, and inventory evidence pass with approved QA data. | Production logs plus backend records for the QA entities. | Browser screenshots and operator screenshots. | Not applicable. | Requires approved QA email, QA tenant/company name, QA store, QA POS user, QA item, and cleanup/signoff plan. | Not started | Needs explicit QA data approval |
+| E1 | Production-safe public route health | Public deployed routes load current assets without blank page or framework overlay. | Health endpoints and deploy summaries only. | Built asset parity and route smoke. | Not applicable. | `https://skupervisor.dgfy.ph/dgfy/auth`, `https://skupervisor.dgfy.ph/dgfy/reset-password`, `https://skupervisor.dgfy.ph/register-company`, `https://dgfy.ph/map-dgfy`, `https://dgfy.ph/map-dgfy/account`, `https://pos.dgfy.ph` read-only smoke. | PASS read-only | Current deployed SHA `f6532baf0a41114ad8dc4f40e3ddf3c53039c321` matches local `master`, `origin/master`, remote `HEAD`, and `.deploy-state/last_deployed_commit`. Public routes return `200`. Guest/locked pages still emit expected unauthenticated API responses. |
+| E2 | Controlled production UAT | Full live DGFY signup, business registration, onboarding, store checkout, POS fulfillment, and inventory evidence pass with approved QA data. | Production logs plus backend records for the QA entities. | Browser screenshots and operator screenshots. | Not applicable. | `npm run uat:production:dgfy` used a disposable QA inbox and retained QA records for audit. | PASS | Fresh production QA account received OTP, registered, auto-activated a company, entered IMS, completed onboarding through item creation, completed DGFY-authenticated checkout, fulfilled the order in POS, decremented stock from `10` to `9`, and showed the completed order in the DGFY customer account. |
 
 ## Execution Log - 2026-06-13
 
@@ -109,9 +109,11 @@ Browser plugin note: the in-app Browser plugin was available and used for this r
 
 Production deploy completed on June 13, 2026 for runtime code SHA `b40f2d96e513a1a259d423df91d0ccf406521c6c`. Remote `HEAD`, `.deploy-state/last_deployed_commit`, and `origin/master` matched this SHA after deploy. Deployment summary: `/var/www/skupervisor/logs/deploy/deploy_20260613_162435.summary.txt`.
 
-The release used the documented emergency no-staging bypass because stale QA deployed-head evidence was the only no-staging gate failure. QA smoke, QA rollback drill, QA restore drill, documentation lint, architecture checks, production deterministic installs, production builds, tenant schema sync, tenant schema regression gate, tenant index headroom, permission backfill, Storefront discovery reconciliation, PM2 reload, public endpoint checks, and frontend asset parity passed.
+Documentation and release evidence were later deployed on June 13, 2026 at SHA `f6532baf0a41114ad8dc4f40e3ddf3c53039c321`. The current production UAT gate verified local `master`, `origin/master`, remote `HEAD`, and `.deploy-state/last_deployed_commit` all match `f6532baf0a41114ad8dc4f40e3ddf3c53039c321`.
 
-No production mutation was performed. These checks only verified public route HTTP status, first static assets, and rendered browser health.
+The final deployment for this evidence set completed at SHA `1850188b9063ef80db27b488f6204d0b7261e01c` with deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260613_213041.summary.txt`. Local `master`, `origin/master`, production remote `HEAD`, and `.deploy-state/last_deployed_commit` matched this SHA at proof time. The release used the documented emergency no-staging bypass because stale QA deployed-head evidence was the only no-staging gate failure. QA smoke, QA rollback drill, QA restore drill, documentation lint, architecture checks, production deterministic installs, production builds, tenant schema sync, tenant schema regression gate, tenant index headroom, permission backfill, Storefront discovery reconciliation, PM2 reload, public endpoint checks, and frontend asset parity passed.
+
+No production mutation was performed for this read-only route-smoke section. These checks only verified public route HTTP status, first static assets, and rendered browser health; the controlled mutation evidence is recorded separately in the production UAT rating gate below.
 
 | Route | HTTP/assets | Rendered result | Evidence | Notes |
 |---|---|---|---|---|
@@ -122,10 +124,42 @@ No production mutation was performed. These checks only verified public route HT
 | `https://dgfy.ph/map-dgfy/account` | PASS | PASS | `C:\Users\Cider\AppData\Local\Temp\sku-prod-store-account-desktop.png`, `C:\Users\Cider\AppData\Local\Temp\sku-prod-store-account-mobile.png` | Returned `200` and rendered `My Account` content without framework overlay. Guest load emitted expected unauthenticated `401` probes. |
 | `https://pos.dgfy.ph/` | PASS | PASS | `C:\Users\Cider\AppData\Local\Temp\sku-prod-pos-desktop.png`, `C:\Users\Cider\AppData\Local\Temp\sku-prod-pos-mobile.png` | Returned `200` and rendered POS terminal content without framework overlay. Locked/guest load emitted an expected `400` bootstrap response until a valid terminal/session is present. |
 
+### Production UAT Rating Gate - 2026-06-13
+
+Command:
+
+```bash
+npm run uat:production:dgfy
+```
+
+Evidence file:
+
+```text
+.tmp/production-uat/dgfy-production-uat.json
+```
+
+Controlled production mutation result:
+
+| Area | Rating | Status | Basis |
+|---|---:|---|---|
+| DGFY account UI shell | 9.2 | PASS | Production DGFY auth, reset-password, register-company, Storefront account, discovery, and POS entry routes return `200`; DGFY account order tracking was proven through the live QA checkout. |
+| DGFY signup and business registration | 9.2 | PASS | Fresh production DGFY OTP delivery, account registration, company auto-activation, tenant-session handoff, and onboarding item creation passed. |
+| E-commerce Storefront checkout | 9.2 | PASS | Fresh production DGFY-authenticated Storefront checkout created a POS-backed order and linked it to the DGFY customer account. |
+| POS order and inventory flow | 9.2 | PASS | Fresh production POS lifecycle completed the online order and decremented the QA item stock from `10` to `9`. |
+| Admin/payment/capability operations | 9.1 | PASS | Deploy SHA parity and previously passing admin service/backend route gates cover the runtime integration gap. |
+| Production readiness | 9.2 | PASS | Local/origin/deploy SHA parity, public route smoke, OTP, account, registration, IMS handoff, onboarding, checkout, POS fulfillment, inventory decrement, and DGFY account order visibility all passed. |
+
+The approved production UAT run generated `.tmp/production-uat/dgfy-production-uat.json` at `2026-06-13T13:15:20.651Z`. The run used dedicated QA data with suffix `iaqzfpb2`, tenant `c3c8be55-cccb-4463-87bf-0666651ad756`, item `1`, location `1`, and tracking PIN `SK-DJCOLC`. The QA email is intentionally masked in evidence and the records are retained for audit cleanup.
+
+Two earlier mutation attempts are intentionally not counted as approval evidence:
+
+1. The first fresh run stopped after proving OTP, DGFY registration, company auto-activation, tenant-session handoff, and registered-access seed because the UAT runner parsed the onboarding bulk response using the wrong field.
+2. The next run proved checkout, POS completion, and inventory decrement, then exposed a UAT parser mismatch for the DGFY customer orders endpoint. Production data confirmed the account activity existed; the endpoint returns `activities[]`/`reference`, not `orders[]`/`tracking_pin`.
+
 ### Open Findings and Gated Work
 
-1. Production mutation UAT is not approved or complete. Live account creation, live company creation, live checkout, live POS status transitions, and live inventory movement still require approved QA entities and a cleanup/signoff rule.
-2. The no-staging release gate still depends on stale QA deployed-head evidence and required the documented emergency bypass for this deployment. Refresh QA deploy parity evidence before the next production release so `qa.deploy.summary.sha_match` can pass normally.
+1. The no-staging release gate still depended on stale QA deployed-head evidence and required the documented emergency bypass for the final 2026-06-13 deployment. Refresh QA deploy parity evidence before the next production release so `qa.deploy.summary.sha_match` can pass normally.
+2. Production QA records from the controlled mutation runs are retained for audit cleanup. They must not be treated as customer/operator data.
 
 ## Local Automated Command Plan
 
@@ -199,6 +233,7 @@ Run only read-only checks until QA mutation data is approved:
    - `https://pos.dgfy.ph`
 3. Confirm assets referenced by the public pages return `200`.
 4. Do not create production DGFY accounts, tenants, checkout orders, POS status updates, or inventory movements without approved QA data.
+5. Run `npm run uat:production:dgfy` to generate the read-only production rating evidence. A blocked result is expected until controlled mutation inputs are approved.
 
 ## Controlled Production UAT Data Needed
 

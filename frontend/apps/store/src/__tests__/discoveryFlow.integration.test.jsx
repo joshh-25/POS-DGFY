@@ -641,6 +641,120 @@ describe('storefront discovery integration flow', () => {
     });
   });
 
+  it('renders no-location search results as list cards without map features or coordinate fallback', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        const parsed = new URL(normalized, 'http://localhost');
+        const search = parsed.searchParams.get('search');
+        return makeJsonResponse({
+          stores: search === 'calamansi'
+            ? [
+                {
+                  tenant_id: 'tenant-search-only',
+                  tenant_name: 'Search Only Kitchen',
+                  slug: 'search-only-kitchen',
+                  storefront_open: true,
+                  location_id: null,
+                  location_name: null,
+                  address_line: null,
+                  latitude: null,
+                  longitude: null,
+                  catalog_count: 2,
+                  store_has_no_location: true,
+                  map_publication_disabled: true,
+                  match_reasons: ['item'],
+                  matching_item_count: 1,
+                  matching_item_sample: ['Calamansi Juice'],
+                  matching_location_ids: [],
+                  nearest_matching_location_id: null
+                }
+              ]
+            : [],
+          pagination: { page: 1, limit: 100, total: search === 'calamansi' ? 1 : 0, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({ locations: [], primary_location_id: null, store_has_no_location: true, map_publication_disabled: true });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
+    const viewportCallsBeforeSearch = getMapViewportCallCount();
+
+    await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'calamansi');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+
+    await waitFor(() => expect(screen.getAllByText('Search Only Kitchen').length).toBeGreaterThan(0));
+    expect(screen.getAllByText(/Searchable storefront, no map pin/i).length).toBeGreaterThan(0);
+    await waitFor(() => expect(getDiscoveryPinFeatures()).toHaveLength(0));
+    expect(maplibregl.Popup).not.toHaveBeenCalled();
+    expect(getMapViewportCallCount()).toBe(viewportCallsBeforeSearch);
+  });
+
+  it('renders no-location storefront profiles without public map or directions', async () => {
+    window.history.pushState({}, '', '/search-only-kitchen');
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery/search-only-kitchen')) {
+        return makeJsonResponse({
+          slug: 'search-only-kitchen',
+          tenant_name: 'Search Only Kitchen',
+          storefront_open: true,
+          location_id: null,
+          location_name: null,
+          address_line: null,
+          latitude: null,
+          longitude: null,
+          catalog_count: 1,
+          store_has_no_location: true,
+          map_publication_disabled: true,
+          active_location_snapshot: [
+            { location_id: 11, name: 'Saved Branch', address_line: 'Saved Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true }
+          ],
+          access_capabilities: { profile: true, contact: true, catalog: true, cart: false, checkout: false, booking: false, payment: false },
+          effective_customer_access_mode: 'catalog'
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Saved Branch', address_line: 'Saved Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true }
+          ],
+          store_has_no_location: true,
+          map_publication_disabled: true
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [{ item_id: 1, name: 'Calamansi Juice', default_sale_price: 80, image_url: '' }] });
+      }
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({ stores: [], pagination: { page: 1, limit: 100, total: 0, totalPages: 1 } });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getAllByText('Search Only Kitchen').length).toBeGreaterThan(0));
+    expect(screen.queryByLabelText(/Open large map/i)).toBeNull();
+    expect(screen.queryByText(/Get directions/i)).toBeNull();
+    expect(fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl).includes('location_id=11'))).toBe(false);
+  });
+
   it('keeps item-search storefront results after a previous Near Me request', async () => {
     const user = userEvent.setup();
     const getCurrentPosition = vi.fn((success) => {
@@ -927,6 +1041,110 @@ describe('storefront discovery integration flow', () => {
         .filter((requestUrl) => requestUrl.includes('/api/v1/store/catalog?'));
       expect(catalogCalls.some((requestUrl) => requestUrl.includes('location_id=22'))).toBe(true);
     });
+  });
+
+  it('routes capped F&B Order Now to the canonical storefront instead of the order shell', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-space',
+              tenant_name: 'Space Bar',
+              slug: 'space-bar-8ddb33',
+              storefront_open: true,
+              workflow_mode: 'fnb',
+              business_mode: 'fnb',
+              address_line: 'Iloilo City',
+              latitude: 10.72,
+              longitude: 122.56,
+              catalog_count: 116,
+              estimated_wait_minutes: 15,
+              customer_access_mode: 'transaction',
+              requested_customer_access_mode: 'transaction',
+              effective_customer_access_mode: 'catalog',
+              max_customer_access_mode: 'catalog',
+              access_limitation_reason: 'Registration stage informal allows up to catalog mode.',
+              access_capabilities: {
+                profile: true,
+                contact: true,
+                catalog: true,
+                inventory: true,
+                cart: false,
+                quote: false,
+                checkout: false,
+                booking: false,
+                payment: false
+              },
+              storefront_cover_image_url: '/uploads/storefront-assets/space/cover.png',
+              storefront_profile_image_url: '/uploads/storefront-assets/space/profile.png'
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'all_matching_branches',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 33,
+          locations: [
+            { location_id: 33, name: 'Space Bar Bernwood', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true, supports_delivery: true, supports_pickup: true, supports_dine_in: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/storefront/discovery/space-bar-8ddb33')) {
+        return makeJsonResponse({
+          slug: 'space-bar-8ddb33',
+          tenant_name: 'Space Bar',
+          location_id: 33,
+          address_line: 'Iloilo City',
+          storefront_open: true,
+          catalog_count: 116,
+          customer_access_mode: 'transaction',
+          requested_customer_access_mode: 'transaction',
+          effective_customer_access_mode: 'catalog',
+          access_limitation_reason: 'Registration stage informal allows up to catalog mode.',
+          access_capabilities: {
+            profile: true,
+            contact: true,
+            catalog: true,
+            inventory: true,
+            cart: false,
+            quote: false,
+            checkout: false,
+            booking: false,
+            payment: false
+          },
+          storefront_cover_image_url: '/uploads/storefront-assets/space/cover.png',
+          storefront_profile_image_url: '/uploads/storefront-assets/space/profile.png'
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getAllByText('Space Bar').length).toBeGreaterThan(0));
+    await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'space');
+    await user.click(screen.getByRole('button', { name: /^Search$/i }));
+    await waitFor(() => expect(screen.getAllByText('Space Bar').length).toBeGreaterThan(1));
+    await user.click(screen.getByRole('button', { name: /View Results \(1\)/i }));
+
+    await user.click(screen.getAllByRole('button', { name: 'Order Now' })[0]);
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/space-bar-8ddb33');
+    });
+    expect(window.location.pathname).not.toBe('/space-bar-8ddb33/order');
   });
 
   it('opens a marker preview first and routes the card action with the pinned location id', async () => {

@@ -190,6 +190,26 @@ describe('RBAC-01 route-to-permission coverage contracts', () => {
         expectRouteContract({
             source: adminTenantRoutes,
             method: 'post',
+            routePath: '/:id/compliance/mode/select',
+            requiredFragments: [
+                'authenticateAdmin',
+                'validateAdminComplianceModeChoice',
+                'adminSelectComplianceMode'
+            ]
+        });
+        expectRouteContract({
+            source: adminTenantRoutes,
+            method: 'post',
+            routePath: '/:id/compliance/mode/upgrade',
+            requiredFragments: [
+                'authenticateAdmin',
+                'validateAdminComplianceModeUpgrade',
+                'adminUpgradeComplianceMode'
+            ]
+        });
+        expectRouteContract({
+            source: adminTenantRoutes,
+            method: 'post',
             routePath: '/:id/force-non-compliant',
             requiredFragments: [
                 'authenticateAdmin',
@@ -210,6 +230,8 @@ describe('RBAC-01 route-to-permission coverage contracts', () => {
             'POST /mode/revert-to-non-compliant',
             '/:id/compliance/security-incidents/:incident_id/acknowledge',
             '/:id/compliance/security-incidents/:incident_id/resolve',
+            '/:id/compliance/mode/select',
+            '/:id/compliance/mode/upgrade',
             '/:id/force-non-compliant'
         ].forEach((token) => {
             expect(rbacMatrix).toContain(token);

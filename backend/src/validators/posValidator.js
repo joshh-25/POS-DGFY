@@ -85,6 +85,10 @@ const checkoutPosSchema = Joi.object({
     customer_name: Joi.string().trim().max(255).allow('', null).optional(),
     customer_email: Joi.string().trim().email({ tlds: { allow: false } }).allow('', null).optional(),
     customer_phone: Joi.string().trim().max(50).allow('', null).optional(),
+    buyer_name: Joi.string().trim().max(255).allow('', null).optional(),
+    buyer_tin: Joi.string().trim().max(40).allow('', null).optional(),
+    buyer_business_style: Joi.string().trim().max(255).allow('', null).optional(),
+    buyer_address: Joi.string().trim().max(1000).allow('', null).optional(),
     special_instructions: Joi.string().trim().max(500).allow('', null).optional(),
     discount_beneficiary: discountBeneficiarySchema.optional(),
     lines: Joi.array().items(checkoutLineSchema).min(1).required().messages({
@@ -250,6 +254,38 @@ const deviceOpenDrawerSchema = Joi.object({
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
 });
 
+const fiscalPrintEventSchema = Joi.object({
+    reason: Joi.string().trim().max(255).allow('', null).optional()
+});
+
+const voidPosTransactionSchema = Joi.object({
+    reason: Joi.string().trim().min(3).max(255).required()
+});
+
+const esalesGenerateSchema = Joi.object({
+    report_month: Joi.string().trim().pattern(/^\d{4}-\d{2}$/).required()
+});
+
+const esalesStatusSchema = Joi.object({
+    status: Joi.string().valid('submitted', 'accepted', 'rejected').required(),
+    status_evidence_ref: Joi.string().trim().max(255).allow('', null).optional(),
+    status_note: Joi.string().trim().max(500).allow('', null).optional()
+});
+
+const fiscalTerminalRegistrationSchema = Joi.object({
+    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
+    location_id: Joi.number().integer().positive().allow(null).optional(),
+    min_number: Joi.string().trim().max(80).allow('', null).optional(),
+    machine_serial_number: Joi.string().trim().max(120).allow('', null).optional(),
+    software_version: Joi.string().trim().max(80).allow('', null).optional(),
+    software_serial_number: Joi.string().trim().max(120).allow('', null).optional(),
+    ptu_number: Joi.string().trim().max(80).allow('', null).optional(),
+    receipt_printer_binding: Joi.string().trim().max(120).allow('', null).optional(),
+    cash_drawer_binding: Joi.string().trim().max(120).allow('', null).optional(),
+    accreditation_status: Joi.string().valid('draft', 'pending_review', 'verified', 'revoked').default('draft'),
+    evidence_ref: Joi.string().trim().max(255).allow('', null).optional()
+});
+
 const buildValidationErrorResponse = (error) => ({
     success: false,
     data: null,
@@ -298,3 +334,8 @@ export const validateCloseTerminalShift = validateSchema(closeTerminalShiftSchem
 export const validateUpdateOnlineOrderStatus = validateSchema(updateOnlineOrderStatusSchema, 'body', 'validatedData');
 export const validatePosDeviceReceiptPrint = validateSchema(devicePrintReceiptSchema, 'body', 'validatedData');
 export const validatePosDeviceDrawerOpen = validateSchema(deviceOpenDrawerSchema, 'body', 'validatedData');
+export const validateFiscalPrintEvent = validateSchema(fiscalPrintEventSchema, 'body', 'validatedData');
+export const validateVoidPosTransaction = validateSchema(voidPosTransactionSchema, 'body', 'validatedData');
+export const validateGenerateESalesReport = validateSchema(esalesGenerateSchema, 'body', 'validatedData');
+export const validateUpdateESalesReportStatus = validateSchema(esalesStatusSchema, 'body', 'validatedData');
+export const validateFiscalTerminalRegistration = validateSchema(fiscalTerminalRegistrationSchema, 'body', 'validatedData');

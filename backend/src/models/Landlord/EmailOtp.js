@@ -10,7 +10,7 @@ export default (sequelize) => {
       primaryKey: true
     },
     purpose: {
-      type: DataTypes.ENUM('company_registration', 'tenant_user_registration', 'invitation_acceptance', 'email_change', 'dgfy_account_verification', 'dgfy_password_reset'),
+      type: DataTypes.ENUM('company_registration', 'tenant_user_registration', 'invitation_acceptance', 'email_change', 'dgfy_account_verification', 'dgfy_password_reset', 'dgfy_business_step_up'),
       allowNull: false
     },
     tenant_id: {

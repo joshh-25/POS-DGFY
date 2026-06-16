@@ -69,12 +69,11 @@ import {
   WORKFLOW_MODE_SELECT_VALUES
 } from '../src/features/settings/workflowMode.js';
 import {
-  STOREFRONT_BUSINESS_DAY_OPTIONS,
   createDefaultStorefrontBusinessHours,
-  formatStorefrontBusinessHoursDisplay,
   normalizeStorefrontBusinessHours,
   serializeStorefrontBusinessHours
 } from '../src/features/settings/storefrontBusinessHours.js';
+import StorefrontBusinessHoursScheduler from '../src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import resolveAssetUrl from '../src/utils/assetUrl.js';
 import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../src/utils/phoneNumber.js';
 import { generateReadablePassword, isPasswordLongEnough } from '../src/utils/passwordPolicy.js';
@@ -182,6 +181,7 @@ const createDefaultSettings = ({ workflowMode = DEFAULT_WORKFLOW_MODE } = {}) =>
   posSoftwareName: '',
   posSoftwareVersion: '',
   posSoftwareSerialNumber: '',
+  posReceiptMetadataPendingReview: null,
   posFiscalBuyerDetailsRequired: false,
   posReceiptFooterMessage: '',
   posDiscountProfiles: [],
@@ -194,9 +194,15 @@ const createDefaultSettings = ({ workflowMode = DEFAULT_WORKFLOW_MODE } = {}) =>
   storeDeliveryFee: 0,
   storeTenantSlug: '',
   storeIsVisible: false,
+  storeHasNoLocation: false,
   posOpenStatus: true,
   posWaitTimeMinutes: 15,
   customerAccessMode: 'catalog',
+  customerAccessEffectiveMode: 'catalog',
+  customerAccessMaxMode: 'transaction',
+  customerAccessPlatformMaxMode: 'transaction',
+  customerAccessRegistrationStageMaxMode: 'transaction',
+  customerAccessLimitationReason: '',
   inventoryDisplayMode: 'availability',
   inventoryLowStockDisplayThreshold: 5,
   customerAccessRegistrationStage: 'registered',
@@ -308,6 +314,7 @@ const SETTINGS_FIELD_LABELS = {
   ops_workflow_mode: 'Business Mode',
   store_delivery_fee: 'Store Delivery Fee',
   store_tenant_slug: 'Storefront Slug',
+  store_has_no_location: 'Store Has No Location',
   pos_wait_time_minutes: 'Customer Wait Time',
   storefront_tagline: 'Storefront Tagline',
   storefront_about: 'Storefront About',
@@ -354,18 +361,16 @@ const normalizeInventoryDisplayMode = (value) => (
     ? String(value || '').trim().toLowerCase()
     : 'availability'
 );
-const maxAccessModeForStage = (stage) => {
-  const normalized = String(stage || '').trim().toLowerCase();
-  if (normalized === 'registered') return 'transaction';
-  if (normalized === 'partial' || normalized === 'pending' || normalized === 'in_progress') return 'inquiry';
-  return 'catalog';
-};
-const minAccessMode = (left, right) => (
-  CUSTOMER_ACCESS_MODE_RANK[normalizeCustomerAccessMode(left)] <= CUSTOMER_ACCESS_MODE_RANK[normalizeCustomerAccessMode(right)]
-    ? normalizeCustomerAccessMode(left)
-    : normalizeCustomerAccessMode(right)
-);
-
+const mapCustomerAccessRuntimeSettings = (systemSettings = {}) => ({
+  customerAccessMode: normalizeCustomerAccessMode(systemSettings.customer_access_mode?.value || 'catalog'),
+  customerAccessEffectiveMode: normalizeCustomerAccessMode(systemSettings.effective_customer_access_mode?.value || systemSettings.customer_access_mode?.value || 'catalog'),
+  customerAccessMaxMode: normalizeCustomerAccessMode(systemSettings.max_customer_access_mode?.value || 'transaction'),
+  customerAccessPlatformMaxMode: normalizeCustomerAccessMode(systemSettings.platform_max_customer_access_mode?.value || 'transaction'),
+  customerAccessRegistrationStageMaxMode: normalizeCustomerAccessMode(systemSettings.registration_stage_max_customer_access_mode?.value || 'transaction'),
+  customerAccessLimitationReason: String(systemSettings.customer_access_limitation_reason?.value || ''),
+  customerAccessRegistrationStage: String(systemSettings.customer_access_registration_stage?.value || 'registered').trim().toLowerCase() || 'registered',
+  customerAccessFlagStatus: systemSettings.customer_access_modes_enabled?.value === false ? 'rollback' : 'enabled'
+});
 const getReadableFieldName = (field) => SETTINGS_FIELD_LABELS[field] || field;
 
 const formatValidationErrorDescription = (apiErrors) => {
@@ -881,12 +886,6 @@ export default function Settings() {
         const storefrontDeliveryPartnersRaw = Array.isArray(systemSettings.storefront_delivery_partners?.value)
           ? systemSettings.storefront_delivery_partners.value
           : [];
-        const onboardingProgress = parseJsonObjectSetting(systemSettings.tenant_onboarding_progress?.value);
-        const customerAccessRegistrationStage = String(
-          onboardingProgress?.step_payloads?.business_classification?.legitimacy?.registration_status
-          || onboardingProgress?.classification_snapshot?.payload?.legitimacy?.registration_status
-          || 'registered'
-        ).trim().toLowerCase() || 'registered';
         const storefrontCategoriesRaw = Array.isArray(systemSettings.storefront_categories?.value)
           ? systemSettings.storefront_categories.value
           : [];
@@ -912,6 +911,9 @@ export default function Settings() {
           posSoftwareName: systemSettings.pos_software_name?.value || '',
           posSoftwareVersion: systemSettings.pos_software_version?.value || '',
           posSoftwareSerialNumber: systemSettings.pos_software_serial_number?.value || '',
+          posReceiptMetadataPendingReview: systemSettings.pos_receipt_metadata_pending_changes?.value?.status === 'pending_review'
+            ? systemSettings.pos_receipt_metadata_pending_changes.value
+            : null,
           posFiscalBuyerDetailsRequired: systemSettings.pos_fiscal_buyer_details_required?.value === true,
           posReceiptFooterMessage: systemSettings.pos_receipt_footer_message?.value || '',
           posDiscountProfiles: normalizeDiscountProfiles(systemSettings.pos_discount_profiles?.value),
@@ -926,13 +928,12 @@ export default function Settings() {
           storeDeliveryFee: Number(systemSettings.store_delivery_fee?.value ?? 0) || 0,
           storeTenantSlug: String(systemSettings.store_tenant_slug?.value || ''),
           storeIsVisible: systemSettings.store_is_visible?.value === true,
+          storeHasNoLocation: systemSettings.store_has_no_location?.value === true,
           posOpenStatus: systemSettings.pos_open_status?.value ?? true,
           posWaitTimeMinutes: Number(systemSettings.pos_wait_time_minutes?.value ?? 15) || 15,
-          customerAccessMode: normalizeCustomerAccessMode(systemSettings.customer_access_mode?.value || 'catalog'),
+          ...mapCustomerAccessRuntimeSettings(systemSettings),
           inventoryDisplayMode: normalizeInventoryDisplayMode(systemSettings.inventory_display_mode?.value || 'availability'),
           inventoryLowStockDisplayThreshold: Number(systemSettings.inventory_low_stock_display_threshold?.value ?? 5) || 5,
-          customerAccessRegistrationStage,
-          customerAccessFlagStatus: systemSettings.customer_access_modes_enabled?.value === false ? 'rollback' : 'enabled',
           storefrontTagline: String(systemSettings.storefront_tagline?.value || ''),
           storefrontAbout: String(systemSettings.storefront_about?.value || ''),
           storefrontPhone: String(systemSettings.storefront_phone?.value || ''),
@@ -1094,42 +1095,6 @@ export default function Settings() {
       const next = Array.isArray(prev.storefrontWhyChooseUs) ? [...prev.storefrontWhyChooseUs] : [''];
       next[index] = String(value || '');
       return { ...prev, storefrontWhyChooseUs: next };
-    });
-  };
-
-  const handleStorefrontHoursDayChange = (dayKey, patch) => {
-    setSettings((prev) => {
-      const current = normalizeStorefrontBusinessHours(prev.storefrontHours);
-      return {
-        ...prev,
-        storefrontHours: {
-          ...current,
-          weekly: {
-            ...current.weekly,
-            [dayKey]: {
-              ...current.weekly[dayKey],
-              ...patch
-            }
-          }
-        }
-      };
-    });
-  };
-
-  const copyStorefrontHoursToAllDays = (sourceDayKey = 'mon') => {
-    setSettings((prev) => {
-      const current = normalizeStorefrontBusinessHours(prev.storefrontHours);
-      const source = current.weekly[sourceDayKey] || current.weekly.mon;
-      return {
-        ...prev,
-        storefrontHours: {
-          ...current,
-          weekly: STOREFRONT_BUSINESS_DAY_OPTIONS.reduce((acc, day) => {
-            acc[day.key] = { ...source };
-            return acc;
-          }, {})
-        }
-      };
     });
   };
 
@@ -1865,9 +1830,6 @@ export default function Settings() {
         pos_ptu_number: settings.posPtuNumber,
         pos_min_number: settings.posMinNumber,
         pos_accreditation_number: settings.posAccreditationNumber,
-        pos_software_name: settings.posSoftwareName,
-        pos_software_version: settings.posSoftwareVersion,
-        pos_software_serial_number: settings.posSoftwareSerialNumber,
         pos_fiscal_buyer_details_required: settings.posFiscalBuyerDetailsRequired === true,
         pos_receipt_footer_message: settings.posReceiptFooterMessage,
         pos_discount_profiles: posDiscountProfiles,
@@ -1879,6 +1841,7 @@ export default function Settings() {
         store_delivery_fee: Number(settings.storeDeliveryFee || 0),
         store_tenant_slug: String(settings.storeTenantSlug || '').trim().toLowerCase(),
         store_is_visible: settings.storeIsVisible === true,
+        store_has_no_location: settings.storeHasNoLocation === true,
         pos_open_status: settings.posOpenStatus === true,
         pos_wait_time_minutes: Number(settings.posWaitTimeMinutes || 0),
         customer_access_mode: normalizeCustomerAccessMode(settings.customerAccessMode),
@@ -1916,7 +1879,7 @@ export default function Settings() {
       }
 
       // Save threshold settings to backend
-      await settingsService.updateSettings(updatePayload);
+      const saveResult = await settingsService.updateSettings(updatePayload);
 
       if (currentUser?.is_master_admin === true && nextWorkflowMode !== persistedWorkflowMode) {
         setPersistedWorkflowMode(nextWorkflowMode);
@@ -1926,7 +1889,22 @@ export default function Settings() {
         });
       }
 
-      toast.success("Settings saved successfully!");
+      const refreshedSettings = await settingsService.getAllSettings({ force: true }).catch(() => null);
+      if (refreshedSettings) {
+        setSettings((current) => ({
+          ...current,
+          ...mapCustomerAccessRuntimeSettings(refreshedSettings),
+          posReceiptMetadataPendingReview: refreshedSettings.pos_receipt_metadata_pending_changes?.value?.status === 'pending_review'
+            ? refreshedSettings.pos_receipt_metadata_pending_changes.value
+            : current.posReceiptMetadataPendingReview
+        }));
+      }
+
+      if (Array.isArray(saveResult?.pending_review_keys) && saveResult.pending_review_keys.length > 0) {
+        toast.success('Settings saved. Receipt metadata changes are pending platform admin approval.');
+      } else {
+        toast.success("Settings saved successfully!");
+      }
     } catch (error) {
       const errorMsg = error.response?.data?.message || 'Failed to save settings';
       const validationErrors = Array.isArray(error.response?.data?.errors)
@@ -2089,7 +2067,7 @@ export default function Settings() {
 
   const primaryStorefrontLocation = tenantLocations.find((location) => location?.is_primary_storefront === true) || null;
   const hasActivePrimaryStorefrontLocation = primaryStorefrontLocation?.is_active === true;
-  const publicVisibilityMissingPrimary = settings.storeIsVisible === true && !hasActivePrimaryStorefrontLocation;
+  const publicVisibilityMissingPrimary = settings.storeIsVisible === true && settings.storeHasNoLocation !== true && !hasActivePrimaryStorefrontLocation;
   const primaryStorefrontLastSyncAt = (
     primaryStorefrontLocation?.storefront_last_synced_at
     || tenantLocations.find((location) => Boolean(location?.storefront_last_synced_at))?.storefront_last_synced_at
@@ -2201,11 +2179,12 @@ export default function Settings() {
   );
 
   const requestedCustomerAccessMode = normalizeCustomerAccessMode(settings.customerAccessMode);
-  const maxCustomerAccessMode = maxAccessModeForStage(settings.customerAccessRegistrationStage);
-  const effectiveCustomerAccessMode = minAccessMode(requestedCustomerAccessMode, maxCustomerAccessMode);
+  const maxCustomerAccessMode = normalizeCustomerAccessMode(settings.customerAccessMaxMode || 'transaction', 'transaction');
+  const platformMaxCustomerAccessMode = normalizeCustomerAccessMode(settings.customerAccessPlatformMaxMode || 'transaction', 'transaction');
+  const effectiveCustomerAccessMode = normalizeCustomerAccessMode(settings.customerAccessEffectiveMode || requestedCustomerAccessMode);
   const customerAccessLimitation = effectiveCustomerAccessMode !== requestedCustomerAccessMode
-    ? `Registration stage ${settings.customerAccessRegistrationStage || 'informal'} allows up to ${maxCustomerAccessMode} mode.`
-    : 'No registration-stage cap is reducing the requested mode.';
+    ? (settings.customerAccessLimitationReason || `Requested mode is capped at ${maxCustomerAccessMode} mode.`)
+    : 'No platform or registration-stage cap is reducing the requested mode.';
   const customerAccessRollbackActive = settings.customerAccessFlagStatus === 'rollback';
   const customerAccessRuntimeLabel = customerAccessRollbackActive ? 'Rollback active' : 'Enforced';
   const customerAccessRuntimeDescription = customerAccessRollbackActive
@@ -2578,8 +2557,9 @@ export default function Settings() {
             <CardContent className="space-y-4">
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Customer Access Mode</Label>
+                  <Label htmlFor="customer-access-mode">Customer Access Mode</Label>
                   <select
+                    id="customer-access-mode"
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     value={requestedCustomerAccessMode}
                     onChange={(e) => handleChange('customerAccessMode', e.target.value)}
@@ -2588,7 +2568,7 @@ export default function Settings() {
                       <option
                         key={option.value}
                         value={option.value}
-                        disabled={CUSTOMER_ACCESS_MODE_RANK[option.value] > CUSTOMER_ACCESS_MODE_RANK[maxCustomerAccessMode]}
+                        disabled={CUSTOMER_ACCESS_MODE_RANK[option.value] > CUSTOMER_ACCESS_MODE_RANK[platformMaxCustomerAccessMode]}
                       >
                         {option.label}
                       </option>
@@ -2596,6 +2576,12 @@ export default function Settings() {
                   </select>
                   <p className="text-xs text-slate-500">
                     Effective mode: <span className="font-semibold text-slate-900">{effectiveCustomerAccessMode}</span>. Max allowed: <span className="font-semibold text-slate-900">{maxCustomerAccessMode}</span>.
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Platform max: <span className="font-semibold text-slate-900">{settings.customerAccessPlatformMaxMode}</span>. Registration max: <span className="font-semibold text-slate-900">{settings.customerAccessRegistrationStageMaxMode}</span>.
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Company admins can request modes up to platform max; checkout still follows the effective mode after registration readiness is applied.
                   </p>
                   <p className="text-xs text-slate-500">{customerAccessLimitation}</p>
                 </div>
@@ -2671,6 +2657,30 @@ export default function Settings() {
                 <p className="text-sm font-semibold text-sky-900">{primaryStorefrontHealthCopy}</p>
                 <p className="text-xs text-sky-700">Discovery last synced: {primaryStorefrontLastSyncCopy}</p>
               </div>
+              <div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <Label>This Store Has No Location</Label>
+                    <p className="mt-1 text-xs text-slate-500">
+                      The storefront remains public and searchable, but it is excluded from map pins until this is turned off and a primary location is published.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={settings.storeHasNoLocation === true}
+                    onCheckedChange={(checked) => {
+                      const nextHasNoLocation = checked === true;
+                      handleChange('storeHasNoLocation', nextHasNoLocation);
+                      if (!nextHasNoLocation && !hasActivePrimaryStorefrontLocation) {
+                        setLocationForm((prev) => (
+                          prev.is_active === false
+                            ? prev
+                            : { ...prev, is_primary_storefront: true }
+                        ));
+                      }
+                    }}
+                  />
+                </div>
+              </div>
               <div className="rounded-lg border border-slate-200 bg-white px-3 py-3 space-y-2">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-slate-900">Storefront Sync Health</p>
@@ -2690,6 +2700,14 @@ export default function Settings() {
                   </p>
                 )}
               </div>
+              {settings.storeHasNoLocation === true ? (
+                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4">
+                  <p className="text-sm font-semibold text-slate-900">Map publication is disabled for this store.</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Saved locations are preserved. Turn off "This Store Has No Location" to edit pins or publish a primary storefront location.
+                  </p>
+                </div>
+              ) : (
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Location Name</Label>
@@ -2803,7 +2821,9 @@ export default function Settings() {
                   </div>
                 </div>
               </div>
+              )}
 
+              {settings.storeHasNoLocation !== true && (
               <div className="flex flex-wrap items-center gap-2">
                 <Button type="button" onClick={handleSaveLocation} disabled={locationSaving}>
                   {locationSaving ? 'Saving...' : editingLocationId ? 'Update Location' : 'Add Location'}
@@ -2817,6 +2837,7 @@ export default function Settings() {
                   Refresh List
                 </Button>
               </div>
+              )}
 
               <div className="space-y-2">
                 <Label>Configured Locations</Label>
@@ -2857,57 +2878,61 @@ export default function Settings() {
                         <p>Radius: {location.delivery_radius_km} km</p>
                         <p>Wait: {location.current_wait_time_minutes} min</p>
                       </div>
-                      <div className="flex gap-2">
-                        <Button type="button" size="sm" variant="outline" onClick={() => handleEditLocation(location)}>
-                          Edit
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleSetPrimaryLocation(location)}
-                          disabled={locationSaving || location.is_active !== true || location.is_primary_storefront === true}
-                        >
-                          {location.is_primary_storefront === true ? 'Primary' : 'Set Primary'}
-                        </Button>
-                        {location.is_active ? (
+                      {settings.storeHasNoLocation === true ? (
+                        <p className="text-xs text-slate-500">Location actions are paused while the store is excluded from map pins.</p>
+                      ) : (
+                        <div className="flex gap-2">
+                          <Button type="button" size="sm" variant="outline" onClick={() => handleEditLocation(location)}>
+                            Edit
+                          </Button>
                           <Button
                             type="button"
                             size="sm"
                             variant="outline"
-                            onClick={() => handleDeactivateLocation(location.location_id)}
-                            disabled={locationSaving}
+                            onClick={() => handleSetPrimaryLocation(location)}
+                            disabled={locationSaving || location.is_active !== true || location.is_primary_storefront === true}
                           >
-                            Deactivate
+                            {location.is_primary_storefront === true ? 'Primary' : 'Set Primary'}
                           </Button>
-                        ) : (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleReactivateLocation(location.location_id)}
-                            disabled={locationSaving}
-                          >
-                            Reactivate
-                          </Button>
-                        )}
-                        {location.is_active ? (
-                          <span className="self-center text-xs text-slate-500">
-                            Deactivate before permanent delete
-                          </span>
-                        ) : (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="border-red-200 text-red-700 hover:bg-red-50"
-                            onClick={() => openDeleteLocationDialog(location)}
-                            disabled={locationSaving}
-                          >
-                            Delete Pin
-                          </Button>
-                        )}
-                      </div>
+                          {location.is_active ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDeactivateLocation(location.location_id)}
+                              disabled={locationSaving}
+                            >
+                              Deactivate
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleReactivateLocation(location.location_id)}
+                              disabled={locationSaving}
+                            >
+                              Reactivate
+                            </Button>
+                          )}
+                          {location.is_active ? (
+                            <span className="self-center text-xs text-slate-500">
+                              Deactivate before permanent delete
+                            </span>
+                          ) : (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="border-red-200 text-red-700 hover:bg-red-50"
+                              onClick={() => openDeleteLocationDialog(location)}
+                              disabled={locationSaving}
+                            >
+                              Delete Pin
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))
                 )}
@@ -2955,52 +2980,10 @@ export default function Settings() {
                 </div>
               </div>
               <div className="space-y-3 rounded-lg border border-slate-200 p-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <Label>Business Hours</Label>
-                    <p className="mt-1 text-xs text-slate-500">These hours appear on the storefront and gate checkout availability. Times use Asia/Manila.</p>
-                    <p className="mt-1 text-xs font-semibold text-slate-700">Preview: {formatStorefrontBusinessHoursDisplay(settings.storefrontHours)}</p>
-                  </div>
-                  <Button type="button" variant="outline" size="sm" onClick={() => copyStorefrontHoursToAllDays('mon')}>
-                    <Copy className="w-4 h-4 mr-1" />Copy Mon
-                  </Button>
-                </div>
-                <div className="grid gap-2">
-                  {STOREFRONT_BUSINESS_DAY_OPTIONS.map((day) => {
-                    const dayHours = normalizeStorefrontBusinessHours(settings.storefrontHours).weekly[day.key];
-                    const isAllDay = dayHours.enabled && dayHours.open === dayHours.close;
-                    return (
-                      <div key={day.key} className="grid grid-cols-[48px_1fr_1fr_auto_auto] items-center gap-2 rounded-md bg-slate-50 px-3 py-2">
-                        <span className="text-xs font-semibold text-slate-700">{day.label}</span>
-                        <Input
-                          type="time"
-                          value={dayHours.open}
-                          disabled={!dayHours.enabled}
-                          onChange={(e) => handleStorefrontHoursDayChange(day.key, { open: e.target.value })}
-                          className="h-9"
-                        />
-                        <Input
-                          type="time"
-                          value={dayHours.close}
-                          disabled={!dayHours.enabled}
-                          onChange={(e) => handleStorefrontHoursDayChange(day.key, { close: e.target.value })}
-                          className="h-9"
-                        />
-                        <Switch
-                          checked={dayHours.enabled}
-                          onCheckedChange={(checked) => handleStorefrontHoursDayChange(day.key, { enabled: checked === true })}
-                        />
-                        <button
-                          type="button"
-                          className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
-                          onClick={() => handleStorefrontHoursDayChange(day.key, isAllDay ? { open: '09:00', close: '18:00' } : { enabled: true, open: '00:00', close: '00:00' })}
-                        >
-                          {isAllDay ? '24h' : (dayHours.enabled ? 'Set 24h' : 'Closed')}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                <StorefrontBusinessHoursScheduler
+                  value={settings.storefrontHours}
+                  onChange={(nextHours) => handleChange('storefrontHours', nextHours)}
+                />
               </div>
               <div className="space-y-2">
                 <Label>About</Label>
@@ -3735,10 +3718,35 @@ export default function Settings() {
                 Receipt & POS Metadata
               </CardTitle>
               <CardDescription>
-                Configure receipt identity, cashier closeout defaults, terminal policy, and checkout presets.
+                Configure receipt identity changes for platform-admin review, plus cashier closeout defaults, terminal policy, and checkout presets.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <p className="font-semibold">Receipt metadata edits require platform admin approval.</p>
+                <p className="mt-1 text-xs leading-5 text-amber-800">
+                  Software name, software version, and software serial number are managed by platform admin for the DGFY POS and are not shown on this admin settings form.
+                </p>
+                {settings.posReceiptMetadataPendingReview ? (
+                  <div className="mt-2 space-y-2">
+                    <p className="text-xs font-semibold text-amber-800">
+                      Pending review submitted {settings.posReceiptMetadataPendingReview.requested_at
+                        ? new Date(settings.posReceiptMetadataPendingReview.requested_at).toLocaleString()
+                        : 'recently'}.
+                    </p>
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {Object.entries(settings.posReceiptMetadataPendingReview.changes || {}).map(([key, value]) => (
+                        <div key={key} className="rounded-md border border-amber-200 bg-white/70 px-2 py-1.5 text-xs">
+                          <div className="font-semibold text-amber-900">{SETTINGS_FIELD_LABELS[key] || key}</div>
+                          <div className="mt-0.5 break-words text-amber-800">
+                            {typeof value === 'boolean' ? (value ? 'Yes' : 'No') : (String(value ?? '').trim() || '-')}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Registered Name</Label>
@@ -3810,30 +3818,6 @@ export default function Settings() {
                     value={settings.posAccreditationNumber}
                     onChange={(e) => handleChange('posAccreditationNumber', e.target.value)}
                     placeholder="BIR accreditation reference"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Software Name</Label>
-                  <Input
-                    value={settings.posSoftwareName}
-                    onChange={(e) => handleChange('posSoftwareName', e.target.value)}
-                    placeholder="Software product name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Software Version</Label>
-                  <Input
-                    value={settings.posSoftwareVersion}
-                    onChange={(e) => handleChange('posSoftwareVersion', e.target.value)}
-                    placeholder="Installed fiscal version"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Software Serial Number</Label>
-                  <Input
-                    value={settings.posSoftwareSerialNumber}
-                    onChange={(e) => handleChange('posSoftwareSerialNumber', e.target.value)}
-                    placeholder="Software/license serial"
                   />
                 </div>
                 <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">

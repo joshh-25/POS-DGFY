@@ -1,6 +1,6 @@
 # RBAC Sensitive Action Matrix
 
-Last updated: 2026-04-21
+Last updated: 2026-06-15
 
 ## Objective
 Map sensitive compliance and POS operations to required permissions and enforcement surface.
@@ -15,6 +15,7 @@ Map sensitive compliance and POS operations to required permissions and enforcem
 | Compliance profile update | `system:edit_settings` | `backend/src/routes/compliance.js` (`PUT /profile`) | `frontend/src/features/compliance/components/ComplianceProgramPanel.jsx` |
 | Compliance activation | `system:edit_settings` + master-admin level usecase actor check | `backend/src/routes/compliance.js` (`POST /activate`), `backend/src/modules/compliance/usecases/complianceUseCases.js` | `frontend/src/features/compliance/components/ComplianceProgramPanel.jsx` |
 | Compliance revert to non-compliant | `system:edit_settings` + tenant master-admin usecase actor check | `backend/src/routes/compliance.js` (`POST /mode/revert-to-non-compliant`), `backend/src/modules/compliance/usecases/complianceUseCases.js` | `frontend/src/features/compliance/components/ComplianceProgramPanel.jsx` |
+| Compliance mode select / upgrade (platform) | Platform admin auth (`authenticateAdmin`) + platform-admin usecase actor check | `backend/src/routes/adminTenants.js` (`POST /:id/compliance/mode/select`, `POST /:id/compliance/mode/upgrade`), `backend/src/modules/compliance/usecases/complianceUseCases.js` | `frontend/Pages/admin/TenantManager.jsx` |
 | Compliance force non-compliant (platform) | Platform admin auth (`authenticateAdmin`) + platform-admin usecase actor check | `backend/src/routes/adminTenants.js` (`POST /:id/force-non-compliant`), `backend/src/modules/compliance/usecases/complianceUseCases.js` | `frontend/Pages/admin/TenantManager.jsx` |
 | Artifact/peripheral verification | Master-admin level actor (`tenant_master_admin` or `platform_admin`) | `backend/src/modules/compliance/usecases/complianceUseCases.js` | `frontend/Pages/admin/TenantManager.jsx` |
 | Security incident acknowledge/resolve | Platform admin auth (`authenticateAdmin`) + master-admin level usecase actor check | `backend/src/routes/adminTenants.js` (`POST /:id/compliance/security-incidents/:incident_id/acknowledge`, `POST /:id/compliance/security-incidents/:incident_id/resolve`), `backend/src/modules/compliance/usecases/complianceUseCases.js` | `frontend/Pages/admin/TenantManager.jsx` |

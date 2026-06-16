@@ -11,7 +11,8 @@ export const EMAIL_OTP_PURPOSES = Object.freeze({
   INVITATION_ACCEPTANCE: 'invitation_acceptance',
   EMAIL_CHANGE: 'email_change',
   DGFY_ACCOUNT_VERIFICATION: 'dgfy_account_verification',
-  DGFY_PASSWORD_RESET: 'dgfy_password_reset'
+  DGFY_PASSWORD_RESET: 'dgfy_password_reset',
+  DGFY_BUSINESS_STEP_UP: 'dgfy_business_step_up'
 });
 
 const PURPOSE_LABELS = Object.freeze({
@@ -20,7 +21,8 @@ const PURPOSE_LABELS = Object.freeze({
   [EMAIL_OTP_PURPOSES.INVITATION_ACCEPTANCE]: 'invitation acceptance',
   [EMAIL_OTP_PURPOSES.EMAIL_CHANGE]: 'email change',
   [EMAIL_OTP_PURPOSES.DGFY_ACCOUNT_VERIFICATION]: 'DGFY account verification',
-  [EMAIL_OTP_PURPOSES.DGFY_PASSWORD_RESET]: 'DGFY password reset'
+  [EMAIL_OTP_PURPOSES.DGFY_PASSWORD_RESET]: 'DGFY password reset',
+  [EMAIL_OTP_PURPOSES.DGFY_BUSINESS_STEP_UP]: 'DGFY business security check'
 });
 
 const OTP_TTL_MINUTES = Number.parseInt(process.env.EMAIL_OTP_TTL_MINUTES || '10', 10);

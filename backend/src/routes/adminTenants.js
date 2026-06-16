@@ -10,6 +10,9 @@ import {
     updateTenant,
     updateTenantCapabilities,
     listTenantCapabilityAuditLogs,
+    getTenantPosMetadata,
+    listTenantPosMetadataAuditLogs,
+    updateTenantPosMetadata,
     deleteTenant,
     setupPayPalRecurring,
     adminChangePlan,
@@ -24,6 +27,8 @@ import {
     adminUpdateComplianceFinalReviewDocumentReview,
     adminAcknowledgeComplianceSecurityIncident,
     adminResolveComplianceSecurityIncident,
+    adminSelectComplianceMode,
+    adminUpgradeComplianceMode,
     adminForceNonCompliant,
     resubmitRegistration
 } from '../controllers/adminTenantController.js';
@@ -39,13 +44,16 @@ import {
     validateComplianceSecurityIncidentQuery,
     validateComplianceSecurityIncidentParam,
     validateComplianceSecurityIncidentAction,
+    validateAdminComplianceModeChoice,
+    validateAdminComplianceModeUpgrade,
     validateComplianceModeDowngrade,
     validateFinalReviewDocumentIdParam,
     validateFinalReviewDocumentReview
 } from '../validators/complianceValidator.js';
 import {
     validateTenantCapabilityAuditLogQuery,
-    validateTenantCapabilityPatch
+    validateTenantCapabilityPatch,
+    validateTenantPosMetadataPatch
 } from '../validators/adminTenantValidator.js';
 
 const router = express.Router();
@@ -86,6 +94,8 @@ router.get('/:id/compliance/audit-logs', authenticateAdmin, validateComplianceAu
 router.get('/:id/compliance/security-incidents', authenticateAdmin, validateComplianceSecurityIncidentQuery, adminListComplianceSecurityIncidents);
 router.post('/:id/compliance/security-incidents/:incident_id/acknowledge', authenticateAdmin, validateComplianceSecurityIncidentParam, validateComplianceSecurityIncidentAction, adminAcknowledgeComplianceSecurityIncident);
 router.post('/:id/compliance/security-incidents/:incident_id/resolve', authenticateAdmin, validateComplianceSecurityIncidentParam, validateComplianceSecurityIncidentAction, adminResolveComplianceSecurityIncident);
+router.post('/:id/compliance/mode/select', authenticateAdmin, validateAdminComplianceModeChoice, adminSelectComplianceMode);
+router.post('/:id/compliance/mode/upgrade', authenticateAdmin, validateAdminComplianceModeUpgrade, adminUpgradeComplianceMode);
 router.post('/:id/force-non-compliant', authenticateAdmin, validateComplianceModeDowngrade, adminForceNonCompliant);
 
 // ADMIN: Compliance verification operations (platform admin)
@@ -99,6 +109,11 @@ router.put('/:id', authenticateAdmin, updateTenant);
 // ADMIN: Update tenant product capability switches
 router.patch('/:id/capabilities', authenticateAdmin, validateTenantCapabilityPatch, updateTenantCapabilities);
 router.get('/:id/capabilities/audit-logs', authenticateAdmin, validateTenantCapabilityAuditLogQuery, listTenantCapabilityAuditLogs);
+
+// ADMIN: Platform-owned DGFY POS software identity and tenant metadata approvals
+router.get('/:id/pos-metadata', authenticateAdmin, getTenantPosMetadata);
+router.get('/:id/pos-metadata/audit-logs', authenticateAdmin, validateTenantCapabilityAuditLogQuery, listTenantPosMetadataAuditLogs);
+router.patch('/:id/pos-metadata', authenticateAdmin, validateTenantPosMetadataPatch, updateTenantPosMetadata);
 
 // ADMIN: Permanently delete tenant
 router.delete('/:id', authenticateAdmin, deleteTenant);

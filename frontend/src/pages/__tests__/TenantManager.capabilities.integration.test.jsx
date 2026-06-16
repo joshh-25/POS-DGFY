@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import TenantManager from '../../../Pages/admin/TenantManager.jsx';
 
@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
     rejectTenant: vi.fn(),
     adminReactivateTenant: vi.fn(),
     forceTenantNonCompliant: vi.fn(),
+    selectTenantComplianceMode: vi.fn(),
+    upgradeTenantComplianceMode: vi.fn(),
     listTenantComplianceArtifacts: vi.fn(),
     listTenantCompliancePeripherals: vi.fn(),
     getTenantComplianceChecklist: vi.fn(),
@@ -58,7 +60,20 @@ describe('TenantManager capability controls', () => {
             ims_enabled: true,
             pos_enabled: false,
             storefront_visible: true,
-            customer_access_mode: 'catalog'
+            customer_access_mode: 'transaction',
+            requested_customer_access_mode: 'transaction',
+            effective_customer_access_mode: 'catalog',
+            max_customer_access_mode: 'catalog',
+            platform_max_customer_access_mode: 'transaction',
+            registration_stage_max_customer_access_mode: 'catalog',
+            registration_stage: 'informal',
+            customer_access_limitation_reason: 'Registration stage informal allows up to catalog mode.',
+            access_capabilities: {
+              cart: false,
+              quote: false,
+              checkout: false,
+              booking: false
+            }
           }
         },
         {
@@ -145,7 +160,81 @@ describe('TenantManager capability controls', () => {
     expect(screen.getAllByRole('region', { name: 'Public storefront controls' })).toHaveLength(2);
     expect(screen.getByText('Needs primary map pin')).toBeTruthy();
     expect(screen.getAllByText('Storefront sub-modes')).toHaveLength(2);
+    expect(screen.getByText('Requested: Online ordering mode')).toBeTruthy();
+    expect(screen.getAllByText(/Effective: Catalog only \/ Max: Catalog only/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Platform max: Online ordering mode \/ Registration max: Catalog only/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Platform max allowed')).toHaveLength(2);
+    expect(screen.getAllByText('Registration readiness')).toHaveLength(2);
+    expect(screen.getAllByText(/Registered readiness is required for transaction checkout/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Registration stage informal allows up to catalog mode.')).toBeTruthy();
+    expect(screen.getAllByText('Company requested mode')).toHaveLength(2);
     expect(screen.getAllByText('Catalog plus inquiry/contact CTAs')).toHaveLength(2);
+  });
+
+  it('updates platform max allowed storefront mode separately from requested mode', async () => {
+    const user = userEvent.setup();
+    render(<TenantManager />);
+
+    await screen.findByText('Kusina & Cafe');
+    await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kusina');
+
+    const platformPanel = screen.getByText('Platform max allowed').closest('.rounded-lg');
+    expect(platformPanel).toBeTruthy();
+    await user.selectOptions(within(platformPanel).getByLabelText(/Platform max allowed for Kusina & Cafe/i), 'catalog');
+
+    await screen.findByText('Confirm capability change');
+    expect(screen.getByText(/Platform will cap this tenant at Catalog only/i)).toBeTruthy();
+    await user.type(screen.getByLabelText('Reason'), 'Platform reviewed storefront readiness cap');
+    await user.click(screen.getByRole('button', { name: /Apply change/i }));
+
+    await waitFor(() => {
+      expect(mocks.adminServiceMock.updateTenantCapabilities).toHaveBeenCalledWith(
+        'tenant-kusina',
+        {
+          platform_max_customer_access_mode: 'catalog',
+          reason: 'Platform reviewed storefront readiness cap'
+        }
+      );
+    });
+  });
+
+  it('warns when Online Ordering remains capped by registration readiness', async () => {
+    const user = userEvent.setup();
+    render(<TenantManager />);
+
+    await screen.findByText('Kusina & Cafe');
+    await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kusina');
+    await user.click(screen.getByRole('button', { name: /Online ordering mode/i }));
+
+    await screen.findByText('Confirm capability change');
+    expect(screen.getByText(/checkout will remain capped at Catalog only until registration readiness is updated/i)).toBeTruthy();
+  });
+
+  it('updates registration readiness separately from requested mode', async () => {
+    const user = userEvent.setup();
+    render(<TenantManager />);
+
+    await screen.findByText('Kusina & Cafe');
+    await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kusina');
+
+    const readinessPanel = screen.getByText('Registration readiness').closest('.rounded-lg');
+    expect(readinessPanel).toBeTruthy();
+    await user.selectOptions(within(readinessPanel).getByLabelText(/Registration readiness for Kusina & Cafe/i), 'registered');
+
+    await screen.findByText('Confirm capability change');
+    expect(screen.getByText(/Checkout can become available when company requested mode and platform max are also Online ordering mode/i)).toBeTruthy();
+    await user.type(screen.getByLabelText('Reason'), 'Approved registration evidence for online ordering');
+    await user.click(screen.getByRole('button', { name: /Apply change/i }));
+
+    await waitFor(() => {
+      expect(mocks.adminServiceMock.updateTenantCapabilities).toHaveBeenCalledWith(
+        'tenant-kusina',
+        {
+          customer_access_registration_stage: 'registered',
+          reason: 'Approved registration evidence for online ordering'
+        }
+      );
+    });
   });
 
   it('keeps storefront sub-modes disabled until Storefront Maps is visible', async () => {

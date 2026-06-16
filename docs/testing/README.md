@@ -39,12 +39,13 @@ Required commands:
 2. `npm --prefix backend test -- --runTestsByPath tests/rtr_verification.test.js`
 3. `npm --prefix frontend test -- --run src/services/__tests__/browserTokenStorage.guard.test.js`
 4. For DGFY-to-SKUpervisor tenant-session handoff or tenant refresh routing changes: `npm --prefix backend test -- --runTestsByPath tests/tenantHandler.emailOtp.test.js tests/dgfyTenantSession.transport.test.js tests/browserSessionCookies.test.js`
+5. For DGFY account company switching or invitation Business-tab changes: include backend DGFY company-list/switch/invitation tests, `tests/dgfyAuthMiddleware.test.js` for the IMS tenant-session membership bridge, frontend IMS switcher tests, Storefront account Business-tab tests, and browser storage guards proving DGFY, refresh, tenant, and company tokens are not persisted in browser-readable storage.
 
 Evidence semantics:
 1. Backend cookie tests prove refresh/session authority is issued and cleared with the ADR 0026 cookie attributes.
 2. RTR tests prove refresh authority is cookie-only, CSRF-protected, rotated on use, and replay-rejected.
 3. Frontend storage guards prove privileged tenant, refresh, DGFY, storefront, and admin tokens are not persisted in browser-readable storage.
-4. Tenant-handler and DGFY tenant-session transport tests prove the one-click company-registration handoff sets normal tenant cookies and that `/auth/refresh-token` can recover tenant context from a signed tenant-bound refresh cookie when the companion tenant-context cookie is missing.
+4. Tenant-handler and DGFY tenant-session transport tests prove the one-click company-registration handoff sets normal tenant cookies and that `/auth/refresh-token` can recover tenant context from a signed tenant-bound refresh cookie when the companion tenant-context cookie is missing. `dgfyAuthMiddleware` tests prove direct IMS sessions can load business switching only through an accepted DGFY membership row and cannot infer account ownership from matching email or mobile data.
 5. Frontend API interceptor tests prove protected requests preflight cookie-backed session refresh after hard reload when the in-memory access token is empty.
 6. Backend auth tests prove login and refresh responses include `data.company.token` when tenant context is available, allowing the frontend to restore the company-token header without browser-readable tenant-token persistence.
 7. These gates do not prove all XSS vectors are impossible; CSP and input/output encoding reviews remain required for UI changes.
@@ -179,7 +180,7 @@ Required commands:
 7. `git diff --check`
 
 Evidence semantics:
-1. The audit proves the current tenant data has no hidden tenant still indexed, no invalid or missing explicit `store_is_visible` setting, no visible tenant missing an active primary pin, no stale indexed location, and no legacy fallback-location publication beyond the governed compatibility path.
+1. The audit proves the current tenant data has no hidden tenant still indexed, no invalid or missing explicit `store_is_visible` setting, no visible map-published tenant missing an active primary pin, no stale indexed location, no legacy fallback-location publication beyond the governed compatibility path, and no `store_has_no_location=true` tenant still publishing public coordinates.
 2. `-- --fail-on warning` may be used as a stricter pre-release gate when fallback-location publication should block promotion.
 3. `-- --repair-missing-settings` only backfills an explicit setting that preserves current discovery-index exposure. It must not be used as a substitute for deciding whether a tenant should be public.
 4. A green local audit does not prove production tenant data is clean. Production or canary release evidence must include the same audit against the target data plus public discovery/profile smoke for hidden and visible tenants.
@@ -299,6 +300,7 @@ Before running manual UAT after backend changes:
    - `http://localhost:5000/api/v1/compliance/peripherals`
    - `http://localhost:5000/api/v1/pos/incoming-orders`
    - `http://localhost:5000/api/v1/sales/transactions`
+   - A `500` caused by missing nullable POS fiscal-prep fields such as `pos_transactions.buyer_tin` is runtime schema drift. Apply migrations, rerun `doctor:runtime`, and restart before treating compliance profile or incoming-order failures as product-state failures.
 9. Verify store checkout validation path is fail-closed:
    - `POST /api/v1/store/checkout` should return `422` for invalid/out-of-stock payloads, not `500`.
 10. Verify storefront catalog location-scope compatibility path is fail-closed:
@@ -390,6 +392,38 @@ Manual smoke for the default auto-standard environment:
 4. Confirm the frontend calls the normal login API and lands on the authenticated app.
 5. Confirm manual-login fallback pre-fills email and company token if the follow-up login fails.
 6. Confirm premium/subscription registration still returns `503` with `PAYMENTS_DISABLED` while `PAYMENTS_ENABLED=false`.
+
+## Platform Admin Compliance Lifecycle Smoke
+
+Use these checks when changing Tenant Manager compliance actions, admin tenant lifecycle routes, compliance mode selection, downgrade/upgrade audit behavior, or `admin_compliance_mode_action` enrichment.
+
+Targeted backend suites:
+```bash
+npm --prefix backend test -- --runTestsByPath tests/complianceModeDowngrade.usecase.test.js tests/adminForceNonCompliant.handler.test.js tests/adminForceNonCompliant.transport.test.js tests/rbacRouteCoverage.contract.test.js tests/checkComplianceImpactScript.integration.test.js
+```
+
+Targeted frontend suites:
+```bash
+cd frontend
+npm exec vitest run src/pages/__tests__/TenantManager.forceNonCompliant.integration.test.jsx src/pages/__tests__/TenantManager.capabilities.integration.test.jsx src/pages/__tests__/TenantManager.compliancePartialLoad.integration.test.jsx
+```
+
+Governance gates:
+```bash
+npm run lint:docs
+npm run check:architecture
+npm run check:compliance
+git diff --check
+```
+
+Expected behavior:
+1. Legacy/no-mode tenants show one `Set compliance mode` action.
+2. `non_compliant_active` tenants show `Move to compliant pending`.
+3. `compliant_pending` and eligible `compliant_active` tenants show `Force non-compliant`.
+4. “Make compliant” never sets `compliant_active`; it lands in `compliant_pending`.
+5. Every lifecycle mutation requires an audit reason and fails closed if primary audit persistence is unavailable.
+6. Tenant lookup/cache is invalidated after successful lifecycle mutation.
+7. The modal copy states the operational effect: non-compliant POS uses non-fiscal slips, compliant pending waits for checklist activation, and force non-compliant disables fiscal output.
 
 ## Hosting Profile Smoke Tests
 

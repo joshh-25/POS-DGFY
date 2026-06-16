@@ -9,6 +9,12 @@ const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'online'];
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const TERMINAL_REGISTRY_MODES = ['warn', 'enforce'];
 const STOREFRONT_ASSET_TYPES = new Set(['cover', 'profile']);
+const PLATFORM_CONTROLLED_POS_SOFTWARE_KEYS = new Set([
+  'pos_software_name',
+  'pos_software_version',
+  'pos_software_serial_number'
+]);
+const PLATFORM_CONTROLLED_POS_SOFTWARE_MESSAGE = 'Software name, software version, and software serial number are configured by platform admin for DGFY POS.';
 
 const posDiscountProfileSchema = Joi.object({
   name: Joi.string().trim().min(1).max(80).required().messages({
@@ -294,9 +300,15 @@ export const updateSettingsSchema = Joi.object({
   pos_accreditation_number: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).allow('').optional().messages({
     'string.pattern.base': 'Accreditation number contains invalid characters'
   }),
-  pos_software_name: Joi.string().trim().max(120).allow('').optional(),
-  pos_software_version: Joi.string().trim().max(80).allow('').optional(),
-  pos_software_serial_number: Joi.string().trim().max(120).allow('').optional(),
+  pos_software_name: Joi.any().forbidden().messages({
+    'any.unknown': PLATFORM_CONTROLLED_POS_SOFTWARE_MESSAGE
+  }),
+  pos_software_version: Joi.any().forbidden().messages({
+    'any.unknown': PLATFORM_CONTROLLED_POS_SOFTWARE_MESSAGE
+  }),
+  pos_software_serial_number: Joi.any().forbidden().messages({
+    'any.unknown': PLATFORM_CONTROLLED_POS_SOFTWARE_MESSAGE
+  }),
   pos_fiscal_buyer_details_required: Joi.boolean().optional(),
   pos_receipt_footer_message: Joi.string().trim().max(300).allow('').optional(),
   pos_discount_profiles: posDiscountProfilesSchema.optional(),
@@ -336,6 +348,7 @@ export const updateSettingsSchema = Joi.object({
   inventory_display_mode: inventoryDisplayModeSchema.optional(),
   inventory_low_stock_display_threshold: inventoryLowStockDisplayThresholdSchema.optional(),
   store_is_visible: Joi.boolean().optional(),
+  store_has_no_location: Joi.boolean().optional(),
   pos_open_status: Joi.boolean().optional(),
   pos_wait_time_minutes: Joi.number().integer().min(0).max(720).optional(),
   ops_workflow_mode: Joi.string().trim().lowercase().valid(...WORKFLOW_MODE_VALUES).optional().messages({
@@ -420,6 +433,18 @@ export const validateUpdateSingleSetting = (req, res, next) => {
   }
 
   const settingKey = String(req?.params?.key || '').trim();
+  if (PLATFORM_CONTROLLED_POS_SOFTWARE_KEYS.has(settingKey)) {
+    return res.status(422).json({
+      success: false,
+      message: 'Validation failed',
+      errors: [{
+        field: 'key',
+        message: PLATFORM_CONTROLLED_POS_SOFTWARE_MESSAGE
+      }],
+      timestamp: new Date().toISOString()
+    });
+  }
+
   const singleSettingSchemaByKey = {
     pos_registered_name: Joi.string().trim().min(2).max(150).allow(''),
     pos_business_name: Joi.string().trim().min(2).max(150).allow(''),
@@ -438,9 +463,6 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     pos_accreditation_number: Joi.string().trim().max(80).pattern(/^[A-Za-z0-9\-/\s.]*$/).allow('').messages({
       'string.pattern.base': 'Accreditation number contains invalid characters'
     }),
-    pos_software_name: Joi.string().trim().max(120).allow(''),
-    pos_software_version: Joi.string().trim().max(80).allow(''),
-    pos_software_serial_number: Joi.string().trim().max(120).allow(''),
     pos_fiscal_buyer_details_required: Joi.boolean(),
     pos_receipt_footer_message: Joi.string().trim().max(300).allow(''),
     pos_discount_profiles: posDiscountProfilesSchema,
@@ -480,6 +502,7 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     inventory_display_mode: inventoryDisplayModeSchema,
     inventory_low_stock_display_threshold: inventoryLowStockDisplayThresholdSchema,
     store_is_visible: Joi.boolean(),
+    store_has_no_location: Joi.boolean(),
     pos_open_status: Joi.boolean(),
     pos_wait_time_minutes: Joi.number().integer().min(0).max(720),
     ops_workflow_mode: Joi.string().trim().lowercase().valid(...WORKFLOW_MODE_VALUES).messages({

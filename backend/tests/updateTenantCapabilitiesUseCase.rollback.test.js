@@ -58,6 +58,7 @@ describe('update tenant capabilities rollback behavior', () => {
         settings.clear();
         settings.set('store_is_visible', 'false');
         settings.set('customer_access_mode', 'catalog');
+        settings.set('platform_max_customer_access_mode', 'catalog');
         runContexts.length = 0;
         jest.clearAllMocks();
     });
@@ -91,7 +92,8 @@ describe('update tenant capabilities rollback behavior', () => {
             body: {
                 reason: 'Tenant requested temporary storefront pause',
                 storefront_visible: true,
-                customer_access_mode: 'transaction'
+                customer_access_mode: 'transaction',
+                platform_max_customer_access_mode: 'transaction'
             },
             actor: { username: 'platform_admin' }
         });
@@ -100,8 +102,61 @@ describe('update tenant capabilities rollback behavior', () => {
         expect(result.error.message).toMatch(/capability changes were rolled back/i);
         expect(settings.get('store_is_visible')).toBe('false');
         expect(settings.get('customer_access_mode')).toBe('catalog');
+        expect(settings.get('platform_max_customer_access_mode')).toBe('catalog');
         expect(syncStorefrontDiscoveryIndexForTenant).toHaveBeenCalledTimes(2);
         expect(tenantAdminRepository.createTenantAdminAuditLog).not.toHaveBeenCalled();
         expect(runContexts).toHaveLength(2);
+    });
+
+    it('updates registration readiness through onboarding progress and audits the change', async () => {
+        settings.set('tenant_onboarding_progress', JSON.stringify({
+            step_payloads: {
+                business_classification: {
+                    legitimacy: { registration_status: 'informal' }
+                }
+            }
+        }));
+        const tenantAdminRepository = {
+            findTenantById: jest.fn().mockResolvedValue({
+                id: 'tenant-1',
+                status: 'active',
+                company_token: 'token-1',
+                name: 'Tenant 1',
+                db_name: 'tenant_1'
+            }),
+            createTenantAdminAuditLog: jest.fn()
+        };
+        const tenantConnector = {
+            getConnection: jest.fn().mockResolvedValue(tenantSequelize)
+        };
+        const syncStorefrontDiscoveryIndexForTenant = jest.fn().mockResolvedValue(undefined);
+        const useCase = buildUpdateTenantCapabilitiesUseCase({
+            tenantAdminRepository,
+            tenantConnector,
+            syncStorefrontDiscoveryIndexForTenant,
+            logger: { error: jest.fn() }
+        });
+
+        const result = await useCase({
+            id: 'tenant-1',
+            body: {
+                reason: 'Approved registration evidence for online ordering',
+                customer_access_registration_stage: 'registered'
+            },
+            actor: { username: 'platform_admin' }
+        });
+
+        expect(result.success).toBe(true);
+        const progress = JSON.parse(settings.get('tenant_onboarding_progress'));
+        expect(progress.step_payloads.business_classification.legitimacy.registration_status).toBe('registered');
+        expect(progress.classification_snapshot.payload.legitimacy.registration_status).toBe('registered');
+        expect(syncStorefrontDiscoveryIndexForTenant).toHaveBeenCalledWith({ tenantId: 'tenant-1' });
+        expect(tenantAdminRepository.createTenantAdminAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'capability_update',
+            metadata: expect.objectContaining({
+                changed_fields: ['customer_access_registration_stage'],
+                storefront_sync_required: true
+            })
+        }));
     });
 });

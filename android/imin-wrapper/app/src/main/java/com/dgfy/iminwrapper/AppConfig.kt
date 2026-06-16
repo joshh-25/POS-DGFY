@@ -3,7 +3,10 @@ package com.dgfy.iminwrapper
 import android.os.Build
 
 object AppConfig {
-    private const val LAN_HOST = "10.123.37.45"
+    private const val LIVE_POS_ORIGIN = "https://pos.dgfy.ph"
+    private const val LIVE_POS_HOST = "pos.dgfy.ph"
+    private const val SKUPERVISOR_HOST = "skupervisor.dgfy.ph"
+    private const val LOCAL_LAN_HOST = "10.123.37.45"
     private const val EMULATOR_HOST = "10.0.2.2"
     private const val POS_PORT = 5174
     private const val WEB_POS_PREVIEW_PORT = 5174
@@ -14,7 +17,11 @@ object AppConfig {
     }
 
     fun hostedPosUrl(cacheBust: Long): String {
-        return "http://${activeHost()}:$POS_PORT/?apk_build=$cacheBust"
+        return if (useLivePosOrigin()) {
+            "$LIVE_POS_ORIGIN/?apk_build=$cacheBust"
+        } else {
+            "http://${activeLocalHost()}:$POS_PORT/?apk_build=$cacheBust"
+        }
     }
 
     fun hostedWebPosUrl(): String {
@@ -22,25 +29,39 @@ object AppConfig {
     }
 
     fun hostedWebPosUrl(cacheBust: Long): String {
-        return "http://${activeHost()}:$WEB_POS_PREVIEW_PORT/?apk_build=$cacheBust#/terminal"
+        return if (useLivePosOrigin()) {
+            "$LIVE_POS_ORIGIN/?apk_build=$cacheBust#/terminal"
+        } else {
+            "http://${activeLocalHost()}:$WEB_POS_PREVIEW_PORT/?apk_build=$cacheBust#/terminal"
+        }
     }
 
     fun defaultApiBaseUrl(): String {
-        return "http://${activeHost()}:$BACKEND_PORT/api/v1"
+        return if (useLivePosOrigin()) {
+            "$LIVE_POS_ORIGIN/api/v1"
+        } else {
+            "http://${activeLocalHost()}:$BACKEND_PORT/api/v1"
+        }
     }
 
     fun allowedHosts(): Set<String> {
         return setOf(
-            activeHost(),
-            LAN_HOST,
+            LIVE_POS_HOST,
+            SKUPERVISOR_HOST,
+            activeLocalHost(),
+            LOCAL_LAN_HOST,
             EMULATOR_HOST,
             "localhost",
             "127.0.0.1"
         )
     }
 
-    private fun activeHost(): String {
-        return if (isProbablyEmulator()) EMULATOR_HOST else LAN_HOST
+    private fun activeLocalHost(): String {
+        return if (isProbablyEmulator()) EMULATOR_HOST else LOCAL_LAN_HOST
+    }
+
+    private fun useLivePosOrigin(): Boolean {
+        return !isProbablyEmulator()
     }
 
     private fun isProbablyEmulator(): Boolean {

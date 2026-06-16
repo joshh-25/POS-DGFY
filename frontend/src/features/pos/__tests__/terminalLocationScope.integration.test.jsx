@@ -219,4 +219,57 @@ describe('POS terminal location UX integration', () => {
     expect(screen.getByText(/Unresolved:/)).toBeTruthy();
     expect(screen.getByText(/Low confidence:/)).toBeTruthy();
   });
+
+  it('shows address, coordinates, and map link for incoming delivery orders with a saved pin', () => {
+    const props = buildBaseProps({
+      viewMode: 'incoming_queue',
+      incomingOrdersState: {
+        loading: false,
+        orders: [{
+          pos_transaction_id: 500,
+          customer_name: 'Delivery Buyer',
+          tracking_pin: 'SK-PIN500',
+          order_method: 'delivery',
+          payment_type: 'cash',
+          fulfillment_status: 'placed',
+          delivery_address: '123 Test Street',
+          delivery_latitude: '10.7202',
+          delivery_longitude: '122.5621'
+        }]
+      }
+    });
+
+    render(<TerminalOperationsWorkspace {...props} />);
+
+    expect(screen.getByText('123 Test Street')).toBeTruthy();
+    expect(screen.getByText('Coords: 10.720200, 122.562100')).toBeTruthy();
+    const mapLink = screen.getByRole('link', { name: 'Open pin in map' });
+    expect(mapLink.getAttribute('href')).toBe('https://maps.google.com/?q=10.7202,122.5621');
+  });
+
+  it('keeps incoming text-only delivery orders link-free when no coordinates are present', () => {
+    const props = buildBaseProps({
+      viewMode: 'incoming_queue',
+      incomingOrdersState: {
+        loading: false,
+        orders: [{
+          pos_transaction_id: 501,
+          customer_name: 'Text Buyer',
+          tracking_pin: 'SK-TEXT1',
+          order_method: 'delivery',
+          payment_type: 'cash',
+          fulfillment_status: 'placed',
+          delivery_address: 'Text-only landmark address',
+          delivery_latitude: null,
+          delivery_longitude: null
+        }]
+      }
+    });
+
+    render(<TerminalOperationsWorkspace {...props} />);
+
+    expect(screen.getByText('Text-only landmark address')).toBeTruthy();
+    expect(screen.queryByText(/Coords:/)).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Open pin in map' })).toBeNull();
+  });
 });

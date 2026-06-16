@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: mobile
-last_reviewed: 2026-06-03
+last_reviewed: 2026-06-15
 applies_to: android_imin_pos_wrapper
 topic: android_studio_execution_plan
 ---
@@ -42,19 +42,28 @@ Current wrapper responsibilities:
 - host allowlist
 - JavaScript bridge
 - drawer controller stub
+- live-origin routing for physical iMin devices
 
 ## Runtime Topology
 
 ```text
-Windows Host
-├── Backend (:5001)
+Production Host
+├── Backend behind https://pos.dgfy.ph/api
 ├── MySQL
-├── Device Bridge
-└── ESC/POS Printer + Drawer
+├── Device Bridge where configured
+└── ESC/POS Printer + Drawer where configured
 
 iMin Android Device
-└── Android WebView Wrapper -> hosted POS (:5174)
+└── Android WebView Wrapper -> https://pos.dgfy.ph/#/terminal
 ```
+
+The release APK now routes physical iMin devices to the live standalone POS origin by default:
+
+- POS URL: `https://pos.dgfy.ph/?apk_build=<timestamp>#/terminal`
+- API base URL: `https://pos.dgfy.ph/api/v1`
+- Allowed in-wrapper hosts: `pos.dgfy.ph` and `skupervisor.dgfy.ph`
+
+The emulator path still supports local development through `10.0.2.2` and the existing Vite/backend ports.
 
 ## Phase 1: ADR Alignment
 
@@ -65,9 +74,16 @@ ADR 0025 currently establishes Android as a POS client lane. Before release work
 - backend/device ownership stays on the Windows host
 - Android drawer integration is optional and deferred until the core wrapper is stable
 
-## Phase 2: LAN Runtime Readiness
+## Phase 2: Runtime Readiness
 
-The hosted POS must be reachable from the iMin device over LAN.
+For production APK validation, the hosted POS must be reachable from the iMin device over the internet or the store network that can resolve the production domain.
+
+Required production URLs:
+
+- POS frontend: `https://pos.dgfy.ph/`
+- backend API through POS origin: `https://pos.dgfy.ph/api/v1`
+
+Local/LAN validation remains available for emulator and development builds only.
 
 Required host URLs:
 
@@ -76,11 +92,11 @@ Required host URLs:
 
 Validation:
 
-1. POS loads from another device on the same network
+1. POS loads from the iMin device at `https://pos.dgfy.ph/`
 2. login succeeds
 3. catalog loads
 4. checkout calls reach the backend
-5. uploads and product images resolve from the host IP
+5. uploads and product images resolve from the production POS origin
 
 ## Phase 3: Android Wrapper Configuration
 
@@ -91,8 +107,8 @@ Files:
 
 Required configuration:
 
-1. set `HOSTED_POS_URL` to the LAN POS URL
-2. set `ALLOWED_HOSTS` to the Windows host IP/hostname
+1. keep release physical-device routing on `https://pos.dgfy.ph`
+2. keep `ALLOWED_HOSTS` limited to approved production and development hosts
 3. set app label, package name, and launcher assets
 4. confirm WebView settings:
    - JavaScript enabled
@@ -147,9 +163,9 @@ Build tasks:
 
 Current Android settings:
 
-- `compileSdk = 34`
-- `targetSdk = 34`
-- `minSdk = 26`
+- `compileSdk = 36.1`
+- `targetSdk = 36`
+- `minSdk = 28`
 - Kotlin + AndroidX WebKit
 
 ## Phase 7: Real Device Validation
@@ -159,12 +175,18 @@ Run on the actual iMin device.
 Required checks:
 
 1. app launches to POS
-2. POS login works against LAN backend
+2. POS login works against `https://pos.dgfy.ph`
 3. catalog and images load
 4. cart and checkout work
 5. session expiry is recoverable
 6. app resumes cleanly after backgrounding
 7. network loss and reconnect behavior are acceptable
+
+Latest workstation build evidence:
+
+- `.\gradlew.bat assembleDebug --no-daemon` -> PASS on 2026-06-15, producing `android/imin-wrapper/app/build/outputs/apk/debug/app-debug.apk`.
+- `.\gradlew.bat assembleRelease --no-daemon` -> PASS on 2026-06-15, producing `android/imin-wrapper/app/build/outputs/apk/release/app-release-unsigned.apk`.
+- APK install and real iMin smoke remain pending.
 
 ## Phase 8: Device Capabilities
 
@@ -202,11 +224,12 @@ Required before rollout:
 4. Android release build passes
 5. real iMin device smoke test passes
 6. rollback path documented
+7. production POS route smoke confirms `https://pos.dgfy.ph` renders the terminal shell without a framework overlay
 
 ## Recommended Implementation Order
 
 1. update ADR alignment for Android wrapper runtime
-2. validate hosted POS on LAN
+2. validate hosted POS on production origin for release APKs, or LAN for development APKs
 3. configure `AppConfig.kt`
 4. open `android/imin-wrapper` in Android Studio
 5. build and install debug APK on iMin

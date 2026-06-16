@@ -80,11 +80,15 @@ export function DgfyCustomerAccountPage({
   onSignOut,
   onHelp,
   onRegisterBusiness,
+  onRequestBusinessStepUp,
+  onAcceptCompanyInvitation,
+  onSwitchCompany,
   onClearSavedDetails,
   onUseAddressForCheckout,
   onSaveAddress,
   onDeleteAddress,
   onSetDefaultAddress,
+  renderAddressPinEditor,
   accountIdentityInitials,
   accountIdentityName,
   accountIdentityContact,
@@ -105,17 +109,29 @@ export function DgfyCustomerAccountPage({
   const allAddresses = Array.isArray(accountPanel?.addresses) ? accountPanel.addresses : [];
   const loyalty = accountPanel?.loyalty || { balance: 0, transactions: [] };
   const loyaltyTransactions = Array.isArray(loyalty?.transactions) ? loyalty.transactions.slice(0, 3) : [];
-  const [addressDraft, setAddressDraft] = useState({ label: 'Home', address_line: '', is_default: false });
+  const emptyAddressDraft = (isDefault = false) => ({
+    label: 'Home',
+    address_line: '',
+    latitude: null,
+    longitude: null,
+    is_default: isDefault
+  });
+  const [addressDraft, setAddressDraft] = useState(() => emptyAddressDraft(false));
   const [editingAddressId, setEditingAddressId] = useState(null);
-  const [editingAddressDraft, setEditingAddressDraft] = useState({ label: '', address_line: '', is_default: false });
+  const [editingAddressDraft, setEditingAddressDraft] = useState({ label: '', address_line: '', latitude: null, longitude: null, is_default: false });
   const [pendingCancelOrder, setPendingCancelOrder] = useState(null);
   const [activeNav, setActiveNav] = useState('overview');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [businessStepUpAction, setBusinessStepUpAction] = useState(null);
+  const [businessEmailOtpCode, setBusinessEmailOtpCode] = useState('');
+  const [businessActionLoading, setBusinessActionLoading] = useState(false);
+  const [businessOtpSent, setBusinessOtpSent] = useState(false);
+  const [businessActionError, setBusinessActionError] = useState('');
   const navItems = [
     { id: 'overview', label: 'Overview', icon: Home },
     { id: 'orders', label: 'Orders', icon: Package },
     { id: 'bookings', label: 'Bookings', icon: CalendarDays },
-    { id: 'addresses', label: 'Addresses', icon: MapPin },
+    { id: 'addresses', label: 'Locations', icon: MapPin },
     { id: 'loyalty', label: 'Loyalty', icon: Award },
     { id: 'account', label: 'Account', icon: User },
     { id: 'business', label: 'Business', icon: Store }
@@ -125,19 +141,101 @@ export function DgfyCustomerAccountPage({
   const showBookings = showOverview || activeNav === 'bookings';
   const showAddresses = showOverview || activeNav === 'addresses';
   const showLoyalty = showOverview || activeNav === 'loyalty';
-  const resetAddressDraft = () => setAddressDraft({ label: 'Home', address_line: '', is_default: allAddresses.length === 0 });
+  const businessCompanies = Array.isArray(accountPanel?.businessCompanies) ? accountPanel.businessCompanies : [];
+  const businessStepUp = accountPanel?.businessStepUp || accountPanel?.business_step_up || {};
+  const acceptedCompanies = businessCompanies.filter((company) => company.can_switch === true);
+  const pendingInvitations = businessCompanies.filter((company) => company.requires_action === 'accept_invitation');
+
+  const performBusinessAction = async (action, code = '') => {
+    const company = action?.company || {};
+    if (action?.type === 'accept') {
+      if (!company?.membership_id || typeof onAcceptCompanyInvitation !== 'function') return;
+      await onAcceptCompanyInvitation({
+        membershipId: company.membership_id,
+        emailOtpCode: code
+      });
+      return;
+    }
+    if (action?.type === 'switch') {
+      if (!company?.tenant_id || typeof onSwitchCompany !== 'function') return;
+      await onSwitchCompany({
+        tenantId: company.tenant_id,
+        emailOtpCode: code
+      });
+    }
+  };
+
+  const startBusinessAction = async (type, company) => {
+    const action = { type, company };
+    if (businessStepUp?.verified === true) {
+      setBusinessActionError('');
+      setBusinessActionLoading(true);
+      try {
+        await performBusinessAction(action);
+      } catch (error) {
+        setBusinessActionError(error?.message || 'Unable to complete this business action.');
+      } finally {
+        setBusinessActionLoading(false);
+      }
+      return;
+    }
+
+    if (typeof onRequestBusinessStepUp !== 'function') return;
+    setBusinessStepUpAction(action);
+    setBusinessEmailOtpCode('');
+    setBusinessOtpSent(false);
+    setBusinessActionError('');
+    setBusinessActionLoading(true);
+    try {
+      await onRequestBusinessStepUp();
+      setBusinessOtpSent(true);
+    } catch (error) {
+      setBusinessActionError(error?.message || 'Unable to send the security code.');
+      setBusinessStepUpAction(null);
+    } finally {
+      setBusinessActionLoading(false);
+    }
+  };
+  const submitBusinessStepUpAction = async () => {
+    if (!businessStepUpAction) return;
+    const normalizedCode = String(businessEmailOtpCode || '').trim();
+    if (!/^\d{6}$/.test(normalizedCode)) {
+      setBusinessActionError('Enter the 6-digit security code sent to your DGFY email.');
+      return;
+    }
+    setBusinessActionError('');
+    setBusinessActionLoading(true);
+    try {
+      await performBusinessAction(businessStepUpAction, normalizedCode);
+      setBusinessStepUpAction(null);
+      setBusinessEmailOtpCode('');
+      setBusinessOtpSent(false);
+    } catch (error) {
+      setBusinessActionError(error?.message || 'Unable to complete this business action.');
+    } finally {
+      setBusinessActionLoading(false);
+    }
+  };
+  const resetAddressDraft = () => setAddressDraft(emptyAddressDraft(allAddresses.length === 0));
   const startEditAddress = (address = {}) => {
     setEditingAddressId(address.address_id);
     setEditingAddressDraft({
       label: String(address.label || 'Address').trim() || 'Address',
       address_line: String(address.address_line || '').trim(),
+      latitude: address.latitude ?? null,
+      longitude: address.longitude ?? null,
       is_default: address.is_default === true
     });
   };
   const cancelEditAddress = () => {
     setEditingAddressId(null);
-    setEditingAddressDraft({ label: '', address_line: '', is_default: false });
+    setEditingAddressDraft({ label: '', address_line: '', latitude: null, longitude: null, is_default: false });
   };
+  const renderPinEditor = (draft, setDraft, mode) => (
+    typeof renderAddressPinEditor === 'function'
+      ? renderAddressPinEditor({ draft, onChange: setDraft, mode })
+      : null
+  );
 
   return (
     <>
@@ -215,7 +313,7 @@ export function DgfyCustomerAccountPage({
                 My Account
               </h1>
               <div style={{ marginTop: 10, fontSize: isMobileViewport ? 15 : 16, lineHeight: 1.6, color: MUTED, maxWidth: isMobileViewport ? '100%' : 720, overflowWrap: 'anywhere' }}>
-                View your orders, bookings, tracking references, saved addresses, and loyalty activity across DGFY stores.
+                View your orders, bookings, tracking references, saved locations, and loyalty activity across DGFY stores.
               </div>
             </div>
           </div>
@@ -344,7 +442,7 @@ export function DgfyCustomerAccountPage({
                 { label: 'Active Orders', value: activeOrderCount, icon: ShoppingBag },
                 { label: 'Order History', value: allOrders.length, icon: Ticket },
                 { label: 'Bookings', value: allBookings.length, icon: CalendarDays },
-                { label: 'Saved Addresses', value: allAddresses.length, icon: MapPin }
+                { label: 'Saved Locations', value: allAddresses.length, icon: MapPin }
               ].map((card) => {
                 const Icon = card.icon;
                 return (
@@ -740,8 +838,8 @@ export function DgfyCustomerAccountPage({
                     <MapPin size={18} strokeWidth={2.1} />
                   </div>
                   <div>
-                    <div style={{ fontSize: 20, fontWeight: 700, color: TEXT }}>Saved Addresses</div>
-                    <div style={{ fontSize: 14, color: MUTED }}>Addresses currently linked to your DGFY customer account.</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: TEXT }}>Saved Locations</div>
+                    <div style={{ fontSize: 14, color: MUTED }}>Addresses and optional map pins linked to your DGFY customer account.</div>
                   </div>
                 </div>
                 {typeof onSaveAddress === 'function' ? (
@@ -753,7 +851,7 @@ export function DgfyCustomerAccountPage({
                     }}
                     style={{ borderRadius: 20, border: `1px solid ${BORDER}`, background: '#FFFFFF', padding: '16px 18px', display: 'grid', gap: 10 }}
                   >
-                    <div style={{ fontSize: 15, fontWeight: 700, color: TEXT }}>Add Address</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: TEXT }}>Add Location</div>
                     <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: MUTED }}>
                       Label
                       <input
@@ -773,6 +871,7 @@ export function DgfyCustomerAccountPage({
                         style={{ minHeight: 76, borderRadius: 12, border: `1px solid ${BORDER}`, padding: '10px 12px', fontSize: 14, color: TEXT, resize: 'vertical' }}
                       />
                     </label>
+                    {renderPinEditor(addressDraft, setAddressDraft, 'create')}
                     <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: TEXT, fontWeight: 700 }}>
                       <input
                         type="checkbox"
@@ -786,14 +885,14 @@ export function DgfyCustomerAccountPage({
                       disabled={accountAddressActionId === 'new'}
                       style={{ justifySelf: 'start', minHeight: 40, borderRadius: 14, border: 'none', background: PRIMARY, color: '#FFFFFF', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: accountAddressActionId === 'new' ? 'wait' : 'pointer', opacity: accountAddressActionId === 'new' ? 0.72 : 1 }}
                     >
-                      {accountAddressActionId === 'new' ? 'Saving...' : 'Save Address'}
+                      {accountAddressActionId === 'new' ? 'Saving...' : 'Save Location'}
                     </button>
                   </form>
                 ) : null}
                 <div style={{ display: 'grid', gap: 12 }}>
                   {allAddresses.length === 0 ? (
                     <div style={{ borderRadius: 20, border: `1px dashed ${BORDER}`, background: SOFT_SURFACE, padding: '18px 20px', fontSize: 14, color: MUTED }}>
-                      No saved addresses yet.
+                      No saved locations yet.
                     </div>
                   ) : allAddresses.map((address) => {
                     const label = String(address.label || 'Address').trim() || 'Address';
@@ -828,6 +927,7 @@ export function DgfyCustomerAccountPage({
                               style={{ minHeight: 76, borderRadius: 12, border: `1px solid ${BORDER}`, padding: '10px 12px', fontSize: 14, color: TEXT, resize: 'vertical' }}
                             />
                           </label>
+                          {renderPinEditor(editingAddressDraft, setEditingAddressDraft, 'edit')}
                           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: TEXT, fontWeight: 700 }}>
                             <input
                               type="checkbox"
@@ -865,6 +965,13 @@ export function DgfyCustomerAccountPage({
                             ) : null}
                           </div>
                           <div style={{ fontSize: 14, lineHeight: 1.6, color: MUTED }}>{address.address_line || 'Address details unavailable.'}</div>
+                          {address.latitude != null && address.longitude != null ? (
+                            <div style={{ fontSize: 12, fontWeight: 700, color: PRIMARY }}>
+                              Pinned at {Number(address.latitude).toFixed(6)}, {Number(address.longitude).toFixed(6)}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 12, color: MUTED }}>No map pin saved for this address.</div>
+                          )}
                           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             {typeof onUseAddressForCheckout === 'function' ? (
                               <button
@@ -984,24 +1091,119 @@ export function DgfyCustomerAccountPage({
           ) : null}
 
           {activeNav === 'business' ? (
-            <section style={{ borderRadius: 24, border: `1px solid ${BORDER}`, background: '#FFFFFF', padding: isMobileViewport ? 20 : 28, display: 'grid', gap: 18, textAlign: 'center', justifyItems: 'center', boxShadow: '0 18px 42px rgba(15,23,42,0.05)' }}>
-              <div style={{ width: 76, height: 76, borderRadius: '50%', background: '#EAF2FF', color: PRIMARY, display: 'grid', placeItems: 'center' }}>
-                <Store size={34} strokeWidth={2.2} />
-              </div>
-              <div>
-                <div style={{ fontSize: isMobileViewport ? 24 : 28, fontWeight: 800, color: TEXT, lineHeight: 1.1 }}>Register your business</div>
-                <div style={{ marginTop: 10, maxWidth: 560, fontSize: 15, lineHeight: 1.65, color: MUTED }}>
-                  Use this DGFY account to create and manage your business profile. Company registration remains separate from customer login.
+            <section style={{ borderRadius: 24, border: `1px solid ${BORDER}`, background: '#FFFFFF', padding: isMobileViewport ? 20 : 28, display: 'grid', gap: 20, boxShadow: '0 18px 42px rgba(15,23,42,0.05)' }}>
+              <div style={{ display: 'flex', flexDirection: isMobileViewport ? 'column' : 'row', alignItems: isMobileViewport ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div style={{ width: 56, height: 56, borderRadius: 18, background: '#EAF2FF', color: PRIMARY, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                    <Store size={26} strokeWidth={2.2} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: isMobileViewport ? 24 : 26, fontWeight: 800, color: TEXT, lineHeight: 1.1 }}>Your businesses</div>
+                    <div style={{ marginTop: 6, fontSize: 14, lineHeight: 1.55, color: MUTED }}>
+                      Manage companies connected to this DGFY account and accept invitations sent from IMS.
+                    </div>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={onRegisterBusiness}
+                  style={{ minHeight: 44, borderRadius: 14, border: 'none', background: PRIMARY, color: '#FFFFFF', padding: '0 18px', fontSize: 14, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer', width: isMobileViewport ? '100%' : 'auto' }}
+                >
+                  <Store size={16} strokeWidth={2.2} />
+                  Register Your Business
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={onRegisterBusiness}
-                style={{ minHeight: 48, borderRadius: 16, border: 'none', background: PRIMARY, color: '#FFFFFF', padding: '0 22px', fontSize: 15, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer' }}
-              >
-                <Store size={17} strokeWidth={2.2} />
-                Register Your Business
-              </button>
+
+              {businessActionError ? (
+                <div style={{ borderRadius: 14, border: '1px solid #FECACA', background: '#FEF2F2', color: '#991B1B', padding: '10px 12px', fontSize: 13, fontWeight: 700 }}>
+                  {businessActionError}
+                </div>
+              ) : null}
+
+              {pendingInvitations.length > 0 ? (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Pending invitations</div>
+                  {pendingInvitations.map((company) => (
+                    <div key={`pending-${company.membership_id}`} style={{ borderRadius: 18, border: `1px solid ${BORDER}`, background: ACCENT_SURFACE, padding: 16, display: 'flex', flexDirection: isMobileViewport ? 'column' : 'row', alignItems: isMobileViewport ? 'stretch' : 'center', justifyContent: 'space-between', gap: 12 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, overflowWrap: 'anywhere' }}>{company.company_name || 'Company invitation'}</div>
+                        <div style={{ marginTop: 4, fontSize: 13, color: MUTED }}>Role: {prettyStatus(company.role)} · Invitation from IMS</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => startBusinessAction('accept', company)}
+                        disabled={businessActionLoading}
+                        style={{ minHeight: 40, borderRadius: 12, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: TEXT, padding: '0 14px', fontSize: 13, fontWeight: 800, cursor: businessActionLoading ? 'not-allowed' : 'pointer' }}
+                      >
+                        Accept invitation
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {businessStepUpAction ? (
+                <div style={{ borderRadius: 18, border: '1px solid #BFDBFE', background: '#EFF6FF', padding: 16, display: 'grid', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <ShieldCheck size={20} color="#1D4ED8" />
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#1E3A8A' }}>Email security check</div>
+                      <div style={{ marginTop: 3, fontSize: 13, color: '#1D4ED8' }}>{businessOtpSent ? 'Enter the 6-digit code sent to your DGFY email.' : 'Sending security code...'}</div>
+                    </div>
+                  </div>
+                  <input
+                    value={businessEmailOtpCode}
+                    onChange={(event) => setBusinessEmailOtpCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                    inputMode="numeric"
+                    placeholder="000000"
+                    style={{ minHeight: 44, borderRadius: 12, border: '1px solid #93C5FD', background: '#FFFFFF', color: TEXT, padding: '0 12px', fontSize: 16, fontWeight: 800, letterSpacing: '0.18em', outline: 'none', maxWidth: 220 }}
+                  />
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => { setBusinessStepUpAction(null); setBusinessEmailOtpCode(''); setBusinessActionError(''); }}
+                      style={{ minHeight: 40, borderRadius: 12, border: '1px solid #BFDBFE', background: '#FFFFFF', color: '#1E40AF', padding: '0 14px', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={submitBusinessStepUpAction}
+                      disabled={businessActionLoading}
+                      style={{ minHeight: 40, borderRadius: 12, border: 'none', background: '#1D4ED8', color: '#FFFFFF', padding: '0 16px', fontSize: 13, fontWeight: 800, cursor: businessActionLoading ? 'not-allowed' : 'pointer' }}
+                    >
+                      {businessActionLoading ? 'Verifying...' : 'Verify and accept'}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Accepted companies</div>
+                {acceptedCompanies.length > 0 ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+                    {acceptedCompanies.map((company) => (
+                      <div key={`accepted-${company.membership_id}`} style={{ borderRadius: 18, border: `1px solid ${BORDER}`, background: SOFT_SURFACE, padding: 16, display: 'grid', gap: 12 }}>
+                        <div>
+                          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, overflowWrap: 'anywhere' }}>{company.company_name || 'Company'}</div>
+                          <div style={{ marginTop: 4, fontSize: 13, color: MUTED }}>{prettyStatus(company.role)} · {prettyStatus(company.plan)}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => startBusinessAction('switch', company)}
+                          style={{ minHeight: 40, borderRadius: 12, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: TEXT, padding: '0 14px', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}
+                        >
+                          Open in SKUpervisor
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ borderRadius: 18, border: `1px solid ${BORDER}`, background: SOFT_SURFACE, padding: 16, fontSize: 14, lineHeight: 1.55, color: MUTED }}>
+                    No accepted company memberships yet. Register a business or accept an invitation to manage a company from this account.
+                  </div>
+                )}
+              </div>
             </section>
           ) : null}
             </div>

@@ -27,7 +27,12 @@ import {
     validateCloseTerminalShift,
     validateUpdateOnlineOrderStatus,
     validatePosDeviceReceiptPrint,
-    validatePosDeviceDrawerOpen
+    validatePosDeviceDrawerOpen,
+    validateFiscalPrintEvent,
+    validateVoidPosTransaction,
+    validateGenerateESalesReport,
+    validateUpdateESalesReportStatus,
+    validateFiscalTerminalRegistration
 } from '../validators/posValidator.js';
 
 const router = express.Router();
@@ -56,6 +61,14 @@ router.get('/terminal/dashboard/today', checkPermission(PERMISSIONS.POS.actions.
 router.get('/device/status', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.getDeviceStatus);
 router.post('/device/print-receipt', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), validatePosDeviceReceiptPrint, posController.printReceipt);
 router.post('/device/open-drawer', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), validatePosDeviceDrawerOpen, posController.openDeviceDrawer);
+router.post('/transactions/:id/fiscal-print-events', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), validatePosTransactionIdParam, validateFiscalPrintEvent, posController.recordFiscalPrintEvent);
+router.post('/transactions/:id/void', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), validatePosTransactionIdParam, validateVoidPosTransaction, posController.voidTransaction);
+router.get('/fiscal-terminal-registrations', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.listFiscalTerminalRegistrations);
+router.put('/fiscal-terminal-registrations', checkPermission(PERMISSIONS.POS.actions.MANAGE_FISCAL_TERMINALS), validateFiscalTerminalRegistration, posController.upsertFiscalTerminalRegistration);
+router.get('/esales-reports', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.listESalesReports);
+router.post('/esales-reports/generate', checkPermission(PERMISSIONS.POS.actions.MANAGE_ESALES_REPORTS), validateGenerateESalesReport, posController.generateESalesReport);
+router.patch('/esales-reports/:id/status', checkPermission(PERMISSIONS.POS.actions.MANAGE_ESALES_REPORTS), validatePosTransactionIdParam, validateUpdateESalesReportStatus, posController.updateESalesReportStatus);
+router.get('/fiscal-ledger/integrity', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.verifyFiscalEventLedger);
 router.get('/incoming-orders', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateIncomingOnlineOrdersQuery, posController.listIncomingOnlineOrders);
 router.patch('/orders/:id/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateOnlineOrderStatus, posController.updateOnlineOrderStatus);
 router.post('/z-reading/close-day', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), validateCloseDayBody, posController.closeDayZReading);

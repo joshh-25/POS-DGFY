@@ -193,6 +193,8 @@ Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 
 ### POST /auth/login
 Authenticate user and establish a browser session.
 
+Tenant-local login remains selected by the `x-company-token` request header. Standalone POS terminal unlock must first call `POST /api/v1/auth/lookup` for the submitted email and then send `/auth/login` with the resolved company token. The current browser company token may be reused only when it is one of the lookup tenants, or as a temporary fallback when lookup fails because of a network/server outage. Missing email-to-tenant mapping, multiple-tenant ambiguity, lookup rate limiting, and invalid password must remain distinguishable operator outcomes. Lookup rate limiting is scoped by client IP plus normalized email and returns retry metadata so POS can tell the operator when to try again without falling back to stale tenant context.
+
 **Request**
 ```json
 {
@@ -2670,7 +2672,7 @@ Open a terminal shift for cashier operations.
   - `data.replay_outcome` (`processed` or `idempotent_replay`)
   - `data.terminal_identity_policy` with mode/registry context and optional warning metadata
 - Idempotency conflict/blocked outcomes return error payloads with `errors.idempotency.outcome` (`conflict` or `blocked`).
-- Frontend contract: terminal unlock/sign-in must collect user-selected `terminal_id` and forward it to shift/dashboard/checkout flows (UI should not rely on hard-coded terminal identity).
+- Frontend contract: terminal unlock/sign-in must resolve and forward a concrete `terminal_id` to shift/dashboard/checkout flows. The backend still requires `terminal_id` for shift opening. In `warn` registry mode, a first-use tenant with no active registry entry and no stored terminal may resolve `COUNTER-01` as the default terminal identity before storing terminal state. In `enforce` mode, the frontend must block unlock/shift actions until an admin configures an active terminal in Settings > POS Setup > Terminal Registry.
 - Registry policy is mode-driven:
   - `warn`: operation continues with warning reason codes (`TERMINAL_ID_MISSING_WARN`, `TERMINAL_ID_UNREGISTERED_WARN`)
   - `enforce`: operation is denied when registry controls fail (`TERMINAL_REGISTRY_REQUIRED`, `TERMINAL_ID_REQUIRED_FOR_ENFORCED_REGISTRY`, `TERMINAL_ID_NOT_REGISTERED`)
@@ -2908,7 +2910,8 @@ Return tenant system settings for IMS Settings.
 
 **Response Notes**
 - Persisted settings are returned by key from tenant `system_settings`.
-- `store_is_visible.value=true` means the tenant may appear in public DGFY discovery/map feeds and public storefront profile reads once a valid active primary location exists. Enabling it does not create a location pin by itself. `store_is_visible.value=false` hides both the discovery/map listing and the canonical root-handle public profile page (`/:store_tenant_slug`). `/store/:slug` and `/tenant-store/:slug` are compatibility paths only.
+- `store_is_visible.value=true` means the tenant may appear in public DGFY discovery search and public storefront profile reads. A map pin requires a valid active primary location unless `store_has_no_location.value=true`, in which case the storefront remains searchable/profile-readable but is excluded from map pins, embedded profile maps, directions links, and public branch-location responses. `store_is_visible.value=false` hides both discovery and the canonical root-handle public profile page (`/:store_tenant_slug`). `/store/:slug` and `/tenant-store/:slug` are compatibility paths only.
+- `store_has_no_location.value=true` is a reversible merchant setting. It preserves saved IMS tenant locations but public Storefront APIs must treat the storefront as search/profile-only until the setting is turned off and a primary pin is published.
 - `customer_access_modes_enabled` is an additive read-only virtual key, not a persisted tenant setting. It reflects the effective runtime Customer Access Mode enforcement state for the current tenant context.
 - `customer_access_modes_enabled.value=true` means public Storefront Customer Access Mode enforcement is active for the tenant.
 - `customer_access_modes_enabled.value=false` means the global rollback switch is active for the tenant. Operators should treat `CUSTOMER_ACCESS_MODES_ENABLED=false` as rollback-only and use `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` for tenant re-enablement while recovery evidence is gathered.
@@ -3021,6 +3024,7 @@ List publicly discoverable stores for list/grid/map storefront views.
 
 **Search Notes**
 - Tenants with `store_is_visible=false` are excluded from public discovery/map responses and public profile reads. This tenant-level public visibility switch is evaluated before Customer Access Mode; hidden tenants are not exposed as Map Listing Only entries.
+- Tenants with `store_is_visible=true` and `store_has_no_location=true` are included only when the customer expresses search/filter intent. Their discovery/profile coordinates are nullable, `/storefront/discovery/map-pins` excludes them, and clients must not coerce nullable coordinates to `0`.
 - Item-name search includes tenants that have matching catalog items from indexed storefront snapshots.
 - Search matching is index-backed and deterministic. It is not a general fuzzy-search engine; bounded alias expansion is shared between `item_search_snapshot` generation and discovery query matching so common public terms can match equivalent catalog/service wording without making unrelated short strings match.
 - Default item-search behavior is stock-aware (`in_stock_only`) unless caller explicitly requests `include_out_of_stock`.
@@ -3645,7 +3649,7 @@ Track online-store order status for public users.
    - `pos_transactions.vat_amount`
    - `pos_transactions.vat_exempt_sales`
    - `pos_transactions.zero_rated_sales`
-4. Tenant POS receipt/business metadata is stored in `system_settings`:
+4. Tenant POS receipt/business metadata is stored in `system_settings`. Tenant admins can request changes to the receipt/business fields below, but they are first written to `pos_receipt_metadata_pending_changes` and do not become live until platform admin approval:
    - `pos_registered_name`
    - `pos_business_name`
    - `pos_business_style`
@@ -3655,32 +3659,41 @@ Track online-store order status for public users.
    - `pos_ptu_number`
    - `pos_min_number`
    - `pos_accreditation_number`
+   - `pos_receipt_footer_message`
+5. DGFY POS software identity is platform-admin controlled per tenant and is not accepted through tenant settings validators:
    - `pos_software_name`
    - `pos_software_version`
    - `pos_software_serial_number`
-   - `pos_receipt_footer_message`
+   - Fiscal receipt preview and iMin hardware print output include these values when the server receipt contract is `document_type=fiscal_invoice`.
+6. Platform-admin POS metadata operations:
+   - `GET /admin/tenants/:id/pos-metadata` returns current platform-controlled software identity, current receipt metadata, and any pending receipt metadata review.
+   - `PATCH /admin/tenants/:id/pos-metadata` accepts either `software_settings` or `pending_action` (`approve` or `reject`) plus a required `reason` of at least 3 characters.
+   - `GET /admin/tenants/:id/pos-metadata/audit-logs?limit=10` returns `tenant_admin_audit_logs` rows with `action = pos_metadata_update`.
+7. Tenant POS operating settings remain tenant-editable when allowed by normal settings/compliance policy:
    - `pos_discount_profiles` (JSON array of `{name, percentage, active}`)
    - `pos_order_method_fees` (deprecated; retained for historical read compatibility only)
    - `pos_petty_cash_symbol`
    - `pos_petty_cash_amount`
-5. Fiscal invoice checkout can carry buyer fiscal details:
+8. Fiscal invoice checkout can carry buyer fiscal details:
    - `buyer_name`
    - `buyer_tin`
    - `buyer_business_style`
    - `buyer_address`
-6. Fiscal invoice persistence stores a server-owned immutable preparation snapshot:
+   - These buyer fiscal fields are optional for non-fiscal/non-compliant checkout. Non-fiscal checkout persists the fiscal buyer fields as `null`; the tenant schema still must contain the nullable columns so POS reads and order queues do not fail on model selection.
+9. Fiscal invoice persistence stores a server-owned immutable preparation snapshot:
    - `pos_transactions.buyer_tin`
    - `pos_transactions.buyer_business_style`
    - `pos_transactions.buyer_address`
    - `pos_transactions.fiscal_document_template_version`
    - `pos_transactions.fiscal_document_hash`
    - `pos_transactions.fiscal_document_snapshot`
-7. Fiscal lifecycle persistence adds:
+   - fiscal checkout also writes a `checkout_issued` fiscal event when the fiscal event repository is available.
+10. Fiscal lifecycle persistence adds:
    - `pos_transactions.fiscal_lifecycle_state`
    - `pos_transactions.fiscal_reprint_count`
    - `pos_transactions.fiscal_void_event_hash`
    - `pos_transactions.void_reason`
-8. Fiscal terminal registration and event tables:
+11. Fiscal terminal registration and event tables:
    - `pos_fiscal_terminal_registrations`
    - `pos_fiscal_events`
    - `pos_fiscal_print_events`
@@ -4862,7 +4875,15 @@ Public, rate-limited. Verify a `dgfy_password_reset` code and set the new DGFY a
 
 Requires `Authorization: Bearer <dgfy-account-token>`.
 
-Accept a pending company invitation from the DGFY account notification surface. This path does not require an invitation link, company token in the URL, or a tenant-local password setup form. The backend activates the matching tenant-local invitation row from the authenticated DGFY account, copies the DGFY email/phone/password hash into that tenant user, writes the landlord email-to-tenant mapping, and marks the DGFY membership accepted.
+Accept a pending company invitation from the DGFY account notification surface. This path does not require an invitation link, company token in the URL, or a tenant-local password setup form. The backend activates the matching tenant-local invitation row from the authenticated DGFY account, copies the DGFY email/phone/password hash into that tenant user, writes the landlord email-to-tenant mapping, and marks the DGFY membership accepted. The request requires a `dgfy_business_step_up` email OTP code sent to the DGFY account email unless the account has a still-valid recent business step-up.
+
+**Request**
+
+```json
+{
+  "email_otp_code": "123456"
+}
+```
 
 **Response (200)**
 
@@ -4878,11 +4899,74 @@ Accept a pending company invitation from the DGFY account notification surface. 
       "status": "accepted",
       "source": "invite",
       "company": {
-        "name": "Example Foods",
-        "company_token": "tenant-token"
+        "id": "tenant-uuid",
+        "name": "Example Foods"
       }
     }
   }
+}
+```
+
+### GET /dgfy/account/companies
+
+Requires an authenticated DGFY account JWT, `sku_dgfy_session` cookie, or a normal IMS tenant session whose current tenant user is explicitly linked to an accepted `DgfyAccountTenantMembership`.
+
+Return companies connected to the DGFY account. Accepted active memberships are switchable. Pending IMS email invitations are visible but not switchable until accepted. The response does not expose tenant `company_token`.
+
+The IMS tenant-session path is available for the SKUpervisor company switcher after direct IMS login. It resolves the DGFY account only through the accepted membership row for the current `tenant_id` and tenant-local `user_id`; email or mobile matches alone are rejected.
+
+**Response (200)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "accepted_count": 1,
+    "pending_count": 1,
+    "business_step_up": {
+      "verified": false,
+      "verified_at": null,
+      "expires_at": null
+    },
+    "companies": [
+      {
+        "membership_id": 12,
+        "tenant_id": "tenant-uuid",
+        "tenant_user_id": 7,
+        "company_name": "Example Foods",
+        "role": "admin",
+        "source": "founder",
+        "membership_status": "accepted",
+        "tenant_status": "active",
+        "plan": "premium",
+        "accepted_at": "2026-06-16T10:00:00.000Z",
+        "last_selected_at": "2026-06-16T10:15:00.000Z",
+        "is_current": true,
+        "can_switch": true,
+        "requires_action": null
+      }
+    ]
+  }
+}
+```
+
+### POST /dgfy/account/business-step-up/request
+
+Requires an authenticated DGFY account JWT, `sku_dgfy_session` cookie, or a normal IMS tenant session whose current tenant user is explicitly linked to an accepted `DgfyAccountTenantMembership`.
+
+Send a six-digit `dgfy_business_step_up` email OTP to the DGFY account email for business-sensitive actions. This version is email-only and does not use mobile/SMS OTP. A successfully verified business action refreshes a short recent-step-up window; while that window is valid, additional business switching/invitation actions do not require another code.
+
+### POST /dgfy/account/companies/:tenant_id/switch
+
+Requires an authenticated DGFY account JWT, `sku_dgfy_session` cookie, or a normal IMS tenant session whose current tenant user is explicitly linked to an accepted `DgfyAccountTenantMembership`.
+
+Switch into an accepted active company membership after email OTP step-up, or while the account has a still-valid recent business step-up window. The response sets normal SKUpervisor tenant refresh/company cookies and returns the standard tenant access session payload without exposing the refresh token.
+
+**Request**
+
+```json
+{
+  "email_otp_code": "123456"
 }
 ```
 
@@ -5015,6 +5099,10 @@ Front-facing customer account endpoints live under `/api/v1/dgfy/customer`. Exce
 | `POST` | `/dgfy/customer/tracking-recovery/request` | Request a generic tracking recovery response for email/phone lookup |
 | `POST` | `/dgfy/customer/tracking-recovery/verify` | Verify a six-digit recovery code and return matching activity references |
 
+`POST /dgfy/customer/addresses` and `PUT/PATCH /dgfy/customer/addresses/:address_id` accept `label`, `address_line`, optional nullable `latitude`, optional nullable `longitude`, and `is_default`. Latitude must be within `-90..90`, longitude must be within `-180..180`, and coordinates must be supplied or cleared as a pair. Text-only addresses remain valid fallback records and must not be rejected only because coordinates are absent. Coordinate-backed addresses are preferred for delivery checkout because Storefront checkout persists them as nullable `delivery_latitude` and `delivery_longitude` on the online POS transaction.
+
+Storefront checkout keeps account-saved, temporary checkout, recommended store or branch, manual map, current-device, and text-only location states internally distinct while preserving the public checkout payload shape. A delivery checkout is valid when it has readable address text, with or without coordinates. If coordinates are present, POS incoming orders can render address text, coordinate text, and a map-navigation link; if coordinates are absent, POS must render the text address without a broken map link.
+
 `PATCH /dgfy/customer/addresses/:address_id/default` is a transport alias for updating the address with `is_default=true`; it must remain registered before the generic `PATCH /dgfy/customer/addresses/:address_id` route. Storefront checkout and booking forms consume the default saved address for signed-in customers only when the visible customer address field is still empty.
 
 `GET /dgfy/customer/activities` is the canonical customer history endpoint. Activity `type` may be `order`, `service_booking`, `hospitality_booking`, `fnb_order`, `booking`, or `all`; `booking` expands to Services and Hospitality activity. Response cards include `reference`, `store`, `type`, `status`, `payment_status`, `occurred_at`, `total_amount`, `summary_lines`, `allowed_actions`, and `review_targets`.
@@ -5123,6 +5211,13 @@ List all tenant registrations with their status.
       "plan_policy": "registered_tenant_premium_capable",
       "compliance_mode_state": null,
       "compliance_mode_choice_required": true,
+      "admin_compliance_mode_action": {
+        "action": "select_mode",
+        "allowed": true,
+        "label": "Set compliance mode",
+        "helper_text": "Select non-compliant POS access or move the tenant into compliant pending mode.",
+        "options": ["non_compliant", "compliant"]
+      },
       "can_force_non_compliant": false,
       "force_non_compliant_block_reason": "Compliance mode has not been selected yet.",
       "capabilities": {
@@ -5147,6 +5242,7 @@ List all tenant registrations with their status.
 **Eligibility fields (server-computed)**
 - `can_force_non_compliant`: authoritative eligibility flag for admin `POST /admin/tenants/:id/force-non-compliant` action.
 - `force_non_compliant_block_reason`: human-readable reason when force action is blocked.
+- `admin_compliance_mode_action`: authoritative next platform-admin compliance lifecycle action. Supported actions are `select_mode`, `upgrade_to_compliant_pending`, `force_non_compliant`, and `none`. A `compliant` selection or upgrade moves the tenant only to `compliant_pending`; `compliant_active` remains gated by the existing checklist activation flow.
 - Admin UI should treat these fields as source-of-truth instead of recomputing eligibility from local assumptions.
 - `effective_plan`: authoritative plan value to render and use for admin presentation. Pending and active tenants return `premium` even if a historical stored `plan` value is still `standard`.
 - `plan_policy`: explains whether `effective_plan` came from stored metadata (`stored_plan`) or registered-tenant premium capability normalization (`registered_tenant_premium_capable`).
@@ -5163,14 +5259,18 @@ Update platform-admin capability controls for an active tenant.
   "pos_enabled": false,
   "storefront_visible": true,
   "customer_access_mode": "inquiry",
+  "platform_max_customer_access_mode": "transaction",
+  "customer_access_registration_stage": "registered",
   "reason": "Temporarily disable POS while the tenant completes terminal readiness remediation"
 }
 ```
 
 **Validation**
-- At least one of `ims_enabled`, `pos_enabled`, `storefront_visible`, or `customer_access_mode` is required.
+- At least one of `ims_enabled`, `pos_enabled`, `storefront_visible`, `customer_access_mode`, `platform_max_customer_access_mode`, or `customer_access_registration_stage` is required.
 - Boolean fields must be JSON booleans, not strings.
 - `customer_access_mode` must be one of `ghost`, `catalog`, `inquiry`, or `transaction`.
+- `platform_max_customer_access_mode` must be one of `ghost`, `catalog`, `inquiry`, or `transaction`.
+- `customer_access_registration_stage` must be one of `informal`, `partial`, or `registered`.
 - `reason` is required, trimmed, and must be 3-500 characters.
 
 **Response (200)**
@@ -5185,6 +5285,13 @@ Update platform-admin capability controls for an active tenant.
       "pos_enabled": false,
       "storefront_visible": true,
       "customer_access_mode": "inquiry",
+      "requested_customer_access_mode": "inquiry",
+      "effective_customer_access_mode": "inquiry",
+      "max_customer_access_mode": "transaction",
+      "platform_max_customer_access_mode": "transaction",
+      "registration_stage_max_customer_access_mode": "transaction",
+      "registration_stage": "registered",
+      "customer_access_limitation_reason": null,
       "storefront_readiness": {
         "has_active_primary_location": true,
         "has_coordinates": true,
@@ -5201,8 +5308,9 @@ Update platform-admin capability controls for an active tenant.
 
 **Side Effects**
 - Writes tenant-local `system_settings` rows inside one tenant database transaction.
+- `customer_access_registration_stage` updates the tenant onboarding progress legitimacy payload used by the runtime access policy; it does not bypass checkout guards.
 - Persists a landlord `tenant_admin_audit_logs` row with platform-admin actor, request metadata, reason, and before/after capability snapshots.
-- Storefront visibility or access-mode changes refresh `storefront_discovery_index`. If that refresh fails, the backend rolls back the Storefront setting changes and returns an error instead of reporting success.
+- Storefront visibility, access-mode, platform-ceiling, or registration-readiness changes refresh `storefront_discovery_index`. If that refresh fails, the backend rolls back the Storefront setting changes and returns an error instead of reporting success.
 
 ### GET /admin/tenants/:id/capabilities/audit-logs
 List recent platform-admin capability changes for one tenant.
@@ -5418,6 +5526,47 @@ Append immutable compliance audit evidence that an incident has been acknowledge
 
 ### POST /admin/tenants/:id/compliance/security-incidents/:incident_id/resolve
 Append immutable compliance audit evidence that an incident has been resolved.
+
+### POST /admin/tenants/:id/compliance/mode/select
+Platform-admin governed mode selection for tenants whose lifecycle has not been selected.
+
+**Request Body**
+```json
+{
+  "mode_choice": "compliant",
+  "reason": "Tenant requested compliant onboarding",
+  "context": {
+    "ticket": "OPS-432"
+  }
+}
+```
+
+**Behavior**
+- Allowed for tenants with no selected compliance lifecycle or `compliance_mode_choice_required=true`.
+- `mode_choice=non_compliant` sets `non_compliant_active` and enables non-fiscal POS operation.
+- `mode_choice=compliant` sets `compliant_pending`; fiscal issuance remains blocked until normal checklist activation succeeds.
+- Requires platform-admin authentication and a 3-255 character reason.
+- Persists immutable compliance audit event `mode_selection`; the mutation fails closed if the primary audit write is unavailable.
+
+### POST /admin/tenants/:id/compliance/mode/upgrade
+Platform-admin governed upgrade from non-compliant POS mode into compliant pending mode.
+
+**Request Body**
+```json
+{
+  "reason": "Tenant is preparing compliance documents",
+  "context": {
+    "ticket": "OPS-433"
+  }
+}
+```
+
+**Behavior**
+- Allowed only from `non_compliant_active`.
+- Moves the tenant to `compliant_pending`; it does not set `compliant_active`.
+- Fiscal issuance remains gated by `POST /api/v1/compliance/activate` and the existing readiness checklist.
+- Requires platform-admin authentication and a 3-255 character reason.
+- Persists immutable compliance audit event `mode_upgrade`; the mutation fails closed if the primary audit write is unavailable.
 
 ### POST /admin/tenants/:id/force-non-compliant
 Platform-admin governed downgrade to force tenant lifecycle back to `non_compliant_active`.
@@ -5681,7 +5830,8 @@ Persist onboarding progress for a step (idempotent).
 - `bulk_items`
 
 For `primary_location`, the payload may include:
-- `public_storefront_visible` (`boolean`, strict JSON boolean): when `false`, the tenant remains hidden from DGFY discovery/map feeds and the canonical root-handle page (`/:store_tenant_slug`); no public pin is required for onboarding readiness. When `true`, the merchant must save a real active primary location before discovery/profile publication can expose the tenant.
+- `public_storefront_visible` (`boolean`, strict JSON boolean): when `false`, the tenant remains hidden from DGFY discovery/map feeds and the canonical root-handle page (`/:store_tenant_slug`); no public pin is required for onboarding readiness. When `true`, the merchant must either save a real active primary location for map publication or set `store_has_no_location=true` for a searchable/profile-only storefront.
+- `store_has_no_location` (`boolean`, strict JSON boolean): when paired with `public_storefront_visible=true`, the tenant can be searched and opened by slug but public map pins, embedded maps, directions links, and public branch-location responses remain disabled.
 - `business_hours`: optional weekly Storefront business-hours schedule persisted to `storefront_hours`.
 - `location_id`, `name`, and `is_primary_storefront`: metadata for the saved tenant location when public visibility is enabled.
 

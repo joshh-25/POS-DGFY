@@ -86,6 +86,13 @@ describe('tenantProvisioning storefront public visibility defaults', () => {
             && options.replacements.includes('store_is_visible')
         ));
         expect(storeVisibilitySeedCall?.[0]).toContain('setting_value = VALUES(setting_value)');
+        const onboardingProgressSeedCall = Sequelize.prototype.query.mock.calls.find(([, options]) => (
+            Array.isArray(options?.replacements)
+            && options.replacements.includes('tenant_onboarding_progress')
+        ));
+        const onboardingProgress = JSON.parse(onboardingProgressSeedCall?.[1]?.replacements?.[1] || '{}');
+        expect(onboardingProgress.step_payloads.business_classification.legitimacy.registration_status).toBe('registered');
+        expect(onboardingProgress.classification_snapshot.payload.legitimacy.registration_status).toBe('registered');
         expect(mockSyncStorefrontDiscoveryWithReliability).toHaveBeenCalledWith(expect.objectContaining({
             tenantId: 'tenant-bootstrap-test-id',
             source: 'tenant_provisioning_bootstrap'
