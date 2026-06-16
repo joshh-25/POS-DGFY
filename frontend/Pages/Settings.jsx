@@ -360,6 +360,16 @@ const normalizeInventoryDisplayMode = (value) => (
     ? String(value || '').trim().toLowerCase()
     : 'availability'
 );
+const mapCustomerAccessRuntimeSettings = (systemSettings = {}) => ({
+  customerAccessMode: normalizeCustomerAccessMode(systemSettings.customer_access_mode?.value || 'catalog'),
+  customerAccessEffectiveMode: normalizeCustomerAccessMode(systemSettings.effective_customer_access_mode?.value || systemSettings.customer_access_mode?.value || 'catalog'),
+  customerAccessMaxMode: normalizeCustomerAccessMode(systemSettings.max_customer_access_mode?.value || 'transaction'),
+  customerAccessPlatformMaxMode: normalizeCustomerAccessMode(systemSettings.platform_max_customer_access_mode?.value || 'transaction'),
+  customerAccessRegistrationStageMaxMode: normalizeCustomerAccessMode(systemSettings.registration_stage_max_customer_access_mode?.value || 'transaction'),
+  customerAccessLimitationReason: String(systemSettings.customer_access_limitation_reason?.value || ''),
+  customerAccessRegistrationStage: String(systemSettings.customer_access_registration_stage?.value || 'registered').trim().toLowerCase() || 'registered',
+  customerAccessFlagStatus: systemSettings.customer_access_modes_enabled?.value === false ? 'rollback' : 'enabled'
+});
 const getReadableFieldName = (field) => SETTINGS_FIELD_LABELS[field] || field;
 
 const formatValidationErrorDescription = (apiErrors) => {
@@ -919,16 +929,9 @@ export default function Settings() {
           storeIsVisible: systemSettings.store_is_visible?.value === true,
           posOpenStatus: systemSettings.pos_open_status?.value ?? true,
           posWaitTimeMinutes: Number(systemSettings.pos_wait_time_minutes?.value ?? 15) || 15,
-          customerAccessMode: normalizeCustomerAccessMode(systemSettings.customer_access_mode?.value || 'catalog'),
-          customerAccessEffectiveMode: normalizeCustomerAccessMode(systemSettings.effective_customer_access_mode?.value || systemSettings.customer_access_mode?.value || 'catalog'),
-          customerAccessMaxMode: normalizeCustomerAccessMode(systemSettings.max_customer_access_mode?.value || 'transaction', 'transaction'),
-          customerAccessPlatformMaxMode: normalizeCustomerAccessMode(systemSettings.platform_max_customer_access_mode?.value || 'transaction', 'transaction'),
-          customerAccessRegistrationStageMaxMode: normalizeCustomerAccessMode(systemSettings.registration_stage_max_customer_access_mode?.value || 'transaction', 'transaction'),
-          customerAccessLimitationReason: String(systemSettings.customer_access_limitation_reason?.value || ''),
+          ...mapCustomerAccessRuntimeSettings(systemSettings),
           inventoryDisplayMode: normalizeInventoryDisplayMode(systemSettings.inventory_display_mode?.value || 'availability'),
           inventoryLowStockDisplayThreshold: Number(systemSettings.inventory_low_stock_display_threshold?.value ?? 5) || 5,
-          customerAccessRegistrationStage: String(systemSettings.customer_access_registration_stage?.value || 'registered').trim().toLowerCase() || 'registered',
-          customerAccessFlagStatus: systemSettings.customer_access_modes_enabled?.value === false ? 'rollback' : 'enabled',
           storefrontTagline: String(systemSettings.storefront_tagline?.value || ''),
           storefrontAbout: String(systemSettings.storefront_about?.value || ''),
           storefrontPhone: String(systemSettings.storefront_phone?.value || ''),
@@ -1919,15 +1922,19 @@ export default function Settings() {
         });
       }
 
+      const refreshedSettings = await settingsService.getAllSettings({ force: true }).catch(() => null);
+      if (refreshedSettings) {
+        setSettings((current) => ({
+          ...current,
+          ...mapCustomerAccessRuntimeSettings(refreshedSettings),
+          posReceiptMetadataPendingReview: refreshedSettings.pos_receipt_metadata_pending_changes?.value?.status === 'pending_review'
+            ? refreshedSettings.pos_receipt_metadata_pending_changes.value
+            : current.posReceiptMetadataPendingReview
+        }));
+      }
+
       if (Array.isArray(saveResult?.pending_review_keys) && saveResult.pending_review_keys.length > 0) {
         toast.success('Settings saved. Receipt metadata changes are pending platform admin approval.');
-        const refreshedSettings = await settingsService.getAllSettings({ force: true }).catch(() => null);
-        if (refreshedSettings?.pos_receipt_metadata_pending_changes?.value?.status === 'pending_review') {
-          setSettings((current) => ({
-            ...current,
-            posReceiptMetadataPendingReview: refreshedSettings.pos_receipt_metadata_pending_changes.value
-          }));
-        }
       } else {
         toast.success("Settings saved successfully!");
       }

@@ -8,8 +8,8 @@ classification: regulatory
 surfaces: admin-tenants,settings,storefront,compliance
 reason_codes_impacted: ALLOWED,CUSTOMER_ACCESS_MODE_BLOCKED,VALIDATION_FAILED
 policy_version: 2026.06.16
-verification_evidence: npm exec vitest run src/pages/__tests__/TenantManager.capabilities.integration.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx --pool=threads,npm --prefix frontend run build,npm run check:architecture,git diff --check
-rollback_note: Revert the Tenant Manager platform-ceiling selector, tenant Settings request-ceiling copy, tests, and feature-doc update together; backend access-mode enforcement stays unchanged.
+verification_evidence: npm exec vitest run src/pages/__tests__/TenantManager.capabilities.integration.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx --pool=threads,npm --prefix frontend run build,npm --prefix frontend run build:skupervisor,npm --prefix backend test -- --runInBand tests/customerAccessPolicy.test.js tests/settingsUsecases.applicationResult.test.js tests/tenantCapabilitySettings.test.js,npm run check:architecture,git diff --check
+rollback_note: Revert the Tenant Manager platform-ceiling selector, tenant Settings request-ceiling/runtime-refresh copy, tests, and feature-doc update together; backend access-mode enforcement stays unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-06-16T22:40:00+08:00
@@ -30,6 +30,7 @@ This declaration covers the Tenant Manager and tenant Settings UI correction for
 - Tenant Manager keeps the company-requested mode as the only storefront mode-card grid and continues to show requested, effective, platform max, registration max, and limitation copy.
 - Tenant Settings now disables requested modes only above the platform-admin ceiling, so company admins can request Transaction when platform max is Transaction even if registration readiness still caps effective mode to Catalog.
 - Tenant Settings copy now states that checkout follows the effective mode after registration readiness is applied.
+- Tenant Settings refreshes backend-computed customer access metadata after save so the requested mode, effective mode, max allowed mode, registration cap, and limitation reason match public Storefront enforcement instead of leaving stale local optimistic state on screen.
 - Feature documentation now reflects that tenant-requested mode and effective runtime mode are separate decisions.
 
 ## Compliance Preconditions
@@ -52,6 +53,12 @@ Validation performed for this declaration:
    - Result: PASS, architecture guardrails and controller boundaries completed.
 4. `git diff --check`
    - Result: PASS.
+5. `cmd /c npm --prefix backend test -- --runInBand tests/customerAccessPolicy.test.js tests/settingsUsecases.applicationResult.test.js tests/tenantCapabilitySettings.test.js`
+   - Result: PASS, 3 suites / 41 tests.
+6. From `frontend/`, `cmd /c npm exec vitest run src/pages/__tests__/Settings.deepLinking.integration.test.jsx --pool=threads`
+   - Result: PASS, 1 file / 22 tests.
+7. `cmd /c npm --prefix frontend run build:skupervisor`
+   - Result: PASS, Vite production build completed with existing large-chunk warnings.
 
 ## Production Verification
 
