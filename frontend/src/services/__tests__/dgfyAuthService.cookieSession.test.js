@@ -167,6 +167,28 @@ describe('dgfyAuthService cookie session rehydration', () => {
     expect(result.business_step_up.verified).toBe(false);
   });
 
+  it('lists IMS switcher companies through the tenant auth bridge without reading a stale DGFY cookie', async () => {
+    apiGet.mockResolvedValueOnce({
+      data: {
+        data: {
+          companies: [{
+            tenant_id: 'tenant-current-user',
+            company_name: 'Current User Company',
+            can_switch: true
+          }],
+          business_step_up: { verified: false }
+        }
+      }
+    });
+
+    const service = await import('../dgfyAuthService.js');
+    const result = await service.listDgfyAccountCompaniesForTenantSession();
+
+    expect(apiGet).toHaveBeenCalledTimes(1);
+    expect(apiGet).toHaveBeenCalledWith('/dgfy/account/companies', dgfyBusinessBridgeConfig);
+    expect(result.companies[0].company_name).toBe('Current User Company');
+  });
+
   it('keeps DGFY bearer isolation for company switching endpoints when a token is provided', async () => {
     apiGet.mockResolvedValueOnce({
       data: {
@@ -310,6 +332,40 @@ describe('dgfyAuthService cookie session rehydration', () => {
     expect(setBrowserSessionMock).toHaveBeenCalledWith({
       token: 'tenant-token',
       companyToken: 'token-switch-company'
+    });
+  });
+
+  it('switches IMS companies through the tenant auth bridge so stale DGFY cookies cannot choose companies', async () => {
+    apiPost.mockResolvedValueOnce({
+      data: {
+        data: {
+          token: 'tenant-token-current-user',
+          company: {
+            id: 'tenant-current-user',
+            name: 'Current User Company',
+            token: 'token-current-user-company'
+          }
+        }
+      }
+    });
+
+    const service = await import('../dgfyAuthService.js');
+    await service.switchDgfyCompanyForTenantSession({
+      tenantId: 'tenant-current-user',
+      emailOtpCode: '654321'
+    });
+
+    expect(apiPost).toHaveBeenCalledWith('/dgfy/account/companies/tenant-current-user/switch', {
+      email_otp_code: '654321'
+    }, dgfyBusinessBridgeConfig);
+    expect(clearClientSessionMock).toHaveBeenCalledWith(expect.objectContaining({
+      reason: 'company_switch',
+      broadcast: false,
+      redirectTo: null
+    }));
+    expect(setBrowserSessionMock).toHaveBeenCalledWith({
+      token: 'tenant-token-current-user',
+      companyToken: 'token-current-user-company'
     });
   });
 });

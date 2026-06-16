@@ -40,10 +40,10 @@ import { trackOnboardingEvent } from './src/services/onboardingService.js';
 import { getAllSettings } from './src/services/settingsService.js';
 import { buildTenantCapabilityNoticeFromSettings } from './src/utils/tenantCapabilityMessages.js';
 import {
-  acceptDgfyCompanyInvitation,
-  listDgfyAccountCompanies,
-  requestDgfyBusinessStepUp,
-  switchDgfyCompany
+  acceptDgfyCompanyInvitationForTenantSession,
+  listDgfyAccountCompaniesForTenantSession,
+  requestDgfyBusinessStepUpForTenantSession,
+  switchDgfyCompanyForTenantSession
 } from './src/services/dgfyAuthService.js';
 
 const ALL_NAV_ITEMS = [
@@ -107,7 +107,7 @@ const CompanySwitcher = ({ user }) => {
     setLoadingCompanies(true);
     setLoadError('');
     try {
-      const payload = await listDgfyAccountCompanies();
+      const payload = await listDgfyAccountCompaniesForTenantSession();
       setCompanies(Array.isArray(payload?.companies) ? payload.companies : []);
       setBusinessStepUp(payload?.business_step_up || { verified: false });
     } catch (error) {
@@ -125,7 +125,7 @@ const CompanySwitcher = ({ user }) => {
 
   const performCompanyAction = async (target, code = '') => {
     if (target.type === 'switch') {
-      await switchDgfyCompany({
+      await switchDgfyCompanyForTenantSession({
         tenantId: target.company.tenant_id,
         emailOtpCode: code
       });
@@ -134,7 +134,7 @@ const CompanySwitcher = ({ user }) => {
       return;
     }
     if (target.type === 'accept') {
-      await acceptDgfyCompanyInvitation({
+      await acceptDgfyCompanyInvitationForTenantSession({
         membershipId: target.company.membership_id,
         emailOtpCode: code
       });
@@ -164,7 +164,7 @@ const CompanySwitcher = ({ user }) => {
     setOtpSent(false);
     setActionLoading(true);
     try {
-      await requestDgfyBusinessStepUp();
+      await requestDgfyBusinessStepUpForTenantSession();
       setOtpSent(true);
       toast.success('Security code sent to your DGFY email.');
     } catch (error) {

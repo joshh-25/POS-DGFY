@@ -213,11 +213,25 @@ export const requestDgfyBusinessStepUp = async (token = getStoredDgfyToken()) =>
   return response.data.data;
 };
 
+export const requestDgfyBusinessStepUpForTenantSession = async () => {
+  const response = await api.post(
+    '/dgfy/account/business-step-up/request',
+    {},
+    dgfyBusinessRequestConfig('')
+  );
+  return response.data.data;
+};
+
 export const listDgfyAccountCompanies = async (token = getStoredDgfyToken()) => {
   const response = await callDgfyBusinessEndpoint(
     (config) => api.get('/dgfy/account/companies', config),
     token
   );
+  return response.data.data;
+};
+
+export const listDgfyAccountCompaniesForTenantSession = async () => {
+  const response = await api.get('/dgfy/account/companies', dgfyBusinessRequestConfig(''));
   return response.data.data;
 };
 
@@ -234,6 +248,16 @@ export const acceptDgfyCompanyInvitation = async ({
   return response.data.data;
 };
 
+export const acceptDgfyCompanyInvitationForTenantSession = async ({
+  membershipId,
+  emailOtpCode
+} = {}) => {
+  const response = await api.post(`/dgfy/invitations/${membershipId}/accept`, {
+    email_otp_code: emailOtpCode
+  }, dgfyBusinessRequestConfig(''));
+  return response.data.data;
+};
+
 export const switchDgfyCompany = async ({
   tenantId,
   emailOtpCode
@@ -244,6 +268,49 @@ export const switchDgfyCompany = async ({
     }, config),
     token
   );
+  const data = response.data.data;
+  clearClientSession({
+    reason: 'company_switch',
+    broadcast: false,
+    emitAuthEvents: false,
+    redirectTo: null
+  });
+  setBrowserSession({
+    token: data?.token,
+    companyToken: data?.company?.token
+  });
+  if (typeof window !== 'undefined') {
+    const event = typeof CustomEvent === 'function'
+      ? new CustomEvent('auth:tenant-switched', {
+        detail: {
+          tenantId: data?.company?.id || tenantId,
+          companyName: data?.company?.name || ''
+        }
+      })
+      : new Event('auth:tenant-switched');
+    window.dispatchEvent(event);
+    try {
+      const channel = new BroadcastChannel('sku_auth');
+      channel.postMessage({
+        type: 'tenant-switched',
+        tenantId: data?.company?.id || tenantId,
+        companyName: data?.company?.name || ''
+      });
+      channel.close();
+    } catch {
+      // Cross-tab notification is best-effort and carries no secrets.
+    }
+  }
+  return data;
+};
+
+export const switchDgfyCompanyForTenantSession = async ({
+  tenantId,
+  emailOtpCode
+} = {}) => {
+  const response = await api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/switch`, {
+    email_otp_code: emailOtpCode
+  }, dgfyBusinessRequestConfig(''));
   const data = response.data.data;
   clearClientSession({
     reason: 'company_switch',
