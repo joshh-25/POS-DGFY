@@ -53,3 +53,8 @@ Validation performed for this declaration:
 4. `git diff --check`
    - Result: PASS.
 
+## Production Verification
+
+This change is production-deployed at SHA `14de6e0f0d4497d7821e047704a66705b6164f29`. Deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260616_021931.summary.txt` records backend, IMS, POS, Store, public endpoint, tenant-store asset integrity, frontend asset parity, tenant schema sync, permission backfill, Storefront discovery index reconciliation, PM2 reload, and `tenant_index_headroom_strict=0` report mode passing. Remote `HEAD`, `origin/master`, and `.deploy-state/last_deployed_commit` matched the deployed SHA at proof time.
+
+Space Bar production proof after deployment still records requested customer access mode `transaction`, effective customer access mode `catalog`, and checkout disabled because registration stage `informal` allows up to catalog mode. That is expected under ADR 0017; the UI correction clarifies the ceiling model and does not bypass registration readiness.
