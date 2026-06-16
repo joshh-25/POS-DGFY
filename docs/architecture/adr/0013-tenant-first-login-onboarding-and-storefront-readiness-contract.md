@@ -50,6 +50,7 @@ Adopt a tenant-scoped onboarding lifecycle with soft-reminder UX:
 6. Mode-aware starter item contract
 - The bulk item step resolves the tenant workflow mode and presents item type choices from the shared `mode_item_preset` taxonomy.
 - Corrected modes use their existing presets: Food Manufacturing (`raw_material`, `packaging`, `supplies`, `finished_product`), MSME (`product`, `supplies`), Services (`service`, `physical_add_on`, `supplies`), and Food & Beverage (`menu_item`, `ingredient`, `packaged_beverage`, `packaging_supply`).
+- At the F&B onboarding boundary only, starter item input values `product`, `product item`, `product_item`, and `menu_item` normalize to `mode_item_preset=menu_item`; the persisted item remains a normal product row with `category=product` and `product_type=finished_goods`, while Storefront/POS can render it as a restaurant menu item.
 - At the F&B onboarding boundary only, legacy starter item input values `raw material`, `raw_material`, and `ingredient` normalize to `mode_item_preset=ingredient`; the persisted item category remains `raw_material`.
 - Placeholder modes keep conservative default item behavior until their governed taxonomy is promoted.
 - Bulk onboarding rows require only `mode_item_preset`, `name`, and positive `default_sale_price`. `cost_per_unit`, `current_stock`, and item image upload are optional.

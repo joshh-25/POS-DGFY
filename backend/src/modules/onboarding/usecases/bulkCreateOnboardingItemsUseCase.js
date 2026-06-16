@@ -78,8 +78,13 @@ const normalizeOnboardingPresetKey = ({ workflowMode, presetKey }) => {
     .toLowerCase()
     .replace(/\s+/g, '_');
 
-  if (normalizeWorkflowMode(workflowMode) === 'fnb' && ['ingredient', 'raw_material'].includes(normalizedPreset)) {
-    return 'ingredient';
+  if (normalizeWorkflowMode(workflowMode) === 'fnb') {
+    if (['product', 'product_item', 'menu_item'].includes(normalizedPreset)) {
+      return 'menu_item';
+    }
+    if (['ingredient', 'raw_material'].includes(normalizedPreset)) {
+      return 'ingredient';
+    }
   }
 
   return normalizedPreset;

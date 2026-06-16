@@ -130,8 +130,33 @@ const resolvePresetOptions = (workflowMode) => {
   return [fallbackPreset];
 };
 
+const ONBOARDING_CUSTOMER_FACING_PRESETS = Object.freeze({
+  food_manufacturing: ['finished_product'],
+  msme: ['product'],
+  services: ['service', 'physical_add_on'],
+  fnb: ['menu_item', 'packaged_beverage']
+});
+
+const getDefaultOnboardingPreset = (workflowMode) => {
+  const options = resolvePresetOptions(workflowMode);
+  const normalizedMode = normalizeWorkflowMode(workflowMode);
+  const preferredKeys = ONBOARDING_CUSTOMER_FACING_PRESETS[normalizedMode] || [];
+  return options.find((preset) => preferredKeys.includes(preset.key))
+    || getDefaultItemPreset(workflowMode)
+    || options[0]
+    || fallbackPreset;
+};
+
+const getOnboardingPresetLabel = (workflowMode, preset) => {
+  const normalizedMode = normalizeWorkflowMode(workflowMode);
+  if (normalizedMode === 'fnb' && preset?.key === 'menu_item') return 'Product Item';
+  if (normalizedMode === 'food_manufacturing' && preset?.key === 'finished_product') return 'Product Item';
+  if (normalizedMode === 'msme' && preset?.key === 'product') return 'Product Item';
+  return preset?.label || 'Product Item';
+};
+
 const buildEmptyItemRow = (workflowMode) => {
-  const defaultPreset = getDefaultItemPreset(workflowMode) || resolvePresetOptions(workflowMode)[0] || fallbackPreset;
+  const defaultPreset = getDefaultOnboardingPreset(workflowMode);
   return {
     client_row_id: makeRowId(),
     mode_item_preset: defaultPreset.key,
@@ -887,7 +912,7 @@ export default function OnboardingSetupModal({
                         Item type
                         <select className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm" value={row.mode_item_preset} onChange={(event) => updateItemRow(row.client_row_id, { mode_item_preset: event.target.value })} disabled={isCreatedRow(row) || saving}>
                           {presetOptions.map((preset) => (
-                            <option key={preset.key} value={preset.key}>{preset.label}</option>
+                            <option key={preset.key} value={preset.key}>{getOnboardingPresetLabel(normalizedWorkflowMode, preset)}</option>
                           ))}
                         </select>
                       </label>

@@ -274,7 +274,7 @@ describe('OnboardingSetupModal behavior', () => {
 
     expect(screen.getByRole('button', { name: /Complete Onboarding/i }).disabled).toBe(true);
     expect(screen.getByText(/save at least one priced starter item/i)).toBeTruthy();
-    expect(screen.getByRole('option', { name: /Finished Product/i })).toBeTruthy();
+    expect(screen.getByRole('option', { name: /^Product Item$/i })).toBeTruthy();
     await user.type(screen.getByLabelText(/Item name/i), 'Starter Bread');
     await user.type(screen.getByLabelText(/Selling price/i), '25');
     await user.click(screen.getByRole('button', { name: /Add Row/i }));
@@ -283,7 +283,7 @@ describe('OnboardingSetupModal behavior', () => {
     await waitFor(() => {
       expect(mocks.onboardingServiceMock.bulkCreateOnboardingItems).toHaveBeenCalled();
       expect(mocks.onboardingServiceMock.bulkCreateOnboardingItems.mock.calls[0][0].rows).toEqual(expect.arrayContaining([
-        expect.objectContaining({ name: 'Starter Bread', location_id: 5 }),
+        expect.objectContaining({ name: 'Starter Bread', mode_item_preset: 'finished_product', location_id: 5 }),
         expect.objectContaining({ name: '', location_id: 5 })
       ]));
       expect(screen.getByText(/Created\./i)).toBeTruthy();
@@ -300,6 +300,52 @@ describe('OnboardingSetupModal behavior', () => {
         name: '',
         location_id: 5
       }));
+    });
+  });
+
+  it('labels the F&B starter menu preset as a Product Item while submitting menu_item for Storefront visibility', async () => {
+    const user = userEvent.setup();
+    renderModal({
+      workflowMode: 'fnb',
+      onboarding: {
+        ...baseOnboarding,
+        tenant_onboarding_progress: {
+          step_payloads: {
+            brand_assets: { skipped: true },
+            primary_location: {
+              location_id: 5,
+              public_storefront_visible: true
+            }
+          },
+          checklist_snapshot: {
+            required_total: 3,
+            completed_required_count: 2,
+            missing_requirements: ['has_priced_starter_item']
+          }
+        }
+      }
+    });
+
+    await user.click(screen.getByRole('button', { name: /Step 3: Starter Items/i }));
+
+    const itemType = screen.getByLabelText(/Item type/i);
+    expect(itemType.value).toBe('menu_item');
+    expect(screen.getByRole('option', { name: /^Product Item$/i })).toBeTruthy();
+
+    await user.type(screen.getByLabelText(/Item name/i), 'Chicken Rice Bowl');
+    await user.type(screen.getByLabelText(/Selling price/i), '149');
+    await user.click(screen.getByRole('button', { name: /Save Items/i }));
+
+    await waitFor(() => {
+      expect(mocks.onboardingServiceMock.bulkCreateOnboardingItems).toHaveBeenCalledWith({
+        rows: [
+          expect.objectContaining({
+            name: 'Chicken Rice Bowl',
+            mode_item_preset: 'menu_item',
+            default_sale_price: '149'
+          })
+        ]
+      });
     });
   });
 
