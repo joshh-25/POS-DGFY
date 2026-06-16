@@ -26,6 +26,7 @@ import { UomSelect } from '@/components/ui/UomSelect';
 import { createSupplier, getSuppliers } from '@/src/services/supplierService.js';
 import { useLocations } from '@/src/hooks/useLocations.js';
 import StorefrontImageCarousel from '@/components/items/StorefrontImageCarousel';
+import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarousel';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { resolveBusinessModeItemDefaults } from '@/src/features/settings/businessModeTemplates.js';
 import {
@@ -238,6 +239,7 @@ export default function ItemFormModal({
   const [supplierOptions, setSupplierOptions] = useState([]);
   const [loadingSuppliers, setLoadingSuppliers] = useState(false);
   const [showCreateSupplierDialog, setShowCreateSupplierDialog] = useState(false);
+  const [selectedStorefrontImageFiles, setSelectedStorefrontImageFiles] = useState([]);
   const [createSupplierTargetRow, setCreateSupplierTargetRow] = useState(null);
   const [creatingSupplier, setCreatingSupplier] = useState(false);
   const [newSupplierForm, setNewSupplierForm] = useState({
@@ -507,6 +509,7 @@ export default function ItemFormModal({
       setSkuManuallyEdited(Boolean(String(item.sku_code || '').trim()));
       setLastSuggestedSku('');
       setMarginPercent('');
+      setSelectedStorefrontImageFiles([]);
       setTrackServiceCost(initialCategory === 'service' && Number(item.cost_per_unit || 0) > 0);
       if (msmeMode) {
         setMsmeOriginalCategory(item.category || null);
@@ -577,6 +580,7 @@ export default function ItemFormModal({
       setSkuManuallyEdited(false);
       setLastSuggestedSku('');
       setMarginPercent('');
+      setSelectedStorefrontImageFiles([]);
       setTrackServiceCost(false);
       setMsmeOriginalCategory(null);
       setMsmeCategoryTouched(false);
@@ -586,10 +590,24 @@ export default function ItemFormModal({
   // Track dirty state
   useEffect(() => {
     if (initialFormData && !item) {
-      const hasChanged = JSON.stringify(formData) !== JSON.stringify(initialFormData);
+      const hasChanged = JSON.stringify(formData) !== JSON.stringify(initialFormData) || selectedStorefrontImageFiles.length > 0;
       setIsDirty(hasChanged);
     }
-  }, [formData, initialFormData, item]);
+  }, [formData, initialFormData, item, selectedStorefrontImageFiles.length]);
+
+  const handleSelectStorefrontImageFiles = (selectedFiles, existingGalleryCount = 0) => {
+    const remainingSlots = Math.max(STOREFRONT_ITEM_IMAGE_MAX_COUNT - existingGalleryCount - selectedStorefrontImageFiles.length, 0);
+    const files = (Array.isArray(selectedFiles) ? selectedFiles : []).slice(0, remainingSlots);
+    if (selectedFiles.length > files.length) {
+      toast.error(`Only ${remainingSlots} more item image${remainingSlots === 1 ? '' : 's'} can be selected. Galleries are limited to ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images.`);
+    }
+    if (files.length === 0) return;
+    setSelectedStorefrontImageFiles((current) => [...current, ...files].slice(0, STOREFRONT_ITEM_IMAGE_MAX_COUNT));
+  };
+
+  const removeSelectedStorefrontImageFile = (imageIndex) => {
+    setSelectedStorefrontImageFiles((files) => files.filter((_, index) => index !== imageIndex));
+  };
 
   useEffect(() => {
     if (!open || skuManuallyEdited) return;
@@ -1007,11 +1025,13 @@ export default function ItemFormModal({
         ...submitPayload,
         supplier_links: normalizedSupplierLinks,
         supplier_links_dirty: !areSupplierLinksEqual(normalizedSupplierLinks, item?.suppliers || []),
-        storefront_location_availability: storefrontLocationAvailability
+        storefront_location_availability: storefrontLocationAvailability,
+        storefront_image_files: selectedStorefrontImageFiles
       }
       : {
         ...submitPayload,
-        storefront_location_availability: storefrontLocationAvailability
+        storefront_location_availability: storefrontLocationAvailability,
+        storefront_image_files: selectedStorefrontImageFiles
       };
 
     if (isDraft && onSaveDraft && !item) {
@@ -1028,6 +1048,7 @@ export default function ItemFormModal({
       }
     }
     setIsDirty(false);
+    setSelectedStorefrontImageFiles([]);
     onClose();
   };
 
@@ -1536,9 +1557,33 @@ export default function ItemFormModal({
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-slate-500">
-                  Save the item first, then reopen it to complete item image setup.
-                </p>
+                <div className="space-y-3">
+                  <p className="text-sm text-slate-500">
+                    Choose item images now. They will be uploaded after the item is saved.
+                  </p>
+                  <label className="inline-flex cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100">
+                    Choose Item Images
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={(event) => {
+                        handleSelectStorefrontImageFiles(Array.from(event.target.files || []));
+                        event.target.value = '';
+                      }}
+                    />
+                  </label>
+                  <p className="text-xs text-slate-500">
+                    {Math.max(STOREFRONT_ITEM_IMAGE_MAX_COUNT - selectedStorefrontImageFiles.length, 0)} of {STOREFRONT_ITEM_IMAGE_MAX_COUNT} image slots remaining.
+                  </p>
+                  <SelectedItemImageCarousel
+                    files={selectedStorefrontImageFiles}
+                    itemName={formData.name || 'Item'}
+                    disabled={isSaving}
+                    onRemove={removeSelectedStorefrontImageFile}
+                  />
+                </div>
               )}
             </div>
             )}

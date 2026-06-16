@@ -230,8 +230,12 @@ describe('Item/Product wizard contracts', () => {
     const productPosSetupSource = readFrontendFile('Components/products/wizard/POSSetupStep.jsx');
     const itemsPageSource = readFrontendFile('src/features/inventory/pages/ItemsPage.jsx');
     const storefrontImageCarouselSource = readFrontendFile('Components/items/StorefrontImageCarousel.jsx');
+    const selectedImageCarouselSource = readFrontendFile('Components/items/SelectedItemImageCarousel.jsx');
 
     expect(itemFormSource).toContain('Add Item Images');
+    expect(itemFormSource).toContain('Choose Item Images');
+    expect(itemFormSource).toContain('SelectedItemImageCarousel');
+    expect(itemFormSource).toContain('storefront_image_files: selectedStorefrontImageFiles');
     expect(itemFormSource).toContain('Remove All Item Images');
     expect(itemFormSource).toContain('STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5');
     expect(itemFormSource).toContain('parseStorefrontImageGallery');
@@ -246,6 +250,9 @@ describe('Item/Product wizard contracts', () => {
     expect(itemFormSource).toContain('variant="wizard"');
 
     expect(productPosSetupSource).toContain('Add Item Images');
+    expect(productPosSetupSource).toContain('Choose Item Images');
+    expect(productPosSetupSource).toContain('SelectedItemImageCarousel');
+    expect(productPosSetupSource).toContain('storefront_image_files: selectedStorefrontImageFiles');
     expect(productPosSetupSource).toContain('Remove All Item Images');
     expect(productPosSetupSource).toContain('STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5');
     expect(productPosSetupSource).toContain('parseStorefrontImageGallery');
@@ -260,6 +267,9 @@ describe('Item/Product wizard contracts', () => {
     expect(productPosSetupSource).toContain('variant="wizard"');
 
     expect(itemsPageSource).toContain('Item image updated for');
+    expect(itemsPageSource).toContain('storefront_image_files: storefrontImageFiles = []');
+    expect(itemsPageSource).toContain('await handleUploadStorefrontImage(savedItem || editingItem, storefrontImageFiles)');
+    expect(itemsPageSource).toContain('await handleUploadStorefrontImage(savedProduct || editingProduct, storefrontImageFiles)');
     expect(itemsPageSource).toContain('Primary storefront image updated for');
     expect(itemsPageSource).toContain('STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5');
     expect(itemsPageSource).toContain('parseStorefrontImageGallery');
@@ -272,6 +282,9 @@ describe('Item/Product wizard contracts', () => {
     expect(storefrontImageCarouselSource).toContain('aria-label="Previous item image"');
     expect(storefrontImageCarouselSource).toContain('aria-label="Next item image"');
     expect(storefrontImageCarouselSource).toContain('item-carousel-dot');
+    expect(selectedImageCarouselSource).toContain('aria-label="Previous selected item image"');
+    expect(selectedImageCarouselSource).toContain('aria-label="Next selected item image"');
+    expect(selectedImageCarouselSource).toContain('selected-item-carousel-dot');
   });
 
   it('uses mode-aware item taxonomy and filtered UOM options in the item form', () => {

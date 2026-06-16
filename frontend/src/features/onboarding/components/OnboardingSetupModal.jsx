@@ -34,6 +34,7 @@ import {
   createHospitalityRoomType
 } from '../../hospitality/api/hospitalityApi.js';
 import WizardStepNavigator from '../../../components/common/WizardStepNavigator.jsx';
+import SelectedItemImageCarousel from '../../../../Components/items/SelectedItemImageCarousel.jsx';
 
 const WIZARD_STEPS = Object.freeze(['brand_assets', 'primary_location', 'bulk_items']);
 const HOSPITALITY_WIZARD_STEPS = Object.freeze(['brand_assets', 'primary_location', 'hospitality_rooms']);
@@ -47,8 +48,8 @@ const WIZARD_STEP_LABELS = Object.freeze({
     description: 'Public visibility, main location, map pin, and business hours.'
   },
   bulk_items: {
-    name: 'Starter Items',
-    description: 'Create priced starter items and optional Storefront item images.'
+    name: 'Menu Item',
+    description: 'Create a priced menu item and optional Storefront item images.'
   },
   hospitality_rooms: {
     name: 'Starter Rooms',
@@ -107,7 +108,7 @@ const formatRequirementLabel = (key) => {
   const labelMap = {
     store_name_ready: 'Store name available',
     has_primary_storefront_location: 'Primary storefront location set',
-    has_priced_starter_item: 'At least one priced starter item or bookable room'
+    has_priced_starter_item: 'At least one priced menu item or bookable room'
   };
   return labelMap[key] || String(key || '').replace(/_/g, ' ');
 };
@@ -155,7 +156,7 @@ const getDefaultOnboardingPreset = (workflowMode) => {
 const getOnboardingPresetLabel = (workflowMode, preset) => {
   const normalizedMode = normalizeWorkflowMode(workflowMode);
   if (normalizedMode === 'fnb' && preset?.key === 'menu_item') return 'Menu Item';
-  if (normalizedMode === 'food_manufacturing' && preset?.key === 'finished_product') return 'Product Item';
+  if (normalizedMode === 'food_manufacturing' && preset?.key === 'finished_product') return 'Menu Item';
   if (normalizedMode === 'msme' && preset?.key === 'product') return 'Product Item';
   return preset?.label || 'Product Item';
 };
@@ -397,7 +398,7 @@ export default function OnboardingSetupModal({
   const hasCompletionStarterSetup = hasCompletionStarterItem || serverHasPricedStarterItem;
   const completionBlockers = [
     hasCompletionLocation ? null : 'save a primary storefront location',
-    hasCompletionStarterSetup ? null : (isHospitalityMode ? 'save one bookable room type and room' : 'save at least one priced starter item')
+    hasCompletionStarterSetup ? null : (isHospitalityMode ? 'save one bookable room type and room' : 'save one priced menu item')
   ].filter(Boolean);
   const completionDisabled = finishing || saving || completionBlockers.length > 0;
   const locationFieldsDisabled = locationsLoading || publicStorefrontVisible !== true || storeHasNoLocation === true;
@@ -530,6 +531,18 @@ export default function OnboardingSetupModal({
     setItemRows((rows) => rows.length === 1 ? rows : rows.filter((row) => (
       row.client_row_id !== clientRowId || isCreatedRow(row)
     )));
+  };
+
+  const removeItemImageFile = (clientRowId, imageIndex) => {
+    setItemRows((rows) => rows.map((row) => {
+      if (row.client_row_id !== clientRowId || isCreatedRow(row)) return row;
+      const nextFiles = getItemImageFiles(row).filter((_, index) => index !== imageIndex);
+      return {
+        ...row,
+        image_file: nextFiles[0] || null,
+        image_files: nextFiles
+      };
+    }));
   };
 
   const updateHospitalityRoomRow = (clientRowId, patch) => {
@@ -908,7 +921,7 @@ export default function OnboardingSetupModal({
 
           {step === 'bulk_items' && (
             <section className="rounded-lg border border-slate-200 p-4">
-              <h3 className="text-sm font-semibold text-slate-900">3) Starter Items</h3>
+              <h3 className="text-sm font-semibold text-slate-900">3) Menu Item</h3>
               <div className="mt-3 space-y-3">
                 {itemRows.map((row, index) => (
                   <div key={row.client_row_id} className="rounded-md border border-slate-200 bg-slate-50 p-3">
@@ -966,6 +979,12 @@ export default function OnboardingSetupModal({
                       </label>
                       <div className="flex items-end text-xs text-slate-500">Row {index + 1}</div>
                     </div>
+                    <SelectedItemImageCarousel
+                      files={getItemImageFiles(row)}
+                      itemName={row.name || 'Menu item'}
+                      disabled={isCreatedRow(row) || saving}
+                      onRemove={(imageIndex) => removeItemImageFile(row.client_row_id, imageIndex)}
+                    />
                     {row.status === 'created' && <p className="mt-2 text-xs font-semibold text-emerald-700">Created.</p>}
                     {row.status === 'created_with_image_error' && (
                       <div className="mt-2 flex flex-wrap items-center gap-2">

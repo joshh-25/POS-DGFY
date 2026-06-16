@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import OnboardingSetupModal, { OnboardingReminderBanner } from '../components/OnboardingSetupModal.jsx';
 
@@ -168,12 +168,12 @@ describe('OnboardingSetupModal behavior', () => {
       }
     });
 
-    const starterStep = screen.getByRole('button', { name: /Step 3: Starter Items/i });
+    const starterStep = screen.getByRole('button', { name: /Step 3: Menu Item/i });
     expect(starterStep.getAttribute('aria-disabled')).toBeNull();
 
     await user.click(starterStep);
 
-    expect(screen.getByText(/3\) Starter Items/i)).toBeTruthy();
+    expect(screen.getByText(/3\) Menu Item/i)).toBeTruthy();
   });
 
   it('creates a primary storefront location and saves onboarding progress', async () => {
@@ -213,7 +213,7 @@ describe('OnboardingSetupModal behavior', () => {
           })
         })
       });
-      expect(screen.getByText(/3\) Starter Items/i)).toBeTruthy();
+      expect(screen.getByText(/3\) Menu Item/i)).toBeTruthy();
     });
   });
 
@@ -270,11 +270,11 @@ describe('OnboardingSetupModal behavior', () => {
     await user.type(screen.getByLabelText(/Latitude/i), '14.5995');
     await user.type(screen.getByLabelText(/Longitude/i), '120.9842');
     await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
-    await screen.findByText(/3\) Starter Items/i);
+    await screen.findByText(/3\) Menu Item/i);
 
     expect(screen.getByRole('button', { name: /Complete Onboarding/i }).disabled).toBe(true);
-    expect(screen.getByText(/save at least one priced starter item/i)).toBeTruthy();
-    expect(screen.getByRole('option', { name: /^Product Item$/i })).toBeTruthy();
+    expect(screen.getByText(/save one priced menu item/i)).toBeTruthy();
+    expect(screen.getByRole('option', { name: /^Menu Item$/i })).toBeTruthy();
     await user.type(screen.getByLabelText(/Item name/i), 'Starter Bread');
     await user.type(screen.getByLabelText(/Selling price/i), '25');
     await user.click(screen.getByRole('button', { name: /Add Row/i }));
@@ -326,7 +326,7 @@ describe('OnboardingSetupModal behavior', () => {
       }
     });
 
-    await user.click(screen.getByRole('button', { name: /Step 3: Starter Items/i }));
+    await user.click(screen.getByRole('button', { name: /Step 3: Menu Item/i }));
 
     const itemType = screen.getByLabelText(/Item type/i);
     expect(itemType.value).toBe('menu_item');
@@ -366,7 +366,7 @@ describe('OnboardingSetupModal behavior', () => {
     await user.type(screen.getByLabelText(/Latitude/i), '14.5995');
     await user.type(screen.getByLabelText(/Longitude/i), '120.9842');
     await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
-    await screen.findByText(/3\) Starter Items/i);
+    await screen.findByText(/3\) Menu Item/i);
 
     await user.type(screen.getByLabelText(/Item name/i), 'Starter Bread');
     await user.type(screen.getByLabelText(/Selling price/i), '25');
@@ -400,7 +400,7 @@ describe('OnboardingSetupModal behavior', () => {
     await user.type(screen.getByLabelText(/Latitude/i), '14.5995');
     await user.type(screen.getByLabelText(/Longitude/i), '120.9842');
     await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
-    await screen.findByText(/3\) Starter Items/i);
+    await screen.findByText(/3\) Menu Item/i);
 
     await user.type(screen.getByLabelText(/Item name/i), 'Starter Bread');
     await user.type(screen.getByLabelText(/Selling price/i), '25');
@@ -408,12 +408,15 @@ describe('OnboardingSetupModal behavior', () => {
       new File([`image-${index}`], `starter-${index}.png`, { type: 'image/png' })
     ));
     await user.upload(screen.getAllByLabelText(/Item image/i)[0], files);
+    const selectedImageCarousel = screen.getByRole('region', { name: /Starter Bread selected image carousel/i });
+    expect(selectedImageCarousel).toBeTruthy();
+    await user.click(within(selectedImageCarousel).getByRole('button', { name: /Remove/i }));
     await user.click(screen.getByRole('button', { name: /Save Items/i }));
 
     await waitFor(() => {
       expect(mocks.toastMock.error).toHaveBeenCalledWith('Only the first 5 item images will be uploaded.');
       expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages).toHaveBeenCalledTimes(1);
-      expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages.mock.calls[0][1]).toHaveLength(5);
+      expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages.mock.calls[0][1]).toHaveLength(4);
     });
   });
 
@@ -436,7 +439,7 @@ describe('OnboardingSetupModal behavior', () => {
           public_storefront_visible: false
         })
       });
-      expect(screen.getByText(/3\) Starter Items/i)).toBeTruthy();
+      expect(screen.getByText(/3\) Menu Item/i)).toBeTruthy();
     });
   });
 
@@ -462,7 +465,7 @@ describe('OnboardingSetupModal behavior', () => {
           store_has_no_location: true
         })
       });
-      expect(screen.getByText(/3\) Starter Items/i)).toBeTruthy();
+      expect(screen.getByText(/3\) Menu Item/i)).toBeTruthy();
     });
   });
 });
