@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-06-11
+last_reviewed: 2026-06-16
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---

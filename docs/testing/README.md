@@ -392,6 +392,38 @@ Manual smoke for the default auto-standard environment:
 5. Confirm manual-login fallback pre-fills email and company token if the follow-up login fails.
 6. Confirm premium/subscription registration still returns `503` with `PAYMENTS_DISABLED` while `PAYMENTS_ENABLED=false`.
 
+## Platform Admin Compliance Lifecycle Smoke
+
+Use these checks when changing Tenant Manager compliance actions, admin tenant lifecycle routes, compliance mode selection, downgrade/upgrade audit behavior, or `admin_compliance_mode_action` enrichment.
+
+Targeted backend suites:
+```bash
+npm --prefix backend test -- --runTestsByPath tests/complianceModeDowngrade.usecase.test.js tests/adminForceNonCompliant.handler.test.js tests/adminForceNonCompliant.transport.test.js tests/rbacRouteCoverage.contract.test.js tests/checkComplianceImpactScript.integration.test.js
+```
+
+Targeted frontend suites:
+```bash
+cd frontend
+npm exec vitest run src/pages/__tests__/TenantManager.forceNonCompliant.integration.test.jsx src/pages/__tests__/TenantManager.capabilities.integration.test.jsx src/pages/__tests__/TenantManager.compliancePartialLoad.integration.test.jsx
+```
+
+Governance gates:
+```bash
+npm run lint:docs
+npm run check:architecture
+npm run check:compliance
+git diff --check
+```
+
+Expected behavior:
+1. Legacy/no-mode tenants show one `Set compliance mode` action.
+2. `non_compliant_active` tenants show `Move to compliant pending`.
+3. `compliant_pending` and eligible `compliant_active` tenants show `Force non-compliant`.
+4. “Make compliant” never sets `compliant_active`; it lands in `compliant_pending`.
+5. Every lifecycle mutation requires an audit reason and fails closed if primary audit persistence is unavailable.
+6. Tenant lookup/cache is invalidated after successful lifecycle mutation.
+7. The modal copy states the operational effect: non-compliant POS uses non-fiscal slips, compliant pending waits for checklist activation, and force non-compliant disables fiscal output.
+
 ## Hosting Profile Smoke Tests
 
 Use these tests whenever changing hosting profile env, Redis/cache behavior, AI export temp storage, auth blacklist failure mode, rate limiting, scheduler locks, health output, or Admin > Hosting.
