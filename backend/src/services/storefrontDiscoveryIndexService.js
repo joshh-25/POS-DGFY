@@ -13,7 +13,10 @@ import {
 } from '../modules/shared/utils/catalogVisibilityPolicy.js';
 import { expandPublicSearchText } from '../modules/shared/utils/publicSearchAliasPolicy.js';
 import { normalizeStorefrontAssetPath, normalizeStorefrontAssetUrl } from '../modules/shared/utils/storefrontAssetPolicy.js';
-import { formatStorefrontBusinessHoursDisplay } from '../modules/shared/utils/storefrontBusinessHours.js';
+import {
+    formatStorefrontBusinessHoursDisplay,
+    getStorefrontBusinessHoursStatus
+} from '../modules/shared/utils/storefrontBusinessHours.js';
 import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '../modules/shared/constants/workflowModes.js';
 import {
     CUSTOMER_ACCESS_SETTING_KEYS,
@@ -663,7 +666,10 @@ const buildTenantSnapshot = async (tenant) => {
         })
         .filter(Boolean) : [];
 
-    const storefrontOpen = parseBoolean(settings.pos_open_status, true) && (storeHasNoLocation || location.is_open !== false);
+    const storefrontHoursStatus = getStorefrontBusinessHoursStatus(settings.storefront_hours);
+    const storefrontOpen = parseBoolean(settings.pos_open_status, true)
+        && (storeHasNoLocation || location.is_open !== false)
+        && storefrontHoursStatus.is_open_now !== false;
     const storefrontWhyChooseUs = parseJsonArray(settings.storefront_why_choose_us)
         .map((entry) => toTrimmedString(entry, 120))
         .filter(Boolean)
