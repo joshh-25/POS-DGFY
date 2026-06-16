@@ -67,6 +67,31 @@ export const dgfyAccountRepository = {
         return DgfyAccount.findByPk(id, options);
     },
 
+    findByAcceptedTenantUserMembership({ tenantId, tenantUserId }, options = {}) {
+        const resolvedTenantId = String(tenantId || '').trim();
+        const resolvedTenantUserId = parsePositiveInt(tenantUserId);
+        if (!resolvedTenantId || !resolvedTenantUserId) return null;
+
+        return DgfyAccount.findOne({
+            where: {
+                is_active: true,
+                deleted_at: null
+            },
+            include: [{
+                model: DgfyAccountTenantMembership,
+                as: 'tenantMemberships',
+                required: true,
+                where: {
+                    tenant_id: resolvedTenantId,
+                    tenant_user_id: resolvedTenantUserId,
+                    status: 'accepted'
+                },
+                attributes: ['id', 'tenant_id', 'tenant_user_id', 'role', 'status', 'source', 'accepted_at']
+            }],
+            ...options
+        });
+    },
+
     create(data, options = {}) {
         return DgfyAccount.create(data, options);
     },

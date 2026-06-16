@@ -22,6 +22,14 @@ const dgfyRequestConfig = (token = getStoredDgfyToken()) => {
     : base;
 };
 
+const dgfyBusinessRequestConfig = (token = getStoredDgfyToken()) => {
+  const normalizedToken = String(token || '').trim();
+  if (normalizedToken) return dgfyRequestConfig(normalizedToken);
+  return {
+    withCredentials: true
+  };
+};
+
 export const getStoredDgfyToken = () => {
   return dgfyToken;
 };
@@ -136,17 +144,17 @@ export const exchangeDgfyHandoff = async (handoffToken, { softFail = false } = {
 };
 
 export const acceptDgfyInvitation = async (membershipId, token = getStoredDgfyToken()) => {
-  const response = await api.post(`/dgfy/invitations/${membershipId}/accept`, {}, dgfyRequestConfig(token));
+  const response = await api.post(`/dgfy/invitations/${membershipId}/accept`, {}, dgfyBusinessRequestConfig(token));
   return response.data.data;
 };
 
 export const requestDgfyBusinessStepUp = async (token = getStoredDgfyToken()) => {
-  const response = await api.post('/dgfy/account/business-step-up/request', {}, dgfyRequestConfig(token));
+  const response = await api.post('/dgfy/account/business-step-up/request', {}, dgfyBusinessRequestConfig(token));
   return response.data.data;
 };
 
 export const listDgfyAccountCompanies = async (token = getStoredDgfyToken()) => {
-  const response = await api.get('/dgfy/account/companies', dgfyRequestConfig(token));
+  const response = await api.get('/dgfy/account/companies', dgfyBusinessRequestConfig(token));
   return response.data.data;
 };
 
@@ -156,7 +164,7 @@ export const acceptDgfyCompanyInvitation = async ({
 } = {}, token = getStoredDgfyToken()) => {
   const response = await api.post(`/dgfy/invitations/${membershipId}/accept`, {
     email_otp_code: emailOtpCode
-  }, dgfyRequestConfig(token));
+  }, dgfyBusinessRequestConfig(token));
   return response.data.data;
 };
 
@@ -166,7 +174,7 @@ export const switchDgfyCompany = async ({
 } = {}, token = getStoredDgfyToken()) => {
   const response = await api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/switch`, {
     email_otp_code: emailOtpCode
-  }, dgfyRequestConfig(token));
+  }, dgfyBusinessRequestConfig(token));
   const data = response.data.data;
   clearClientSession({
     reason: 'company_switch',

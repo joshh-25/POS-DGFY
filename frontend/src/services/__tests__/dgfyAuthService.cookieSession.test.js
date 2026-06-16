@@ -12,6 +12,9 @@ const dgfyCookieConfig = {
   skipTenantAuthHeaders: true,
   withCredentials: true
 };
+const dgfyBusinessBridgeConfig = {
+  withCredentials: true
+};
 
 vi.mock('../api.js', () => ({
   default: {
@@ -120,7 +123,7 @@ describe('dgfyAuthService cookie session rehydration', () => {
     expect(apiPost).toHaveBeenCalledWith('/dgfy/auth/logout', {}, dgfyCookieConfig);
   });
 
-  it('lists switchable DGFY companies without tenant auth headers', async () => {
+  it('lists switchable DGFY companies with tenant auth bridge support when no DGFY bearer token is in memory', async () => {
     apiGet.mockResolvedValueOnce({
       data: {
         data: {
@@ -133,8 +136,29 @@ describe('dgfyAuthService cookie session rehydration', () => {
     const service = await import('../dgfyAuthService.js');
     const result = await service.listDgfyAccountCompanies('');
 
-    expect(apiGet).toHaveBeenCalledWith('/dgfy/account/companies', dgfyCookieConfig);
+    expect(apiGet).toHaveBeenCalledWith('/dgfy/account/companies', dgfyBusinessBridgeConfig);
     expect(result.business_step_up.verified).toBe(false);
+  });
+
+  it('keeps DGFY bearer isolation for company switching endpoints when a token is provided', async () => {
+    apiGet.mockResolvedValueOnce({
+      data: {
+        data: {
+          companies: [],
+          business_step_up: { verified: false }
+        }
+      }
+    });
+
+    const service = await import('../dgfyAuthService.js');
+    await service.listDgfyAccountCompanies('dgfy-access-token');
+
+    expect(apiGet).toHaveBeenCalledWith('/dgfy/account/companies', {
+      headers: {
+        Authorization: 'Bearer dgfy-access-token'
+      },
+      ...dgfyCookieConfig
+    });
   });
 
   it('switches DGFY companies with cookie credentials and resets tenant client state', async () => {
@@ -159,7 +183,7 @@ describe('dgfyAuthService cookie session rehydration', () => {
 
     expect(apiPost).toHaveBeenCalledWith('/dgfy/account/companies/tenant-1/switch', {
       email_otp_code: '123456'
-    }, dgfyCookieConfig);
+    }, dgfyBusinessBridgeConfig);
     expect(clearClientSessionMock).toHaveBeenCalledWith(expect.objectContaining({
       reason: 'company_switch',
       broadcast: false,

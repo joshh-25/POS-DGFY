@@ -18,6 +18,8 @@ Business-sensitive DGFY actions use email-OTP step-up with purpose `dgfy_busines
 
 The switcher list endpoint and invitation-acceptance response must not expose `company_token`. The switch mutation may return the normal IMS tenant-session payload after successful email step-up because the browser still needs the existing tenant session contract. Refresh authority remains HttpOnly cookie based under ADR 0026.
 
+IMS may load the same company-switching contract from a normal tenant session only when the current tenant user resolves through an accepted `DgfyAccountTenantMembership` row for the current tenant and tenant-local user id. This tenant-session bridge is an authorization bridge, not an identity-inference rule: the backend must not resolve the DGFY account from email or mobile matches alone. If no accepted membership link exists, the switcher must fail closed and direct the user to sign in with DGFY or accept an invitation first.
+
 ## Consequences
 
 - IMS Settings > Manage Users remains the source for adding invited company users.
@@ -25,7 +27,8 @@ The switcher list endpoint and invitation-acceptance response must not expose `c
 - Successful switching clears tenant-scoped frontend caches and lands on the IMS Dashboard.
 - POS does not expose full company switching in v1.
 - Switch success/failure and invitation accept success/failure are landlord-audited without secrets.
+- IMS users who entered SKUpervisor through ordinary tenant auth can still see switcher choices when their tenant-local user is explicitly linked to a DGFY account membership. Legacy tenant users without a membership link will see a closed-state message until a DGFY account invitation/founder membership is created and accepted.
 
 ## Validation
 
-Release validation must include DGFY account company-list tests, invitation acceptance tests, switch authorization tests, browser storage guards, and frontend IMS/Storefront account rendering tests.
+Release validation must include DGFY account company-list tests, invitation acceptance tests, switch authorization tests, the IMS tenant-session membership bridge test, browser storage guards, and frontend IMS/Storefront account rendering tests.

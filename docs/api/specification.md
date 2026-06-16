@@ -4909,9 +4909,11 @@ Accept a pending company invitation from the DGFY account notification surface. 
 
 ### GET /dgfy/account/companies
 
-Requires an authenticated DGFY account JWT or `sku_dgfy_session` cookie.
+Requires an authenticated DGFY account JWT, `sku_dgfy_session` cookie, or a normal IMS tenant session whose current tenant user is explicitly linked to an accepted `DgfyAccountTenantMembership`.
 
 Return companies connected to the DGFY account. Accepted active memberships are switchable. Pending IMS email invitations are visible but not switchable until accepted. The response does not expose tenant `company_token`.
+
+The IMS tenant-session path is available for the SKUpervisor company switcher after direct IMS login. It resolves the DGFY account only through the accepted membership row for the current `tenant_id` and tenant-local `user_id`; email or mobile matches alone are rejected.
 
 **Response (200)**
 
@@ -4950,13 +4952,13 @@ Return companies connected to the DGFY account. Accepted active memberships are 
 
 ### POST /dgfy/account/business-step-up/request
 
-Requires an authenticated DGFY account JWT or `sku_dgfy_session` cookie.
+Requires an authenticated DGFY account JWT, `sku_dgfy_session` cookie, or a normal IMS tenant session whose current tenant user is explicitly linked to an accepted `DgfyAccountTenantMembership`.
 
 Send a six-digit `dgfy_business_step_up` email OTP to the DGFY account email for business-sensitive actions. This version is email-only and does not use mobile/SMS OTP. A successfully verified business action refreshes a short recent-step-up window; while that window is valid, additional business switching/invitation actions do not require another code.
 
 ### POST /dgfy/account/companies/:tenant_id/switch
 
-Requires an authenticated DGFY account JWT or `sku_dgfy_session` cookie.
+Requires an authenticated DGFY account JWT, `sku_dgfy_session` cookie, or a normal IMS tenant session whose current tenant user is explicitly linked to an accepted `DgfyAccountTenantMembership`.
 
 Switch into an accepted active company membership after email OTP step-up, or while the account has a still-valid recent business step-up window. The response sets normal SKUpervisor tenant refresh/company cookies and returns the standard tenant access session payload without exposing the refresh token.
 

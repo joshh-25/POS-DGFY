@@ -39,13 +39,13 @@ Required commands:
 2. `npm --prefix backend test -- --runTestsByPath tests/rtr_verification.test.js`
 3. `npm --prefix frontend test -- --run src/services/__tests__/browserTokenStorage.guard.test.js`
 4. For DGFY-to-SKUpervisor tenant-session handoff or tenant refresh routing changes: `npm --prefix backend test -- --runTestsByPath tests/tenantHandler.emailOtp.test.js tests/dgfyTenantSession.transport.test.js tests/browserSessionCookies.test.js`
-5. For DGFY account company switching or invitation Business-tab changes: include backend DGFY company-list/switch/invitation tests, frontend IMS switcher tests, Storefront account Business-tab tests, and browser storage guards proving DGFY, refresh, tenant, and company tokens are not persisted in browser-readable storage.
+5. For DGFY account company switching or invitation Business-tab changes: include backend DGFY company-list/switch/invitation tests, `tests/dgfyAuthMiddleware.test.js` for the IMS tenant-session membership bridge, frontend IMS switcher tests, Storefront account Business-tab tests, and browser storage guards proving DGFY, refresh, tenant, and company tokens are not persisted in browser-readable storage.
 
 Evidence semantics:
 1. Backend cookie tests prove refresh/session authority is issued and cleared with the ADR 0026 cookie attributes.
 2. RTR tests prove refresh authority is cookie-only, CSRF-protected, rotated on use, and replay-rejected.
 3. Frontend storage guards prove privileged tenant, refresh, DGFY, storefront, and admin tokens are not persisted in browser-readable storage.
-4. Tenant-handler and DGFY tenant-session transport tests prove the one-click company-registration handoff sets normal tenant cookies and that `/auth/refresh-token` can recover tenant context from a signed tenant-bound refresh cookie when the companion tenant-context cookie is missing.
+4. Tenant-handler and DGFY tenant-session transport tests prove the one-click company-registration handoff sets normal tenant cookies and that `/auth/refresh-token` can recover tenant context from a signed tenant-bound refresh cookie when the companion tenant-context cookie is missing. `dgfyAuthMiddleware` tests prove direct IMS sessions can load business switching only through an accepted DGFY membership row and cannot infer account ownership from matching email or mobile data.
 5. Frontend API interceptor tests prove protected requests preflight cookie-backed session refresh after hard reload when the in-memory access token is empty.
 6. Backend auth tests prove login and refresh responses include `data.company.token` when tenant context is available, allowing the frontend to restore the company-token header without browser-readable tenant-token persistence.
 7. These gates do not prove all XSS vectors are impossible; CSP and input/output encoding reviews remain required for UI changes.

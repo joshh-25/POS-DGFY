@@ -86,7 +86,7 @@ export const getDgfyMe = async (req, res) => {
 export const listDgfyAccountCompanies = async (req, res) => {
     const result = await listDgfyAccountCompaniesUseCase({
         account: req.dgfyAccount,
-        currentTenantToken: req.headers?.['x-company-token'] || getCookie(req, SESSION_COOKIE_NAMES.tenantContext) || ''
+        currentTenantToken: req.headers?.['x-company-token'] || getCookie(req, SESSION_COOKIE_NAMES.tenantContext) || req.tenant?.company_token || ''
     });
     return sendUseCaseResult(res, result, {
         fallbackErrorMessage: 'DGFY company list lookup failed'
