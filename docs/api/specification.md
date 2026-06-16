@@ -2955,6 +2955,8 @@ Manage tenant-private storefront/POS/service location pins from IMS Settings.
 
 **Auth**: Private (`system:edit_settings`)
 
+IMS location clients should submit the merchant-editable address with the normal location payload. The shared map pin picker may autofill that address from reverse geocoding after click, drag, or geolocation selection, but backend persistence treats the submitted address text and the submitted latitude/longitude as separate fields; reverse-geocode failure must not prevent saving valid coordinates.
+
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/tenant-locations?include_inactive=true` | List active and inactive tenant location pins plus storefront sync metadata |
@@ -5789,7 +5791,7 @@ OTP email sends use `sendEmailOtpCode()` and explicitly set the sender display n
 - Login and current-user bootstrap payloads expose onboarding metadata for tenant master admins.
 - Non-master users do not own onboarding lifecycle and may receive `onboarding: null`.
 - The active wizard has three steps: `brand_assets`, `primary_location`, and `bulk_items`.
-- The `primary_location` wizard step uses the shared IMS MapLibre pin picker. The same picker is used by Settings > Storefront location editing. It uses an inline raster style so the picker is not blocked by a third-party style JSON request; click, drag, browser geolocation, or manual coordinate edits update the same latitude/longitude fields submitted to the tenant-location API.
+- The `primary_location` wizard step uses the shared IMS MapLibre pin picker. The same picker is used by Settings > Storefront location editing. It uses an inline raster style so the picker is not blocked by a third-party style JSON request; click, drag, browser geolocation, or manual coordinate edits update the same latitude/longitude fields submitted to the tenant-location API. Click, drag, and geolocation selections may reverse-geocode into the editable address field; reverse-geocode failure must not block coordinate saving.
 - The `primary_location` step also accepts `payload.business_hours` and persists it to the shared `storefront_hours` setting. The schedule uses `mode="weekly"`, `timezone` such as `Asia/Manila`, and `weekly.{sun..sat}` entries with `enabled`, `open`, and `close` in `HH:mm` format.
 - Stored legacy `classification_snapshot` data may remain in older `tenant_onboarding_progress` records, but the current wizard does not create or require business classification output.
 
@@ -5835,6 +5837,7 @@ For `primary_location`, the payload may include:
 - `store_has_no_location` (`boolean`, strict JSON boolean): when paired with `public_storefront_visible=true`, the tenant can be searched and opened by slug but public map pins, embedded maps, directions links, and public branch-location responses remain disabled.
 - `business_hours`: optional weekly Storefront business-hours schedule persisted to `storefront_hours`.
 - `location_id`, `name`, and `is_primary_storefront`: metadata for the saved tenant location when public visibility is enabled.
+- `address_line`: optional merchant-editable address text. IMS clients may prefill it from reverse geocoding after map pin selection, but latitude/longitude remain the authoritative pin coordinates.
 
 ### POST /onboarding/items/bulk
 Create starter catalog items from the active workflow mode's onboarding presets.
@@ -5864,7 +5867,7 @@ Exact retries are idempotent at the generated-SKU boundary: when a repeated row 
 - `mode_item_preset`, `name`, and positive `default_sale_price` are required per valid row.
 - `cost_per_unit` and `current_stock` are optional and default to `0` when omitted.
 - `location_id` is optional, but should be supplied by the onboarding UI after the primary location step when `current_stock` is greater than `0` so existing location-scoped stock movement rules can record the initial stock.
-- Item images are optional and uploaded after creation through the existing storefront catalog image upload endpoint.
+- Item images are optional and uploaded after creation through the existing storefront catalog image upload endpoint. Onboarding clients may queue up to five selected files, append repeated file selections to the queue, and remove one focused queued image without clearing the rest before upload.
 - The backend derives hidden item defaults such as category, product type, UOM, FIFO behavior, capacity, stock behavior, and a deterministic generated onboarding SKU from the selected preset.
 - Corrected modes validate `mode_item_preset` against the active workflow mode. Placeholder modes use conservative default item behavior until promoted by a governed mode pass.
 - The first-login F&B starter-item UI submits only `mode_item_preset=menu_item` so new merchants create one customer-facing starter menu row first. Ingredients, packaging, and packaged retail rows remain available through normal item management after onboarding.
@@ -5916,7 +5919,7 @@ Finalize onboarding if required readiness checks are satisfied.
 - Returns `422` with `missing_requirements[]` if readiness is incomplete.
 - Missing requirement keys are `store_name_ready`, `has_primary_storefront_location`, and `has_priced_starter_item`.
 - `has_primary_storefront_location` is required only while public map/page visibility is enabled. Hidden storefronts satisfy this readiness check until the merchant opts in.
-- Item image upload and stock quantity never block completion by themselves. The merchant-facing onboarding label is `Item image`; the existing Storefront catalog image upload/storage contract remains unchanged.
+- Item image upload and stock quantity never block completion by themselves. The merchant-facing onboarding label is `Item image`; selected files append up to the five-image cap and can be removed one at a time before upload; the existing Storefront catalog image upload/storage contract remains unchanged.
 - On success, sets onboarding state to `completed` and triggers storefront discovery sync.
 
 ### POST /onboarding/events

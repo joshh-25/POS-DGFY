@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-06-16
+last_reviewed: 2026-06-17
 applies_to: dgfy_customer_account, storefront_account, customer_tracking
 topic: dgfy_customer_account
 ---
@@ -30,7 +30,7 @@ The controlled production mutation UAT passed on June 13, 2026 with dedicated QA
 
 The UAT ratings recorded by the gate are DGFY account UI shell `9.2`, DGFY signup/business registration `9.2`, e-commerce Storefront checkout `9.2`, POS order/inventory flow `9.2`, admin/payment/capability operations `9.1`, and production readiness `9.2`. The QA tenant, item, location, order, and account records are retained for audit cleanup and must not be treated as customer/operator data.
 
-The DGFY multi-company switching and email-only business step-up rollout was production-deployed at SHA `039f048033577cad1de7470e79a162eabc3e5e75` with deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260616_163311.summary.txt`. The IMS tenant-session membership bridge follow-up is production-deployed at SHA `65545b23f6e667e2417b1299df4cb52f859e9a14` with deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260616_170249.summary.txt`. The deployed contract includes IMS company switching, Storefront account Business / Your Businesses invitation visibility, pending invitation acceptance after `dgfy_business_step_up`, selected-company opening into SKUpervisor, no `company_token` exposure in the new switcher or invitation-acceptance payloads, and direct IMS switcher loading only when the tenant-local user is linked to an accepted DGFY membership. Production migration status reports `up 20260616000001-add-dgfy-company-switching.cjs`; unauthenticated route smoke for `/api/v1/dgfy/account/companies` returned `401`, proving the route is mounted and protected.
+The DGFY multi-company switching and email-only business step-up rollout is included in the latest production runtime SHA `156b7a199e359efe8731e4afbdafccf0b06c8b4a` with deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260617_020652.summary.txt`. The deployed contract includes IMS company switching, Storefront account Business / Your Businesses invitation visibility, pending invitation acceptance after `dgfy_business_step_up`, selected-company opening into SKUpervisor, no `company_token` exposure in the new switcher or invitation-acceptance payloads, direct IMS switcher loading only when the tenant-local user is linked to an accepted DGFY membership, founder/master-admin membership bootstrap from verified ownership evidence, and current-company rendering even when the accepted membership list contains only the active tenant. Production migration status reports `up 20260616000001-add-dgfy-company-switching.cjs`; unauthenticated route smoke for `/api/v1/dgfy/account/companies` returned `401`, proving the route is mounted and protected.
 
 ## Guest Users
 
@@ -77,7 +77,7 @@ IMS exposes a current-company switcher for DGFY-authenticated users with accepte
 
 Verified DGFY accounts can automatically receive accepted founder memberships for legacy companies only when all bootstrap checks pass: landlord email-to-tenant mapping exists, tenant is active, the tenant-local user email matches the verified DGFY email, the tenant-local user is active and not deleted, and the tenant-local user is `is_master_admin=true`. That bootstrap creates the explicit accepted membership before the company appears as switchable. Staff/user invitations remain pending invitations until accepted with email step-up.
 
-The switcher lists accepted companies, pending invitations, and a Register New Company action. Switching requires a `dgfy_business_step_up` email OTP unless the DGFY account has a still-valid recent business step-up, then starts the normal SKUpervisor tenant session. Pending invitations are visible but not switchable until accepted. Company switching never relies on email or phone matching alone, and switcher/invitation payloads do not expose tenant `company_token`.
+The switcher lists accepted companies, pending invitations, and a Register New Company action. It must still show the current accepted company when there is only one membership, because that confirms the active tenant context and keeps registration/invitation affordances in the same surface. Switching requires a `dgfy_business_step_up` email OTP unless the DGFY account has a still-valid recent business step-up, then starts the normal SKUpervisor tenant session. Pending invitations are visible but not switchable until accepted. Company switching never relies on email or phone matching alone, and switcher/invitation payloads do not expose tenant `company_token`.
 
 ## Checkout And Booking Account Actions
 
