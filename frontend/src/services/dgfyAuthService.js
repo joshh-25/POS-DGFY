@@ -56,6 +56,15 @@ const isDgfyCookieAuthRequiredError = (error) => {
 
 const callDgfyBusinessEndpoint = async (requestFn, token = getStoredDgfyToken()) => {
   const normalizedToken = String(token || '').trim();
+  if (!normalizedToken) {
+    try {
+      return await requestFn(dgfyRequestConfig(''));
+    } catch (cookieError) {
+      if (!isDgfyCookieAuthRequiredError(cookieError)) throw cookieError;
+      return requestFn(dgfyBusinessRequestConfig(''));
+    }
+  }
+
   try {
     return await requestFn(dgfyBusinessRequestConfig(normalizedToken));
   } catch (error) {

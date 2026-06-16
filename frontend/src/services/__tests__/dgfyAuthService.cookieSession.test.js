@@ -123,7 +123,7 @@ describe('dgfyAuthService cookie session rehydration', () => {
     expect(apiPost).toHaveBeenCalledWith('/dgfy/auth/logout', {}, dgfyCookieConfig);
   });
 
-  it('lists switchable DGFY companies with tenant auth bridge support when no DGFY bearer token is in memory', async () => {
+  it('lists switchable DGFY companies through the DGFY cookie when no bearer token is in memory', async () => {
     apiGet.mockResolvedValueOnce({
       data: {
         data: {
@@ -136,7 +136,34 @@ describe('dgfyAuthService cookie session rehydration', () => {
     const service = await import('../dgfyAuthService.js');
     const result = await service.listDgfyAccountCompanies('');
 
-    expect(apiGet).toHaveBeenCalledWith('/dgfy/account/companies', dgfyBusinessBridgeConfig);
+    expect(apiGet).toHaveBeenCalledWith('/dgfy/account/companies', dgfyCookieConfig);
+    expect(result.business_step_up.verified).toBe(false);
+  });
+
+  it('falls back to the tenant auth bridge when no DGFY cookie session is available', async () => {
+    apiGet
+      .mockRejectedValueOnce({
+        response: {
+          status: 401,
+          data: {
+            message: 'DGFY account authentication is required.'
+          }
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            companies: [],
+            business_step_up: { verified: false }
+          }
+        }
+      });
+
+    const service = await import('../dgfyAuthService.js');
+    const result = await service.listDgfyAccountCompanies('');
+
+    expect(apiGet).toHaveBeenNthCalledWith(1, '/dgfy/account/companies', dgfyCookieConfig);
+    expect(apiGet).toHaveBeenNthCalledWith(2, '/dgfy/account/companies', dgfyBusinessBridgeConfig);
     expect(result.business_step_up.verified).toBe(false);
   });
 
@@ -203,16 +230,8 @@ describe('dgfyAuthService cookie session rehydration', () => {
     expect(result.companies[0].company_name).toBe('Kate Store');
   });
 
-  it('retries switcher loading through the DGFY cookie when the current IMS user has no membership bridge', async () => {
+  it('uses the DGFY cookie before the tenant membership bridge so accepted companies remain visible from IMS', async () => {
     apiGet
-      .mockRejectedValueOnce({
-        response: {
-          status: 401,
-          data: {
-            message: 'This IMS user is not linked to a DGFY account membership. Sign in with DGFY or accept an invitation first.'
-          }
-        }
-      })
       .mockResolvedValueOnce({
         data: {
           data: {
@@ -229,12 +248,11 @@ describe('dgfyAuthService cookie session rehydration', () => {
     const service = await import('../dgfyAuthService.js');
     const result = await service.listDgfyAccountCompanies('');
 
-    expect(apiGet).toHaveBeenNthCalledWith(1, '/dgfy/account/companies', dgfyBusinessBridgeConfig);
-    expect(apiGet).toHaveBeenNthCalledWith(2, '/dgfy/account/companies', dgfyCookieConfig);
+    expect(apiGet).toHaveBeenCalledWith('/dgfy/account/companies', dgfyCookieConfig);
     expect(result.companies[0].company_name).toBe('Accepted Cafe');
   });
 
-  it('keeps the IMS not-linked error when neither tenant membership nor DGFY cookie can authenticate', async () => {
+  it('keeps the IMS not-linked error when DGFY cookie is missing and the tenant bridge is not linked', async () => {
     const tenantBridgeError = {
       response: {
         status: 401,
@@ -244,7 +262,6 @@ describe('dgfyAuthService cookie session rehydration', () => {
       }
     };
     apiGet
-      .mockRejectedValueOnce(tenantBridgeError)
       .mockRejectedValueOnce({
         response: {
           status: 401,
@@ -252,13 +269,14 @@ describe('dgfyAuthService cookie session rehydration', () => {
             message: 'DGFY account authentication is required.'
           }
         }
-      });
+      })
+      .mockRejectedValueOnce(tenantBridgeError);
 
     const service = await import('../dgfyAuthService.js');
 
     await expect(service.listDgfyAccountCompanies('')).rejects.toBe(tenantBridgeError);
-    expect(apiGet).toHaveBeenNthCalledWith(1, '/dgfy/account/companies', dgfyBusinessBridgeConfig);
-    expect(apiGet).toHaveBeenNthCalledWith(2, '/dgfy/account/companies', dgfyCookieConfig);
+    expect(apiGet).toHaveBeenNthCalledWith(1, '/dgfy/account/companies', dgfyCookieConfig);
+    expect(apiGet).toHaveBeenNthCalledWith(2, '/dgfy/account/companies', dgfyBusinessBridgeConfig);
   });
 
   it('switches DGFY companies with cookie credentials and resets tenant client state', async () => {
@@ -283,7 +301,7 @@ describe('dgfyAuthService cookie session rehydration', () => {
 
     expect(apiPost).toHaveBeenCalledWith('/dgfy/account/companies/tenant-1/switch', {
       email_otp_code: '123456'
-    }, dgfyBusinessBridgeConfig);
+    }, dgfyCookieConfig);
     expect(clearClientSessionMock).toHaveBeenCalledWith(expect.objectContaining({
       reason: 'company_switch',
       broadcast: false,
