@@ -70,6 +70,42 @@ const parseCoordinate = (value) => {
 
 const toFixedCoordinate = (value) => Number(value.toFixed(8));
 
+const formatReverseGeocodedAddress = (payload) => {
+  const address = payload?.address || {};
+  const parts = [
+    address.road || address.pedestrian || address.footway || address.neighbourhood || address.suburb,
+    address.village || address.town || address.city || address.municipality,
+    address.state || address.province || address.region,
+    address.postcode
+  ].map((part) => String(part || '').trim()).filter(Boolean);
+
+  const formatted = parts.length > 0
+    ? parts.join(', ')
+    : String(payload?.display_name || '').trim();
+
+  return formatted || null;
+};
+
+const reverseGeocodeMapPin = async ({ latitude, longitude }, { signal } = {}) => {
+  if (typeof fetch !== 'function') return null;
+  const lat = parseCoordinate(latitude);
+  const lng = parseCoordinate(longitude);
+  if (lat == null || lng == null) return null;
+
+  const params = new URLSearchParams({
+    lat: String(lat),
+    lon: String(lng),
+    format: 'jsonv2',
+    addressdetails: '1'
+  });
+  const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${params.toString()}`, {
+    headers: { Accept: 'application/json' },
+    signal
+  });
+  if (!response.ok) return null;
+  return formatReverseGeocodedAddress(await response.json());
+};
+
 const canResizeMapContainer = (container) => {
   if (!container || container.isConnected === false) return false;
   const rect = container.getBoundingClientRect?.();
@@ -112,6 +148,8 @@ export default function MapPinPicker({
   const pendingCircleDataRef = useRef(null);
   const resizeObserverRef = useRef(null);
   const onChangeRef = useRef(onChange);
+  const reverseGeocodeAbortRef = useRef(null);
+  const reverseGeocodeSequenceRef = useRef(0);
   const loadErrorRef = useRef('');
   const isPinDragModeRef = useRef(false);
   const radiusLayerReadyRef = useRef(false);
@@ -136,6 +174,31 @@ export default function MapPinPicker({
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   useEffect(() => { isPinDragModeRef.current = isPinDragMode; }, [isPinDragMode]);
 
+  const emitPinChange = (pin) => {
+    onChangeRef.current?.(pin);
+    const lat = parseCoordinate(pin?.latitude);
+    const lng = parseCoordinate(pin?.longitude);
+    if (lat == null || lng == null) return;
+
+    reverseGeocodeAbortRef.current?.abort?.();
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    reverseGeocodeAbortRef.current = controller;
+    const sequence = reverseGeocodeSequenceRef.current + 1;
+    reverseGeocodeSequenceRef.current = sequence;
+
+    reverseGeocodeMapPin({ latitude: lat, longitude: lng }, { signal: controller?.signal })
+      .then((addressLine) => {
+        if (!addressLine || reverseGeocodeSequenceRef.current !== sequence) return;
+        onChangeRef.current?.({
+          ...pin,
+          address_line: addressLine
+        });
+      })
+      .catch(() => {
+        // Address autofill is best-effort; coordinates remain the source of truth.
+      });
+  };
+
   const resetViewport = () => {
     mapRef.current?.flyTo({
       center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
@@ -153,7 +216,7 @@ export default function MapPinPicker({
       (position) => {
         const nextLatitude = toFixedCoordinate(position.coords.latitude);
         const nextLongitude = toFixedCoordinate(position.coords.longitude);
-        onChangeRef.current?.({ latitude: nextLatitude, longitude: nextLongitude });
+        emitPinChange({ latitude: nextLatitude, longitude: nextLongitude });
         mapRef.current?.flyTo({ center: [nextLongitude, nextLatitude], zoom: PIN_ZOOM });
         setIsLocating(false);
       },
@@ -245,7 +308,7 @@ export default function MapPinPicker({
     map.on('click', (event) => {
       const lat = toFixedCoordinate(event.lngLat.lat);
       const lng = toFixedCoordinate(event.lngLat.lng);
-      onChangeRef.current?.({ latitude: lat, longitude: lng });
+      emitPinChange({ latitude: lat, longitude: lng });
       // Camera movement handled by the selectedPosition effect via jumpTo
     });
 
@@ -275,6 +338,7 @@ export default function MapPinPicker({
     return () => {
       isCancelled = true;
       clearTimeout(readyTimer);
+      reverseGeocodeAbortRef.current?.abort?.();
       resizeObserverRef.current?.disconnect();
       resizeObserverRef.current = null;
       try {
@@ -343,7 +407,7 @@ export default function MapPinPicker({
           el.innerHTML = buildPinSvg({ highlighted: dragging });
           el.style.cursor = dragging ? 'grab' : 'pointer';
         }
-        onChangeRef.current?.({
+        emitPinChange({
           latitude: toFixedCoordinate(pos.lat),
           longitude: toFixedCoordinate(pos.lng)
         });

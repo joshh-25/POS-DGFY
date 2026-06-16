@@ -1358,11 +1358,13 @@ export default function Settings() {
     });
   };
 
-  const handleLocationPinChange = ({ latitude, longitude }) => {
+  const handleLocationPinChange = ({ latitude, longitude, address_line }) => {
+    const nextAddress = String(address_line || '').trim();
     setLocationForm((prev) => ({
       ...prev,
       latitude: latitude == null ? '' : String(latitude),
-      longitude: longitude == null ? '' : String(longitude)
+      longitude: longitude == null ? '' : String(longitude),
+      ...(nextAddress ? { address_line: nextAddress } : {})
     }));
   };
 

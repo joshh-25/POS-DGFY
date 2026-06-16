@@ -43,7 +43,7 @@ vi.mock('@/src/components/maps/MapPinPicker.jsx', () => ({
   default: ({ onChange }) => (
     <button
       type="button"
-      onClick={() => onChange?.({ latitude: 14.599512, longitude: 120.984246 })}
+      onClick={() => onChange?.({ latitude: 14.599512, longitude: 120.984246, address_line: 'Mock Pin Road, Manila' })}
     >
       Mock MapLibre Pin
     </button>
@@ -53,7 +53,7 @@ vi.mock('../../../components/maps/MapPinPicker.jsx', () => ({
   default: ({ onChange }) => (
     <button
       type="button"
-      onClick={() => onChange?.({ latitude: 14.599512, longitude: 120.984246 })}
+      onClick={() => onChange?.({ latitude: 14.599512, longitude: 120.984246, address_line: 'Mock Pin Road, Manila' })}
     >
       Mock MapLibre Pin
     </button>
@@ -229,6 +229,7 @@ describe('OnboardingSetupModal behavior', () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/Latitude/i).value).toBe('14.599512');
       expect(screen.getByLabelText(/Longitude/i).value).toBe('120.984246');
+      expect(screen.getByLabelText(/Address/i).value).toBe('Mock Pin Road, Manila');
     });
   });
 
@@ -407,14 +408,21 @@ describe('OnboardingSetupModal behavior', () => {
     const files = Array.from({ length: 6 }, (_, index) => (
       new File([`image-${index}`], `starter-${index}.png`, { type: 'image/png' })
     ));
-    await user.upload(screen.getAllByLabelText(/Item image/i)[0], files);
+    await user.upload(screen.getAllByLabelText(/Item image/i)[0], files.slice(0, 2));
     const selectedImageCarousel = screen.getByRole('region', { name: /Starter Bread selected image carousel/i });
     expect(selectedImageCarousel).toBeTruthy();
-    await user.click(within(selectedImageCarousel).getByRole('button', { name: /Remove/i }));
+    expect(within(selectedImageCarousel).getByText(/Showing 1\/2:/i)).toBeTruthy();
+    await user.upload(screen.getAllByLabelText(/Item image/i)[0], files.slice(2));
+    await waitFor(() => {
+      expect(within(selectedImageCarousel).getByText(/Showing 1\/5:/i)).toBeTruthy();
+      expect(within(selectedImageCarousel).getByLabelText(/Selected item image thumbnails/i)).toBeTruthy();
+    });
+    await user.click(within(selectedImageCarousel).getByRole('button', { name: /Next selected item image/i }));
+    await user.click(within(selectedImageCarousel).getByRole('button', { name: /Remove selected item image 2/i }));
     await user.click(screen.getByRole('button', { name: /Save Items/i }));
 
     await waitFor(() => {
-      expect(mocks.toastMock.error).toHaveBeenCalledWith('Only the first 5 item images will be uploaded.');
+      expect(mocks.toastMock.error).toHaveBeenCalledWith('Only 3 more item images can be selected. Galleries are limited to 5 images.');
       expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages).toHaveBeenCalledTimes(1);
       expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages.mock.calls[0][1]).toHaveLength(4);
     });

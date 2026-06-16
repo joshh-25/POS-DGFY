@@ -277,7 +277,11 @@ export default function POSSetupStep({
                   className="hidden"
                   onChange={(event) => {
                     const remainingSlots = STOREFRONT_ITEM_IMAGE_MAX_COUNT - storefrontGallery.length;
-                    const files = Array.from(event.target.files || []).slice(0, Math.max(remainingSlots, 0));
+                    const selectedFiles = Array.from(event.target.files || []);
+                    const files = selectedFiles.slice(0, Math.max(remainingSlots, 0));
+                    if (selectedFiles.length > files.length) {
+                      toast.error(`Only ${Math.max(remainingSlots, 0)} more item image${remainingSlots === 1 ? '' : 's'} can be uploaded. Galleries are limited to ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images.`);
+                    }
                     if (files.length && onUploadStorefrontImage) {
                       onUploadStorefrontImage(productItem, files);
                     }

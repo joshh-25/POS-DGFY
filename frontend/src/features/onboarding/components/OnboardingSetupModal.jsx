@@ -505,15 +505,17 @@ export default function OnboardingSetupModal({
     }
   };
 
-  const handleLocationPinChange = ({ latitude, longitude }) => {
+  const handleLocationPinChange = ({ latitude, longitude, address_line }) => {
     const formatCoordinate = (value) => {
       const numeric = Number(value);
       return Number.isFinite(numeric) ? numeric.toFixed(6) : String(value || '');
     };
+    const nextAddress = String(address_line || '').trim();
     setLocationForm((prev) => ({
       ...prev,
       latitude: formatCoordinate(latitude),
-      longitude: formatCoordinate(longitude)
+      longitude: formatCoordinate(longitude),
+      ...(nextAddress ? { address_line: nextAddress } : {})
     }));
   };
 
@@ -964,14 +966,22 @@ export default function OnboardingSetupModal({
                           className="mt-1 block w-full text-xs"
                           onChange={(event) => {
                             const selectedFiles = Array.from(event.target.files || []);
-                            const files = selectedFiles.slice(0, MAX_ITEM_IMAGE_FILES);
-                            if (selectedFiles.length > MAX_ITEM_IMAGE_FILES) {
-                              toast.error(`Only the first ${MAX_ITEM_IMAGE_FILES} item images will be uploaded.`);
+                            const existingFiles = getItemImageFiles(row);
+                            const remainingSlots = Math.max(MAX_ITEM_IMAGE_FILES - existingFiles.length, 0);
+                            const files = selectedFiles.slice(0, remainingSlots);
+                            if (selectedFiles.length > files.length) {
+                              toast.error(`Only ${remainingSlots} more item image${remainingSlots === 1 ? '' : 's'} can be selected. Galleries are limited to ${MAX_ITEM_IMAGE_FILES} images.`);
                             }
+                            if (files.length === 0) {
+                              event.target.value = '';
+                              return;
+                            }
+                            const nextFiles = [...existingFiles, ...files].slice(0, MAX_ITEM_IMAGE_FILES);
                             updateItemRow(row.client_row_id, {
-                              image_file: files[0] || null,
-                              image_files: files
+                              image_file: nextFiles[0] || null,
+                              image_files: nextFiles
                             });
+                            event.target.value = '';
                           }}
                           disabled={isCreatedRow(row) || saving}
                         />

@@ -285,6 +285,9 @@ describe('Item/Product wizard contracts', () => {
     expect(selectedImageCarouselSource).toContain('aria-label="Previous selected item image"');
     expect(selectedImageCarouselSource).toContain('aria-label="Next selected item image"');
     expect(selectedImageCarouselSource).toContain('selected-item-carousel-dot');
+    expect(selectedImageCarouselSource).toContain('Selected item image thumbnails');
+    expect(selectedImageCarouselSource).toContain('Remove current image');
+    expect(selectedImageCarouselSource).toContain('Focus selected item image');
   });
 
   it('uses mode-aware item taxonomy and filtered UOM options in the item form', () => {

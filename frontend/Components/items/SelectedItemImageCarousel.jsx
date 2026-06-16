@@ -50,7 +50,7 @@ export default function SelectedItemImageCarousel({
 
   return (
     <div
-      className="mt-3 max-w-sm space-y-2"
+      className="mt-3 max-w-md space-y-2"
       role="region"
       aria-roledescription="carousel"
       aria-label={`${itemName} selected image carousel`}
@@ -103,18 +103,50 @@ export default function SelectedItemImageCarousel({
           </>
         )}
       </div>
+      {hasMultipleImages && (
+        <div
+          className="flex gap-2 overflow-x-auto pb-1"
+          aria-label="Selected item image thumbnails"
+        >
+          {previews.map((entry, index) => (
+            <button
+              key={`selected-item-carousel-thumb-${entry.key}`}
+              type="button"
+              aria-label={`Focus selected item image ${index + 1}`}
+              aria-current={index === activeIndex ? 'true' : undefined}
+              className={`h-14 w-16 flex-shrink-0 overflow-hidden rounded-md border bg-white text-[10px] text-slate-500 transition ${index === activeIndex ? 'border-teal-500 ring-2 ring-teal-100' : 'border-slate-200 hover:border-slate-300'}`}
+              onClick={() => setActiveIndex(index)}
+              disabled={disabled}
+            >
+              {entry.url ? (
+                <img
+                  src={entry.url}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  aria-hidden="true"
+                />
+              ) : (
+                <span className="flex h-full items-center justify-center px-1 text-center">
+                  {index + 1}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-[11px] text-slate-500">
-          {activeIndex + 1}/{previews.length} {activeEntry.file?.name || 'selected image'}
+          Showing {activeIndex + 1}/{previews.length}: {activeEntry.file?.name || 'selected image'}
         </span>
         <button
           type="button"
           className="inline-flex items-center gap-1 rounded border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
           onClick={() => onRemove && onRemove(activeIndex)}
           disabled={disabled || !onRemove}
+          aria-label={`Remove selected item image ${activeIndex + 1}`}
         >
           <X className="h-3 w-3" aria-hidden="true" />
-          Remove
+          Remove current image
         </button>
       </div>
     </div>
