@@ -42,14 +42,36 @@ const isInvalidDgfyBusinessSessionError = (error, token) => {
   ].some((fragment) => message.includes(fragment));
 };
 
+const isMissingTenantMembershipBridgeError = (error) => {
+  if (error?.response?.status !== 401) return false;
+  const message = String(error?.response?.data?.message || '').trim().toLowerCase();
+  return message.includes('this ims user is not linked to a dgfy account membership');
+};
+
+const isDgfyCookieAuthRequiredError = (error) => {
+  if (error?.response?.status !== 401) return false;
+  const message = String(error?.response?.data?.message || '').trim().toLowerCase();
+  return message.includes('dgfy account authentication is required');
+};
+
 const callDgfyBusinessEndpoint = async (requestFn, token = getStoredDgfyToken()) => {
   const normalizedToken = String(token || '').trim();
   try {
     return await requestFn(dgfyBusinessRequestConfig(normalizedToken));
   } catch (error) {
-    if (!isInvalidDgfyBusinessSessionError(error, normalizedToken)) throw error;
-    clearDgfySession();
-    return requestFn(dgfyBusinessRequestConfig(''));
+    if (isInvalidDgfyBusinessSessionError(error, normalizedToken)) {
+      clearDgfySession();
+      return requestFn(dgfyBusinessRequestConfig(''));
+    }
+    if (!normalizedToken && isMissingTenantMembershipBridgeError(error)) {
+      try {
+        return await requestFn(dgfyRequestConfig(''));
+      } catch (cookieError) {
+        if (isDgfyCookieAuthRequiredError(cookieError)) throw error;
+        throw cookieError;
+      }
+    }
+    throw error;
   }
 };
 

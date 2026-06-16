@@ -203,6 +203,64 @@ describe('dgfyAuthService cookie session rehydration', () => {
     expect(result.companies[0].company_name).toBe('Kate Store');
   });
 
+  it('retries switcher loading through the DGFY cookie when the current IMS user has no membership bridge', async () => {
+    apiGet
+      .mockRejectedValueOnce({
+        response: {
+          status: 401,
+          data: {
+            message: 'This IMS user is not linked to a DGFY account membership. Sign in with DGFY or accept an invitation first.'
+          }
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            companies: [{
+              tenant_id: 'tenant-accepted',
+              company_name: 'Accepted Cafe',
+              can_switch: true
+            }],
+            business_step_up: { verified: true }
+          }
+        }
+      });
+
+    const service = await import('../dgfyAuthService.js');
+    const result = await service.listDgfyAccountCompanies('');
+
+    expect(apiGet).toHaveBeenNthCalledWith(1, '/dgfy/account/companies', dgfyBusinessBridgeConfig);
+    expect(apiGet).toHaveBeenNthCalledWith(2, '/dgfy/account/companies', dgfyCookieConfig);
+    expect(result.companies[0].company_name).toBe('Accepted Cafe');
+  });
+
+  it('keeps the IMS not-linked error when neither tenant membership nor DGFY cookie can authenticate', async () => {
+    const tenantBridgeError = {
+      response: {
+        status: 401,
+        data: {
+          message: 'This IMS user is not linked to a DGFY account membership. Sign in with DGFY or accept an invitation first.'
+        }
+      }
+    };
+    apiGet
+      .mockRejectedValueOnce(tenantBridgeError)
+      .mockRejectedValueOnce({
+        response: {
+          status: 401,
+          data: {
+            message: 'DGFY account authentication is required.'
+          }
+        }
+      });
+
+    const service = await import('../dgfyAuthService.js');
+
+    await expect(service.listDgfyAccountCompanies('')).rejects.toBe(tenantBridgeError);
+    expect(apiGet).toHaveBeenNthCalledWith(1, '/dgfy/account/companies', dgfyBusinessBridgeConfig);
+    expect(apiGet).toHaveBeenNthCalledWith(2, '/dgfy/account/companies', dgfyCookieConfig);
+  });
+
   it('switches DGFY companies with cookie credentials and resets tenant client state', async () => {
     apiPost.mockResolvedValueOnce({
       data: {
