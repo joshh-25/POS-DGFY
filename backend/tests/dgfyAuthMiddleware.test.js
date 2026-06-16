@@ -94,6 +94,42 @@ describe('authenticateDgfyAccountOrTenantMembership', () => {
     expect(next).toHaveBeenCalledWith();
   });
 
+  it('forces tenant membership auth when the IMS switcher marks the request as tenant_membership even if a DGFY cookie exists', async () => {
+    const req = {
+      headers: {
+        'x-dgfy-auth-mode': 'tenant_membership'
+      },
+      cookies: {
+        sku_dgfy_session: 'stale-dgfy-cookie'
+      },
+      tenant: { id: 'tenant-current' },
+      user: null
+    };
+    const res = createRes();
+    const next = jest.fn();
+    const account = { id: 'dgfy-current-ims', is_active: true, deleted_at: null };
+
+    mockAuthenticate.mockImplementation(async (request, _response, done) => {
+      request.user = { user_id: 77, tenant_id: 'tenant-current' };
+      request.tenant = { id: 'tenant-current' };
+      done();
+    });
+    mockFindByAcceptedTenantUserMembership.mockResolvedValue(account);
+
+    await authenticateDgfyAccountOrTenantMembership(req, res, next);
+
+    expect(mockVerifyToken).not.toHaveBeenCalled();
+    expect(mockFindById).not.toHaveBeenCalled();
+    expect(mockAuthenticate).toHaveBeenCalled();
+    expect(mockFindByAcceptedTenantUserMembership).toHaveBeenCalledWith({
+      tenantId: 'tenant-current',
+      tenantUserId: 77
+    });
+    expect(req.dgfyAccount).toBe(account);
+    expect(req.dgfyAuthSource).toBe('tenant_membership');
+    expect(next).toHaveBeenCalledWith();
+  });
+
   it('treats normal IMS bearer tokens as tenant auth instead of DGFY tokens on mixed routes', async () => {
     const req = {
       headers: {

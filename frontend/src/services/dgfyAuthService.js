@@ -30,6 +30,13 @@ const dgfyBusinessRequestConfig = (token = getStoredDgfyToken()) => {
   };
 };
 
+const dgfyTenantBridgeRequestConfig = () => ({
+  withCredentials: true,
+  headers: {
+    'x-dgfy-auth-mode': 'tenant_membership'
+  }
+});
+
 const isInvalidDgfyBusinessSessionError = (error, token) => {
   if (!String(token || '').trim()) return false;
   if (error?.response?.status !== 401) return false;
@@ -217,7 +224,7 @@ export const requestDgfyBusinessStepUpForTenantSession = async () => {
   const response = await api.post(
     '/dgfy/account/business-step-up/request',
     {},
-    dgfyBusinessRequestConfig('')
+    dgfyTenantBridgeRequestConfig()
   );
   return response.data.data;
 };
@@ -231,7 +238,7 @@ export const listDgfyAccountCompanies = async (token = getStoredDgfyToken()) => 
 };
 
 export const listDgfyAccountCompaniesForTenantSession = async () => {
-  const response = await api.get('/dgfy/account/companies', dgfyBusinessRequestConfig(''));
+  const response = await api.get('/dgfy/account/companies', dgfyTenantBridgeRequestConfig());
   return response.data.data;
 };
 
@@ -254,7 +261,7 @@ export const acceptDgfyCompanyInvitationForTenantSession = async ({
 } = {}) => {
   const response = await api.post(`/dgfy/invitations/${membershipId}/accept`, {
     email_otp_code: emailOtpCode
-  }, dgfyBusinessRequestConfig(''));
+  }, dgfyTenantBridgeRequestConfig());
   return response.data.data;
 };
 
@@ -310,7 +317,7 @@ export const switchDgfyCompanyForTenantSession = async ({
 } = {}) => {
   const response = await api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/switch`, {
     email_otp_code: emailOtpCode
-  }, dgfyBusinessRequestConfig(''));
+  }, dgfyTenantBridgeRequestConfig());
   const data = response.data.data;
   clearClientSession({
     reason: 'company_switch',

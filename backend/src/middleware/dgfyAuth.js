@@ -20,6 +20,10 @@ const getDgfyToken = (req) => {
     return getBearerToken(req) || getDgfyCookieToken(req);
 };
 
+const wantsTenantMembershipBridge = (req) => (
+    String(req.headers?.['x-dgfy-auth-mode'] || '').trim().toLowerCase() === 'tenant_membership'
+);
+
 const attachDgfyAccountFromToken = async (req, token, decodedToken = null) => {
     const decoded = decodedToken || verifyToken(token);
     if (decoded?.token_scope !== 'dgfy' || !decoded?.dgfy_account_id) {
@@ -87,6 +91,10 @@ const authenticateThroughTenantMembership = (req, res, next) => {
 };
 
 export const authenticateDgfyAccountOrTenantMembership = async (req, res, next) => {
+    if (wantsTenantMembershipBridge(req)) {
+        return authenticateThroughTenantMembership(req, res, next);
+    }
+
     const bearerToken = getBearerToken(req);
     if (bearerToken) {
         try {

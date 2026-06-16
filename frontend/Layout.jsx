@@ -39,6 +39,7 @@ import OnboardingSetupModal, { OnboardingReminderBanner } from './src/features/o
 import { trackOnboardingEvent } from './src/services/onboardingService.js';
 import { getAllSettings } from './src/services/settingsService.js';
 import { buildTenantCapabilityNoticeFromSettings } from './src/utils/tenantCapabilityMessages.js';
+import { mergeCurrentCompanyWithMemberships } from './src/utils/companySwitcherRows.js';
 import {
   acceptDgfyCompanyInvitationForTenantSession,
   listDgfyAccountCompaniesForTenantSession,
@@ -88,7 +89,7 @@ const getSwitchErrorMessage = (error, fallback) => (
 const CompanySwitcher = ({ user }) => {
   const [open, setOpen] = useState(false);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
-  const [companies, setCompanies] = useState([]);
+  const [companies, setCompanies] = useState(() => mergeCurrentCompanyWithMemberships(user));
   const [loadError, setLoadError] = useState('');
   const [stepUpTarget, setStepUpTarget] = useState(null);
   const [emailOtpCode, setEmailOtpCode] = useState('');
@@ -108,18 +109,21 @@ const CompanySwitcher = ({ user }) => {
     setLoadError('');
     try {
       const payload = await listDgfyAccountCompaniesForTenantSession();
-      setCompanies(Array.isArray(payload?.companies) ? payload.companies : []);
+      setCompanies(mergeCurrentCompanyWithMemberships(user, payload?.companies));
       setBusinessStepUp(payload?.business_step_up || { verified: false });
     } catch (error) {
-      setCompanies([]);
+      setCompanies(mergeCurrentCompanyWithMemberships(user));
       setBusinessStepUp({ verified: false });
-      setLoadError(getSwitchErrorMessage(error, 'Sign in with your DGFY account to switch companies.'));
+      setLoadError(getSwitchErrorMessage(error, 'Current company loaded. Extra DGFY businesses are unavailable.'));
     } finally {
       setLoadingCompanies(false);
     }
   }, [user]);
 
   useEffect(() => {
+    if (user) {
+      setCompanies((existingCompanies) => mergeCurrentCompanyWithMemberships(user, existingCompanies));
+    }
     loadCompanies();
   }, [loadCompanies]);
 
@@ -234,7 +238,7 @@ const CompanySwitcher = ({ user }) => {
           ) : null}
 
           {!loadingCompanies && !loadError && !hasCompanyRows ? (
-            <p className="rounded-lg bg-slate-50 px-2 py-2 text-xs text-slate-600">No DGFY company memberships yet.</p>
+            <p className="rounded-lg bg-slate-50 px-2 py-2 text-xs text-slate-600">Current company loaded. No extra DGFY company memberships yet.</p>
           ) : null}
 
           <div className="space-y-2">
@@ -249,7 +253,9 @@ const CompanySwitcher = ({ user }) => {
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-semibold text-slate-900">{company.company_name}</p>
                       <p className="text-[11px] text-slate-500">
-                        {isPending ? 'Pending invitation' : `${company.role || 'member'} · ${company.plan || 'plan'}`}
+                        {company.is_current
+                          ? `${company.role || 'member'} · current company`
+                          : (isPending ? 'Pending invitation' : `${company.role || 'member'} · ${company.plan || 'plan'}`)}
                       </p>
                     </div>
                   </div>

@@ -15,6 +15,12 @@ const dgfyCookieConfig = {
 const dgfyBusinessBridgeConfig = {
   withCredentials: true
 };
+const dgfyTenantBridgeOnlyConfig = {
+  withCredentials: true,
+  headers: {
+    'x-dgfy-auth-mode': 'tenant_membership'
+  }
+};
 
 vi.mock('../api.js', () => ({
   default: {
@@ -185,7 +191,7 @@ describe('dgfyAuthService cookie session rehydration', () => {
     const result = await service.listDgfyAccountCompaniesForTenantSession();
 
     expect(apiGet).toHaveBeenCalledTimes(1);
-    expect(apiGet).toHaveBeenCalledWith('/dgfy/account/companies', dgfyBusinessBridgeConfig);
+    expect(apiGet).toHaveBeenCalledWith('/dgfy/account/companies', dgfyTenantBridgeOnlyConfig);
     expect(result.companies[0].company_name).toBe('Current User Company');
   });
 
@@ -357,7 +363,7 @@ describe('dgfyAuthService cookie session rehydration', () => {
 
     expect(apiPost).toHaveBeenCalledWith('/dgfy/account/companies/tenant-current-user/switch', {
       email_otp_code: '654321'
-    }, dgfyBusinessBridgeConfig);
+    }, dgfyTenantBridgeOnlyConfig);
     expect(clearClientSessionMock).toHaveBeenCalledWith(expect.objectContaining({
       reason: 'company_switch',
       broadcast: false,
