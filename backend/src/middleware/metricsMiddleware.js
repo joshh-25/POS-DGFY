@@ -1,4 +1,5 @@
-import { recordHttpRequestMetrics, metricsEnabled } from '../services/metricsService.js';
+import { getStatusClass, resolveSurface } from '../services/observabilityUtils.js';
+import { recordHttpErrorMetrics, recordHttpRequestMetrics, metricsEnabled } from '../services/metricsService.js';
 import { recordBillingRouteOutcome } from '../services/billingRouteAuditService.js';
 
 const normalizeRouteForMetrics = (req) => {
@@ -26,6 +27,14 @@ export const metricsMiddleware = (req, res, next) => {
             statusCode: res.statusCode,
             durationMs
         });
+
+        if (res.statusCode >= 400) {
+            recordHttpErrorMetrics({
+                surface: resolveSurface(req),
+                statusClass: getStatusClass(res.statusCode),
+                errorCode: res.locals?.errorCode || 'unknown'
+            });
+        }
 
         recordBillingRouteOutcome({
             method: req.method,

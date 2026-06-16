@@ -24,6 +24,7 @@ import { testConnection } from './config/database.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { requestContext } from './middleware/requestContext.js';
+import requestOutcomeLogger from './middleware/requestOutcomeLogger.js';
 import { metricsMiddleware } from './middleware/metricsMiddleware.js';
 import logger from './config/logger.js';
 import { generalLimiter, getRateLimiterStoreMode } from './middleware/rateLimiter.js';
@@ -325,6 +326,7 @@ app.use(helmet({
 
 // Attach per-request context metadata (request ID, trace root values).
 app.use(requestContext);
+app.use(requestOutcomeLogger);
 
 // Gzip compression — reduces JSON response sizes by 60-80%
 app.use(compression());

@@ -14,8 +14,17 @@ import {
     resolveSchedulerLockMode,
     resolveTempFileStorageMode
 } from '../config/hostingProfile.js';
+import { metricsEnabled } from './metricsService.js';
+import { isStructuredRequestLoggingEnabled } from './observabilityUtils.js';
 
 const buildUptime = (seconds) => `${Math.floor(seconds)}s`;
+
+const resolveRuntimeSha = () => (
+    process.env.RELEASE_TARGET_SHA
+    || process.env.DEPLOYED_COMMIT
+    || process.env.GIT_SHA
+    || null
+);
 
 export const buildHealthResponse = async ({
     testConnectionFn,
@@ -25,6 +34,7 @@ export const buildHealthResponse = async ({
     runtimeSchemaAuditState = {},
     schemaIndexAuditState = {},
     billingFunnelAuditState = {},
+    runtimeSha = resolveRuntimeSha(),
     environment = process.env.NODE_ENV || 'development',
     timestamp = new Date().toISOString(),
     uptimeSeconds = process.uptime()
@@ -50,7 +60,18 @@ export const buildHealthResponse = async ({
             },
             runtimeSchema: getRuntimeSchemaHealthService(runtimeSchemaAuditState),
             schemaIndexes: getSchemaIndexHealthService(schemaIndexAuditState),
-            billingFunnelTelemetry: getBillingFunnelTelemetryHealthService(billingFunnelAuditState)
+            billingFunnelTelemetry: getBillingFunnelTelemetryHealthService(billingFunnelAuditState),
+            observability: {
+                status: 'healthy',
+                trace_context_enabled: true,
+                request_id_header: 'x-request-id',
+                trace_id_header: 'x-trace-id',
+                structured_request_logging_enabled: isStructuredRequestLoggingEnabled(),
+                metrics_enabled: metricsEnabled(),
+                runtime_sha: runtimeSha,
+                telemetry_audit_status: billingFunnelAuditState?.status || 'unknown',
+                telemetry_audit_last_checked_at: billingFunnelAuditState?.last_checked_at || null
+            }
         }
     };
 

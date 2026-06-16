@@ -82,8 +82,15 @@ function main() {
     ]),
     'npm --prefix frontend test -- --run <scroll-contract-suite>'
   );
+  addGate(
+    gates,
+    'observability.evidence.report',
+    runCommand(npmCmd, ['run', 'gate:release:observability', '--', '--evidence-dir', evidenceDir]),
+    'npm run gate:release:observability -- --evidence-dir <release-evidence-dir>'
+  );
 
   const verdictFile = path.join('.tmp', 'release-gates', targetSha, 'release_verdict.json');
+  const observabilityEvidenceFile = path.join(evidenceDir, 'observability_evidence.json');
   if (fs.existsSync(verdictFile)) {
     addGate(
       gates,
@@ -107,6 +114,7 @@ function main() {
       local_readiness_file: outputFile,
       release_verdict_file: verdictFile,
       frontend_budget_report_file: frontendBudgetReportFile,
+      observability_evidence_file: observabilityEvidenceFile,
     },
   };
   fs.writeFileSync(outputFile, JSON.stringify(payload, null, 2));
