@@ -303,7 +303,7 @@ describe('OnboardingSetupModal behavior', () => {
     });
   });
 
-  it('labels the F&B starter menu preset as a Product Item while submitting menu_item for Storefront visibility', async () => {
+  it('only offers Menu Item for F&B starter setup while submitting menu_item for Storefront visibility', async () => {
     const user = userEvent.setup();
     renderModal({
       workflowMode: 'fnb',
@@ -330,7 +330,8 @@ describe('OnboardingSetupModal behavior', () => {
 
     const itemType = screen.getByLabelText(/Item type/i);
     expect(itemType.value).toBe('menu_item');
-    expect(screen.getByRole('option', { name: /^Product Item$/i })).toBeTruthy();
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    expect(screen.getByRole('option', { name: /^Menu Item$/i })).toBeTruthy();
 
     await user.type(screen.getByLabelText(/Item name/i), 'Chicken Rice Bowl');
     await user.type(screen.getByLabelText(/Selling price/i), '149');

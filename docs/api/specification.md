@@ -5867,6 +5867,7 @@ Exact retries are idempotent at the generated-SKU boundary: when a repeated row 
 - Item images are optional and uploaded after creation through the existing storefront catalog image upload endpoint.
 - The backend derives hidden item defaults such as category, product type, UOM, FIFO behavior, capacity, stock behavior, and a deterministic generated onboarding SKU from the selected preset.
 - Corrected modes validate `mode_item_preset` against the active workflow mode. Placeholder modes use conservative default item behavior until promoted by a governed mode pass.
+- The first-login F&B starter-item UI submits only `mode_item_preset=menu_item` so new merchants create one customer-facing starter menu row first. Ingredients, packaging, and packaged retail rows remain available through normal item management after onboarding.
 - For F&B onboarding only, `product`, `product item`, and `product_item` are accepted aliases for `mode_item_preset=menu_item`. The created row persists as `category=product`, `product_type=finished_goods`, and `mode_item_preset=menu_item` so customer-facing Storefront/POS surfaces can render it as a menu item without making ingredients publicly sellable by default.
 - Partial save is supported: valid rows are created, invalid rows are returned with row-level `errors`.
 - The frontend must not resubmit rows already returned as `created`. Duplicate `client_row_id` values in one request and generated SKU conflicts return row-level failures instead of creating retry duplicates.

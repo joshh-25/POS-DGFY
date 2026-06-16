@@ -134,22 +134,27 @@ const ONBOARDING_CUSTOMER_FACING_PRESETS = Object.freeze({
   food_manufacturing: ['finished_product'],
   msme: ['product'],
   services: ['service', 'physical_add_on'],
-  fnb: ['menu_item', 'packaged_beverage']
+  fnb: ['menu_item']
 });
 
-const getDefaultOnboardingPreset = (workflowMode) => {
+const resolveOnboardingPresetOptions = (workflowMode) => {
   const options = resolvePresetOptions(workflowMode);
   const normalizedMode = normalizeWorkflowMode(workflowMode);
   const preferredKeys = ONBOARDING_CUSTOMER_FACING_PRESETS[normalizedMode] || [];
-  return options.find((preset) => preferredKeys.includes(preset.key))
+  const preferredOptions = options.filter((preset) => preferredKeys.includes(preset.key));
+  return preferredOptions.length > 0 ? preferredOptions : options;
+};
+
+const getDefaultOnboardingPreset = (workflowMode) => {
+  const options = resolveOnboardingPresetOptions(workflowMode);
+  return options[0]
     || getDefaultItemPreset(workflowMode)
-    || options[0]
     || fallbackPreset;
 };
 
 const getOnboardingPresetLabel = (workflowMode, preset) => {
   const normalizedMode = normalizeWorkflowMode(workflowMode);
-  if (normalizedMode === 'fnb' && preset?.key === 'menu_item') return 'Product Item';
+  if (normalizedMode === 'fnb' && preset?.key === 'menu_item') return 'Menu Item';
   if (normalizedMode === 'food_manufacturing' && preset?.key === 'finished_product') return 'Product Item';
   if (normalizedMode === 'msme' && preset?.key === 'product') return 'Product Item';
   return preset?.label || 'Product Item';
@@ -243,7 +248,7 @@ export default function OnboardingSetupModal({
   const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
   const isHospitalityMode = isHospitalityWorkflowMode(normalizedWorkflowMode);
   const wizardSteps = isHospitalityMode ? HOSPITALITY_WIZARD_STEPS : WIZARD_STEPS;
-  const presetOptions = useMemo(() => resolvePresetOptions(normalizedWorkflowMode), [normalizedWorkflowMode]);
+  const presetOptions = useMemo(() => resolveOnboardingPresetOptions(normalizedWorkflowMode), [normalizedWorkflowMode]);
   const progress = useMemo(() => getProgress(onboarding), [onboarding]);
   const [saving, setSaving] = useState(false);
   const [finishing, setFinishing] = useState(false);
