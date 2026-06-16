@@ -61,6 +61,44 @@ describe('tenant capability settings helpers', () => {
         }));
     });
 
+    it('exposes transaction metadata when registration readiness is registered', () => {
+        const metadata = buildCustomerAccessCapabilityMetadata({
+            customer_access_mode: { value: 'transaction' },
+            platform_max_customer_access_mode: { value: 'transaction' },
+            tenant_onboarding_progress: {
+                value: {
+                    step_payloads: {
+                        business_classification: {
+                            legitimacy: { registration_status: 'registered' }
+                        }
+                    }
+                }
+            }
+        });
+
+        expect(metadata).toEqual(expect.objectContaining({
+            requested_customer_access_mode: 'transaction',
+            effective_customer_access_mode: 'transaction',
+            max_customer_access_mode: 'transaction',
+            platform_max_customer_access_mode: 'transaction',
+            registration_stage_max_customer_access_mode: 'transaction',
+            registration_stage: 'registered',
+            customer_access_limitation_reason: null
+        }));
+        expect(metadata.access_capabilities).toEqual(expect.objectContaining({
+            checkout: true,
+            quote: true
+        }));
+    });
+
+    it('serializes admin registration readiness patches to the governed patch field', () => {
+        expect(normalizeTenantCapabilityPatch({
+            customer_access_registration_stage: 'registered'
+        })).toEqual({
+            customer_access_registration_stage: 'registered'
+        });
+    });
+
     it('serializes admin capability patches to tenant setting keys', () => {
         expect(normalizeTenantCapabilityPatch({
             ims_enabled: false,
@@ -84,6 +122,9 @@ describe('tenant capability settings helpers', () => {
         expect(() => normalizeTenantCapabilityPatch({
             platform_max_customer_access_mode: 'public-chaos'
         })).toThrow(/platform_max_customer_access_mode must be one of/i);
+        expect(() => normalizeTenantCapabilityPatch({
+            customer_access_registration_stage: 'verified'
+        })).toThrow(/customer_access_registration_stage must be one of/i);
     });
 
     it('rejects string booleans instead of silently coercing capability state', () => {

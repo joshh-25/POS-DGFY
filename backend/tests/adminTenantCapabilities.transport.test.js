@@ -116,7 +116,8 @@ describe('tenant capability admin transport contracts', () => {
                 pos_enabled: false,
                 storefront_visible: true,
                 customer_access_mode: 'inquiry',
-                platform_max_customer_access_mode: 'transaction'
+                platform_max_customer_access_mode: 'transaction',
+                customer_access_registration_stage: 'registered'
             });
 
         expect(response.status).toBe(200);
@@ -129,9 +130,25 @@ describe('tenant capability admin transport contracts', () => {
                 pos_enabled: false,
                 storefront_visible: true,
                 customer_access_mode: 'inquiry',
-                platform_max_customer_access_mode: 'transaction'
+                platform_max_customer_access_mode: 'transaction',
+                customer_access_registration_stage: 'registered'
             }
         }));
+    });
+
+    it('rejects unsupported registration readiness stages', async () => {
+        const response = await request(app)
+            .patch('/api/v1/admin/tenants/tenant-1/capabilities')
+            .send({
+                reason: 'Platform reviewed storefront readiness',
+                customer_access_registration_stage: 'verified'
+            });
+
+        expect(response.status).toBe(422);
+        expect(response.body.errors.map((error) => error.field)).toEqual(expect.arrayContaining([
+            'customer_access_registration_stage'
+        ]));
+        expect(mockUpdateTenantCapabilities).not.toHaveBeenCalled();
     });
 
     it('normalizes audit log limit before calling the handler', async () => {

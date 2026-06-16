@@ -62,6 +62,11 @@ const CUSTOMER_ACCESS_MODE_DETAILS = {
     inquiry: 'Catalog plus inquiry/contact CTAs',
     transaction: 'Ordering and booking when ready'
 };
+const CUSTOMER_ACCESS_REGISTRATION_STAGE_OPTIONS = [
+    { value: 'informal', label: 'Informal', detail: 'Catalog maximum; checkout remains capped.' },
+    { value: 'partial', label: 'Partial', detail: 'Inquiry maximum while registration evidence is incomplete.' },
+    { value: 'registered', label: 'Registered', detail: 'Transaction-capable when platform max and company request also allow it.' }
+];
 const CUSTOMER_ACCESS_MODE_RANK = {
     ghost: 0,
     catalog: 1,
@@ -274,6 +279,15 @@ const getCapabilityImpactPreview = (change = {}) => {
             message: mode === 'transaction'
                 ? 'Platform will allow this tenant to become transaction-capable when company requested mode, registration readiness, compliance, payment, stock, and location gates also pass.'
                 : `Platform will cap this tenant at ${getCustomerAccessModeLabel(mode)} even if the company requests a higher customer access mode.`
+        };
+    }
+    if (patch.customer_access_registration_stage) {
+        const stage = String(patch.customer_access_registration_stage || '').trim().toLowerCase();
+        return {
+            title: 'Registration readiness',
+            message: stage === 'registered'
+                ? 'Platform will mark registration readiness as registered. Checkout can become available when company requested mode and platform max are also Online ordering mode.'
+                : `Platform will cap checkout to the ${stage} registration readiness level until reviewed evidence supports registered readiness.`
         };
     }
     if (patch.ims_enabled === true) {
@@ -1394,6 +1408,9 @@ export default function TenantManager() {
                         const selectedPlatformMaxAccessMode = CUSTOMER_ACCESS_MODE_OPTIONS.find(
                             (option) => option.value === capabilities.platform_max_customer_access_mode
                         ) || CUSTOMER_ACCESS_MODE_OPTIONS[3];
+                        const selectedRegistrationStage = CUSTOMER_ACCESS_REGISTRATION_STAGE_OPTIONS.find(
+                            (option) => option.value === capabilities.registration_stage
+                        ) || CUSTOMER_ACCESS_REGISTRATION_STAGE_OPTIONS[0];
                         const effectiveAccessModeLabel = getCustomerAccessModeLabel(capabilities.effective_customer_access_mode || selectedAccessMode.value);
                         const maxAccessModeLabel = getCustomerAccessModeLabel(capabilities.max_customer_access_mode);
                         const platformMaxAccessModeLabel = getCustomerAccessModeLabel(capabilities.platform_max_customer_access_mode);
@@ -1642,6 +1659,35 @@ export default function TenantManager() {
                                                                     ))}
                                                                 </select>
                                                             </div>
+                                                        </div>
+                                                        <div className="mb-3 rounded-lg border border-amber-100 bg-amber-50/70 p-3">
+                                                            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(180px,220px)] lg:items-center">
+                                                                <div>
+                                                                    <div className="text-xs font-semibold uppercase tracking-wide text-amber-800">Registration readiness</div>
+                                                                    <div className="text-xs text-amber-800/80">
+                                                                        Platform-admin evidence review. Registered readiness is required for transaction checkout.
+                                                                    </div>
+                                                                </div>
+                                                                <select
+                                                                    aria-label={`Registration readiness for ${tenant.name}`}
+                                                                    className="h-10 rounded-lg border border-amber-200 bg-white px-3 text-sm font-semibold text-amber-950 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                    value={selectedRegistrationStage.value}
+                                                                    disabled={capabilityDisabled}
+                                                                    onChange={(event) => {
+                                                                        const option = CUSTOMER_ACCESS_REGISTRATION_STAGE_OPTIONS.find((stageOption) => stageOption.value === event.target.value) || CUSTOMER_ACCESS_REGISTRATION_STAGE_OPTIONS[0];
+                                                                        openCapabilityChange(
+                                                                            tenant,
+                                                                            { customer_access_registration_stage: option.value },
+                                                                            `Registration readiness: ${option.label}`
+                                                                        );
+                                                                    }}
+                                                                >
+                                                                    {CUSTOMER_ACCESS_REGISTRATION_STAGE_OPTIONS.map((option) => (
+                                                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                            <p className="mt-2 text-xs text-amber-800/80">{selectedRegistrationStage.detail}</p>
                                                         </div>
                                                         <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Company requested mode</div>
                                                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

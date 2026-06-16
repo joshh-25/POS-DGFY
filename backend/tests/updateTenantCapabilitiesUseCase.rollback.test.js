@@ -107,4 +107,56 @@ describe('update tenant capabilities rollback behavior', () => {
         expect(tenantAdminRepository.createTenantAdminAuditLog).not.toHaveBeenCalled();
         expect(runContexts).toHaveLength(2);
     });
+
+    it('updates registration readiness through onboarding progress and audits the change', async () => {
+        settings.set('tenant_onboarding_progress', JSON.stringify({
+            step_payloads: {
+                business_classification: {
+                    legitimacy: { registration_status: 'informal' }
+                }
+            }
+        }));
+        const tenantAdminRepository = {
+            findTenantById: jest.fn().mockResolvedValue({
+                id: 'tenant-1',
+                status: 'active',
+                company_token: 'token-1',
+                name: 'Tenant 1',
+                db_name: 'tenant_1'
+            }),
+            createTenantAdminAuditLog: jest.fn()
+        };
+        const tenantConnector = {
+            getConnection: jest.fn().mockResolvedValue(tenantSequelize)
+        };
+        const syncStorefrontDiscoveryIndexForTenant = jest.fn().mockResolvedValue(undefined);
+        const useCase = buildUpdateTenantCapabilitiesUseCase({
+            tenantAdminRepository,
+            tenantConnector,
+            syncStorefrontDiscoveryIndexForTenant,
+            logger: { error: jest.fn() }
+        });
+
+        const result = await useCase({
+            id: 'tenant-1',
+            body: {
+                reason: 'Approved registration evidence for online ordering',
+                customer_access_registration_stage: 'registered'
+            },
+            actor: { username: 'platform_admin' }
+        });
+
+        expect(result.success).toBe(true);
+        const progress = JSON.parse(settings.get('tenant_onboarding_progress'));
+        expect(progress.step_payloads.business_classification.legitimacy.registration_status).toBe('registered');
+        expect(progress.classification_snapshot.payload.legitimacy.registration_status).toBe('registered');
+        expect(syncStorefrontDiscoveryIndexForTenant).toHaveBeenCalledWith({ tenantId: 'tenant-1' });
+        expect(tenantAdminRepository.createTenantAdminAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'capability_update',
+            metadata: expect.objectContaining({
+                changed_fields: ['customer_access_registration_stage'],
+                storefront_sync_required: true
+            })
+        }));
+    });
 });

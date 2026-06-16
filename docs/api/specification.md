@@ -5186,14 +5186,18 @@ Update platform-admin capability controls for an active tenant.
   "pos_enabled": false,
   "storefront_visible": true,
   "customer_access_mode": "inquiry",
+  "platform_max_customer_access_mode": "transaction",
+  "customer_access_registration_stage": "registered",
   "reason": "Temporarily disable POS while the tenant completes terminal readiness remediation"
 }
 ```
 
 **Validation**
-- At least one of `ims_enabled`, `pos_enabled`, `storefront_visible`, or `customer_access_mode` is required.
+- At least one of `ims_enabled`, `pos_enabled`, `storefront_visible`, `customer_access_mode`, `platform_max_customer_access_mode`, or `customer_access_registration_stage` is required.
 - Boolean fields must be JSON booleans, not strings.
 - `customer_access_mode` must be one of `ghost`, `catalog`, `inquiry`, or `transaction`.
+- `platform_max_customer_access_mode` must be one of `ghost`, `catalog`, `inquiry`, or `transaction`.
+- `customer_access_registration_stage` must be one of `informal`, `partial`, or `registered`.
 - `reason` is required, trimmed, and must be 3-500 characters.
 
 **Response (200)**
@@ -5208,6 +5212,13 @@ Update platform-admin capability controls for an active tenant.
       "pos_enabled": false,
       "storefront_visible": true,
       "customer_access_mode": "inquiry",
+      "requested_customer_access_mode": "inquiry",
+      "effective_customer_access_mode": "inquiry",
+      "max_customer_access_mode": "transaction",
+      "platform_max_customer_access_mode": "transaction",
+      "registration_stage_max_customer_access_mode": "transaction",
+      "registration_stage": "registered",
+      "customer_access_limitation_reason": null,
       "storefront_readiness": {
         "has_active_primary_location": true,
         "has_coordinates": true,
@@ -5224,8 +5235,9 @@ Update platform-admin capability controls for an active tenant.
 
 **Side Effects**
 - Writes tenant-local `system_settings` rows inside one tenant database transaction.
+- `customer_access_registration_stage` updates the tenant onboarding progress legitimacy payload used by the runtime access policy; it does not bypass checkout guards.
 - Persists a landlord `tenant_admin_audit_logs` row with platform-admin actor, request metadata, reason, and before/after capability snapshots.
-- Storefront visibility or access-mode changes refresh `storefront_discovery_index`. If that refresh fails, the backend rolls back the Storefront setting changes and returns an error instead of reporting success.
+- Storefront visibility, access-mode, platform-ceiling, or registration-readiness changes refresh `storefront_discovery_index`. If that refresh fails, the backend rolls back the Storefront setting changes and returns an error instead of reporting success.
 
 ### GET /admin/tenants/:id/capabilities/audit-logs
 List recent platform-admin capability changes for one tenant.

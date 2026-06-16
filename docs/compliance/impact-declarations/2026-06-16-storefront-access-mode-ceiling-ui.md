@@ -8,8 +8,8 @@ classification: regulatory
 surfaces: admin-tenants,settings,storefront,compliance
 reason_codes_impacted: ALLOWED,CUSTOMER_ACCESS_MODE_BLOCKED,VALIDATION_FAILED
 policy_version: 2026.06.16
-verification_evidence: npm exec vitest run src/pages/__tests__/TenantManager.capabilities.integration.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx --pool=threads,npm --prefix frontend run build,npm --prefix frontend run build:skupervisor,npm --prefix backend test -- --runInBand tests/customerAccessPolicy.test.js tests/settingsUsecases.applicationResult.test.js tests/tenantCapabilitySettings.test.js,npm run check:architecture,git diff --check
-rollback_note: Revert the Tenant Manager platform-ceiling selector, tenant Settings request-ceiling/runtime-refresh copy, tests, and feature-doc update together; backend access-mode enforcement stays unchanged.
+verification_evidence: npm exec vitest run src/pages/__tests__/TenantManager.capabilities.integration.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx --pool=threads,npm --prefix frontend run build,npm --prefix frontend run build:skupervisor,npm --prefix backend test -- --runInBand tests/customerAccessPolicy.test.js tests/settingsUsecases.applicationResult.test.js tests/tenantCapabilitySettings.test.js tests/adminTenantCapabilities.transport.test.js tests/updateTenantCapabilitiesUseCase.rollback.test.js,npm run check:architecture,npm run check:compliance,npm run lint:docs,git diff --check
+rollback_note: Revert the Tenant Manager platform-ceiling and registration-readiness controls, tenant Settings request-ceiling/runtime-refresh copy, tests, and docs update together; backend access-mode enforcement stays unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-06-16T22:40:00+08:00
@@ -27,6 +27,7 @@ This declaration covers the Tenant Manager and tenant Settings UI correction for
 ## Affected Surfaces
 
 - Tenant Manager now renders Platform max allowed as a compact platform-admin selector instead of a duplicate mode-card grid.
+- Tenant Manager now renders Registration readiness as a separate audited platform-admin selector. Setting it to `registered` is the governed remediation path that allows a transaction request and transaction platform max to become effective transaction.
 - Tenant Manager keeps the company-requested mode as the only storefront mode-card grid and continues to show requested, effective, platform max, registration max, and limitation copy.
 - Tenant Settings now disables requested modes only above the platform-admin ceiling, so company admins can request Transaction when platform max is Transaction even if registration readiness still caps effective mode to Catalog.
 - Tenant Settings copy now states that checkout follows the effective mode after registration readiness is applied.
@@ -40,6 +41,7 @@ This declaration covers the Tenant Manager and tenant Settings UI correction for
 3. Registration readiness can still reduce effective mode below the requested mode until the tenant is raised to a transaction-capable stage.
 4. Checkout remains blocked unless effective customer access mode is `transaction` and existing stock, branch, payment, compliance, and business-hours gates also pass.
 5. Platform-admin changes still require the existing confirmation modal and audit reason flow.
+6. Registration readiness changes update the tenant onboarding progress legitimacy payload and refresh the Storefront discovery index; they do not bypass the effective-mode checkout guard.
 
 ## Verification Evidence
 

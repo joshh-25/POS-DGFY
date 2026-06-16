@@ -5,6 +5,7 @@ import {
     CUSTOMER_ACCESS_SETTING_KEYS,
     DEFAULT_CUSTOMER_ACCESS_MODE,
     normalizeCustomerAccessMode,
+    normalizeRegistrationStage,
     resolveAccessPolicyFromSettings
 } from '../../shared/utils/customerAccessPolicy.js';
 
@@ -13,8 +14,11 @@ export const TENANT_CAPABILITY_SETTING_KEYS = Object.freeze({
     pos: 'tenant_pos_enabled',
     storefrontVisible: 'store_is_visible',
     customerAccessMode: 'customer_access_mode',
-    platformMaxCustomerAccessMode: 'platform_max_customer_access_mode'
+    platformMaxCustomerAccessMode: 'platform_max_customer_access_mode',
+    onboardingProgress: 'tenant_onboarding_progress'
 });
+
+export const CUSTOMER_ACCESS_REGISTRATION_STAGES = Object.freeze(['informal', 'partial', 'registered']);
 
 const TENANT_CAPABILITY_READ_KEYS = Object.freeze([
     TENANT_CAPABILITY_SETTING_KEYS.ims,
@@ -239,6 +243,13 @@ export const normalizeTenantCapabilityPatch = (payload = {}) => {
             throw new Error(`platform_max_customer_access_mode must be one of: ${CUSTOMER_ACCESS_MODES.join(', ')}`);
         }
         patch[TENANT_CAPABILITY_SETTING_KEYS.platformMaxCustomerAccessMode] = normalized;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'customer_access_registration_stage')) {
+        const normalized = String(payload.customer_access_registration_stage || '').trim().toLowerCase();
+        if (!CUSTOMER_ACCESS_REGISTRATION_STAGES.includes(normalized)) {
+            throw new Error(`customer_access_registration_stage must be one of: ${CUSTOMER_ACCESS_REGISTRATION_STAGES.join(', ')}`);
+        }
+        patch.customer_access_registration_stage = normalizeRegistrationStage(normalized);
     }
 
     return patch;

@@ -21,7 +21,7 @@ Customer Access Mode uses a governed ceiling model:
 - Registration readiness contributes its own ceiling from onboarding/legitimacy state.
 - `effective_customer_access_mode` is the most restrictive mode across the company request, platform ceiling, registration readiness, and runtime enforcement gates.
 
-Company admins may downgrade their requested mode at any time, but cannot make the public Storefront more permissive than the platform-admin ceiling. Platform admins may raise or lower the platform ceiling through audited Tenant Manager capability controls. Public quote, booking, cart, checkout, and payment actions remain available only when the effective mode is `transaction` and the existing stock, branch, payment, compliance, and business-hours gates also pass.
+Company admins may downgrade their requested mode at any time, but cannot make the public Storefront more permissive than the platform-admin ceiling. Platform admins may raise or lower the platform ceiling and registration readiness through audited Tenant Manager capability controls. Public quote, booking, cart, checkout, and payment actions remain available only when the effective mode is `transaction` and the existing stock, branch, payment, compliance, and business-hours gates also pass.
 
 Authoritative docs used for this plan:
 
@@ -81,11 +81,16 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - The section shows requested mode, effective mode, max allowed mode, limitation copy, and a runtime enforcement status sourced from `GET /settings` key `customer_access_modes_enabled`.
 - `GET /settings` also exposes runtime access metadata for tenant Settings: `requested_customer_access_mode`, `effective_customer_access_mode`, `max_customer_access_mode`, `platform_max_customer_access_mode`, `registration_stage_max_customer_access_mode`, `customer_access_registration_stage`, `customer_access_limitation_reason`, and `customer_access_capabilities`.
 - `customer_access_modes_enabled` is a virtual runtime setting derived from `CUSTOMER_ACCESS_MODES_ENABLED` and tenant allowlisting. It is read-only and must not be persisted in `system_settings`.
-- `platform_max_customer_access_mode` is platform-admin controlled. Tenant Settings may read it, but tenant Settings mutations must not write it.
+- `platform_max_customer_access_mode` and `customer_access_registration_stage` are platform-admin controlled. Tenant Settings may read them, but tenant Settings mutations must not write them.
 - Tenant Settings disables modes above the platform-admin ceiling, but may request a mode above current registration readiness. The backend still computes the effective mode with registration readiness and blocks quote, checkout, booking, and payment until effective mode is `transaction`.
 - Item-level storefront catalog controls live on inventory item setup surfaces, not Settings. Settings controls whether the Storefront can browse/order overall; `Show in Storefront` controls one item.
 
-4. Storefront public APIs
+4. Tenant Manager platform controls
+- Tenant Manager separates the platform-admin ceiling from the company-requested mode. `Platform max allowed` is the maximum mode a company admin may request.
+- Tenant Manager also exposes `Registration readiness` as an audited platform-admin control with `informal`, `partial`, and `registered` states. It updates the tenant onboarding progress legitimacy payload used by the runtime policy.
+- A tenant becomes transaction-capable only when company requested mode is `transaction`, platform max is `transaction`, registration readiness is `registered`, runtime enforcement is enabled, and the existing checkout readiness gates pass. Setting only one of these values to `transaction` does not enable checkout.
+
+5. Storefront public APIs
 - Discovery/profile/catalog responses include additive access metadata. The landlord discovery index materializes `customer_access_mode`, `effective_customer_access_mode`, `inventory_display_mode`, `access_capabilities`, limitation metadata, and runtime enforcement state so discovery cards can suppress Order Now without a tenant DB fanout. Tenants with `store_is_visible=false` are removed from the index and public profile reads return not found.
 - For `ghost`, discovery/profile still work, item-search snapshots are suppressed during discovery indexing, and `/store/catalog` returns no public items while enforcement is active.
 - For `catalog` and `inquiry`, `/store/catalog` returns public rows but quote/checkout/booking mutations fail closed while enforcement is active.
@@ -100,7 +105,7 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 - When the Storefront override table exists but an individual item has no Storefront override row, public Storefront reads use the Storefront default policy rather than inheriting POS state. For products, finished goods default visible and non-finished goods default hidden; services follow service storefront metadata.
 - POS and Storefront image replacement is visibility-preserving and failure-aware: upload stores the new file, commits the override update, then removes the old file. A failed override update cleans up the newly stored file and leaves the old image path intact.
 
-5. Storefront UI
+6. Storefront UI
 - Map Listing Only: shows map/profile/contact and hides catalog, cart, quote, checkout, booking, and Order Now.
 - Catalog Only: shows catalog browse UI and hides cart, booking, quote, checkout, and Order Now.
 - Inquiry Mode: shows catalog plus existing contact channels and hides cart, booking, quote, and checkout.
