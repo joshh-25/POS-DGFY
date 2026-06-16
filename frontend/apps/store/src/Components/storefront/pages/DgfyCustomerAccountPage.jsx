@@ -80,6 +80,9 @@ export function DgfyCustomerAccountPage({
   onSignOut,
   onHelp,
   onRegisterBusiness,
+  onRequestBusinessStepUp,
+  onAcceptCompanyInvitation,
+  onSwitchCompany,
   onClearSavedDetails,
   onUseAddressForCheckout,
   onSaveAddress,
@@ -119,6 +122,11 @@ export function DgfyCustomerAccountPage({
   const [pendingCancelOrder, setPendingCancelOrder] = useState(null);
   const [activeNav, setActiveNav] = useState('overview');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [businessStepUpAction, setBusinessStepUpAction] = useState(null);
+  const [businessEmailOtpCode, setBusinessEmailOtpCode] = useState('');
+  const [businessActionLoading, setBusinessActionLoading] = useState(false);
+  const [businessOtpSent, setBusinessOtpSent] = useState(false);
+  const [businessActionError, setBusinessActionError] = useState('');
   const navItems = [
     { id: 'overview', label: 'Overview', icon: Home },
     { id: 'orders', label: 'Orders', icon: Package },
@@ -133,6 +141,81 @@ export function DgfyCustomerAccountPage({
   const showBookings = showOverview || activeNav === 'bookings';
   const showAddresses = showOverview || activeNav === 'addresses';
   const showLoyalty = showOverview || activeNav === 'loyalty';
+  const businessCompanies = Array.isArray(accountPanel?.businessCompanies) ? accountPanel.businessCompanies : [];
+  const businessStepUp = accountPanel?.businessStepUp || accountPanel?.business_step_up || {};
+  const acceptedCompanies = businessCompanies.filter((company) => company.can_switch === true);
+  const pendingInvitations = businessCompanies.filter((company) => company.requires_action === 'accept_invitation');
+
+  const performBusinessAction = async (action, code = '') => {
+    const company = action?.company || {};
+    if (action?.type === 'accept') {
+      if (!company?.membership_id || typeof onAcceptCompanyInvitation !== 'function') return;
+      await onAcceptCompanyInvitation({
+        membershipId: company.membership_id,
+        emailOtpCode: code
+      });
+      return;
+    }
+    if (action?.type === 'switch') {
+      if (!company?.tenant_id || typeof onSwitchCompany !== 'function') return;
+      await onSwitchCompany({
+        tenantId: company.tenant_id,
+        emailOtpCode: code
+      });
+    }
+  };
+
+  const startBusinessAction = async (type, company) => {
+    const action = { type, company };
+    if (businessStepUp?.verified === true) {
+      setBusinessActionError('');
+      setBusinessActionLoading(true);
+      try {
+        await performBusinessAction(action);
+      } catch (error) {
+        setBusinessActionError(error?.message || 'Unable to complete this business action.');
+      } finally {
+        setBusinessActionLoading(false);
+      }
+      return;
+    }
+
+    if (typeof onRequestBusinessStepUp !== 'function') return;
+    setBusinessStepUpAction(action);
+    setBusinessEmailOtpCode('');
+    setBusinessOtpSent(false);
+    setBusinessActionError('');
+    setBusinessActionLoading(true);
+    try {
+      await onRequestBusinessStepUp();
+      setBusinessOtpSent(true);
+    } catch (error) {
+      setBusinessActionError(error?.message || 'Unable to send the security code.');
+      setBusinessStepUpAction(null);
+    } finally {
+      setBusinessActionLoading(false);
+    }
+  };
+  const submitBusinessStepUpAction = async () => {
+    if (!businessStepUpAction) return;
+    const normalizedCode = String(businessEmailOtpCode || '').trim();
+    if (!/^\d{6}$/.test(normalizedCode)) {
+      setBusinessActionError('Enter the 6-digit security code sent to your DGFY email.');
+      return;
+    }
+    setBusinessActionError('');
+    setBusinessActionLoading(true);
+    try {
+      await performBusinessAction(businessStepUpAction, normalizedCode);
+      setBusinessStepUpAction(null);
+      setBusinessEmailOtpCode('');
+      setBusinessOtpSent(false);
+    } catch (error) {
+      setBusinessActionError(error?.message || 'Unable to complete this business action.');
+    } finally {
+      setBusinessActionLoading(false);
+    }
+  };
   const resetAddressDraft = () => setAddressDraft(emptyAddressDraft(allAddresses.length === 0));
   const startEditAddress = (address = {}) => {
     setEditingAddressId(address.address_id);
@@ -1008,24 +1091,119 @@ export function DgfyCustomerAccountPage({
           ) : null}
 
           {activeNav === 'business' ? (
-            <section style={{ borderRadius: 24, border: `1px solid ${BORDER}`, background: '#FFFFFF', padding: isMobileViewport ? 20 : 28, display: 'grid', gap: 18, textAlign: 'center', justifyItems: 'center', boxShadow: '0 18px 42px rgba(15,23,42,0.05)' }}>
-              <div style={{ width: 76, height: 76, borderRadius: '50%', background: '#EAF2FF', color: PRIMARY, display: 'grid', placeItems: 'center' }}>
-                <Store size={34} strokeWidth={2.2} />
-              </div>
-              <div>
-                <div style={{ fontSize: isMobileViewport ? 24 : 28, fontWeight: 800, color: TEXT, lineHeight: 1.1 }}>Register your business</div>
-                <div style={{ marginTop: 10, maxWidth: 560, fontSize: 15, lineHeight: 1.65, color: MUTED }}>
-                  Use this DGFY account to create and manage your business profile. Company registration remains separate from customer login.
+            <section style={{ borderRadius: 24, border: `1px solid ${BORDER}`, background: '#FFFFFF', padding: isMobileViewport ? 20 : 28, display: 'grid', gap: 20, boxShadow: '0 18px 42px rgba(15,23,42,0.05)' }}>
+              <div style={{ display: 'flex', flexDirection: isMobileViewport ? 'column' : 'row', alignItems: isMobileViewport ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div style={{ width: 56, height: 56, borderRadius: 18, background: '#EAF2FF', color: PRIMARY, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                    <Store size={26} strokeWidth={2.2} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: isMobileViewport ? 24 : 26, fontWeight: 800, color: TEXT, lineHeight: 1.1 }}>Your businesses</div>
+                    <div style={{ marginTop: 6, fontSize: 14, lineHeight: 1.55, color: MUTED }}>
+                      Manage companies connected to this DGFY account and accept invitations sent from IMS.
+                    </div>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={onRegisterBusiness}
+                  style={{ minHeight: 44, borderRadius: 14, border: 'none', background: PRIMARY, color: '#FFFFFF', padding: '0 18px', fontSize: 14, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer', width: isMobileViewport ? '100%' : 'auto' }}
+                >
+                  <Store size={16} strokeWidth={2.2} />
+                  Register Your Business
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={onRegisterBusiness}
-                style={{ minHeight: 48, borderRadius: 16, border: 'none', background: PRIMARY, color: '#FFFFFF', padding: '0 22px', fontSize: 15, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer' }}
-              >
-                <Store size={17} strokeWidth={2.2} />
-                Register Your Business
-              </button>
+
+              {businessActionError ? (
+                <div style={{ borderRadius: 14, border: '1px solid #FECACA', background: '#FEF2F2', color: '#991B1B', padding: '10px 12px', fontSize: 13, fontWeight: 700 }}>
+                  {businessActionError}
+                </div>
+              ) : null}
+
+              {pendingInvitations.length > 0 ? (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Pending invitations</div>
+                  {pendingInvitations.map((company) => (
+                    <div key={`pending-${company.membership_id}`} style={{ borderRadius: 18, border: `1px solid ${BORDER}`, background: ACCENT_SURFACE, padding: 16, display: 'flex', flexDirection: isMobileViewport ? 'column' : 'row', alignItems: isMobileViewport ? 'stretch' : 'center', justifyContent: 'space-between', gap: 12 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, overflowWrap: 'anywhere' }}>{company.company_name || 'Company invitation'}</div>
+                        <div style={{ marginTop: 4, fontSize: 13, color: MUTED }}>Role: {prettyStatus(company.role)} · Invitation from IMS</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => startBusinessAction('accept', company)}
+                        disabled={businessActionLoading}
+                        style={{ minHeight: 40, borderRadius: 12, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: TEXT, padding: '0 14px', fontSize: 13, fontWeight: 800, cursor: businessActionLoading ? 'not-allowed' : 'pointer' }}
+                      >
+                        Accept invitation
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {businessStepUpAction ? (
+                <div style={{ borderRadius: 18, border: '1px solid #BFDBFE', background: '#EFF6FF', padding: 16, display: 'grid', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <ShieldCheck size={20} color="#1D4ED8" />
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#1E3A8A' }}>Email security check</div>
+                      <div style={{ marginTop: 3, fontSize: 13, color: '#1D4ED8' }}>{businessOtpSent ? 'Enter the 6-digit code sent to your DGFY email.' : 'Sending security code...'}</div>
+                    </div>
+                  </div>
+                  <input
+                    value={businessEmailOtpCode}
+                    onChange={(event) => setBusinessEmailOtpCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                    inputMode="numeric"
+                    placeholder="000000"
+                    style={{ minHeight: 44, borderRadius: 12, border: '1px solid #93C5FD', background: '#FFFFFF', color: TEXT, padding: '0 12px', fontSize: 16, fontWeight: 800, letterSpacing: '0.18em', outline: 'none', maxWidth: 220 }}
+                  />
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => { setBusinessStepUpAction(null); setBusinessEmailOtpCode(''); setBusinessActionError(''); }}
+                      style={{ minHeight: 40, borderRadius: 12, border: '1px solid #BFDBFE', background: '#FFFFFF', color: '#1E40AF', padding: '0 14px', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={submitBusinessStepUpAction}
+                      disabled={businessActionLoading}
+                      style={{ minHeight: 40, borderRadius: 12, border: 'none', background: '#1D4ED8', color: '#FFFFFF', padding: '0 16px', fontSize: 13, fontWeight: 800, cursor: businessActionLoading ? 'not-allowed' : 'pointer' }}
+                    >
+                      {businessActionLoading ? 'Verifying...' : 'Verify and accept'}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Accepted companies</div>
+                {acceptedCompanies.length > 0 ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+                    {acceptedCompanies.map((company) => (
+                      <div key={`accepted-${company.membership_id}`} style={{ borderRadius: 18, border: `1px solid ${BORDER}`, background: SOFT_SURFACE, padding: 16, display: 'grid', gap: 12 }}>
+                        <div>
+                          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, overflowWrap: 'anywhere' }}>{company.company_name || 'Company'}</div>
+                          <div style={{ marginTop: 4, fontSize: 13, color: MUTED }}>{prettyStatus(company.role)} · {prettyStatus(company.plan)}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => startBusinessAction('switch', company)}
+                          style={{ minHeight: 40, borderRadius: 12, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: TEXT, padding: '0 14px', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}
+                        >
+                          Open in SKUpervisor
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ borderRadius: 18, border: `1px solid ${BORDER}`, background: SOFT_SURFACE, padding: 16, fontSize: 14, lineHeight: 1.55, color: MUTED }}>
+                    No accepted company memberships yet. Register a business or accept an invitation to manage a company from this account.
+                  </div>
+                )}
+              </div>
             </section>
           ) : null}
             </div>

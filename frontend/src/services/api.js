@@ -203,6 +203,20 @@ if (authChannel) {
         redirectTo: getSessionExpiredRedirect()
       });
     }
+    if (data.type === 'tenant-switched') {
+      window.dispatchEvent(new CustomEvent('auth:tenant-switched', {
+        detail: {
+          tenantId: data.tenantId || '',
+          companyName: data.companyName || ''
+        }
+      }));
+      clearClientSession({
+        reason: 'company_switch_other_tab',
+        broadcast: false,
+        emitAuthEvents: false,
+        redirectTo: '/'
+      });
+    }
   };
 }
 
@@ -227,12 +241,12 @@ api.interceptors.request.use(
       companyToken = getCompanyToken();
     }
 
-    if (token) {
+    if (token && !config.skipTenantAuthHeaders) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     // Only add stored companyToken if request doesn't already have one set
     // This allows login/register to use a different token than what's stored
-    if (companyToken && !config.headers['x-company-token']) {
+    if (companyToken && !config.skipTenantAuthHeaders && !config.headers['x-company-token']) {
       config.headers['x-company-token'] = companyToken;
     }
     if (config.data instanceof FormData) {

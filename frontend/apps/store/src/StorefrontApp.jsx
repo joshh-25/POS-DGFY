@@ -1307,7 +1307,9 @@ const EMPTY_ACCOUNT_PANEL = Object.freeze({
   orders: [],
   bookings: [],
   addresses: [],
-  loyalty: null
+  loyalty: null,
+  businessCompanies: [],
+  businessStepUp: { verified: false }
 });
 
 const readStoreAuthToken = () => {
@@ -4880,10 +4882,11 @@ export default function StorefrontApp() {
     try {
       if (shouldLoadDgfyAccount) {
         const meData = await requestJson('/api/v1/dgfy/auth/me', { authToken: dgfyToken, cache: 'no-store' });
-        const [dashboardData, activitiesData, loyaltyData] = await Promise.all([
+        const [dashboardData, activitiesData, loyaltyData, companiesData] = await Promise.all([
           requestJson('/api/v1/dgfy/customer/dashboard', { authToken: dgfyToken, cache: 'no-store' }),
           requestJson('/api/v1/dgfy/customer/activities?limit=25', { authToken: dgfyToken, cache: 'no-store' }).catch(() => ({ activities: [] })),
-          requestJson('/api/v1/dgfy/customer/loyalty', { authToken: dgfyToken, cache: 'no-store' }).catch(() => null)
+          requestJson('/api/v1/dgfy/customer/loyalty', { authToken: dgfyToken, cache: 'no-store' }).catch(() => null),
+          requestJson('/api/v1/dgfy/account/companies', { authToken: dgfyToken, cache: 'no-store' }).catch(() => ({ companies: [] }))
         ]);
         setAccountPanel({
           loading: false,
@@ -4895,7 +4898,9 @@ export default function StorefrontApp() {
           orders: Array.isArray(dashboardData?.orders) ? dashboardData.orders : [],
           bookings: Array.isArray(dashboardData?.bookings) ? dashboardData.bookings : [],
           addresses: Array.isArray(dashboardData?.addresses) ? dashboardData.addresses : [],
-          loyalty: loyaltyData?.loyalty || dashboardData?.loyalty || null
+          loyalty: loyaltyData?.loyalty || dashboardData?.loyalty || null,
+          businessCompanies: Array.isArray(companiesData?.companies) ? companiesData.companies : [],
+          businessStepUp: companiesData?.business_step_up || { verified: false }
         });
         setDgfySessionAccount(meData?.account || dashboardData?.account || meData || null);
         return;
@@ -4917,10 +4922,12 @@ export default function StorefrontApp() {
         me: me?.customer || me || null,
         activities: [],
         orders: Array.isArray(ordersData?.orders) ? ordersData.orders : [],
-        bookings: Array.isArray(bookingsData?.bookings) ? bookingsData.bookings : [],
-        addresses: [],
-        loyalty: null
-      });
+          bookings: Array.isArray(bookingsData?.bookings) ? bookingsData.bookings : [],
+          addresses: [],
+          loyalty: null,
+          businessCompanies: [],
+          businessStepUp: { verified: false }
+        });
     } catch (error) {
       if (shouldLoadDgfyAccount && isUnauthorizedRequestError(error)) {
         clearDgfyAuthToken();
@@ -4941,7 +4948,9 @@ export default function StorefrontApp() {
               orders: Array.isArray(ordersData?.orders) ? ordersData.orders : [],
               bookings: Array.isArray(bookingsData?.bookings) ? bookingsData.bookings : [],
               addresses: [],
-              loyalty: null
+              loyalty: null,
+              businessCompanies: [],
+              businessStepUp: { verified: false }
             });
             return;
           } catch (fallbackError) {
@@ -7628,6 +7637,54 @@ export default function StorefrontApp() {
       window.location.href = buildBusinessRegistrationUrl(String(payload?.handoff_token || '').trim());
     } catch (error) {
       toast.error(normalizeStorefrontErrorMessage(error, 'Unable to start business registration.'));
+    }
+  }, [dgfyAuthToken, isDgfyCustomerSignedIn, openCanonicalDgfyAuth]);
+  const requestDgfyBusinessSecurityCode = useCallback(async () => {
+    const dgfyToken = readDgfyAuthToken();
+    await requestJson('/api/v1/dgfy/account/business-step-up/request', {
+      method: 'POST',
+      authToken: dgfyToken,
+      cache: 'no-store'
+    });
+  }, []);
+  const handleAcceptDgfyCompanyInvitation = useCallback(async ({ membershipId, emailOtpCode }) => {
+    const dgfyToken = readDgfyAuthToken();
+    await requestJson(`/api/v1/dgfy/invitations/${encodeURIComponent(membershipId)}/accept`, {
+      method: 'POST',
+      authToken: dgfyToken,
+      body: { email_otp_code: emailOtpCode },
+      cache: 'no-store'
+    });
+    toast.success('Company invitation accepted.');
+    await handleLoadAccountPanel();
+  }, [handleLoadAccountPanel]);
+  const switchDgfyCompanyFromStorefront = useCallback(async ({ tenantId, emailOtpCode }) => {
+    if (typeof window === 'undefined') return;
+    const normalizedTenantId = String(tenantId || '').trim();
+    if (!normalizedTenantId) {
+      toast.error('Select a company to open in SKUpervisor.');
+      return;
+    }
+    if (!isDgfyCustomerSignedIn) {
+      openCanonicalDgfyAuth('register-business');
+      return;
+    }
+    try {
+      await requestJson(`/api/v1/dgfy/account/companies/${encodeURIComponent(normalizedTenantId)}/switch`, {
+        method: 'POST',
+        authToken: dgfyAuthToken,
+        body: { email_otp_code: emailOtpCode },
+        cache: 'no-store'
+      });
+      const target = buildDgfyAuthUrl({
+        intent: 'customer',
+        mode: 'sign-in',
+        returnTo: '/'
+      });
+      const url = new URL(target);
+      window.location.href = url.toString();
+    } catch (error) {
+      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to open SKUpervisor.'));
     }
   }, [dgfyAuthToken, isDgfyCustomerSignedIn, openCanonicalDgfyAuth]);
   const openAccountPanel = useCallback(() => {
@@ -10335,6 +10392,9 @@ export default function StorefrontApp() {
           onSignOut={handleStorefrontSignOut}
           onHelp={() => toast.info('Help center is not connected yet.', { duration: 2200, closeButton: true })}
           onRegisterBusiness={openBusinessRegistrationFlow}
+          onRequestBusinessStepUp={requestDgfyBusinessSecurityCode}
+          onAcceptCompanyInvitation={handleAcceptDgfyCompanyInvitation}
+          onSwitchCompany={switchDgfyCompanyFromStorefront}
           onClearSavedDetails={clearSavedCustomerDetailsForDevice}
           onUseAddressForCheckout={useAccountAddressForCheckout}
           onSaveAddress={handleSaveAccountAddress}

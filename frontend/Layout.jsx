@@ -15,12 +15,17 @@ import {
   Menu,
   X,
   LogOut,
+  Building2,
   Bot,
+  CheckCircle2,
+  ChevronDown,
   PackageCheck,
   ShoppingCart,
   CalendarCheck,
   BedDouble,
-  Utensils
+  Utensils,
+  RefreshCw,
+  ShieldCheck
 } from 'lucide-react';
 import { cn } from "./src/lib/utils.js";
 import { logout, getCurrentUser } from './src/services/authService.js';
@@ -34,6 +39,12 @@ import OnboardingSetupModal, { OnboardingReminderBanner } from './src/features/o
 import { trackOnboardingEvent } from './src/services/onboardingService.js';
 import { getAllSettings } from './src/services/settingsService.js';
 import { buildTenantCapabilityNoticeFromSettings } from './src/utils/tenantCapabilityMessages.js';
+import {
+  acceptDgfyCompanyInvitation,
+  listDgfyAccountCompanies,
+  requestDgfyBusinessStepUp,
+  switchDgfyCompany
+} from './src/services/dgfyAuthService.js';
 
 const ALL_NAV_ITEMS = [
   { name: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard', permission: null }, // Everyone sees dashboard? Or maybe basic view?
@@ -66,6 +77,254 @@ const UserProfile = ({ user }) => {
           <p className="text-xs text-slate-500 truncate" title={user.email}>{user.email}</p>
         </div>
       </div>
+    </div>
+  );
+};
+
+const getSwitchErrorMessage = (error, fallback) => (
+  error?.response?.data?.message || error?.message || fallback
+);
+
+const CompanySwitcher = ({ user }) => {
+  const [open, setOpen] = useState(false);
+  const [loadingCompanies, setLoadingCompanies] = useState(false);
+  const [companies, setCompanies] = useState([]);
+  const [loadError, setLoadError] = useState('');
+  const [stepUpTarget, setStepUpTarget] = useState(null);
+  const [emailOtpCode, setEmailOtpCode] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [businessStepUp, setBusinessStepUp] = useState({ verified: false });
+
+  const currentCompany = companies.find((company) => company.is_current)
+    || companies.find((company) => company.can_switch)
+    || null;
+  const pendingCount = companies.filter((company) => company.requires_action === 'accept_invitation').length;
+  const hasCompanyRows = companies.length > 0;
+
+  const loadCompanies = React.useCallback(async () => {
+    if (!user) return;
+    setLoadingCompanies(true);
+    setLoadError('');
+    try {
+      const payload = await listDgfyAccountCompanies();
+      setCompanies(Array.isArray(payload?.companies) ? payload.companies : []);
+      setBusinessStepUp(payload?.business_step_up || { verified: false });
+    } catch (error) {
+      setCompanies([]);
+      setBusinessStepUp({ verified: false });
+      setLoadError(getSwitchErrorMessage(error, 'Sign in with your DGFY account to switch companies.'));
+    } finally {
+      setLoadingCompanies(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    loadCompanies();
+  }, [loadCompanies]);
+
+  const performCompanyAction = async (target, code = '') => {
+    if (target.type === 'switch') {
+      await switchDgfyCompany({
+        tenantId: target.company.tenant_id,
+        emailOtpCode: code
+      });
+      toast.success(`Switched to ${target.company.company_name}.`);
+      window.location.assign('/');
+      return;
+    }
+    if (target.type === 'accept') {
+      await acceptDgfyCompanyInvitation({
+        membershipId: target.company.membership_id,
+        emailOtpCode: code
+      });
+      toast.success('Invitation accepted.');
+      setStepUpTarget(null);
+      setEmailOtpCode('');
+      setOtpSent(false);
+      await loadCompanies();
+    }
+  };
+
+  const beginStepUp = async (target) => {
+    if (businessStepUp?.verified === true) {
+      setActionLoading(true);
+      try {
+        await performCompanyAction(target);
+      } catch (error) {
+        toast.error(getSwitchErrorMessage(error, 'Unable to complete this company action.'));
+      } finally {
+        setActionLoading(false);
+      }
+      return;
+    }
+
+    setStepUpTarget(target);
+    setEmailOtpCode('');
+    setOtpSent(false);
+    setActionLoading(true);
+    try {
+      await requestDgfyBusinessStepUp();
+      setOtpSent(true);
+      toast.success('Security code sent to your DGFY email.');
+    } catch (error) {
+      toast.error(getSwitchErrorMessage(error, 'Unable to send security code.'));
+      setStepUpTarget(null);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const completeStepUp = async () => {
+    if (!stepUpTarget) return;
+    if (!/^\d{6}$/.test(emailOtpCode.trim())) {
+      toast.error('Enter the 6-digit security code sent to your DGFY email.');
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await performCompanyAction(stepUpTarget, emailOtpCode.trim());
+    } catch (error) {
+      toast.error(getSwitchErrorMessage(error, 'Security code failed. Try again.'));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  if (!user) return null;
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center gap-3 px-3 py-3 text-left"
+      >
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-700">
+          <Building2 className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-slate-900">
+            {currentCompany?.company_name || 'Company switcher'}
+          </p>
+          <p className="truncate text-xs text-slate-500">
+            {currentCompany ? `${currentCompany.role || 'member'}${pendingCount ? ` · ${pendingCount} invite${pendingCount === 1 ? '' : 's'}` : ''}` : 'DGFY businesses'}
+          </p>
+        </div>
+        <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="border-t border-slate-100 px-3 pb-3">
+          <div className="mb-2 mt-3 flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Your businesses</span>
+            <button
+              type="button"
+              onClick={loadCompanies}
+              disabled={loadingCompanies}
+              className="rounded-md p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+              aria-label="Refresh companies"
+            >
+              <RefreshCw className={`h-4 w-4 ${loadingCompanies ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+
+          {loadError ? (
+            <p className="rounded-lg bg-amber-50 px-2 py-2 text-xs text-amber-800">{loadError}</p>
+          ) : null}
+
+          {!loadingCompanies && !loadError && !hasCompanyRows ? (
+            <p className="rounded-lg bg-slate-50 px-2 py-2 text-xs text-slate-600">No DGFY company memberships yet.</p>
+          ) : null}
+
+          <div className="space-y-2">
+            {companies.map((company) => {
+              const isPending = company.requires_action === 'accept_invitation';
+              return (
+                <div key={`${company.membership_id}-${company.tenant_id}`} className="rounded-lg border border-slate-100 bg-slate-50 p-2">
+                  <div className="flex items-start gap-2">
+                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-white text-slate-600">
+                      {company.is_current ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Building2 className="h-4 w-4" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-semibold text-slate-900">{company.company_name}</p>
+                      <p className="text-[11px] text-slate-500">
+                        {isPending ? 'Pending invitation' : `${company.role || 'member'} · ${company.plan || 'plan'}`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    {isPending ? (
+                      <button
+                        type="button"
+                        onClick={() => beginStepUp({ type: 'accept', company })}
+                        disabled={actionLoading}
+                        className="inline-flex flex-1 items-center justify-center rounded-md bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100 disabled:opacity-50"
+                      >
+                        Accept invitation
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => beginStepUp({ type: 'switch', company })}
+                        disabled={actionLoading || company.is_current || !company.can_switch}
+                        className="inline-flex flex-1 items-center justify-center rounded-md bg-teal-600 px-2 py-1.5 text-xs font-semibold text-white hover:bg-teal-700 disabled:bg-slate-300"
+                      >
+                        {company.is_current ? 'Current' : 'Switch'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {stepUpTarget ? (
+            <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 p-3">
+              <div className="flex items-start gap-2">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-700" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-blue-950">Email security check</p>
+                  <p className="mt-1 text-[11px] leading-4 text-blue-800">
+                    {otpSent ? 'Enter the 6-digit code sent to your DGFY email.' : 'Sending code...'}
+                  </p>
+                </div>
+              </div>
+              <input
+                value={emailOtpCode}
+                onChange={(event) => setEmailOtpCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                inputMode="numeric"
+                placeholder="000000"
+                className="mt-2 w-full rounded-md border border-blue-200 bg-white px-2 py-2 text-sm font-semibold tracking-widest text-slate-900 outline-none focus:border-blue-500"
+              />
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setStepUpTarget(null)}
+                  className="flex-1 rounded-md border border-blue-200 bg-white px-2 py-1.5 text-xs font-semibold text-blue-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={completeStepUp}
+                  disabled={actionLoading}
+                  className="flex-1 rounded-md bg-blue-700 px-2 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                >
+                  {actionLoading ? 'Verifying...' : 'Verify'}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <Link
+            to="/register-company?source=dgfy&auth=login#business-registration"
+            className="mt-3 flex w-full items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Register new company
+          </Link>
+        </div>
+      )}
     </div>
   );
 };
@@ -258,6 +517,8 @@ export default function Layout({ children, currentPageName }) {
         </nav>
 
         <div className="p-4 space-y-3 mt-auto border-t border-slate-100">
+          <CompanySwitcher user={currentUser} />
+
           {/* User Profile Callout */}
           <UserProfile user={currentUser} />
 
