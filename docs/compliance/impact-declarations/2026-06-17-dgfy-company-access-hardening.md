@@ -8,7 +8,7 @@ classification: regulatory
 surfaces: pos,terminal,tenant-registration,settings,compliance
 reason_codes_impacted: IMPACT_DECLARATION_REQUIRED,DGFY_MEMBERSHIP_REQUIRED,LEGACY_GRACE_ALLOWED,LEGACY_GRACE_BLOCKED,POS_UNLOCK_ALLOWED,POS_UNLOCK_DENIED
 policy_version: 2026.06.17
-verification_evidence: npm run check:architecture,npm run lint:docs,git diff --check,npm --prefix backend test -- --runTestsByPath tests/dgfyAuthUseCases.test.js tests/dgfyLegacyLinkService.test.js tests/dgfyTenantSession.transport.test.js tests/auth.test.js,npm --prefix frontend test -- --run src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx Components/users/__tests__/UserInvitationModal.dgfy.test.jsx --testTimeout 20000,npm --prefix frontend run build:skupervisor,npm --prefix frontend run build:store,npm --prefix frontend run build:pos
+verification_evidence: npm run check:architecture,npm run lint:docs,git diff --check,npm --prefix backend test -- --runTestsByPath tests/dgfyAuthUseCases.test.js tests/dgfyLegacyLinkService.test.js tests/dgfyTenantSession.transport.test.js tests/auth.test.js,npm --prefix frontend test -- --run src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx Components/users/__tests__/UserInvitationModal.dgfy.test.jsx src/services/__tests__/dgfyAuthService.cookieSession.test.js --testTimeout 20000,npm --prefix frontend run build:skupervisor,npm --prefix frontend run build:store,npm --prefix frontend run build:pos,npm run smoke:dgfy-access-ui,DGFY_ACCESS_STRICT_NETWORK=true DGFY_ACCESS_FORWARDED_PROTO=https npm run smoke:dgfy-access-ui,docs/testing/dgfy-company-access-security-control-matrix.md
 rollback_note: Revert the DGFY-only invitation, legacy-linking, membership session, POS unlock drawer, audit-action migration, docs, and tests together; keep existing tenant-local legacy access available until a rollback decision is recorded.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -42,6 +42,7 @@ This declaration covers the DGFY company-access hardening slice that changes bus
 5. Hardware bridge warnings for printers, cash drawers, and iMin devices must remain separate from authentication failure unless a tenant policy explicitly requires hardware availability before unlock.
 6. Fiscal receipt sequencing, payment capture, shift accounting, compliance gate refresh, and offline queue behavior are not intentionally changed by this slice.
 7. Production readiness remains below 9/10 until seeded UAT proves IMS, POS, Storefront account, legacy migration, and rollback telemetry end to end.
+8. Ownership checks must use `tenants.owner_dgfy_account_id` when present. A historical `source=founder` membership is only an owner fallback while the tenant owner field is empty, so previous owners can leave after transfer.
 
 ## Verification Evidence
 
@@ -53,4 +54,5 @@ This declaration covers the DGFY company-access hardening slice that changes bus
 6. `npm --prefix frontend run build:skupervisor`
 7. `npm --prefix frontend run build:store`
 8. `npm --prefix frontend run build:pos`
-9. `npm run smoke:dgfy-access-ui` remains the rendered browser QA gate and requires local/staging IMS, POS, and Storefront account servers with seeded DGFY states.
+9. `npm run smoke:dgfy-access-ui` passed for frontend-only rendered QA; `DGFY_ACCESS_STRICT_NETWORK=true DGFY_ACCESS_FORWARDED_PROTO=https npm run smoke:dgfy-access-ui` passed against a live local backend with HTTPS enforcement simulated for localhost API requests.
+10. `docs/testing/dgfy-company-access-security-control-matrix.md` records the control-by-control evidence requirements for this access model.

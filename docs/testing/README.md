@@ -77,21 +77,28 @@ Evidence semantics:
 3. Fixture validation proves shared, VPS, and payment-enabled PayMongo production env shapes stay valid without requiring real production secrets in CI.
 4. These gates do not prove the live server has correct secret values; deploy must still validate the real `backend/.env` on the target host.
 
-## Tenant Invitation Link Security Gates
+## DGFY Company Access And Legacy Invitation Gates
 
-Invitation link security evidence is mandatory for tenant onboarding, user-management invitation, Settings, and AI user-management changes.
+DGFY company-access evidence is mandatory for company registration handoff, user-management invitation, Settings, AI user-management, company switching, ownership transfer, legacy linking, and POS unlock changes.
 
 Required commands:
 1. `npm --prefix backend test -- --runTestsByPath tests/settingsCompanyInfo.usecase.test.js tests/settingsHandlers.companyInfo.test.js tests/userManagementToolRegistry.test.js tests/aiTools.test.js tests/emailTemplates.invitation.test.js`
 2. `npm --prefix backend test -- --runTestsByPath tests/authTenantIsolation.hardening.test.js tests/authUsecases.applicationResult.test.js tests/tenantHandler.emailOtp.test.js tests/emailOtpService.test.js`
-3. `npm --prefix frontend test -- --run Pages/__tests__/AcceptInvite.test.jsx Components/users/__tests__/UserManagementModal.rbacContract.test.js`
+3. `npm --prefix backend test -- --runTestsByPath tests/dgfyAuthUseCases.test.js tests/dgfyLegacyLinkService.test.js tests/dgfyTenantSession.transport.test.js tests/auth.test.js`
+4. `npm --prefix frontend test -- --run Pages/__tests__/AcceptInvite.test.jsx Components/users/__tests__/UserManagementModal.rbacContract.test.js`
+5. `npm --prefix frontend test -- --run src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx Components/users/__tests__/UserInvitationModal.dgfy.test.jsx src/services/__tests__/dgfyAuthService.cookieSession.test.js --testTimeout 20000`
+6. `npm run smoke:dgfy-access-ui` after local IMS, POS, and Storefront dev or preview servers are running.
+7. `DGFY_ACCESS_STRICT_NETWORK=true npm run smoke:dgfy-access-ui` for seeded local-stack or staging proof; local HTTPS-enforced backend smoke may also set `DGFY_ACCESS_FORWARDED_PROTO=https`.
+8. `npm --prefix frontend run build:skupervisor`, `npm --prefix frontend run build:store`, and `npm --prefix frontend run build:pos`.
 
 Evidence semantics:
 1. Settings company-info tests prove the API no longer returns `registration_link`.
 2. AI tests prove the retired `get_company_join_link` tool cannot generate company-token registration URLs.
-3. Email-template and user-management tests prove generated invitation links are `/accept-invite?token=<invitation_token>` only.
-4. Frontend invitation tests prove legacy `company` and `companyToken` URL parameters are ignored for registry-backed validation, OTP request, and acceptance.
-5. These gates do not prove that all historically issued links have expired; ADR 0015 still governs already-issued tenant-local compatibility until expiry.
+3. Email-template and user-management tests prove new DGFY invitations do not expose manual links or `company_token`; the old `/accept-invite?token=...` route is compatibility-only and must remain non-mutating for new business onboarding.
+4. Backend DGFY tests prove account search safe fields, DGFY-only invitation creation, accept/reject, leave, ownership transfer, legacy grace, POS session authorization, owner-transfer demotion, and no normal email-fallback tenant-session authentication.
+5. Frontend invitation/POS/service tests prove the IMS invite modal selects registered DGFY accounts, DGFY auth service errors stay scoped away from generic tenant global toasts, development auto-login is opt-in and excluded from DGFY/POS lock entrypoints, and the POS drawer exposes DGFY sign-in, company, terminal, and legacy-grace states.
+6. The rendered smoke writes structured JSON under `.tmp/rendered-qa/dgfy-access/` plus desktop/mobile screenshots. Default mode is frontend-only and records API failures as diagnostics; strict mode fails on 5xx network responses for full-stack evidence.
+7. These gates do not prove all historically issued links have expired or that POS hardware bridges are device-proven after DGFY unlock. Seeded UAT must still cover receipt printing, cash drawer, iMin warnings, shift state, terminal policy denial, and offline queue replay.
 
 ## Frontend Contract Gates
 
