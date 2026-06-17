@@ -141,74 +141,6 @@ import {
 } from './businessRegistrationUrl.js';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-/* Legacy storefront contract anchors (frontend-only compatibility)
-id: 'reservation'
-/api/v1/store/fnb/reservations
-fnb_modifier_groups
-Allergens:
-getDefaultFnbLineModifiers
-line_modifiers
-/api/v1/store/services/bookings/batch
-bookings: heldServiceCartLines.map
-quantity: Math.max(1, Number(line.quantity || 1))
-idempotency_key: createStorefrontIdempotencyKey('service-batch')
-serviceBatchFailureMessage(error, serviceCartLines)
-/api/v1/store/services/availability?
-Ready for pickup
-Out for delivery
-Order confirmed
-Confirmed by store
-Preparing
-Delivered
-Picked up
-buildServiceAvailabilitySlotOptions
-serviceAvailabilityMessage
-Live capacity checked
-No available slots for this date and quantity
-This quantity needs a service resource with more capacity.
-/api/v1/store/services/holds
-replace_hold_token
-hasFreshServiceHold
-ensureServiceBookingHold(line)
-service_hold_token
-Reserving...
-openServiceCartEditor(line)
-serviceCartValidationIssues
-line?.intake_responses || {}
-Booking references
-checkoutResult.payments.filter
-cart_line_id
-const openFnbDetail = (item, options = {}) => {
-const closeFnbDetail = () => {
-handleOpenBusinessInventory
-STOREFRONT_CHECKOUT_AUTH_RESUME_KEY
-writeCheckoutAuthResumeDraft
-clearCheckoutAuthResumeDraft
-renderGuestCheckoutEntry
-renderAccountOwnedIdentitySummary
-Create DGFY Account
-Continue as Guest
-Already have an account?
-customerFirstName
-customerLastName
-buildCustomerFullName
-toast.success('Signed in. Resuming your checkout.')
-description: 'Create an account or continue as guest to continue this menu order.'
-description: hasServiceCart
-const nextFnbStep = draft.checkoutTab === 'cart' ? 3 : null;
-const nextSimpleStep = draft.checkoutTab === 'checkout' && !draft.selectedServiceItemId ? 1 : null;
-const nextServiceStep = draft.selectedServiceItemId ? 1 : null;
-setGuestCheckoutUnlocked(true)
-Your DGFY account details will be used for this order.
-Your signed-in DGFY account will be used for this booking.
-const startsNewOrderFlow = ['cart', 'checkout', 'review'].includes(resolvedInitialTab);
-setFnbOrderStep(startsNewOrderFlow ? 3 : (checkoutResult ? 4 : 3));
-setSimpleOrderStep(startsNewOrderFlow ? 1 : (checkoutResult ? 4 : 1));
-setCheckoutResult(null);
-setFnbOrderStep(3);
-setCheckoutTab(isFnbMode ? 'cart' : 'review');
-*/
-
 const DEFAULT_CENTER = { latitude: 10.7202, longitude: 122.5621 };
 const PROVISIONED_PLACEHOLDER_COORDINATES = [
   { latitude: 10.699817, longitude: 122.559893 }
@@ -12329,14 +12261,13 @@ export default function StorefrontApp() {
         {isStorePage && (
           <>
             {selectedStore && (
-              <div style={{ position: 'absolute', left: -99999, top: 'auto', width: 1, height: 1, overflow: 'hidden' }}>
+              <div aria-hidden="true" style={{ position: 'absolute', left: -99999, top: 'auto', width: 1, height: 1, overflow: 'hidden' }}>
                 {selectedStore.storefront_profile_image_url ? (
                   <img alt={`${selectedStore.tenant_name} profile`} src={withAssetOrigin(selectedStore.storefront_profile_image_url)} />
                 ) : null}
                 {selectedStore.storefront_cover_image_url ? (
                   <img alt={`${selectedStore.tenant_name} cover`} src={withAssetOrigin(selectedStore.storefront_cover_image_url)} />
                 ) : null}
-                <div>Customer storefront</div>
                 <div>{`Tenant page: ${routeSlug}`}</div>
                 {Array.isArray(filteredCatalog) && filteredCatalog.length === 0 ? <div>Storefront items are not set up yet</div> : null}
                 {Array.isArray(filteredCatalog) && filteredCatalog.length === 0 ? <div>Customer checkout will be available once at least one storefront item is enabled.</div> : null}

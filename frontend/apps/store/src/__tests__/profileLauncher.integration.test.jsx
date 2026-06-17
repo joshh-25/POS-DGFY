@@ -259,7 +259,8 @@ describe('storefront profile launcher', () => {
     });
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Back to Discovery/i })).toBeTruthy();
-      expect(screen.getAllByText('Customer storefront').length).toBeGreaterThan(0);
+      expect(screen.getByText(/Storefront catalog could not load/i)).toBeTruthy();
+      expect(screen.getByText(/Failed to list storefront catalog/i)).toBeTruthy();
     });
   }, 10000);
 });
