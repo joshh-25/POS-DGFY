@@ -12,8 +12,6 @@ import {
 } from './authService.js';
 import { onboardingRepository } from '../modules/onboarding/repositories/onboardingRepository.js';
 
-const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
-
 const normalizePermissionArray = (rawPermissions) => {
   let normalized = rawPermissions;
   if (typeof normalized === 'string') {
@@ -97,11 +95,14 @@ export const createTenantSessionForDgfyAccount = async ({
       ? await User.findByPk(tenantUserId)
       : null;
 
-    if (!user) {
-      user = await User.findOne({ where: { email: normalizeEmail(account.email) } });
+    if (!user && String(process.env.DGFY_TENANT_USER_EMAIL_REPAIR_ENABLED || '').trim().toLowerCase() === 'true') {
+      user = await User.findOne({ where: { email: String(account.email || '').trim().toLowerCase() } });
+      if (user) {
+        await membership.update({ tenant_user_id: user.user_id }).catch(() => null);
+      }
     }
 
-    if (!user || normalizeEmail(user.email) !== normalizeEmail(account.email)) {
+    if (!user || String(user.email || '').trim().toLowerCase() !== String(account.email || '').trim().toLowerCase()) {
       const error = new Error('The DGFY account is not linked to a tenant user for this company.');
       error.statusCode = 403;
       throw error;

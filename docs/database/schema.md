@@ -122,6 +122,9 @@ CREATE TABLE tenants (
     compliance_activated_at DATETIME NULL,
     compliance_policy_version VARCHAR(40) NULL,
     compliance_profile JSON NULL,
+    owner_dgfy_account_id BIGINT NULL,
+    ownership_transferred_at DATETIME NULL,
+    ownership_transferred_by BIGINT NULL,
     settings JSON,
     admin_email VARCHAR(255),
     admin_phone VARCHAR(40) NULL,
@@ -133,6 +136,9 @@ CREATE TABLE tenants (
 
 Subscription notes:
 - Tenant DB credentials are environment-driven at runtime (`DB_USER`, `DB_PASSWORD`); tenant-row plaintext credential columns are intentionally removed.
+- `owner_dgfy_account_id` is the landlord-scoped active company owner for DGFY-only company access. It is set at DGFY company creation and updated by the single-owner transfer flow; tenant-local Master Admin role is not sufficient to prove current ownership.
+- `ownership_transferred_at` and `ownership_transferred_by` audit the latest owner transfer. Detailed attempts/results remain in landlord business audit logs.
+- `dgfy_account_business_audit_logs.action` includes company switch, invitation create/accept/reject, leave-company, ownership transfer, legacy link, and POS unlock attempt/success/failure actions. The POS actions intentionally separate DGFY auth/no-access failures from POS permission, terminal registry, and hardware-adjacent follow-up diagnostics.
 - `billing_cycle_anchor` backfill migration (`20260303000005-backfill-missing-billing-anchor.cjs`) only updates premium tenants with non-null `current_period_end` and null anchor.
 - Phase 65 fields added via `20260309000001-extend-tenant-subscription-fields.cjs` (idempotent `describeTable` guard):
   - `payment_method`: `'manual'` = admin-invoiced; `'paypal'` = PayPal recurring; `'paymongo'` = PayMongo recurring
@@ -172,6 +178,19 @@ Validation contract:
   - `tenant_allowlist`: enforce only tenant IDs or company tokens in `PHONE_COMPLETION_ENFORCED_TENANTS`.
   - `all`: enforce globally after closure evidence is clean.
 - Operators can run `npm run verify:phone-rollout` from `backend/` to report active-tenant schema presence, outstanding legacy-user gaps, and current enforcement mode. `npm run verify:phone-rollout:users` prints the exact accepted active users still missing phone numbers, `npm run verify:phone-rollout:config-safe` fails if currently enforced tenants are not ready, and `npm run verify:phone-rollout:complete` remains the global rollout-closure gate.
+
+## DGFY Legacy Tenant Login Grace Addendum (2026-06-17)
+
+Direct tenant-local IMS/POS login has a temporary DGFY migration grace policy rather than new tenant-local columns. The backend computes `dgfy_link_status`, `legacy_grace_expires_at`, `dgfy_membership_id`, `can_legacy_login`, and `legacy_login_block_reason` from tenant-local `users` and landlord `dgfy_account_tenant_memberships`.
+
+Operational contract:
+
+- `LEGACY_TENANT_LOGIN_GRACE_END=2027-06-17` is the default end date.
+- `LEGACY_TENANT_LOGIN_GRACE_ENABLED=true` keeps accepted unlinked legacy users able to use direct IMS/POS login until the deadline.
+- `DGFY_LEGACY_TENANT_REGISTRATION_ENABLED` defaults off so the grace cohort cannot grow through new direct tenant-user registration.
+- `DGFY_TENANT_USER_EMAIL_REPAIR_ENABLED` defaults off. When explicitly enabled for repair, DGFY tenant-session creation may attach a missing membership `tenant_user_id` after exact email match; normal DGFY tenant sessions must use the explicit accepted membership link.
+
+After June 17, 2027, unlinked legacy users cannot use IMS/POS until they create or link a DGFY account.
   - `compliance_cycle_version`, `compliance_revert_last_cycle_version`
   - `compliance_policy_version`, `compliance_profile`
 - Drift-alignment migrations:
@@ -200,6 +219,7 @@ Operational contract:
 - Company registration uses the authenticated verified DGFY account email and does not consume a second same-address company-registration OTP. The tenant row and acknowledgement row are written in one landlord transaction before tenant provisioning.
 - Company registration acknowledgement is captured before tenant provisioning and is tied to the authenticated DGFY account plus the landlord tenant row.
 - Acknowledgement copy preserves the marketplace-provider framing: DGFY facilitates the transaction through a licensed payment partner while the merchant remains seller of record and receives net settlement after disclosed fees.
+- Legacy IMS/POS account linking uses `email_otps.purpose='dgfy_legacy_link'` from an authenticated tenant session. The OTP proves ownership of the existing tenant-local email before the user links that authorization profile to a matching DGFY account.
 
 ## DGFY Customer Account Addendum (2026-05-24)
 

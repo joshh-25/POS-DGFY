@@ -157,6 +157,7 @@ Supported purposes:
 - `dgfy_account_verification`: body requires `email` for DGFY account registration before account creation. The public request is landlord-global, does not require a company token, and must ignore stale browser tenant context because `/dgfy/auth/register` verifies only a global OTP. Existing signed-in accounts can also request this purpose through the authenticated DGFY account endpoint.
 - `dgfy_password_reset`: requested through the DGFY password recovery flow before changing a global DGFY account password.
 - `dgfy_business_step_up`: requested through the authenticated DGFY business-management surface before accepting an invitation or switching companies. This version is email-only and does not use mobile/SMS OTP.
+- `dgfy_legacy_link`: requested from an authenticated legacy IMS/POS tenant session before linking that tenant-local authorization profile to a DGFY account during the migration grace period.
 
 Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 10), lock after `EMAIL_OTP_MAX_ATTEMPTS` (default 5), and are consumed with a conditional update so a concurrently submitted request cannot reuse a code after it is consumed. Production enables enforcement by default; `EMAIL_OTP_ENFORCEMENT_ENABLED=false` is the rollback switch.
 
@@ -520,7 +521,7 @@ Get the role presets and visible permission groups for the tenant's active workf
 ```
 
 ### POST /users/invite
-Create a tenant user invitation.
+Legacy tenant-local invitation endpoint. Disabled by default for business-user onboarding. New integrations must use `GET /dgfy/accounts/search` and `POST /dgfy/invitations` so invitations target registered DGFY accounts.
 
 **Request Body**
 ```json
@@ -532,15 +533,15 @@ Create a tenant user invitation.
 }
 ```
 
-Legacy `role` is still accepted for compatibility. When `role_preset_key` is provided, the backend resolves the compatibility `role` and default permissions from the active tenant mode catalog. Location-scoped presets require at least one `location_ids` entry when the tenant has multiple active locations.
+Legacy `role` is still accepted for compatibility when the legacy endpoint is explicitly re-enabled. When `role_preset_key` is provided, the backend resolves the compatibility `role` and default permissions from the active tenant mode catalog. Location-scoped presets require at least one `location_ids` entry when the tenant has multiple active locations.
 
-If email delivery is unavailable or fails, the response includes `invitation_url` for explicit manual sharing. New links use only the invitation token. Already-issued tenant-local legacy links with `company` remain a bounded compatibility path until expiry, but new Settings, AI, email, resend, and manual-link flows must not generate company-token URLs. Role, status, permission, and location-scope edits are rejected until the invited user accepts the invitation. Invited users provide their required phone number during acceptance, not at invite creation.
+Direct invite links, resend-link generation, and manual-link recovery are retired by default. Already-issued tenant-local legacy links may remain a bounded compatibility/error path until expiry, but new Settings, AI, email, resend, and manual-link flows must not generate invitation URLs or company-token URLs. Role, status, permission, and location-scope edits are rejected until the invited DGFY account accepts the invitation.
 
 ### POST /users/:user_id/invitation/resend
-Regenerate an invitation token for a pending, cancelled, or expired invitation row, extend expiry, and attempt email delivery again. The previous token is invalidated.
+Legacy endpoint. Disabled by default; use `POST /dgfy/invitations` for a new DGFY account invitation.
 
 ### POST /users/:user_id/invitation/link
-Regenerate a manual invitation link for an existing pending, cancelled, or expired invitation row. The previous token is invalidated.
+Legacy endpoint. Disabled by default; manual invitation links are no longer generated for business-user onboarding.
 
 ### DELETE /users/:user_id/invitation
 Cancel a pending invitation. Cancelled invitation links cannot be accepted.
@@ -4878,7 +4879,7 @@ Public, rate-limited. Verify a `dgfy_password_reset` code and set the new DGFY a
 
 Requires an authenticated DGFY account JWT, `sku_dgfy_session` cookie, or a normal IMS tenant session whose current tenant user is explicitly linked to an accepted `DgfyAccountTenantMembership`.
 
-Accept a pending company invitation from the DGFY account notification surface. This path does not require an invitation link, company token in the URL, or a tenant-local password setup form. The backend activates the matching tenant-local invitation row from the authenticated DGFY account, copies the DGFY email/phone/password hash into that tenant user, writes the landlord email-to-tenant mapping, and marks the DGFY membership accepted. The request requires a `dgfy_business_step_up` email OTP code sent to the DGFY account email unless the account has a still-valid recent business step-up.
+Accept a pending company invitation from the DGFY account notification surface. This path does not require an invitation link, company token in the URL, or a tenant-local password setup form. The backend activates the matching tenant-local authorization profile from the authenticated DGFY account, writes the landlord email-to-tenant mapping, and marks the DGFY membership accepted. DGFY password hashes are not copied into tenant-local users. The request requires a `dgfy_business_step_up` email OTP code sent to the DGFY account email unless the account has a still-valid recent business step-up.
 
 **Request**
 
@@ -4946,10 +4947,121 @@ The IMS tenant-session path is available for the SKUpervisor company switcher af
         "last_selected_at": "2026-06-16T10:15:00.000Z",
         "is_current": true,
         "can_switch": true,
+        "is_owner": true,
+        "can_leave": false,
+        "can_transfer_ownership": true,
+        "group": "owned",
         "requires_action": null
+      }
+    ],
+    "owned_companies": [],
+    "invited_companies": [],
+    "pending_invitations": []
+  }
+}
+```
+
+### GET /dgfy/legacy-link/status
+
+Requires a normal authenticated tenant session. Returns the current tenant-local user's DGFY migration state for IMS/POS grace messaging and guided linking UI.
+
+```json
+{
+  "success": true,
+  "data": {
+    "dgfy_link_status": "not_linked",
+    "legacy_grace_expires_at": "2027-06-17T23:59:59.999Z",
+    "dgfy_membership_id": null,
+    "dgfy_account_id": null,
+    "can_legacy_login": true,
+    "legacy_login_block_reason": null
+  }
+}
+```
+
+`dgfy_link_status` may be `linked`, `not_linked`, `pending`, or `legacy_grace_expired`. Direct tenant login for unlinked users is allowed only while `LEGACY_TENANT_LOGIN_GRACE_ENABLED=true` and before `LEGACY_TENANT_LOGIN_GRACE_END` (default June 17, 2027).
+
+### POST /dgfy/legacy-link/request-email-otp
+
+Requires a normal authenticated legacy tenant session. Sends a six-digit `dgfy_legacy_link` OTP to the tenant-local user's email before linking the existing authorization profile to a DGFY account.
+
+### POST /dgfy/legacy-link/complete
+
+Requires a normal authenticated legacy tenant session, a valid `dgfy_legacy_link` OTP for the tenant-local email, and an authenticated DGFY account token or cookie. The DGFY account email must exactly match the tenant-local user email. After OTP verification, the accepted `DgfyAccountTenantMembership`, founder owner bootstrap when applicable, email-to-tenant mapping, and success audit are written in a landlord transaction. If any landlord write fails, the link fails closed and writes `legacy_link_failed` audit evidence for repair. Success preserves tenant role/permissions/location scope through the existing tenant-local user row and returns the updated link status.
+
+```json
+{
+  "email_otp_code": "123456",
+  "dgfy_account_token": "optional-dgfy-account-jwt"
+}
+```
+
+### POST /dgfy/legacy-link/start-registration-handoff
+
+Requires a normal authenticated legacy tenant session. Returns a DGFY registration/linking handoff payload for clients that need to route the user to DGFY account creation before completing `/dgfy/legacy-link/complete`.
+
+### GET /dgfy/accounts/search
+
+Requires an IMS tenant session with `users:manage` and the DGFY auth limiter. Search active registered DGFY accounts by email, phone, username, first name, or last name for invitation targeting. Responses expose only safe identity fields and current company connection state.
+
+```json
+{
+  "success": true,
+  "data": {
+    "accounts": [
+      {
+        "dgfy_account_id": "42",
+        "display_name": "Maria Santos",
+        "email": "maria@example.com",
+        "masked_phone": "*******1234",
+        "account_status": "active",
+        "membership_status": null,
+        "already_connected": false
       }
     ]
   }
+}
+```
+
+### POST /dgfy/invitations
+
+Requires an IMS tenant session with `users:manage`. Invite an existing active DGFY account to the current tenant. The request creates a pending tenant-local authorization profile, pending `DgfyAccountTenantMembership`, and landlord invitation registry row with compensating rollback if landlord membership/registry writes fail after the tenant-local profile is prepared. No invitation link or `company_token` is returned.
+
+```json
+{
+  "dgfy_account_id": "42",
+  "role": "cashier",
+  "role_preset_key": "cashier",
+  "location_ids": [3]
+}
+```
+
+### POST /dgfy/invitations/:membership_id/reject
+
+Requires the invited authenticated DGFY account. Marks the membership and tenant invitation `declined` and audits the rejection.
+
+### POST /dgfy/account/companies/:tenant_id/leave
+
+Requires the authenticated DGFY account to have an accepted non-owner membership for the tenant. Founder-owned companies cannot be left until ownership is transferred.
+
+### POST /dgfy/account/companies/:tenant_id/transfer-ownership
+
+Requires the current owner DGFY account, a recent or supplied `dgfy_business_step_up` code, and a target DGFY account with an accepted membership in the same tenant.
+
+```json
+{
+  "target_dgfy_account_id": "84",
+  "email_otp_code": "123456"
+}
+```
+
+### POST /dgfy/account/companies/:tenant_id/pos-session
+
+Requires an authenticated DGFY account with accepted membership, POS permission/capability, and a selected terminal/counter. Creates the normal tenant session for POS and returns terminal context. Company-token context can preselect the company only after DGFY access is confirmed.
+
+```json
+{
+  "terminal_id": "COUNTER-01"
 }
 ```
 

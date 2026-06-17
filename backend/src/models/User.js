@@ -73,7 +73,7 @@ const User = sequelize.define('User', {
     }
   },
   invitation_status: {
-    type: DataTypes.ENUM('pending', 'accepted', 'expired', 'cancelled'),
+    type: DataTypes.ENUM('pending', 'accepted', 'expired', 'cancelled', 'declined'),
     allowNull: true
   },
   invitation_delivery_status: {

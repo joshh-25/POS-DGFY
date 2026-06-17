@@ -26,6 +26,14 @@ const parsePositiveInt = (value) => {
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const normalizeName = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+const normalizeSearch = (value) => String(value || '').trim();
+const INERT_TENANT_DGFY_HASH = 'DGFY_ACCOUNT_AUTH_ONLY';
+const maskPhone = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (raw.length <= 4) return '****';
+    return `${'*'.repeat(Math.max(4, raw.length - 4))}${raw.slice(-4)}`;
+};
 
 const buildUniqueUsername = async (User, baseName, currentUserId = null, options = {}) => {
     const base = normalizeName(baseName).replace(/[^\w.-]+/g, '').slice(0, 45) || 'dgfy';
@@ -66,6 +74,52 @@ export const dgfyAccountRepository = {
 
     findById(id, options = {}) {
         return DgfyAccount.findByPk(id, options);
+    },
+
+    async searchActiveAccounts(query, { tenantId = '' } = {}) {
+        const normalized = normalizeSearch(query);
+        if (normalized.length < 2) return [];
+
+        const include = [];
+        if (tenantId) {
+            include.push({
+                model: DgfyAccountTenantMembership,
+                as: 'tenantMemberships',
+                required: false,
+                where: { tenant_id: tenantId }
+            });
+        }
+
+        const accounts = await DgfyAccount.findAll({
+            where: {
+                is_active: true,
+                deleted_at: null,
+                [Op.or]: [
+                    { email: { [Op.like]: `%${normalized.toLowerCase()}%` } },
+                    { phone: { [Op.like]: `%${normalized}%` } },
+                    { username: { [Op.like]: `%${normalized}%` } },
+                    { first_name: { [Op.like]: `%${normalized}%` } },
+                    { last_name: { [Op.like]: `%${normalized}%` } }
+                ]
+            },
+            include,
+            limit: 10,
+            order: [['last_name', 'ASC'], ['first_name', 'ASC']]
+        });
+
+        return accounts.map((account) => {
+            const membership = Array.isArray(account.tenantMemberships) ? account.tenantMemberships[0] : null;
+            const membershipStatus = String(membership?.status || '').trim().toLowerCase() || null;
+            return {
+                dgfy_account_id: account.id,
+                display_name: normalizeName(`${account.first_name || ''} ${account.middle_name || ''} ${account.last_name || ''}`),
+                email: account.email,
+                masked_phone: maskPhone(account.phone),
+                account_status: 'active',
+                membership_status: membershipStatus,
+                already_connected: ['pending', 'accepted'].includes(membershipStatus)
+            };
+        });
     },
 
     findByAcceptedTenantUserMembership({ tenantId, tenantUserId }, options = {}) {
@@ -163,7 +217,7 @@ export const dgfyAccountRepository = {
             include: [{
                 model: Tenant,
                 as: 'tenant',
-                attributes: ['id', 'name', 'company_token', 'status', 'plan']
+                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'owner_dgfy_account_id']
             }]
         }];
 
@@ -220,7 +274,7 @@ export const dgfyAccountRepository = {
                 include: [{
                     model: Tenant,
                     as: 'tenant',
-                    attributes: ['id', 'name', 'company_token', 'status', 'plan']
+                    attributes: ['id', 'name', 'company_token', 'status', 'plan', 'owner_dgfy_account_id']
                 }]
             }],
             ...options
@@ -267,6 +321,10 @@ export const dgfyAccountRepository = {
         });
     },
 
+    createBusinessAuditLogStrict(payload, options = {}) {
+        return DgfyAccountBusinessAuditLog.create(payload, options);
+    },
+
     createHandoff({ jti, dgfyAccountId, expiresAt }) {
         return DgfyAccountHandoff.create({
             jti,
@@ -303,7 +361,7 @@ export const dgfyAccountRepository = {
             include: [{
                 model: Tenant,
                 as: 'tenant',
-                attributes: ['id', 'name', 'company_token', 'status', 'plan']
+                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'owner_dgfy_account_id']
             }],
             ...options
         });
@@ -331,7 +389,7 @@ export const dgfyAccountRepository = {
             include: [{
                 model: Tenant,
                 as: 'tenant',
-                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'db_name']
+                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'db_name', 'owner_dgfy_account_id']
             }],
             ...options
         });
@@ -356,6 +414,9 @@ export const dgfyAccountRepository = {
                     tenantUserId: user.user_id,
                     role: user.role || 'admin'
                 }, options);
+                if (!tenant.owner_dgfy_account_id) {
+                    await tenant.update({ owner_dgfy_account_id: account.id }).catch(() => {});
+                }
                 mirrored.push(membership);
             } catch (error) {
                 logger.warn('[DGFY] Legacy founder membership mirror skipped', {
@@ -401,6 +462,10 @@ export const dgfyAccountRepository = {
                     accepted_at: membership.accepted_at || new Date()
                 }, options);
             }
+            const tenant = await Tenant.findByPk(tenantId).catch(() => null);
+            if (tenant && !tenant.owner_dgfy_account_id) {
+                await tenant.update({ owner_dgfy_account_id: dgfyAccountId }, options).catch(() => {});
+            }
             return membership.reload(options);
         });
     },
@@ -440,6 +505,252 @@ export const dgfyAccountRepository = {
         return membership.reload(options);
     },
 
+    async upsertAcceptedLegacyMembership({
+        dgfyAccountId,
+        tenantId,
+        tenantUserId,
+        role = 'staff',
+        source = 'invite'
+    }, options = {}) {
+        const now = new Date();
+        const [membership] = await DgfyAccountTenantMembership.findOrCreate({
+            where: {
+                dgfy_account_id: dgfyAccountId,
+                tenant_id: tenantId
+            },
+            defaults: {
+                dgfy_account_id: dgfyAccountId,
+                tenant_id: tenantId,
+                tenant_user_id: tenantUserId || null,
+                role,
+                status: 'accepted',
+                source,
+                accepted_at: now
+            },
+            ...options
+        });
+
+        await membership.update({
+            tenant_user_id: tenantUserId || membership.tenant_user_id,
+            role,
+            status: 'accepted',
+            source,
+            accepted_at: membership.accepted_at || now
+        }, options);
+
+        return membership.reload({
+            include: [{
+                model: Tenant,
+                as: 'tenant',
+                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'owner_dgfy_account_id']
+            }],
+            ...options
+        });
+    },
+
+    async createInvitationForDgfyAccount({
+        dgfyAccountId,
+        tenant,
+        adminUser,
+        role = 'staff',
+        rolePresetKey = null,
+        permissions = [],
+        locationIds = []
+    }) {
+        if (!tenant?.id || !tenant?.company_token) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Tenant context is required for DGFY invitation.', { statusCode: 400 });
+        }
+
+        const account = await DgfyAccount.findOne({
+            where: { id: dgfyAccountId, is_active: true, deleted_at: null }
+        });
+        if (!account) {
+            throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Active DGFY account not found.', { statusCode: 404 });
+        }
+
+        const existingMembership = await DgfyAccountTenantMembership.findOne({
+            where: {
+                dgfy_account_id: account.id,
+                tenant_id: tenant.id
+            }
+        });
+        if (existingMembership && ['pending', 'accepted'].includes(String(existingMembership.status || '').toLowerCase())) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'This DGFY account is already connected or invited to this company.', { statusCode: 409 });
+        }
+
+        const sequelizeInstance = await tenantConnector.getConnection(tenant);
+        const tenantModels = getTenantModels(sequelizeInstance);
+        const context = {
+            sequelize: sequelizeInstance,
+            tenantId: tenant.id,
+            tenantToken: tenant.company_token,
+            tenantName: tenant.name,
+            tenantPlan: tenant.plan,
+            ...tenantModels
+        };
+
+        return dbStore.run(context, async () => {
+            const User = dbStore.get('User');
+            const UserLocationGrant = dbStore.get('UserLocationGrant');
+            const now = new Date();
+            const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+            const transaction = await sequelizeInstance.transaction();
+            let user;
+            let createdTenantUser = false;
+            let previousTenantUserState = null;
+            try {
+                user = await User.findOne({ where: { email: normalizeEmail(account.email) }, transaction });
+                previousTenantUserState = user ? {
+                    username: user.username,
+                    email: user.email,
+                    phone_number: user.phone_number,
+                    password_hash: user.password_hash,
+                    role: user.role,
+                    role_preset_key: user.role_preset_key,
+                    permissions: user.permissions,
+                    is_active: user.is_active,
+                    invitation_token: user.invitation_token,
+                    invitation_expires_at: user.invitation_expires_at,
+                    invited_by: user.invited_by,
+                    invitation_status: user.invitation_status,
+                    invitation_delivery_status: user.invitation_delivery_status,
+                    invitation_delivery_error: user.invitation_delivery_error,
+                    invitation_last_sent_at: user.invitation_last_sent_at,
+                    invitation_accepted_at: user.invitation_accepted_at,
+                    invitation_cancelled_at: user.invitation_cancelled_at,
+                    invitation_cancelled_by: user.invitation_cancelled_by,
+                    deleted_at: user.deleted_at,
+                    deleted_by: user.deleted_by
+                } : null;
+                const username = await buildUniqueUsername(User, account.first_name, user?.user_id || null, { transaction });
+                const payload = {
+                    username,
+                    email: normalizeEmail(account.email),
+                    phone_number: normalizePhoneNumber(account.phone),
+                    password_hash: user?.password_hash || INERT_TENANT_DGFY_HASH,
+                    role,
+                    role_preset_key: rolePresetKey || null,
+                    permissions: Array.isArray(permissions) && permissions.length > 0 ? permissions : (DEFAULT_ROLE_PERMISSIONS[role] || []),
+                    is_active: false,
+                    invitation_token: null,
+                    invitation_expires_at: expiresAt,
+                    invited_by: adminUser?.user_id || null,
+                    invitation_status: 'pending',
+                    invitation_delivery_status: 'not_configured',
+                    invitation_delivery_error: null,
+                    invitation_last_sent_at: null,
+                    invitation_accepted_at: null,
+                    invitation_cancelled_at: null,
+                    invitation_cancelled_by: null,
+                    deleted_at: null,
+                    deleted_by: null
+                };
+                if (user) {
+                    await user.update(payload, { transaction });
+                } else {
+                    user = await User.create(payload, { transaction });
+                    createdTenantUser = true;
+                }
+
+                if (UserLocationGrant && Array.isArray(locationIds)) {
+                    await UserLocationGrant.destroy({ where: { user_id: user.user_id }, transaction });
+                    const normalizedLocationIds = locationIds
+                        .map((id) => Number.parseInt(id, 10))
+                        .filter((id) => Number.isInteger(id) && id > 0);
+                    if (normalizedLocationIds.length > 0) {
+                        await UserLocationGrant.bulkCreate(normalizedLocationIds.map((locationId) => ({
+                            user_id: user.user_id,
+                            location_id: locationId,
+                            created_by: adminUser?.user_id || null
+                        })), { transaction });
+                    }
+                }
+                await transaction.commit();
+            } catch (error) {
+                await transaction.rollback();
+                throw error;
+            }
+
+            let membership;
+            try {
+                const [resolvedMembership] = await DgfyAccountTenantMembership.findOrCreate({
+                    where: {
+                        dgfy_account_id: account.id,
+                        tenant_id: tenant.id
+                    },
+                    defaults: {
+                        dgfy_account_id: account.id,
+                        tenant_id: tenant.id,
+                        tenant_user_id: user.user_id,
+                        role,
+                        status: 'pending',
+                        source: 'invite'
+                    }
+                });
+                membership = resolvedMembership;
+                await membership.update({
+                    tenant_user_id: user.user_id,
+                    role,
+                    status: 'pending',
+                    source: 'invite',
+                    accepted_at: null
+                });
+
+                await landlordService.upsertUserInvitationRegistry({
+                    tenantId: tenant.id,
+                    tenantUserId: user.user_id,
+                    email: normalizeEmail(account.email),
+                    role,
+                    token: `${membership.id}:${account.id}:${tenant.id}`,
+                    status: 'pending',
+                    deliveryStatus: 'not_configured',
+                    invitedByUserId: adminUser?.user_id || null,
+                    invitedByName: adminUser?.username || null,
+                    expiresAt
+                });
+            } catch (error) {
+                await membership?.destroy?.().catch(() => null);
+                const compensationTransaction = await sequelizeInstance.transaction();
+                try {
+                    const currentUser = await User.findByPk(user.user_id, { transaction: compensationTransaction });
+                    if (currentUser && createdTenantUser) {
+                        await currentUser.destroy({ transaction: compensationTransaction });
+                    } else if (currentUser && previousTenantUserState) {
+                        await currentUser.update(previousTenantUserState, { transaction: compensationTransaction });
+                    } else if (currentUser) {
+                        await currentUser.update({
+                            is_active: false,
+                            invitation_status: 'cancelled',
+                            invitation_cancelled_at: new Date()
+                        }, { transaction: compensationTransaction });
+                    }
+                    await compensationTransaction.commit();
+                } catch (compensationError) {
+                    await compensationTransaction.rollback();
+                    logger.error('[DGFY] Invitation compensation failed after landlord write failure', {
+                        tenant_id: tenant.id,
+                        tenant_user_id: user?.user_id || null,
+                        dgfy_account_id: account.id,
+                        error: compensationError?.message
+                    });
+                }
+                throw error;
+            }
+
+            return {
+                account,
+                tenantUser: user,
+                membership: await membership.reload({
+                    include: [{
+                        model: Tenant,
+                        as: 'tenant',
+                        attributes: ['id', 'name', 'company_token', 'status', 'plan', 'owner_dgfy_account_id']
+                    }]
+                })
+            };
+        });
+    },
+
     findMembershipById(id, options = {}) {
         return DgfyAccountTenantMembership.findByPk(id, options);
     },
@@ -455,7 +766,7 @@ export const dgfyAccountRepository = {
             include: [{
                 model: Tenant,
                 as: 'tenant',
-                attributes: ['id', 'name', 'company_token', 'status', 'plan']
+                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'owner_dgfy_account_id']
             }],
             ...options
         });
@@ -526,7 +837,7 @@ export const dgfyAccountRepository = {
                         username,
                         email,
                         phone_number: phone,
-                        password_hash: account.password_hash,
+                        password_hash: INERT_TENANT_DGFY_HASH,
                         role,
                         permissions: DEFAULT_ROLE_PERMISSIONS[role] || [],
                         is_active: true,
@@ -560,10 +871,113 @@ export const dgfyAccountRepository = {
             return membership.reload({
                 include: [{
                     association: 'tenant',
-                    attributes: ['id', 'name', 'company_token', 'status', 'plan']
+                    attributes: ['id', 'name', 'company_token', 'status', 'plan', 'owner_dgfy_account_id']
                 }]
             });
         });
+    },
+
+    async declineInvitationMembership({ membership }) {
+        const now = new Date();
+        if (membership?.tenant_id && membership?.tenant_user_id) {
+            await landlordService.updateInvitationRegistryByTenantUser({
+                tenantId: membership.tenant_id,
+                tenantUserId: membership.tenant_user_id,
+                updates: {
+                    status: 'declined',
+                    cancelled_at: now
+                }
+            }).catch(() => {});
+        }
+        if (membership?.tenant?.company_token && membership.tenant_user_id) {
+            const sequelizeInstance = await tenantConnector.getConnection(membership.tenant);
+            const tenantModels = getTenantModels(sequelizeInstance);
+            await dbStore.run({
+                sequelize: sequelizeInstance,
+                tenantId: membership.tenant.id,
+                tenantToken: membership.tenant.company_token,
+                tenantName: membership.tenant.name,
+                tenantPlan: membership.tenant.plan,
+                ...tenantModels
+            }, async () => {
+                const User = dbStore.get('User');
+                const user = await User.findByPk(membership.tenant_user_id).catch(() => null);
+                if (user && user.invitation_status === 'pending') {
+                    await user.update({
+                        invitation_status: 'declined',
+                        invitation_cancelled_at: now
+                    });
+                }
+            });
+        }
+        await membership.update({ status: 'declined' });
+        return membership.reload({
+            include: [{
+                association: 'tenant',
+                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'owner_dgfy_account_id']
+            }]
+        });
+    },
+
+    async leaveMembership({ membership }) {
+        if (!membership) {
+            throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Company membership not found.', { statusCode: 404 });
+        }
+        const tenant = membership.tenant;
+        const isOwner = String(tenant?.owner_dgfy_account_id || '') === String(membership.dgfy_account_id || '')
+            || String(membership.source || '').toLowerCase() === 'founder';
+        if (isOwner) {
+            throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Company owners must transfer ownership before leaving.', { statusCode: 403 });
+        }
+
+        if (tenant?.company_token && membership.tenant_user_id) {
+            const sequelizeInstance = await tenantConnector.getConnection(tenant);
+            const tenantModels = getTenantModels(sequelizeInstance);
+            await dbStore.run({
+                sequelize: sequelizeInstance,
+                tenantId: tenant.id,
+                tenantToken: tenant.company_token,
+                tenantName: tenant.name,
+                tenantPlan: tenant.plan,
+                ...tenantModels
+            }, async () => {
+                const User = dbStore.get('User');
+                const user = await User.findByPk(membership.tenant_user_id).catch(() => null);
+                if (user) {
+                    await user.update({
+                        is_active: false,
+                        deleted_at: new Date()
+                    });
+                }
+            });
+        }
+
+        await membership.update({ status: 'removed' });
+        return membership.reload({
+            include: [{
+                association: 'tenant',
+                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'owner_dgfy_account_id']
+            }]
+        });
+    },
+
+    async transferTenantOwnership({ tenant, fromAccountId, toAccountId }) {
+        await tenant.update({
+            owner_dgfy_account_id: toAccountId,
+            ownership_transferred_by: fromAccountId,
+            ownership_transferred_at: new Date()
+        });
+        const targetMembership = await DgfyAccountTenantMembership.findOne({
+            where: {
+                dgfy_account_id: toAccountId,
+                tenant_id: tenant.id,
+                status: 'accepted'
+            }
+        });
+        if (targetMembership) {
+            await targetMembership.update({ source: 'founder' });
+        }
+        return tenant.reload();
     },
 
     listMemberships(dgfyAccountId) {
@@ -572,7 +986,7 @@ export const dgfyAccountRepository = {
             include: [{
                 model: Tenant,
                 as: 'tenant',
-                attributes: ['id', 'name', 'company_token', 'status', 'plan']
+                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'owner_dgfy_account_id']
             }],
             order: [
                 ['last_selected_at', 'DESC'],

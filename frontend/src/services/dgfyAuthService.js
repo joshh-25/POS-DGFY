@@ -212,6 +212,18 @@ export const acceptDgfyInvitation = async (membershipId, token = getStoredDgfyTo
   return response.data.data;
 };
 
+export const searchDgfyBusinessAccounts = async (query) => {
+  const params = new URLSearchParams();
+  params.set('query', String(query || '').trim());
+  const response = await api.get(`/dgfy/accounts/search?${params.toString()}`);
+  return response.data.data;
+};
+
+export const createDgfyCompanyInvitation = async (payload) => {
+  const response = await api.post('/dgfy/invitations', payload);
+  return response.data.data;
+};
+
 export const requestDgfyBusinessStepUp = async (token = getStoredDgfyToken()) => {
   const response = await callDgfyBusinessEndpoint(
     (config) => api.post('/dgfy/account/business-step-up/request', {}, config),
@@ -242,6 +254,32 @@ export const listDgfyAccountCompaniesForTenantSession = async () => {
   return response.data.data;
 };
 
+export const getDgfyLegacyLinkStatus = async () => {
+  const response = await api.get('/dgfy/legacy-link/status');
+  return response.data.data;
+};
+
+export const requestDgfyLegacyLinkEmailOtp = async () => {
+  const response = await api.post('/dgfy/legacy-link/request-email-otp');
+  return response.data.data;
+};
+
+export const completeDgfyLegacyLink = async ({
+  emailOtpCode,
+  dgfyAccountToken = getStoredDgfyToken()
+} = {}) => {
+  const response = await api.post('/dgfy/legacy-link/complete', {
+    email_otp_code: emailOtpCode,
+    dgfy_account_token: dgfyAccountToken
+  });
+  return response.data.data;
+};
+
+export const startDgfyLegacyRegistrationHandoff = async () => {
+  const response = await api.post('/dgfy/legacy-link/start-registration-handoff');
+  return response.data.data;
+};
+
 export const acceptDgfyCompanyInvitation = async ({
   membershipId,
   emailOtpCode
@@ -250,6 +288,14 @@ export const acceptDgfyCompanyInvitation = async ({
     (config) => api.post(`/dgfy/invitations/${membershipId}/accept`, {
       email_otp_code: emailOtpCode
     }, config),
+    token
+  );
+  return response.data.data;
+};
+
+export const rejectDgfyCompanyInvitation = async ({ membershipId } = {}, token = getStoredDgfyToken()) => {
+  const response = await callDgfyBusinessEndpoint(
+    (config) => api.post(`/dgfy/invitations/${membershipId}/reject`, {}, config),
     token
   );
   return response.data.data;
@@ -311,6 +357,41 @@ export const switchDgfyCompany = async ({
   return data;
 };
 
+export const leaveDgfyCompany = async ({ tenantId } = {}, token = getStoredDgfyToken()) => {
+  const response = await callDgfyBusinessEndpoint(
+    (config) => api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/leave`, {}, config),
+    token
+  );
+  return response.data.data;
+};
+
+export const transferDgfyCompanyOwnership = async ({
+  tenantId,
+  targetDgfyAccountId,
+  emailOtpCode
+} = {}, token = getStoredDgfyToken()) => {
+  const response = await callDgfyBusinessEndpoint(
+    (config) => api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/transfer-ownership`, {
+      target_dgfy_account_id: targetDgfyAccountId,
+      email_otp_code: emailOtpCode
+    }, config),
+    token
+  );
+  return response.data.data;
+};
+
+export const transferDgfyCompanyOwnershipForTenantSession = async ({
+  tenantId,
+  targetDgfyAccountId,
+  emailOtpCode
+} = {}) => {
+  const response = await api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/transfer-ownership`, {
+    target_dgfy_account_id: targetDgfyAccountId,
+    email_otp_code: emailOtpCode
+  }, dgfyTenantBridgeRequestConfig());
+  return response.data.data;
+};
+
 export const switchDgfyCompanyForTenantSession = async ({
   tenantId,
   emailOtpCode
@@ -366,6 +447,21 @@ export const startDgfyTenantSession = async ({
   setBrowserSession({
     token: data?.token,
     companyToken: data?.company?.token || companyToken
+  });
+  return data;
+};
+
+export const startDgfyPosSession = async ({
+  tenantId,
+  terminalId
+} = {}, token = getStoredDgfyToken()) => {
+  const response = await api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/pos-session`, {
+    terminal_id: terminalId
+  }, dgfyRequestConfig(token));
+  const data = response.data.data;
+  setBrowserSession({
+    token: data?.token,
+    companyToken: data?.company?.token
   });
   return data;
 };

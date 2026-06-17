@@ -1,23 +1,34 @@
 import express from 'express';
 import { authLimiter } from '../middleware/rateLimiter.js';
-import { authenticateAdmin } from '../middleware/auth.js';
+import { authenticate, authenticateAdmin, checkPermission } from '../middleware/auth.js';
 import { authenticateDgfyAccount, authenticateDgfyAccountOrTenantMembership } from '../middleware/dgfyAuth.js';
+import { PERMISSIONS } from '../config/permissions.js';
 import {
     acceptDgfyInvitation,
     changeDgfyPassword,
+    completeDgfyLegacyLink,
     completeDgfyPasswordReset,
     createDgfyHandoff,
+    createDgfyInvitation,
     exchangeDgfyHandoff,
+    getDgfyLegacyLinkStatus,
     getDgfyLegalTerms,
     getDgfyMe,
+    leaveDgfyCompany,
     listDgfyAccountCompanies,
     loginDgfyAccount,
     logoutDgfyAccount,
+    rejectDgfyInvitation,
     requestDgfyBusinessStepUp,
+    requestDgfyLegacyLinkEmailOtp,
     requestDgfyPasswordReset,
     requestDgfyEmailVerification,
+    searchDgfyBusinessAccounts,
+    startDgfyPosSession,
     startDgfyTenantSession,
+    startDgfyLegacyRegistrationHandoff,
     switchDgfyCompany,
+    transferDgfyCompanyOwnership,
     updateDgfyProfile,
     verifyDgfyEmail,
     registerDgfyAccount
@@ -73,7 +84,17 @@ router.post('/auth/tenant-session', authLimiter, authenticateDgfyAccount, startD
 router.get('/account/companies', authenticateDgfyAccountOrTenantMembership, listDgfyAccountCompanies);
 router.post('/account/business-step-up/request', authLimiter, authenticateDgfyAccountOrTenantMembership, requestDgfyBusinessStepUp);
 router.post('/account/companies/:tenant_id/switch', authLimiter, authenticateDgfyAccountOrTenantMembership, switchDgfyCompany);
+router.post('/account/companies/:tenant_id/leave', authenticateDgfyAccountOrTenantMembership, leaveDgfyCompany);
+router.post('/account/companies/:tenant_id/transfer-ownership', authLimiter, authenticateDgfyAccountOrTenantMembership, transferDgfyCompanyOwnership);
+router.post('/account/companies/:tenant_id/pos-session', authLimiter, authenticateDgfyAccount, startDgfyPosSession);
+router.get('/legacy-link/status', authenticate, getDgfyLegacyLinkStatus);
+router.post('/legacy-link/request-email-otp', authLimiter, authenticate, requestDgfyLegacyLinkEmailOtp);
+router.post('/legacy-link/complete', authLimiter, authenticate, completeDgfyLegacyLink);
+router.post('/legacy-link/start-registration-handoff', authLimiter, authenticate, startDgfyLegacyRegistrationHandoff);
+router.get('/accounts/search', authLimiter, authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), searchDgfyBusinessAccounts);
+router.post('/invitations', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), createDgfyInvitation);
 router.post('/invitations/:membership_id/accept', authenticateDgfyAccountOrTenantMembership, acceptDgfyInvitation);
+router.post('/invitations/:membership_id/reject', authenticateDgfyAccountOrTenantMembership, rejectDgfyInvitation);
 
 router.get('/admin/accounts', authenticateAdmin, listAdminDgfyAccounts);
 router.get('/admin/accounts/:account_id', authenticateAdmin, getAdminDgfyAccount);

@@ -68,7 +68,7 @@ Signed-in DGFY users can:
 - Storefront location copy is mode-aware. F&B delivery uses drop-off/driver language, simple delivery uses delivery address/pin language, and Services or on-site booking flows use service/site/technician language. Pickup, dine-in, and other non-location flows must not show pin-save controls unless the flow exposes a relevant location field.
 - Customer-typed address text is authoritative. Map reverse geocoding can populate an empty address field or helper text, but it must not overwrite text the customer already typed. Stale reverse-geocode results from older pin clicks must be ignored.
 - View read-only loyalty balance and recent transactions. The balance is calculated from all DGFY loyalty transactions, not only the visible recent row limit.
-- See accepted company memberships and pending IMS-created email invitations in the Business / Your Businesses account area. Founder/master-admin companies are shown as accepted companies after the verified-email founder mirror creates an explicit `source='founder'` membership; they are not shown as invitations. Pending staff/user invitations require an email security code sent to the DGFY account email before acceptance. Accepted companies can be opened in SKUpervisor, where the IMS company switcher handles secure tenant-session switching.
+- See accepted company memberships and pending IMS-created DGFY account invitations in the Business / Your Businesses account area. Owned companies are grouped separately from companies the account was invited to. Pending invitations can be accepted or rejected; acceptance requires an email security code sent to the DGFY account email unless the account has a recent valid business step-up. Accepted invited/member companies can be left from the account surface; owned companies cannot be left until ownership is transferred. Accepted companies can be opened in SKUpervisor, where the IMS company switcher handles secure tenant-session switching.
 - Launch **Register Your Business** from the DGFY account launcher or signed-in account surface. Storefront-originated business registration creates a short-lived DGFY handoff token when possible, routes to `/register-company?source=dgfy&auth=login&handoff_token=<token>#business-registration`, exchanges the token on SKUpervisor, removes the one-time `handoff_token` from the URL, and focuses the company-registration form. If no valid DGFY session exists, the storefront routes the user to `/dgfy/auth?intent=register-business&return_to=/register-company#business-registration` first. If the handoff is expired or already consumed, the registration page returns the user to `/dgfy/auth` and still focuses the business-registration area after successful sign-in. Public DGFY registration routes do not invoke tenant-session `/auth/refresh-token` recovery. The business form collects only company name and Business Industry as business data, remains gated by current company and marketplace terms acknowledgement, and after active tenant provisioning the registration page immediately starts the normal IMS session through `/api/v1/dgfy/auth/tenant-session` without asking for SKUpervisor credentials again. If the session exchange fails, the active tenant remains created and the UI routes to manual SKUpervisor login with company context prefilled.
 
 ## DGFY Company Switching
@@ -77,7 +77,13 @@ IMS exposes a current-company switcher for DGFY-authenticated users with accepte
 
 Verified DGFY accounts can automatically receive accepted founder memberships for legacy companies only when all bootstrap checks pass: landlord email-to-tenant mapping exists, tenant is active, the tenant-local user email matches the verified DGFY email, the tenant-local user is active and not deleted, and the tenant-local user is `is_master_admin=true`. That bootstrap creates the explicit accepted membership before the company appears as switchable. Staff/user invitations remain pending invitations until accepted with email step-up.
 
-The switcher lists accepted companies, pending invitations, and a Register New Company action. It must still show the current accepted company when there is only one membership, because that confirms the active tenant context and keeps registration/invitation affordances in the same surface. Switching requires a `dgfy_business_step_up` email OTP unless the DGFY account has a still-valid recent business step-up, then starts the normal SKUpervisor tenant session. Pending invitations are visible but not switchable until accepted. Company switching never relies on email or phone matching alone, and switcher/invitation payloads do not expose tenant `company_token`.
+The switcher lists accepted active companies grouped as `Companies you own` and `Companies you were invited to`, pending invitations, and a Register New Company action. It must still show the current accepted company when there is only one membership, because that confirms the active tenant context and keeps registration/invitation affordances in the same surface. Switching requires a `dgfy_business_step_up` email OTP unless the DGFY account has a still-valid recent business step-up, then starts the normal SKUpervisor tenant session. Pending invitations are visible but not switchable until accepted. Company switching never relies on email or phone matching alone, and switcher/invitation payloads do not expose tenant `company_token`.
+
+Ownership is landlord-scoped through `tenants.owner_dgfy_account_id`. Ownership transfer is single-owner in this version: the current owner can transfer to another active DGFY account that already has an accepted membership in the company, after owner authorization and business step-up. The previous owner remains a member/admin unless separately removed.
+
+POS follows the same company-access contract. POS unlock is DGFY sign-in -> accessible company selection -> terminal/counter selection -> POS session. Company-token or desktop context can preselect the initial company only after DGFY access is confirmed; terminal registry, terminal-location binding, shifts, compliance, and POS capability gates remain enforced by the POS runtime.
+
+Legacy IMS/POS users who were accepted before the DGFY-only migration but do not yet have an accepted DGFY membership remain eligible for direct tenant login only until June 17, 2027. The POS drawer must present DGFY unlock as the primary path and show legacy login only as a dated grace fallback. My Account -> Business remains the v1 in-account invitation notification surface; a separate notification table is not part of this release.
 
 ## Checkout And Booking Account Actions
 
@@ -120,6 +126,22 @@ Global customer endpoints:
 - `POST /api/v1/dgfy/customer/tracking-recovery/request`
 - `POST /api/v1/dgfy/customer/tracking-recovery/verify`
 
+Business and migration endpoints:
+
+- `GET /api/v1/dgfy/legacy-link/status`
+- `POST /api/v1/dgfy/legacy-link/request-email-otp`
+- `POST /api/v1/dgfy/legacy-link/complete`
+- `POST /api/v1/dgfy/legacy-link/start-registration-handoff`
+- `GET /api/v1/dgfy/accounts/search`
+- `POST /api/v1/dgfy/invitations`
+- `POST /api/v1/dgfy/invitations/:membership_id/accept`
+- `POST /api/v1/dgfy/invitations/:membership_id/reject`
+- `GET /api/v1/dgfy/account/companies`
+- `POST /api/v1/dgfy/account/companies/:tenant_id/switch`
+- `POST /api/v1/dgfy/account/companies/:tenant_id/leave`
+- `POST /api/v1/dgfy/account/companies/:tenant_id/transfer-ownership`
+- `POST /api/v1/dgfy/account/companies/:tenant_id/pos-session`
+
 ## Deferred Risks
 
 - Phone verification is intentionally deferred. Phone numbers are contact data only and must not be presented as verified.
@@ -151,6 +173,7 @@ Current validation must include:
 - `npm --prefix frontend run build:store`
 - Rendered desktop and mobile storefront smoke checks for the discovery auth dialog, routed account page, recovery panel, address controls, loyalty summary, order actions, and company-registration separation.
 - `npm --prefix frontend test -- --run src/features/pos/__tests__/terminalLocationScope.integration.test.jsx`
+- `npm run smoke:dgfy-access-ui` after local IMS, POS, and Storefront dev or preview servers are running
 - Loyalty redemption and phone OTP verification remain deferred UI hardening items. The current routed page manages saved locations, including optional exact map pins, confirms cancellation before mutation, explains unavailable reorder lines when catalog mapping fails, calls existing account order action endpoints, and relies on checkout revalidation for reordered cart lines.
 - Rendered smoke evidence for the routed account page was captured with Microsoft Edge headless against the Storefront production preview:
   - `artifacts/rendered-qa/dgfy-account-after-gaps-desktop.png`

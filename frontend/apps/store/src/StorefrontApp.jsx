@@ -7658,6 +7658,26 @@ export default function StorefrontApp() {
     toast.success('Company invitation accepted.');
     await handleLoadAccountPanel();
   }, [handleLoadAccountPanel]);
+  const handleRejectDgfyCompanyInvitation = useCallback(async ({ membershipId }) => {
+    const dgfyToken = readDgfyAuthToken();
+    await requestJson(`/api/v1/dgfy/invitations/${encodeURIComponent(membershipId)}/reject`, {
+      method: 'POST',
+      authToken: dgfyToken,
+      cache: 'no-store'
+    });
+    toast.success('Company invitation rejected.');
+    await handleLoadAccountPanel();
+  }, [handleLoadAccountPanel]);
+  const handleLeaveDgfyCompany = useCallback(async ({ tenantId }) => {
+    const dgfyToken = readDgfyAuthToken();
+    await requestJson(`/api/v1/dgfy/account/companies/${encodeURIComponent(tenantId)}/leave`, {
+      method: 'POST',
+      authToken: dgfyToken,
+      cache: 'no-store'
+    });
+    toast.success('You left the company.');
+    await handleLoadAccountPanel();
+  }, [handleLoadAccountPanel]);
   const switchDgfyCompanyFromStorefront = useCallback(async ({ tenantId, emailOtpCode }) => {
     if (typeof window === 'undefined') return;
     const normalizedTenantId = String(tenantId || '').trim();
@@ -10394,6 +10414,8 @@ export default function StorefrontApp() {
           onRegisterBusiness={openBusinessRegistrationFlow}
           onRequestBusinessStepUp={requestDgfyBusinessSecurityCode}
           onAcceptCompanyInvitation={handleAcceptDgfyCompanyInvitation}
+          onRejectCompanyInvitation={handleRejectDgfyCompanyInvitation}
+          onLeaveCompany={handleLeaveDgfyCompany}
           onSwitchCompany={switchDgfyCompanyFromStorefront}
           onClearSavedDetails={clearSavedCustomerDetailsForDevice}
           onUseAddressForCheckout={useAccountAddressForCheckout}

@@ -287,7 +287,7 @@ export const findTenantsByEmail = async (email) => {
  * @param {string} tenantId - Tenant UUID
  * @returns {Promise<Object>} Created or existing mapping
  */
-export const addEmailTenantMapping = async (email, tenantId) => {
+export const addEmailTenantMapping = async (email, tenantId, options = {}) => {
     const normalizedEmail = email.toLowerCase().trim();
 
     try {
@@ -299,7 +299,8 @@ export const addEmailTenantMapping = async (email, tenantId) => {
             defaults: {
                 email: normalizedEmail,
                 tenant_id: tenantId
-            }
+            },
+            ...options
         });
 
         if (created) {
@@ -311,7 +312,8 @@ export const addEmailTenantMapping = async (email, tenantId) => {
         // Handle unique constraint violation gracefully
         if (error.name === 'SequelizeUniqueConstraintError') {
             const existing = await UserTenantMapping.findOne({
-                where: { email: normalizedEmail, tenant_id: tenantId }
+                where: { email: normalizedEmail, tenant_id: tenantId },
+                ...options
             });
             return { mapping: existing, created: false };
         }

@@ -14,15 +14,21 @@ import {
     buildChangeDgfyPasswordUseCase,
     buildCompleteDgfyPasswordResetUseCase,
     buildCreateDgfyHandoffUseCase,
+    buildCreateDgfyInvitationUseCase,
     buildExchangeDgfyHandoffUseCase,
+    buildLeaveDgfyCompanyUseCase,
     buildListDgfyAccountCompaniesUseCase,
     buildGetDgfyMeUseCase,
     buildLoginDgfyAccountUseCase,
+    buildRejectDgfyInvitationUseCase,
     buildRequestDgfyBusinessStepUpUseCase,
     buildRequestDgfyPasswordResetUseCase,
     buildRequestDgfyEmailVerificationUseCase,
+    buildSearchDgfyBusinessAccountsUseCase,
+    buildStartDgfyPosSessionUseCase,
     buildStartDgfyTenantSessionUseCase,
     buildSwitchDgfyCompanyUseCase,
+    buildTransferDgfyCompanyOwnershipUseCase,
     buildUpdateDgfyProfileUseCase,
     buildVerifyDgfyEmailUseCase,
     buildRegisterDgfyAccountUseCase
@@ -47,6 +53,8 @@ import {
 } from './usecases/dgfyCustomerUseCases.js';
 import { requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
 import { createTenantSessionForDgfyAccount } from '../../services/dgfyTenantSessionService.js';
+import { validateDgfyPosTerminalPolicy } from '../../services/dgfyPosTerminalPolicyService.js';
+import { sendEmail } from '../../services/emailService.js';
 
 export const registerDgfyAccountUseCase = buildRegisterDgfyAccountUseCase({
     repository: dgfyAccountRepository,
@@ -126,11 +134,30 @@ export const acceptDgfyInvitationUseCase = buildAcceptDgfyInvitationUseCase({
     }
 });
 
+export const rejectDgfyInvitationUseCase = buildRejectDgfyInvitationUseCase({
+    repository: dgfyAccountRepository
+});
+
+export const createDgfyInvitationUseCase = buildCreateDgfyInvitationUseCase({
+    repository: dgfyAccountRepository,
+    sendEmail
+});
+
 export const startDgfyTenantSessionUseCase = buildStartDgfyTenantSessionUseCase({
     createTenantSessionForDgfyAccount
 });
 
+export const startDgfyPosSessionUseCase = buildStartDgfyPosSessionUseCase({
+    createTenantSessionForDgfyAccount,
+    repository: dgfyAccountRepository,
+    validateTerminalPolicy: validateDgfyPosTerminalPolicy
+});
+
 export const listDgfyAccountCompaniesUseCase = buildListDgfyAccountCompaniesUseCase({
+    repository: dgfyAccountRepository
+});
+
+export const searchDgfyBusinessAccountsUseCase = buildSearchDgfyBusinessAccountsUseCase({
     repository: dgfyAccountRepository
 });
 
@@ -144,6 +171,18 @@ export const requestDgfyBusinessStepUpUseCase = buildRequestDgfyBusinessStepUpUs
 export const switchDgfyCompanyUseCase = buildSwitchDgfyCompanyUseCase({
     repository: dgfyAccountRepository,
     createTenantSessionForDgfyAccount,
+    verifyEmailOtp,
+    emailOtpPurposes: {
+        DGFY_BUSINESS_STEP_UP: 'dgfy_business_step_up'
+    }
+});
+
+export const leaveDgfyCompanyUseCase = buildLeaveDgfyCompanyUseCase({
+    repository: dgfyAccountRepository
+});
+
+export const transferDgfyCompanyOwnershipUseCase = buildTransferDgfyCompanyOwnershipUseCase({
+    repository: dgfyAccountRepository,
     verifyEmailOtp,
     emailOtpPurposes: {
         DGFY_BUSINESS_STEP_UP: 'dgfy_business_step_up'

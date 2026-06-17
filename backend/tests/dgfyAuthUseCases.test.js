@@ -11,8 +11,10 @@ import {
     buildRequestDgfyBusinessStepUpUseCase,
     buildRequestDgfyPasswordResetUseCase,
     buildRequestDgfyEmailVerificationUseCase,
+    buildStartDgfyPosSessionUseCase,
     buildStartDgfyTenantSessionUseCase,
     buildSwitchDgfyCompanyUseCase,
+    buildTransferDgfyCompanyOwnershipUseCase,
     buildUpdateDgfyProfileUseCase,
     buildVerifyDgfyEmailUseCase,
     buildRegisterDgfyAccountUseCase
@@ -876,5 +878,225 @@ describe('dgfyAuthUseCases', () => {
 
         expect(result.success).toBe(false);
         expect(result.error.message).toBe('Invitation id is required.');
+    });
+
+    it('starts a DGFY POS session with membership and terminal audit evidence', async () => {
+        const account = createAccount({ id: 'dgfy-pos-1' });
+        const membership = {
+            id: 51,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-pos',
+            tenant_user_id: 8,
+            status: 'accepted',
+            source: 'invite',
+            tenant: {
+                id: 'tenant-pos',
+                name: 'POS Foods',
+                status: 'active'
+            }
+        };
+        const repository = {
+            findMembershipForAccount: jest.fn().mockResolvedValue(membership),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const createTenantSessionForDgfyAccount = jest.fn().mockResolvedValue({
+            user_id: 8,
+            permissions: ['pos:view'],
+            company: { id: 'tenant-pos', token: 'secret-pos-token' }
+        });
+        const validateTerminalPolicy = jest.fn().mockResolvedValue({
+            terminal_id: 'COUNTER-01',
+            reason_code: 'ALLOWED'
+        });
+        const useCase = buildStartDgfyPosSessionUseCase({
+            createTenantSessionForDgfyAccount,
+            repository,
+            validateTerminalPolicy
+        });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-pos',
+            body: { terminal_id: 'counter-01' },
+            metadata: { request_id: 'req-pos-unlock' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.findMembershipForAccount).toHaveBeenCalledWith({
+            dgfyAccountId: account.id,
+            tenantId: 'tenant-pos',
+            status: 'accepted'
+        });
+        expect(createTenantSessionForDgfyAccount).toHaveBeenCalledWith({
+            account,
+            tenantId: 'tenant-pos'
+        });
+        expect(validateTerminalPolicy).toHaveBeenCalledWith({
+            tenantId: 'tenant-pos',
+            terminalId: 'COUNTER-01'
+        });
+        expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'pos_unlock_attempted',
+            result: 'success',
+            request_id: 'req-pos-unlock'
+        }));
+        expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'pos_unlock_success',
+            result: 'success',
+            request_id: 'req-pos-unlock'
+        }));
+        expect(result.data.payload.data.pos.terminal_identity_policy.reason_code).toBe('ALLOWED');
+    });
+
+    it('audits DGFY POS session failure when POS permission is missing', async () => {
+        const account = createAccount({ id: 'dgfy-pos-2' });
+        const membership = {
+            id: 52,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-pos',
+            status: 'accepted',
+            tenant: {
+                id: 'tenant-pos',
+                name: 'POS Foods',
+                status: 'active'
+            }
+        };
+        const repository = {
+            findMembershipForAccount: jest.fn().mockResolvedValue(membership),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const useCase = buildStartDgfyPosSessionUseCase({
+            repository,
+            createTenantSessionForDgfyAccount: jest.fn().mockResolvedValue({
+                permissions: ['items:view'],
+                company: { id: 'tenant-pos', token: 'secret-pos-token' }
+            }),
+            validateTerminalPolicy: jest.fn()
+        });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-pos',
+            body: { terminal_id: 'COUNTER-01' },
+            metadata: { request_id: 'req-pos-denied' }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(403);
+        expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'pos_unlock_failed',
+            result: 'failure',
+            reason: 'This DGFY account does not have POS access for the selected company.',
+            request_id: 'req-pos-denied'
+        }));
+    });
+
+    it('transfers ownership only from the current owner to an accepted member', async () => {
+        const account = createAccount({ id: 'owner-dgfy' });
+        const membership = {
+            id: 71,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-own',
+            status: 'accepted',
+            source: 'founder',
+            tenant: {
+                id: 'tenant-own',
+                owner_dgfy_account_id: account.id,
+                status: 'active'
+            }
+        };
+        const targetMembership = {
+            id: 72,
+            dgfy_account_id: 'target-dgfy',
+            tenant_id: 'tenant-own',
+            status: 'accepted'
+        };
+        const repository = {
+            findMembershipForAccount: jest.fn()
+                .mockResolvedValueOnce(membership)
+                .mockResolvedValueOnce(targetMembership),
+            transferTenantOwnership: jest.fn().mockResolvedValue(null),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null),
+            markBusinessStepUpVerified: jest.fn().mockResolvedValue(null)
+        };
+        const verifyEmailOtp = jest.fn().mockResolvedValue({ verified: true });
+        const useCase = buildTransferDgfyCompanyOwnershipUseCase({
+            repository,
+            verifyEmailOtp
+        });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-own',
+            body: {
+                target_dgfy_account_id: 'target-dgfy',
+                email_otp_code: '123456'
+            },
+            metadata: { request_id: 'req-transfer' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(verifyEmailOtp).toHaveBeenCalledWith(expect.objectContaining({
+            purpose: 'dgfy_business_step_up',
+            email: account.email,
+            code: '123456'
+        }));
+        expect(repository.transferTenantOwnership).toHaveBeenCalledWith({
+            tenant: membership.tenant,
+            fromAccountId: account.id,
+            toAccountId: 'target-dgfy'
+        });
+        expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'ownership_transfer_success',
+            result: 'success',
+            request_id: 'req-transfer'
+        }));
+    });
+
+    it('blocks ownership transfer to a non-accepted target and audits the failure', async () => {
+        const account = createAccount({ id: 'owner-dgfy' });
+        const membership = {
+            id: 81,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-own',
+            status: 'accepted',
+            source: 'founder',
+            tenant: {
+                id: 'tenant-own',
+                owner_dgfy_account_id: account.id,
+                status: 'active'
+            }
+        };
+        const repository = {
+            findMembershipForAccount: jest.fn()
+                .mockResolvedValueOnce(membership)
+                .mockResolvedValueOnce(null),
+            transferTenantOwnership: jest.fn(),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const useCase = buildTransferDgfyCompanyOwnershipUseCase({
+            repository,
+            verifyEmailOtp: jest.fn()
+        });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-own',
+            body: {
+                target_dgfy_account_id: 'pending-dgfy',
+                email_otp_code: '123456'
+            },
+            metadata: { request_id: 'req-transfer-fail' }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(409);
+        expect(repository.transferTenantOwnership).not.toHaveBeenCalled();
+        expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'ownership_transfer_failed',
+            result: 'failure',
+            reason: 'Ownership can only be transferred to an accepted company member.',
+            request_id: 'req-transfer-fail'
+        }));
     });
 });

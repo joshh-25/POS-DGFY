@@ -19,6 +19,7 @@ import { onboardingRepository } from '../modules/onboarding/repositories/onboard
 import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
 import { getTokenBlacklistFailureMode } from '../config/hostingProfile.js';
 import { verifyEmailOtp, EMAIL_OTP_PURPOSES } from './emailOtpService.js';
+import { assertLegacyTenantLoginAllowed } from './dgfyLegacyAccessPolicy.js';
 
 
 const TEST_JWT_SECRET_FALLBACK = 'test_jwt_secret_for_ci_only_32_chars!';
@@ -201,6 +202,12 @@ export const verifyRefreshToken = (token) => {
 };
 
 export const registerUser = async (userData) => {
+  if (String(process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED || '').trim().toLowerCase() !== 'true') {
+    const error = new Error('New business users must be invited through an existing DGFY account.');
+    error.statusCode = 403;
+    error.code = 'DGFY_ACCOUNT_REQUIRED';
+    throw error;
+  }
   await requireTenantAuthContext({ operation: 'auth.register' });
   const { username, email, password, phone_number: phoneNumber, email_otp_code: emailOtpCode } = userData;
   // Always create new users as 'staff' - only admins can change roles via User Management
@@ -306,6 +313,16 @@ export const loginUser = async (email, password) => {
     throw error;
   }
 
+  const dgfyLinkStatus = await assertLegacyTenantLoginAllowed({ tenantId, user });
+  if (dgfyLinkStatus.dgfy_link_status !== 'linked') {
+    logger.info('[AuthService] Legacy tenant login allowed during DGFY grace period', {
+      tenant_id: tenantId,
+      user_id: user.user_id,
+      dgfy_link_status: dgfyLinkStatus.dgfy_link_status,
+      legacy_grace_expires_at: dgfyLinkStatus.legacy_grace_expires_at
+    });
+  }
+
   // Generate tokens
   const token = generateToken(user, { tenantId });
   const refreshToken = generateRefreshToken(user, { tenantId });
@@ -339,6 +356,11 @@ export const loginUser = async (email, password) => {
     role: user.role,
     permissions: resolveEffectivePermissionsForUser(user),
     is_master_admin: user.is_master_admin || false,
+    dgfy_link_status: dgfyLinkStatus.dgfy_link_status,
+    legacy_grace_expires_at: dgfyLinkStatus.legacy_grace_expires_at,
+    dgfy_membership_id: dgfyLinkStatus.dgfy_membership_id,
+    can_legacy_login: dgfyLinkStatus.can_legacy_login,
+    legacy_login_block_reason: dgfyLinkStatus.legacy_login_block_reason,
     onboarding,
     token,
     refreshToken,

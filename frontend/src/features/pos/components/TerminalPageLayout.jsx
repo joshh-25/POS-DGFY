@@ -113,8 +113,10 @@ export default function TerminalPageLayout({
     drawerOpen,
     formData,
     setFormData,
+    dgfyPosState = {},
     submitting,
-    handleLogin
+    handleLogin,
+    handleLegacyLogin = null
 }) {
   const navigate = useNavigate();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -686,12 +688,14 @@ export default function TerminalPageLayout({
                     drawerOpen={drawerOpen}
                     formData={formData}
                     setFormData={setFormData}
+                    dgfyPosState={dgfyPosState}
                     terminalIdOptions={terminalIdOptions}
                     terminalRegistry={terminalRegistry}
                     terminalRegistryMode={terminalRegistryMode}
                     registryEnforced={registryEnforced}
                     submitting={submitting}
                     onSubmit={handleLogin}
+                    onLegacySubmit={handleLegacyLogin}
                 />
             </Suspense>
             </main>

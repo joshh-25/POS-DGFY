@@ -22,14 +22,18 @@ import {
   UserMinus,
   UserPlus,
   MapPin,
-  Send,
-  Copy,
   XCircle,
-  AlertTriangle
+  AlertTriangle,
+  Crown,
+  ShieldCheck
 } from 'lucide-react';
 import api from '../../src/services/api.js';
 import useStore from '../../src/store/useStore.js';
 import DeleteConfirmDialog from '../ui/DeleteConfirmDialog';
+import {
+  requestDgfyBusinessStepUpForTenantSession,
+  transferDgfyCompanyOwnershipForTenantSession
+} from '../../src/services/dgfyAuthService.js';
 
 // Role hierarchy for permission checks (higher number = higher rank)
 const ROLE_HIERARCHY = { admin: 7, manager: 6, po: 5, do: 5, jo: 5, cashier: 4, staff: 3 };
@@ -42,17 +46,30 @@ const ROLE_LABELS = {
   cashier: 'Cashier',
   staff: 'Staff'
 };
-const INVITATION_STATUSES = new Set(['pending', 'cancelled', 'expired']);
+const INVITATION_STATUSES = new Set(['pending', 'cancelled', 'expired', 'declined', 'rejected']);
 const INVITATION_STATUS_LABELS = {
   pending: 'Pending',
   cancelled: 'Cancelled',
-  expired: 'Expired'
+  expired: 'Expired',
+  declined: 'Declined',
+  rejected: 'Rejected'
 };
 const DELIVERY_STATUS_LABELS = {
-  not_configured: 'SMTP missing',
+  not_configured: 'Account notice',
   sent: 'Email sent',
-  failed: 'Email failed',
-  manual_link: 'Manual link'
+  failed: 'Email failed'
+};
+const DGFY_LINK_LABELS = {
+  linked: 'Linked',
+  not_linked: 'Not linked',
+  pending: 'Pending',
+  legacy_grace_expired: 'Expired'
+};
+const DGFY_LINK_CLASSES = {
+  linked: 'bg-emerald-100 text-emerald-700',
+  not_linked: 'bg-amber-100 text-amber-800',
+  pending: 'bg-blue-100 text-blue-700',
+  legacy_grace_expired: 'bg-red-100 text-red-700'
 };
 
 const isInvitationRow = (user) => INVITATION_STATUSES.has(String(user?.invitation_status || '').toLowerCase());
@@ -153,6 +170,10 @@ export default function UserManagementModal({ open, onOpenChange }) {
   // Remove user from company state
   const [removeConfirmUser, setRemoveConfirmUser] = useState(null);
   const [removingUser, setRemovingUser] = useState(false);
+  const [ownershipTransferUser, setOwnershipTransferUser] = useState(null);
+  const [ownershipTransferCode, setOwnershipTransferCode] = useState('');
+  const [ownershipTransferOtpSent, setOwnershipTransferOtpSent] = useState(false);
+  const [ownershipTransferLoading, setOwnershipTransferLoading] = useState(false);
 
   // Get current user from store
   const currentUser = useStore((state) => state.currentUser);
@@ -214,6 +235,67 @@ export default function UserManagementModal({ open, onOpenChange }) {
     const currentRank = ROLE_HIERARCHY[currentUser.role] || 0;
     const targetRank = ROLE_HIERARCHY[targetUser.role] || 0;
     return currentRank > targetRank;
+  };
+
+  const canTransferOwnershipTo = (targetUser) => {
+    if (!currentUser || !targetUser) return false;
+    if (isInvitationRow(targetUser) || targetUser.is_active !== true) return false;
+    if (!targetUser.dgfy_account_id || targetUser.dgfy_link_status !== 'linked') return false;
+    if (currentUser.user_id === targetUser.user_id) return false;
+    return currentUser.is_master_admin === true;
+  };
+
+  const resetOwnershipTransferState = () => {
+    setOwnershipTransferUser(null);
+    setOwnershipTransferCode('');
+    setOwnershipTransferOtpSent(false);
+    setOwnershipTransferLoading(false);
+  };
+
+  const openOwnershipTransfer = async (targetUser) => {
+    setOwnershipTransferUser(targetUser);
+    setOwnershipTransferCode('');
+    setOwnershipTransferOtpSent(false);
+    setOwnershipTransferLoading(true);
+    try {
+      await requestDgfyBusinessStepUpForTenantSession();
+      setOwnershipTransferOtpSent(true);
+      toast.success('Security code sent to your DGFY email.');
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to send owner-transfer security code.'));
+      resetOwnershipTransferState();
+    } finally {
+      setOwnershipTransferLoading(false);
+    }
+  };
+
+  const handleTransferOwnership = async () => {
+    if (!ownershipTransferUser) return;
+    const tenantId = currentUser?.company?.id;
+    if (!tenantId) {
+      toast.error('Current company context is unavailable. Refresh and try again.');
+      return;
+    }
+    if (!/^\d{6}$/.test(ownershipTransferCode.trim())) {
+      toast.error('Enter the 6-digit security code sent to your DGFY email.');
+      return;
+    }
+
+    setOwnershipTransferLoading(true);
+    try {
+      await transferDgfyCompanyOwnershipForTenantSession({
+        tenantId,
+        targetDgfyAccountId: ownershipTransferUser.dgfy_account_id,
+        emailOtpCode: ownershipTransferCode.trim()
+      });
+      toast.success(`${ownershipTransferUser.username} is now the company owner.`);
+      resetOwnershipTransferState();
+      fetchUsers();
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to transfer company ownership.'));
+    } finally {
+      setOwnershipTransferLoading(false);
+    }
   };
 
   // Handle removing a user from company
@@ -385,41 +467,6 @@ export default function UserManagementModal({ open, onOpenChange }) {
       fetchUsers();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to update status');
-    }
-  };
-
-  const handleCopyInvitationLink = async (user) => {
-    try {
-      const result = await userService.createInvitationLink(user.user_id);
-      if (!result.invitation_url) {
-        throw new Error('Invitation link was not returned');
-      }
-      if (!navigator.clipboard?.writeText) {
-        throw new Error('Clipboard is not available in this browser');
-      }
-      await navigator.clipboard.writeText(result.invitation_url);
-      toast.success('Invitation link copied');
-      fetchUsers();
-    } catch (error) {
-      toast.error(error.response?.data?.message || error.message || 'Failed to create invitation link');
-    }
-  };
-
-  const handleResendInvitation = async (user) => {
-    try {
-      const result = await userService.resendUserInvitation(user.user_id);
-      if (result.invitation_url) {
-        if (!navigator.clipboard?.writeText) {
-          throw new Error('Clipboard is not available in this browser');
-        }
-        await navigator.clipboard.writeText(result.invitation_url);
-        toast.success('Invitation link copied because email was not sent');
-      } else {
-        toast.success('Invitation resent');
-      }
-      fetchUsers();
-    } catch (error) {
-      toast.error(error.response?.data?.message || error.message || 'Failed to resend invitation');
     }
   };
 
@@ -877,7 +924,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
               </div>
             ) : (
               <div className="overflow-x-auto pb-2">
-                <div className="min-w-[760px] space-y-2">
+                <div className="min-w-[900px] space-y-2">
                 {/* Select All Header */}
                 <div className="flex items-center gap-3 px-4 py-2 bg-slate-50 rounded-lg text-sm font-medium text-slate-600">
                   <input
@@ -888,6 +935,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
                   />
                   <span className="flex-1">Select All ({filteredUsers.length})</span>
                   <span className="w-40">Role</span>
+                  <span className="w-28">DGFY</span>
                   <span className="w-24">Access</span>
                   <span className="w-28">Locations</span>
                   <span className="w-20 text-center">Status</span>
@@ -986,6 +1034,24 @@ export default function UserManagementModal({ open, onOpenChange }) {
                       )}
                     </div>
 
+                    {/* DGFY Link Status */}
+                    <div className="w-28">
+                      {isInvitationRow(user) ? (
+                        <span className="text-xs text-slate-400">After accept</span>
+                      ) : (
+                        <div className="space-y-1">
+                          <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${DGFY_LINK_CLASSES[user.dgfy_link_status] || 'bg-slate-100 text-slate-600'}`}>
+                            {DGFY_LINK_LABELS[user.dgfy_link_status] || 'Unknown'}
+                          </span>
+                          {user.dgfy_link_status === 'not_linked' && user.legacy_grace_expires_at && (
+                            <p className="text-[11px] leading-4 text-amber-700">
+                              Until {formatShortDate(user.legacy_grace_expires_at)}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
                     {/* Permissions Button */}
                     <div className="w-24">
                       {isInvitationRow(user) ? (
@@ -1052,20 +1118,33 @@ export default function UserManagementModal({ open, onOpenChange }) {
                     <div className="w-28 flex justify-center">
                       {isInvitationRow(user) ? (
                         <div className="flex gap-1">
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-1" title="Resend invitation" onClick={(e) => { e.stopPropagation(); handleResendInvitation(user); }}>
-                            <Send className="w-4 h-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-1" title="Copy invitation link" onClick={(e) => { e.stopPropagation(); handleCopyInvitationLink(user); }}>
-                            <Copy className="w-4 h-4" />
-                          </Button>
                           {isPendingInvitation(user) && (
                             <Button variant="ghost" size="sm" className="h-8 w-8 p-1 text-red-500 hover:bg-red-50 hover:text-red-700" title="Cancel invitation" onClick={(e) => { e.stopPropagation(); handleCancelInvitation(user); }}>
                               <XCircle className="w-4 h-4" />
                             </Button>
                           )}
+                          {!isPendingInvitation(user) && (
+                            <span className="text-xs text-slate-400">
+                              {INVITATION_STATUS_LABELS[String(user?.invitation_status || '').toLowerCase()] || 'Closed'}
+                            </span>
+                          )}
                         </div>
                       ) : (
-                        <>
+                        <div className="flex items-center justify-center gap-1">
+                          {canTransferOwnershipTo(user) && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openOwnershipTransfer(user);
+                              }}
+                              className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 p-1 h-8 w-8"
+                              title="Transfer company ownership"
+                            >
+                              <Crown className="w-4 h-4" />
+                            </Button>
+                          )}
                           {canRemoveUser(user) && (
                             <Button
                               variant="ghost"
@@ -1080,7 +1159,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
                               <UserMinus className="w-4 h-4" />
                             </Button>
                           )}
-                        </>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1111,6 +1190,66 @@ export default function UserManagementModal({ open, onOpenChange }) {
         onSuccess={fetchUsers}
         roleCatalog={roleCatalog}
       />
+
+      {/* Ownership Transfer Dialog */}
+      <Dialog
+        open={Boolean(ownershipTransferUser)}
+        onOpenChange={(isOpen) => {
+          if (ownershipTransferLoading) return;
+          if (!isOpen) resetOwnershipTransferState();
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Crown className="w-5 h-5 text-amber-600" />
+              Transfer Company Ownership
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <p className="font-semibold">Target owner: {ownershipTransferUser?.username || 'Selected member'}</p>
+              <p className="mt-1 leading-5">
+                The new owner becomes the company owner. You remain a member/admin unless removed later.
+                The owner cannot leave the company until ownership is transferred again.
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
+              <div className="flex items-start gap-2">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-700" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-blue-950">DGFY business step-up</p>
+                  <p className="mt-1 text-xs leading-5 text-blue-800">
+                    {ownershipTransferOtpSent ? 'Enter the 6-digit code sent to your DGFY email.' : 'Sending security code...'}
+                  </p>
+                </div>
+              </div>
+              <Input
+                value={ownershipTransferCode}
+                onChange={(event) => setOwnershipTransferCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                inputMode="numeric"
+                placeholder="000000"
+                className="mt-3 font-semibold tracking-widest"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
+            <Button variant="outline" onClick={resetOwnershipTransferState} disabled={ownershipTransferLoading}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleTransferOwnership}
+              disabled={ownershipTransferLoading || !ownershipTransferOtpSent}
+              className="bg-amber-600 hover:bg-amber-700"
+            >
+              {ownershipTransferLoading ? 'Transferring...' : 'Transfer Ownership'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Permission Matrix Dialog */}
       {showPermissionMatrix && selectedUser && (

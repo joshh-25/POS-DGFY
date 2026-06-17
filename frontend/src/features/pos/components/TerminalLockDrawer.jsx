@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldAlert } from 'lucide-react';
+import { Building2, KeyRound, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,16 +8,20 @@ export default function TerminalLockDrawer({
   drawerOpen,
   formData,
   setFormData,
+  dgfyPosState = {},
   terminalIdOptions = [],
   terminalRegistry = [],
   terminalRegistryMode = 'warn',
   registryEnforced = false,
   submitting,
-  onSubmit
+  onSubmit,
+  onLegacySubmit
 }) {
   const registryOptions = Array.isArray(terminalRegistry)
     ? terminalRegistry.filter((entry) => entry?.is_active !== false)
     : [];
+  const dgfyCompanies = Array.isArray(dgfyPosState?.companies) ? dgfyPosState.companies : [];
+  const dgfyAuthenticated = Boolean(dgfyPosState?.authenticated);
 
   return (
     <div
@@ -34,14 +38,24 @@ export default function TerminalLockDrawer({
             <h2 className="text-base font-extrabold tracking-tight">Terminal Login Required</h2>
           </div>
           <p className="mt-2 text-[13px] leading-5 text-[#475569]">
-            The terminal stays visible for context, but all actions are locked until login succeeds.
+            Sign in with DGFY, choose the company and counter, then unlock POS.
           </p>
         </div>
 
         <form onSubmit={onSubmit} className="space-y-3.5 p-5">
+          <div className="rounded-lg border border-[#BFD2EA] bg-white px-3 py-2 text-[12px] leading-5 text-[#334155]">
+            <div className="flex items-center gap-2 font-extrabold text-[#0F172A]">
+              <KeyRound className="h-4 w-4 text-[#1A4E8D]" />
+              DGFY POS unlock
+            </div>
+            <p className="mt-1">
+              Company access is checked against accepted DGFY memberships before a POS session starts.
+            </p>
+          </div>
           <div className="space-y-1.5">
-            <Label className="text-[13px] font-bold text-[#0F172A]">Email</Label>
+            <Label htmlFor="dgfy-pos-email" className="text-[13px] font-bold text-[#0F172A]">DGFY Email</Label>
             <Input
+              id="dgfy-pos-email"
               type="email"
               value={formData.email}
               onChange={(event) => setFormData((prev) => ({ ...prev, email: event.target.value }))}
@@ -51,8 +65,9 @@ export default function TerminalLockDrawer({
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-[13px] font-bold text-[#0F172A]">Password</Label>
+            <Label htmlFor="dgfy-pos-password" className="text-[13px] font-bold text-[#0F172A]">DGFY Password</Label>
             <Input
+              id="dgfy-pos-password"
               type="password"
               value={formData.password}
               onChange={(event) => setFormData((prev) => ({ ...prev, password: event.target.value }))}
@@ -62,10 +77,35 @@ export default function TerminalLockDrawer({
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-[13px] font-bold text-[#0F172A]">{registryEnforced ? 'Terminal ID (Required)' : 'Terminal ID'}</Label>
+            <Label htmlFor="dgfy-pos-company" className="text-[13px] font-bold text-[#0F172A]">Company</Label>
+            <select
+              id="dgfy-pos-company"
+              value={formData.dgfyTenantId || ''}
+              onChange={(event) => setFormData((prev) => ({ ...prev, dgfyTenantId: event.target.value }))}
+              disabled={!dgfyAuthenticated || dgfyPosState?.loadingCompanies}
+              className="h-10 w-full rounded-lg border border-[#B8C7DA] bg-white px-3 py-2 text-sm text-[#0F172A] shadow-sm shadow-slate-200/60 focus:border-[#1A4E8D] focus:outline-none focus:ring-2 focus:ring-[#1A4E8D] focus:ring-offset-2 disabled:bg-[#E2E8F0] disabled:text-[#64748B]"
+            >
+              <option value="">
+                {dgfyAuthenticated ? 'Select accessible company' : 'Sign in to load companies'}
+              </option>
+              {dgfyCompanies.map((company) => (
+                <option key={company.tenant_id} value={company.tenant_id}>
+                  {company.company_name}
+                </option>
+              ))}
+            </select>
+            <p className="rounded-lg border border-[#D8E1EC] bg-white px-3 py-2 text-[11px] leading-4 text-[#475569]">
+              {dgfyPosState?.loadingCompanies
+                ? 'Loading companies from your DGFY account...'
+                : 'Only active companies you own or were invited to appear here.'}
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="dgfy-pos-terminal-id" className="text-[13px] font-bold text-[#0F172A]">{registryEnforced ? 'Terminal ID (Required)' : 'Terminal ID'}</Label>
             {registryEnforced ? (
               <>
                 <select
+                  id="dgfy-pos-terminal-id"
                   value={formData.terminalId || ''}
                   onChange={(event) => setFormData((prev) => ({ ...prev, terminalId: event.target.value }))}
                   required
@@ -87,6 +127,7 @@ export default function TerminalLockDrawer({
             ) : (
               <>
                 <Input
+                  id="dgfy-pos-terminal-id"
                   value={formData.terminalId || ''}
                   onChange={(event) => setFormData((prev) => ({ ...prev, terminalId: event.target.value }))}
                   placeholder="COUNTER-01"
@@ -112,9 +153,34 @@ export default function TerminalLockDrawer({
             className="h-10 w-full rounded-lg !bg-[#1A4E8D] text-sm font-extrabold text-white shadow-lg shadow-blue-900/15 hover:!bg-[#143F72] focus-visible:!ring-[#1A4E8D]"
             disabled={submitting}
           >
-            {submitting ? 'Signing in...' : 'Login and Unlock'}
+            {submitting ? 'Unlocking...' : (dgfyAuthenticated ? 'Unlock POS' : 'Sign in and Unlock POS')}
           </Button>
         </form>
+        {onLegacySubmit && (
+          <div className="px-5 pb-5">
+            <details className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-950">
+              <summary className="cursor-pointer font-extrabold">Legacy access until June 17, 2027</summary>
+              <p className="mt-2 leading-5">
+                Existing accepted IMS/POS users without DGFY accounts can keep using legacy login during the grace period.
+                Create or link your DGFY account to keep IMS/POS access after June 17, 2027.
+              </p>
+              <form onSubmit={onLegacySubmit} className="mt-3 space-y-3">
+                <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2 text-[11px] leading-4 text-amber-900">
+                  <Building2 className="h-4 w-4 shrink-0" />
+                  Legacy login uses the email, password, and terminal selected above.
+                </div>
+                <Button
+                  type="submit"
+                  variant="outline"
+                  className="h-9 w-full rounded-lg border-amber-400 bg-white text-xs font-extrabold text-amber-950 hover:bg-amber-100"
+                  disabled={submitting}
+                >
+                  {submitting ? 'Checking legacy access...' : 'Use Legacy Grace Login'}
+                </Button>
+              </form>
+            </details>
+          </div>
+        )}
       </div>
     </div>
   );

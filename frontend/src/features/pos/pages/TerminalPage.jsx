@@ -13,6 +13,15 @@ import {
   updateOnlineOrderStatus
 } from '../services/posService';
 import { login as loginWithCredentials, getCurrentUser as fetchCurrentUser } from '@/services/authService.js';
+import {
+  completeDgfyLegacyLink,
+  getStoredDgfyToken,
+  listDgfyAccountCompanies,
+  loginDgfyAccount,
+  requestDgfyLegacyLinkEmailOtp,
+  startDgfyLegacyRegistrationHandoff,
+  startDgfyPosSession
+} from '@/services/dgfyAuthService.js';
 import { getAllSettings } from '@/services/settingsService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
 import { getComplianceProfile } from '@/services/complianceService.js';
@@ -260,7 +269,19 @@ export default function TerminalPage() {
   const [formData, setFormData] = useState({
     email: '',
     password: '',
+    dgfyTenantId: '',
     terminalId: readInitialTerminalId()
+  });
+  const [dgfyPosState, setDgfyPosState] = useState({
+    authenticated: false,
+    account: null,
+    companies: [],
+    loadingCompanies: false
+  });
+  const [legacyLinkState, setLegacyLinkState] = useState({
+    otpSent: false,
+    code: '',
+    loading: false
   });
 
   const [shiftState, setShiftState] = useState({
@@ -1144,37 +1165,175 @@ export default function TerminalPage() {
   }, [complianceGate.activationBlockers, complianceGate.checklistReady, complianceGate.loadError, complianceGate.missingRequirementCount, complianceGate.modeChoiceRequired, complianceGate.modeState, locked]);
 
   const activeShiftId = shiftState?.shift?.pos_terminal_shift_id || null;
-  const handleLogin = async (event) => {
-    event.preventDefault();
-    const email = String(formData.email || '').trim();
-    const password = String(formData.password || '');
-    const selectedTerminalId = resolveLoginTerminalId({
+  const showLegacyDgfyLinkBanner = terminalUser
+    && terminalUser.dgfy_link_status
+    && terminalUser.dgfy_link_status !== 'linked';
+
+  const handleRequestLegacyLinkOtp = async () => {
+    setLegacyLinkState((prev) => ({ ...prev, loading: true }));
+    try {
+      await requestDgfyLegacyLinkEmailOtp();
+      setLegacyLinkState((prev) => ({ ...prev, otpSent: true }));
+      toast.success('DGFY linking code sent to your IMS/POS email.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to send DGFY linking code.');
+    } finally {
+      setLegacyLinkState((prev) => ({ ...prev, loading: false }));
+    }
+  };
+
+  const handleCompleteLegacyLink = async () => {
+    const code = String(legacyLinkState.code || '').trim();
+    if (!code) {
+      toast.error('Enter the DGFY linking code.');
+      return;
+    }
+    if (!getStoredDgfyToken()) {
+      toast.error('Sign in with your DGFY account first, then complete linking.');
+      return;
+    }
+    setLegacyLinkState((prev) => ({ ...prev, loading: true }));
+    try {
+      await completeDgfyLegacyLink({ emailOtpCode: code });
+      await hydrateUser({ suppressGlobalErrors: true });
+      setLegacyLinkState({ otpSent: false, code: '', loading: false });
+      toast.success('DGFY account linked to this IMS/POS user.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to link DGFY account.');
+      setLegacyLinkState((prev) => ({ ...prev, loading: false }));
+    }
+  };
+
+  const handleStartLegacyRegistration = async () => {
+    try {
+      const payload = await startDgfyLegacyRegistrationHandoff();
+      const url = payload?.return_to || '/dgfy/auth?intent=legacy-link';
+      if (typeof window !== 'undefined') {
+        window.location.href = url;
+      }
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to start DGFY registration.');
+    }
+  };
+
+  const resolveSelectedLoginTerminalId = () => resolveLoginTerminalId({
       selectedTerminalId: formData.terminalId,
       registryEnforced,
       registryEntries: activeTerminalRegistry,
       registryMode: terminalRegistryMode
     });
+
+  const validateSelectedTerminalForUnlock = (selectedTerminalId) => {
     const registryEntry = terminalRegistryLookup.get(selectedTerminalId);
+    if (registryEnforced && activeTerminalRegistry.length === 0) {
+      toast.error('No active terminals configured. Add one in Settings > POS Setup > Terminal Registry.');
+      return false;
+    }
+    if (registryEnforced && !selectedTerminalId) {
+      toast.error('Terminal ID is required when registry enforcement is enabled.');
+      return false;
+    }
+    if (registryEnforced && !registryEntry) {
+      toast.error('Select an active terminal from the configured registry.');
+      return false;
+    }
+    if (!registryEnforced && selectedTerminalId && !registryEntry && activeTerminalRegistry.length > 0) {
+      toast.warning(`Terminal ID ${selectedTerminalId} is not in the active registry. Continuing in warn mode.`);
+    }
+    return true;
+  };
+
+  const completeTerminalUnlock = async (selectedTerminalId) => {
+    if (typeof window !== 'undefined') {
+      if (selectedTerminalId) {
+        window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, selectedTerminalId);
+      } else {
+        window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);
+      }
+    }
+    setActiveTerminalId(selectedTerminalId);
+    await hydrateUser({ suppressGlobalErrors: true });
+    await Promise.all([
+      hydrateTerminalMeta({ suppressGlobalErrors: true }),
+      refreshTenantLocations({ suppressGlobalErrors: true }),
+      refreshOperationalContext({
+        terminalIdOverride: selectedTerminalId,
+        suppressGlobalErrors: true
+      }),
+      refreshComplianceGate({ suppressGlobalErrors: true })
+    ]);
+    setFormData((prev) => ({ ...prev, password: '', terminalId: selectedTerminalId }));
+    toast.success(selectedTerminalId ? `Terminal unlocked (${selectedTerminalId}).` : 'Terminal unlocked.');
+  };
+
+  const handleDgfyPosLogin = async (event) => {
+    event.preventDefault();
+    const email = String(formData.email || '').trim();
+    const password = String(formData.password || '');
+    const selectedTerminalId = resolveSelectedLoginTerminalId();
+
+    if (!validateSelectedTerminalForUnlock(selectedTerminalId)) return;
+
+    setSubmitting(true);
+    try {
+      let token = '';
+      if (!dgfyPosState.authenticated) {
+        if (!email || !password) {
+          toast.error('DGFY email and password are required.');
+          return;
+        }
+        const loginResult = await loginDgfyAccount({ email, password });
+        token = loginResult?.token || '';
+        setDgfyPosState((prev) => ({
+          ...prev,
+          authenticated: true,
+          account: loginResult?.account || null
+        }));
+      }
+
+      setDgfyPosState((prev) => ({ ...prev, loadingCompanies: true }));
+      const companiesResult = await listDgfyAccountCompanies(token);
+      const acceptedCompanies = [
+        ...(Array.isArray(companiesResult?.owned_companies) ? companiesResult.owned_companies : []),
+        ...(Array.isArray(companiesResult?.invited_companies) ? companiesResult.invited_companies : [])
+      ].filter((company) => company?.can_switch);
+      const selectedTenantId = String(formData.dgfyTenantId || '').trim()
+        || (acceptedCompanies.length === 1 ? String(acceptedCompanies[0]?.tenant_id || '') : '');
+      setDgfyPosState((prev) => ({
+        ...prev,
+        authenticated: true,
+        companies: acceptedCompanies,
+        loadingCompanies: false
+      }));
+      if (!selectedTenantId) {
+        toast.message('Select the company to unlock for this terminal.');
+        return;
+      }
+      await startDgfyPosSession({
+        tenantId: selectedTenantId,
+        terminalId: selectedTerminalId
+      }, token);
+      await completeTerminalUnlock(selectedTerminalId);
+      setFormData((prev) => ({ ...prev, dgfyTenantId: selectedTenantId }));
+    } catch (error) {
+      setDgfyPosState((prev) => ({ ...prev, loadingCompanies: false }));
+      toast.error(resolveTerminalLoginErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleLogin = async (event) => {
+    event.preventDefault();
+    const email = String(formData.email || '').trim();
+    const password = String(formData.password || '');
+    const selectedTerminalId = resolveSelectedLoginTerminalId();
 
     if (!email || !password) {
       toast.error('Email and password are required.');
       return;
     }
-    if (registryEnforced && activeTerminalRegistry.length === 0) {
-      toast.error('No active terminals configured. Add one in Settings > POS Setup > Terminal Registry.');
-      return;
-    }
-    if (registryEnforced && !selectedTerminalId) {
-      toast.error('Terminal ID is required when registry enforcement is enabled.');
-      return;
-    }
-    if (registryEnforced && !registryEntry) {
-      toast.error('Select an active terminal from the configured registry.');
-      return;
-    }
-    if (!registryEnforced && selectedTerminalId && !registryEntry && activeTerminalRegistry.length > 0) {
-      toast.warning(`Terminal ID ${selectedTerminalId} is not in the active registry. Continuing in warn mode.`);
-    }
+    if (!validateSelectedTerminalForUnlock(selectedTerminalId)) return;
 
     setSubmitting(true);
     try {
@@ -1217,26 +1376,7 @@ export default function TerminalPage() {
         }
       }
 
-      if (typeof window !== 'undefined') {
-        if (selectedTerminalId) {
-          window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, selectedTerminalId);
-        } else {
-          window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);
-        }
-      }
-      setActiveTerminalId(selectedTerminalId);
-      await hydrateUser({ suppressGlobalErrors: true });
-      await Promise.all([
-        hydrateTerminalMeta({ suppressGlobalErrors: true }),
-        refreshTenantLocations({ suppressGlobalErrors: true }),
-        refreshOperationalContext({
-          terminalIdOverride: selectedTerminalId,
-          suppressGlobalErrors: true
-        }),
-        refreshComplianceGate({ suppressGlobalErrors: true })
-      ]);
-      setFormData((prev) => ({ ...prev, password: '', terminalId: selectedTerminalId }));
-      toast.success(selectedTerminalId ? `Terminal unlocked (${selectedTerminalId}).` : 'Terminal unlocked.');
+      await completeTerminalUnlock(selectedTerminalId);
     } catch (error) {
       toast.error(resolveTerminalLoginErrorMessage(error));
     } finally {
@@ -1777,6 +1917,50 @@ export default function TerminalPage() {
             </button>
           </div>
         )}
+        {showLegacyDgfyLinkBanner && (
+          <div className="fixed left-4 top-4 z-[70] max-w-[min(92vw,460px)] rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-xs text-amber-950 shadow-lg shadow-amber-900/10">
+            <div className="font-extrabold">Create or link your DGFY account</div>
+            <p className="mt-1 leading-5">
+              Create or link your DGFY account to keep IMS/POS access after June 17, 2027.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRequestLegacyLinkOtp}
+                disabled={legacyLinkState.loading}
+                className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-extrabold text-amber-950 hover:bg-amber-100 disabled:opacity-60"
+              >
+                {legacyLinkState.otpSent ? 'Resend code' : 'Send link code'}
+              </button>
+              <button
+                type="button"
+                onClick={handleStartLegacyRegistration}
+                className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-extrabold text-amber-950 hover:bg-amber-100"
+              >
+                Create DGFY account
+              </button>
+            </div>
+            {legacyLinkState.otpSent && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <input
+                  value={legacyLinkState.code}
+                  onChange={(event) => setLegacyLinkState((prev) => ({ ...prev, code: event.target.value }))}
+                  placeholder="6-digit code"
+                  className="h-8 w-32 rounded-md border border-amber-300 bg-white px-2 text-xs text-slate-900 outline-none focus:border-amber-500"
+                  inputMode="numeric"
+                />
+                <button
+                  type="button"
+                  onClick={handleCompleteLegacyLink}
+                  disabled={legacyLinkState.loading}
+                  className="rounded-md bg-amber-700 px-3 py-1.5 text-xs font-extrabold text-white hover:bg-amber-800 disabled:opacity-60"
+                >
+                  Link account
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         <OnboardingSetupModal
           open={onboardingSetupOpen}
           onClose={() => setOnboardingSetupOpen(false)}
@@ -1873,8 +2057,10 @@ export default function TerminalPage() {
           drawerOpen={drawerOpen}
           formData={formData}
           setFormData={setFormData}
+          dgfyPosState={dgfyPosState}
           submitting={submitting}
-          handleLogin={handleLogin}
+          handleLogin={handleDgfyPosLogin}
+          handleLegacyLogin={handleLogin}
         />
       </>
     </Suspense>

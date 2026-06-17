@@ -82,6 +82,8 @@ export function DgfyCustomerAccountPage({
   onRegisterBusiness,
   onRequestBusinessStepUp,
   onAcceptCompanyInvitation,
+  onRejectCompanyInvitation,
+  onLeaveCompany,
   onSwitchCompany,
   onClearSavedDetails,
   onUseAddressForCheckout,
@@ -144,6 +146,8 @@ export function DgfyCustomerAccountPage({
   const businessCompanies = Array.isArray(accountPanel?.businessCompanies) ? accountPanel.businessCompanies : [];
   const businessStepUp = accountPanel?.businessStepUp || accountPanel?.business_step_up || {};
   const acceptedCompanies = businessCompanies.filter((company) => company.can_switch === true);
+  const ownedCompanies = acceptedCompanies.filter((company) => company.is_owner === true || company.group === 'owned');
+  const invitedCompanies = acceptedCompanies.filter((company) => !(company.is_owner === true || company.group === 'owned'));
   const pendingInvitations = businessCompanies.filter((company) => company.requires_action === 'accept_invitation');
 
   const performBusinessAction = async (action, code = '') => {
@@ -153,6 +157,20 @@ export function DgfyCustomerAccountPage({
       await onAcceptCompanyInvitation({
         membershipId: company.membership_id,
         emailOtpCode: code
+      });
+      return;
+    }
+    if (action?.type === 'reject') {
+      if (!company?.membership_id || typeof onRejectCompanyInvitation !== 'function') return;
+      await onRejectCompanyInvitation({
+        membershipId: company.membership_id
+      });
+      return;
+    }
+    if (action?.type === 'leave') {
+      if (!company?.tenant_id || typeof onLeaveCompany !== 'function') return;
+      await onLeaveCompany({
+        tenantId: company.tenant_id
       });
       return;
     }
@@ -167,6 +185,19 @@ export function DgfyCustomerAccountPage({
 
   const startBusinessAction = async (type, company) => {
     const action = { type, company };
+    if (type === 'reject' || type === 'leave') {
+      setBusinessActionError('');
+      setBusinessActionLoading(true);
+      try {
+        await performBusinessAction(action);
+      } catch (error) {
+        setBusinessActionError(error?.message || 'Unable to complete this business action.');
+      } finally {
+        setBusinessActionLoading(false);
+      }
+      return;
+    }
+
     if (businessStepUp?.verified === true) {
       setBusinessActionError('');
       setBusinessActionLoading(true);
@@ -1129,14 +1160,24 @@ export function DgfyCustomerAccountPage({
                         <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, overflowWrap: 'anywhere' }}>{company.company_name || 'Company invitation'}</div>
                         <div style={{ marginTop: 4, fontSize: 13, color: MUTED }}>Role: {prettyStatus(company.role)} · Invitation from IMS</div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => startBusinessAction('accept', company)}
-                        disabled={businessActionLoading}
-                        style={{ minHeight: 40, borderRadius: 12, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: TEXT, padding: '0 14px', fontSize: 13, fontWeight: 800, cursor: businessActionLoading ? 'not-allowed' : 'pointer' }}
-                      >
-                        Accept invitation
-                      </button>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                        <button
+                          type="button"
+                          onClick={() => startBusinessAction('reject', company)}
+                          disabled={businessActionLoading}
+                          style={{ minHeight: 40, borderRadius: 12, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: '#991B1B', padding: '0 14px', fontSize: 13, fontWeight: 800, cursor: businessActionLoading ? 'not-allowed' : 'pointer' }}
+                        >
+                          Reject
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => startBusinessAction('accept', company)}
+                          disabled={businessActionLoading}
+                          style={{ minHeight: 40, borderRadius: 12, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: TEXT, padding: '0 14px', fontSize: 13, fontWeight: 800, cursor: businessActionLoading ? 'not-allowed' : 'pointer' }}
+                        >
+                          Accept invitation
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1172,18 +1213,18 @@ export function DgfyCustomerAccountPage({
                       disabled={businessActionLoading}
                       style={{ minHeight: 40, borderRadius: 12, border: 'none', background: '#1D4ED8', color: '#FFFFFF', padding: '0 16px', fontSize: 13, fontWeight: 800, cursor: businessActionLoading ? 'not-allowed' : 'pointer' }}
                     >
-                      {businessActionLoading ? 'Verifying...' : 'Verify and accept'}
+                      {businessActionLoading ? 'Verifying...' : 'Verify and continue'}
                     </button>
                   </div>
                 </div>
               ) : null}
 
               <div style={{ display: 'grid', gap: 10 }}>
-                <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Accepted companies</div>
-                {acceptedCompanies.length > 0 ? (
+                <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Companies you own</div>
+                {ownedCompanies.length > 0 ? (
                   <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
-                    {acceptedCompanies.map((company) => (
-                      <div key={`accepted-${company.membership_id}`} style={{ borderRadius: 18, border: `1px solid ${BORDER}`, background: SOFT_SURFACE, padding: 16, display: 'grid', gap: 12 }}>
+                    {ownedCompanies.map((company) => (
+                      <div key={`owned-${company.membership_id}`} style={{ borderRadius: 18, border: `1px solid ${BORDER}`, background: SOFT_SURFACE, padding: 16, display: 'grid', gap: 12 }}>
                         <div>
                           <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, overflowWrap: 'anywhere' }}>{company.company_name || 'Company'}</div>
                           <div style={{ marginTop: 4, fontSize: 13, color: MUTED }}>{prettyStatus(company.role)} · {prettyStatus(company.plan)}</div>
@@ -1200,7 +1241,45 @@ export function DgfyCustomerAccountPage({
                   </div>
                 ) : (
                   <div style={{ borderRadius: 18, border: `1px solid ${BORDER}`, background: SOFT_SURFACE, padding: 16, fontSize: 14, lineHeight: 1.55, color: MUTED }}>
-                    No accepted company memberships yet. Register a business or accept an invitation to manage a company from this account.
+                    No companies owned by this DGFY account yet.
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Companies you were invited to</div>
+                {invitedCompanies.length > 0 ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+                    {invitedCompanies.map((company) => (
+                      <div key={`invited-${company.membership_id}`} style={{ borderRadius: 18, border: `1px solid ${BORDER}`, background: SOFT_SURFACE, padding: 16, display: 'grid', gap: 12 }}>
+                        <div>
+                          <div style={{ fontSize: 16, fontWeight: 800, color: TEXT, overflowWrap: 'anywhere' }}>{company.company_name || 'Company'}</div>
+                          <div style={{ marginTop: 4, fontSize: 13, color: MUTED }}>{prettyStatus(company.role)} | Member</div>
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                          {company.can_leave === true ? (
+                            <button
+                              type="button"
+                              onClick={() => startBusinessAction('leave', company)}
+                              disabled={businessActionLoading}
+                              style={{ minHeight: 40, borderRadius: 12, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: '#991B1B', padding: '0 14px', fontSize: 13, fontWeight: 800, cursor: businessActionLoading ? 'not-allowed' : 'pointer' }}
+                            >
+                              Leave company
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => startBusinessAction('switch', company)}
+                            style={{ minHeight: 40, borderRadius: 12, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: TEXT, padding: '0 14px', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}
+                          >
+                            Open in SKUpervisor
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ borderRadius: 18, border: `1px solid ${BORDER}`, background: SOFT_SURFACE, padding: 16, fontSize: 14, lineHeight: 1.55, color: MUTED }}>
+                    No accepted invitation memberships yet.
                   </div>
                 )}
               </div>

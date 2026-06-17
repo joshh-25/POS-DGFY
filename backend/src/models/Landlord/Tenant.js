@@ -118,6 +118,22 @@ export default (sequelize) => {
             type: DataTypes.STRING,
             allowNull: true
         },
+        owner_dgfy_account_id: {
+            type: DataTypes.UUID,
+            allowNull: true,
+            references: {
+                model: 'dgfy_accounts',
+                key: 'id'
+            }
+        },
+        ownership_transferred_at: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
+        ownership_transferred_by: {
+            type: DataTypes.UUID,
+            allowNull: true
+        },
         settings: {
             type: DataTypes.JSON,
             defaultValue: {}
