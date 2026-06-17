@@ -56,10 +56,17 @@ import {
 
 import TerminalPageLayout from '../components/TerminalPageLayout.jsx';
 import OnboardingSetupModal from '../../onboarding/components/OnboardingSetupModal.jsx';
+import PosHardwareMessageModal from '../components/PosHardwareMessageModal.jsx';
+import { POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 
 const DEFAULT_CURRENCY = 'PHP';
 const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
+const TERMINAL_LOCK_STORAGE_KEY = 'pos_terminal_locked_v1';
 const ONLINE_ORDER_POLL_INTERVAL_MS = 12000;
 const QUEUE_HISTORY_LIMIT = 250;
 const TERMINAL_OPERATION_MAX_RETRIES = 5;
@@ -107,6 +114,8 @@ const COMPLIANCE_REASON_LABELS = Object.freeze({
   BSP_PAYMENT_CONTROL_REQUIRED: 'BSP payment control review incomplete'
 });
 
+const money = (value) => Number(value || 0).toFixed(2);
+
 const normalizeActivationBlocker = (entry) => {
   const code = String(entry?.code || '').trim() || 'COMPLIANCE_BLOCKER';
   const actionTarget = String(entry?.action_target || '').trim() || DEFAULT_COMPLIANCE_ACTION_TARGET;
@@ -136,6 +145,20 @@ const createIdempotencyKey = (prefix = 'pos-terminal') => {
 const readStoredTerminalId = () => {
   if (typeof window === 'undefined') return '';
   return sanitizeTerminalId(window.localStorage.getItem(TERMINAL_ID_STORAGE_KEY) || '');
+};
+
+const readStoredTerminalLock = () => {
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(TERMINAL_LOCK_STORAGE_KEY) === '1';
+};
+
+const setStoredTerminalLock = (locked) => {
+  if (typeof window === 'undefined') return;
+  if (locked) {
+    window.localStorage.setItem(TERMINAL_LOCK_STORAGE_KEY, '1');
+    return;
+  }
+  window.localStorage.removeItem(TERMINAL_LOCK_STORAGE_KEY);
 };
 
 const readInitialTerminalId = () => resolvePreferredTerminalId(
@@ -231,8 +254,8 @@ export default function TerminalPage() {
     const stored = localStorage.getItem('posTerminalSidebarCollapsed');
     return stored === '1';
   });
-  const [locked, setLocked] = useState(() => !getAccessToken());
-  const [drawerOpen, setDrawerOpen] = useState(() => !getAccessToken());
+  const [locked, setLocked] = useState(() => readStoredTerminalLock() || !getAccessToken());
+  const [drawerOpen, setDrawerOpen] = useState(() => readStoredTerminalLock() || !getAccessToken());
   const [loadingUser, setLoadingUser] = useState(false);
   const [terminalUser, setTerminalUser] = useState(null);
   const [onboardingSetupOpen, setOnboardingSetupOpen] = useState(false);
@@ -264,7 +287,7 @@ export default function TerminalPage() {
   });
 
   const [shiftState, setShiftState] = useState({
-    loading: false,
+    loading: true,
     shift: null,
     cashSummary: null
   });
@@ -287,6 +310,7 @@ export default function TerminalPage() {
     closingCashAmount: '',
     closingNote: ''
   });
+  const [closeShiftConfirmOpen, setCloseShiftConfirmOpen] = useState(false);
   const [shiftActionLoading, setShiftActionLoading] = useState({
     open: false,
     switchLocation: false,
@@ -311,6 +335,7 @@ export default function TerminalPage() {
   const [receiptReturnViewMode, setReceiptReturnViewMode] = useState(null);
   const [historyRequestQuery, setHistoryRequestQuery] = useState('');
   const [incomingHistoryOpeningId, setIncomingHistoryOpeningId] = useState(null);
+  const [hardwareMessage, setHardwareMessage] = useState(null);
   const [catalogSearchPrefill, setCatalogSearchPrefill] = useState(() => {
     if (typeof window === 'undefined') return '';
     const params = new URLSearchParams(window.location.search);
@@ -576,38 +601,39 @@ export default function TerminalPage() {
     if (locked || !canViewPos) {
       setShiftState((prev) => ({ ...prev, loading: false }));
       setTodayDashboard((prev) => ({ ...prev, loading: false }));
-      return;
+      return { shift: null, cashSummary: null };
     }
     const terminalId = sanitizeTerminalId(terminalIdOverride || activeTerminalId);
     if (!terminalId) {
       setShiftState((prev) => ({ ...prev, loading: false, shift: null, cashSummary: null }));
       setTodayDashboard((prev) => ({ ...prev, loading: false, businessDate: null, salesSummary: null }));
-      return;
+      return { shift: null, cashSummary: null };
     }
     const scopedOperatingLocationId = Number.isInteger(Number(operatingLocationId))
       ? Number(operatingLocationId)
       : null;
-    if (!scopedOperatingLocationId) {
-      setShiftState((prev) => ({ ...prev, loading: false, shift: null, cashSummary: null }));
-      setTodayDashboard((prev) => ({ ...prev, loading: false, businessDate: null, salesSummary: null }));
-      return;
-    }
     setShiftState((prev) => ({ ...prev, loading: true }));
     setTodayDashboard((prev) => ({ ...prev, loading: true }));
     try {
-      const [currentShiftResult, dashboardResult] = await Promise.all([
-        fetchCurrentTerminalShift(
-          { terminal_id: terminalId, location_id: scopedOperatingLocationId },
-          suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
-        ),
-        fetchTerminalTodayDashboard(
-          { terminal_id: terminalId, location_id: scopedOperatingLocationId },
-          suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
-        )
-      ]);
-
+      const currentShiftParams = scopedOperatingLocationId
+        ? { terminal_id: terminalId, location_id: scopedOperatingLocationId }
+        : { terminal_id: terminalId };
+      const currentShiftResult = await fetchCurrentTerminalShift(
+        currentShiftParams,
+        suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
+      );
       const shiftPayload = currentShiftResult?.shift || null;
       const cashSummary = currentShiftResult?.cash_summary || null;
+      const shiftLocationId = Number(shiftPayload?.location_id);
+      const effectiveLocationId = Number.isInteger(shiftLocationId) && shiftLocationId > 0
+        ? shiftLocationId
+        : scopedOperatingLocationId;
+      const dashboardResult = effectiveLocationId
+        ? await fetchTerminalTodayDashboard(
+          { terminal_id: terminalId, location_id: effectiveLocationId },
+          suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
+        )
+        : null;
       const activeShift = dashboardResult?.active_shift || shiftPayload;
       const activeShiftSummary = dashboardResult?.active_shift_cash_summary || cashSummary;
       const readinessSummary = dashboardResult?.location_binding_readiness || currentShiftResult?.location_binding_readiness || null;
@@ -617,9 +643,9 @@ export default function TerminalPage() {
         shift: activeShift,
         cashSummary: activeShiftSummary
       });
-      const shiftLocationId = Number(activeShift?.location_id);
-      if (Number.isInteger(shiftLocationId) && shiftLocationId > 0 && shiftLocationId !== scopedOperatingLocationId) {
-        setOperatingLocationId(shiftLocationId);
+      const activeShiftLocationId = Number(activeShift?.location_id);
+      if (Number.isInteger(activeShiftLocationId) && activeShiftLocationId > 0 && activeShiftLocationId !== scopedOperatingLocationId) {
+        setOperatingLocationId(activeShiftLocationId);
       }
       setTodayDashboard({
         loading: false,
@@ -630,12 +656,14 @@ export default function TerminalPage() {
         ...prev,
         locationBindingReadiness: readinessSummary
       }));
+      return { shift: activeShift, cashSummary: activeShiftSummary };
     } catch (error) {
       setShiftState((prev) => ({ ...prev, loading: false }));
       setTodayDashboard((prev) => ({ ...prev, loading: false }));
       if (!suppressGlobalErrors && error?.response?.status !== 403) {
         toast.error(error?.response?.data?.message || 'Failed to load terminal operational context.');
       }
+      return { shift: null, cashSummary: null };
     }
   }, [activeTerminalId, canViewPos, locked, operatingLocationId]);
 
@@ -921,6 +949,12 @@ export default function TerminalPage() {
   }, [refreshTerminalOperationQueue]);
 
   const hydrateUser = useCallback(async ({ suppressGlobalErrors = false } = {}) => {
+    if (readStoredTerminalLock()) {
+      setTerminalUser(null);
+      setLocked(true);
+      setDrawerOpen(true);
+      return;
+    }
     let token = getAccessToken();
     if (!token) {
       try {
@@ -1012,25 +1046,8 @@ export default function TerminalPage() {
   }, [canViewPos, locked, refreshIncomingOrders]);
 
   useEffect(() => {
-    if (shiftState.shift) return;
-    const configuredPettyCash = Number(terminalMeta.pettyCashAmount ?? 0);
-    if (!Number.isFinite(configuredPettyCash) || configuredPettyCash < 0) return;
-
-    setOpenShiftForm((prev) => {
-      const currentValue = String(prev.openingFloatAmount ?? '').trim();
-      const parsedCurrentValue = Number(currentValue);
-      const isEffectivelyEmpty = currentValue === '';
-      const isZeroLike = Number.isFinite(parsedCurrentValue) && parsedCurrentValue === 0;
-      if (!isEffectivelyEmpty && !(isZeroLike && configuredPettyCash > 0)) return prev;
-      return {
-        ...prev,
-        openingFloatAmount: configuredPettyCash.toFixed(2)
-      };
-    });
-  }, [shiftState.shift, terminalMeta.pettyCashAmount]);
-
-  useEffect(() => {
     const onSessionExpired = () => {
+      setStoredTerminalLock(true);
       setLocked(true);
       setDrawerOpen(true);
       setTerminalUser(null);
@@ -1098,7 +1115,7 @@ export default function TerminalPage() {
       return `Compliant mode activation checklist is incomplete (${complianceGate.missingRequirementCount} unresolved requirement${complianceGate.missingRequirementCount === 1 ? '' : 's'}). Complete required profile, settings, artifacts, and peripherals in Settings > Compliance.`;
     }
     if (!canTransactPos) return 'Your account does not have POS transact permission.';
-    if (!shiftState.shift) return 'Open a shift before checkout.';
+    if (!shiftState.shift) return 'You cannot use the POS because the shift is closed.';
     return '';
   }, [canTransactPos, complianceGate.checklistReady, complianceGate.loadError, complianceGate.missingRequirementCount, complianceGate.modeChoiceRequired, complianceGate.modeState, locked, shiftState.shift]);
 
@@ -1144,6 +1161,7 @@ export default function TerminalPage() {
   }, [complianceGate.activationBlockers, complianceGate.checklistReady, complianceGate.loadError, complianceGate.missingRequirementCount, complianceGate.modeChoiceRequired, complianceGate.modeState, locked]);
 
   const activeShiftId = shiftState?.shift?.pos_terminal_shift_id || null;
+  const requiresOpenShift = !locked && !shiftState.loading && !activeShiftId;
   const handleLogin = async (event) => {
     event.preventDefault();
     const email = String(formData.email || '').trim();
@@ -1224,9 +1242,10 @@ export default function TerminalPage() {
           window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);
         }
       }
+      setStoredTerminalLock(false);
       setActiveTerminalId(selectedTerminalId);
       await hydrateUser({ suppressGlobalErrors: true });
-      await Promise.all([
+      const [, , operationalContextResult] = await Promise.all([
         hydrateTerminalMeta({ suppressGlobalErrors: true }),
         refreshTenantLocations({ suppressGlobalErrors: true }),
         refreshOperationalContext({
@@ -1236,6 +1255,11 @@ export default function TerminalPage() {
         refreshComplianceGate({ suppressGlobalErrors: true })
       ]);
       setFormData((prev) => ({ ...prev, password: '', terminalId: selectedTerminalId }));
+      setPosViewMode('checkout');
+      setMobileNavOpen(false);
+      if (!operationalContextResult?.shift) {
+        toast.message('Please open your shift before using the POS.');
+      }
       toast.success(selectedTerminalId ? `Terminal unlocked (${selectedTerminalId}).` : 'Terminal unlocked.');
     } catch (error) {
       toast.error(resolveTerminalLoginErrorMessage(error));
@@ -1245,12 +1269,15 @@ export default function TerminalPage() {
   };
 
   const handleLock = () => {
+    setStoredTerminalLock(true);
     clearClientSession({
       reason: 'logout',
       broadcast: true,
       emitAuthEvents: true,
       redirectTo: null
     });
+    setPosViewMode('checkout');
+    setMobileNavOpen(false);
     setLocked(true);
     setDrawerOpen(true);
     setTerminalUser(null);
@@ -1286,10 +1313,13 @@ export default function TerminalPage() {
     }
 
     const rawOpeningFloat = String(openShiftForm.openingFloatAmount ?? '').trim();
-    const fallbackOpeningFloat = Number(terminalMeta.pettyCashAmount ?? 0);
-    const openingFloatAmount = rawOpeningFloat === '' ? fallbackOpeningFloat : Number(rawOpeningFloat);
+    if (rawOpeningFloat === '') {
+      toast.error('Opening cash amount is required.');
+      return;
+    }
+    const openingFloatAmount = Number(rawOpeningFloat);
     if (!Number.isFinite(openingFloatAmount) || openingFloatAmount < 0) {
-      toast.error('Opening float must be a non-negative number.');
+      toast.error('Opening cash amount must be a valid non-negative number.');
       return;
     }
 
@@ -1318,9 +1348,14 @@ export default function TerminalPage() {
     setShiftActionLoading((prev) => ({ ...prev, open: true }));
     try {
       const result = await openTerminalShift(payload);
-      toast.success(result?.reused_existing ? 'Existing open shift found and reused.' : 'Terminal shift opened.');
+      toast.success('Shift opened successfully.');
       setOpenShiftForm({ openingFloatAmount: '', openingNote: '' });
       await refreshOperationalContext();
+      setPosViewMode('checkout');
+      setMobileNavOpen(false);
+      if (workspacePaneRef.current) {
+        workspacePaneRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     } catch (error) {
       if (isRetryableTerminalOperationError(error)) {
         await enqueueTerminalOperationIntent(queueEntry, 'network_failure');
@@ -1464,6 +1499,20 @@ export default function TerminalPage() {
       toast.error('No active shift to close.');
       return;
     }
+    setCloseShiftConfirmOpen(true);
+  };
+
+  const handleConfirmCloseShift = async () => {
+    if (complianceBlockerDetails) {
+      toast.error(`${complianceBlockerDetails.title}. ${complianceBlockerDetails.message}`);
+      setCloseShiftConfirmOpen(false);
+      return;
+    }
+    if (!activeShiftId) {
+      toast.error('No active shift to close.');
+      setCloseShiftConfirmOpen(false);
+      return;
+    }
 
     const closingCashAmount = String(closeShiftForm.closingCashAmount || '').trim() === ''
       ? Number(shiftState.cashSummary?.expected_cash_amount || 0)
@@ -1491,15 +1540,31 @@ export default function TerminalPage() {
       toast.message(
         `You are offline. Shift-close action was queued and will replay automatically (${pendingCount} queued).`
       );
+      setCloseShiftConfirmOpen(false);
       return;
     }
 
     setShiftActionLoading((prev) => ({ ...prev, close: true }));
     try {
       await closeTerminalShift(activeShiftId, payload);
-      toast.success('Shift closed successfully.');
+      toast.success('Shift closed successfully. Please open a new shift to continue.');
+      setCloseShiftConfirmOpen(false);
       setCloseShiftForm({ closingCashAmount: '', closingNote: '' });
-      await refreshOperationalContext();
+      setShiftState({
+        loading: false,
+        shift: null,
+        cashSummary: null
+      });
+      setTodayDashboard((prev) => ({
+        ...prev,
+        active_shift: null,
+        active_shift_cash_summary: null
+      }));
+      setPosViewMode('checkout');
+      setMobileNavOpen(false);
+      if (workspacePaneRef.current) {
+        workspacePaneRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     } catch (error) {
       if (isRetryableTerminalOperationError(error)) {
         await enqueueTerminalOperationIntent(queueEntry, 'network_failure');
@@ -1525,6 +1590,11 @@ export default function TerminalPage() {
     const nextStatus = String(fulfillmentStatus || '').trim();
     if (!nextStatus) {
       toast.error('Select a valid status update action.');
+      return;
+    }
+    if (!activeShiftId) {
+      toast.error('You cannot use the POS because the shift is closed.');
+      setMobileNavOpen(false);
       return;
     }
 
@@ -1646,7 +1716,7 @@ export default function TerminalPage() {
       workspacePaneRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
     setMobileNavOpen(false);
-  }, [activeViewModes, locked]);
+  }, [activeViewModes, locked, requiresOpenShift]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -1756,13 +1826,175 @@ export default function TerminalPage() {
     }
   }, [activeViewModes, posViewMode]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const handleHardwareMessage = (event) => {
+      const detail = event?.detail;
+      const message = String(detail?.message || '').trim();
+      if (!message) return;
+      setHardwareMessage({
+        title: String(detail?.title || 'Hardware message').trim() || 'Hardware message',
+        message,
+        tone: String(detail?.tone || 'info').trim(),
+        source: String(detail?.source || 'iMin hardware').trim() || 'iMin hardware',
+        details: detail?.details || null,
+        timestamp: detail?.timestamp || new Date().toISOString()
+      });
+    };
+
+    window.addEventListener(POS_HARDWARE_MESSAGE_EVENT_NAME, handleHardwareMessage);
+    return () => window.removeEventListener(POS_HARDWARE_MESSAGE_EVENT_NAME, handleHardwareMessage);
+  }, []);
+
+  const handleHardwareMessageOpenChange = useCallback((open) => {
+    if (open === false) {
+      setHardwareMessage(null);
+    }
+  }, []);
+
   const effectiveSidebarCollapsed = isDesktopWide ? sidebarCollapsed : false;
   const isCheckoutWorkspaceMode = CHECKOUT_VIEW_MODES.includes(posViewMode);
   const isOperationsWorkspaceMode = activeOperationsViewModes.includes(posViewMode);
+  const shiftOpeningModalOpen = requiresOpenShift && canViewPos;
+  const openingCashAmountText = String(openShiftForm.openingFloatAmount ?? '').trim();
+  const openingCashAmountNumber = Number(openingCashAmountText);
+  const canSubmitOpenShift = (
+    openingCashAmountText !== ''
+    && Number.isFinite(openingCashAmountNumber)
+    && openingCashAmountNumber >= 0
+  );
+  const handleShiftOpeningModalOpenChange = useCallback((open) => {
+    if (open === false && shiftOpeningModalOpen) {
+      toast.message('Please open your shift before using the POS.');
+    }
+  }, [shiftOpeningModalOpen]);
+  const handleShiftOpeningModalSubmit = useCallback((event) => {
+    event.preventDefault();
+    handleOpenShift();
+  }, [handleOpenShift]);
 
   return (
     <Suspense fallback={<div className="min-h-screen bg-slate-100 p-6 text-sm text-slate-500">Loading terminal workspace...</div>}>
       <>
+        <Dialog open={shiftOpeningModalOpen} onOpenChange={handleShiftOpeningModalOpenChange}>
+          <DialogContent className="max-w-md border border-slate-200 p-0 shadow-2xl">
+            <form onSubmit={handleShiftOpeningModalSubmit}>
+              <DialogHeader className="border-b border-slate-100 px-5 py-4">
+                <DialogTitle className="text-lg font-extrabold text-[#0F172A]">Open Shift</DialogTitle>
+                <DialogDescription className="text-sm text-slate-600">
+                  Please open your shift before using the POS.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 px-5 py-5">
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                  Shift Closed. Sales, payments, receipt printing, and transaction changes are blocked.
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="shift-opening-cash-amount" className="text-xs font-extrabold text-[#0F172A]">
+                    Opening Cash Amount ({terminalMeta.pettyCashSymbol})
+                  </Label>
+                  <Input
+                    id="shift-opening-cash-amount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    required
+                    autoFocus
+                    value={openShiftForm.openingFloatAmount}
+                    onChange={(event) => setOpenShiftForm((prev) => ({ ...prev, openingFloatAmount: event.target.value }))}
+                    placeholder="0.00"
+                    disabled={shiftActionLoading.open}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="shift-opening-note" className="text-xs font-extrabold text-[#0F172A]">
+                    Opening Note
+                  </Label>
+                  <Input
+                    id="shift-opening-note"
+                    value={openShiftForm.openingNote}
+                    onChange={(event) => setOpenShiftForm((prev) => ({ ...prev, openingNote: event.target.value }))}
+                    placeholder="Optional"
+                    disabled={shiftActionLoading.open}
+                  />
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-600">
+                  Terminal {activeTerminalId || 'not selected'} · Location {locationsState.locations.find((location) => Number(location.location_id) === Number(operatingLocationId))?.name || operatingLocationId || 'not selected'}
+                </div>
+              </div>
+              <DialogFooter className="border-t border-slate-100 px-5 py-4 sm:justify-between">
+                <Button type="button" variant="outline" onClick={handleLock} disabled={shiftActionLoading.open}>
+                  Lock Terminal
+                </Button>
+                <Button
+                  type="submit"
+                  className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
+                  disabled={shiftActionLoading.open || !canTransactPos || !canSubmitOpenShift}
+                >
+                  {shiftActionLoading.open ? 'Opening...' : 'Open Shift'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+        <Dialog
+          open={closeShiftConfirmOpen}
+          onOpenChange={(open) => {
+            if (!open && !shiftActionLoading.close) setCloseShiftConfirmOpen(false);
+          }}
+        >
+          <DialogContent className="max-w-md border border-slate-200 p-0 shadow-2xl">
+            <DialogHeader className="border-b border-slate-100 px-5 py-4">
+              <DialogTitle className="text-lg font-extrabold text-[#0F172A]">Close Shift</DialogTitle>
+              <DialogDescription className="text-sm text-slate-600">
+                Are you sure you want to close this shift?
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 px-5 py-5">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                Closing this shift will disable POS sales until a new shift is opened.
+              </div>
+              <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-[12px] text-slate-600">
+                <span>Expected Cash</span>
+                <span className="text-right font-extrabold text-slate-900">
+                  {terminalMeta.pettyCashSymbol} {money(shiftState.cashSummary?.expected_cash_amount || 0)}
+                </span>
+                <span>Closing Cash</span>
+                <span className="text-right font-extrabold text-slate-900">
+                  {terminalMeta.pettyCashSymbol} {money(
+                    String(closeShiftForm.closingCashAmount || '').trim() === ''
+                      ? shiftState.cashSummary?.expected_cash_amount || 0
+                      : closeShiftForm.closingCashAmount
+                  )}
+                </span>
+              </div>
+            </div>
+            <DialogFooter className="border-t border-slate-100 px-5 py-4 sm:justify-between">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCloseShiftConfirmOpen(false)}
+                disabled={shiftActionLoading.close}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleConfirmCloseShift}
+                disabled={shiftActionLoading.close}
+              >
+                {shiftActionLoading.close ? 'Closing...' : 'Close Shift'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <PosHardwareMessageModal
+          open={hardwareMessage !== null}
+          message={hardwareMessage}
+          onOpenChange={handleHardwareMessageOpenChange}
+        />
         {showOnboardingReminder && (
           <div className="fixed right-4 top-4 z-[70] max-w-[min(92vw,420px)] rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 shadow-lg shadow-amber-900/10">
             <span>

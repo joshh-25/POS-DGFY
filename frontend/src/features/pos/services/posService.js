@@ -1,4 +1,5 @@
 import api from '@/services/api';
+import { emitPosHardwareMessage } from '../utils/posHardwareMessageBus.js';
 
 export const fetchPosCatalog = async (params = {}) => {
     const response = await api.get('/pos/catalog', { params });
@@ -34,30 +35,76 @@ export const fetchPosTransactionById = async (id) => {
 };
 
 export const fetchPosDeviceStatus = async () => {
-    const response = await api.get('/pos/device/status', {
-        // Device status is a background capability probe. In tablet/APK deployments
-        // the local HTTP bridge can be absent, so this should fail quietly.
-        skipGlobalErrorToast: true
-    });
-    return response.data?.data;
+    try {
+        const response = await api.get('/pos/device/status', {
+            // Device status is a background capability probe. In tablet/APK deployments
+            // the local HTTP bridge can be absent, so this should fail quietly.
+            skipGlobalErrorToast: true
+        });
+        return response.data?.data;
+    } catch (error) {
+        throw error;
+    }
 };
 
 export const printPosReceipt = async (payload = {}) => {
-    const response = await api.post('/pos/device/print-receipt', payload, {
-        headers: payload?.terminal_id
-            ? { 'x-pos-terminal-id': payload.terminal_id }
-            : undefined
-    });
-    return response.data?.data;
+    try {
+        const response = await api.post('/pos/device/print-receipt', payload, {
+            headers: payload?.terminal_id
+                ? { 'x-pos-terminal-id': payload.terminal_id }
+                : undefined
+        });
+        const responsePayload = response.data?.data;
+        const message = String(response.data?.message || responsePayload?.message || '').trim();
+        if (message) {
+            emitPosHardwareMessage({
+                title: 'POS receipt printer',
+                message,
+                tone: 'success',
+                source: 'POS hardware'
+            });
+        }
+        return responsePayload;
+    } catch (error) {
+        emitPosHardwareMessage({
+            title: 'POS receipt printer error',
+            message: String(error?.response?.data?.message || error?.message || 'Failed to send receipt to printer.').trim(),
+            tone: 'error',
+            source: 'POS hardware',
+            details: error?.response?.data?.errors || null
+        });
+        throw error;
+    }
 };
 
 export const openPosDeviceDrawer = async (payload = {}) => {
-    const response = await api.post('/pos/device/open-drawer', payload, {
-        headers: payload?.terminal_id
-            ? { 'x-pos-terminal-id': payload.terminal_id }
-            : undefined
-    });
-    return response.data?.data;
+    try {
+        const response = await api.post('/pos/device/open-drawer', payload, {
+            headers: payload?.terminal_id
+                ? { 'x-pos-terminal-id': payload.terminal_id }
+                : undefined
+        });
+        const responsePayload = response.data?.data;
+        const message = String(response.data?.message || responsePayload?.message || '').trim();
+        if (message) {
+            emitPosHardwareMessage({
+                title: 'POS cash drawer',
+                message,
+                tone: 'success',
+                source: 'POS hardware'
+            });
+        }
+        return responsePayload;
+    } catch (error) {
+        emitPosHardwareMessage({
+            title: 'POS cash drawer error',
+            message: String(error?.response?.data?.message || error?.message || 'Failed to open the cash drawer.').trim(),
+            tone: 'error',
+            source: 'POS hardware',
+            details: error?.response?.data?.errors || null
+        });
+        throw error;
+    }
 };
 
 export const closePosDay = async (businessDate = null) => {

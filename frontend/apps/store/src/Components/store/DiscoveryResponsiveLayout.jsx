@@ -1,5 +1,5 @@
 import React from 'react';
-import { CalendarCheck2, ChevronRight, ChevronDown, FileText, Home, Menu, User, UserCircle2, X } from 'lucide-react';
+import { ChevronRight, ChevronDown, Home, Menu, Phone, Puzzle, User, UserCircle2, X } from 'lucide-react';
 
 export const getDiscoveryViewportState = (viewportWidth = 1280) => {
   const width = Number(viewportWidth || 0);
@@ -77,9 +77,9 @@ const cx = (...parts) => parts.filter(Boolean).join(' ');
 
 const MOBILE_MENU_META = Object.freeze({
   Explore: { icon: Home, badge: null },
-  Solutions: { icon: UserCircle2, badge: null },
-  'About Us': { icon: FileText, badge: null },
-  'Contact Us': { icon: CalendarCheck2, badge: null }
+  Solutions: { icon: Puzzle, badge: null },
+  'About Us': { icon: Puzzle, badge: null },
+  'Contact Us': { icon: Phone, badge: null }
 });
 
 export function DiscoveryHeader({
@@ -98,10 +98,15 @@ export function DiscoveryHeader({
   onMenuToggle = () => {},
   onItemClick,
   accountName,
-  accountInitials
+  accountInitials,
+  accountSubtitle = ''
 }) {
   const isMobileViewport = viewportMode === 'mobile';
   const isTabletViewport = viewportMode === 'tablet';
+  const accountPreviewName = isAuthenticated ? (accountName || accountLabel) : 'Welcome!';
+  const accountPreviewSubtitle = isAuthenticated
+    ? (accountSubtitle || accountLabel)
+    : 'Sign in or create an account';
   return (
     <nav className={cx('discovery-header', `discovery-header--${viewportMode}`)}>
       <div className="discovery-header__inner">
@@ -128,22 +133,22 @@ export function DiscoveryHeader({
         <div className="discovery-header__actions">
           {isMobileViewport ? (
             <>
-              {typeof onAuthClick === 'function' && isAuthenticated && (
+              {typeof onAuthClick === 'function' && isAuthenticated ? (
                 <button
                   type="button"
                   onClick={onAuthClick}
                   aria-label={accountLabel}
-                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}
+                  className="discovery-header__mobileProfileTrigger"
                 >
                   {accountInitials ? (
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#AEE8F4', color: '#1A4586', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#AEE8F4', color: '#1A4586', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700 }}>
                       {accountInitials}
                     </div>
                   ) : (
-                    <UserCircle2 size={24} />
+                    <UserCircle2 size={22} />
                   )}
                 </button>
-              )}
+              ) : null}
               <button type="button" onClick={onMenuToggle} className="discovery-header__menuButton" aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}>
                 {menuOpen ? <X size={22} /> : <Menu size={24} />}
               </button>
@@ -197,15 +202,35 @@ export function DiscoveryHeader({
             onClick={onMenuToggle}
           />
           <aside className="discovery-header__drawerPanel" role="dialog" aria-modal="true" aria-label="Mobile navigation">
-            <div className="discovery-header__drawerHeader">
-              <div className="discovery-header__drawerTitle">Menu</div>
+            <div className="discovery-header__drawerHeader discovery-header__drawerHeader--profile">
+              <button
+                type="button"
+                className="discovery-header__drawerProfile"
+                onClick={() => {
+                  if (isAuthenticated) {
+                    onMenuToggle();
+                    onAuthClick?.();
+                  }
+                }}
+                aria-label={isAuthenticated ? 'Open customer dashboard' : 'Guest account information'}
+              >
+                <span className="discovery-header__drawerAvatar">
+                  {isAuthenticated && accountInitials ? accountInitials : <User size={24} strokeWidth={2.05} />}
+                </span>
+                  <span className="discovery-header__drawerProfileText">
+                    <span className="discovery-header__drawerProfileName">{accountPreviewName}</span>
+                    <span className="discovery-header__drawerProfileSubtitle">
+                      {accountPreviewSubtitle}
+                    </span>
+                  </span>
+              </button>
               <button
                 type="button"
                 className="discovery-header__drawerClose"
                 onClick={onMenuToggle}
                 aria-label="Close menu"
               >
-                <X size={24} />
+                <X size={20} />
               </button>
             </div>
             <div className="discovery-header__drawerBody">
@@ -223,48 +248,31 @@ export function DiscoveryHeader({
                       style={{ fontFamily: '"Inter", sans-serif' }}
                     >
                       <span className="discovery-header__menuItemLead">
-                        <span className="discovery-header__menuItemIcon"><Icon size={17} /></span>
+                        <span className="discovery-header__menuItemIcon"><Icon size={16} /></span>
                         <span>{item}</span>
                       </span>
                       <span className="discovery-header__menuItemTrail">
                         {meta.badge ? <span className="discovery-header__menuItemBadge">{meta.badge}</span> : null}
-                        {!isActive ? <ChevronRight size={16} /> : null}
+                        <ChevronRight size={16} />
                       </span>
                     </button>
                   );
                 })}
               </div>
               <div className="discovery-header__drawerFooter">
-                {typeof onAuthClick === 'function' && (
+                {!isAuthenticated && typeof onAuthClick === 'function' && (
                   <button
                     type="button"
                     onClick={onAuthClick}
-                    className={isAuthenticated ? '' : "discovery-header__menuSecondaryAction"}
-                    style={isAuthenticated ? { background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, color: '#101828', fontSize: 15, fontWeight: 600, width: '100%', textAlign: 'left' } : undefined}
+                    className="discovery-header__menuSecondaryAction"
                   >
-                    {isAuthenticated ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {accountInitials ? (
-                          <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#AEE8F4', color: '#1A4586', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700 }}>
-                            {accountInitials}
-                          </div>
-                        ) : (
-                          <UserCircle2 size={15} />
-                        )}
-                        <span>{accountName ? accountName.split(' ')[0] : accountLabel}</span>
-                        <ChevronDown size={14} style={{ marginLeft: 4 }} />
-                      </div>
-                    ) : (
-                      <>
-                        <UserCircle2 size={15} />
-                        {authLabel}
-                      </>
-                    )}
+                    <UserCircle2 size={16} />
+                    {authLabel}
                   </button>
                 )}
                 {!isAuthenticated && (
                   <button type="button" onClick={onBusinessClick} className="discovery-header__menuCta">
-                    <User size={15} />
+                    <User size={14} />
                     {businessLabel}
                   </button>
                 )}

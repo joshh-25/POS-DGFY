@@ -2084,6 +2084,23 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
             if (!transaction.finished) {
                 await transaction.rollback();
             }
+            logger.error('[StorefrontCheckout] Failed to complete storefront checkout', {
+                tenant_id: normalizedTenantId,
+                error_name: error?.name || 'Error',
+                error_message: error?.message || 'Unknown error',
+                error_code: error?.code || null,
+                error_details: error?.details || null,
+                stack: error?.stack || null
+            });
+            console.error('[StorefrontCheckoutDebug]', {
+                tenant_id: normalizedTenantId,
+                error_name: error?.name || 'Error',
+                error_message: error?.message || 'Unknown error',
+                sql_message: error?.original?.sqlMessage || error?.parent?.sqlMessage || null,
+                sql: error?.sql || error?.original?.sql || error?.parent?.sql || null,
+                error_code: error?.original?.code || error?.parent?.code || error?.code || null,
+                stack: error?.stack || null
+            });
             return fail(mapStoreUseCaseError(error, 'Failed to complete storefront checkout'));
         }
     };

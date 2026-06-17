@@ -1,10 +1,11 @@
 import React from 'react';
 
-const money = (value) => `PHP ${Number(value || 0).toFixed(2)}`;
+const money = (value) => Number(value || 0).toFixed(2);
 const DGFY_BRAND_NAME = 'DGFY';
 const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
 const DGFY_ACRONYM = 'Discover Goods For You';
 const DGFY_RECEIPT_LOGO_SRC = './dgfy-logo.png';
+const RECEIPT_LINE_GRID_COLUMNS = 'minmax(0, 1fr) 3.75rem 1.5rem 3.75rem';
 
 const parseTransactionMetadata = (value) => {
     if (!value) return {};
@@ -30,6 +31,42 @@ const parseArrayMetadata = (value) => {
     } catch {
         return [];
     }
+};
+
+const resolveReceiptLineQuantity = (line) => {
+    const quantity = Number(line?.quantity ?? line?.qty ?? 0);
+    return Number.isFinite(quantity) ? quantity : 0;
+};
+
+const resolveReceiptLineUnitPrice = (line) => {
+    const explicitPrice = Number(line?.sale_price ?? line?.unit_price ?? line?.price);
+    if (Number.isFinite(explicitPrice)) return explicitPrice;
+
+    const quantity = resolveReceiptLineQuantity(line);
+    const lineTotal = Number(line?.line_subtotal ?? line?.line_total ?? line?.total_amount ?? line?.amount);
+    if (!Number.isFinite(lineTotal)) return 0;
+    return quantity > 0 ? lineTotal / quantity : lineTotal;
+};
+
+const resolveReceiptLineTotal = (line) => {
+    const explicitTotal = Number(line?.line_subtotal ?? line?.line_total ?? line?.total_amount ?? line?.amount);
+    if (Number.isFinite(explicitTotal)) return explicitTotal;
+    return resolveReceiptLineQuantity(line) * resolveReceiptLineUnitPrice(line);
+};
+
+const formatReceiptQuantity = (value) => {
+    const quantity = Number(value || 0);
+    if (!Number.isFinite(quantity)) return '0';
+    return Number.isInteger(quantity) ? String(quantity) : quantity.toFixed(2);
+};
+
+const splitReceiptItemName = (value) => {
+    const name = String(value || '').trim().replace(/\s+/g, ' ');
+    const [firstWord = '', ...remainingWords] = name.split(' ');
+    return {
+        firstLine: firstWord || name,
+        secondLine: remainingWords.join(' ')
+    };
 };
 
 const resolveDocumentType = ({ transaction, receiptContract }) => {
@@ -130,24 +167,48 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
             </div>
 
             <div className="space-y-2 text-sm mb-4 print:space-y-1.5 print:mb-3 print:text-[11px]">
+                {lines.length > 0 && (
+                    <div
+                        className="grid gap-1.5 border-b border-dashed border-slate-300 pb-1 text-[10px] font-semibold uppercase text-slate-500 print:gap-1 print:text-[8px]"
+                        style={{ gridTemplateColumns: RECEIPT_LINE_GRID_COLUMNS }}
+                    >
+                        <span>Item</span>
+                        <span className="text-right">Unit Price</span>
+                        <span className="text-right">Qty</span>
+                        <span className="text-right">Total</span>
+                    </div>
+                )}
                 {lines.map((line) => {
                     const modifiers = parseArrayMetadata(line.fnb_modifiers_snapshot);
+                    const quantity = resolveReceiptLineQuantity(line);
+                    const unitPrice = resolveReceiptLineUnitPrice(line);
+                    const lineTotal = resolveReceiptLineTotal(line);
+                    const itemNameParts = splitReceiptItemName(line.item?.name || `Item #${line.item_id}`);
                     return (
-                        <div key={line.line_id} className="flex items-start justify-between gap-3 print:gap-2">
-                            <div className="min-w-0 flex-1 break-words">
-                                <p className="font-medium text-slate-900">{line.item?.name || `Item #${line.item_id}`}</p>
-                                <p className="text-xs text-slate-500 print:text-[10px]">
-                                    {Number(line.quantity).toFixed(2)} {line.unit_of_measure || ''} x {money(line.sale_price)}
-                                </p>
-                                {(line.fnb_course_snapshot || modifiers.length || line.fnb_special_instructions) && (
-                                    <p className="text-xs text-slate-500 print:text-[10px]">
-                                        {line.fnb_course_snapshot ? `Course: ${line.fnb_course_snapshot}` : ''}
-                                        {modifiers.length ? ` Modifiers: ${modifiers.map((modifier) => modifier.option_name || modifier.name).filter(Boolean).join(', ')}` : ''}
-                                        {line.fnb_special_instructions ? ` Notes: ${line.fnb_special_instructions}` : ''}
-                                    </p>
-                                )}
+                        <div
+                            key={line.line_id}
+                            className="border-b border-dashed border-slate-200 pb-2 last:border-b-0 last:pb-0 print:pb-1.5"
+                        >
+                            <div
+                                className="grid gap-1.5 text-[13px] print:gap-1 print:text-[10px]"
+                                style={{ gridTemplateColumns: RECEIPT_LINE_GRID_COLUMNS }}
+                            >
+                                <p className="min-w-0 truncate font-medium leading-snug text-slate-900">{itemNameParts.firstLine}</p>
+                                <p className="whitespace-nowrap text-right tabular-nums text-slate-700">{money(unitPrice)}</p>
+                                <p className="whitespace-nowrap text-right tabular-nums text-slate-700">{formatReceiptQuantity(quantity)}</p>
+                                <p className="whitespace-nowrap text-right font-medium tabular-nums text-slate-900">{money(lineTotal)}</p>
                             </div>
-                            <p className="shrink-0 whitespace-nowrap pl-2 text-right font-medium tabular-nums text-slate-900">{money(line.line_subtotal)}</p>
+                            {itemNameParts.secondLine && (
+                                <p className="line-clamp-1 min-w-0 whitespace-normal break-words pr-24 text-[13px] font-medium leading-snug text-slate-900 print:pr-20 print:text-[10px]">
+                                    {itemNameParts.secondLine}
+                                </p>
+                            )}
+                            {(modifiers.length || line.fnb_special_instructions) && (
+                                <p className="mt-0.5 text-xs text-slate-500 print:text-[10px]">
+                                    {modifiers.length ? `Modifiers: ${modifiers.map((modifier) => modifier.option_name || modifier.name).filter(Boolean).join(', ')}` : ''}
+                                    {line.fnb_special_instructions ? ` Notes: ${line.fnb_special_instructions}` : ''}
+                                </p>
+                            )}
                         </div>
                     );
                 })}

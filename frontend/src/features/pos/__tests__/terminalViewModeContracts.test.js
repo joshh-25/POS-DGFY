@@ -11,6 +11,8 @@ const terminalWorkspaceSidebarPath = path.resolve(__dirname, '../components/Term
 const terminalSidebarPanelPath = path.resolve(__dirname, '../components/TerminalSidebarPanel.jsx');
 const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 const posCheckoutTerminalPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
+const skupervisorCheckoutTerminalPath = path.resolve(__dirname, '../components/SkupervisorPOSCheckoutTerminal.jsx');
+const receiptPrintViewPath = path.resolve(__dirname, '../components/ReceiptPrintView.jsx');
 const posBarcodeScannerPath = path.resolve(__dirname, '../components/POSBarcodeScanner.jsx');
 const posHistoryPanelPath = path.resolve(__dirname, '../components/POSTransactionHistoryPanel.jsx');
 const terminalPageLayoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
@@ -22,6 +24,8 @@ describe('POS terminal view-mode contracts', () => {
   let terminalSidebarPanelContent = '';
   let terminalOperationsWorkspaceContent = '';
   let posCheckoutTerminalContent = '';
+  let skupervisorCheckoutTerminalContent = '';
+  let receiptPrintViewContent = '';
   let posBarcodeScannerContent = '';
   let posHistoryPanelContent = '';
   let terminalPageLayoutContent = '';
@@ -33,6 +37,8 @@ describe('POS terminal view-mode contracts', () => {
     terminalSidebarPanelContent = fs.readFileSync(terminalSidebarPanelPath, 'utf8');
     terminalOperationsWorkspaceContent = fs.readFileSync(terminalOperationsWorkspacePath, 'utf8');
     posCheckoutTerminalContent = fs.readFileSync(posCheckoutTerminalPath, 'utf8');
+    skupervisorCheckoutTerminalContent = fs.readFileSync(skupervisorCheckoutTerminalPath, 'utf8');
+    receiptPrintViewContent = fs.readFileSync(receiptPrintViewPath, 'utf8');
     posBarcodeScannerContent = fs.readFileSync(posBarcodeScannerPath, 'utf8');
     posHistoryPanelContent = fs.readFileSync(posHistoryPanelPath, 'utf8');
     terminalPageLayoutContent = fs.readFileSync(terminalPageLayoutPath, 'utf8');
@@ -53,6 +59,29 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('return;');
   });
 
+  it('blurs all non-login POS shell surfaces while locked', () => {
+    expect(terminalPageLayoutContent).toContain("const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';");
+    expect(terminalPageLayoutContent).toContain('`${persistentSidebarClassName} ${lockedSurfaceClassName}`');
+    expect(terminalPageLayoutContent).toContain('lg:px-7 ${lockedSurfaceClassName}');
+    expect(terminalPageLayoutContent).toContain('xl:touch-pan-y ${lockedSurfaceClassName}');
+  });
+
+  it('persists manual POS terminal lock across refresh until login succeeds', () => {
+    expect(terminalPageContent).toContain("const TERMINAL_LOCK_STORAGE_KEY = 'pos_terminal_locked_v1';");
+    expect(terminalPageContent).toContain('readStoredTerminalLock() || !getAccessToken()');
+    expect(terminalPageContent).toContain('if (readStoredTerminalLock()) {');
+    expect(terminalPageContent).toContain('setStoredTerminalLock(true);');
+    expect(terminalPageContent).toContain('setStoredTerminalLock(false);');
+  });
+
+  it('checks current shift before requiring a loaded operating location', () => {
+    expect(terminalPageContent).toContain('const currentShiftParams = scopedOperatingLocationId');
+    expect(terminalPageContent).toContain(': { terminal_id: terminalId };');
+    expect(terminalPageContent).toContain('const currentShiftResult = await fetchCurrentTerminalShift(');
+    expect(terminalPageContent).toContain('const effectiveLocationId = Number.isInteger(shiftLocationId) && shiftLocationId > 0');
+    expect(terminalPageContent).not.toContain('if (!scopedOperatingLocationId) {');
+  });
+
   it('enforces incoming queue access-state handling in TerminalPage', () => {
     expect(terminalPageContent).toContain("accessState: 'forbidden'");
     expect(terminalPageContent).toContain("accessState: 'allowed'");
@@ -68,22 +97,55 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('keeps incoming queue and location scope sidebar items permission-aware', () => {
-    expect(terminalWorkspaceSidebarContent).toContain("disabled={locked || !canViewPos}");
+    expect(terminalWorkspaceSidebarContent).toContain("disabled={locked || !canViewPos || !hasActiveShift}");
     expect(terminalWorkspaceSidebarContent).toContain('POS view permission required');
   });
 
-  it('keeps cashier scroll-zone badge contextual to desktop sidebar usage', () => {
-    expect(terminalWorkspaceSidebarContent).toContain('showScrollZoneBadge = true');
-    expect(terminalWorkspaceSidebarContent).toContain('{showScrollZoneBadge && (');
-    expect(terminalPageLayoutContent).toContain('showScrollZoneBadge={false}');
-    expect(terminalPageLayoutContent).toContain('showScrollZoneBadge');
+  it('does not render the cashier scroll-zone badge', () => {
+    expect(terminalWorkspaceSidebarContent).not.toContain('Scroll for more terminal tools.');
+    expect(terminalWorkspaceSidebarContent).not.toContain('showScrollZoneBadge');
+    expect(terminalPageLayoutContent).not.toContain('showScrollZoneBadge');
   });
 
   it('renders forbidden/error states and transact guard in incoming queue workspace', () => {
     expect(terminalSidebarPanelContent).toContain('incomingOrdersAccessState === \'forbidden\'');
     expect(terminalSidebarPanelContent).toContain('incomingOrdersAccessState === \'error\'');
-    expect(terminalSidebarPanelContent).toContain("disabled={Boolean(actionLoading) || !canTransactPos || locked}");
+    expect(terminalSidebarPanelContent).toContain("disabled={Boolean(actionLoading) || !canTransactPos || locked || !shiftState.shift}");
     expect(terminalSidebarPanelContent).toContain('You need POS transact permission to update order statuses.');
+  });
+
+  it('requires an open shift before POS sale actions are available', () => {
+    expect(terminalPageContent).toContain('requiresOpenShift');
+    expect(terminalPageContent).toContain('shiftOpeningModalOpen');
+    expect(terminalPageContent).toContain('handleShiftOpeningModalOpenChange');
+    expect(terminalPageContent).toContain('handleShiftOpeningModalSubmit');
+    expect(terminalPageContent).toContain('<Dialog open={shiftOpeningModalOpen}');
+    expect(terminalPageContent).toContain('canSubmitOpenShift');
+    expect(terminalPageContent).toContain('required');
+    expect(terminalPageContent).not.toContain('openingFloatAmount: configuredPettyCash.toFixed(2)');
+    expect(terminalPageContent).toContain('Please open your shift before using the POS.');
+    expect(terminalPageContent).toContain('You cannot use the POS because the shift is closed.');
+    expect(terminalPageContent).toContain('Shift opened successfully.');
+    expect(terminalPageContent).toContain('closeShiftConfirmOpen');
+    expect(terminalPageContent).toContain('handleConfirmCloseShift');
+    expect(terminalPageContent).toContain('Are you sure you want to close this shift?');
+    expect(terminalPageContent).not.toContain('window.confirm');
+    expect(terminalPageContent).toContain('Shift closed successfully. Please open a new shift to continue.');
+    expect(terminalSidebarPanelContent).toContain('Shift Open');
+    expect(terminalSidebarPanelContent).toContain('Shift Closed');
+    expect(terminalOperationsWorkspaceContent).toContain('Shift Closed. Please open your shift before using the POS.');
+    expect(terminalOperationsWorkspaceContent).toContain('isValidOpeningCashAmount');
+    expect(terminalOperationsWorkspaceContent).toContain('shiftState = { shift: null }');
+    expect(terminalOperationsWorkspaceContent).toContain('shiftState={shiftState}');
+    expect(terminalOperationsWorkspaceContent).toContain('disabled={shiftActionLoading.open || locked || !canTransactPos || !canSubmitOpenShift}');
+    expect(terminalSidebarPanelContent).toContain('isValidOpeningCashAmount');
+    expect(terminalSidebarPanelContent).toContain('disabled={shiftActionLoading.open || locked || !canTransactPos || !canSubmitOpenShift}');
+    expect(posCheckoutTerminalContent).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason);');
+    expect(posCheckoutTerminalContent).toContain('notifyPosActionBlocked');
+    expect(posCheckoutTerminalContent).toContain('disabled={posActionsBlocked || cart.length === 0}');
+    expect(skupervisorCheckoutTerminalContent).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason);');
+    expect(skupervisorCheckoutTerminalContent).toContain('notifyPosActionBlocked');
+    expect(skupervisorCheckoutTerminalContent).toContain('disabled={posActionsBlocked || cart.length === 0}');
   });
 
   it('keeps dedicated operations workspace content mapping for every sidebar mode', () => {
@@ -118,6 +180,43 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain('No receipt selected yet.');
     expect(posCheckoutTerminalContent).toContain('onClick={() => setCurrentViewMode(\'history\')}');
     expect(posCheckoutTerminalContent).toContain('Go to History');
+  });
+
+  it('supports manual POS discounts by percentage or fixed amount', () => {
+    expect(posCheckoutTerminalContent).toContain("const [manualDiscountMode, setManualDiscountMode] = useState('none');");
+    expect(posCheckoutTerminalContent).toContain("const [manualDiscountAmountInput, setManualDiscountAmountInput] = useState('');");
+    expect(posCheckoutTerminalContent).toContain('Discount Type');
+    expect(posCheckoutTerminalContent).toContain('<option value="none">No Manual Discount</option>');
+    expect(posCheckoutTerminalContent).toContain('<option value="percentage">Percentage</option>');
+    expect(posCheckoutTerminalContent).toContain('<option value="amount">Manual Amount</option>');
+    expect(posCheckoutTerminalContent).toContain("manualDiscountMode !== 'none'");
+    expect(posCheckoutTerminalContent).toContain("discount_mode: selectedDiscount ? 'preset' : (manualDiscountAmount > 0 ? manualDiscountMode : 'none')");
+    expect(posCheckoutTerminalContent).toContain("manualDiscountMode === 'amount' ? 'Manual Discount Amount' : 'Manual Discount Percentage'");
+    expect(posCheckoutTerminalContent).toContain('Manual amount is capped at the item subtotal.');
+  });
+
+  it('keeps history receipt modal close action in the header and print action in the footer', () => {
+    expect(posCheckoutTerminalContent).toContain('aria-label="Close receipt preview"');
+    expect(posCheckoutTerminalContent).toContain("onClick={() => handlePrintReceipt(lastReceipt, 'history_modal')}");
+    expect(posCheckoutTerminalContent).toContain("{receiptPrinting ? 'Printing...' : 'Print'}");
+    expect(posCheckoutTerminalContent).not.toContain('<X className="h-5 w-5" />\n                                </button>\n                            </div>\n                        </div>\n                        <div className="pos-receipt-print-content');
+  });
+
+  it('renders receipt item lines with unit price, quantity, and total columns', () => {
+    expect(receiptPrintViewContent).toContain('Unit Price');
+    expect(receiptPrintViewContent).toContain('Qty');
+    expect(receiptPrintViewContent).toContain('Total');
+    expect(receiptPrintViewContent).not.toContain('PHP ');
+    expect(receiptPrintViewContent).not.toContain('Unit:');
+    expect(receiptPrintViewContent).not.toContain('Course:');
+    expect(receiptPrintViewContent).toContain('resolveReceiptLineUnitPrice');
+    expect(receiptPrintViewContent).toContain('resolveReceiptLineTotal');
+    expect(receiptPrintViewContent).toContain('splitReceiptItemName');
+    expect(receiptPrintViewContent).toContain("RECEIPT_LINE_GRID_COLUMNS = 'minmax(0, 1fr) 3.75rem 1.5rem 3.75rem'");
+    expect(receiptPrintViewContent).toContain('itemNameParts.firstLine');
+    expect(receiptPrintViewContent).toContain('itemNameParts.secondLine');
+    expect(receiptPrintViewContent).toContain('pr-24 text-[13px] font-medium leading-snug text-slate-900');
+    expect(receiptPrintViewContent).toContain('last:border-b-0 last:pb-0');
   });
 
   it('adds keyboard and semantic accessibility affordances in POS history table', () => {

@@ -113,6 +113,22 @@ const stableStringify = (value) => {
 
 const hashPayload = (payload) => crypto.createHash('sha256').update(stableStringify(payload)).digest('hex');
 
+const createOpenShift = ({
+    shiftId = 901,
+    cashierId = 12,
+    terminalId = 'TERM-01',
+    locationId = 3
+} = {}) => ({
+    pos_terminal_shift_id: shiftId,
+    cashier_id: cashierId,
+    terminal_id: terminalId,
+    location_id: locationId,
+    status: 'open',
+    opened_at: '2026-06-17T08:00:00.000Z',
+    business_date: '2026-06-17',
+    opening_float_amount: 100
+});
+
 describe('POS checkout F&B contracts', () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -174,6 +190,7 @@ describe('POS checkout F&B contracts', () => {
                 cash_drawer_binding: 'CD-01'
             }),
             createFiscalEvent: jest.fn().mockResolvedValue({ event_hash: 'fiscal-event-hash' }),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
             getTerminalShiftById: jest.fn(),
             nextInvoiceNumber: jest.fn().mockResolvedValue('INV-000001'),
             getFnbTableById: jest.fn(),
@@ -373,6 +390,53 @@ describe('POS checkout F&B contracts', () => {
         expect(stockMovementService.createStockMovement).not.toHaveBeenCalled();
     });
 
+    it('blocks checkout when the cashier has no open shift', async () => {
+        const posRepository = {
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({ mode: 'warn', active_registry: [] }),
+            findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(null),
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 1,
+                name: 'Shift Blocked Item',
+                category: 'product',
+                unit_of_measure: 'pc',
+                current_stock: 5,
+                cost_per_unit: 50,
+                default_sale_price: 100,
+                vat_type: 'vatable'
+            }]),
+            listProductCompositionsForItems: jest.fn().mockResolvedValue([]),
+            createTransactionWithLines: jest.fn()
+        };
+        const stockMovementService = {
+            createStockMovement: jest.fn()
+        };
+        const useCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'checkout-without-open-shift',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                lines: [{ item_id: 1, quantity: 1 }]
+            }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+        expect(result.error.message).toBe('You cannot use the POS because the shift is closed.');
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'POS_SHIFT_CLOSED'
+        }));
+        expect(posRepository.createTransactionWithLines).not.toHaveBeenCalled();
+        expect(stockMovementService.createStockMovement).not.toHaveBeenCalled();
+    });
+
     it('validates modifiers from configured groups, taxes taxable restaurant service charge, and deducts recipe ingredients', async () => {
         let createdTransaction = null;
         const posRepository = {
@@ -417,6 +481,7 @@ describe('POS checkout F&B contracts', () => {
                     category: 'raw_material'
                 }
             }]),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
             getTerminalShiftById: jest.fn(),
             nextInvoiceNumber: jest.fn().mockResolvedValue('NFS-000001'),
             getFnbTableById: jest.fn(),
@@ -550,6 +615,7 @@ describe('POS checkout F&B contracts', () => {
                     category: 'raw_material'
                 }
             }]),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
             getTerminalShiftById: jest.fn(),
             nextInvoiceNumber: jest.fn(),
             getFnbTableById: jest.fn(),
@@ -631,6 +697,7 @@ describe('POS checkout F&B contracts', () => {
                     category: 'raw_material'
                 }
             }]),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
             getTerminalShiftById: jest.fn(),
             nextInvoiceNumber: jest.fn(),
             getFnbTableById: jest.fn(),
@@ -703,6 +770,7 @@ describe('POS checkout F&B contracts', () => {
                 }
             ]),
             listProductCompositionsForItems: jest.fn(),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
             getTerminalShiftById: jest.fn(),
             nextInvoiceNumber: jest.fn().mockResolvedValue('NFS-000002'),
             getFnbTableById: jest.fn(),
@@ -774,6 +842,7 @@ describe('POS checkout F&B contracts', () => {
                 fnbModifierGroups: []
             }]),
             listProductCompositionsForItems: jest.fn().mockRejectedValue(new Error('service compositions should not be queried')),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
             getTerminalShiftById: jest.fn(),
             nextInvoiceNumber: jest.fn().mockResolvedValue('NFS-000003'),
             getFnbTableById: jest.fn(),
@@ -840,6 +909,7 @@ describe('POS checkout F&B contracts', () => {
                 fnbModifierGroups: []
             }]),
             listProductCompositionsForItems: jest.fn().mockResolvedValue([]),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
             getTerminalShiftById: jest.fn(),
             nextInvoiceNumber: jest.fn().mockResolvedValue('NFS-000004'),
             getFnbTableById: jest.fn(),
@@ -938,6 +1008,7 @@ describe('POS checkout F&B contracts', () => {
         };
         const posRepository = {
             getTransactionById: jest.fn().mockResolvedValue(fiscalTransaction),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
             listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([{
                 movement_id: 901,
                 item_id: 1,

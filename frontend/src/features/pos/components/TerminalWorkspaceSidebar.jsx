@@ -44,7 +44,6 @@ export default function TerminalWorkspaceSidebar({
   className = '',
   showBrand = true,
   showIdentityInSidebar = false,
-  showScrollZoneBadge = true,
   locked = false,
   isMsmeMode = false,
   terminalUser = null,
@@ -73,6 +72,7 @@ export default function TerminalWorkspaceSidebar({
   const showAdvancedOps = !isMsmeMode;
   const pendingQueueCount = Number(queueSummary?.pending || 0);
   const blockedQueueCount = Number(queueSummary?.blocked || 0);
+  const hasActiveShift = Boolean(shiftState?.shift);
   const sellWorkspaceModes = new Set(['checkout', 'receipt']);
 
   return (
@@ -114,19 +114,19 @@ export default function TerminalWorkspaceSidebar({
             icon={ShoppingCart}
             active={sellWorkspaceModes.has(currentViewMode)}
             onClick={() => onSelectViewMode('checkout')}
-            disabled={locked}
-            caption={locked ? 'Unlock terminal to continue' : 'Live selling and cart management'}
+            disabled={locked || !hasActiveShift}
+            caption={locked ? 'Unlock terminal to continue' : (!hasActiveShift ? 'Open shift first to continue' : 'Live selling and cart management')}
           />
           <NavButton
             label="History"
             icon={History}
             active={currentViewMode === 'history'}
             onClick={() => onSelectViewMode('history')}
-            disabled={locked || !canViewPos}
+            disabled={locked || !canViewPos || !hasActiveShift}
             caption={
               locked
                 ? 'Unlock terminal to continue'
-                : (!canViewPos ? 'POS view permission required' : 'Invoice lookups and audit trail')
+                : (!hasActiveShift ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Invoice lookups and audit trail'))
             }
             testId="pos-nav-history"
           />
@@ -135,11 +135,11 @@ export default function TerminalWorkspaceSidebar({
             icon={BarChart3}
             active={currentViewMode === 'reports'}
             onClick={() => onSelectViewMode('reports')}
-            disabled={locked || !canViewPos}
+            disabled={locked || !canViewPos || !hasActiveShift}
             caption={
               locked
                 ? 'Unlock terminal to continue'
-                : (!canViewPos ? 'POS view permission required' : 'Daily totals, popular items, and transactions')
+                : (!hasActiveShift ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Daily totals, popular items, and transactions'))
             }
             testId="pos-nav-reports"
           />
@@ -148,11 +148,11 @@ export default function TerminalWorkspaceSidebar({
             icon={ClipboardList}
             active={currentViewMode === 'items'}
             onClick={() => onSelectViewMode('items')}
-            disabled={locked || !canViewPos}
+            disabled={locked || !canViewPos || !hasActiveShift}
             caption={
               locked
                 ? 'Unlock terminal to continue'
-                : (!canViewPos ? 'POS view permission required' : 'Edit SKUpervisor item price and cost')
+                : (!hasActiveShift ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Edit SKUpervisor item price and cost'))
             }
             testId="pos-nav-items"
           />
@@ -162,11 +162,11 @@ export default function TerminalWorkspaceSidebar({
               icon={Truck}
               active={currentViewMode === 'incoming_queue'}
               onClick={() => onSelectViewMode('incoming_queue')}
-              disabled={locked || !canViewPos}
+              disabled={locked || !canViewPos || !hasActiveShift}
               caption={
                 locked
                   ? 'Unlock terminal to continue'
-                  : (!canViewPos ? 'POS view permission required' : 'Accept, reject, and progress online orders')
+                : (!hasActiveShift ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Accept, reject, and progress online orders'))
               }
             />
           )}
@@ -176,7 +176,7 @@ export default function TerminalWorkspaceSidebar({
             active={currentViewMode === 'shift_controls'}
             onClick={() => onSelectViewMode('shift_controls')}
             disabled={locked}
-            caption={locked ? 'Unlock terminal to continue' : 'Open shift, monitor cash, and status'}
+            caption={locked ? 'Unlock terminal to continue' : (!hasActiveShift ? 'Open shift to unlock POS selling' : 'Open shift, monitor cash, and status')}
           />
         </div>
 
@@ -189,11 +189,11 @@ export default function TerminalWorkspaceSidebar({
               icon={MapPinned}
               active={currentViewMode === 'location_scope'}
               onClick={() => onSelectViewMode('location_scope')}
-              disabled={locked || !canViewPos}
+              disabled={locked || !canViewPos || !hasActiveShift}
               caption={
                 locked
                   ? 'Unlock terminal to continue'
-                  : (!canViewPos ? 'POS view permission required' : 'Filter queue by fulfillment location')
+                  : (!hasActiveShift ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : 'Filter queue by fulfillment location'))
               }
             />
           )}
@@ -202,8 +202,8 @@ export default function TerminalWorkspaceSidebar({
             icon={RefreshCcw}
             active={currentViewMode === 'sync_queue'}
             onClick={() => onSelectViewMode('sync_queue')}
-            disabled={locked}
-            caption={locked ? 'Unlock terminal to continue' : 'Replay, retry, and resolve offline terminal intents'}
+            disabled={locked || !hasActiveShift}
+            caption={locked ? 'Unlock terminal to continue' : (!hasActiveShift ? 'Open shift first to continue' : 'Replay, retry, and resolve offline terminal intents')}
           />
           {showAdvancedOps && (
             <NavButton
@@ -211,11 +211,11 @@ export default function TerminalWorkspaceSidebar({
               icon={Banknote}
               active={currentViewMode === 'cash_drawer'}
               onClick={() => onSelectViewMode('cash_drawer')}
-              disabled={locked || !canAdjustCashDrawer || !shiftState?.shift}
+              disabled={locked || !canAdjustCashDrawer || !hasActiveShift}
               caption={
                 locked
                   ? 'Unlock terminal to continue'
-                  : (!shiftState?.shift ? 'Open shift first to enable' : (!canAdjustCashDrawer ? 'Cash drawer permission required' : 'Cash in/out adjustments'))
+                  : (!hasActiveShift ? 'Open shift first to enable' : (!canAdjustCashDrawer ? 'Cash drawer permission required' : 'Cash in/out adjustments'))
               }
             />
           )}
@@ -224,11 +224,11 @@ export default function TerminalWorkspaceSidebar({
             icon={Lock}
             active={currentViewMode === 'close_shift'}
             onClick={() => onSelectViewMode('close_shift')}
-            disabled={locked || !shiftState?.shift || !canCloseDay}
+            disabled={locked || !canCloseDay}
             caption={
               locked
                 ? 'Unlock terminal to continue'
-                : (!shiftState?.shift ? 'No active shift to close' : (!canCloseDay ? 'Close-day permission required' : 'Finalize shift and closing cash'))
+                : (!hasActiveShift ? 'No active shift to close' : (!canCloseDay ? 'Close-day permission required' : 'Finalize shift and closing cash'))
             }
           />
           {showAdvancedOps && (
@@ -237,8 +237,8 @@ export default function TerminalWorkspaceSidebar({
               icon={Clock3}
               active={currentViewMode === 'sales_today'}
               onClick={() => onSelectViewMode('sales_today')}
-              disabled={locked}
-              caption={locked ? 'Unlock terminal to continue' : 'Daily totals and breakdowns'}
+              disabled={locked || !hasActiveShift}
+              caption={locked ? 'Unlock terminal to continue' : (!hasActiveShift ? 'Open shift first to continue' : 'Daily totals and breakdowns')}
             />
           )}
           {showAdvancedOps && (
@@ -247,17 +247,11 @@ export default function TerminalWorkspaceSidebar({
               icon={Settings2}
               active={currentViewMode === 'terminal_setup'}
               onClick={() => onSelectViewMode('terminal_setup')}
-              disabled={locked}
-              caption={locked ? 'Unlock terminal to continue' : 'Compliance and POS setup snapshot'}
+              disabled={locked || !hasActiveShift}
+              caption={locked ? 'Unlock terminal to continue' : (!hasActiveShift ? 'Open shift first to continue' : 'Compliance and POS setup snapshot')}
             />
           )}
         </div>
-
-        {showScrollZoneBadge && (
-          <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] font-semibold text-[#1A4E8D]">
-            Scroll for more terminal tools.
-          </div>
-        )}
 
         {locked ? (
           <Button type="button" className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#1A4E8D] text-[13px] font-extrabold text-white hover:bg-[#143F73]" onClick={onUnlock}>

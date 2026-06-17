@@ -206,7 +206,8 @@ const buildOfflineCheckoutHistoryRow = ({
     vatBreakdown,
     cartTotal,
     selectedDiscount,
-    manualDiscountRate
+    manualDiscountRate,
+    manualDiscountMode
 }) => {
     const intentId = String(payload?.idempotency_key || '').trim();
     if (!intentId) return null;
@@ -224,10 +225,10 @@ const buildOfflineCheckoutHistoryRow = ({
         total_amount: Number(cartTotal || 0),
         subtotal_amount: Number(cartSubtotal || 0),
         discount_amount: Number(calculatedDiscountAmount || 0),
-        discount_label_snapshot: selectedDiscount?.name || (manualDiscountRate > 0 ? 'Manual Discount' : null),
+        discount_label_snapshot: selectedDiscount?.name || (calculatedDiscountAmount > 0 ? 'Manual Discount' : null),
         discount_rate_snapshot: selectedDiscount
             ? Number(selectedDiscount.percentage || 0)
-            : (manualDiscountRate > 0 ? Number(manualDiscountRate) : null),
+            : (manualDiscountMode === 'percentage' && manualDiscountRate > 0 ? Number(manualDiscountRate) : null),
         service_fee_amount: Number(serviceFeeAmount || 0),
         restaurant_service_charge_amount: Number(restaurantServiceChargeAmount || 0),
         vatable_sales: Number(vatBreakdown?.vatableSales || 0),
@@ -470,7 +471,9 @@ export default function POSCheckoutTerminal({
     const [paymentType, setPaymentType] = useState('cash');
     const [discountProfiles, setDiscountProfiles] = useState([]);
     const [selectedDiscountProfile, setSelectedDiscountProfile] = useState('');
+    const [manualDiscountMode, setManualDiscountMode] = useState('none');
     const [manualDiscountRateInput, setManualDiscountRateInput] = useState('');
+    const [manualDiscountAmountInput, setManualDiscountAmountInput] = useState('');
     const [cart, setCart] = useState([]);
     const [checkoutLoading, setCheckoutLoading] = useState(false);
     const [queuedCheckouts, setQueuedCheckouts] = useState([]);
@@ -677,7 +680,8 @@ export default function POSCheckoutTerminal({
                     vatBreakdown: payload?.offline_totals?.vatBreakdown || {},
                     cartTotal: Number(payload?.offline_totals?.cartTotal || 0),
                     selectedDiscount: payload?.offline_discount_snapshot || null,
-                    manualDiscountRate: Number(payload?.offline_totals?.manualDiscountRate || 0)
+                    manualDiscountRate: Number(payload?.offline_totals?.manualDiscountRate || 0),
+                    manualDiscountMode: payload?.offline_totals?.manualDiscountMode || payload?.discount_mode || 'none'
                 });
             })
             .filter(Boolean)
@@ -1346,8 +1350,18 @@ export default function POSCheckoutTerminal({
     }, [manualDiscountRateInput]);
 
     const manualDiscountAmount = useMemo(
-        () => round4(Math.min((cartSubtotal * manualDiscountRate) / 100, cartSubtotal)),
-        [cartSubtotal, manualDiscountRate]
+        () => {
+            if (manualDiscountMode === 'amount') {
+                const parsed = Number(manualDiscountAmountInput);
+                if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+                return round4(Math.min(parsed, cartSubtotal));
+            }
+            if (manualDiscountMode !== 'percentage') {
+                return 0;
+            }
+            return round4(Math.min((cartSubtotal * manualDiscountRate) / 100, cartSubtotal));
+        },
+        [cartSubtotal, manualDiscountAmountInput, manualDiscountMode, manualDiscountRate]
     );
 
     const calculatedDiscountAmount = useMemo(
@@ -1360,10 +1374,11 @@ export default function POSCheckoutTerminal({
     );
 
     useEffect(() => {
-        if (selectedDiscountProfile && manualDiscountRateInput) {
+        if (selectedDiscountProfile && (manualDiscountRateInput || manualDiscountAmountInput)) {
             setManualDiscountRateInput('');
+            setManualDiscountAmountInput('');
         }
-    }, [manualDiscountRateInput, selectedDiscountProfile]);
+    }, [manualDiscountAmountInput, manualDiscountRateInput, selectedDiscountProfile]);
 
     const serviceFeeAmount = useMemo(
         () => round4(Math.max(0, cartSubtotal) * DGFY_CONVENIENCE_FEE_RATE),
@@ -1452,6 +1467,10 @@ export default function POSCheckoutTerminal({
         [cartTotal, customerPaymentAmount]
     );
     const isCustomerPaymentSufficient = customerPaymentAmount >= cartTotal;
+    const posActionsBlocked = Boolean(checkoutBlockedReason);
+    const notifyPosActionBlocked = () => {
+        toast.error(checkoutBlockedReason || 'You cannot use the POS because the shift is closed.');
+    };
     const itemStockById = useMemo(
         () => new Map((catalog || []).map((item) => {
             if (isServiceCatalogItem(item)) {
@@ -1467,6 +1486,10 @@ export default function POSCheckoutTerminal({
     );
 
     const addToCart = (item, options = {}) => {
+        if (posActionsBlocked) {
+            notifyPosActionBlocked();
+            return;
+        }
         const requestedAddQty = Math.max(0.0001, Number(options.quantity || 1));
         const stockFromCatalog = itemStockById.get(Number(item.item_id));
         const maxStock = Number.isFinite(stockFromCatalog)
@@ -1552,6 +1575,10 @@ export default function POSCheckoutTerminal({
     };
 
     const updateCartLine = (lineKey, patch) => {
+        if (posActionsBlocked) {
+            notifyPosActionBlocked();
+            return;
+        }
         setCart((prev) => prev.map((line) => (
             getLineKey(line) === lineKey
                 ? { ...line, ...patch }
@@ -1560,6 +1587,10 @@ export default function POSCheckoutTerminal({
     };
 
     const updateCartQuantity = (lineKey, requestedQuantity) => {
+        if (posActionsBlocked) {
+            notifyPosActionBlocked();
+            return;
+        }
         const parsedQty = Number(requestedQuantity);
         if (!Number.isFinite(parsedQty)) return;
 
@@ -1589,6 +1620,10 @@ export default function POSCheckoutTerminal({
     };
 
     const removeCartLine = (lineKey) => {
+        if (posActionsBlocked) {
+            notifyPosActionBlocked();
+            return;
+        }
         setCart((prev) => prev.filter((line) => getLineKey(line) !== lineKey));
     };
 
@@ -1673,9 +1708,12 @@ export default function POSCheckoutTerminal({
             order_method: orderMethod,
             payment_type: paymentType,
             payment_handoff_mode: paymentType === 'cash' ? 'internal' : 'external',
+            discount_mode: selectedDiscount ? 'preset' : (manualDiscountAmount > 0 ? manualDiscountMode : 'none'),
             discount_amount: Number(calculatedDiscountAmount || 0),
             discount_profile_name: selectedDiscount?.name || null,
-            discount_rate: selectedDiscount ? Number(selectedDiscount.percentage) : (manualDiscountRate > 0 ? Number(manualDiscountRate) : null),
+            discount_rate: selectedDiscount
+                ? Number(selectedDiscount.percentage)
+                : (manualDiscountMode === 'percentage' && manualDiscountRate > 0 ? Number(manualDiscountRate) : null),
             shift_id: activeShiftId || undefined,
             fnb_check_id: normalizedFnbContext?.fnb_check_id || undefined,
             fnb_table_id: normalizedFnbContext?.fnb_table_id || undefined,
@@ -1704,7 +1742,9 @@ export default function POSCheckoutTerminal({
         payload.offline_totals = {
             cartSubtotal: Number(cartSubtotal || 0),
             calculatedDiscountAmount: Number(calculatedDiscountAmount || 0),
+            manualDiscountMode,
             manualDiscountRate: Number(manualDiscountRate || 0),
+            manualDiscountAmount: Number(manualDiscountAmount || 0),
             serviceFeeAmount: Number(serviceFeeAmount || 0),
             restaurantServiceChargeAmount: Number(restaurantServiceChargeAmount || 0),
             vatBreakdown: {
@@ -1725,7 +1765,8 @@ export default function POSCheckoutTerminal({
             vatBreakdown,
             cartTotal,
             selectedDiscount,
-            manualDiscountRate
+            manualDiscountRate,
+            manualDiscountMode
         });
 
         const queueCheckoutIntentLocally = async (source) => {
@@ -1733,6 +1774,7 @@ export default function POSCheckoutTerminal({
             setCart([]);
             setSelectedDiscountProfile('');
             setManualDiscountRateInput('');
+            setManualDiscountAmountInput('');
             setCustomerPaymentAmountInput('');
             setCheckoutConfirmModalOpen(false);
             const refreshedQueue = await listTerminalOperationQueueEntries({
@@ -1764,6 +1806,7 @@ export default function POSCheckoutTerminal({
             setCart([]);
             setSelectedDiscountProfile('');
             setManualDiscountRateInput('');
+            setManualDiscountAmountInput('');
             setCustomerPaymentAmountInput('');
             setCheckoutConfirmModalOpen(false);
             if (typeof onCheckoutCompleted === 'function') {
@@ -2274,21 +2317,24 @@ export default function POSCheckoutTerminal({
                                 <div
                                     key={item.item_id}
                                     onClick={() => {
-                                        if (isOutOfStock) return;
+                                        if (isOutOfStock || posActionsBlocked) {
+                                            if (posActionsBlocked) notifyPosActionBlocked();
+                                            return;
+                                        }
                                         addToCart(item);
                                     }}
                                     onKeyDown={(event) => {
-                                        if (isOutOfStock) return;
+                                        if (isOutOfStock || posActionsBlocked) return;
                                         if (event.key === 'Enter' || event.key === ' ') {
                                             event.preventDefault();
                                             addToCart(item);
                                         }
                                     }}
-                                    role={isOutOfStock ? 'group' : 'button'}
-                                    tabIndex={isOutOfStock ? -1 : 0}
-                                    aria-disabled={isOutOfStock}
+                                    role={isOutOfStock || posActionsBlocked ? 'group' : 'button'}
+                                    tabIndex={isOutOfStock || posActionsBlocked ? -1 : 0}
+                                    aria-disabled={isOutOfStock || posActionsBlocked}
                                     className={`${catalogCardClassName} ${
-                                        isOutOfStock
+                                        isOutOfStock || posActionsBlocked
                                             ? 'cursor-not-allowed opacity-75 blur-[0.5px]'
                                             : 'cursor-pointer hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md'
                                     }`}
@@ -2489,6 +2535,7 @@ export default function POSCheckoutTerminal({
                                             size="sm"
                                             className="h-7 px-2 text-[11px]"
                                             onClick={() => removeCartLine(lineKey)}
+                                            disabled={posActionsBlocked}
                                         >
                                             Remove
                                         </Button>
@@ -2503,6 +2550,7 @@ export default function POSCheckoutTerminal({
                                                     size="sm"
                                                     className="h-8 px-2 text-[13px]"
                                                     onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) - 1)}
+                                                    disabled={posActionsBlocked}
                                                 >
                                                     <Minus className="h-3.5 w-3.5" />
                                                 </Button>
@@ -2515,6 +2563,7 @@ export default function POSCheckoutTerminal({
                                                     size="sm"
                                                     className="h-8 px-2 text-[13px]"
                                                     onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) + 1)}
+                                                    disabled={posActionsBlocked}
                                                 >
                                                     <Plus className="h-3.5 w-3.5" />
                                                 </Button>
@@ -2558,8 +2607,10 @@ export default function POSCheckoutTerminal({
                             setSelectedDiscountProfile(nextProfile);
                             if (nextProfile) {
                                 setManualDiscountRateInput('');
+                                setManualDiscountAmountInput('');
                             }
                         }}
+                        disabled={posActionsBlocked}
                         className={`w-full mt-1 border border-slate-200 rounded-lg px-2 py-2 text-[13px] ${POS_FORM_SELECT_CLASS}`}
                     >
                         <option value="">No Discount</option>
@@ -2571,30 +2622,61 @@ export default function POSCheckoutTerminal({
                                 </option>
                             ))}
                     </select>
+                    <span className="mt-1 block text-[11px] text-slate-500">
+                        Preset discounts cannot combine with manual discounts.
+                    </span>
                 </label>
 
                 <label className="text-[11px] text-slate-500 block mb-3">
-                    Manual Discount Percentage
-                    <Input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.01"
-                        value={manualDiscountRateInput}
+                    Discount Type
+                    <select
+                        value={manualDiscountMode}
                         onChange={(event) => {
-                            const nextValue = event.target.value;
-                            setManualDiscountRateInput(nextValue);
-                            if (Number(nextValue) > 0) {
-                                setSelectedDiscountProfile('');
-                            }
+                            setManualDiscountMode(event.target.value);
+                            setManualDiscountRateInput('');
+                            setManualDiscountAmountInput('');
+                            setSelectedDiscountProfile('');
                         }}
-                        placeholder="0.00"
-                        className={POS_FORM_INPUT_CLASS}
-                    />
-                    <span className="mt-1 block text-[11px] text-slate-500">
-                        Manual and preset discounts cannot combine.
-                    </span>
+                        disabled={posActionsBlocked}
+                        className={`w-full mt-1 border border-slate-200 rounded-lg px-2 py-2 text-[13px] ${POS_FORM_SELECT_CLASS}`}
+                    >
+                        <option value="none">No Manual Discount</option>
+                        <option value="percentage">Percentage</option>
+                        <option value="amount">Manual Amount</option>
+                    </select>
                 </label>
+
+                {manualDiscountMode !== 'none' && (
+                    <label className="text-[11px] text-slate-500 block mb-3">
+                        {manualDiscountMode === 'amount' ? 'Manual Discount Amount' : 'Manual Discount Percentage'}
+                        <Input
+                            type="number"
+                            min="0"
+                            max={manualDiscountMode === 'amount' ? money(cartSubtotal) : '100'}
+                            step={manualDiscountMode === 'amount' ? '0.0001' : '0.01'}
+                            value={manualDiscountMode === 'amount' ? manualDiscountAmountInput : manualDiscountRateInput}
+                            onChange={(event) => {
+                                const nextValue = event.target.value;
+                                if (manualDiscountMode === 'amount') {
+                                    setManualDiscountAmountInput(nextValue);
+                                } else {
+                                    setManualDiscountRateInput(nextValue);
+                                }
+                                if (Number(nextValue) > 0) {
+                                    setSelectedDiscountProfile('');
+                                }
+                            }}
+                            disabled={posActionsBlocked}
+                            placeholder="0.00"
+                            className={POS_FORM_INPUT_CLASS}
+                        />
+                        <span className="mt-1 block text-[11px] text-slate-500">
+                            {manualDiscountMode === 'amount'
+                                ? 'Manual amount is capped at the item subtotal.'
+                                : 'Percentage must be between 0 and 100.'}
+                        </span>
+                    </label>
+                )}
 
                 <label className="text-[11px] text-slate-500 block mb-3">
                     Discount Amount
@@ -2613,7 +2695,9 @@ export default function POSCheckoutTerminal({
                         </span>
                     ) : manualDiscountAmount > 0 ? (
                         <span className="mt-1 block text-[11px] text-slate-500">
-                            Manual discount applied: {money(manualDiscountRate)}% / PHP {money(manualDiscountAmount)}.
+                            {manualDiscountMode === 'amount'
+                                ? `Manual amount discount applied: PHP ${money(manualDiscountAmount)}.`
+                                : `Manual percentage discount applied: ${money(manualDiscountRate)}% / PHP ${money(manualDiscountAmount)}.`}
                         </span>
                     ) : (
                         <span className="mt-1 block text-[11px] text-slate-500">
@@ -2680,7 +2764,7 @@ export default function POSCheckoutTerminal({
                         type="button"
                         variant="outline"
                         onClick={handlePrintOrder}
-                        disabled={cart.length === 0}
+                        disabled={posActionsBlocked || cart.length === 0}
                         className="flex h-10 w-full min-w-0 items-center justify-center gap-2 rounded-lg border border-[#1A4E8D] bg-white px-2 text-center text-[12px] font-extrabold leading-tight text-[#1A4E8D] hover:bg-blue-50 sm:text-[13px] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         <Printer size={18} />
@@ -2689,7 +2773,7 @@ export default function POSCheckoutTerminal({
                     <Button
                         type="button"
                         onClick={openCheckoutConfirmModal}
-                        disabled={checkoutLoading}
+                        disabled={posActionsBlocked || checkoutLoading}
                         className="flex h-10 w-full min-w-0 items-center justify-center gap-2 rounded-lg bg-[#1A4E8D] px-2 text-center text-[12px] font-extrabold leading-tight text-white shadow-lg shadow-blue-900/20 transition hover:bg-[#143F73] sm:text-[13px] disabled:cursor-not-allowed disabled:opacity-95"
                     >
                         <Lock size={17} />
@@ -2709,7 +2793,7 @@ export default function POSCheckoutTerminal({
                         type="button"
                         variant="outline"
                         onClick={() => handlePrintReceipt(lastReceipt, 'last_receipt_panel')}
-                        disabled={!lastReceipt || receiptPrinting}
+                        disabled={posActionsBlocked || !lastReceipt || receiptPrinting}
                         className="flex h-10 w-full min-w-0 items-center justify-center gap-2 rounded-lg border px-2 text-center text-[12px] font-extrabold leading-tight sm:text-[13px]"
                     >
                         <Printer size={18} />
@@ -2781,7 +2865,7 @@ export default function POSCheckoutTerminal({
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handlePrintReceipt(lastReceipt, 'receipt_preview')}
-                                disabled={!lastReceipt || receiptPrinting}
+                                disabled={posActionsBlocked || !lastReceipt || receiptPrinting}
                             >
                                 {receiptPrinting ? 'Printing...' : 'Send to Printer'}
                             </Button>
@@ -2950,7 +3034,7 @@ export default function POSCheckoutTerminal({
                             <Button
                                 type="button"
                                 onClick={handleCheckout}
-                                disabled={checkoutLoading || cart.length === 0 || !isCustomerPaymentSufficient}
+                                disabled={posActionsBlocked || checkoutLoading || cart.length === 0 || !isCustomerPaymentSufficient}
                                 className="h-10 rounded-lg bg-[#1A4E8D] px-3 text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 transition hover:bg-[#143F73] disabled:cursor-not-allowed disabled:bg-[#1A4E8D] disabled:opacity-60"
                             >
                                 {checkoutLoading ? 'Processing...' : 'Confirm'}
@@ -2982,14 +3066,14 @@ export default function POSCheckoutTerminal({
                                 </p>
                             </div>
                             <div className="flex items-center gap-2">
-                                <button
+                                <Button
                                     type="button"
+                                    size="sm"
                                     onClick={closeReceiptPreviewModal}
-                                    className="rounded-md p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none"
                                     aria-label="Close receipt preview"
                                 >
-                                    <X className="h-5 w-5" />
-                                </button>
+                                    Close
+                                </Button>
                             </div>
                         </div>
                         <div className="pos-receipt-print-content min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 print:overflow-visible print:p-0">
@@ -3016,24 +3100,16 @@ export default function POSCheckoutTerminal({
                             )}
                         </div>
                         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-4 py-3 print:hidden">
-                            <div>
+                            <div />
+                            <div className="flex flex-wrap items-center justify-end gap-2">
                                 <Button
                                     type="button"
                                     variant="outline"
                                     size="sm"
-                                    disabled={!lastReceipt || receiptPrinting}
+                                    disabled={posActionsBlocked || !lastReceipt || receiptPrinting}
                                     onClick={() => handlePrintReceipt(lastReceipt, 'history_modal')}
                                 >
                                     {receiptPrinting ? 'Printing...' : 'Print'}
-                                </Button>
-                            </div>
-                            <div className="flex flex-wrap items-center justify-end gap-2">
-                                <Button
-                                    type="button"
-                                    size="sm"
-                                    onClick={closeReceiptPreviewModal}
-                                >
-                                    Close
                                 </Button>
                             </div>
                         </div>

@@ -6,7 +6,7 @@ export function AccountPage({ accountData = {}, loading = false }) {
   const navigate = useNavigate();
 
   const handleBack = () => {
-    navigate(`/${slug}`);
+    navigate(`/tenant-store/${slug}`);
   };
 
   if (loading) {

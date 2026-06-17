@@ -1,3 +1,5 @@
+import { getStorefrontAccessModeMessage } from '../../../src/utils/tenantCapabilityMessages.js';
+
 const DEFAULT_CAPABILITIES = Object.freeze({
   profile: true,
   contact: true,
@@ -53,4 +55,3 @@ export const getStorefrontAccessBlockMessage = (store = null) => {
   }
   return null;
 };
-import { getStorefrontAccessModeMessage } from '../../../src/utils/tenantCapabilityMessages.js';
