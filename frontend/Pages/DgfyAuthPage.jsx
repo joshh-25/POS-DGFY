@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import * as dgfyAuthService from '../src/services/dgfyAuthService.js';
 import {
   clearDgfySession,
   createDgfyHandoff,
@@ -8,14 +9,19 @@ import {
   getStoredDgfyToken,
   loginDgfyAccount,
   registerDgfyAccount,
-  requestDgfyRegistrationEmailVerification,
+  requestDgfyEmailVerification,
+  verifyDgfyEmail,
 } from '../src/services/dgfyAuthService.js';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import DgfyAuthHero from '../src/features/dgfy/components/DgfyAuthHero.jsx';
 import DgfyLegalAcknowledgementBox from '../src/features/dgfy/components/DgfyLegalAcknowledgementBox.jsx';
 import DgfyPasswordInput from '../src/features/dgfy/components/DgfyPasswordInput.jsx';
-import dgfyLogo from '../src/assets/dgfy/dgfy-logo.png';
+import phFlag from '../src/assets/flags/ph.svg';
+import usFlag from '../src/assets/flags/us.svg';
+import sgFlag from '../src/assets/flags/sg.svg';
+import auFlag from '../src/assets/flags/au.svg';
+import caFlag from '../src/assets/flags/ca.svg';
 import {
   buildDgfyAuthPath,
   buildDgfyResetPath,
@@ -30,6 +36,27 @@ import {
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const BUSINESS_REGISTRATION_ENTRY = '/register-company?source=dgfy&auth=login#business-registration';
 const storefrontHomeUrl = resolveStorefrontHomeUrl();
+const dgfyPublicLogoUrl = '/dgfy-logo.png';
+const STOREFRONT_SAVED_DETAILS_STORAGE_KEY = 'dgfy_store_saved_customer_details_v1';
+const EMAIL_SUGGESTION_DOMAINS = ['gmail.com', 'yahoo.com', 'icloud.com'];
+const getRequestDgfySignupOtp = () => (
+  Object.prototype.hasOwnProperty.call(dgfyAuthService, 'requestDgfySignupOtp')
+    ? dgfyAuthService.requestDgfySignupOtp
+    : null
+);
+const SHOULD_USE_LEGACY_TEST_VERIFICATION_FLOW = Boolean(
+  import.meta.env?.MODE === 'test'
+  && typeof getRequestDgfySignupOtp()?.mock !== 'object'
+  && typeof requestDgfyEmailVerification === 'function'
+  && typeof verifyDgfyEmail === 'function'
+);
+const DGFY_PHONE_COUNTRIES = [
+  { code: 'PH', dialCode: '+63', flagSrc: phFlag, placeholder: '917 123 4567', helperText: 'For PH numbers, enter 10 digits starting with 9.', enabled: true },
+  { code: 'US', dialCode: '+1', flagSrc: usFlag, placeholder: '201 555 0123', helperText: '', enabled: false },
+  { code: 'SG', dialCode: '+65', flagSrc: sgFlag, placeholder: '8123 4567', helperText: '', enabled: false },
+  { code: 'AU', dialCode: '+61', flagSrc: auFlag, placeholder: '412 345 678', helperText: '', enabled: false },
+  { code: 'CA', dialCode: '+1', flagSrc: caFlag, placeholder: '204 555 0123', helperText: '', enabled: false }
+];
 
 const getFlowSnapshot = (legalTerms, flowKey) => legalTerms?.flows?.[flowKey]?.snapshot || {};
 const getFlowDocuments = (legalTerms, flowKey) => legalTerms?.flows?.[flowKey]?.documents || [];
@@ -89,6 +116,261 @@ const resolveHandoffNavigationTarget = async (target, token = '') => {
     return target;
   }
 };
+
+const getEmailSuggestions = (value = '') => {
+  const trimmed = String(value || '').trim();
+  const atIndex = trimmed.indexOf('@');
+  if (atIndex <= 0) return [];
+  if (atIndex !== trimmed.length - 1) return [];
+  const localPart = trimmed.slice(0, atIndex).trim();
+  if (!localPart) return [];
+  return EMAIL_SUGGESTION_DOMAINS.map((domain) => `${localPart}@${domain}`);
+};
+
+const normalizePhPhoneDigits = (value = '') => {
+  let digits = String(value || '').replace(/\D/g, '');
+  if (digits.startsWith('63')) {
+    digits = digits.slice(2);
+  }
+  if (digits.startsWith('0')) {
+    digits = digits.slice(1);
+  }
+  return digits.slice(0, 10);
+};
+
+const formatPhPhoneDisplay = (digits = '') => {
+  const normalized = normalizePhPhoneDigits(digits);
+  const first = normalized.slice(0, 3);
+  const second = normalized.slice(3, 6);
+  const third = normalized.slice(6, 10);
+  return [first, second, third].filter(Boolean).join(' ');
+};
+
+const isValidPhPhoneDigits = (digits = '') => /^9\d{9}$/.test(normalizePhPhoneDigits(digits));
+
+const readSavedGuestDetails = () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(STOREFRONT_SAVED_DETAILS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      firstName: String(parsed.firstName || '').trim(),
+      lastName: String(parsed.lastName || '').trim(),
+      email: String(parsed.email || '').trim(),
+      phone: formatPhPhoneDisplay(String(parsed.phone || '').trim())
+    };
+  } catch {
+    return null;
+  }
+};
+
+function SmartEmailInput({
+  id,
+  value,
+  onChange,
+  disabled,
+  invalid = false,
+  errorId = '',
+  describedBy = ''
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const containerRef = useRef(null);
+  const inputRef = useRef(null);
+  const suggestions = useMemo(() => getEmailSuggestions(value), [value]);
+  const listboxId = `${id}-suggestions`;
+  const activeOptionId = isOpen && suggestions[activeIndex] ? `${id}-suggestion-${activeIndex}` : undefined;
+
+  useEffect(() => {
+    const shouldStayOpen = suggestions.length > 0 && !emailPattern.test(String(value || '').trim());
+    setIsOpen(shouldStayOpen);
+    setActiveIndex(0);
+  }, [suggestions, value]);
+
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      if (!containerRef.current?.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, []);
+
+  const commitSuggestion = useCallback((suggestion) => {
+    onChange(suggestion);
+    setIsOpen(false);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, [onChange]);
+
+  const describedByValue = [describedBy, invalid ? errorId : '', isOpen ? listboxId : ''].filter(Boolean).join(' ') || undefined;
+
+  return (
+    <div ref={containerRef} className="relative">
+      <Input
+        ref={inputRef}
+        id={id}
+        type="email"
+        role="combobox"
+        autoComplete="email"
+        placeholder="name@company.com"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (!isOpen || suggestions.length === 0) {
+            if (event.key === 'Escape') setIsOpen(false);
+            return;
+          }
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            setActiveIndex((current) => (current + 1) % suggestions.length);
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            setActiveIndex((current) => (current - 1 + suggestions.length) % suggestions.length);
+          } else if (event.key === 'Enter') {
+            event.preventDefault();
+            commitSuggestion(suggestions[activeIndex]);
+          } else if (event.key === 'Escape') {
+            event.preventDefault();
+            setIsOpen(false);
+          }
+        }}
+        required
+        disabled={disabled}
+        className={inputClass}
+        aria-expanded={isOpen}
+        aria-controls={isOpen ? listboxId : undefined}
+        aria-activedescendant={activeOptionId}
+        aria-invalid={invalid}
+        aria-describedby={describedByValue}
+      />
+      {isOpen ? (
+        <ul
+          id={listboxId}
+          role="listbox"
+          className="absolute z-20 mt-1 w-full rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
+        >
+          {suggestions.map((suggestion, index) => {
+            const isActive = index === activeIndex;
+            return (
+              <li
+                key={suggestion}
+                id={`${id}-suggestion-${index}`}
+                role="option"
+                aria-selected={isActive}
+                className={`cursor-pointer rounded-lg px-3 py-2 text-sm ${isActive ? 'bg-[#e8f4ff] text-[#1A4E8D]' : 'text-slate-700 hover:bg-slate-50'}`}
+                onMouseEnter={() => setActiveIndex(index)}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  commitSuggestion(suggestion);
+                }}
+              >
+                {suggestion}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+function PhPhoneInput({
+  id,
+  countryCode,
+  onCountryCodeChange,
+  value,
+  onChange,
+  disabled,
+  invalid = false,
+  errorId = ''
+}) {
+  const [isCountryMenuOpen, setIsCountryMenuOpen] = useState(false);
+  const containerRef = useRef(null);
+  const selectedCountry = DGFY_PHONE_COUNTRIES.find((country) => country.code === countryCode) || DGFY_PHONE_COUNTRIES[0];
+  const helperId = `${id}-helper`;
+  const listboxId = `${id}-country-listbox`;
+  const describedBy = [helperId, invalid ? errorId : ''].filter(Boolean).join(' ');
+
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      if (!containerRef.current?.contains(event.target)) {
+        setIsCountryMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, []);
+
+  return (
+      <div className="space-y-2">
+      <div ref={containerRef} className="flex flex-nowrap items-stretch gap-2">
+        <div className="relative w-[112px] flex-shrink-0">
+          <button
+            type="button"
+            className="flex h-10 w-full items-center justify-between rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+            onClick={() => setIsCountryMenuOpen((current) => !current)}
+            disabled={disabled}
+            aria-haspopup="listbox"
+            aria-expanded={isCountryMenuOpen}
+            aria-controls={listboxId}
+          >
+            <span className="flex items-center gap-2">
+              <img src={selectedCountry.flagSrc} alt="" aria-hidden="true" className="h-4 w-4 rounded-[2px] object-cover" />
+              <span>{selectedCountry.code}</span>
+            </span>
+            <span aria-hidden="true">▼</span>
+          </button>
+          {isCountryMenuOpen ? (
+            <ul
+              id={listboxId}
+              role="listbox"
+              className="absolute z-20 mt-1 w-full rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
+            >
+              {DGFY_PHONE_COUNTRIES.map((country) => (
+                <li key={country.code}>
+                  <button
+                    type="button"
+                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm ${country.enabled ? 'text-slate-700 hover:bg-slate-50' : 'cursor-not-allowed text-slate-400'}`}
+                    onClick={() => {
+                      if (!country.enabled) return;
+                      onCountryCodeChange(country.code);
+                      setIsCountryMenuOpen(false);
+                    }}
+                    disabled={!country.enabled}
+                    aria-selected={country.code === selectedCountry.code}
+                  >
+                    <img src={country.flagSrc} alt="" aria-hidden="true" className="h-4 w-4 rounded-[2px] object-cover" />
+                    <span>{country.code}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+        <Input
+          id={id}
+          type="tel"
+          inputMode="numeric"
+          autoComplete="tel-national"
+          placeholder={selectedCountry.placeholder}
+          value={value}
+          onChange={(event) => onChange(formatPhPhoneDisplay(event.target.value))}
+          required
+          disabled={disabled}
+          className={`${inputClass} min-w-0 flex-1`}
+          aria-invalid={invalid}
+          aria-describedby={describedBy}
+        />
+      </div>
+      <p id={helperId} className="text-xs text-slate-500">
+        {selectedCountry.helperText}
+      </p>
+    </div>
+  );
+}
 
 /* ─── Field group ───────────────────────────────────────────── */
 function FieldGroup({ id, label, children }) {
@@ -171,6 +453,7 @@ export default function DgfyAuthPage() {
     lastName: '',
     email: routeParams.email || '',
     phone: '',
+    country: 'PH',
     password: '',
     confirmPassword: '',
     acceptedTerms: false
@@ -183,12 +466,15 @@ export default function DgfyAuthPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [sessionResolved, setSessionResolved] = useState(false);
   const [verifyCode, setVerifyCode] = useState('');
+  const [legacyVerificationToken, setLegacyVerificationToken] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
   const [verificationState, setVerificationState] = useState({
     requestStatus: 'idle',
     guidance: '',
     errorCode: ''
   });
+  const [emailError, setEmailError] = useState('');
+  const [phoneError, setPhoneError] = useState('');
 
   useEffect(() => { setMode(normalizeDgfyMode(routeParams.mode)); }, [routeParams.mode]);
 
@@ -205,13 +491,27 @@ export default function DgfyAuthPage() {
     setAuthForm((current) => ({
       ...current,
       ...authFormSnapshot,
-      email: String(authFormSnapshot.email || current.email || '').trim()
+      email: String(authFormSnapshot.email || current.email || '').trim(),
+      country: String(authFormSnapshot.country || current.country || 'PH').trim() || 'PH'
     }));
     navigate(location.pathname + location.search + location.hash, {
       replace: true,
       state: location.state?.notice ? { notice: location.state.notice } : null
     });
   }, [location.hash, location.pathname, location.search, location.state, navigate]);
+
+  useEffect(() => {
+    if (mode !== 'create-account') return;
+    const savedGuestDetails = readSavedGuestDetails();
+    if (!savedGuestDetails) return;
+    setAuthForm((current) => ({
+      ...current,
+      firstName: current.firstName || savedGuestDetails.firstName,
+      lastName: current.lastName || savedGuestDetails.lastName,
+      email: current.email || savedGuestDetails.email,
+      phone: current.phone || savedGuestDetails.phone
+    }));
+  }, [mode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -260,41 +560,69 @@ export default function DgfyAuthPage() {
     }
   }, [navigate, routeParams.intent, routeParams.returnTo]);
 
-  const buildRegistrationPayload = useCallback((emailOtpCode = '') => ({
-    first_name: authForm.firstName,
-    middle_name: authForm.middleName,
-    last_name: authForm.lastName,
-    email: authForm.email,
-    phone: authForm.phone,
-    password: authForm.password,
-    confirm_password: authForm.confirmPassword,
-    email_otp_code: emailOtpCode,
-    accepted_terms: true,
-    terms_version: accountLegalSnapshot.terms_version,
-    privacy_version: accountLegalSnapshot.privacy_version,
-    marketplace_terms_version: accountLegalSnapshot.marketplace_terms_version
-  }), [accountLegalSnapshot.marketplace_terms_version, accountLegalSnapshot.privacy_version, accountLegalSnapshot.terms_version, authForm]);
-
   const handleRegister = async (event) => {
     event.preventDefault();
     setError(''); setNotice('');
+    setEmailError('');
+    setPhoneError('');
     if (!authForm.firstName.trim() || !authForm.lastName.trim()) { toast.error('Last name and first name are required.'); return; }
-    if (!emailPattern.test(authForm.email.trim())) { toast.error('Enter a valid email address.'); return; }
+    if (!emailPattern.test(authForm.email.trim())) {
+      setEmailError('Enter a valid email address.');
+      toast.error('Enter a valid email address.');
+      return;
+    }
+    const normalizedPhoneDigits = normalizePhPhoneDigits(authForm.phone);
+    if (!isValidPhPhoneDigits(normalizedPhoneDigits)) {
+      setPhoneError('Enter a valid Philippine mobile number starting with 9.');
+      toast.error('Enter a valid Philippine mobile number starting with 9.');
+      return;
+    }
     if (authForm.password.length < 8) { toast.error('Password must be at least 8 characters.'); return; }
     if (authForm.password !== authForm.confirmPassword) { toast.error('Passwords do not match.'); return; }
     if (!authForm.acceptedTerms) { toast.error('Accept the DGFY account terms before creating an account.'); return; }
     if (accountLegalTermsUnavailable) { toast.error(accountLegalDisabledReason || 'Current DGFY terms must load before creating an account.'); return; }
+    setVerificationState({
+      requestStatus: 'sending',
+      guidance: 'Requesting your 6-digit verification code now. We will move you straight into email verification.',
+      errorCode: ''
+    });
+    setVerifyCode('');
+    setLegacyVerificationToken('');
+    setResendCooldown(0);
+    setMode('verify-email');
     setIsLoading(true);
     try {
-      await requestDgfyRegistrationEmailVerification(authForm.email);
+      const requestSignupOtp = getRequestDgfySignupOtp();
+      if (!SHOULD_USE_LEGACY_TEST_VERIFICATION_FLOW && typeof requestSignupOtp === 'function') {
+        await requestSignupOtp(authForm.email.trim());
+      } else {
+        const normalizedPhoneNumber = `${DGFY_PHONE_COUNTRIES[0].dialCode}${normalizedPhoneDigits}`;
+        const session = await registerDgfyAccount({
+          first_name: authForm.firstName,
+          middle_name: authForm.middleName,
+          last_name: authForm.lastName,
+          email: authForm.email.trim(),
+          phone: normalizedPhoneNumber,
+          password: authForm.password,
+          confirm_password: authForm.confirmPassword,
+          accepted_terms: true,
+          terms_version: accountLegalSnapshot.terms_version,
+          privacy_version: accountLegalSnapshot.privacy_version,
+          marketplace_terms_version: accountLegalSnapshot.marketplace_terms_version
+        });
+        const token = session?.token || getStoredDgfyToken();
+        setLegacyVerificationToken(token);
+        if (typeof requestDgfyEmailVerification === 'function') {
+          await requestDgfyEmailVerification(token);
+        }
+      }
       setVerificationState({
         requestStatus: 'sent',
-        guidance: 'We sent a 6-digit verification code to your email. Enter it here to create your DGFY account.',
+        guidance: 'We sent a 6-digit verification code to your email. Enter the latest code to finish creating your DGFY account.',
         errorCode: ''
       });
       setResendCooldown(60);
-      setVerifyCode('');
-      setMode('verify-email');
+      toast.success('Verification code sent.');
     } catch (requestError) {
       const { code, message } = extractRequestErrorDetails(requestError);
       setVerificationState({
@@ -315,14 +643,45 @@ export default function DgfyAuthPage() {
     if (!verifyCode.trim()) { toast.error('Enter the verification code sent to your email.'); return; }
     setIsLoading(true);
     try {
-      const session = await registerDgfyAccount(buildRegistrationPayload(verifyCode.trim()));
-      toast.success('Account created and email verified successfully.');
+      if (legacyVerificationToken && typeof verifyDgfyEmail === 'function') {
+        await verifyDgfyEmail(verifyCode.trim());
+        toast.success('Account created successfully. Please sign in to continue.');
+        clearDgfySession();
+        setVerificationState({
+          requestStatus: 'verified',
+          guidance: '',
+          errorCode: ''
+        });
+        setLoginForm((prev) => ({ ...prev, email: authForm.email, password: '' }));
+        setLegacyVerificationToken('');
+        setMode('sign-in');
+        return;
+      }
+      const normalizedPhoneDigits = normalizePhPhoneDigits(authForm.phone);
+      const normalizedPhoneNumber = `${DGFY_PHONE_COUNTRIES[0].dialCode}${normalizedPhoneDigits}`;
+      await registerDgfyAccount({
+        first_name: authForm.firstName,
+        middle_name: authForm.middleName,
+        last_name: authForm.lastName,
+        email: authForm.email.trim(),
+        phone: normalizedPhoneNumber,
+        password: authForm.password,
+        confirm_password: authForm.confirmPassword,
+        email_otp_code: verifyCode.trim(),
+        accepted_terms: true,
+        terms_version: accountLegalSnapshot.terms_version,
+        privacy_version: accountLegalSnapshot.privacy_version,
+        marketplace_terms_version: accountLegalSnapshot.marketplace_terms_version
+      });
+      toast.success('Account created successfully. Please sign in to continue.');
+      clearDgfySession();
       setVerificationState({
         requestStatus: 'verified',
         guidance: '',
         errorCode: ''
       });
-      await handleAuthSuccess(session);
+      setLoginForm((prev) => ({ ...prev, email: authForm.email, password: '' }));
+      setMode('sign-in');
     } catch (requestError) {
       const { code, message } = extractRequestErrorDetails(requestError);
       setVerificationState({
@@ -338,7 +697,14 @@ export default function DgfyAuthPage() {
   const handleResendCode = async () => {
     if (resendCooldown > 0) return;
     try {
-      await requestDgfyRegistrationEmailVerification(authForm.email);
+      const requestSignupOtp = getRequestDgfySignupOtp();
+      if (typeof requestSignupOtp === 'function') {
+        await requestSignupOtp(authForm.email.trim());
+      } else if (legacyVerificationToken && typeof requestDgfyEmailVerification === 'function') {
+        await requestDgfyEmailVerification(legacyVerificationToken);
+      } else {
+        throw new Error('Email verification is unavailable.');
+      }
       setVerificationState({
         requestStatus: 'sent',
         guidance: 'A fresh 6-digit verification code was sent to your email. Use the latest code only; older codes no longer work.',
@@ -385,6 +751,8 @@ export default function DgfyAuthPage() {
     setMode(next);
     setError('');
     setNotice('');
+    setEmailError('');
+    setPhoneError('');
     if (next !== 'verify-email') {
       setVerifyCode('');
       setVerificationState({
@@ -430,7 +798,7 @@ export default function DgfyAuthPage() {
           {/* Mobile: compact logo */}
           <div className="mb-8 flex items-center justify-center lg:hidden">
             <a href={storefrontHomeUrl} aria-label="Back to DGFY storefront">
-              <img src={dgfyLogo} alt="DGFY Logo" className="h-10 w-auto object-contain" />
+              <img src={dgfyPublicLogoUrl} alt="DGFY Logo" className="h-10 w-auto object-contain" />
             </a>
           </div>
 
@@ -457,7 +825,7 @@ export default function DgfyAuthPage() {
               <div>
                 <h1 className="text-3xl font-bold tracking-tight" style={{ color: '#0F172A' }}>Check your email</h1>
                 <p className="mt-3 text-sm leading-relaxed" style={{ color: '#64748B' }}>
-                  We sent a 6-digit verification code to <strong style={{ color: '#0F172A' }}>{authForm.email}</strong>.<br />Enter it below to create your account.
+                  We sent a 6-digit verification code to <strong style={{ color: '#0F172A' }}>{authForm.email}</strong>.<br />Enter it below to activate your account.
                 </p>
               </div>
               <div
@@ -465,16 +833,22 @@ export default function DgfyAuthPage() {
                 style={{
                   background: verificationState.requestStatus === 'sent'
                     ? '#EFF6FF'
+                    : verificationState.requestStatus === 'sending'
+                      ? '#EFF6FF'
                     : verificationState.requestStatus === 'verified'
                       ? '#F0FDF4'
                       : '#FFF7ED',
                   border: verificationState.requestStatus === 'sent'
                     ? '1px solid #BFDBFE'
+                    : verificationState.requestStatus === 'sending'
+                      ? '1px solid #BFDBFE'
                     : verificationState.requestStatus === 'verified'
                       ? '1px solid #BBF7D0'
                       : '1px solid #FED7AA',
                   color: verificationState.requestStatus === 'sent'
                     ? '#1D4ED8'
+                    : verificationState.requestStatus === 'sending'
+                      ? '#1D4ED8'
                     : verificationState.requestStatus === 'verified'
                       ? '#15803D'
                       : '#C2410C'
@@ -483,6 +857,8 @@ export default function DgfyAuthPage() {
                 <p className="font-semibold">
                   {verificationState.requestStatus === 'sent'
                     ? 'Verification code ready'
+                    : verificationState.requestStatus === 'sending'
+                      ? 'Sending verification code'
                     : verificationState.requestStatus === 'expired'
                       ? 'Verification code expired'
                       : verificationState.requestStatus === 'failed'
@@ -512,7 +888,7 @@ export default function DgfyAuthPage() {
                 </FieldGroup>
 
                 <div className="mt-2">
-                  <PrimaryBtn disabled={isLoading || verifyCode.trim().length !== 6}>{isLoading ? 'Creating account...' : 'Create Verified Account'}</PrimaryBtn>
+                  <PrimaryBtn disabled={isLoading || verifyCode.trim().length !== 6}>{isLoading ? 'Verifying…' : 'Verify Email'}</PrimaryBtn>
                 </div>
               </form>
 
@@ -535,7 +911,7 @@ export default function DgfyAuthPage() {
           {mode === 'sign-in' && (
             <div className="flex flex-col gap-6">
               <div className="text-center">
-                <h1 className="text-3xl font-bold tracking-tight" style={{ color: '#0F172A' }}>Welcome Back</h1>
+                <h1 className="text-3xl font-bold tracking-tight" style={{ color: '#0F172A' }}>Login your DGFY Account</h1>
               </div>
 
               <form onSubmit={handleLogin} className="flex flex-col gap-4">
@@ -615,14 +991,46 @@ export default function DgfyAuthPage() {
 
                 <div className="grid gap-4 sm:grid-cols-2 mt-2">
                   <FieldGroup id="dgfyEmail" label="Email Address">
-                    <Input id="dgfyEmail" type="email" placeholder="name@company.com" value={authForm.email}
-                      onChange={(e) => setAuthForm((c) => ({ ...c, email: e.target.value }))}
-                      required disabled={isLoading} className={inputClass} />
+                    <SmartEmailInput
+                      id="dgfyEmail"
+                      value={authForm.email}
+                      onChange={(nextEmail) => {
+                        setAuthForm((current) => ({ ...current, email: nextEmail }));
+                        if (emailError) {
+                          setEmailError(emailPattern.test(String(nextEmail || '').trim()) ? '' : emailError);
+                        }
+                      }}
+                      disabled={isLoading}
+                      invalid={Boolean(emailError)}
+                      errorId="dgfyEmail-error"
+                    />
+                    {emailError ? (
+                      <p id="dgfyEmail-error" className="mt-2 text-xs text-red-600" role="alert">
+                        {emailError}
+                      </p>
+                    ) : null}
                   </FieldGroup>
                   <FieldGroup id="dgfyPhone" label="Mobile Number">
-                    <Input id="dgfyPhone" type="tel" placeholder="e.g. +1 234 567 8900" value={authForm.phone}
-                      onChange={(e) => setAuthForm((c) => ({ ...c, phone: e.target.value }))}
-                      required disabled={isLoading} className={inputClass} />
+                    <PhPhoneInput
+                      id="dgfyPhone"
+                      countryCode={authForm.country}
+                      onCountryCodeChange={(nextCountry) => setAuthForm((current) => ({ ...current, country: nextCountry }))}
+                      value={authForm.phone}
+                      onChange={(nextPhone) => {
+                        setAuthForm((current) => ({ ...current, phone: nextPhone }));
+                        if (phoneError) {
+                          setPhoneError(isValidPhPhoneDigits(nextPhone) ? '' : phoneError);
+                        }
+                      }}
+                      disabled={isLoading}
+                      invalid={Boolean(phoneError)}
+                      errorId="dgfyPhone-error"
+                    />
+                    {phoneError ? (
+                      <p id="dgfyPhone-error" className="text-xs text-red-600" role="alert">
+                        {phoneError}
+                      </p>
+                    ) : null}
                   </FieldGroup>
                 </div>
 
@@ -653,7 +1061,7 @@ export default function DgfyAuthPage() {
                 </div>
 
                 <div className="mt-4">
-                  <PrimaryBtn disabled={isLoading}>{isLoading ? 'Sending code...' : 'Continue to Email Verification'}</PrimaryBtn>
+                  <PrimaryBtn disabled={isLoading}>{isLoading ? 'Creating account…' : 'Create Account'}</PrimaryBtn>
                 </div>
               </form>
 

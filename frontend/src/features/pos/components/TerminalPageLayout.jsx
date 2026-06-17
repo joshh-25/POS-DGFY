@@ -1,4 +1,4 @@
-import React, { Suspense, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Bell, Menu, UserRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -120,6 +120,7 @@ export default function TerminalPageLayout({
 }) {
   const navigate = useNavigate();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [capabilityNotice, setCapabilityNotice] = useState(null);
   const queueCount = Number(queuedTerminalOperationCount || 0);
   const blockedQueueCount = Number(queuedTerminalBlockedCount || 0);
   const actionableQueueCount = queueCount + blockedQueueCount;
@@ -244,6 +245,21 @@ export default function TerminalPageLayout({
   const overlayContainerClassName = IS_DGFY_POS_SURFACE
     ? 'fixed inset-0 z-50 lg:hidden'
     : 'fixed inset-0 z-50 xl:hidden';
+  const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handleCapabilityBlocked = (event) => {
+      const detail = event?.detail || {};
+      if (detail.capability !== 'tenant_pos_enabled') return;
+      setCapabilityNotice({
+        title: String(detail.title || 'POS access changed').trim(),
+        message: String(detail.message || 'POS access is disabled for this company.').trim(),
+        code: String(detail.code || '').trim()
+      });
+    };
+    window.addEventListener('tenant:capability-blocked', handleCapabilityBlocked);
+    return () => window.removeEventListener('tenant:capability-blocked', handleCapabilityBlocked);
+  }, []);
   const notificationPanel = notificationsOpen ? createPortal(
     <div className="fixed inset-0 z-[120]" onClick={() => setNotificationsOpen(false)}>
       <div
@@ -328,11 +344,10 @@ export default function TerminalPageLayout({
         <div className={`dgfy-pos-shell h-[100dvh] min-h-screen min-h-[100dvh] overflow-hidden bg-[#F1F5F9] text-[#0F172A] ${shellLayoutClassName}`}>
             {notificationPanel}
             {!effectiveSidebarCollapsed && (
-            <div className={persistentSidebarClassName}>
+            <div className={`${persistentSidebarClassName} ${lockedSurfaceClassName}`}>
                 <Suspense fallback={<div className={persistentSidebarFallbackClassName}>Loading POS navigation...</div>}>
                     <TerminalWorkspaceSidebar
                         className={persistentSidebarBodyClassName}
-                        showScrollZoneBadge
                         locked={locked}
                         isMsmeMode={isMsmeMode}
                         terminalUser={terminalUser}
@@ -353,20 +368,22 @@ export default function TerminalPageLayout({
             </div>
             )}
             <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-            <div className="border-b border-slate-200 bg-white/95 px-4 py-1.5 backdrop-blur sm:px-5 lg:px-7">
+            <div className={`border-b border-slate-200 bg-white/95 px-4 py-1.5 backdrop-blur sm:px-5 lg:px-7 ${lockedSurfaceClassName}`}>
                 <div className={headerShellClassName}>
                     <div className="flex min-w-0 items-center justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-3">
                         <button
                             type="button"
                             onClick={() => {
+                                if (locked) return;
                                 if (isDesktopWide) {
                                     setSidebarCollapsed((collapsed) => !collapsed);
                                     return;
                                 }
                                 setMobileNavOpen(true);
                             }}
-                            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[#1A4E8D] hover:bg-slate-100"
+                            disabled={locked}
+                            className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[#1A4E8D] ${locked ? 'cursor-not-allowed opacity-45' : 'hover:bg-slate-100'}`}
                             aria-label={isDesktopWide ? (effectiveSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar') : 'Open sidebar menu'}
                             aria-pressed={isDesktopWide ? effectiveSidebarCollapsed : undefined}
                         >
@@ -412,7 +429,7 @@ export default function TerminalPageLayout({
 
             <div
                 ref={workspacePaneRef}
-                className={`dgfy-pos-scrollbar-hidden flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y xl:overflow-y-auto xl:overscroll-contain xl:overscroll-y-contain xl:touch-pan-y ${locked ? 'pointer-events-none select-none opacity-90 blur-[1px]' : ''}`}
+                className={`dgfy-pos-scrollbar-hidden flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y xl:overflow-y-auto xl:overscroll-contain xl:overscroll-y-contain xl:touch-pan-y ${lockedSurfaceClassName}`}
             >
             {modeChangeNotice && (
                 <div className="mx-4 mt-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3">
@@ -431,6 +448,29 @@ export default function TerminalPageLayout({
                             type="button"
                             className="rounded border border-sky-200 px-2.5 py-1 text-xs font-semibold text-sky-900"
                             onClick={dismissModeChangeNotice}
+                        >
+                            Dismiss
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {capabilityNotice && (
+                <div className="mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-amber-900">{capabilityNotice.title}</p>
+                            <p className="mt-1 text-xs text-amber-800">{capabilityNotice.message}</p>
+                            {capabilityNotice.code && (
+                                <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-amber-900">
+                                    Reason code: {capabilityNotice.code}
+                                </p>
+                            )}
+                        </div>
+                        <button
+                            type="button"
+                            className="rounded border border-amber-300 bg-white px-2.5 py-1 text-xs font-semibold text-amber-900"
+                            onClick={() => setCapabilityNotice(null)}
                         >
                             Dismiss
                         </button>
@@ -547,7 +587,6 @@ export default function TerminalPageLayout({
                                 className="flex"
                                 showBrand={false}
                                 showIdentityInSidebar
-                                showScrollZoneBadge={false}
                                 locked={locked}
                                 isMsmeMode={isMsmeMode}
                                 terminalUser={terminalUser}
@@ -680,8 +719,6 @@ export default function TerminalPageLayout({
                 </div>
             </div>
             </div>
-
-            {locked && <div className="fixed inset-0 bg-slate-900/20 pointer-events-none" />}
 
             <Suspense fallback={null}>
                 <TerminalLockDrawer

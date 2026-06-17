@@ -129,6 +129,8 @@ export const requestDgfyRegistrationEmailVerification = async (email) => {
   return response.data.data;
 };
 
+export const requestDgfySignupOtp = requestDgfyRegistrationEmailVerification;
+
 export const fetchDgfyLegalTerms = async () => {
   const response = await api.get('/dgfy/legal-terms/current', dgfyRequestConfig(''));
   return response.data.data;

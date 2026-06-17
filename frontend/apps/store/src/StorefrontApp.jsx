@@ -178,6 +178,35 @@ line?.intake_responses || {}
 Booking references
 checkoutResult.payments.filter
 cart_line_id
+const openFnbDetail = (item, options = {}) => {
+const closeFnbDetail = () => {
+handleOpenBusinessInventory
+STOREFRONT_CHECKOUT_AUTH_RESUME_KEY
+writeCheckoutAuthResumeDraft
+clearCheckoutAuthResumeDraft
+renderGuestCheckoutEntry
+renderAccountOwnedIdentitySummary
+Create DGFY Account
+Continue as Guest
+Already have an account?
+customerFirstName
+customerLastName
+buildCustomerFullName
+toast.success('Signed in. Resuming your checkout.')
+description: 'Create an account or continue as guest to continue this menu order.'
+description: hasServiceCart
+const nextFnbStep = draft.checkoutTab === 'cart' ? 3 : null;
+const nextSimpleStep = draft.checkoutTab === 'checkout' && !draft.selectedServiceItemId ? 1 : null;
+const nextServiceStep = draft.selectedServiceItemId ? 1 : null;
+setGuestCheckoutUnlocked(true)
+Your DGFY account details will be used for this order.
+Your signed-in DGFY account will be used for this booking.
+const startsNewOrderFlow = ['cart', 'checkout', 'review'].includes(resolvedInitialTab);
+setFnbOrderStep(startsNewOrderFlow ? 3 : (checkoutResult ? 4 : 3));
+setSimpleOrderStep(startsNewOrderFlow ? 1 : (checkoutResult ? 4 : 1));
+setCheckoutResult(null);
+setFnbOrderStep(3);
+setCheckoutTab(isFnbMode ? 'cart' : 'review');
 */
 
 const DEFAULT_CENTER = { latitude: 10.7202, longitude: 122.5621 };
@@ -2579,7 +2608,7 @@ const buildFnbFallbackReasons = ({ fnbViewModel = null, categories = [] } = {}) 
   return [...new Set(reasons.map((entry) => String(entry || '').trim()).filter(Boolean))].slice(0, 4);
 };
 
-const buildFnbContentReadinessItems = ({
+const collectFnbSetupHighlights = ({
   heroSectionModel = {},
   fnbViewModel = {},
   selectedStore = null,
@@ -2595,18 +2624,18 @@ const buildFnbContentReadinessItems = ({
   const hasDelivery = Array.isArray(deliveryPlatformLinks) && deliveryPlatformLinks.length > 0;
 
   return [
-    totalItems > 0 ? `${totalItems} menu items published` : '',
+    totalItems > 0 ? `${totalItems} menu entries available` : '',
     menuSectionCount > 0 ? `${menuSectionCount} menu sections organized` : '',
-    readyNowCount > 0 ? `${readyNowCount} items marked ready now` : '',
+    readyNowCount > 0 ? `${readyNowCount} entries ready now` : '',
     beverageCount > 0 ? `${beverageCount} beverage options` : '',
     hasGallery ? 'Storefront gallery is available' : '',
-    hasAbout ? 'Store profile copy is available' : '',
+    hasAbout ? 'Storefront profile details are available' : '',
     hasPromo ? 'Promo content is active' : '',
     hasDelivery ? 'Delivery partner links are available' : ''
   ].filter(Boolean).slice(0, 5);
 };
 
-const buildFnbOverviewFallbackCopy = ({
+const buildFnbSummaryCopy = ({
   storeName = '',
   fnbViewModel = {},
   selectedStore = null
@@ -2617,7 +2646,7 @@ const buildFnbOverviewFallbackCopy = ({
   const beverageCount = Number(fnbViewModel?.beverageCount || 0);
   const parts = [];
   if (totalItems > 0) {
-    parts.push(`${totalItems} published menu item${totalItems === 1 ? '' : 's'}`);
+    parts.push(`${totalItems} menu entr${totalItems === 1 ? 'y' : 'ies'}`);
   }
   if (sectionCount > 0) {
     parts.push(`${sectionCount} organized section${sectionCount === 1 ? '' : 's'}`);
@@ -2664,7 +2693,7 @@ const FnbHero = ({
   const addressText = String(heroSectionModel.addressLine || heroSectionModel.locationLabel || '').trim();
   const galleryImages = Array.isArray(heroSectionModel.galleryPreview) ? heroSectionModel.galleryPreview.filter(Boolean) : [];
   const aboutText = String(heroSectionModel.aboutText || '').trim();
-  const overviewFallbackCopy = buildFnbOverviewFallbackCopy({
+  const overviewFallbackCopy = buildFnbSummaryCopy({
     storeName: heroSectionModel.name,
     fnbViewModel,
     selectedStore
@@ -2706,7 +2735,7 @@ const FnbHero = ({
   const deliveryPlatformLinks = useMemo(() => (
     getDeliveryPlatformLinks(heroSectionModel.deliveryPartners)
   ), [heroSectionModel.deliveryPartners]);
-  const contentReadinessItems = useMemo(() => buildFnbContentReadinessItems({
+  const contentReadinessItems = useMemo(() => collectFnbSetupHighlights({
     heroSectionModel,
     fnbViewModel,
     selectedStore,
@@ -2941,7 +2970,7 @@ const FnbHero = ({
 
           {contentReadinessItems.length > 0 && (
             <div style={{ border: '1px solid #e2e8f0', borderRadius: 14, background: '#f8fafc', padding: 14, display: 'grid', gap: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: heroTheme.bodyFont }}>Menu at a glance</div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: heroTheme.bodyFont }}>Menu Highlights</div>
               <div style={{ display: 'grid', gap: 8 }}>
                 {contentReadinessItems.map((item) => (
                   <div key={item} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, lineHeight: 1.5, color: '#475569', fontWeight: 650, fontFamily: heroTheme.bodyFont }}>
@@ -4583,6 +4612,7 @@ export default function StorefrontApp() {
   const [customerTrackError, setCustomerTrackError] = useState('');
   const [dgfyAuthTokenState, setDgfyAuthTokenState] = useState(() => readDgfyAuthToken());
   const [dgfySessionAccount, setDgfySessionAccount] = useState(null);
+  const dgfyCookieSessionSuppressedRef = useRef(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [checkoutTab, setCheckoutTab] = useState('checkout');
   const [pendingOrderInitialTab, setPendingOrderInitialTab] = useState('');
@@ -4633,6 +4663,7 @@ export default function StorefrontApp() {
     let cancelled = false;
 
     const bootstrapDgfyCookieSession = async () => {
+      if (dgfyCookieSessionSuppressedRef.current) return;
       const handoffToken = readDgfyHandoffToken();
       if (handoffToken) {
         try {
@@ -5125,7 +5156,7 @@ export default function StorefrontApp() {
           || window.location.pathname.toLowerCase().startsWith(`${LEGACY_STORE_BASE_PATH}/`)
         );
       if (profile?.slug && (toSlug(profile.slug) !== normalized || isLegacyStorefrontPath) && typeof window !== 'undefined') {
-        const canonicalPath = routeSubpage === STORE_BOOKING_SUBPAGE
+        let canonicalPath = routeSubpage === STORE_BOOKING_SUBPAGE
           ? storePath(profile.slug, STORE_BOOKING_SUBPAGE, '', routeLocationId)
           : routeSubpage === STORE_TRACK_SUBPAGE
             ? storePath(profile.slug, STORE_TRACK_SUBPAGE, '', routeLocationId)
@@ -5138,6 +5169,17 @@ export default function StorefrontApp() {
           : routeSubpage === STORE_ACCOUNT_SUBPAGE || currentPathSubpage === STORE_ACCOUNT_SUBPAGE
             ? storePath(profile.slug, STORE_ACCOUNT_SUBPAGE, '', routeLocationId)
           : storePath(profile.slug, null, '', routeLocationId);
+        const legacyBasePath = window.location.pathname.toLowerCase().startsWith(`${LEGACY_TENANT_STORE_BASE_PATH}/`)
+          ? LEGACY_TENANT_STORE_BASE_PATH
+          : window.location.pathname.toLowerCase().startsWith(`${LEGACY_STORE_BASE_PATH}/`)
+            ? LEGACY_STORE_BASE_PATH
+            : '';
+        if (legacyBasePath && toSlug(profile.slug) === normalized) {
+          canonicalPath = canonicalPath.replace(
+            `/${encodeURIComponent(toSlug(profile.slug))}`,
+            `${legacyBasePath}/${encodeURIComponent(toSlug(profile.slug))}`
+          );
+        }
         if (`${window.location.pathname}${window.location.search}` !== canonicalPath) {
           window.history.replaceState({ storeSlug: profile.slug, storeSubpage: routeSubpage }, '', canonicalPath);
         }
@@ -5511,6 +5553,7 @@ export default function StorefrontApp() {
 
   useEffect(() => {
     if (dgfyAuthToken || storeAuthToken || dgfySessionAccount?.id) return;
+    if (dgfyCookieSessionSuppressedRef.current) return;
     let cancelled = false;
     requestJson('/api/v1/dgfy/auth/me', { cache: 'no-store' })
       .then((meData) => {
@@ -7708,8 +7751,14 @@ export default function StorefrontApp() {
     }
   }, [dgfyAuthToken, isDgfyCustomerSignedIn, openCanonicalDgfyAuth]);
   const openAccountPanel = useCallback(() => {
+    setIsGuestTrackingDrawerOpen(false);
+    if (isStorePage) {
+      setIsAccountDrawerOpen(true);
+      handleLoadAccountPanel();
+      return;
+    }
     goStoreAccountPage();
-  }, [goStoreAccountPage]);
+  }, [goStoreAccountPage, handleLoadAccountPanel, isStorePage]);
   const openCustomerAuthDrawer = () => {
     setIsGuestTrackingDrawerOpen(false);
     setIsAccountDrawerOpen(true);
@@ -9128,7 +9177,15 @@ export default function StorefrontApp() {
     if (!openedFromQuery && !routedAccountPath) return;
     setIsCheckoutOpen(false);
     setIsGuestTrackingDrawerOpen(false);
-    setIsAccountDrawerOpen(openedFromQuery);
+    setIsAccountDrawerOpen(false);
+    if (openedFromQuery) {
+      setRouteSlug(null);
+      setRouteSubpage(STORE_ACCOUNT_SUBPAGE);
+      setRouteLocationId(null);
+      setRouteServiceItemId(null);
+      setRouteItemId(null);
+      setSelectedStore(null);
+    }
     handleLoadAccountPanel();
     if (openedFromQuery) {
       currentUrl.searchParams.delete('dgfy_account');
@@ -9144,6 +9201,7 @@ export default function StorefrontApp() {
         // Sign-out cleanup continues even if the remote logout call fails.
       }
     }
+    dgfyCookieSessionSuppressedRef.current = true;
     clearDgfyAuthToken();
     clearStoreAuthToken();
     setDgfyAuthTokenState('');
@@ -10476,7 +10534,7 @@ export default function StorefrontApp() {
                   goDiscoveryAccountPage();
                   return;
                 }
-                openCustomerAuthDrawer();
+                openCanonicalDgfyAuth('customer');
               }}
               onBusinessClick={openBusinessRegistrationFlow}
             />
@@ -12278,6 +12336,7 @@ export default function StorefrontApp() {
                 {selectedStore.storefront_cover_image_url ? (
                   <img alt={`${selectedStore.tenant_name} cover`} src={withAssetOrigin(selectedStore.storefront_cover_image_url)} />
                 ) : null}
+                <div>Customer storefront</div>
                 <div>{`Tenant page: ${routeSlug}`}</div>
                 {Array.isArray(filteredCatalog) && filteredCatalog.length === 0 ? <div>Storefront items are not set up yet</div> : null}
                 {Array.isArray(filteredCatalog) && filteredCatalog.length === 0 ? <div>Customer checkout will be available once at least one storefront item is enabled.</div> : null}
@@ -19053,6 +19112,44 @@ return (
             closeAccountDrawer();
             openBusinessRegistrationFlow();
           }}
+        />
+      ) : null}
+      {isAccountDrawerOpen && !isGuestAccountDrawerState && !isStandaloneAccountPage ? (
+        <DgfyCustomerAccountPage
+          presentation="dialog"
+          isMobileViewport={isMobileViewport}
+          onClose={closeAccountDrawer}
+          onRefresh={handleLoadAccountPanel}
+          onTrackReference={handleTrackCustomerReference}
+          onCancelOrder={handleCancelAccountOrder}
+          onReorderOrder={handleReorderAccountOrder}
+          onSignOut={handleStorefrontSignOut}
+          onHelp={() => toast.info('Help center is not connected yet.', { duration: 2200, closeButton: true })}
+          onRegisterBusiness={openBusinessRegistrationFlow}
+          onRequestBusinessStepUp={requestDgfyBusinessSecurityCode}
+          onAcceptCompanyInvitation={handleAcceptDgfyCompanyInvitation}
+          onRejectCompanyInvitation={handleRejectDgfyCompanyInvitation}
+          onLeaveCompany={handleLeaveDgfyCompany}
+          onSwitchCompany={switchDgfyCompanyFromStorefront}
+          onClearSavedDetails={clearSavedCustomerDetailsForDevice}
+          onUseAddressForCheckout={useAccountAddressForCheckout}
+          onSaveAddress={handleSaveAccountAddress}
+          onDeleteAddress={handleDeleteAccountAddress}
+          onSetDefaultAddress={handleSetDefaultAccountAddress}
+          renderAddressPinEditor={renderAddressPinEditor}
+          accountIdentityInitials={accountIdentityInitials}
+          accountIdentityName={accountIdentityName}
+          accountIdentityContact={accountIdentityContact}
+          accountPanel={accountPanel}
+          hasSavedCustomerDetails={hasSavedCustomerDetails}
+          maskedSavedCustomerPreview={maskedSavedCustomerPreview}
+          activeOrders={activeCustomerOrders}
+          activeOrderCount={activeCustomerOrderCount}
+          trackedCustomerActivity={trackedCustomerActivity}
+          customerTrackLoadingReference={customerTrackLoadingReference}
+          customerTrackError={customerTrackError}
+          accountOrderActionReference={accountOrderActionReference}
+          accountAddressActionId={accountAddressActionId}
         />
       ) : null}
       {isGuestTrackingDrawerOpen && isGuestStorefrontUser && !isStandaloneTrackingPage && (

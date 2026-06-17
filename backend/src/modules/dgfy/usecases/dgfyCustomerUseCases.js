@@ -5,7 +5,11 @@ import tenantConnector from '../../../utils/TenantConnector.js';
 import { getTenantModels } from '../../../utils/tenantModelFactory.js';
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode, isDomainError } from '../../shared/contracts/domainErrors.js';
-import { dgfyCustomerRepository, hashReviewInviteToken, hashTrackingRecoveryLookup } from '../repositories/dgfyCustomerRepository.js';
+import {
+    dgfyCustomerRepository,
+    hashReviewInviteToken,
+    hashTrackingRecoveryLookup
+} from '../repositories/dgfyCustomerRepository.js';
 import { dgfyEmailDeliveryRepository } from '../repositories/dgfyEmailDeliveryRepository.js';
 import { recordDgfyOrderActivity } from '../utils/customerActivityRecorder.js';
 
@@ -23,6 +27,7 @@ const ACTIVITY_COUNT_KEYS = {
     hospitality_booking: 'hospitality_booking_count',
     fnb_order: 'fnb_order_count'
 };
+const ORDER_ACTIVITY_TYPES = new Set(['order', 'pos_order', 'fnb_order']);
 const BOOKING_ACTIVITY_TYPES = new Set(['service_booking', 'hospitality_booking']);
 const REVIEW_TARGET_TYPES = new Set(['product', 'service', 'hospitality_booking', 'fnb_order', 'fnb_item']);
 const REVIEW_CHANNEL_TYPES = new Set(['account', 'tracking', 'order_success', 'qr', 'receipt']);
@@ -549,7 +554,7 @@ export const buildGetDgfyCustomerDashboardUseCase = ({ repository = dgfyCustomer
     try {
         const dgfyAccount = ensureAccount(account);
         const [activityResult, addresses, loyalty] = await Promise.all([
-            repository.listActivitiesForAccount(dgfyAccount.id, { limit: 10 }),
+            repository.listActivitiesForAccount(dgfyAccount.id, { limit: 100 }),
             repository.listAddresses(dgfyAccount.id),
             repository.listLoyalty(dgfyAccount.id, 20)
         ]);
@@ -567,8 +572,8 @@ export const buildGetDgfyCustomerDashboardUseCase = ({ repository = dgfyCustomer
                 phone_verification_deferred: true
             },
             activities,
-            orders: activities.filter((entry) => entry.type === 'order'),
-            bookings: activities.filter((entry) => entry.type !== 'order'),
+            orders: activities.filter((entry) => ORDER_ACTIVITY_TYPES.has(entry.type)),
+            bookings: activities.filter((entry) => BOOKING_ACTIVITY_TYPES.has(entry.type)),
             addresses,
             loyalty
         });

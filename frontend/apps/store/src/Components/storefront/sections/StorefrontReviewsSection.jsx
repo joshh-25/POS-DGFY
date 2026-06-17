@@ -12,6 +12,7 @@ export function StorefrontReviewsSection({
   reviewHighlights = [],
   emptyMessage,
   titleFontFamily,
+  bodyFontFamily,
   writeButtonColor = '#1a4e8d',
   sectionBackground = '#ffffff',
   cardVariant = 'soft',
@@ -21,7 +22,8 @@ export function StorefrontReviewsSection({
   titleSize = null,
   subtitleSize = null,
   summaryEnabled = false,
-  starSymbol = '*'
+  starSymbol = '*',
+  mobileTrailingInset = 0
 }) {
   const reviewScore = Number(reviewSummary?.score);
   const reviewCount = Number(reviewSummary?.total_count ?? reviewSummary?.totalCount ?? reviewHighlights.length);
@@ -32,20 +34,23 @@ export function StorefrontReviewsSection({
   const cardShadow = cardVariant === 'white' ? '0 14px 28px rgba(15,23,42,0.06)' : '0 10px 24px rgba(15, 23, 42, 0.05)';
   const emptyBackground = cardVariant === 'white' ? '#ffffff' : '#fcfdff';
   const emptyBorder = cardVariant === 'white' ? '1px dashed #cbd5e1' : '1px solid #dbe5ee';
+  const mobileTrailingSpace = Math.max(0, Number(mobileTrailingInset) || 0);
+  const mobileContentPaddingRight = 16 + mobileTrailingSpace;
 
   return (
     <section
       style={{
         marginTop: 0,
         marginBottom: 0,
-        marginLeft: 'calc(50% - 50vw)',
-        width: '100vw',
-        padding: sectionPadding || (isMobileViewport ? '18px 0 20px' : '22px 0 24px'),
+        marginLeft: isMobileViewport ? 0 : 'calc(50% - 50vw)',
+        width: isMobileViewport ? '100%' : '100vw',
+        padding: sectionPadding || (isMobileViewport ? '32px 0' : '48px 0'),
         background: sectionBackground,
+        boxSizing: 'border-box',
         borderTop: `1px solid ${collapseSpacing ? '#edf2f7' : '#e2e8f0'}`,
         borderBottom: collapseSpacing ? 'none' : '1px solid #e2e8f0',
         display: 'grid',
-        gap: 18
+        gap: 16
       }}
     >
       <div
@@ -54,9 +59,10 @@ export function StorefrontReviewsSection({
           width: '100%',
           margin: '0 auto',
           paddingLeft: isMobileViewport ? 16 : 24,
-          paddingRight: isMobileViewport ? 16 : 24,
+          paddingRight: isMobileViewport ? mobileContentPaddingRight : 24,
+          boxSizing: 'border-box',
           display: 'grid',
-          gap: 18
+          gap: 16
         }}
       >
         <div
@@ -68,12 +74,12 @@ export function StorefrontReviewsSection({
             gap: 16
           }}
         >
-          <div>
+          <div style={{ display: 'grid', gap: 6 }}>
             <h2 style={{ margin: 0, fontSize: titleSize || (isMobileViewport ? 24 : 32), fontWeight: titleSize ? 800 : 900, color: '#0f172a', fontFamily: titleFontFamily, lineHeight: 1.08 }}>
               {title}
             </h2>
             {subtitle && (
-              <p style={{ margin: '6px 0 0 0', fontSize: subtitleSize || 14, color: '#64748b', lineHeight: 1.45 }}>
+              <p style={{ margin: 0, fontSize: subtitleSize || 14, color: '#64748b', lineHeight: 1.45, fontFamily: bodyFontFamily }}>
                 {subtitle}
               </p>
             )}
@@ -94,7 +100,8 @@ export function StorefrontReviewsSection({
                   color: '#ffffff',
                   padding: '0 18px',
                   fontWeight: 800,
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  fontFamily: bodyFontFamily
                 }}
               >
                 {writeReviewLabel}
@@ -125,7 +132,7 @@ export function StorefrontReviewsSection({
                       </span>
                     ))}
                   </div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>
+                  <div style={{ fontSize: 12, color: '#64748b', fontFamily: bodyFontFamily }}>
                     from {reviewCount} review{reviewCount === 1 ? '' : 's'}
                   </div>
                 </div>
@@ -155,7 +162,7 @@ export function StorefrontReviewsSection({
                   }}
                 >
                   <div style={{ display: 'grid', gap: 6 }}>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>{reviewerName}</div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', fontFamily: bodyFontFamily }}>{reviewerName}</div>
                     {Number.isFinite(rating) && rating > 0 && (
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: '#f59e0b', fontSize: 14, lineHeight: 1 }}>
                         {Array.from({ length: 5 }, (_, starIndex) => (
@@ -166,7 +173,7 @@ export function StorefrontReviewsSection({
                       </div>
                     )}
                   </div>
-                  <p style={{ margin: 0, fontSize: cardVariant === 'white' ? 14 : 13, lineHeight: 1.6, color: '#334155' }}>
+                  <p style={{ margin: 0, fontSize: cardVariant === 'white' ? 14 : 13, lineHeight: 1.6, color: '#334155', fontFamily: bodyFontFamily }}>
                     {comment || 'Review comment will appear here once available in SKUpervisor.'}
                   </p>
                 </article>
@@ -183,7 +190,8 @@ export function StorefrontReviewsSection({
               boxShadow: cardVariant === 'white' ? 'none' : '0 10px 24px rgba(15, 23, 42, 0.05)',
               fontSize: 14,
               color: '#64748b',
-              textAlign: cardVariant === 'white' ? 'center' : 'left'
+              textAlign: cardVariant === 'white' ? 'center' : 'left',
+              fontFamily: bodyFontFamily
             }}
           >
             {emptyMessage}

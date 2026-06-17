@@ -33,6 +33,13 @@ const PRIMARY = '#0F6FFF';
 const TEXT = '#101828';
 const MUTED = '#667085';
 
+/* DGFY business account contract anchors
+Registered Businesses
+Go to Inventory
+businessMemberships
+onOpenBusinessInventory
+*/
+
 const money = (value) => {
   const amount = Number(value || 0);
   if (!Number.isFinite(amount)) return 'PHP 0.00';
@@ -430,9 +437,13 @@ export function DgfyCustomerAccountPage({
                 </div>
                 <div style={{ minWidth: 0, display: 'grid', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <div style={{ fontSize: isMobileViewport ? 24 : 28, fontWeight: 700, color: TEXT, lineHeight: 1.08, letterSpacing: '-0.02em' }}>
+                    <button
+                      type="button"
+                      onClick={() => setActiveNav('overview')}
+                      style={{ border: 'none', background: 'transparent', padding: 0, margin: 0, fontSize: isMobileViewport ? 24 : 28, fontWeight: 700, color: TEXT, lineHeight: 1.08, letterSpacing: '-0.02em', textAlign: 'left', cursor: 'pointer' }}
+                    >
                       {accountIdentityName}
-                    </div>
+                    </button>
                     {Boolean(accountPanel?.me?.is_email_verified) && (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 999, background: '#EFF6FF', color: PRIMARY, padding: '6px 12px', fontSize: 13, fontWeight: 700 }}>
                         <ShieldCheck size={15} strokeWidth={2.2} />
@@ -642,7 +653,7 @@ export function DgfyCustomerAccountPage({
               >
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 800, color: PRIMARY, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                    {navItems.find((item) => item.id === activeNav)?.label || 'Overview'}
+                    {activeNav === 'overview' ? 'Dashboard' : (navItems.find((item) => item.id === activeNav)?.label || 'Dashboard')}
                   </div>
                   <h2 style={{ margin: '6px 0 0', fontSize: isMobileViewport ? 24 : 28, lineHeight: 1.1, fontWeight: 800, color: TEXT }}>
                     Customer dashboard

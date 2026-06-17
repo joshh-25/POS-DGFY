@@ -147,9 +147,12 @@ const tryAuthenticateDgfyStoreCustomer = async (token, req, res, next) => {
 export const authenticateStoreCustomer = async (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
-        const token = authHeader?.startsWith('Bearer ')
+        const bearerToken = authHeader?.startsWith('Bearer ')
             ? authHeader.slice(7)
-            : getCookie(req, SESSION_COOKIE_NAMES.storefront);
+            : '';
+        const storefrontCookieToken = getCookie(req, SESSION_COOKIE_NAMES.storefront);
+        const dgfyCookieToken = getCookie(req, SESSION_COOKIE_NAMES.dgfy);
+        const token = bearerToken || storefrontCookieToken || dgfyCookieToken;
         if (!token) {
             return unauthorized(res, 'Store authentication required');
         }
@@ -214,7 +217,8 @@ export const optionalStoreCustomer = async (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
         const cookieToken = getCookie(req, SESSION_COOKIE_NAMES.storefront);
-        if ((!authHeader || !authHeader.startsWith('Bearer ')) && !cookieToken) {
+        const dgfyCookieToken = getCookie(req, SESSION_COOKIE_NAMES.dgfy);
+        if ((!authHeader || !authHeader.startsWith('Bearer ')) && !cookieToken && !dgfyCookieToken) {
             return next();
         }
 

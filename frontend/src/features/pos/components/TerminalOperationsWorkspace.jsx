@@ -88,6 +88,12 @@ const MODE_META = {
 
 const money = (value) => Number(value || 0).toFixed(2);
 
+const isValidOpeningCashAmount = (value) => {
+  const rawValue = String(value ?? '').trim();
+  const numericValue = Number(rawValue);
+  return rawValue !== '' && Number.isFinite(numericValue) && numericValue >= 0;
+};
+
 const parseIsoDateTime = (value) => {
   if (!value) return '-';
   const date = new Date(value);
@@ -164,6 +170,7 @@ function WorkspaceShell({ title, children, locked, className = 'p-5' }) {
 function IncomingQueueWorkspace({
   canViewPos,
   canTransactPos,
+  shiftState = { shift: null },
   incomingOrdersState,
   incomingOrderActionState,
   handleIncomingOrderStatusChange,
@@ -288,7 +295,7 @@ function IncomingQueueWorkspace({
                       type="button"
                       size="sm"
                       variant={status === 'rejected' ? 'destructive' : 'outline'}
-                      disabled={Boolean(actionLoading) || !canTransactPos || locked}
+                      disabled={Boolean(actionLoading) || !canTransactPos || locked || !shiftState.shift}
                       onClick={() => handleIncomingOrderStatusChange?.(order.pos_transaction_id, status)}
                     >
                       {actionLoading === status ? 'Saving...' : (FULFILLMENT_STATUS_LABELS[status] || status)}
@@ -548,6 +555,7 @@ function ShiftControlsWorkspace({
   const [switchReason, setSwitchReason] = useState('');
   const shiftLocationId = Number(shiftState?.shift?.location_id || 0) || null;
   const activeShift = shiftState?.shift || null;
+  const canSubmitOpenShift = isValidOpeningCashAmount(openShiftForm.openingFloatAmount);
   const shiftLocationLabel = activeShift?.location?.name || activeShift?.location_name || activeShift?.location_id || 'Unassigned';
   const summaryRows = activeShift ? [
     {
@@ -723,7 +731,7 @@ function ShiftControlsWorkspace({
       ) : (
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
-            No open shift. Open a shift to enable checkout.
+            Shift Closed. Please open your shift before using the POS.
           </p>
           <div className="mt-4 space-y-3">
             <Label className="text-[12px] font-black text-[#0F172A]">Opening Float ({terminalMeta.pettyCashSymbol})</Label>
@@ -732,9 +740,10 @@ function ShiftControlsWorkspace({
               type="number"
               min="0"
               step="0.01"
+              required
               value={openShiftForm.openingFloatAmount}
               onChange={(event) => setOpenShiftForm((prev) => ({ ...prev, openingFloatAmount: event.target.value }))}
-              placeholder={money(terminalMeta.pettyCashAmount)}
+              placeholder="0.00"
             />
             <Label className="text-[12px] font-black text-[#0F172A]">Opening Note (Optional)</Label>
             <Input
@@ -747,7 +756,7 @@ function ShiftControlsWorkspace({
               type="button"
               className="h-10 rounded-lg !bg-[#2563EB] px-5 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
               onClick={handleOpenShift}
-              disabled={shiftActionLoading.open || locked || !canTransactPos}
+              disabled={shiftActionLoading.open || locked || !canTransactPos || !canSubmitOpenShift}
             >
               {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
             </Button>
@@ -2012,6 +2021,7 @@ export default function TerminalOperationsWorkspace({
         <IncomingQueueWorkspace
           canViewPos={canViewPos}
           canTransactPos={canTransactPos}
+          shiftState={shiftState}
           incomingOrdersState={incomingOrdersState}
           incomingOrderActionState={incomingOrderActionState}
           handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}

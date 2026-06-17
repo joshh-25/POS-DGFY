@@ -22,7 +22,7 @@ import { Label } from "@/components/ui/label";
 import { AlertTriangle, Building2, CheckCircle2, Eye, EyeOff, LogOut, UserRound } from 'lucide-react';
 import DgfyAuthHero from '../src/features/dgfy/components/DgfyAuthHero.jsx';
 import { WORKFLOW_MODE_LABELS, WORKFLOW_MODE_SELECT_VALUES } from '../src/features/settings/workflowMode.js';
-import { buildDgfyAuthPath } from '../src/features/dgfyRouteHelpers.js';
+import { buildDgfyAuthPath, DGFY_REGISTER_COMPANY_ENTRY } from '../src/features/dgfyRouteHelpers.js';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -37,6 +37,7 @@ const hasCompanyLegalVersions = (snapshot = {}) => Boolean(
     snapshot.company_terms_version
     && snapshot.marketplace_terms_version
 );
+const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 const PasswordInput = ({
     id,
@@ -321,6 +322,30 @@ export default function RegisterCompany() {
         }).catch(() => {});
     };
 
+    const startTenantSessionWithRetry = useCallback(async (tenantData = {}, token = dgfyToken) => {
+        const tenantId = String(tenantData?.id || '').trim();
+        const companyToken = String(tenantData?.company_token || '').trim();
+        if (!tenantId || !companyToken || !token) {
+            throw new Error('Company session handoff is missing the required tenant identity.');
+        }
+
+        let lastError = null;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+            try {
+                return await startDgfyTenantSession({
+                    tenantId,
+                    companyToken
+                }, token);
+            } catch (error) {
+                lastError = error;
+                if (attempt === 2) break;
+                await wait(350 * (attempt + 1));
+            }
+        }
+
+        throw lastError || new Error('Company session handoff failed.');
+    }, [dgfyToken]);
+
     useEffect(() => {
         const handoffToken = String(searchParams.get('handoff_token') || '').trim();
         if (!handoffToken || handoffExchangeStartedRef.current) return undefined;
@@ -510,15 +535,20 @@ export default function RegisterCompany() {
             setCompanyForm((current) => ({ ...current, acceptedCompanyTerms: false }));
             if (registrationSuccess.data?.company_token && registrationSuccess.data?.status === 'active' && dgfyToken) {
                 try {
-                    await startDgfyTenantSession({
-                        tenantId: registrationSuccess.data.id,
-                        companyToken: registrationSuccess.data.company_token
-                    }, dgfyToken);
+                    await startTenantSessionWithRetry(registrationSuccess.data, dgfyToken);
                     navigate('/', { replace: true });
                     return;
                 } catch (sessionError) {
                     setNotice(sessionError.response?.data?.message || 'Company created. Sign in to SKUpervisor to continue.');
-                    goToManualSkupervisorLogin(registrationSuccess.data);
+                    navigate('/login', {
+                        state: {
+                            registration: {
+                                email: dgfyAccount?.email,
+                                companyToken: registrationSuccess.data.company_token,
+                                companyName: registrationSuccess.data.name
+                            }
+                        }
+                    });
                     return;
                 }
             }
@@ -529,32 +559,19 @@ export default function RegisterCompany() {
         }
     };
 
-    const goToManualSkupervisorLogin = useCallback((tenantData = success?.data || {}) => {
+    const goToManualSkupervisorLogin = useCallback(() => {
         navigate('/login', {
             state: {
                 registration: {
                     email: dgfyAccount?.email,
-                    companyToken: tenantData?.company_token,
-                    companyName: tenantData?.name
+                    companyToken: success?.data?.company_token,
+                    companyName: success?.data?.name
                 }
             }
         });
     }, [dgfyAccount?.email, navigate, success?.data?.company_token, success?.data?.name]);
 
-    const openSkupervisorForCompany = useCallback(async (tenantData = {}) => {
-        if (!tenantData?.company_token || tenantData?.status !== 'active' || !dgfyToken) {
-            return false;
-        }
-
-        await startDgfyTenantSession({
-            tenantId: tenantData.id,
-            companyToken: tenantData.company_token
-        }, dgfyToken);
-        navigate('/', { replace: true });
-        return true;
-    }, [dgfyToken, navigate]);
-
-    const handleProceedToSkupervisor = async () => {
+    const handleProceedToSkupervisor = useCallback(async () => {
         setError('');
         setNotice('');
 
@@ -565,14 +582,15 @@ export default function RegisterCompany() {
 
         setIsLoading(true);
         try {
-            await openSkupervisorForCompany(success.data);
+            await startTenantSessionWithRetry(success.data, dgfyToken);
+            navigate('/', { replace: true });
         } catch (sessionError) {
             setNotice(sessionError.response?.data?.message || 'Company created. Sign in to SKUpervisor to continue.');
             goToManualSkupervisorLogin();
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [dgfyToken, goToManualSkupervisorLogin, navigate, startTenantSessionWithRetry, success?.data?.company_token, success?.data?.id, success?.data?.status]);
 
     const handleSignOutDgfy = async () => {
         dgfySessionGenerationRef.current += 1;
@@ -627,7 +645,11 @@ export default function RegisterCompany() {
                     <div className="mt-8 flex flex-col gap-3">
                         <button
                             type="button"
-                            onClick={() => navigate(buildDgfyAuthPath({ intent: 'register-business', mode: 'sign-in' }))}
+                            onClick={() => navigate(buildDgfyAuthPath({
+                                intent: 'register-business',
+                                mode: 'sign-in',
+                                returnTo: DGFY_REGISTER_COMPANY_ENTRY
+                            }))}
                             className="w-full rounded-xl text-sm font-bold text-white transition-opacity hover:opacity-90"
                             style={{ background: '#1A4E8D', height: 48 }}
                         >
@@ -635,7 +657,11 @@ export default function RegisterCompany() {
                         </button>
                         <button
                             type="button"
-                            onClick={() => navigate(buildDgfyAuthPath({ intent: 'register-business', mode: 'create-account' }))}
+                            onClick={() => navigate(buildDgfyAuthPath({
+                                intent: 'register-business',
+                                mode: 'create-account',
+                                returnTo: DGFY_REGISTER_COMPANY_ENTRY
+                            }))}
                             className="w-full rounded-xl text-sm font-bold transition-opacity hover:bg-slate-50"
                             style={{ color: '#1A4E8D', border: '1.5px solid #1A4E8D', height: 48 }}
                         >
@@ -677,11 +703,6 @@ export default function RegisterCompany() {
 
                     <form onSubmit={handleSubmitCompany} className="space-y-5">
                         <div>
-                            <Label htmlFor="companyName">Company Name</Label>
-                            <Input id="companyName" value={companyForm.companyName} onChange={(e) => setCompanyForm({ ...companyForm, companyName: e.target.value })} required minLength={3} maxLength={100} disabled={isLoading} className="mt-1" />
-                        </div>
-
-                        <div>
                             <Label htmlFor="workflowMode">Business Industry</Label>
                             <select
                                 id="workflowMode"
@@ -694,6 +715,21 @@ export default function RegisterCompany() {
                                     <option key={mode.value} value={mode.value}>{mode.label}</option>
                                 ))}
                             </select>
+                        </div>
+
+                        <div>
+                            <Label htmlFor="companyName">Company Name</Label>
+                            <Input
+                                id="companyName"
+                                placeholder="Enter your company name"
+                                value={companyForm.companyName}
+                                onChange={(e) => setCompanyForm({ ...companyForm, companyName: e.target.value })}
+                                required
+                                minLength={3}
+                                maxLength={100}
+                                disabled={isLoading}
+                                className="mt-1"
+                            />
                         </div>
 
                         <div className="rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">

@@ -13,20 +13,19 @@ import { buildBusinessLoginUrl, buildBusinessRegistrationUrl } from '../../../bu
 // Lightweight viewport observer hook for high-performance scroll triggers
 const useIntersection = (ref, options = {}) => {
   const [isIntersecting, setIsIntersecting] = useState(false);
-  const { triggerOnce, threshold, rootMargin } = options;
   useEffect(() => {
     if (!ref.current) return;
     const observer = new IntersectionObserver(([entry]) => {
       if (entry.isIntersecting) {
         setIsIntersecting(true);
-        if (triggerOnce) {
+        if (options.triggerOnce) {
           observer.unobserve(ref.current);
         }
       }
-    }, { threshold, rootMargin });
+    }, options);
     observer.observe(ref.current);
     return () => observer.disconnect();
-  }, [ref, triggerOnce, threshold, rootMargin]);
+  }, [ref, options.triggerOnce]);
   return isIntersecting;
 };
 
@@ -649,7 +648,7 @@ export function SolutionsPage({ logoSrc, onExploreClick }) {
                 </span>
               </div>
               <div style={{ fontSize: '14px', color: '#5F6B7A', flex: '1 1 400px', lineHeight: 1.5 }}>
-                Enterprise-grade procurement, batch-FIFO tracking, and multi-location inventory sync powering DGFY&apos;s operational backbone.
+                Enterprise-grade procurement, batch-FIFO tracking, and multi-location inventory sync powering DGFY's operational backbone.
               </div>
             </div>
           </div>

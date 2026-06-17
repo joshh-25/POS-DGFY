@@ -396,6 +396,52 @@ const computeTransactionTotalCost = (lines = []) => round4(
     ), 0)
 );
 
+const buildTerminalScopedSalesWhere = ({
+    startAt,
+    endAt,
+    terminalId = null,
+    cashierId = null,
+    shiftId = null,
+    locationId = null,
+    includeOnlineStoreAcrossTerminals = false
+} = {}) => {
+    const baseWhere = {
+        created_at: {
+            [Op.gte]: startAt,
+            [Op.lt]: endAt
+        }
+    };
+    if (locationId) baseWhere.location_id = locationId;
+
+    const scopedWhere = { ...baseWhere };
+    if (terminalId) scopedWhere.terminal_id = terminalId;
+    if (cashierId) scopedWhere.cashier_id = cashierId;
+    if (shiftId) scopedWhere.shift_id = shiftId;
+
+    if (!includeOnlineStoreAcrossTerminals || (!terminalId && !cashierId && !shiftId)) {
+        return buildFinanciallyRecognizedSalesWhere(scopedWhere);
+    }
+
+    return {
+        [Op.or]: [
+            {
+                ...scopedWhere,
+                status: 'completed',
+                [Op.or]: [
+                    { order_source: 'in_store' },
+                    { order_source: null }
+                ]
+            },
+            {
+                ...baseWhere,
+                status: 'completed',
+                order_source: 'online_store',
+                fulfillment_status: 'completed'
+            }
+        ]
+    };
+};
+
 const buildTransactionInclude = () => ([
     {
         model: dbStore.get('PosTransactionLine'),
@@ -1225,22 +1271,29 @@ export const posRepository = {
         };
     },
 
-    async getZReadingSummary({ startAt, endAt, terminalId = null, cashierId = null, shiftId = null, locationId = null }, options = {}) {
+    async getZReadingSummary({
+        startAt,
+        endAt,
+        terminalId = null,
+        cashierId = null,
+        shiftId = null,
+        locationId = null,
+        includeOnlineStoreAcrossTerminals = false
+    }, options = {}) {
         const PosTransaction = dbStore.get('PosTransaction');
         const PosTransactionLine = dbStore.get('PosTransactionLine');
         const Item = dbStore.get('Item');
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
-        const where = buildFinanciallyRecognizedSalesWhere({
-            created_at: {
-                [Op.gte]: startAt,
-                [Op.lt]: endAt
-            }
+        const where = buildTerminalScopedSalesWhere({
+            startAt,
+            endAt,
+            terminalId,
+            cashierId,
+            shiftId,
+            locationId,
+            includeOnlineStoreAcrossTerminals
         });
-        if (terminalId) where.terminal_id = terminalId;
-        if (cashierId) where.cashier_id = cashierId;
-        if (shiftId) where.shift_id = shiftId;
-        if (locationId) where.location_id = locationId;
 
         const [summaryRow] = await PosTransaction.findAll({
             where,
@@ -1352,16 +1405,15 @@ export const posRepository = {
             : [];
 
         const dailyStartAt = new Date(startAt.getTime() - (10 * 24 * 60 * 60 * 1000));
-        const dailyWhere = buildFinanciallyRecognizedSalesWhere({
-            created_at: {
-                [Op.gte]: dailyStartAt,
-                [Op.lt]: endAt
-            }
+        const dailyWhere = buildTerminalScopedSalesWhere({
+            startAt: dailyStartAt,
+            endAt,
+            terminalId,
+            cashierId,
+            shiftId,
+            locationId,
+            includeOnlineStoreAcrossTerminals
         });
-        if (terminalId) dailyWhere.terminal_id = terminalId;
-        if (cashierId) dailyWhere.cashier_id = cashierId;
-        if (shiftId) dailyWhere.shift_id = shiftId;
-        if (locationId) dailyWhere.location_id = locationId;
 
         const dailyTransactionBusinessDate = sequelize.literal("DATE_FORMAT(DATE_ADD(`PosTransaction`.`created_at`, INTERVAL 8 HOUR), '%Y-%m-%d')");
         const dailyLineBusinessDate = sequelize.literal("DATE_FORMAT(DATE_ADD(`transaction`.`created_at`, INTERVAL 8 HOUR), '%Y-%m-%d')");
