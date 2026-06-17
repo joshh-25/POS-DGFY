@@ -1,6 +1,7 @@
 export const DGFY_AUTH_ROUTE = '/dgfy/auth';
 export const DGFY_RESET_ROUTE = '/dgfy/reset-password';
 export const DGFY_REGISTER_COMPANY_ROUTE = '/register-company';
+export const DGFY_REGISTER_COMPANY_ENTRY = '/register-company?source=dgfy&auth=login#business-registration';
 
 export const normalizeDgfyIntent = (value) => (
   String(value || '').trim().toLowerCase() === 'register-business' ? 'register-business' : 'customer'
@@ -51,6 +52,22 @@ export const resolveLocalOriginForPort = (port) => {
   return `${protocol}//${hostname}:${port}`;
 };
 
+export const isLocalLikeHostname = (hostname = '') => {
+  const value = String(hostname || '').trim().toLowerCase();
+  if (!value) return false;
+  if (value === 'localhost' || value === '127.0.0.1' || value === '0.0.0.0') return true;
+  if (value.endsWith('.local')) return true;
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(value)) return true;
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(value)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(value)) return true;
+  return false;
+};
+
+export const isLocalRuntime = () => {
+  if (typeof window === 'undefined') return Boolean(typeof import.meta !== 'undefined' && import.meta.env?.DEV);
+  return Boolean(typeof import.meta !== 'undefined' && import.meta.env?.DEV) || isLocalLikeHostname(window.location.hostname);
+};
+
 export const resolveCurrentAppOrigin = () => {
   if (typeof window === 'undefined') return '';
   return window.location.origin || resolveLocalOriginForPort(window.location.port || '5180');
@@ -66,7 +83,7 @@ export const resolveFrontendPublicAssetUrl = (assetPath = '') => {
 };
 
 export const resolveStorefrontAccountUrl = () => {
-  const isDev = Boolean(typeof import.meta !== 'undefined' && import.meta.env?.DEV);
+  const isDev = isLocalRuntime();
   const configuredDevPort = String(import.meta.env?.VITE_STOREFRONT_DEV_PORT || '5176').trim() || '5176';
   const defaultUrl = isDev
     ? `${resolveLocalOriginForPort(configuredDevPort) || 'http://127.0.0.1:5176'}/map-dgfy/account`
@@ -106,6 +123,9 @@ export const resolveStorefrontHomeUrl = () => {
 
 export const resolveDgfyPostAuthTarget = ({ intent = 'customer', returnTo = '' } = {}) => {
   if (returnTo) return String(returnTo).trim();
+  if (normalizeDgfyIntent(intent) === 'register-business') {
+    return DGFY_REGISTER_COMPANY_ENTRY;
+  }
   return resolveStorefrontAccountUrl();
 };
 

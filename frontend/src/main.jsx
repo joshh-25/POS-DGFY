@@ -18,10 +18,40 @@ import './index.css'
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/'
 const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`
 
+const isPrivateIpv4Host = (hostname = '') => {
+  const value = String(hostname || '').trim()
+  if (!value) return false
+  if (/^10\./.test(value)) return true
+  if (/^192\.168\./.test(value)) return true
+  const match = value.match(/^172\.(\d{1,3})\./)
+  if (!match) return false
+  const secondOctet = Number.parseInt(match[1], 10)
+  return Number.isInteger(secondOctet) && secondOctet >= 16 && secondOctet <= 31
+}
+
+const shouldDisableServiceWorkerForCurrentHost = () => {
+  if (typeof window === 'undefined') return false
+  const hostname = String(window.location?.hostname || '').trim().toLowerCase()
+  return hostname === 'localhost'
+    || hostname === '127.0.0.1'
+    || hostname === '::1'
+    || isPrivateIpv4Host(hostname)
+}
+
 const registerAdminServiceWorker = async () => {
   if (typeof window === 'undefined') return
   if (import.meta.env.DEV) return
   if (!('serviceWorker' in navigator)) return
+
+  if (shouldDisableServiceWorkerForCurrentHost()) {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations()
+      await Promise.all(registrations.map((registration) => registration.unregister()))
+    } catch {
+      // Local preview should still load even if service worker cleanup fails.
+    }
+    return
+  }
 
   try {
     const probe = await fetch(serviceWorkerUrl, { method: 'GET', cache: 'no-store' })

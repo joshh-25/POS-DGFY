@@ -96,7 +96,8 @@ export function DgfyCustomerAccountPage({
   activeOrderCount,
   trackedCustomerActivity,
   customerTrackLoadingReference,
-  customerTrackError
+  customerTrackError,
+  onOpenBusinessInventory
 }) {
   const allOrders = Array.isArray(accountPanel?.orders) ? accountPanel.orders : [];
   const allBookings = Array.isArray(accountPanel?.bookings) ? accountPanel.bookings : [];
@@ -108,6 +109,9 @@ export function DgfyCustomerAccountPage({
   
   const loyalty = accountPanel?.loyalty || { balance: 0, transactions: [] };
   const loyaltyTransactions = Array.isArray(loyalty?.transactions) ? loyalty.transactions.slice(0, 3) : [];
+  const businessMemberships = Array.isArray(accountPanel?.memberships)
+    ? accountPanel.memberships.filter((membership) => membership?.company)
+    : [];
   
   const [activeNav, setActiveNav] = useState('overview');
   const [activeActivityTab, setActiveActivityTab] = useState('active_orders');
@@ -168,28 +172,87 @@ export function DgfyCustomerAccountPage({
   };
 
   const renderBusiness = () => {
-    const registeredBusinesses = [];
+    const registeredBusinesses = businessMemberships;
     
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24, animation: 'fadeIn 300ms ease-in-out' }}>
-        <h2 style={{ fontSize: 24, fontWeight: 700, color: THEME.text, margin: 0 }}>Registered Businesses</h2>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: isMobileViewport ? 18 : 24, animation: 'fadeIn 300ms ease-in-out' }}>
+        <h2 style={{ fontSize: isMobileViewport ? 20 : 24, fontWeight: 700, color: THEME.text, margin: 0 }}>Registered Businesses</h2>
         
         {registeredBusinesses.length > 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-             {/* Modern card container would go here */}
+          <div style={{ display: 'grid', gap: isMobileViewport ? 16 : 20 }}>
+            {registeredBusinesses.map((membership) => {
+              const company = membership.company || {};
+              const companyName = String(company.name || 'Business').trim();
+              const companyInitials = companyName
+                .split(/\s+/)
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((part) => part.charAt(0).toUpperCase())
+                .join('') || 'B';
+              const companyStatus = prettyStatus(company.status || membership.status || 'active');
+              const roleLabel = prettyStatus(membership.role || 'member');
+              const planLabel = prettyStatus(company.plan || 'premium');
+              return (
+                <div key={membership.id || `${membership.tenant_id}-${company.company_token || companyName}`} style={{ background: THEME.surface, borderRadius: isMobileViewport ? 16 : 20, border: `1px solid ${THEME.border}`, overflow: 'hidden', boxShadow: '0 10px 30px rgba(16,24,40,0.06)' }}>
+                  <div style={{ height: isMobileViewport ? 92 : 140, background: 'linear-gradient(135deg, #1A4E8D 0%, #4F8CC9 58%, #AEE8F4 100%)', position: 'relative' }}>
+                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(16,24,40,0.18) 100%)' }} />
+                  </div>
+                  <div style={{ padding: isMobileViewport ? 16 : 24, display: 'grid', gap: isMobileViewport ? 14 : 18, marginTop: isMobileViewport ? -34 : -52, position: 'relative' }}>
+                    <div style={{ display: 'flex', alignItems: isMobileViewport ? 'stretch' : 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', flexDirection: isMobileViewport ? 'column' : 'row' }}>
+                      <div style={{ display: 'flex', alignItems: isMobileViewport ? 'center' : 'flex-end', gap: isMobileViewport ? 12 : 16 }}>
+                        <div style={{ width: isMobileViewport ? 64 : 96, height: isMobileViewport ? 64 : 96, borderRadius: '50%', border: isMobileViewport ? '3px solid #FFFFFF' : '4px solid #FFFFFF', background: '#EAF3FF', color: THEME.primary, display: 'grid', placeItems: 'center', fontSize: isMobileViewport ? 22 : 30, fontWeight: 800, boxShadow: '0 10px 24px rgba(16,24,40,0.12)', flexShrink: 0 }}>
+                          {companyInitials}
+                        </div>
+                        <div style={{ display: 'grid', gap: 8, paddingBottom: isMobileViewport ? 0 : 6, minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: isMobileViewport ? 18 : 24, fontWeight: 800, color: THEME.text, lineHeight: 1.2 }}>{companyName}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, background: THEME.successBg, color: THEME.success, fontSize: 12, fontWeight: 700 }}>
+                              <CheckCircle2 size={14} /> {companyStatus}
+                            </span>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, background: THEME.infoBg, color: THEME.info, fontSize: 12, fontWeight: 700 }}>
+                              <Store size={14} /> {roleLabel}
+                            </span>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 10px', borderRadius: 999, background: THEME.purpleBg, color: THEME.purple, fontSize: 12, fontWeight: 700 }}>
+                              {planLabel}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => onOpenBusinessInventory?.(membership)}
+                        style={{ background: THEME.primary, color: '#FFFFFF', border: 'none', borderRadius: 10, padding: isMobileViewport ? '11px 14px' : '12px 18px', fontSize: isMobileViewport ? 13 : 14, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, whiteSpace: 'nowrap', width: isMobileViewport ? '100%' : 'auto' }}
+                      >
+                        Go to Inventory
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      <div style={{ fontSize: 13, color: THEME.muted }}>
+                        Open this business directly in IMS using your current DGFY account session.
+                      </div>
+                      {company.company_token ? (
+                        <div style={{ fontSize: 12, color: THEME.muted }}>
+                          Company token: <span style={{ color: THEME.text, fontWeight: 600 }}>{company.company_token}</span>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         ) : (
-          <div style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: '64px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-            <div style={{ width: 80, height: 80, borderRadius: '50%', background: THEME.infoBg, color: THEME.info, display: 'grid', placeItems: 'center', marginBottom: 24 }}>
-              <Store size={40} />
+          <div style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: isMobileViewport ? '32px 18px' : '64px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+            <div style={{ width: isMobileViewport ? 64 : 80, height: isMobileViewport ? 64 : 80, borderRadius: '50%', background: THEME.infoBg, color: THEME.info, display: 'grid', placeItems: 'center', marginBottom: isMobileViewport ? 18 : 24 }}>
+              <Store size={isMobileViewport ? 30 : 40} />
             </div>
-            <h3 style={{ fontSize: 22, fontWeight: 700, color: THEME.text, marginBottom: 12 }}>Ready to reach more customers?</h3>
-            <p style={{ fontSize: 16, color: THEME.muted, lineHeight: 1.5, maxWidth: 480, marginBottom: 32 }}>
+            <h3 style={{ fontSize: isMobileViewport ? 18 : 22, fontWeight: 700, color: THEME.text, marginBottom: 12 }}>Ready to reach more customers?</h3>
+            <p style={{ fontSize: isMobileViewport ? 14 : 16, color: THEME.muted, lineHeight: 1.5, maxWidth: 480, marginBottom: isMobileViewport ? 24 : 32 }}>
               It looks like you haven't registered a business to this account yet. Set up your storefront to digitize your catalog and get discovered on the local map!
             </p>
             <button
               onClick={onRegisterBusiness}
-              style={{ background: THEME.primary, color: '#FFFFFF', border: 'none', borderRadius: 8, padding: '14px 28px', fontSize: 16, fontWeight: 600, cursor: 'pointer', transition: 'background 200ms' }}
+              style={{ background: THEME.primary, color: '#FFFFFF', border: 'none', borderRadius: 8, padding: isMobileViewport ? '12px 18px' : '14px 28px', fontSize: isMobileViewport ? 14 : 16, fontWeight: 600, cursor: 'pointer', transition: 'background 200ms', width: isMobileViewport ? '100%' : 'auto' }}
               onMouseOver={e => e.currentTarget.style.background = THEME.info}
               onMouseOut={e => e.currentTarget.style.background = THEME.primary}
             >
@@ -211,34 +274,34 @@ export function DgfyCustomerAccountPage({
   // --- SECTIONS ---
 
   const renderOverview = () => (
-    <div style={{ display: 'grid', gap: 24 }}>
+    <div style={{ display: 'grid', gap: isMobileViewport ? 18 : 24 }}>
       
       {/* 1. Profile Header Section */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1.5fr 1fr', gap: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1.5fr 1fr', gap: isMobileViewport ? 16 : 24 }}>
         
         {/* Profile Card */}
-        <div style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+        <div style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: isMobileViewport ? 16 : 24, display: 'flex', alignItems: isMobileViewport ? 'stretch' : 'center', justifyContent: 'space-between', gap: isMobileViewport ? 14 : 20, flexDirection: isMobileViewport ? 'column' : 'row' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobileViewport ? 14 : 20 }}>
             <div style={{ position: 'relative' }}>
-              <div style={{ width: 80, height: 80, borderRadius: '50%', background: THEME.infoBg, color: THEME.primary, display: 'grid', placeItems: 'center', fontSize: 28, fontWeight: 800 }}>
+              <div style={{ width: isMobileViewport ? 60 : 80, height: isMobileViewport ? 60 : 80, borderRadius: '50%', background: THEME.infoBg, color: THEME.primary, display: 'grid', placeItems: 'center', fontSize: isMobileViewport ? 22 : 28, fontWeight: 800 }}>
                 {accountIdentityInitials}
               </div>
               {Boolean(accountPanel?.me?.is_email_verified) && (
-                <div style={{ position: 'absolute', bottom: 0, right: 0, width: 24, height: 24, borderRadius: '50%', background: THEME.success, color: '#FFF', display: 'grid', placeItems: 'center', border: '2px solid #FFF' }}>
+                <div style={{ position: 'absolute', bottom: 0, right: 0, width: isMobileViewport ? 20 : 24, height: isMobileViewport ? 20 : 24, borderRadius: '50%', background: THEME.success, color: '#FFF', display: 'grid', placeItems: 'center', border: '2px solid #FFF' }}>
                   <ShieldCheck size={14} strokeWidth={3} />
                 </div>
               )}
             </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <div style={{ fontSize: 24, fontWeight: 700, color: THEME.text }}>{accountIdentityName}</div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: isMobileViewport ? 18 : 24, fontWeight: 700, color: THEME.text, lineHeight: 1.2 }}>{accountIdentityName}</div>
                 {Boolean(accountPanel?.me?.is_email_verified) && (
                   <span style={{ background: THEME.primary, color: '#FFF', fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                     <ShieldCheck size={10} /> Verified
                   </span>
                 )}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, color: THEME.muted, fontSize: 14, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: isMobileViewport ? 10 : 16, color: THEME.muted, fontSize: isMobileViewport ? 13 : 14, flexWrap: 'wrap' }}>
                 {overviewPhone ? (
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Phone size={16} /> {overviewPhone}
@@ -252,29 +315,29 @@ export function DgfyCustomerAccountPage({
               </div>
             </div>
           </div>
-          <button onClick={() => setActiveNav('account')} style={{ background: 'transparent', border: `1px solid ${THEME.border}`, color: THEME.primary, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', flexShrink: 0 }}>
+          <button onClick={() => setActiveNav('account')} style={{ background: 'transparent', border: `1px solid ${THEME.border}`, color: THEME.primary, borderRadius: 8, padding: isMobileViewport ? '10px 14px' : '8px 16px', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', flexShrink: 0, width: isMobileViewport ? '100%' : 'auto' }}>
             <Edit size={14} /> Edit Profile
           </button>
         </div>
 
         {/* Register Business Card */}
-        <div style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', transition: 'box-shadow 200ms' }} onMouseOver={e => e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.05)'} onMouseOut={e => e.currentTarget.style.boxShadow = 'none'} onClick={onRegisterBusiness}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-            <div style={{ width: 64, height: 64, borderRadius: 16, background: THEME.infoBg, color: THEME.primary, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-              <Store size={32} />
+        <div style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: isMobileViewport ? 16 : 24, display: 'flex', alignItems: isMobileViewport ? 'stretch' : 'center', justifyContent: 'space-between', cursor: 'pointer', transition: 'box-shadow 200ms', flexDirection: isMobileViewport ? 'column' : 'row', gap: isMobileViewport ? 14 : 20 }} onMouseOver={e => e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.05)'} onMouseOut={e => e.currentTarget.style.boxShadow = 'none'} onClick={onRegisterBusiness}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobileViewport ? 14 : 20 }}>
+            <div style={{ width: isMobileViewport ? 48 : 64, height: isMobileViewport ? 48 : 64, borderRadius: isMobileViewport ? 14 : 16, background: THEME.infoBg, color: THEME.primary, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+              <Store size={isMobileViewport ? 24 : 32} />
             </div>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: THEME.text, marginBottom: 4 }}>Grow your business</div>
-              <div style={{ fontSize: 14, color: THEME.muted, lineHeight: 1.4 }}>Register your business on DGFY<br/>and unlock more opportunities.</div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: isMobileViewport ? 16 : 18, fontWeight: 700, color: THEME.text, marginBottom: 4 }}>Grow your business</div>
+              <div style={{ fontSize: isMobileViewport ? 13 : 14, color: THEME.muted, lineHeight: 1.4 }}>Register your business on DGFY and unlock more opportunities.</div>
             </div>
           </div>
-          <ChevronRight size={24} color={THEME.text} style={{ flexShrink: 0 }} />
+          <ChevronRight size={isMobileViewport ? 20 : 24} color={THEME.text} style={{ flexShrink: 0, alignSelf: isMobileViewport ? 'flex-end' : 'center' }} />
         </div>
 
       </div>
 
       {/* 2. Summary Statistics Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? 'repeat(2, 1fr)' : 'repeat(5, 1fr)', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? 'repeat(2, minmax(0, 1fr))' : 'repeat(5, 1fr)', gap: isMobileViewport ? 12 : 16 }}>
         {[
           { label: 'Active Orders', value: activeOrderCount, icon: ShoppingBag, color: THEME.success, bg: THEME.successBg, link: 'View all', action: () => setActiveNav('orders') },
           { label: 'Past Orders', value: allOrders.length, icon: Package, color: THEME.info, bg: THEME.infoBg, link: 'View all', action: () => setActiveNav('orders') },
@@ -284,17 +347,17 @@ export function DgfyCustomerAccountPage({
         ].map((stat, i) => {
           const Icon = stat.icon;
           return (
-            <div key={i} style={{ background: THEME.surface, borderRadius: 12, border: `1px solid ${THEME.border}`, padding: '16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div key={i} style={{ background: THEME.surface, borderRadius: 12, border: `1px solid ${THEME.border}`, padding: isMobileViewport ? '12px' : '16px', display: 'flex', flexDirection: 'column', gap: isMobileViewport ? 10 : 12, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: THEME.text, lineHeight: 1 }}>{stat.value}</div>
-                  <div style={{ fontSize: 12, color: THEME.muted, marginTop: 4 }}>{stat.label}</div>
+                  <div style={{ fontSize: isMobileViewport ? 18 : 22, fontWeight: 700, color: THEME.text, lineHeight: 1 }}>{stat.value}</div>
+                  <div style={{ fontSize: isMobileViewport ? 11 : 12, color: THEME.muted, marginTop: 4, lineHeight: 1.35 }}>{stat.label}</div>
                 </div>
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: stat.bg, color: stat.color, display: 'grid', placeItems: 'center' }}>
-                  <Icon size={20} />
+                <div style={{ width: isMobileViewport ? 34 : 40, height: isMobileViewport ? 34 : 40, borderRadius: 10, background: stat.bg, color: stat.color, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                  <Icon size={isMobileViewport ? 17 : 20} />
                 </div>
               </div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: THEME.primary, cursor: 'pointer', marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 4 }} onClick={stat.action}>
+              <div style={{ fontSize: isMobileViewport ? 11 : 12, fontWeight: 600, color: THEME.primary, cursor: 'pointer', marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 4 }} onClick={stat.action}>
                 {stat.link} <ChevronRight size={14} />
               </div>
             </div>
@@ -365,7 +428,7 @@ export function DgfyCustomerAccountPage({
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         <button 
-                          onClick={() => onTrackReference(order.reference)}
+                          onClick={() => onTrackReference(order)}
                           style={{ background: 'transparent', border: `1px solid ${THEME.border}`, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, color: THEME.primary, cursor: 'pointer' }}
                         >
                           Track Order
@@ -517,10 +580,10 @@ export function DgfyCustomerAccountPage({
               <StatusBadge status={order.status_label || order.status} />
             </div>
             <div style={{ display: 'flex', gap: 12 }}>
-              <button onClick={() => onTrackReference(order.reference)} disabled={customerTrackLoadingReference === order.reference} style={{ background: THEME.surface, border: `1px solid ${THEME.border}`, color: THEME.primary, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: customerTrackLoadingReference === order.reference ? 'wait' : 'pointer' }}>
+              <button onClick={() => onTrackReference(order)} disabled={customerTrackLoadingReference === order.reference} style={{ background: THEME.surface, border: `1px solid ${THEME.border}`, color: THEME.primary, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: customerTrackLoadingReference === order.reference ? 'wait' : 'pointer' }}>
                 {customerTrackLoadingReference === order.reference ? 'Loading...' : 'Track'}
               </button>
-              <button onClick={() => onTrackReference(order.reference)} style={{ background: THEME.primary, border: 'none', color: '#FFF', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              <button onClick={() => onTrackReference(order)} style={{ background: THEME.primary, border: 'none', color: '#FFF', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                 View Receipt
               </button>
             </div>

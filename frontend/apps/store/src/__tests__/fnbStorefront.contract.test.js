@@ -28,14 +28,11 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain('?item=');
     expect(source).toContain('review_token');
     expect(source).toContain('<FnbProductDetailsPage');
-    expect(productDetailsSource()).toContain('image_gallery');
-    expect(productDetailsSource()).toContain("aria-roledescription={hasMultipleImages ? 'carousel' : undefined}");
-    expect(productDetailsSource()).toContain('handleCarouselTouchStart');
-    expect(productDetailsSource()).toContain('handleCarouselTouchEnd');
-    expect(productDetailsSource()).toContain('aria-label="Previous product image"');
-    expect(productDetailsSource()).toContain('aria-label="Next product image"');
-    expect(productDetailsSource()).toContain('carousel-dot');
-    expect(source).toContain('const openFnbDetail = useCallback((item, options = {}) => {');
+    expect(productDetailsSource()).toContain('aria-label="View larger image"');
+    expect(productDetailsSource()).toContain('aria-label="Previous slide"');
+    expect(productDetailsSource()).toContain('aria-label="Next slide"');
+    expect(productDetailsSource()).toContain('Custom dynamic thumbnails gallery representation');
+    expect(source).toContain('const openFnbDetail = (item, options = {}) => {');
     expect(source).toContain('const closeFnbDetail = () => {');
     expect(source).toContain('isFnbDetailsSubpage');
   });
@@ -44,43 +41,17 @@ describe('Food & Beverage storefront contract', () => {
     const source = appSource();
     const accountSource = accountPageSource();
 
-    expect(source).toContain('const readStorefrontCustomerAuthToken = () => readDgfyAuthToken() || readStoreAuthToken();');
-    expect(source).toContain('authToken: readStorefrontCustomerAuthToken()');
-    expect(source).toContain('onCancelOrder={handleCancelAccountOrder}');
-    expect(source).toContain('onReorderOrder={handleReorderAccountOrder}');
-    expect(source).toContain('const [pendingAccountReorder, setPendingAccountReorder]');
-    expect(source).toContain('buildAccountReorderCartLines');
-    expect(source).toContain('getUnavailableReorderLineNames');
-    expect(source).not.toContain('isAccountDrawerOpen && (isGuestAccountDrawerState ?');
-    expect(accountSource).toContain('allowed_actions');
-    expect(accountSource).toContain('onCancelOrder?.(order)');
-    expect(accountSource).toContain('pendingCancelOrder');
-    expect(accountSource).toContain('Confirm Cancel');
-    expect(accountSource).toContain('onReorderOrder?.(order)');
-    expect(accountSource).toContain('onSaveAddress');
-    expect(accountSource).toContain('onDeleteAddress');
-    expect(accountSource).toContain('onSetDefaultAddress');
-    expect(accountSource).toContain('renderAddressPinEditor');
-    expect(accountSource).toContain('latitude');
-    expect(accountSource).toContain('longitude');
-    expect(accountSource).toContain('Pinned at');
-    expect(accountSource).toContain('Add Location');
-    expect(accountSource).toContain('Saved Locations');
-    expect(source).toContain('const renderAddressPinEditor = useCallback');
+    expect(source).toContain('handleOpenBusinessInventory');
+    expect(source).toContain('trackedCustomerActivity');
+    expect(accountSource).toContain('Registered Businesses');
+    expect(accountSource).toContain('Go to Inventory');
+    expect(accountSource).toContain('businessMemberships');
+    expect(accountSource).toContain('onOpenBusinessInventory');
     expect(source).toContain('Use Current Location');
-    expect(source).toContain('Saved Delivery Locations');
-    expect(source).toContain('Saved Service Locations');
-    expect(source).toContain('text_only');
-    expect(source).toContain('String(previous?.address_line || \'\').trim() || resolvedAddress');
-    expect(source).toContain('String(previous || \'\').trim() ? previous : formattedAddress');
-    expect(source).toContain('latitude: coordinates?.latitude ?? null');
-    expect(source).toContain('longitude: coordinates?.longitude ?? null');
-    expect(source).toContain('/api/v1/dgfy/customer/addresses');
     expect(source).toContain('deliverySavedLocations');
     expect(source).toContain('applySavedDeliveryLocation');
-    expect(source).toContain('sourceType: \'account_saved\'');
-    expect(source).toContain('sourceType: \'checkout_temporary\'');
-    expect(source).toContain('sourceType: \'recommended_store_or_branch\'');
+    expect(source).toContain('customerPin');
+    expect(source).toContain('selectedSavedLocationId');
   });
 
   it('builds business registration links through the configurable Storefront helper', () => {
@@ -96,26 +67,28 @@ describe('Food & Beverage storefront contract', () => {
     expect(solutionsSource).not.toContain("window.location.href = 'https://skupervisor.dgfy.ph/register-company'");
   });
 
-  it('gates checkout and booking behind the canonical DGFY account flow while preserving draft resume state', () => {
+  it('supports guest-or-account checkout entry while preserving auth draft resume state', () => {
     const source = appSource();
 
     expect(source).toContain('STOREFRONT_CHECKOUT_AUTH_RESUME_KEY');
     expect(source).toContain('writeCheckoutAuthResumeDraft');
     expect(source).toContain('clearCheckoutAuthResumeDraft');
-    expect(source).toContain('renderCheckoutAccountGate');
+    expect(source).toContain('renderGuestCheckoutEntry');
     expect(source).toContain('renderAccountOwnedIdentitySummary');
     expect(source).toContain('Create DGFY Account');
-    expect(source).toContain('Have an account? Log in to DGFY');
-    expect(source).toContain('Sign in or create a DGFY account to continue.');
+    expect(source).toContain('Continue as Guest');
+    expect(source).toContain('Already have an account?');
+    expect(source).toContain('customerFirstName');
+    expect(source).toContain('customerLastName');
+    expect(source).toContain('buildCustomerFullName');
     expect(source).toContain("toast.success('Signed in. Resuming your checkout.')");
-    expect(source).toContain("description: 'Create an account or log in to continue this menu order.'");
+    expect(source).toContain("description: 'Create an account or continue as guest to continue this menu order.'");
     expect(source).toContain("description: hasServiceCart");
-    expect(source).toContain("const nextFnbStep = draft.checkoutTab === 'cart' ? 2 : null;");
+    expect(source).toContain("const nextFnbStep = draft.checkoutTab === 'cart' ? 3 : null;");
     expect(source).toContain("const nextSimpleStep = draft.checkoutTab === 'checkout' && !draft.selectedServiceItemId ? 1 : null;");
     expect(source).toContain("const nextServiceStep = draft.selectedServiceItemId ? 1 : null;");
-    expect(source).toContain("setSimpleOrderStep(isDgfyCustomerSignedIn ? 3 : 2)");
-    expect(source).toContain("setFnbOrderStep(isDgfyCustomerSignedIn ? 4 : 3)");
-    expect(source).toContain("Your signed-in DGFY account will be used for this order.");
+    expect(source).toContain('setGuestCheckoutUnlocked(true)');
+    expect(source).toContain("Your DGFY account details will be used for this order.");
     expect(source).toContain("Your signed-in DGFY account will be used for this booking.");
   });
 
@@ -138,16 +111,16 @@ describe('Food & Beverage storefront contract', () => {
     expect(panel).toContain('Send Request');
   });
 
-  it('renders derived F&B menu content when storefront profile fields are thin', () => {
+  it('does not depend on generated F&B summary copy when IMS profile fields are thin', () => {
     const source = appSource();
 
-    expect(source).toContain('buildFnbContentReadinessItems');
-    expect(source).toContain('buildFnbOverviewFallbackCopy');
-    expect(source).toContain('Menu at a glance');
-    expect(source).toContain('published menu item');
-    expect(source).toContain('menu items published');
-    expect(source).toContain('items marked ready now');
-    expect(source).toContain('Store profile copy is available');
+    expect(source).not.toContain('buildFnbContentReadinessItems');
+    expect(source).not.toContain('buildFnbOverviewFallbackCopy');
+    expect(source).not.toContain('Menu at a glance');
+    expect(source).not.toContain('published menu item');
+    expect(source).not.toContain('menu items published');
+    expect(source).not.toContain('items marked ready now');
+    expect(source).not.toContain('Store profile copy is available');
     expect(source).not.toContain('food and beverage backend');
   });
 });

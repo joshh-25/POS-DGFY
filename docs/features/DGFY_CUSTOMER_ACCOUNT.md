@@ -35,10 +35,12 @@ The UAT ratings recorded by the gate are DGFY account UI shell `9.2`, DGFY signu
 Guest users can:
 
 - Browse discovery, tenant storefronts, catalogs, services, and mode-specific storefront views.
-- Build a cart or booking draft before signing in.
-- View the inline account-required gate before customer-details or submit steps.
+- Build a cart or booking draft before checkout.
+- Use the pre-step-1 checkout or booking entry gate to choose `Create DGFY Account` or `Continue as Guest`; existing-account login remains available as a smaller inline action.
+- Continue guest checkout or guest booking without DGFY auth. Guest step 1 collects `First Name`, `Last Name`, `Email`, and `Phone Number` in the UI, while storefront submit payloads continue sending the existing backend contract fields (`customer_name`, `customer_email`, `customer_phone`) with `customer_name` merged from the split name inputs.
+- Save guest-entered contact details locally on the current device for the next guest checkout and for optional DGFY create-account prefills later. This local reuse does not create backend guest-to-account ownership adoption.
 - Launch create-account or sign-in from the canonical `/dgfy/auth` route and return to step 1 of the same storefront draft after auth.
-- Track a known reference only for older compatibility flows that already exist; guest tracking is no longer the intended primary path for new storefront transactions.
+- Use the storefront header Track action as a drawer-first guest tracking surface. The drawer shows current device-local in-progress guest orders and supports manual tracking PIN entry. The older standalone tracking route may still exist as compatibility plumbing, but it is not the primary header entry.
 - Request tracking recovery with an email or phone lookup. Production responses are always generic and do not expose whether a match or delivery channel exists.
 - Submit a fulfilled-order guest review only when the completed tracking response returns a valid review invite. Guest review invites are token-scoped, single-use, and separate from signed-in DGFY account history.
 - Create or sign in to a DGFY account from the canonical `/dgfy/auth` route after launching from the storefront or discovery customer-account surface. Registration collects Last Name, First Name, Optional Middle Name, email, contact number, password, and confirm password, with password visibility toggles.
@@ -57,7 +59,7 @@ Signed-in DGFY users can:
 - Submit typed reviews only for eligible paid or completed account activity. Supported targets are `product`, `service`, `hospitality_booking`, `fnb_order`, and `fnb_item`; reviews start as pending approval and duplicate account/activity/target reviews are rejected.
 - Manage global saved delivery locations, including create, update, delete, set default, readable address text, and optional exact latitude/longitude pin coordinates.
 - Storefront pages with an existing DGFY customer token or HttpOnly `sku_dgfy_session` cookie auto-load the signed-in customer context. Before tenant context is available, the aggregate `/api/v1/dgfy/customer/dashboard` can supply account/profile/address context; once a tenant store context is active, Storefront quote, checkout, booking, follow/status, and authenticated Store routes use the DGFY-capable Store auth bridge before falling back to tenant-local Store JWTs. Empty checkout contact fields are prefilled from the signed-in profile, and an empty delivery address is prefilled from the default saved address when the customer is on a delivery checkout/booking path. The sign-in dialog's **Remember me** behavior is cookie-session rehydration only; the frontend must not persist DGFY tokens in `localStorage` or `sessionStorage`.
-- Storefront checkout and booking are account-required from the customer-details step onward. Signed-out customers can browse, add items, and build booking drafts, but they must authenticate before entering customer details or submitting the transaction. The storefront preserves only non-sensitive draft state across the auth redirect, returns the customer to step 1 of the active order or booking flow after auth, and uses the signed-in DGFY account identity as read-only checkout contact data.
+- Storefront checkout and booking now start with a guest-or-account chooser before step 1. Customers can either authenticate through DGFY or continue as a guest. When the customer chooses the DGFY path, the storefront preserves only non-sensitive draft state across the auth redirect, returns the customer to step 1 of the active order or booking flow after auth, and uses the signed-in DGFY account identity as read-only checkout contact data. When the customer chooses guest checkout, the transaction remains guest-only and is not added to the DGFY dashboard automatically.
 - Storefront-originated customer sign-in/signup uses the same DGFY handoff endpoint as business registration when the auth page returns to an absolute Storefront URL such as `/map-dgfy?dgfy_account=1`. The DGFY auth page creates the short-lived handoff token after successful login/signup or existing-session detection, appends it to the Storefront return URL, and falls back to the original return URL if handoff creation fails. The Storefront consumes the token before the unauthenticated `/api/v1/dgfy/auth/me` probe so a successful signup does not reopen the guest launcher.
 - Account page loading validates `/api/v1/dgfy/auth/me` before loading dashboard, activity, or loyalty data. When the in-memory DGFY token is empty after a browser reload, the frontend must still call `/api/v1/dgfy/auth/me` with `credentials: include` so the backend can authenticate the HttpOnly cookie. A `401` clears stale browser token/session state and shows a sign-in-required account page instead of repeatedly calling account dashboard endpoints with an invalid session.
 - Successful authenticated checkout or booking refreshes the DGFY account panel so active orders, order history, bookings, saved locations, loyalty, and current tracking can reflect the latest POS/storefront transaction without requiring a full page reload.
@@ -70,15 +72,17 @@ Signed-in DGFY users can:
 - See company memberships and invitations through the existing DGFY account contract.
 - Launch **Register Your Business** from the DGFY account launcher or signed-in account surface. Storefront-originated business registration creates a short-lived DGFY handoff token when possible, routes to `/register-company?source=dgfy&auth=login&handoff_token=<token>#business-registration`, exchanges the token on SKUpervisor, removes the one-time `handoff_token` from the URL, and focuses the company-registration form. If no valid DGFY session exists, the storefront routes the user to `/dgfy/auth?intent=register-business&return_to=/register-company#business-registration` first. If the handoff is expired or already consumed, the registration page returns the user to `/dgfy/auth` and still focuses the business-registration area after successful sign-in. Public DGFY registration routes do not invoke tenant-session `/auth/refresh-token` recovery. The business form collects only company name and Business Industry as business data, remains gated by current company and marketplace terms acknowledgement, and after active tenant provisioning the registration page immediately starts the normal IMS session through `/api/v1/dgfy/auth/tenant-session` without asking for SKUpervisor credentials again. If the session exchange fails, the active tenant remains created and the UI routes to manual SKUpervisor login with company context prefilled.
 
-## Checkout And Booking Account Actions
+## Checkout And Booking Entry
 
-Storefront order checkout and Services booking are now account-required before customer details and submit:
+Storefront order checkout and Services booking now use a shared guest-or-account entry flow before step 1:
 
-- Signed-out customers may browse and build drafts only.
-- The inline checkout gate must offer `Create DGFY Account` and `Log in to DGFY`.
+- The inline entry gate must offer `Create DGFY Account` and `Continue as Guest`, plus a smaller inline `Log in` action for existing DGFY accounts.
 - Successful auth must return the customer to the same storefront draft and resume at step 1 of the active flow.
 - Authenticated checkout should display read-only account name, contact number, and email instead of asking the customer to retype those values.
-- Completed order and booking activity is account-owned from creation time and must appear only on the signed-in customer dashboard linked to that DGFY account.
+- Guest checkout should show split `First Name` and `Last Name` UI, then submit the unchanged backend payload shape with merged `customer_name`.
+- Guest-entered details may be remembered locally on the device and reused for later guest checkout or DGFY create-account prefills.
+- Authenticated orders and bookings remain account-owned from creation time and appear only on the signed-in customer dashboard linked to that DGFY account.
+- Guest orders and bookings remain guest-owned and must not be auto-adopted into a later DGFY account by email or phone matching.
 
 ## Fulfilled Guest Review Invites
 
@@ -136,7 +140,7 @@ Current validation must include:
 - `npm run backfill:dgfy-customer-activity -- --tenant-page-size 1 --transaction-limit-per-tenant 1`
 - `npm run backfill:dgfy-customer-activity -- --all-transactions --require-activity-types=order,service_booking,hospitality_booking,fnb_order` when production release evidence must prove all customer-facing modes are present.
 - `npm run uat:production:dgfy` when controlled production mutation UAT is approved and a dedicated QA account, tenant, item, checkout, POS operator path, inventory record, and cleanup/signoff rule are available.
-- DGFY auth and Storefront checkout/order regression tests, including account-required checkout and post-auth draft resume.
+- DGFY auth and Storefront checkout/order regression tests, including guest-or-account entry, guest payload mapping, drawer-based guest tracking entry, and post-auth draft resume.
 - `npm --prefix frontend run build:store`
 - Rendered desktop and mobile storefront smoke checks for the discovery auth dialog, routed account page, recovery panel, address controls, loyalty summary, order actions, and company-registration separation.
 - `npm --prefix frontend test -- --run src/features/pos/__tests__/terminalLocationScope.integration.test.jsx`

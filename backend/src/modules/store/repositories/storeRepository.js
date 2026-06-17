@@ -729,10 +729,32 @@ export const storeRepository = {
                 ),
                 ...optionalDetailIncludes
             ];
-            const rows = await Item.findAll({
-                ...baseQuery,
-                include: fallbackInclude
-            });
+            let rows;
+            try {
+                rows = await Item.findAll({
+                    ...baseQuery,
+                    include: fallbackInclude
+                });
+            } catch (fallbackError) {
+                if (!isMissingStorefrontCatalogGalleryColumnError(fallbackError)) {
+                    throw fallbackError;
+                }
+                rows = await Item.findAll({
+                    ...baseQuery,
+                    include: [
+                        ...buildStorefrontOverrideInclude(
+                            isMissingStorefrontCatalogOverrideTableError(error) ? null : StorefrontCatalogOverride,
+                            PosCatalogOverride,
+                            {
+                                includeLegacyPosFallback: isMissingStorefrontCatalogOverrideTableError(error)
+                                    && !isMissingPosCatalogOverrideTableError(error),
+                                includeGallery: false
+                            }
+                        ),
+                        ...optionalDetailIncludes
+                    ]
+                });
+            }
             const catalogRows = mapCatalogRows(rows, {
                 allowLegacyPosFallback: isMissingStorefrontCatalogOverrideTableError(error)
             });

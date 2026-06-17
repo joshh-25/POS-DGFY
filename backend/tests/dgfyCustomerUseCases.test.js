@@ -32,7 +32,8 @@ describe('dgfyCustomerUseCases', () => {
             listActivitiesForAccount: jest.fn().mockResolvedValue({
                 rows: [
                     { activity_id: 1, activity_type: 'order', reference: 'SK-ABC123', status: 'placed', occurred_at: new Date() },
-                    { activity_id: 2, activity_type: 'service_booking', reference: 'SV-001', status: 'pending', occurred_at: new Date() }
+                    { activity_id: 2, activity_type: 'service_booking', reference: 'SV-001', status: 'pending', occurred_at: new Date() },
+                    { activity_id: 3, activity_type: 'fnb_order', reference: 'FNB-123', status: 'paid', occurred_at: new Date() }
                 ]
             }),
             listAddresses: jest.fn().mockResolvedValue([{ address_id: 1, label: 'Home', address_line: 'Iloilo' }]),
@@ -46,8 +47,9 @@ describe('dgfyCustomerUseCases', () => {
 
         expect(result.success).toBe(true);
         expect(result.data.account.phone_verification_deferred).toBe(true);
-        expect(result.data.orders).toHaveLength(1);
+        expect(result.data.orders).toHaveLength(2);
         expect(result.data.bookings).toHaveLength(1);
+        expect(result.data.orders.map((entry) => entry.type)).toEqual(expect.arrayContaining(['order', 'fnb_order']));
         expect(result.data.addresses[0].label).toBe('Home');
         expect(result.data.loyalty.balance).toBe(5);
         expect(repository.listActiveTenants).not.toHaveBeenCalled();

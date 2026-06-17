@@ -49,7 +49,7 @@ This is a frontend capability/status reference, not a new architecture decision.
 - Signed-in account surfaces now prefer the unified DGFY history endpoint. The History panel filters all, Orders, F&B, Services, and Hospitality activities; rows preserve eligible track/cancel/reorder actions and expose typed review targets returned by the backend.
 - Completed Storefront tracking can expose item-level `Review Item` entry points through fulfilled guest review invites. The invite path is separate from signed-in account history and creates pending moderated reviews only after token validation.
 - `Register Your Business` routes to SKUpervisor company registration with the DGFY business-registration handoff (`source=dgfy`, `auth=login`, optional `handoff_token`, `#business-registration`).
-- Checkout and Services booking now keep public browsing open but require DGFY authentication before customer-details and submit. The storefront preserves non-sensitive cart or booking draft state through the auth redirect, returns the customer to step 1 of the active flow after auth, and shows read-only DGFY account identity instead of editable phone/email re-entry.
+- Checkout and Services booking now keep public browsing open and use a shared guest-or-account entry gate before step 1. Customers can create or sign in to a DGFY account, or continue as a guest. The storefront preserves non-sensitive cart or booking draft state through the auth redirect, returns the customer to step 1 of the active flow after auth, shows read-only DGFY account identity on authenticated paths, and keeps guest contact details device-local for later reuse without adopting guest activity into a later account.
 - Coordinate-backed delivery checkout persists the selected customer delivery pin onto the online POS transaction. The POS incoming queue can then show the delivery address, coordinate text, and map-navigation action without requiring buyer fiscal fields for non-fiscal checkout.
 - Discovery map initialization is defensive. If MapLibre/WebGL cannot initialize in the browser, the Storefront discovery page remains usable, renders the `Log in / Sign up` account action, and shows a list fallback instead of blanking the page.
 - Storefront map/search stabilization is locally validated as of 2026-06-09. Submitted text searches stay storefront-first, item matches render tenant storefront result cards without auto-opening marker preview cards, repeated identical searches do not refit/flicker, duplicate-coordinate and 13-meter near-coordinate groups render as count pins that scope the existing results panel, hover previews collapse on pin leave, click/tap previews persist until closed, and visible discovery pins are renderer-owned map layer symbols rather than detached DOM overlays.
@@ -62,12 +62,12 @@ This is a frontend capability/status reference, not a new architecture decision.
 ## 1) Default Storefront (Fallback / General)
 - Hero + catalog + checkout flow is active.
 - Discovery-to-store handoff with preferred location support is active.
-- Catalog search, availability checks, cart building, and account-gated checkout entry are active.
+- Catalog search, availability checks, cart building, and guest-or-account checkout entry are active.
 - Mode-specific fallback copy is applied when tenant content is partial or missing.
 
 ## 2) Services Mode (`services`)
 - Independent service storefront presentation is active (service-specific hero, tabs, filters, catalog cards).
-- Service booking flow supports schedule selection, intake fields, quantity, and account-gated customer details.
+- Service booking flow supports schedule selection, intake fields, quantity, and guest-or-account customer entry before step 1.
 - Service draft multiplicity and batch booking submission are active.
 - Service availability, short-lived holds, edited-draft hold replacement, and hold-backed checkout are wired to the current storefront contract.
 - Services + product cart surfaces coexist with mode-aware controls and validation.
@@ -76,14 +76,14 @@ This is a frontend capability/status reference, not a new architecture decision.
 ## 3) Food & Beverage Mode (`fnb`)
 - Restaurant/menu-style storefront presentation is active.
 - F&B view model, menu grouping, default modifier selection, allergen presentation, and mode-specific catalog sections are active.
-- F&B ordering flow supports mode-aware checkout progression with an account gate before customer details.
+- F&B ordering flow supports mode-aware checkout progression with a shared guest-or-account entry gate before step 1.
 - F&B reservation entry is active through the restaurant reservation surface.
 - F&B product detail pages include item review summary/detail sections, and completed F&B/order tracking can route eligible fulfilled item targets into the review flow.
 - F&B contract anchors and storefront rendering expectations are currently satisfied by tests.
 
 ## 4) Simple Mode (`msme` presentation)
 - Simplified product storefront presentation is active for fast browsing/order flow.
-- Stock-aware product cards and simple-mode cart/account-gated checkout flow are active.
+- Stock-aware product cards and simple-mode cart/guest-or-account checkout flow are active.
 - Simple-mode hero, catalog, and footer/community sections are active with content fallback handling.
 - Simple storefront contract coverage is active.
 

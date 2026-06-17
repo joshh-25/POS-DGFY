@@ -1,5 +1,21 @@
 const isDev = Boolean(typeof import.meta !== 'undefined' && import.meta.env?.DEV);
 
+const isLocalLikeHostname = (hostname = '') => {
+  const value = String(hostname || '').trim().toLowerCase();
+  if (!value) return false;
+  if (value === 'localhost' || value === '127.0.0.1' || value === '0.0.0.0') return true;
+  if (value.endsWith('.local')) return true;
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(value)) return true;
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(value)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(value)) return true;
+  return false;
+};
+
+const isLocalRuntime = () => {
+  if (typeof window === 'undefined') return isDev;
+  return isDev || isLocalLikeHostname(window.location.hostname);
+};
+
 const resolveLocalOriginForPort = (port) => {
   if (typeof window === 'undefined') return '';
   const protocol = window.location.protocol || 'http:';
@@ -12,13 +28,13 @@ const resolveDevSkupervisorOrigin = () => (
   || 'http://127.0.0.1:5173'
 );
 
-const DEFAULT_BUSINESS_REGISTRATION_URL = isDev
+const DEFAULT_BUSINESS_REGISTRATION_URL = isLocalRuntime()
   ? `${resolveDevSkupervisorOrigin()}/register-company`
   : 'https://skupervisor.dgfy.ph/register-company';
-const DEFAULT_DGFY_AUTH_URL = isDev
+const DEFAULT_DGFY_AUTH_URL = isLocalRuntime()
   ? `${resolveDevSkupervisorOrigin()}/dgfy/auth`
   : 'https://skupervisor.dgfy.ph/dgfy/auth';
-const DEFAULT_DGFY_RESET_URL = isDev
+const DEFAULT_DGFY_RESET_URL = isLocalRuntime()
   ? `${resolveDevSkupervisorOrigin()}/dgfy/reset-password`
   : 'https://skupervisor.dgfy.ph/dgfy/reset-password';
 
