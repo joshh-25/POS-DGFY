@@ -121,8 +121,44 @@ export const resolveStorefrontHomeUrl = () => {
   }
 };
 
+const isValidStorefrontReturnPath = (pathname = '') => {
+  const normalizedPath = String(pathname || '').trim().replace(/\/+$/, '') || '/';
+  if (normalizedPath === '/map-dgfy/account') return true;
+  if (normalizedPath === '/tenant-store/account') return true;
+  if (/^\/tenant-store\/[^/]+(?:\/[^/]+)?$/i.test(normalizedPath)) return true;
+  if (/^\/store\/[^/]+(?:\/[^/]+)?$/i.test(normalizedPath)) return true;
+  if (/^\/store-template(?:\/[^/]+)?$/i.test(normalizedPath)) return true;
+  if (/^\/storefront-template(?:\/[^/]+)?$/i.test(normalizedPath)) return true;
+  return false;
+};
+
+export const normalizeDgfyReturnTarget = (target = '') => {
+  const normalizedTarget = String(target || '').trim();
+  if (!normalizedTarget) return '';
+
+  if (hasAbsoluteNavigationTarget(normalizedTarget)) {
+    try {
+      const url = new URL(normalizedTarget);
+      if (!isValidStorefrontReturnPath(url.pathname)) {
+        return resolveStorefrontAccountUrl();
+      }
+      return url.toString();
+    } catch {
+      return resolveStorefrontAccountUrl();
+    }
+  }
+
+  if (normalizedTarget.startsWith('/')) {
+    return isValidStorefrontReturnPath(normalizedTarget)
+      ? normalizedTarget
+      : resolveStorefrontAccountUrl();
+  }
+
+  return resolveStorefrontAccountUrl();
+};
+
 export const resolveDgfyPostAuthTarget = ({ intent = 'customer', returnTo = '' } = {}) => {
-  if (returnTo) return String(returnTo).trim();
+  if (returnTo) return normalizeDgfyReturnTarget(returnTo);
   if (normalizeDgfyIntent(intent) === 'register-business') {
     return DGFY_REGISTER_COMPANY_ENTRY;
   }
