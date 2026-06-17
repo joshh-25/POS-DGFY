@@ -6,6 +6,7 @@ import {
     buildCreateDgfyHandoffUseCase,
     buildExchangeDgfyHandoffUseCase,
     buildGetDgfyMeUseCase,
+    buildLeaveDgfyCompanyUseCase,
     buildListDgfyAccountCompaniesUseCase,
     buildLoginDgfyAccountUseCase,
     buildRequestDgfyBusinessStepUpUseCase,
@@ -1097,6 +1098,235 @@ describe('dgfyAuthUseCases', () => {
             result: 'failure',
             reason: 'Ownership can only be transferred to an accepted company member.',
             request_id: 'req-transfer-fail'
+        }));
+    });
+
+    it('does not treat a transferred previous founder as owner when tenant owner has changed', async () => {
+        const account = createAccount({ id: 'previous-owner-dgfy' });
+        const repository = {
+            mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([]),
+            mirrorLegacyFounderMembershipsForAccount: jest.fn().mockResolvedValue([]),
+            listMemberships: jest.fn().mockResolvedValue([{
+                id: 91,
+                dgfy_account_id: account.id,
+                tenant_id: 'tenant-transferred',
+                tenant_user_id: 12,
+                role: 'admin',
+                status: 'accepted',
+                source: 'founder',
+                tenant: {
+                    id: 'tenant-transferred',
+                    name: 'Transferred Foods',
+                    company_token: 'secret-transferred-token',
+                    status: 'active',
+                    plan: 'premium',
+                    owner_dgfy_account_id: 'new-owner-dgfy'
+                }
+            }])
+        };
+        const useCase = buildListDgfyAccountCompaniesUseCase({ repository });
+
+        const result = await useCase({ account });
+
+        expect(result.success).toBe(true);
+        expect(result.data.payload.data.owned_companies).toEqual([]);
+        expect(result.data.payload.data.invited_companies).toEqual([
+            expect.objectContaining({
+                tenant_id: 'tenant-transferred',
+                is_owner: false,
+                ownership: 'member',
+                can_leave: true,
+                can_transfer_ownership: false,
+                group: 'invited'
+            })
+        ]);
+        expect(JSON.stringify(result.data.payload.data)).not.toContain('secret-transferred-token');
+    });
+
+    it('blocks company leave for the current owner before repository mutation', async () => {
+        const account = createAccount({ id: 'owner-dgfy' });
+        const membership = {
+            id: 92,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-own',
+            status: 'accepted',
+            source: 'founder',
+            tenant: {
+                id: 'tenant-own',
+                name: 'Owner Foods',
+                status: 'active',
+                owner_dgfy_account_id: account.id
+            }
+        };
+        const repository = {
+            findMembershipForAccount: jest.fn().mockResolvedValue(membership),
+            leaveMembership: jest.fn(),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const useCase = buildLeaveDgfyCompanyUseCase({ repository });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-own',
+            metadata: { request_id: 'req-owner-leave' }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(403);
+        expect(repository.leaveMembership).not.toHaveBeenCalled();
+        expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'company_leave_failed',
+            result: 'failure',
+            reason: 'Company owners must transfer ownership before leaving.',
+            request_id: 'req-owner-leave'
+        }));
+    });
+
+    it('allows a transferred former founder member to leave after ownership moved', async () => {
+        const account = createAccount({ id: 'previous-owner-dgfy' });
+        const membership = {
+            id: 93,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-own',
+            status: 'accepted',
+            source: 'founder',
+            tenant: {
+                id: 'tenant-own',
+                name: 'Owner Foods',
+                status: 'active',
+                owner_dgfy_account_id: 'new-owner-dgfy'
+            }
+        };
+        const removedMembership = { ...membership, status: 'removed' };
+        const repository = {
+            findMembershipForAccount: jest.fn().mockResolvedValue(membership),
+            leaveMembership: jest.fn().mockResolvedValue(removedMembership),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const useCase = buildLeaveDgfyCompanyUseCase({ repository });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-own',
+            metadata: { request_id: 'req-former-owner-leave' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.leaveMembership).toHaveBeenCalledWith({ membership });
+        expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'company_leave_success',
+            result: 'success',
+            request_id: 'req-former-owner-leave'
+        }));
+    });
+
+    it('audits invitation acceptance failure when business step-up OTP is invalid or replayed', async () => {
+        const account = createAccount();
+        const membership = {
+            id: 94,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-1',
+            tenant_user_id: 6,
+            role: 'staff',
+            status: 'pending',
+            source: 'invite',
+            tenant: {
+                id: 'tenant-1',
+                name: 'Replay Foods',
+                company_token: 'secret-replay-token',
+                status: 'active',
+                plan: 'premium'
+            }
+        };
+        const repository = {
+            findMembershipById: jest.fn().mockResolvedValue(membership),
+            acceptInvitationMembership: jest.fn(),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null),
+            markBusinessStepUpVerified: jest.fn()
+        };
+        const verifyEmailOtp = jest.fn().mockRejectedValue(Object.assign(
+            new Error('Invalid or expired security code.'),
+            { statusCode: 401 }
+        ));
+        const useCase = buildAcceptDgfyInvitationUseCase({ repository, verifyEmailOtp });
+
+        const result = await useCase({
+            account,
+            membershipId: '94',
+            body: { email_otp_code: '123456' },
+            metadata: { request_id: 'req-invite-replay' }
+        });
+
+        expect(result.success).toBe(false);
+        expect(repository.acceptInvitationMembership).not.toHaveBeenCalled();
+        expect(repository.markBusinessStepUpVerified).not.toHaveBeenCalled();
+        expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'invitation_accept_failed',
+            result: 'failure',
+            reason: 'Invalid or expired security code.',
+            request_id: 'req-invite-replay'
+        }));
+        expect(JSON.stringify(result)).not.toContain('secret-replay-token');
+    });
+
+    it('audits DGFY POS terminal registry denial separately from authentication', async () => {
+        const account = createAccount({ id: 'dgfy-pos-terminal-denied' });
+        const membership = {
+            id: 95,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-pos',
+            tenant_user_id: 8,
+            status: 'accepted',
+            tenant: {
+                id: 'tenant-pos',
+                name: 'POS Foods',
+                status: 'active'
+            }
+        };
+        const terminalError = Object.assign(new Error('terminal_id "COUNTER-99" is not an active registry terminal.'), {
+            statusCode: 422,
+            details: {
+                terminal_identity_policy: {
+                    reason_code: 'TERMINAL_NOT_REGISTERED'
+                }
+            }
+        });
+        const repository = {
+            findMembershipForAccount: jest.fn().mockResolvedValue(membership),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const useCase = buildStartDgfyPosSessionUseCase({
+            repository,
+            createTenantSessionForDgfyAccount: jest.fn().mockResolvedValue({
+                permissions: ['pos:view'],
+                company: { id: 'tenant-pos', token: 'secret-pos-token' }
+            }),
+            validateTerminalPolicy: jest.fn().mockRejectedValue(terminalError)
+        });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-pos',
+            body: { terminal_id: 'counter-99' },
+            metadata: { request_id: 'req-pos-terminal-denied' }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+        expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'pos_unlock_attempted',
+            result: 'success',
+            request_id: 'req-pos-terminal-denied'
+        }));
+        expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'pos_unlock_failed',
+            result: 'failure',
+            reason: 'terminal_id "COUNTER-99" is not an active registry terminal.',
+            request_id: 'req-pos-terminal-denied',
+            metadata: expect.objectContaining({
+                terminal_id: 'COUNTER-99',
+                reason_code: 'TERMINAL_NOT_REGISTERED'
+            })
         }));
     });
 });

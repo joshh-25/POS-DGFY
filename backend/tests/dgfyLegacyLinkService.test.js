@@ -145,4 +145,47 @@ describe('dgfyLegacyLinkService', () => {
       request_id: 'req-legacy-link-fail'
     }));
   });
+
+  it('blocks legacy link when signed-in DGFY email does not match tenant-local email', async () => {
+    const req = buildReq();
+    mockRepository.findById.mockResolvedValue({
+      id: 'dgfy-1',
+      email: 'different@example.test',
+      is_active: true,
+      deleted_at: null
+    });
+
+    await expect(completeLegacyLink({
+      req,
+      body: { email_otp_code: '123456' },
+      metadata: { request_id: 'req-legacy-email-mismatch' }
+    })).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'DGFY_LEGACY_LINK_EMAIL_MISMATCH'
+    });
+
+    expect(mockRepository.transaction).not.toHaveBeenCalled();
+    expect(mockRepository.upsertAcceptedLegacyMembership).not.toHaveBeenCalled();
+    expect(mockAddEmailTenantMapping).not.toHaveBeenCalled();
+    expect(mockRepository.createBusinessAuditLogStrict).not.toHaveBeenCalled();
+  });
+
+  it('blocks legacy link when the DGFY session token is blacklisted', async () => {
+    const req = buildReq();
+    mockIsTokenBlacklisted.mockResolvedValue(true);
+
+    await expect(completeLegacyLink({
+      req,
+      body: { email_otp_code: '123456' },
+      metadata: { request_id: 'req-legacy-blacklisted' }
+    })).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'DGFY account session has been revoked.'
+    });
+
+    expect(mockRepository.findById).not.toHaveBeenCalled();
+    expect(mockRepository.transaction).not.toHaveBeenCalled();
+    expect(mockRepository.upsertAcceptedLegacyMembership).not.toHaveBeenCalled();
+    expect(mockAddEmailTenantMapping).not.toHaveBeenCalled();
+  });
 });
