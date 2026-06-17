@@ -21,6 +21,16 @@ const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`
 const runtimeConfig = getRuntimeConfig(import.meta.env, typeof window !== 'undefined' ? window.location : undefined)
 const runtimeApiBaseUrl = resolveApiBaseUrl(import.meta.env, typeof window !== 'undefined' ? window.location : undefined)
 const RootRouter = runtimeConfig.isDesktopShell ? HashRouter : BrowserRouter
+const devAutoLoginEnabled = String(import.meta.env.VITE_DEV_AUTO_LOGIN_ENABLED || '').trim().toLowerCase() === 'true'
+
+const shouldRunDevAutoLogin = () => {
+  if (!import.meta.env.DEV) return false
+  if (!devAutoLoginEnabled) return false
+  if (typeof window === 'undefined') return false
+  const pathname = String(window.location?.pathname || '/')
+  if (pathname === '/terminal' || pathname.startsWith('/terminal/')) return false
+  return shouldRefreshBrowserSessionForPath(pathname)
+}
 
 const applyDesktopShellBootstrap = () => {
   if (typeof window === 'undefined') return
@@ -298,10 +308,9 @@ const mountApp = () => {
   registerAdminServiceWorker()
 }
 
-// Dev-only auto-login: when running locally, seed a valid tenant + auth session
-// so the POS UI opens unlocked without manual sign-in. This is intentionally
-// gated to development builds only.
-if (import.meta.env.DEV) {
+// Dev-only auto-login: opt-in local convenience for protected IMS routes only.
+// DGFY auth and POS terminal lock routes must render without hidden tenant login.
+if (shouldRunDevAutoLogin()) {
   (async () => {
     try {
       const AUTO_EMAIL = 'admin@test.com';

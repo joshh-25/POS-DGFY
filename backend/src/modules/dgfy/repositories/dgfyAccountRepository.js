@@ -35,6 +35,16 @@ const maskPhone = (value) => {
     return `${'*'.repeat(Math.max(4, raw.length - 4))}${raw.slice(-4)}`;
 };
 
+const membershipIsCurrentOwner = (membership) => {
+    const tenant = membership?.tenant || null;
+    const ownerAccountId = String(tenant?.owner_dgfy_account_id || '').trim();
+    const membershipAccountId = String(membership?.dgfy_account_id || '').trim();
+    if (ownerAccountId) {
+        return Boolean(membershipAccountId && ownerAccountId === membershipAccountId);
+    }
+    return String(membership?.source || '').trim().toLowerCase() === 'founder';
+};
+
 const buildUniqueUsername = async (User, baseName, currentUserId = null, options = {}) => {
     const base = normalizeName(baseName).replace(/[^\w.-]+/g, '').slice(0, 45) || 'dgfy';
     let candidate = base;
@@ -924,9 +934,7 @@ export const dgfyAccountRepository = {
             throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Company membership not found.', { statusCode: 404 });
         }
         const tenant = membership.tenant;
-        const isOwner = String(tenant?.owner_dgfy_account_id || '') === String(membership.dgfy_account_id || '')
-            || String(membership.source || '').toLowerCase() === 'founder';
-        if (isOwner) {
+        if (membershipIsCurrentOwner(membership)) {
             throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Company owners must transfer ownership before leaving.', { statusCode: 403 });
         }
 
@@ -967,6 +975,16 @@ export const dgfyAccountRepository = {
             ownership_transferred_by: fromAccountId,
             ownership_transferred_at: new Date()
         });
+        const previousOwnerMembership = await DgfyAccountTenantMembership.findOne({
+            where: {
+                dgfy_account_id: fromAccountId,
+                tenant_id: tenant.id,
+                status: 'accepted'
+            }
+        });
+        if (previousOwnerMembership) {
+            await previousOwnerMembership.update({ source: 'invite' });
+        }
         const targetMembership = await DgfyAccountTenantMembership.findOne({
             where: {
                 dgfy_account_id: toAccountId,

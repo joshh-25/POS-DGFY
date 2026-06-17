@@ -104,16 +104,23 @@ const buildBusinessAuditPayload = ({
     metadata: metadata.extra || null
 });
 
+const isMembershipOwner = (membership, accountId = '') => {
+    const tenant = membership?.tenant || null;
+    const ownerAccountId = String(tenant?.owner_dgfy_account_id || '').trim();
+    const currentAccountId = String(accountId || membership?.dgfy_account_id || '').trim();
+    if (ownerAccountId) {
+        return Boolean(currentAccountId && ownerAccountId === currentAccountId);
+    }
+    return String(membership?.source || '').trim().toLowerCase() === 'founder';
+};
+
 const serializeCompanyMembership = (membership, { currentTenantToken = '', accountId = '' } = {}) => {
     const tenant = membership?.tenant || null;
     const status = String(membership?.status || '').trim().toLowerCase();
     const tenantStatus = String(tenant?.status || '').trim().toLowerCase();
     const isAccepted = status === 'accepted';
     const isTenantActive = tenantStatus === 'active';
-    const ownerAccountId = String(tenant?.owner_dgfy_account_id || '').trim();
-    const currentAccountId = String(accountId || membership?.dgfy_account_id || '').trim();
-    const isOwner = Boolean(ownerAccountId && currentAccountId && ownerAccountId === currentAccountId)
-        || (!ownerAccountId && String(membership?.source || '').trim().toLowerCase() === 'founder');
+    const isOwner = isMembershipOwner(membership, accountId);
     const canSwitch = isAccepted && isTenantActive;
     return {
         membership_id: membership?.id,
@@ -1160,6 +1167,9 @@ export const buildLeaveDgfyCompanyUseCase = ({ repository }) => async ({ account
         });
         if (!membership || !membership.tenant || membership.tenant.status !== 'active') {
             throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Active company membership not found.', { statusCode: 404 });
+        }
+        if (isMembershipOwner(membership, account.id)) {
+            throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Company owners must transfer ownership before leaving.', { statusCode: 403 });
         }
         const removed = await repository.leaveMembership({ membership });
         await repository.createBusinessAuditLog?.(buildBusinessAuditPayload({

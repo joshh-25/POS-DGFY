@@ -10,6 +10,7 @@ const dgfyRequestConfig = (token = getStoredDgfyToken()) => {
   const base = {
     skipTenantAuthHeaders: true,
     skipAuthRefresh: true,
+    skipGlobalErrorToast: true,
     withCredentials: true
   };
   return normalizedToken
@@ -26,12 +27,14 @@ const dgfyBusinessRequestConfig = (token = getStoredDgfyToken()) => {
   const normalizedToken = String(token || '').trim();
   if (normalizedToken) return dgfyRequestConfig(normalizedToken);
   return {
-    withCredentials: true
+    withCredentials: true,
+    skipGlobalErrorToast: true
   };
 };
 
 const dgfyTenantBridgeRequestConfig = () => ({
   withCredentials: true,
+  skipGlobalErrorToast: true,
   headers: {
     'x-dgfy-auth-mode': 'tenant_membership'
   }
@@ -112,7 +115,7 @@ export const clearDgfySession = () => {
 };
 
 export const registerDgfyAccount = async (payload) => {
-  const response = await api.post('/dgfy/auth/register', payload);
+  const response = await api.post('/dgfy/auth/register', payload, dgfyRequestConfig(''));
   const data = response.data.data;
   storeDgfySession(data);
   return data;
@@ -122,17 +125,17 @@ export const requestDgfyRegistrationEmailVerification = async (email) => {
   const response = await api.post('/auth/email-otp/request', {
     purpose: 'dgfy_account_verification',
     email
-  });
+  }, dgfyRequestConfig(''));
   return response.data.data;
 };
 
 export const fetchDgfyLegalTerms = async () => {
-  const response = await api.get('/dgfy/legal-terms/current');
+  const response = await api.get('/dgfy/legal-terms/current', dgfyRequestConfig(''));
   return response.data.data;
 };
 
 export const loginDgfyAccount = async (payload) => {
-  const response = await api.post('/dgfy/auth/login', payload);
+  const response = await api.post('/dgfy/auth/login', payload, dgfyRequestConfig(''));
   const data = response.data.data;
   storeDgfySession(data);
   return data;
@@ -172,12 +175,12 @@ export const verifyDgfyEmail = async (code, token = getStoredDgfyToken()) => {
 };
 
 export const requestDgfyPasswordReset = async (email) => {
-  const response = await api.post('/dgfy/auth/password-reset/request', { email });
+  const response = await api.post('/dgfy/auth/password-reset/request', { email }, dgfyRequestConfig(''));
   return response.data.data;
 };
 
 export const completeDgfyPasswordReset = async (payload) => {
-  const response = await api.post('/dgfy/auth/password-reset/complete', payload);
+  const response = await api.post('/dgfy/auth/password-reset/complete', payload, dgfyRequestConfig(''));
   return response.data.data;
 };
 
