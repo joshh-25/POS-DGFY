@@ -19,6 +19,8 @@ export const errorHandler = (err, req, res, _next) => {
   const errors = mappedDomainError?.payload?.details || err.errors || null;
   const errorCode = mappedDomainError?.payload?.code || err.code || null;
   const requestId = req.requestId || res.locals.requestId || null;
+  const traceId = req.traceId || res.locals.traceId || requestId;
+  res.locals.errorCode = errorCode;
 
   // Log error with Winston
   const logData = {
@@ -30,6 +32,7 @@ export const errorHandler = (err, req, res, _next) => {
     user_id: req.user?.user_id || null,
     ip: req.ip || req.connection.remoteAddress,
     request_id: requestId,
+    trace_id: traceId,
     error_code: errorCode
   };
 
@@ -63,6 +66,7 @@ export const errorHandler = (err, req, res, _next) => {
         message: `Required: ${ing.required} ${ing.unit}, Available: ${ing.available} ${ing.unit}, Shortage: ${ing.shortage} ${ing.unit}`
       })),
       request_id: requestId,
+      trace_id: traceId,
       timestamp: new Date().toISOString()
     });
   }
@@ -74,6 +78,7 @@ export const errorHandler = (err, req, res, _next) => {
     error_code: errorCode,
     errors,
     request_id: requestId,
+    trace_id: traceId,
     timestamp: new Date().toISOString()
   });
 };

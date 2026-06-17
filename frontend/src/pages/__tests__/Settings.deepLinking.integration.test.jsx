@@ -66,7 +66,14 @@ vi.mock('../../../Components/users/UserManagementModal.jsx', () => ({
 }));
 
 vi.mock('../../components/maps/MapPinPicker.jsx', () => ({
-  default: () => <div>MapPicker</div>
+  default: ({ onChange }) => (
+    <button
+      type="button"
+      onClick={() => onChange?.({ latitude: 10.720263, longitude: 122.599488, address_line: 'Villa Road, Iloilo City' })}
+    >
+      MapPicker
+    </button>
+  )
 }));
 
 vi.mock('../../features/compliance/components/ComplianceProgramPanel.jsx', () => ({
@@ -341,6 +348,56 @@ describe('Settings deep-linking and action wiring', () => {
     renderSettings('/settings?tab=storefront');
 
     expect(await screen.findByText(/will not publish until an active primary storefront pin is saved/i)).toBeTruthy();
+  });
+
+  it('persists reversible no-location storefront setup and restores map pin editing', async () => {
+    const user = userEvent.setup();
+    mocks.settingsServiceMock.getAllSettings.mockResolvedValueOnce({
+      storefront_cover_image_url: { value: '/uploads/storefront-assets/t1/cover.png' },
+      storefront_profile_image_url: { value: '/uploads/storefront-assets/t1/profile.png' },
+      store_is_visible: { value: true, data_type: 'boolean' },
+      store_has_no_location: { value: false, data_type: 'boolean' }
+    });
+
+    renderSettings('/settings?tab=storefront');
+    const noLocationLabel = await screen.findByText('This Store Has No Location');
+    const noLocationCard = noLocationLabel.closest('.rounded-lg');
+    const noLocationSwitch = within(noLocationCard).getByRole('switch');
+
+    expect(screen.getByText('MapPicker')).toBeTruthy();
+    await user.click(noLocationSwitch);
+
+    expect(screen.queryByText('MapPicker')).toBeNull();
+    expect(screen.getAllByText(/Location actions are paused while the store is excluded from map pins/i).length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole('button', { name: /Save Changes/i }));
+    await waitFor(() => expect(mocks.settingsServiceMock.updateSettings).toHaveBeenCalled());
+    expect(mocks.settingsServiceMock.updateSettings.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({
+      store_is_visible: true,
+      store_has_no_location: true
+    }));
+
+    await user.click(noLocationSwitch);
+    expect(await screen.findByText('MapPicker')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'MapPicker' }));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Street, City, Province').value).toBe('Villa Road, Iloilo City');
+    });
+    await user.clear(screen.getByPlaceholderText('Main Branch'));
+    await user.type(screen.getByPlaceholderText('Main Branch'), 'Restored Branch');
+    await user.clear(screen.getByPlaceholderText('Street, City, Province'));
+    await user.type(screen.getByPlaceholderText('Street, City, Province'), 'Restored Road');
+    const primaryPinLabel = screen.getByText('Primary Storefront Pin');
+    const primaryPinCard = primaryPinLabel.closest('.space-y-2');
+    await user.click(within(primaryPinCard).getByRole('switch'));
+    await user.click(screen.getByRole('button', { name: /Add Location/i }));
+
+    await waitFor(() => expect(mocks.tenantLocationServiceMock.createTenantLocation).toHaveBeenCalled());
+    expect(mocks.tenantLocationServiceMock.createTenantLocation.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({
+      name: 'Restored Branch',
+      address_line: 'Restored Road',
+      is_primary_storefront: true
+    }));
   });
 
   it('shows Customer Access Mode rollback status when the backend runtime flag is disabled', async () => {

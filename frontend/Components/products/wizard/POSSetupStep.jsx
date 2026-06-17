@@ -4,6 +4,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import StorefrontImageCarousel from '@/components/items/StorefrontImageCarousel';
+import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarousel';
+import { toast } from 'sonner';
 
 const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
 
@@ -110,6 +112,30 @@ export default function POSSetupStep({
         }
       ];
     updateData({ storefront_location_availability: nextRows });
+  };
+
+  const selectedStorefrontImageFiles = Array.isArray(data?.storefront_image_files)
+    ? data.storefront_image_files.filter(Boolean).slice(0, STOREFRONT_ITEM_IMAGE_MAX_COUNT)
+    : [];
+
+  const handleSelectStorefrontImageFiles = (selectedFiles) => {
+    if (!updateData) return;
+    const remainingSlots = Math.max(STOREFRONT_ITEM_IMAGE_MAX_COUNT - selectedStorefrontImageFiles.length, 0);
+    const files = (Array.isArray(selectedFiles) ? selectedFiles : []).slice(0, remainingSlots);
+    if (selectedFiles.length > files.length) {
+      toast.error(`Only ${remainingSlots} more item image${remainingSlots === 1 ? '' : 's'} can be selected. Galleries are limited to ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images.`);
+    }
+    if (files.length === 0) return;
+    updateData({
+      storefront_image_files: [...selectedStorefrontImageFiles, ...files].slice(0, STOREFRONT_ITEM_IMAGE_MAX_COUNT)
+    });
+  };
+
+  const removeSelectedStorefrontImageFile = (imageIndex) => {
+    if (!updateData) return;
+    updateData({
+      storefront_image_files: selectedStorefrontImageFiles.filter((_, index) => index !== imageIndex)
+    });
   };
 
   return (
@@ -251,7 +277,11 @@ export default function POSSetupStep({
                   className="hidden"
                   onChange={(event) => {
                     const remainingSlots = STOREFRONT_ITEM_IMAGE_MAX_COUNT - storefrontGallery.length;
-                    const files = Array.from(event.target.files || []).slice(0, Math.max(remainingSlots, 0));
+                    const selectedFiles = Array.from(event.target.files || []);
+                    const files = selectedFiles.slice(0, Math.max(remainingSlots, 0));
+                    if (selectedFiles.length > files.length) {
+                      toast.error(`Only ${Math.max(remainingSlots, 0)} more item image${remainingSlots === 1 ? '' : 's'} can be uploaded. Galleries are limited to ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images.`);
+                    }
                     if (files.length && onUploadStorefrontImage) {
                       onUploadStorefrontImage(productItem, files);
                     }
@@ -274,9 +304,32 @@ export default function POSSetupStep({
             </div>
           </div>
         ) : (
-          <p className="text-sm text-slate-500">
-            Save the product first, then reopen it to configure storefront visibility and item image.
-          </p>
+          <div className="space-y-3">
+            <p className="text-sm text-slate-500">
+              Choose item images now. They will be uploaded after the product is saved.
+            </p>
+            <label className="inline-flex cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100">
+              Choose Item Images
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(event) => {
+                  handleSelectStorefrontImageFiles(Array.from(event.target.files || []));
+                  event.target.value = '';
+                }}
+              />
+            </label>
+            <p className="text-xs text-slate-500">
+              {Math.max(STOREFRONT_ITEM_IMAGE_MAX_COUNT - selectedStorefrontImageFiles.length, 0)} of {STOREFRONT_ITEM_IMAGE_MAX_COUNT} image slots remaining.
+            </p>
+            <SelectedItemImageCarousel
+              files={selectedStorefrontImageFiles}
+              itemName={data?.name || 'Product'}
+              onRemove={removeSelectedStorefrontImageFile}
+            />
+          </div>
         )}
         </div>
         )}

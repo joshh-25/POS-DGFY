@@ -156,6 +156,7 @@ Supported purposes:
 - `invitation_acceptance`: body requires `invitation_token`; the backend resolves tenant context and invited email from the invitation when `x-company-token` is absent.
 - `dgfy_account_verification`: body requires `email` for DGFY account registration before account creation. The public request is landlord-global, does not require a company token, and must ignore stale browser tenant context because `/dgfy/auth/register` verifies only a global OTP. Existing signed-in accounts can also request this purpose through the authenticated DGFY account endpoint.
 - `dgfy_password_reset`: requested through the DGFY password recovery flow before changing a global DGFY account password.
+- `dgfy_business_step_up`: requested through the authenticated DGFY business-management surface before accepting an invitation or switching companies. This version is email-only and does not use mobile/SMS OTP.
 
 Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 10), lock after `EMAIL_OTP_MAX_ATTEMPTS` (default 5), and are consumed with a conditional update so a concurrently submitted request cannot reuse a code after it is consumed. Production enables enforcement by default; `EMAIL_OTP_ENFORCEMENT_ENABLED=false` is the rollback switch.
 
@@ -2910,7 +2911,8 @@ Return tenant system settings for IMS Settings.
 
 **Response Notes**
 - Persisted settings are returned by key from tenant `system_settings`.
-- `store_is_visible.value=true` means the tenant may appear in public DGFY discovery/map feeds and public storefront profile reads once a valid active primary location exists. Enabling it does not create a location pin by itself. `store_is_visible.value=false` hides both the discovery/map listing and the canonical root-handle public profile page (`/:store_tenant_slug`). `/store/:slug` and `/tenant-store/:slug` are compatibility paths only.
+- `store_is_visible.value=true` means the tenant may appear in public DGFY discovery search and public storefront profile reads. A map pin requires a valid active primary location unless `store_has_no_location.value=true`, in which case the storefront remains searchable/profile-readable but is excluded from map pins, embedded profile maps, directions links, and public branch-location responses. `store_is_visible.value=false` hides both discovery and the canonical root-handle public profile page (`/:store_tenant_slug`). `/store/:slug` and `/tenant-store/:slug` are compatibility paths only.
+- `store_has_no_location.value=true` is a reversible merchant setting. It preserves saved IMS tenant locations but public Storefront APIs must treat the storefront as search/profile-only until the setting is turned off and a primary pin is published.
 - `customer_access_modes_enabled` is an additive read-only virtual key, not a persisted tenant setting. It reflects the effective runtime Customer Access Mode enforcement state for the current tenant context.
 - `customer_access_modes_enabled.value=true` means public Storefront Customer Access Mode enforcement is active for the tenant.
 - `customer_access_modes_enabled.value=false` means the global rollback switch is active for the tenant. Operators should treat `CUSTOMER_ACCESS_MODES_ENABLED=false` as rollback-only and use `CUSTOMER_ACCESS_MODES_ENABLED_TENANTS` for tenant re-enablement while recovery evidence is gathered.
@@ -3023,6 +3025,7 @@ List publicly discoverable stores for list/grid/map storefront views.
 
 **Search Notes**
 - Tenants with `store_is_visible=false` are excluded from public discovery/map responses and public profile reads. This tenant-level public visibility switch is evaluated before Customer Access Mode; hidden tenants are not exposed as Map Listing Only entries.
+- Tenants with `store_is_visible=true` and `store_has_no_location=true` are included only when the customer expresses search/filter intent. Their discovery/profile coordinates are nullable, `/storefront/discovery/map-pins` excludes them, and clients must not coerce nullable coordinates to `0`.
 - Item-name search includes tenants that have matching catalog items from indexed storefront snapshots.
 - Search matching is index-backed and deterministic. It is not a general fuzzy-search engine; bounded alias expansion is shared between `item_search_snapshot` generation and discovery query matching so common public terms can match equivalent catalog/service wording without making unrelated short strings match.
 - Default item-search behavior is stock-aware (`in_stock_only`) unless caller explicitly requests `include_out_of_stock`.
@@ -4690,7 +4693,7 @@ Sign in to a global DGFY account.
 
 ### POST /dgfy/auth/logout
 
-Requires `Authorization: Bearer <dgfy-account-token>`.
+Requires an authenticated DGFY account JWT or `sku_dgfy_session` cookie.
 
 Blacklist the current DGFY account JWT. Tenant-local SKUpervisor and Store JWT sessions are separate and are not revoked by this route.
 
@@ -4871,9 +4874,17 @@ Public, rate-limited. Verify a `dgfy_password_reset` code and set the new DGFY a
 
 ### POST /dgfy/invitations/:membership_id/accept
 
-Requires `Authorization: Bearer <dgfy-account-token>`.
+Requires an authenticated DGFY account JWT, `sku_dgfy_session` cookie, or a normal IMS tenant session whose current tenant user is explicitly linked to an accepted `DgfyAccountTenantMembership`.
 
-Accept a pending company invitation from the DGFY account notification surface. This path does not require an invitation link, company token in the URL, or a tenant-local password setup form. The backend activates the matching tenant-local invitation row from the authenticated DGFY account, copies the DGFY email/phone/password hash into that tenant user, writes the landlord email-to-tenant mapping, and marks the DGFY membership accepted.
+Accept a pending company invitation from the DGFY account notification surface. This path does not require an invitation link, company token in the URL, or a tenant-local password setup form. The backend activates the matching tenant-local invitation row from the authenticated DGFY account, copies the DGFY email/phone/password hash into that tenant user, writes the landlord email-to-tenant mapping, and marks the DGFY membership accepted. The request requires a `dgfy_business_step_up` email OTP code sent to the DGFY account email unless the account has a still-valid recent business step-up.
+
+**Request**
+
+```json
+{
+  "email_otp_code": "123456"
+}
+```
 
 **Response (200)**
 
@@ -4889,11 +4900,74 @@ Accept a pending company invitation from the DGFY account notification surface. 
       "status": "accepted",
       "source": "invite",
       "company": {
-        "name": "Example Foods",
-        "company_token": "tenant-token"
+        "id": "tenant-uuid",
+        "name": "Example Foods"
       }
     }
   }
+}
+```
+
+### GET /dgfy/account/companies
+
+Requires an authenticated DGFY account JWT, `sku_dgfy_session` cookie, or a normal IMS tenant session whose current tenant user is explicitly linked to an accepted `DgfyAccountTenantMembership`.
+
+Return companies connected to the DGFY account. Accepted active memberships are switchable. Pending IMS email invitations are visible but not switchable until accepted. Verified DGFY accounts may also mirror legacy founder/master-admin companies into accepted `source='founder'` memberships before listing, but only after the landlord email mapping, active tenant, active non-deleted tenant-local user, exact normalized email match, and `is_master_admin=true` checks pass. The response does not expose tenant `company_token`.
+
+The IMS tenant-session path is available for the SKUpervisor company switcher after direct IMS login. It resolves the DGFY account only through the accepted membership row for the current `tenant_id` and tenant-local `user_id`; email or mobile matches alone are rejected.
+
+**Response (200)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "accepted_count": 1,
+    "pending_count": 1,
+    "business_step_up": {
+      "verified": false,
+      "verified_at": null,
+      "expires_at": null
+    },
+    "companies": [
+      {
+        "membership_id": 12,
+        "tenant_id": "tenant-uuid",
+        "tenant_user_id": 7,
+        "company_name": "Example Foods",
+        "role": "admin",
+        "source": "founder",
+        "membership_status": "accepted",
+        "tenant_status": "active",
+        "plan": "premium",
+        "accepted_at": "2026-06-16T10:00:00.000Z",
+        "last_selected_at": "2026-06-16T10:15:00.000Z",
+        "is_current": true,
+        "can_switch": true,
+        "requires_action": null
+      }
+    ]
+  }
+}
+```
+
+### POST /dgfy/account/business-step-up/request
+
+Requires an authenticated DGFY account JWT, `sku_dgfy_session` cookie, or a normal IMS tenant session whose current tenant user is explicitly linked to an accepted `DgfyAccountTenantMembership`.
+
+Send a six-digit `dgfy_business_step_up` email OTP to the DGFY account email for business-sensitive actions. This version is email-only and does not use mobile/SMS OTP. A successfully verified business action refreshes a short recent-step-up window; while that window is valid, additional business switching/invitation actions do not require another code.
+
+### POST /dgfy/account/companies/:tenant_id/switch
+
+Requires an authenticated DGFY account JWT, `sku_dgfy_session` cookie, or a normal IMS tenant session whose current tenant user is explicitly linked to an accepted `DgfyAccountTenantMembership`.
+
+Switch into an accepted active company membership after email OTP step-up, or while the account has a still-valid recent business step-up window. The response sets normal SKUpervisor tenant refresh/company cookies and returns the standard tenant access session payload without exposing the refresh token.
+
+**Request**
+
+```json
+{
+  "email_otp_code": "123456"
 }
 ```
 
@@ -5757,7 +5831,8 @@ Persist onboarding progress for a step (idempotent).
 - `bulk_items`
 
 For `primary_location`, the payload may include:
-- `public_storefront_visible` (`boolean`, strict JSON boolean): when `false`, the tenant remains hidden from DGFY discovery/map feeds and the canonical root-handle page (`/:store_tenant_slug`); no public pin is required for onboarding readiness. When `true`, the merchant must save a real active primary location before discovery/profile publication can expose the tenant.
+- `public_storefront_visible` (`boolean`, strict JSON boolean): when `false`, the tenant remains hidden from DGFY discovery/map feeds and the canonical root-handle page (`/:store_tenant_slug`); no public pin is required for onboarding readiness. When `true`, the merchant must either save a real active primary location for map publication or set `store_has_no_location=true` for a searchable/profile-only storefront.
+- `store_has_no_location` (`boolean`, strict JSON boolean): when paired with `public_storefront_visible=true`, the tenant can be searched and opened by slug but public map pins, embedded maps, directions links, and public branch-location responses remain disabled.
 - `business_hours`: optional weekly Storefront business-hours schedule persisted to `storefront_hours`.
 - `location_id`, `name`, and `is_primary_storefront`: metadata for the saved tenant location when public visibility is enabled.
 
@@ -5792,6 +5867,8 @@ Exact retries are idempotent at the generated-SKU boundary: when a repeated row 
 - Item images are optional and uploaded after creation through the existing storefront catalog image upload endpoint.
 - The backend derives hidden item defaults such as category, product type, UOM, FIFO behavior, capacity, stock behavior, and a deterministic generated onboarding SKU from the selected preset.
 - Corrected modes validate `mode_item_preset` against the active workflow mode. Placeholder modes use conservative default item behavior until promoted by a governed mode pass.
+- The first-login F&B starter-item UI submits only `mode_item_preset=menu_item` so new merchants create one customer-facing starter menu row first. Ingredients, packaging, and packaged retail rows remain available through normal item management after onboarding.
+- For F&B onboarding only, `product`, `product item`, and `product_item` are accepted aliases for `mode_item_preset=menu_item`. The created row persists as `category=product`, `product_type=finished_goods`, and `mode_item_preset=menu_item` so customer-facing Storefront/POS surfaces can render it as a menu item without making ingredients publicly sellable by default.
 - Partial save is supported: valid rows are created, invalid rows are returned with row-level `errors`.
 - The frontend must not resubmit rows already returned as `created`. Duplicate `client_row_id` values in one request and generated SKU conflicts return row-level failures instead of creating retry duplicates.
 - Completion readiness for corrected modes requires a customer-facing onboarding preset: Food Manufacturing `finished_product`, MSME `product`, Services `service` or `physical_add_on`, and Food & Beverage `menu_item` or `packaged_beverage`. Hospitality readiness is PMS-native and requires an active bookable room type with a positive default rate plus at least one active room.

@@ -129,6 +129,12 @@ function main() {
     }
   }
 
+  const observabilityOk = runCmd('npm', ['run', 'gate:release:observability', '--', '--evidence-dir', evidenceDir], {
+    RELEASE_TARGET_SHA: targetSha,
+    RELEASE_EVIDENCE_DIR: evidenceDir
+  });
+  addGate(gates, 'observability.evidence.report', observabilityOk, 'npm run gate:release:observability -- --evidence-dir <release-evidence-dir>');
+
   const failed = gates.filter((gate) => !gate.ok);
   let verdict = failed.length === 0 ? 'pass' : 'fail';
   let bypass = null;
@@ -161,6 +167,7 @@ function main() {
       qa_rollback_drill_file: qaRollbackResultFile,
       qa_restore_drill_file: qaRestoreResultFile,
       release_verdict_file: verdictFile,
+      observability_evidence_file: path.join(evidenceDir, 'observability_evidence.json'),
     },
     emergency_bypass: bypass,
   };

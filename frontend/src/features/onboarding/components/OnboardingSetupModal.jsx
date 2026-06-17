@@ -20,12 +20,11 @@ import {
   normalizeWorkflowMode
 } from '../../settings/workflowMode.js';
 import {
-  STOREFRONT_BUSINESS_DAY_OPTIONS,
   createDefaultStorefrontBusinessHours,
-  formatStorefrontBusinessHoursDisplay,
   normalizeStorefrontBusinessHours,
   serializeStorefrontBusinessHours
 } from '../../settings/storefrontBusinessHours.js';
+import StorefrontBusinessHoursScheduler from '../../settings/StorefrontBusinessHoursScheduler.jsx';
 import {
   getDefaultItemPreset,
   resolveModeItemTaxonomy
@@ -35,6 +34,7 @@ import {
   createHospitalityRoomType
 } from '../../hospitality/api/hospitalityApi.js';
 import WizardStepNavigator from '../../../components/common/WizardStepNavigator.jsx';
+import SelectedItemImageCarousel from '../../../../Components/items/SelectedItemImageCarousel.jsx';
 
 const WIZARD_STEPS = Object.freeze(['brand_assets', 'primary_location', 'bulk_items']);
 const HOSPITALITY_WIZARD_STEPS = Object.freeze(['brand_assets', 'primary_location', 'hospitality_rooms']);
@@ -48,8 +48,8 @@ const WIZARD_STEP_LABELS = Object.freeze({
     description: 'Public visibility, main location, map pin, and business hours.'
   },
   bulk_items: {
-    name: 'Starter Items',
-    description: 'Create priced starter items and optional Storefront item images.'
+    name: 'Menu Item',
+    description: 'Create a priced menu item and optional Storefront item images.'
   },
   hospitality_rooms: {
     name: 'Starter Rooms',
@@ -108,7 +108,7 @@ const formatRequirementLabel = (key) => {
   const labelMap = {
     store_name_ready: 'Store name available',
     has_primary_storefront_location: 'Primary storefront location set',
-    has_priced_starter_item: 'At least one priced starter item or bookable room'
+    has_priced_starter_item: 'At least one priced menu item or bookable room'
   };
   return labelMap[key] || String(key || '').replace(/_/g, ' ');
 };
@@ -131,8 +131,38 @@ const resolvePresetOptions = (workflowMode) => {
   return [fallbackPreset];
 };
 
+const ONBOARDING_CUSTOMER_FACING_PRESETS = Object.freeze({
+  food_manufacturing: ['finished_product'],
+  msme: ['product'],
+  services: ['service', 'physical_add_on'],
+  fnb: ['menu_item']
+});
+
+const resolveOnboardingPresetOptions = (workflowMode) => {
+  const options = resolvePresetOptions(workflowMode);
+  const normalizedMode = normalizeWorkflowMode(workflowMode);
+  const preferredKeys = ONBOARDING_CUSTOMER_FACING_PRESETS[normalizedMode] || [];
+  const preferredOptions = options.filter((preset) => preferredKeys.includes(preset.key));
+  return preferredOptions.length > 0 ? preferredOptions : options;
+};
+
+const getDefaultOnboardingPreset = (workflowMode) => {
+  const options = resolveOnboardingPresetOptions(workflowMode);
+  return options[0]
+    || getDefaultItemPreset(workflowMode)
+    || fallbackPreset;
+};
+
+const getOnboardingPresetLabel = (workflowMode, preset) => {
+  const normalizedMode = normalizeWorkflowMode(workflowMode);
+  if (normalizedMode === 'fnb' && preset?.key === 'menu_item') return 'Menu Item';
+  if (normalizedMode === 'food_manufacturing' && preset?.key === 'finished_product') return 'Menu Item';
+  if (normalizedMode === 'msme' && preset?.key === 'product') return 'Product Item';
+  return preset?.label || 'Product Item';
+};
+
 const buildEmptyItemRow = (workflowMode) => {
-  const defaultPreset = getDefaultItemPreset(workflowMode) || resolvePresetOptions(workflowMode)[0] || fallbackPreset;
+  const defaultPreset = getDefaultOnboardingPreset(workflowMode);
   return {
     client_row_id: makeRowId(),
     mode_item_preset: defaultPreset.key,
@@ -219,15 +249,17 @@ export default function OnboardingSetupModal({
   const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
   const isHospitalityMode = isHospitalityWorkflowMode(normalizedWorkflowMode);
   const wizardSteps = isHospitalityMode ? HOSPITALITY_WIZARD_STEPS : WIZARD_STEPS;
-  const presetOptions = useMemo(() => resolvePresetOptions(normalizedWorkflowMode), [normalizedWorkflowMode]);
+  const presetOptions = useMemo(() => resolveOnboardingPresetOptions(normalizedWorkflowMode), [normalizedWorkflowMode]);
   const progress = useMemo(() => getProgress(onboarding), [onboarding]);
   const [saving, setSaving] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [logoFile, setLogoFile] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
+  const [assetPreviewUrls, setAssetPreviewUrls] = useState({ profile: '', cover: '' });
   const [locationsLoading, setLocationsLoading] = useState(false);
   const [locationForm, setLocationForm] = useState(() => normalizeLocationForm(currentUser));
   const [publicStorefrontVisible, setPublicStorefrontVisible] = useState(false);
+  const [storeHasNoLocation, setStoreHasNoLocation] = useState(false);
   const [primaryLocationId, setPrimaryLocationId] = useState(null);
   const [itemRows, setItemRows] = useState(() => [buildEmptyItemRow(normalizedWorkflowMode)]);
   const [hospitalityRoomTypeForm, setHospitalityRoomTypeForm] = useState({
@@ -284,6 +316,7 @@ export default function OnboardingSetupModal({
       const savedPrimaryLocationPayload = onboarding?.tenant_onboarding_progress?.step_payloads?.primary_location || {};
       const savedBusinessHours = savedPrimaryLocationPayload?.business_hours;
       setPublicStorefrontVisible(savedPrimaryLocationPayload?.public_storefront_visible === true);
+      setStoreHasNoLocation(savedPrimaryLocationPayload?.store_has_no_location === true);
       setLocationForm({
         ...normalizeLocationForm(currentUser),
         business_hours: normalizeStorefrontBusinessHours(savedBusinessHours)
@@ -297,6 +330,9 @@ export default function OnboardingSetupModal({
         .then(([locations, settings]) => {
           if (settings?.store_is_visible) {
             setPublicStorefrontVisible(settings.store_is_visible.value === true);
+          }
+          if (settings?.store_has_no_location) {
+            setStoreHasNoLocation(settings.store_has_no_location.value === true);
           }
           const rows = Array.isArray(locations) ? locations : [];
           const primary = rows.find((location) => location?.is_primary_storefront === true)
@@ -320,6 +356,18 @@ export default function OnboardingSetupModal({
     }
   }, [currentUser, normalizedWorkflowMode, onboarding, open]);
 
+  useEffect(() => {
+    const canCreateUrl = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function';
+    const profile = logoFile && canCreateUrl ? URL.createObjectURL(logoFile) : '';
+    const cover = coverFile && canCreateUrl ? URL.createObjectURL(coverFile) : '';
+    setAssetPreviewUrls({ profile, cover });
+
+    return () => {
+      if (profile && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(profile);
+      if (cover && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(cover);
+    };
+  }, [logoFile, coverFile]);
+
   if (!open) return null;
 
   const step = wizardSteps[currentStepIndex] || wizardSteps[0];
@@ -341,7 +389,7 @@ export default function OnboardingSetupModal({
   const missingRequirements = progress.missing_requirements;
   const serverHasPrimaryLocation = !missingRequirements.includes('has_primary_storefront_location');
   const serverHasPricedStarterItem = !missingRequirements.includes('has_priced_starter_item');
-  const hasCompletionLocation = publicStorefrontVisible === false || Boolean(primaryLocationId) || serverHasPrimaryLocation;
+  const hasCompletionLocation = publicStorefrontVisible === false || storeHasNoLocation === true || Boolean(primaryLocationId) || serverHasPrimaryLocation;
   const hasCompletionStarterItem = isHospitalityMode
     ? Boolean(hospitalityRoomTypeId) && hospitalityRoomRows.some((row) => row.created_room)
     : itemRows.some((row) => (
@@ -350,9 +398,10 @@ export default function OnboardingSetupModal({
   const hasCompletionStarterSetup = hasCompletionStarterItem || serverHasPricedStarterItem;
   const completionBlockers = [
     hasCompletionLocation ? null : 'save a primary storefront location',
-    hasCompletionStarterSetup ? null : (isHospitalityMode ? 'save one bookable room type and room' : 'save at least one priced starter item')
+    hasCompletionStarterSetup ? null : (isHospitalityMode ? 'save one bookable room type and room' : 'save one priced menu item')
   ].filter(Boolean);
   const completionDisabled = finishing || saving || completionBlockers.length > 0;
+  const locationFieldsDisabled = locationsLoading || publicStorefrontVisible !== true || storeHasNoLocation === true;
 
   const goToNextStep = () => {
     if (!canGoNext) return;
@@ -409,7 +458,8 @@ export default function OnboardingSetupModal({
       is_primary_storefront: true
     };
 
-    if (publicStorefrontVisible && (!payload.name || !payload.address_line || !Number.isFinite(payload.latitude) || !Number.isFinite(payload.longitude))) {
+    const shouldPublishMapPin = publicStorefrontVisible === true && storeHasNoLocation !== true;
+    if (shouldPublishMapPin && (!payload.name || !payload.address_line || !Number.isFinite(payload.latitude) || !Number.isFinite(payload.longitude))) {
       toast.error('Location name, address, latitude, and longitude are required.');
       return;
     }
@@ -417,7 +467,7 @@ export default function OnboardingSetupModal({
     setSaving(true);
     try {
       let saved = null;
-      if (publicStorefrontVisible) {
+      if (shouldPublishMapPin) {
         saved = locationForm.location_id
           ? await updateTenantLocation(locationForm.location_id, payload)
           : await createTenantLocation(payload);
@@ -430,10 +480,11 @@ export default function OnboardingSetupModal({
       await saveOnboardingStep({
         stepKey: 'primary_location',
         payload: {
-          location_id: savedLocationId,
-          name: saved?.name || payload.name,
-          is_primary_storefront: true,
+          location_id: shouldPublishMapPin ? savedLocationId : null,
+          name: shouldPublishMapPin ? (saved?.name || payload.name) : '',
+          is_primary_storefront: shouldPublishMapPin,
           public_storefront_visible: publicStorefrontVisible === true,
+          store_has_no_location: publicStorefrontVisible === true && storeHasNoLocation === true,
           business_hours: serializeStorefrontBusinessHours(locationForm.business_hours)
         }
       });
@@ -441,7 +492,9 @@ export default function OnboardingSetupModal({
         eventKey: 'primary_location_saved',
         metadata: { surface: 'modal' }
       });
-      toast.success(publicStorefrontVisible ? 'Primary storefront location saved.' : 'Public storefront hidden.');
+      toast.success(publicStorefrontVisible
+        ? (storeHasNoLocation ? 'Searchable storefront saved without a map pin.' : 'Primary storefront location saved.')
+        : 'Public storefront hidden.');
       await onRefreshUser?.();
       setMaxReachableStepIndex((prev) => Math.max(prev, 2));
       goToNextStep();
@@ -452,52 +505,18 @@ export default function OnboardingSetupModal({
     }
   };
 
-  const handleLocationPinChange = ({ latitude, longitude }) => {
+  const handleLocationPinChange = ({ latitude, longitude, address_line }) => {
     const formatCoordinate = (value) => {
       const numeric = Number(value);
       return Number.isFinite(numeric) ? numeric.toFixed(6) : String(value || '');
     };
+    const nextAddress = String(address_line || '').trim();
     setLocationForm((prev) => ({
       ...prev,
       latitude: formatCoordinate(latitude),
-      longitude: formatCoordinate(longitude)
+      longitude: formatCoordinate(longitude),
+      ...(nextAddress ? { address_line: nextAddress } : {})
     }));
-  };
-
-  const handleBusinessHoursDayChange = (dayKey, patch) => {
-    setLocationForm((prev) => {
-      const current = normalizeStorefrontBusinessHours(prev.business_hours);
-      return {
-        ...prev,
-        business_hours: {
-          ...current,
-          weekly: {
-            ...current.weekly,
-            [dayKey]: {
-              ...current.weekly[dayKey],
-              ...patch
-            }
-          }
-        }
-      };
-    });
-  };
-
-  const copyMondayBusinessHoursToAllDays = () => {
-    setLocationForm((prev) => {
-      const current = normalizeStorefrontBusinessHours(prev.business_hours);
-      const monday = current.weekly.mon;
-      return {
-        ...prev,
-        business_hours: {
-          ...current,
-          weekly: STOREFRONT_BUSINESS_DAY_OPTIONS.reduce((acc, day) => {
-            acc[day.key] = { ...monday };
-            return acc;
-          }, {})
-        }
-      };
-    });
   };
 
   const updateItemRow = (clientRowId, patch) => {
@@ -514,6 +533,18 @@ export default function OnboardingSetupModal({
     setItemRows((rows) => rows.length === 1 ? rows : rows.filter((row) => (
       row.client_row_id !== clientRowId || isCreatedRow(row)
     )));
+  };
+
+  const removeItemImageFile = (clientRowId, imageIndex) => {
+    setItemRows((rows) => rows.map((row) => {
+      if (row.client_row_id !== clientRowId || isCreatedRow(row)) return row;
+      const nextFiles = getItemImageFiles(row).filter((_, index) => index !== imageIndex);
+      return {
+        ...row,
+        image_file: nextFiles[0] || null,
+        image_files: nextFiles
+      };
+    }));
   };
 
   const updateHospitalityRoomRow = (clientRowId, patch) => {
@@ -757,6 +788,30 @@ export default function OnboardingSetupModal({
           {step === 'brand_assets' && (
             <section className="rounded-lg border border-slate-200 p-4">
               <h3 className="text-sm font-semibold text-slate-900">1) Profile and Cover</h3>
+              <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white">
+                <div className="relative h-32 bg-slate-100">
+                  {assetPreviewUrls.cover ? (
+                    <img src={assetPreviewUrls.cover} alt="Storefront cover preview" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-slate-500">
+                      Storefront cover preview
+                    </div>
+                  )}
+                  <div className="absolute -bottom-8 left-4 h-16 w-16 overflow-hidden rounded-full border-4 border-white bg-slate-100 shadow">
+                    {assetPreviewUrls.profile ? (
+                      <img src={assetPreviewUrls.profile} alt="Storefront profile preview" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-slate-500">
+                        Profile
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="px-4 pb-3 pt-10">
+                  <p className="text-sm font-semibold text-slate-900">{currentUser?.company?.name || 'Storefront preview'}</p>
+                  <p className="mt-1 text-xs text-slate-500">Public storefront preview</p>
+                </div>
+              </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <label className="text-xs text-slate-700">
                   Profile picture
@@ -784,9 +839,9 @@ export default function OnboardingSetupModal({
               <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
                 <label className="flex items-start justify-between gap-3">
                   <span>
-                    <span className="block text-xs font-semibold text-slate-900">Show company on DGFY map and public storefront</span>
+                    <span className="block text-xs font-semibold text-slate-900">Make storefront searchable to customers</span>
                     <span className="mt-1 block text-xs text-slate-500">
-                      When off, shoppers cannot find this company in discovery and the public storefront page is hidden.
+                      When off, shoppers cannot find this company in search and the public storefront page is hidden.
                     </span>
                   </span>
                   <input
@@ -798,89 +853,64 @@ export default function OnboardingSetupModal({
                   />
                 </label>
               </div>
+              {publicStorefrontVisible === true && (
+                <div className="mt-3 rounded-md border border-slate-200 bg-white p-3">
+                  <label className="flex items-start justify-between gap-3">
+                    <span>
+                      <span className="block text-xs font-semibold text-slate-900">This Store Has No Location</span>
+                      <span className="mt-1 block text-xs text-slate-500">
+                        Customers can search for this store and open its public storefront, but it will not appear as a map pin until a location is published.
+                      </span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4"
+                      checked={storeHasNoLocation === true}
+                      disabled={locationsLoading}
+                      onChange={(event) => setStoreHasNoLocation(event.target.checked)}
+                    />
+                  </label>
+                </div>
+              )}
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <label className="text-xs text-slate-700">
                   Location name
-                  <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.name} onChange={(event) => setLocationForm((prev) => ({ ...prev, name: event.target.value }))} disabled={locationsLoading || publicStorefrontVisible !== true} />
+                  <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.name} onChange={(event) => setLocationForm((prev) => ({ ...prev, name: event.target.value }))} disabled={locationFieldsDisabled} />
                 </label>
                 <label className="text-xs text-slate-700">
                   Delivery radius (km)
-                  <input type="number" min={0} max={100} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.delivery_radius_km} onChange={(event) => setLocationForm((prev) => ({ ...prev, delivery_radius_km: event.target.value }))} disabled={locationsLoading || publicStorefrontVisible !== true} />
+                  <input type="number" min={0} max={100} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.delivery_radius_km} onChange={(event) => setLocationForm((prev) => ({ ...prev, delivery_radius_km: event.target.value }))} disabled={locationFieldsDisabled} />
                 </label>
                 <label className="text-xs text-slate-700 sm:col-span-2">
                   Address
-                  <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.address_line} onChange={(event) => setLocationForm((prev) => ({ ...prev, address_line: event.target.value }))} disabled={locationsLoading || publicStorefrontVisible !== true} />
+                  <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.address_line} onChange={(event) => setLocationForm((prev) => ({ ...prev, address_line: event.target.value }))} disabled={locationFieldsDisabled} />
                 </label>
-                <div className="sm:col-span-2">
-                  <Suspense fallback={<div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs font-semibold text-slate-500">Loading map picker...</div>}>
-                    <MapPinPicker
-                      latitude={locationForm.latitude}
-                      longitude={locationForm.longitude}
-                      deliveryRadiusKm={locationForm.delivery_radius_km}
-                      onChange={publicStorefrontVisible ? handleLocationPinChange : undefined}
-                    />
-                  </Suspense>
-                </div>
+                {storeHasNoLocation !== true && (
+                  <div className="sm:col-span-2">
+                    <Suspense fallback={<div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs font-semibold text-slate-500">Loading map picker...</div>}>
+                      <MapPinPicker
+                        latitude={locationForm.latitude}
+                        longitude={locationForm.longitude}
+                        deliveryRadiusKm={locationForm.delivery_radius_km}
+                        onChange={publicStorefrontVisible ? handleLocationPinChange : undefined}
+                      />
+                    </Suspense>
+                  </div>
+                )}
                 <label className="text-xs text-slate-700">
                   Latitude
-                  <input type="number" step="any" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.latitude} onChange={(event) => setLocationForm((prev) => ({ ...prev, latitude: event.target.value }))} disabled={locationsLoading || publicStorefrontVisible !== true} />
+                  <input type="number" step="any" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.latitude} onChange={(event) => setLocationForm((prev) => ({ ...prev, latitude: event.target.value }))} disabled={locationFieldsDisabled} />
                 </label>
                 <label className="text-xs text-slate-700">
                   Longitude
-                  <input type="number" step="any" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.longitude} onChange={(event) => setLocationForm((prev) => ({ ...prev, longitude: event.target.value }))} disabled={locationsLoading || publicStorefrontVisible !== true} />
+                  <input type="number" step="any" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.longitude} onChange={(event) => setLocationForm((prev) => ({ ...prev, longitude: event.target.value }))} disabled={locationFieldsDisabled} />
                 </label>
                 <div className="sm:col-span-2 rounded-md border border-slate-200 p-3">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <p className="text-xs font-semibold text-slate-900">Business hours</p>
-                      <p className="mt-1 text-xs text-slate-500">Used on the public storefront and to prevent checkout outside operating hours. Times use Asia/Manila.</p>
-                      <p className="mt-1 text-xs font-semibold text-slate-700">Preview: {formatStorefrontBusinessHoursDisplay(locationForm.business_hours)}</p>
-                    </div>
-                    <button type="button" onClick={copyMondayBusinessHoursToAllDays} disabled={locationsLoading} className="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-60">
-                      Copy Mon
-                    </button>
-                  </div>
-                  <div className="mt-3 grid gap-2">
-                    {STOREFRONT_BUSINESS_DAY_OPTIONS.map((day) => {
-                      const dayHours = normalizeStorefrontBusinessHours(locationForm.business_hours).weekly[day.key];
-                      const isAllDay = dayHours.enabled && dayHours.open === dayHours.close;
-                      return (
-                        <div key={day.key} className="grid grid-cols-[42px_1fr_1fr_auto_auto] items-center gap-2 rounded-md bg-slate-50 px-2 py-2">
-                          <span className="text-xs font-semibold text-slate-700">{day.label}</span>
-                          <input
-                            type="time"
-                            className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-100 disabled:text-slate-400"
-                            value={dayHours.open}
-                            disabled={!dayHours.enabled || locationsLoading}
-                            onChange={(event) => handleBusinessHoursDayChange(day.key, { open: event.target.value })}
-                          />
-                          <input
-                            type="time"
-                            className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-100 disabled:text-slate-400"
-                            value={dayHours.close}
-                            disabled={!dayHours.enabled || locationsLoading}
-                            onChange={(event) => handleBusinessHoursDayChange(day.key, { close: event.target.value })}
-                          />
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4"
-                            checked={dayHours.enabled}
-                            disabled={locationsLoading}
-                            onChange={(event) => handleBusinessHoursDayChange(day.key, { enabled: event.target.checked })}
-                            aria-label={`${day.label} open`}
-                          />
-                          <button
-                            type="button"
-                            className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-60"
-                            disabled={locationsLoading}
-                            onClick={() => handleBusinessHoursDayChange(day.key, isAllDay ? { open: '09:00', close: '18:00' } : { enabled: true, open: '00:00', close: '00:00' })}
-                          >
-                            {isAllDay ? '24h' : (dayHours.enabled ? 'Set 24h' : 'Closed')}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <StorefrontBusinessHoursScheduler
+                    value={locationForm.business_hours}
+                    disabled={locationsLoading}
+                    onChange={(nextHours) => setLocationForm((prev) => ({ ...prev, business_hours: nextHours }))}
+                  />
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -893,7 +923,7 @@ export default function OnboardingSetupModal({
 
           {step === 'bulk_items' && (
             <section className="rounded-lg border border-slate-200 p-4">
-              <h3 className="text-sm font-semibold text-slate-900">3) Starter Items</h3>
+              <h3 className="text-sm font-semibold text-slate-900">3) Menu Item</h3>
               <div className="mt-3 space-y-3">
                 {itemRows.map((row, index) => (
                   <div key={row.client_row_id} className="rounded-md border border-slate-200 bg-slate-50 p-3">
@@ -902,7 +932,7 @@ export default function OnboardingSetupModal({
                         Item type
                         <select className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm" value={row.mode_item_preset} onChange={(event) => updateItemRow(row.client_row_id, { mode_item_preset: event.target.value })} disabled={isCreatedRow(row) || saving}>
                           {presetOptions.map((preset) => (
-                            <option key={preset.key} value={preset.key}>{preset.label}</option>
+                            <option key={preset.key} value={preset.key}>{getOnboardingPresetLabel(normalizedWorkflowMode, preset)}</option>
                           ))}
                         </select>
                       </label>
@@ -936,14 +966,22 @@ export default function OnboardingSetupModal({
                           className="mt-1 block w-full text-xs"
                           onChange={(event) => {
                             const selectedFiles = Array.from(event.target.files || []);
-                            const files = selectedFiles.slice(0, MAX_ITEM_IMAGE_FILES);
-                            if (selectedFiles.length > MAX_ITEM_IMAGE_FILES) {
-                              toast.error(`Only the first ${MAX_ITEM_IMAGE_FILES} item images will be uploaded.`);
+                            const existingFiles = getItemImageFiles(row);
+                            const remainingSlots = Math.max(MAX_ITEM_IMAGE_FILES - existingFiles.length, 0);
+                            const files = selectedFiles.slice(0, remainingSlots);
+                            if (selectedFiles.length > files.length) {
+                              toast.error(`Only ${remainingSlots} more item image${remainingSlots === 1 ? '' : 's'} can be selected. Galleries are limited to ${MAX_ITEM_IMAGE_FILES} images.`);
                             }
+                            if (files.length === 0) {
+                              event.target.value = '';
+                              return;
+                            }
+                            const nextFiles = [...existingFiles, ...files].slice(0, MAX_ITEM_IMAGE_FILES);
                             updateItemRow(row.client_row_id, {
-                              image_file: files[0] || null,
-                              image_files: files
+                              image_file: nextFiles[0] || null,
+                              image_files: nextFiles
                             });
+                            event.target.value = '';
                           }}
                           disabled={isCreatedRow(row) || saving}
                         />
@@ -951,6 +989,12 @@ export default function OnboardingSetupModal({
                       </label>
                       <div className="flex items-end text-xs text-slate-500">Row {index + 1}</div>
                     </div>
+                    <SelectedItemImageCarousel
+                      files={getItemImageFiles(row)}
+                      itemName={row.name || 'Menu item'}
+                      disabled={isCreatedRow(row) || saving}
+                      onRemove={(imageIndex) => removeItemImageFile(row.client_row_id, imageIndex)}
+                    />
                     {row.status === 'created' && <p className="mt-2 text-xs font-semibold text-emerald-700">Created.</p>}
                     {row.status === 'created_with_image_error' && (
                       <div className="mt-2 flex flex-wrap items-center gap-2">

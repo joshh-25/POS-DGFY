@@ -37,12 +37,12 @@ Adopt a tenant-scoped onboarding lifecycle with soft-reminder UX:
 
 4. First-login wizard steps
 - `brand_assets`: optional storefront profile picture and cover photo. Missing images never block completion.
-- `primary_location`: captures whether the tenant wants to be public on the DGFY map and public storefront page. Public visibility is opt-in. When enabled, this step creates or updates the active primary storefront location pin used by discovery and tenant-page map surfaces. IMS setup surfaces use a MapLibre pin picker for click-to-place, drag-to-adjust, geolocation, delivery-radius preview, and initial Storefront business-hours setup while preserving editable coordinate fields.
+- `primary_location`: captures whether the tenant wants a public/searchable storefront and whether that storefront has a published map pin. Public visibility is opt-in. When enabled with a location, this step creates or updates the active primary storefront location pin used by discovery map surfaces. When enabled with `store_has_no_location=true`, the tenant remains searchable and has a public storefront page, but discovery sync materializes nullable location fields and excludes the tenant from map pins until a location is published. IMS setup surfaces use a MapLibre pin picker for click-to-place, drag-to-adjust, geolocation, delivery-radius preview, and initial Storefront business-hours setup while preserving editable coordinate fields when a location is required.
 - `bulk_items`: create starter catalog rows from the active workflow mode's onboarding item presets.
 
 5. Required completion checklist
 - Store name ready (registration baseline)
-- At least one active primary storefront location when public map/page visibility is enabled. Hidden storefronts satisfy this readiness check until the merchant opts in.
+- At least one active primary storefront location when public visibility is enabled and `store_has_no_location` is not enabled. Hidden storefronts and searchable no-location storefronts satisfy this readiness check without a map pin.
 - At least one active starter item with positive `default_sale_price`
 - For corrected item-taxonomy modes, the starter item must carry a mode-valid `mode_item_preset`
 - `current_stock=0` does not block onboarding completion
@@ -50,6 +50,9 @@ Adopt a tenant-scoped onboarding lifecycle with soft-reminder UX:
 6. Mode-aware starter item contract
 - The bulk item step resolves the tenant workflow mode and presents item type choices from the shared `mode_item_preset` taxonomy.
 - Corrected modes use their existing presets: Food Manufacturing (`raw_material`, `packaging`, `supplies`, `finished_product`), MSME (`product`, `supplies`), Services (`service`, `physical_add_on`, `supplies`), and Food & Beverage (`menu_item`, `ingredient`, `packaged_beverage`, `packaging_supply`).
+- The first-login F&B starter-item UI intentionally narrows the selector to `Menu Item` only, because the starter row is for the customer-facing Storefront/POS catalog. Ingredients, packaging, and other F&B stock setup remains available after onboarding in full item management.
+- At the F&B onboarding boundary only, starter item input values `product`, `product item`, `product_item`, and `menu_item` normalize to `mode_item_preset=menu_item`; the persisted item remains a normal product row with `category=product` and `product_type=finished_goods`, while Storefront/POS can render it as a restaurant menu item.
+- At the F&B onboarding boundary only, legacy starter item input values `raw material`, `raw_material`, and `ingredient` normalize to `mode_item_preset=ingredient`; the persisted item category remains `raw_material`.
 - Placeholder modes keep conservative default item behavior until their governed taxonomy is promoted.
 - Bulk onboarding rows require only `mode_item_preset`, `name`, and positive `default_sale_price`. `cost_per_unit`, `current_stock`, and item image upload are optional.
 - The backend derives hidden item fields from the preset, generates a deterministic onboarding SKU when the UI does not expose one, creates valid rows, and returns row-level errors for invalid rows without discarding successful rows.
@@ -65,6 +68,7 @@ Adopt a tenant-scoped onboarding lifecycle with soft-reminder UX:
 - Saving `primary_location` or `bulk_items`, and completing onboarding, triggers storefront discovery sync reliability runner.
 - Saving `primary_location` may also persist `storefront_hours` as the tenant's weekly business-hours schedule. That schedule is displayed on Storefront discovery/profile surfaces and is used by Storefront checkout availability checks.
 - Saving `primary_location` may also persist `store_is_visible`. When `store_is_visible=false`, public discovery and public storefront profile reads must not expose the tenant, and no default/bootstrap map pin may make the tenant public.
+- Saving `primary_location` may also persist `store_has_no_location`. When `store_is_visible=true` and `store_has_no_location=true`, public profile reads by slug remain valid, text/category/item search may return the tenant, default map browsing omits it, and `/storefront/discovery/map-pins` must exclude it because the materialized discovery row has `location_id`, `latitude`, and `longitude` set to `null`.
 - Existing discovery/profile/checkout contracts remain backward compatible.
 
 9. Generation policy
@@ -119,9 +123,17 @@ Adopt a tenant-scoped onboarding lifecycle with soft-reminder UX:
 
 1. Auto-provisioned tenants start with `store_is_visible=false` and no synthetic/default primary storefront location. Provisioning must override any migration-seeded public-visible default for the new tenant database before the discovery bootstrap runs, and must not place a new company on the DGFY map using fallback coordinates.
 2. The onboarding `primary_location` step and Settings > Storefront expose the same tenant-level public visibility control. When off, the tenant is hidden from DGFY discovery/map feeds and the public root-handle profile page (`/:store_tenant_slug`) is hidden; legacy `/store/:slug` and `/tenant-store/:slug` paths remain compatibility routes only.
-3. Hidden tenants may continue onboarding without saving a public location pin. The primary-location readiness check is only required after the merchant opts in to public map/page visibility.
-4. When the merchant opts in, they must save a real active primary storefront location before the discovery sync can publish a public map/profile row. Settings must make this dependency visible so merchants do not confuse saving the visibility switch with immediate publication when no active primary pin exists.
+3. Hidden tenants may continue onboarding without saving a public location pin. The primary-location readiness check is only required after the merchant opts into public visibility and has not explicitly marked `store_has_no_location=true`.
+4. When the merchant opts in and does not mark the store as having no location, they must save a real active primary storefront location before discovery sync can publish a map pin. When `store_has_no_location=true`, discovery sync publishes a searchable/profile row with null coordinates and no map pin. Settings must make this dependency visible so merchants do not confuse public/searchable storefront publication with map publication.
 5. Operators must use the Storefront public visibility audit before tightening legacy fallback behavior or after any discovery remediation. The audit reports hidden tenants that remain indexed, visible tenants without active primary pins, missing or invalid visibility settings, stale indexed locations, and fallback-location publication.
+
+## Addendum (2026-06-16): Searchable No-Location Storefronts
+
+1. `store_is_visible=true` means the storefront is public/searchable. It no longer means the tenant is necessarily map-pinned.
+2. `store_has_no_location=true` is a reversible tenant setting stored in `system_settings`. It preserves any saved tenant locations, but discovery sync materializes the public row with `location_id=null`, `latitude=null`, and `longitude=null`.
+3. `/storefront/discovery` includes no-location stores only when the customer expresses text/category/item search intent. Default map browsing and `/storefront/discovery/map-pins` require valid coordinates and exclude nullable-coordinate rows.
+4. Public storefront profile reads by slug must work for no-location stores. Customer Access Mode remains authoritative for catalog/contact/checkout behavior; no-location does not automatically downgrade the effective access mode or bypass existing payment, item, stock, business-hours, branch, or compliance gates.
+5. Store setup uses an apply-and-grid business-hours editor. `Open 24/7` sets all days enabled with `00:00-00:00`, preserving the existing 24-hour convention. V1 keeps one interval per day; applying a new block overwrites the selected days.
 
 ## Addendum (2026-05-21): DGFY Account Founder Source
 

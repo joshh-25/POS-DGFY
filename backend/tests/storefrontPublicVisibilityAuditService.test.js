@@ -40,9 +40,17 @@ const buildHarness = ({ tenants, indexRows = {}, settings = {}, locations = {} }
                 if (!Object.prototype.hasOwnProperty.call(settings, connection.tenantId)) {
                     return [];
                 }
+                const tenantSettings = settings[connection.tenantId];
+                if (tenantSettings && typeof tenantSettings === 'object' && !Array.isArray(tenantSettings)) {
+                    return Object.entries(tenantSettings).map(([setting_key, setting_value]) => ({
+                        setting_key,
+                        setting_value,
+                        data_type: 'boolean'
+                    }));
+                }
                 return [{
                     setting_key: 'store_is_visible',
-                    setting_value: settings[connection.tenantId],
+                    setting_value: tenantSettings,
                     data_type: 'boolean'
                 }];
             })
@@ -168,6 +176,72 @@ describe('storefrontPublicVisibilityAuditService', () => {
         expect(result.summary.healthy).toBe(2);
         expect(result.summary.critical).toBe(0);
         expect(result.summary.warning).toBe(0);
+    });
+
+    it('treats visible no-location tenants with nullable discovery coordinates as healthy', async () => {
+        const tenant = buildTenant('tenant-no-location-ok');
+        const harness = buildHarness({
+            tenants: [tenant],
+            settings: {
+                'tenant-no-location-ok': {
+                    store_is_visible: 'true',
+                    store_has_no_location: 'true'
+                }
+            },
+            indexRows: {
+                'tenant-no-location-ok': {
+                    tenant_id: 'tenant-no-location-ok',
+                    is_visible: true,
+                    location_id: null,
+                    latitude: null,
+                    longitude: null,
+                    slug: 'no-location'
+                }
+            },
+            locations: {
+                'tenant-no-location-ok': [{ location_id: 4, is_active: true, is_primary_storefront: true, latitude: 10, longitude: 122 }]
+            }
+        });
+
+        const result = await auditStorefrontPublicVisibility(harness);
+
+        expect(result.status).toBe('healthy');
+        expect(result.summary.healthy).toBe(1);
+        expect(result.tenants[0]).toEqual(expect.objectContaining({
+            store_has_no_location: true,
+            discovery_location_id: null
+        }));
+    });
+
+    it('flags no-location tenants that still publish map coordinates', async () => {
+        const tenant = buildTenant('tenant-no-location-map');
+        const harness = buildHarness({
+            tenants: [tenant],
+            settings: {
+                'tenant-no-location-map': {
+                    store_is_visible: 'true',
+                    store_has_no_location: 'true'
+                }
+            },
+            indexRows: {
+                'tenant-no-location-map': {
+                    tenant_id: 'tenant-no-location-map',
+                    is_visible: true,
+                    location_id: 9,
+                    latitude: 10,
+                    longitude: 122,
+                    slug: 'no-location-map'
+                }
+            },
+            locations: {
+                'tenant-no-location-map': [{ location_id: 9, is_active: true, is_primary_storefront: true, latitude: 10, longitude: 122 }]
+            }
+        });
+
+        const result = await auditStorefrontPublicVisibility(harness);
+
+        expect(result.status).toBe('critical');
+        expect(result.summary.issue_counts.no_location_store_indexed_with_coordinates).toBe(1);
     });
 
     it('can repair missing visibility settings by preserving current index visibility', async () => {

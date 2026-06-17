@@ -58,6 +58,55 @@ describe('listStorefrontMapPinsUseCase', () => {
     expect(result.data.pins[0]).not.toHaveProperty('available_item_count');
   });
 
+  it('excludes no-location storefront rows from public map pins', async () => {
+    const listDiscovery = jest.fn(async () => ({
+      rows: [
+        {
+          tenant_id: 'tenant-1',
+          tenant_name: 'No Location Kitchen',
+          slug: 'no-location-kitchen',
+          location_id: null,
+          location_name: null,
+          address_line: null,
+          latitude: null,
+          longitude: null,
+          storefront_open: true
+        },
+        {
+          tenant_id: 'tenant-2',
+          tenant_name: 'Pinned Store',
+          slug: 'pinned-store',
+          location_id: 20,
+          location_name: 'Main',
+          address_line: 'Iloilo City',
+          latitude: 10.7202,
+          longitude: 122.5621,
+          storefront_open: true
+        }
+      ],
+      pagination: {
+        page: 1,
+        limit: 100,
+        total: 2,
+        totalPages: 1
+      }
+    }));
+
+    const useCase = buildListStorefrontMapPinsUseCase({
+      storefrontDiscoveryRepository: { listDiscovery }
+    });
+
+    const result = await useCase({ query: {} });
+
+    expect(result.success).toBe(true);
+    expect(result.data.pins).toHaveLength(1);
+    expect(result.data.pins[0]).toEqual(expect.objectContaining({
+      tenant_id: 'tenant-2',
+      title: 'Pinned Store'
+    }));
+  });
+
+
   it('optionally returns public available item names and capped structured items for the pin location', async () => {
     const listDiscovery = jest.fn(async () => ({
       rows: [

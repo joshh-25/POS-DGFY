@@ -39,12 +39,13 @@ Required commands:
 2. `npm --prefix backend test -- --runTestsByPath tests/rtr_verification.test.js`
 3. `npm --prefix frontend test -- --run src/services/__tests__/browserTokenStorage.guard.test.js`
 4. For DGFY-to-SKUpervisor tenant-session handoff or tenant refresh routing changes: `npm --prefix backend test -- --runTestsByPath tests/tenantHandler.emailOtp.test.js tests/dgfyTenantSession.transport.test.js tests/browserSessionCookies.test.js`
+5. For DGFY account company switching or invitation Business-tab changes: include backend DGFY company-list/switch/invitation tests, `tests/dgfyAuthMiddleware.test.js` for the IMS tenant-session membership bridge, frontend IMS switcher tests, Storefront account Business-tab tests, and browser storage guards proving DGFY, refresh, tenant, and company tokens are not persisted in browser-readable storage.
 
 Evidence semantics:
 1. Backend cookie tests prove refresh/session authority is issued and cleared with the ADR 0026 cookie attributes.
 2. RTR tests prove refresh authority is cookie-only, CSRF-protected, rotated on use, and replay-rejected.
 3. Frontend storage guards prove privileged tenant, refresh, DGFY, storefront, and admin tokens are not persisted in browser-readable storage.
-4. Tenant-handler and DGFY tenant-session transport tests prove the one-click company-registration handoff sets normal tenant cookies and that `/auth/refresh-token` can recover tenant context from a signed tenant-bound refresh cookie when the companion tenant-context cookie is missing.
+4. Tenant-handler and DGFY tenant-session transport tests prove the one-click company-registration handoff sets normal tenant cookies and that `/auth/refresh-token` can recover tenant context from a signed tenant-bound refresh cookie when the companion tenant-context cookie is missing. `dgfyAuthMiddleware` tests prove direct IMS sessions can load business switching only through an accepted DGFY membership row and cannot infer account ownership from matching email or mobile data.
 5. Frontend API interceptor tests prove protected requests preflight cookie-backed session refresh after hard reload when the in-memory access token is empty.
 6. Backend auth tests prove login and refresh responses include `data.company.token` when tenant context is available, allowing the frontend to restore the company-token header without browser-readable tenant-token persistence.
 7. These gates do not prove all XSS vectors are impossible; CSP and input/output encoding reviews remain required for UI changes.
@@ -179,7 +180,7 @@ Required commands:
 7. `git diff --check`
 
 Evidence semantics:
-1. The audit proves the current tenant data has no hidden tenant still indexed, no invalid or missing explicit `store_is_visible` setting, no visible tenant missing an active primary pin, no stale indexed location, and no legacy fallback-location publication beyond the governed compatibility path.
+1. The audit proves the current tenant data has no hidden tenant still indexed, no invalid or missing explicit `store_is_visible` setting, no visible map-published tenant missing an active primary pin, no stale indexed location, no legacy fallback-location publication beyond the governed compatibility path, and no `store_has_no_location=true` tenant still publishing public coordinates.
 2. `-- --fail-on warning` may be used as a stricter pre-release gate when fallback-location publication should block promotion.
 3. `-- --repair-missing-settings` only backfills an explicit setting that preserves current discovery-index exposure. It must not be used as a substitute for deciding whether a tenant should be public.
 4. A green local audit does not prove production tenant data is clean. Production or canary release evidence must include the same audit against the target data plus public discovery/profile smoke for hidden and visible tenants.
@@ -545,3 +546,22 @@ Command:
 
 Output:
 1. `.tmp/release-gates/<sha>/local_readiness.json`
+
+## Production Observability Evidence
+
+Use this gate to attach production traceability evidence to local and no-staging release artifacts.
+
+Command:
+1. `npm run gate:release:observability`
+
+Output:
+1. `.tmp/release-gates/<sha>/observability_evidence.json`
+
+Default behavior:
+1. Report mode, non-blocking for the first rollout.
+2. Checks `/health`, request/trace header round-trip, `/metrics` when enabled, structured request logging configuration, incident bundle dry-run, deploy SHA evidence, and stale QA deploy-head review.
+3. Set `OBSERVABILITY_GATE_MODE=enforce` after one successful production release proves the evidence workflow.
+
+Incident bundle command:
+1. `npm run evidence:incident -- --request-id <request_id> --since <iso> --until <iso> --surface <surface>`
+2. Output: `.tmp/incident-bundles/<timestamp>-<slug>/`

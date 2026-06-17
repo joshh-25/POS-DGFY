@@ -2,6 +2,7 @@ const REQUEST_DURATION_BUCKETS_MS = [50, 100, 250, 500, 1000, 3000, 10000];
 
 const metricState = {
     requestCountByMethodStatus: new Map(),
+    errorCountBySurfaceStatusCode: new Map(),
     requestDurationBuckets: new Map(),
     requestDurationSumMs: 0,
     requestDurationCount: 0
@@ -43,6 +44,15 @@ export const recordHttpRequestMetrics = ({ method, route, statusCode, durationMs
     metricState.requestDurationSumMs += safeDuration;
 };
 
+export const recordHttpErrorMetrics = ({ surface, statusClass, errorCode }) => {
+    const labels = {
+        surface: surface || 'unknown',
+        status_class: statusClass || 'unknown',
+        error_code: errorCode || 'unknown'
+    };
+    incrementMapValue(metricState.errorCountBySurfaceStatusCode, makeMetricKey(labels));
+};
+
 const parseMetricKey = (key) => Object.fromEntries(
     key.split('|').map((pair) => {
         const index = pair.indexOf(':');
@@ -69,11 +79,19 @@ export const renderPrometheusMetrics = () => {
     lines.push(`sku_http_request_duration_milliseconds_sum ${metricState.requestDurationSumMs}`);
     lines.push(`sku_http_request_duration_milliseconds_count ${metricState.requestDurationCount}`);
 
+    lines.push('# HELP sku_http_errors_total Total HTTP error responses grouped by surface, status class, and stable error code.');
+    lines.push('# TYPE sku_http_errors_total counter');
+    for (const [key, count] of metricState.errorCountBySurfaceStatusCode.entries()) {
+        const labels = parseMetricKey(key);
+        lines.push(`sku_http_errors_total{${serializeLabels(labels)}} ${count}`);
+    }
+
     return `${lines.join('\n')}\n`;
 };
 
 export const resetMetricsForTests = () => {
     metricState.requestCountByMethodStatus.clear();
+    metricState.errorCountBySurfaceStatusCode.clear();
     metricState.requestDurationBuckets.clear();
     metricState.requestDurationSumMs = 0;
     metricState.requestDurationCount = 0;

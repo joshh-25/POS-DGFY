@@ -269,4 +269,68 @@ describe('onboarding use-cases application result contract', () => {
     expect(result.data.summary.failed).toBe(1);
     expect(result.data.results[0].errors.join(' ')).toMatch(/not valid for services mode/i);
   });
+
+  it('bulkCreateOnboardingItems accepts legacy raw material labels as F&B ingredients', async () => {
+    const createItemUseCase = jest.fn().mockResolvedValueOnce({ item_id: 20, name: 'Chicken Breast' });
+    const useCase = buildBulkCreateOnboardingItemsUseCase({
+      createItemUseCase,
+      getAllSettingsUseCase: jest.fn().mockResolvedValue({
+        success: true,
+        data: {
+          ops_workflow_mode: { value: 'fnb' }
+        }
+      })
+    });
+
+    const result = await useCase({
+      rows: [
+        { client_row_id: 'row-1', mode_item_preset: 'raw material', name: 'Chicken Breast', default_sale_price: 150 }
+      ],
+      userId: 1
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.summary).toEqual({ total: 1, created: 1, failed: 0 });
+    expect(createItemUseCase).toHaveBeenCalledWith(expect.objectContaining({
+      itemData: expect.objectContaining({
+        mode_item_preset: 'ingredient',
+        category: 'raw_material',
+        product_type: null
+      }),
+      userId: 1
+    }));
+  });
+
+  it('bulkCreateOnboardingItems accepts product item labels as F&B menu products', async () => {
+    const createItemUseCase = jest.fn().mockResolvedValueOnce({ item_id: 21, name: 'Chicken Rice Bowl' });
+    const useCase = buildBulkCreateOnboardingItemsUseCase({
+      createItemUseCase,
+      getAllSettingsUseCase: jest.fn().mockResolvedValue({
+        success: true,
+        data: {
+          ops_workflow_mode: { value: 'fnb' }
+        }
+      })
+    });
+
+    const result = await useCase({
+      rows: [
+        { client_row_id: 'row-1', mode_item_preset: 'product item', name: 'Chicken Rice Bowl', default_sale_price: 149 }
+      ],
+      userId: 1
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.summary).toEqual({ total: 1, created: 1, failed: 0 });
+    expect(createItemUseCase).toHaveBeenCalledWith(expect.objectContaining({
+      itemData: expect.objectContaining({
+        mode_item_preset: 'menu_item',
+        category: 'product',
+        product_type: 'finished_goods',
+        default_sale_price: 149,
+        unit_of_measure: 'serving'
+      }),
+      userId: 1
+    }));
+  });
 });

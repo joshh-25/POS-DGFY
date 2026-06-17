@@ -95,7 +95,7 @@ export const buildRegisterCompanyRequestUseCase = ({
         });
         let tenant = null;
         let validatedSubscriptionId = null;
-        let paymongoChildAccountStatus = 'skipped';
+        let paymongoChildAccountStatus;
 
         const createPendingPayMongoChildAccount = async ({ source }) => {
             if (!shouldAutoCreatePayMongoChildAccounts() || typeof createPayMongoChildAccountForTenant !== 'function') {

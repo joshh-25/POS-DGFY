@@ -13,7 +13,10 @@ import {
 } from '../modules/shared/utils/catalogVisibilityPolicy.js';
 import { expandPublicSearchText } from '../modules/shared/utils/publicSearchAliasPolicy.js';
 import { normalizeStorefrontAssetPath, normalizeStorefrontAssetUrl } from '../modules/shared/utils/storefrontAssetPolicy.js';
-import { formatStorefrontBusinessHoursDisplay } from '../modules/shared/utils/storefrontBusinessHours.js';
+import {
+    formatStorefrontBusinessHoursDisplay,
+    getStorefrontBusinessHoursStatus
+} from '../modules/shared/utils/storefrontBusinessHours.js';
 import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '../modules/shared/constants/workflowModes.js';
 import {
     CUSTOMER_ACCESS_SETTING_KEYS,
@@ -25,6 +28,7 @@ const STOREFRONT_SETTING_KEYS = Object.freeze([
     'ops_workflow_mode',
     'store_tenant_slug',
     'store_is_visible',
+    'store_has_no_location',
     'store_delivery_fee',
     'pos_open_status',
     'pos_wait_time_minutes',
@@ -60,6 +64,7 @@ const parseBoolean = (value, fallback = false) => {
 };
 
 const toNumber = (value, fallback = 0) => {
+    if (value === null || value === undefined || value === '') return fallback;
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
 };
@@ -370,6 +375,7 @@ const buildTenantSnapshot = async (tenant) => {
         source: 'discovery_sync'
     });
     const isVisible = parseBoolean(settings.store_is_visible, true);
+    const storeHasNoLocation = parseBoolean(settings.store_has_no_location, false);
 
     if (!isVisible) {
         return null;
@@ -401,11 +407,11 @@ const buildTenantSnapshot = async (tenant) => {
     const fallbackPrimaryLocation = !explicitPrimaryLocation
         ? (activeLocations?.[0] || null)
         : null;
-    const primaryLocation = explicitPrimaryLocation || fallbackPrimaryLocation;
-    if (!primaryLocation) {
+    const primaryLocation = storeHasNoLocation ? null : (explicitPrimaryLocation || fallbackPrimaryLocation);
+    if (!storeHasNoLocation && !primaryLocation) {
         return null;
     }
-    const usedFallbackPrimary = Boolean(!explicitPrimaryLocation && fallbackPrimaryLocation);
+    const usedFallbackPrimary = Boolean(!storeHasNoLocation && !explicitPrimaryLocation && fallbackPrimaryLocation);
     if (usedFallbackPrimary) {
         logger.warn('[StorefrontDiscoveryIndex] Active location found without explicit primary flag', {
             event_type: 'storefront_primary_fallback_used',
@@ -417,7 +423,7 @@ const buildTenantSnapshot = async (tenant) => {
         });
     }
 
-    const location = toLocationPlain(primaryLocation);
+    const location = storeHasNoLocation ? null : toLocationPlain(primaryLocation);
     const allActiveLocationIds = (activeLocations || [])
         .map((entry) => Number(toLocationPlain(entry).location_id))
         .filter((locationId) => Number.isInteger(locationId) && locationId > 0);
@@ -438,9 +444,9 @@ const buildTenantSnapshot = async (tenant) => {
             allow_out_of_stock_sales: plainLocation.allow_out_of_stock_sales === true
         };
     }).filter((entry) => Number.isFinite(entry.latitude) && Number.isFinite(entry.longitude));
-    const latitude = Number(location.latitude);
-    const longitude = Number(location.longitude);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    const latitude = storeHasNoLocation ? null : Number(location.latitude);
+    const longitude = storeHasNoLocation ? null : Number(location.longitude);
+    if (!storeHasNoLocation && (!Number.isFinite(latitude) || !Number.isFinite(longitude))) {
         return null;
     }
 
@@ -627,7 +633,7 @@ const buildTenantSnapshot = async (tenant) => {
     });
     const canExposeCatalog = !customerAccessFeatureEnabled || accessPolicy.access_capabilities.catalog === true;
 
-    const fallbackPrimaryLocationId = Number(location.location_id);
+    const fallbackPrimaryLocationId = storeHasNoLocation ? null : Number(location.location_id);
     const itemSearchSnapshot = canExposeCatalog ? visibleCatalogRows
         .map((row) => {
             const itemId = Number(row.item_id);
@@ -648,7 +654,7 @@ const buildTenantSnapshot = async (tenant) => {
                     ? [fallbackPrimaryLocationId]
                     : []));
             const text = buildItemSearchText(row);
-            if (!text || matchingLocationIds.length === 0) return null;
+            if (!text || (!storeHasNoLocation && matchingLocationIds.length === 0)) return null;
             return {
                 item_id: itemId,
                 item_name: row.name || null,
@@ -660,7 +666,10 @@ const buildTenantSnapshot = async (tenant) => {
         })
         .filter(Boolean) : [];
 
-    const storefrontOpen = parseBoolean(settings.pos_open_status, true) && location.is_open !== false;
+    const storefrontHoursStatus = getStorefrontBusinessHoursStatus(settings.storefront_hours);
+    const storefrontOpen = parseBoolean(settings.pos_open_status, true)
+        && (storeHasNoLocation || location.is_open !== false)
+        && storefrontHoursStatus.is_open_now !== false;
     const storefrontWhyChooseUs = parseJsonArray(settings.storefront_why_choose_us)
         .map((entry) => toTrimmedString(entry, 120))
         .filter(Boolean)
@@ -715,16 +724,16 @@ const buildTenantSnapshot = async (tenant) => {
         storefront_open: storefrontOpen,
         workflow_mode: normalizeWorkflowMode(settings.ops_workflow_mode || DEFAULT_WORKFLOW_MODE),
         is_visible: true,
-        location_id: location.location_id || null,
-        location_name: location.name || null,
-        address_line: location.address_line || null,
+        location_id: storeHasNoLocation ? null : (location.location_id || null),
+        location_name: storeHasNoLocation ? null : (location.name || null),
+        address_line: storeHasNoLocation ? null : (location.address_line || null),
         latitude,
         longitude,
-        delivery_radius_km: toNumber(location.delivery_radius_km, 0),
-        estimated_wait_minutes: toNumber(location.current_wait_time_minutes, toNumber(settings.pos_wait_time_minutes, 15)),
-        supports_delivery: location.supports_delivery !== false,
-        supports_pickup: location.supports_pickup !== false,
-        supports_dine_in: location.supports_dine_in !== false,
+        delivery_radius_km: storeHasNoLocation ? 0 : toNumber(location.delivery_radius_km, 0),
+        estimated_wait_minutes: storeHasNoLocation ? toNumber(settings.pos_wait_time_minutes, 15) : toNumber(location.current_wait_time_minutes, toNumber(settings.pos_wait_time_minutes, 15)),
+        supports_delivery: storeHasNoLocation ? true : location.supports_delivery !== false,
+        supports_pickup: storeHasNoLocation ? true : location.supports_pickup !== false,
+        supports_dine_in: storeHasNoLocation ? true : location.supports_dine_in !== false,
         store_delivery_fee: toNumber(settings.store_delivery_fee, 0),
         catalog_count: canExposeCatalog ? (Number(catalogCount) || 0) : 0,
         customer_access_mode: accessPolicy.customer_access_mode,

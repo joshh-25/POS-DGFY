@@ -51,11 +51,11 @@ const makeEntry = (overrides = {}) => ({
   tenant_name: overrides.tenant_name || 'Alpha Foods',
   slug: overrides.slug || 'alpha-foods',
   storefront_open: overrides.storefront_open !== false,
-  location_id: overrides.location_id || 11,
-  location_name: overrides.location_name || 'Main',
-  address_line: overrides.address_line || 'Iloilo City',
-  latitude: overrides.latitude ?? 10.72,
-  longitude: overrides.longitude ?? 122.56,
+  location_id: Object.prototype.hasOwnProperty.call(overrides, 'location_id') ? overrides.location_id : 11,
+  location_name: Object.prototype.hasOwnProperty.call(overrides, 'location_name') ? overrides.location_name : 'Main',
+  address_line: Object.prototype.hasOwnProperty.call(overrides, 'address_line') ? overrides.address_line : 'Iloilo City',
+  latitude: Object.prototype.hasOwnProperty.call(overrides, 'latitude') ? overrides.latitude : 10.72,
+  longitude: Object.prototype.hasOwnProperty.call(overrides, 'longitude') ? overrides.longitude : 122.56,
   delivery_radius_km: 6,
   estimated_wait_minutes: 15,
   supports_delivery: true,
@@ -431,6 +431,77 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].match_reasons).toEqual(['item']);
     expect(result.rows[0].has_in_stock_match).toBe(false);
+  });
+
+  it('keeps no-location stores out of default map browsing but includes them in search', async () => {
+    const repository = await loadRepository();
+    findAllMock.mockResolvedValue([
+      makeEntry({
+        tenant_id: 'tenant-map',
+        tenant_name: 'Map Store',
+        slug: 'map-store'
+      }),
+      makeEntry({
+        tenant_id: 'tenant-search-only',
+        tenant_name: 'Search Only Kitchen',
+        slug: 'search-only-kitchen',
+        location_id: null,
+        location_name: null,
+        address_line: null,
+        latitude: null,
+        longitude: null,
+        active_location_snapshot: [],
+        item_search_snapshot: [
+          {
+            item_id: 9,
+            item_name: 'Calamansi Juice',
+            text: 'calamansi juice',
+            matching_location_ids: [],
+            in_stock_location_ids: []
+          }
+        ]
+      })
+    ]);
+
+    const defaultBrowse = await repository.listDiscovery({ limit: 10 });
+    expect(defaultBrowse.rows.map((row) => row.tenant_id)).toEqual(['tenant-map']);
+
+    const search = await repository.listDiscovery({
+      search: 'calamansi',
+      stock_filter: 'include_out_of_stock'
+    });
+    expect(search.rows).toHaveLength(1);
+    expect(search.rows[0]).toEqual(expect.objectContaining({
+      tenant_id: 'tenant-search-only',
+      latitude: null,
+      longitude: null,
+      match_reasons: ['item']
+    }));
+  });
+
+  it('loads no-location storefront profiles by slug', async () => {
+    const repository = await loadRepository();
+    findOneMock.mockResolvedValue(makeEntry({
+      tenant_id: 'tenant-search-only',
+      tenant_name: 'Search Only Kitchen',
+      slug: 'search-only-kitchen',
+      location_id: null,
+      location_name: null,
+      address_line: null,
+      latitude: null,
+      longitude: null,
+      active_location_snapshot: []
+    }));
+
+    const result = await repository.getStorefrontBySlug('search-only-kitchen');
+    expect(result).toEqual(expect.objectContaining({
+      tenant_id: 'tenant-search-only',
+      slug: 'search-only-kitchen',
+      latitude: null,
+      longitude: null,
+      store_has_no_location: true,
+      map_publication_disabled: true
+    }));
   });
 
   it('matches public search aliases such as aircon against A/C and air conditioning text', async () => {

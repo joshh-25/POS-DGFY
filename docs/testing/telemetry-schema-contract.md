@@ -79,6 +79,17 @@ The writer is intentionally backward-compatible during rollout:
 2. If the database is still on the legacy table shape, writes fall back to the legacy column set.
 3. This compatibility mode is temporary and exists only to keep pre-migration environments functional while migrations are being applied.
 
+## Request Traceability Contract
+
+Runtime request tracing uses:
+
+- `x-request-id` as the primary public correlation key
+- `x-trace-id` as the optional trace root key
+
+When `x-trace-id` is absent, the backend mirrors `x-request-id`. Unsafe incoming IDs are regenerated before they reach logs, error responses, metrics, or incident bundles. Metrics must not use request IDs or trace IDs as labels.
+
+Structured request outcome logs are written separately from telemetry events. They provide short-lived operational investigation evidence; they do not replace domain audit tables or `engagement_events`.
+
 ## Index Contract Added In Phase 2
 
 - `correlation_id`

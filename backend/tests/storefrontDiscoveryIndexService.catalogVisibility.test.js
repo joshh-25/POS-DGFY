@@ -353,4 +353,78 @@ describe('storefrontDiscoveryIndexService catalog visibility', () => {
             })
         ]);
     });
+
+    it('marks discovery rows closed when storefront business hours are closed', async () => {
+        const closedWeeklySchedule = {
+            mode: 'weekly',
+            timezone: 'Asia/Manila',
+            weekly: {
+                sun: { enabled: false, open: '09:00', close: '18:00' },
+                mon: { enabled: false, open: '09:00', close: '18:00' },
+                tue: { enabled: false, open: '09:00', close: '18:00' },
+                wed: { enabled: false, open: '09:00', close: '18:00' },
+                thu: { enabled: false, open: '09:00', close: '18:00' },
+                fri: { enabled: false, open: '09:00', close: '18:00' },
+                sat: { enabled: false, open: '09:00', close: '18:00' }
+            }
+        };
+        const SystemSetting = {
+            findAll: jest.fn().mockResolvedValue([
+                { setting_key: 'store_is_visible', setting_value: 'true' },
+                { setting_key: 'store_tenant_slug', setting_value: 'closed-by-hours' },
+                { setting_key: 'ops_workflow_mode', setting_value: 'simple' },
+                { setting_key: 'pos_open_status', setting_value: 'true' },
+                { setting_key: 'storefront_hours', setting_value: JSON.stringify(closedWeeklySchedule) }
+            ])
+        };
+        const TenantLocation = {
+            findAll: jest.fn().mockResolvedValue([
+                {
+                    location_id: 10,
+                    name: 'Main',
+                    address_line: 'Main Road',
+                    latitude: 10.72,
+                    longitude: 122.56,
+                    is_active: true,
+                    is_primary_storefront: true,
+                    is_open: true
+                }
+            ])
+        };
+        const Item = {
+            findAll: jest.fn().mockResolvedValue([
+                {
+                    item_id: 2,
+                    name: 'Public Storefront Item',
+                    sku_code: 'SHOW-1',
+                    description: 'Storefront visible',
+                    category: 'product',
+                    product_type: 'finished_goods',
+                    current_stock: 3,
+                    storefrontCatalogOverride: { storefront_visible: true }
+                }
+            ])
+        };
+        const ItemLocationStock = {
+            findAll: jest.fn().mockResolvedValue([
+                { item_id: 2, location_id: 10, quantity_on_hand: 3 }
+            ])
+        };
+        mockGetTenantModels.mockReturnValue({
+            SystemSetting,
+            TenantLocation,
+            Item,
+            PosCatalogOverride: null,
+            StorefrontCatalogOverride: { name: 'StorefrontCatalogOverride' },
+            ServiceItemDetail: null,
+            ItemLocationStock
+        });
+
+        const result = await syncStorefrontDiscoveryIndexForTenant({ tenantId: 'tenant-1' });
+
+        expect(result.status).toBe('upserted');
+        const snapshot = mockIndexCreate.mock.calls[0][0];
+        expect(snapshot.storefront_open).toBe(false);
+        expect(snapshot.storefront_hours).toBe('Closed');
+    });
 });

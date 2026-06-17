@@ -1299,6 +1299,7 @@ export default function Items() {
     try {
       const {
         storefront_location_availability: storefrontLocationAvailabilityPatch = [],
+        storefront_image_files: storefrontImageFiles = [],
         ...productPayload
       } = productData || {};
       let savedProduct = null;
@@ -1318,6 +1319,9 @@ export default function Items() {
         toast.success('Product created successfully');
       }
       await applyStorefrontLocationAvailabilityPatch(savedProduct || editingProduct, storefrontLocationAvailabilityPatch);
+      if (Array.isArray(storefrontImageFiles) && storefrontImageFiles.length > 0) {
+        await handleUploadStorefrontImage(savedProduct || editingProduct, storefrontImageFiles);
+      }
       refetch();
       setShowProductWizard(false);
       setEditingProduct(null);
@@ -1342,6 +1346,7 @@ export default function Items() {
     try {
       const {
         storefront_location_availability: storefrontLocationAvailabilityPatch = [],
+        storefront_image_files: storefrontImageFiles = [],
         ...productPayload
       } = productData || {};
       let savedProduct = null;
@@ -1353,6 +1358,9 @@ export default function Items() {
         toast.success('Product draft saved successfully');
       }
       await applyStorefrontLocationAvailabilityPatch(savedProduct || editingProduct, storefrontLocationAvailabilityPatch);
+      if (Array.isArray(storefrontImageFiles) && storefrontImageFiles.length > 0) {
+        await handleUploadStorefrontImage(savedProduct || editingProduct, storefrontImageFiles);
+      }
       refetch();
       setShowProductWizard(false);
       setEditingProduct(null);
@@ -1373,6 +1381,7 @@ export default function Items() {
         supplier_links: supplierLinks = [],
         supplier_links_dirty: supplierLinksDirty = false,
         storefront_location_availability: storefrontLocationAvailabilityPatch = [],
+        storefront_image_files: storefrontImageFiles = [],
         ...itemPayload
       } = itemData || {};
       const isEditingExistingItem = Boolean(editingItem);
@@ -1404,6 +1413,9 @@ export default function Items() {
 
       const targetItemId = Number(savedItem?.item_id || savedItem?.id || editingItem?.item_id || 0);
       await applyStorefrontLocationAvailabilityPatch(savedItem || editingItem, storefrontLocationAvailabilityPatch);
+      if (Array.isArray(storefrontImageFiles) && storefrontImageFiles.length > 0) {
+        await handleUploadStorefrontImage(savedItem || editingItem, storefrontImageFiles);
+      }
 
       if (isMsmeMode && supplierLinksDirty && Number.isInteger(targetItemId) && targetItemId > 0) {
         try {
@@ -1464,10 +1476,14 @@ export default function Items() {
         supplier_links: _supplierLinks = [],
         supplier_links_dirty: _supplierLinksDirty = false,
         storefront_location_availability: storefrontLocationAvailabilityPatch = [],
+        storefront_image_files: storefrontImageFiles = [],
         ...draftPayload
       } = itemData || {};
       const savedDraft = await createItemDraft(draftPayload);
       await applyStorefrontLocationAvailabilityPatch(savedDraft, storefrontLocationAvailabilityPatch);
+      if (Array.isArray(storefrontImageFiles) && storefrontImageFiles.length > 0) {
+        await handleUploadStorefrontImage(savedDraft, storefrontImageFiles);
+      }
       toast.success('Item draft saved successfully');
       refetch();
       setShowFormModal(false);

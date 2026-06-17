@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-06-11
+last_reviewed: 2026-06-16
 applies_to: dgfy_accounts, tenant_registration, storefront_account, tenant_user_invitations
 topic: global_dgfy_account_business_registration
 ---
@@ -27,7 +27,7 @@ Introduce a landlord-scoped DGFY account identity.
 8. A landlord membership registry links DGFY accounts to tenant users. Founder membership is accepted immediately after tenant provisioning.
 9. Existing tenant-local storefront customer auth and tenant staff auth remain valid compatibility surfaces while the shared DGFY identity is rolled across storefront Account, Orders, Track, and invitation notifications.
 10. Storefront account endpoints may accept a DGFY JWT, but they must lazily link/create a tenant-local `store_customers` row before using existing order/profile behavior. Storefront token resolution must prefer existing tenant-local store tokens over a global DGFY token so legacy customer sessions are not displaced.
-11. Company invitations to existing DGFY emails create pending DGFY memberships and can be accepted through `POST /api/v1/dgfy/invitations/:membership_id/accept`; the accept step activates the tenant-local staff row instead of reusing `store_customers`. Pending landlord invitations are backfilled into DGFY memberships when a matching DGFY account is later created or loaded.
+11. Company invitations to existing DGFY emails create pending DGFY memberships and can be accepted through `POST /api/v1/dgfy/invitations/:membership_id/accept` after `dgfy_business_step_up` email OTP verification; the accept step activates the tenant-local staff row instead of reusing `store_customers`. Pending landlord invitations are backfilled into DGFY memberships when a matching DGFY account is later created or loaded. ADR 0028 owns multi-company switching and business step-up semantics.
 12. DGFY accounts support email verification with a dedicated `dgfy_account_verification` OTP purpose and nullable `email_verified_at`/`phone_verified_at` audit fields.
 13. DGFY browser handoff uses a short-lived `dgfy_handoff` JWT with a persisted handoff `jti`; exchanging the token atomically consumes the matching landlord handoff row before issuing a normal DGFY account JWT. Replay, expired, or missing handoff rows must fail, and tenant-local SKUpervisor sessions remain separate.
 14. DGFY account lifecycle supports profile updates, authenticated password change, and email-OTP password reset using `dgfy_password_reset`. Profile updates may change last name, first name, optional middle name, and phone; changing phone clears `phone_verified_at`.
@@ -64,7 +64,7 @@ Introduce a landlord-scoped DGFY account identity.
 This ADR requires the following final-phase hardening practices for DGFY account and company-registration work:
 
 1. Handoff tokens must be persisted and atomically consumed by `jti`; successful exchange and replay rejection are both required test cases.
-2. Email OTP purposes must be purpose-scoped and single-use. New purposes such as `dgfy_password_reset` must be added to the service enum, model enum, migration, and tests together.
+2. Email OTP purposes must be purpose-scoped and single-use. New purposes such as `dgfy_password_reset` and `dgfy_business_step_up` must be added to the service enum, model enum, migration, and tests together.
 3. DGFY account lifecycle must include profile update, authenticated password change, and email-OTP password reset before the account-management surface is treated as user-ready. The company-registration surface remains focused on company creation after DGFY authentication.
 4. Phone verification remains explicitly deferred. Changing a phone number clears `phone_verified_at`, and no UI or backend flow may present the phone as verified until a future phone OTP rollout exists.
 5. DGFY email changes remain explicitly deferred and must not be implemented through the profile form until a dedicated verified email-change flow is designed.

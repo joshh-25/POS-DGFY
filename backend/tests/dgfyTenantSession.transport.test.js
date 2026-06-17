@@ -9,12 +9,15 @@ jest.unstable_mockModule('../src/modules/dgfy/index.js', () => ({
   createDgfyHandoffUseCase: jest.fn(),
   exchangeDgfyHandoffUseCase: jest.fn(),
   getDgfyLegalTermsUseCase: jest.fn(),
+  listDgfyAccountCompaniesUseCase: jest.fn(),
   registerDgfyAccountUseCase: jest.fn(),
   loginDgfyAccountUseCase: jest.fn(),
   getDgfyMeUseCase: jest.fn(),
+  requestDgfyBusinessStepUpUseCase: jest.fn(),
   requestDgfyPasswordResetUseCase: jest.fn(),
   requestDgfyEmailVerificationUseCase: jest.fn(),
   startDgfyTenantSessionUseCase: mockStartDgfyTenantSessionUseCase,
+  switchDgfyCompanyUseCase: jest.fn(),
   updateDgfyProfileUseCase: jest.fn(),
   verifyDgfyEmailUseCase: jest.fn()
 }));

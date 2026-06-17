@@ -348,6 +348,7 @@ export const updateSettingsSchema = Joi.object({
   inventory_display_mode: inventoryDisplayModeSchema.optional(),
   inventory_low_stock_display_threshold: inventoryLowStockDisplayThresholdSchema.optional(),
   store_is_visible: Joi.boolean().optional(),
+  store_has_no_location: Joi.boolean().optional(),
   pos_open_status: Joi.boolean().optional(),
   pos_wait_time_minutes: Joi.number().integer().min(0).max(720).optional(),
   ops_workflow_mode: Joi.string().trim().lowercase().valid(...WORKFLOW_MODE_VALUES).optional().messages({
@@ -501,6 +502,7 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     inventory_display_mode: inventoryDisplayModeSchema,
     inventory_low_stock_display_threshold: inventoryLowStockDisplayThresholdSchema,
     store_is_visible: Joi.boolean(),
+    store_has_no_location: Joi.boolean(),
     pos_open_status: Joi.boolean(),
     pos_wait_time_minutes: Joi.number().integer().min(0).max(720),
     ops_workflow_mode: Joi.string().trim().lowercase().valid(...WORKFLOW_MODE_VALUES).messages({

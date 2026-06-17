@@ -160,6 +160,20 @@ if (authChannel) {
         redirectTo: getSessionExpiredRedirect()
       });
     }
+    if (data.type === 'tenant-switched') {
+      window.dispatchEvent(new CustomEvent('auth:tenant-switched', {
+        detail: {
+          tenantId: data.tenantId || '',
+          companyName: data.companyName || ''
+        }
+      }));
+      clearClientSession({
+        reason: 'company_switch_other_tab',
+        broadcast: false,
+        emitAuthEvents: false,
+        redirectTo: '/'
+      });
+    }
   };
 }
 

@@ -5,6 +5,8 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MapPinPicker from '../MapPinPicker.jsx';
 
+const originalFetch = globalThis.fetch;
+
 const maplibreMocks = vi.hoisted(() => {
   const maps = [];
   const markers = [];
@@ -168,10 +170,21 @@ describe('MapPinPicker MapLibre behavior', () => {
         }))
       }
     });
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        address: {
+          road: 'Villa Road',
+          city: 'Iloilo City',
+          state: 'Western Visayas'
+        }
+      })
+    });
   });
 
   afterEach(() => {
     cleanup();
+    globalThis.fetch = originalFetch;
     delete navigator.geolocation;
     delete globalThis.ResizeObserver;
   });
@@ -214,6 +227,13 @@ describe('MapPinPicker MapLibre behavior', () => {
       latitude: 14.5995123,
       longitude: 120.9842456
     });
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalledWith({
+        latitude: 14.5995123,
+        longitude: 120.9842456,
+        address_line: 'Villa Road, Iloilo City, Western Visayas'
+      });
+    });
 
     rerender(<MapPinPicker latitude={14.5995123} longitude={120.9842456} deliveryRadiusKm={5} onChange={onChange} />);
     await user.click(screen.getByRole('button', { name: /Adjust Pin/i }));
@@ -221,11 +241,34 @@ describe('MapPinPicker MapLibre behavior', () => {
 
     await user.click(screen.getByRole('button', { name: /Pin Current Location/i }));
     expect(navigator.geolocation.getCurrentPosition).toHaveBeenCalled();
-    expect(onChange).toHaveBeenLastCalledWith({
+    expect(onChange).toHaveBeenCalledWith({
       latitude: 14.5995123,
       longitude: 120.9842456
     });
     expect(maplibreMocks.Marker).toHaveBeenCalledWith(expect.objectContaining({ anchor: 'bottom' }));
+  });
+
+  it('keeps coordinate pinning when reverse address lookup fails', async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('reverse geocode unavailable'));
+    const onChange = vi.fn();
+    render(<MapPinPicker latitude="" longitude="" deliveryRadiusKm={5} onChange={onChange} />);
+
+    await waitFor(() => expect(maplibreMocks.maps[0]).toBeTruthy());
+
+    act(() => {
+      maplibreMocks.maps[0].handlers.click({
+        lngLat: { lng: 122.599488, lat: 10.720263 }
+      });
+    });
+
+    expect(onChange).toHaveBeenCalledWith({
+      latitude: 10.720263,
+      longitude: 122.599488
+    });
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
+    expect(onChange).not.toHaveBeenCalledWith(expect.objectContaining({
+      address_line: expect.any(String)
+    }));
   });
 
   it('keeps the MapLibre picker usable when tile requests emit a resource error', async () => {

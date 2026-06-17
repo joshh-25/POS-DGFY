@@ -190,6 +190,15 @@ describe('healthService', () => {
         expect(health.services.runtimeSchema.status).toBe('healthy');
         expect(health.services.schemaIndexes.status).toBe('healthy');
         expect(health.services.billingFunnelTelemetry.status).toBe('healthy');
+        expect(health.services.observability).toEqual(expect.objectContaining({
+            status: 'healthy',
+            trace_context_enabled: true,
+            request_id_header: 'x-request-id',
+            trace_id_header: 'x-trace-id',
+            structured_request_logging_enabled: true,
+            metrics_enabled: false,
+            telemetry_audit_status: 'healthy'
+        }));
     });
 
     it('exposes shared-hosting capability status without failing health for absent Redis', async () => {

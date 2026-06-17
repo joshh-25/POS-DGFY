@@ -55,6 +55,10 @@ export default (sequelize) => {
             type: DataTypes.DATE,
             allowNull: true
         },
+        business_step_up_verified_at: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
         last_login_at: {
             type: DataTypes.DATE,
             allowNull: true

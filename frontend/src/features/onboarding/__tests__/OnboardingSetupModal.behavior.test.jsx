@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import OnboardingSetupModal, { OnboardingReminderBanner } from '../components/OnboardingSetupModal.jsx';
 
@@ -43,7 +43,7 @@ vi.mock('@/src/components/maps/MapPinPicker.jsx', () => ({
   default: ({ onChange }) => (
     <button
       type="button"
-      onClick={() => onChange?.({ latitude: 14.599512, longitude: 120.984246 })}
+      onClick={() => onChange?.({ latitude: 14.599512, longitude: 120.984246, address_line: 'Mock Pin Road, Manila' })}
     >
       Mock MapLibre Pin
     </button>
@@ -53,7 +53,7 @@ vi.mock('../../../components/maps/MapPinPicker.jsx', () => ({
   default: ({ onChange }) => (
     <button
       type="button"
-      onClick={() => onChange?.({ latitude: 14.599512, longitude: 120.984246 })}
+      onClick={() => onChange?.({ latitude: 14.599512, longitude: 120.984246, address_line: 'Mock Pin Road, Manila' })}
     >
       Mock MapLibre Pin
     </button>
@@ -168,12 +168,12 @@ describe('OnboardingSetupModal behavior', () => {
       }
     });
 
-    const starterStep = screen.getByRole('button', { name: /Step 3: Starter Items/i });
+    const starterStep = screen.getByRole('button', { name: /Step 3: Menu Item/i });
     expect(starterStep.getAttribute('aria-disabled')).toBeNull();
 
     await user.click(starterStep);
 
-    expect(screen.getByText(/3\) Starter Items/i)).toBeTruthy();
+    expect(screen.getByText(/3\) Menu Item/i)).toBeTruthy();
   });
 
   it('creates a primary storefront location and saves onboarding progress', async () => {
@@ -182,7 +182,7 @@ describe('OnboardingSetupModal behavior', () => {
 
     await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
     await screen.findByText(/2\) Main Storefront Location/i);
-    await user.click(screen.getByLabelText(/Show company on DGFY map and public storefront/i));
+    await user.click(screen.getByLabelText(/Make storefront searchable to customers/i));
 
     await user.clear(screen.getByLabelText(/Location name/i));
     await user.type(screen.getByLabelText(/Location name/i), 'Main Branch');
@@ -213,7 +213,7 @@ describe('OnboardingSetupModal behavior', () => {
           })
         })
       });
-      expect(screen.getByText(/3\) Starter Items/i)).toBeTruthy();
+      expect(screen.getByText(/3\) Menu Item/i)).toBeTruthy();
     });
   });
 
@@ -223,12 +223,13 @@ describe('OnboardingSetupModal behavior', () => {
 
     await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
     await screen.findByText(/2\) Main Storefront Location/i);
-    await user.click(screen.getByLabelText(/Show company on DGFY map and public storefront/i));
+    await user.click(screen.getByLabelText(/Make storefront searchable to customers/i));
     await user.click(screen.getByRole('button', { name: /Mock MapLibre Pin/i }));
 
     await waitFor(() => {
       expect(screen.getByLabelText(/Latitude/i).value).toBe('14.599512');
       expect(screen.getByLabelText(/Longitude/i).value).toBe('120.984246');
+      expect(screen.getByLabelText(/Address/i).value).toBe('Mock Pin Road, Manila');
     });
   });
 
@@ -263,18 +264,18 @@ describe('OnboardingSetupModal behavior', () => {
     renderModal();
     await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
     await screen.findByText(/2\) Main Storefront Location/i);
-    await user.click(screen.getByLabelText(/Show company on DGFY map and public storefront/i));
+    await user.click(screen.getByLabelText(/Make storefront searchable to customers/i));
     await user.clear(screen.getByLabelText(/Location name/i));
     await user.type(screen.getByLabelText(/Location name/i), 'Main Branch');
     await user.type(screen.getByLabelText(/Address/i), '123 Main Street');
     await user.type(screen.getByLabelText(/Latitude/i), '14.5995');
     await user.type(screen.getByLabelText(/Longitude/i), '120.9842');
     await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
-    await screen.findByText(/3\) Starter Items/i);
+    await screen.findByText(/3\) Menu Item/i);
 
     expect(screen.getByRole('button', { name: /Complete Onboarding/i }).disabled).toBe(true);
-    expect(screen.getByText(/save at least one priced starter item/i)).toBeTruthy();
-    expect(screen.getByRole('option', { name: /Finished Product/i })).toBeTruthy();
+    expect(screen.getByText(/save one priced menu item/i)).toBeTruthy();
+    expect(screen.getByRole('option', { name: /^Menu Item$/i })).toBeTruthy();
     await user.type(screen.getByLabelText(/Item name/i), 'Starter Bread');
     await user.type(screen.getByLabelText(/Selling price/i), '25');
     await user.click(screen.getByRole('button', { name: /Add Row/i }));
@@ -283,7 +284,7 @@ describe('OnboardingSetupModal behavior', () => {
     await waitFor(() => {
       expect(mocks.onboardingServiceMock.bulkCreateOnboardingItems).toHaveBeenCalled();
       expect(mocks.onboardingServiceMock.bulkCreateOnboardingItems.mock.calls[0][0].rows).toEqual(expect.arrayContaining([
-        expect.objectContaining({ name: 'Starter Bread', location_id: 5 }),
+        expect.objectContaining({ name: 'Starter Bread', mode_item_preset: 'finished_product', location_id: 5 }),
         expect.objectContaining({ name: '', location_id: 5 })
       ]));
       expect(screen.getByText(/Created\./i)).toBeTruthy();
@@ -303,6 +304,53 @@ describe('OnboardingSetupModal behavior', () => {
     });
   });
 
+  it('only offers Menu Item for F&B starter setup while submitting menu_item for Storefront visibility', async () => {
+    const user = userEvent.setup();
+    renderModal({
+      workflowMode: 'fnb',
+      onboarding: {
+        ...baseOnboarding,
+        tenant_onboarding_progress: {
+          step_payloads: {
+            brand_assets: { skipped: true },
+            primary_location: {
+              location_id: 5,
+              public_storefront_visible: true
+            }
+          },
+          checklist_snapshot: {
+            required_total: 3,
+            completed_required_count: 2,
+            missing_requirements: ['has_priced_starter_item']
+          }
+        }
+      }
+    });
+
+    await user.click(screen.getByRole('button', { name: /Step 3: Menu Item/i }));
+
+    const itemType = screen.getByLabelText(/Item type/i);
+    expect(itemType.value).toBe('menu_item');
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    expect(screen.getByRole('option', { name: /^Menu Item$/i })).toBeTruthy();
+
+    await user.type(screen.getByLabelText(/Item name/i), 'Chicken Rice Bowl');
+    await user.type(screen.getByLabelText(/Selling price/i), '149');
+    await user.click(screen.getByRole('button', { name: /Save Items/i }));
+
+    await waitFor(() => {
+      expect(mocks.onboardingServiceMock.bulkCreateOnboardingItems).toHaveBeenCalledWith({
+        rows: [
+          expect.objectContaining({
+            name: 'Chicken Rice Bowl',
+            mode_item_preset: 'menu_item',
+            default_sale_price: '149'
+          })
+        ]
+      });
+    });
+  });
+
   it('retries optional item image upload without resubmitting the created item', async () => {
     const user = userEvent.setup();
     mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages
@@ -312,14 +360,14 @@ describe('OnboardingSetupModal behavior', () => {
     renderModal();
     await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
     await screen.findByText(/2\) Main Storefront Location/i);
-    await user.click(screen.getByLabelText(/Show company on DGFY map and public storefront/i));
+    await user.click(screen.getByLabelText(/Make storefront searchable to customers/i));
     await user.clear(screen.getByLabelText(/Location name/i));
     await user.type(screen.getByLabelText(/Location name/i), 'Main Branch');
     await user.type(screen.getByLabelText(/Address/i), '123 Main Street');
     await user.type(screen.getByLabelText(/Latitude/i), '14.5995');
     await user.type(screen.getByLabelText(/Longitude/i), '120.9842');
     await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
-    await screen.findByText(/3\) Starter Items/i);
+    await screen.findByText(/3\) Menu Item/i);
 
     await user.type(screen.getByLabelText(/Item name/i), 'Starter Bread');
     await user.type(screen.getByLabelText(/Selling price/i), '25');
@@ -346,27 +394,37 @@ describe('OnboardingSetupModal behavior', () => {
     renderModal();
     await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
     await screen.findByText(/2\) Main Storefront Location/i);
-    await user.click(screen.getByLabelText(/Show company on DGFY map and public storefront/i));
+    await user.click(screen.getByLabelText(/Make storefront searchable to customers/i));
     await user.clear(screen.getByLabelText(/Location name/i));
     await user.type(screen.getByLabelText(/Location name/i), 'Main Branch');
     await user.type(screen.getByLabelText(/Address/i), '123 Main Street');
     await user.type(screen.getByLabelText(/Latitude/i), '14.5995');
     await user.type(screen.getByLabelText(/Longitude/i), '120.9842');
     await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
-    await screen.findByText(/3\) Starter Items/i);
+    await screen.findByText(/3\) Menu Item/i);
 
     await user.type(screen.getByLabelText(/Item name/i), 'Starter Bread');
     await user.type(screen.getByLabelText(/Selling price/i), '25');
     const files = Array.from({ length: 6 }, (_, index) => (
       new File([`image-${index}`], `starter-${index}.png`, { type: 'image/png' })
     ));
-    await user.upload(screen.getAllByLabelText(/Item image/i)[0], files);
+    await user.upload(screen.getAllByLabelText(/Item image/i)[0], files.slice(0, 2));
+    const selectedImageCarousel = screen.getByRole('region', { name: /Starter Bread selected image carousel/i });
+    expect(selectedImageCarousel).toBeTruthy();
+    expect(within(selectedImageCarousel).getByText(/Showing 1\/2:/i)).toBeTruthy();
+    await user.upload(screen.getAllByLabelText(/Item image/i)[0], files.slice(2));
+    await waitFor(() => {
+      expect(within(selectedImageCarousel).getByText(/Showing 1\/5:/i)).toBeTruthy();
+      expect(within(selectedImageCarousel).getByLabelText(/Selected item image thumbnails/i)).toBeTruthy();
+    });
+    await user.click(within(selectedImageCarousel).getByRole('button', { name: /Next selected item image/i }));
+    await user.click(within(selectedImageCarousel).getByRole('button', { name: /Remove selected item image 2/i }));
     await user.click(screen.getByRole('button', { name: /Save Items/i }));
 
     await waitFor(() => {
-      expect(mocks.toastMock.error).toHaveBeenCalledWith('Only the first 5 item images will be uploaded.');
+      expect(mocks.toastMock.error).toHaveBeenCalledWith('Only 3 more item images can be selected. Galleries are limited to 5 images.');
       expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages).toHaveBeenCalledTimes(1);
-      expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages.mock.calls[0][1]).toHaveLength(5);
+      expect(mocks.storefrontCatalogServiceMock.uploadStorefrontCatalogImages.mock.calls[0][1]).toHaveLength(4);
     });
   });
 
@@ -376,7 +434,7 @@ describe('OnboardingSetupModal behavior', () => {
 
     await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
     await screen.findByText(/2\) Main Storefront Location/i);
-    expect(screen.getByLabelText(/Show company on DGFY map and public storefront/i).checked).toBe(false);
+    expect(screen.getByLabelText(/Make storefront searchable to customers/i).checked).toBe(false);
 
     await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
 
@@ -389,7 +447,33 @@ describe('OnboardingSetupModal behavior', () => {
           public_storefront_visible: false
         })
       });
-      expect(screen.getByText(/3\) Starter Items/i)).toBeTruthy();
+      expect(screen.getByText(/3\) Menu Item/i)).toBeTruthy();
+    });
+  });
+
+  it('saves a searchable no-location storefront without creating a map pin', async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
+    await screen.findByText(/2\) Main Storefront Location/i);
+    await user.click(screen.getByLabelText(/Make storefront searchable to customers/i));
+    await user.click(screen.getByLabelText(/This Store Has No Location/i));
+    expect(screen.queryByRole('button', { name: /Mock MapLibre Pin/i })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
+
+    await waitFor(() => {
+      expect(mocks.tenantLocationServiceMock.createTenantLocation).not.toHaveBeenCalled();
+      expect(mocks.onboardingServiceMock.saveOnboardingStep).toHaveBeenCalledWith({
+        stepKey: 'primary_location',
+        payload: expect.objectContaining({
+          location_id: null,
+          public_storefront_visible: true,
+          store_has_no_location: true
+        })
+      });
+      expect(screen.getByText(/3\) Menu Item/i)).toBeTruthy();
     });
   });
 });

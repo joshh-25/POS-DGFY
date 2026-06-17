@@ -72,21 +72,40 @@ const resolvePresetForMode = ({ workflowMode, presetKey }) => {
   return resolveItemPreset(workflowMode, presetKey);
 };
 
+const normalizeOnboardingPresetKey = ({ workflowMode, presetKey }) => {
+  const normalizedPreset = String(presetKey || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+
+  if (normalizeWorkflowMode(workflowMode) === 'fnb') {
+    if (['product', 'product_item', 'menu_item'].includes(normalizedPreset)) {
+      return 'menu_item';
+    }
+    if (['ingredient', 'raw_material'].includes(normalizedPreset)) {
+      return 'ingredient';
+    }
+  }
+
+  return normalizedPreset;
+};
+
 const validateRow = ({ row, workflowMode }) => {
   const errors = [];
   const name = String(row?.name || '').trim();
-  const presetKey = String(row?.mode_item_preset || '').trim();
+  const rawPresetKey = String(row?.mode_item_preset || '').trim();
+  const presetKey = normalizeOnboardingPresetKey({ workflowMode, presetKey: rawPresetKey });
   const defaultSalePrice = toMoneyOrNull(row?.default_sale_price);
 
-  if (!presetKey) errors.push('Item type is required.');
+  if (!rawPresetKey) errors.push('Item type is required.');
   if (!name) errors.push('Item name is required.');
   if (defaultSalePrice === null || defaultSalePrice <= 0) {
     errors.push('Selling price must be greater than 0.');
   }
 
-  const preset = presetKey ? resolvePresetForMode({ workflowMode, presetKey }) : null;
-  if (presetKey && !preset) {
-    errors.push(`Item type "${presetKey}" is not valid for ${workflowMode} mode.`);
+  const preset = rawPresetKey ? resolvePresetForMode({ workflowMode, presetKey }) : null;
+  if (rawPresetKey && !preset) {
+    errors.push(`Item type "${rawPresetKey}" is not valid for ${workflowMode} mode.`);
   }
 
   return {

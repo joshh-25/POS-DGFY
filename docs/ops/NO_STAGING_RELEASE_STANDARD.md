@@ -44,11 +44,13 @@ Required files:
 3. `rollback_drill_result.json`
 4. `restore_drill_result.json`
 5. `release_verdict.json` (final aggregated verdict)
+6. `observability_evidence.json` (report-mode until one production release proves the workflow)
 
 Current behavior note:
 1. `qa_deploy_summary.txt` must prove that QA deployed the exact `RELEASE_TARGET_SHA`.
 2. A missing or mismatched `deployed_head` is a hard gate failure.
 3. Emergency override remains available only through the explicit bypass metadata contract below.
+4. `npm run gate:release:observability` records traceability evidence and stale-QA review context. It starts in report mode and should be switched to enforce mode after one successful production release includes the artifact.
 
 ## QA Configuration Inputs
 1. QA smoke:

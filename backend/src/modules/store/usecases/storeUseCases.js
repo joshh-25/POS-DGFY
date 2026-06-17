@@ -234,6 +234,7 @@ const CHECKOUT_SETTING_KEYS = Object.freeze([
     'storefront_hours',
     ...CUSTOMER_ACCESS_SETTING_KEYS
 ]);
+const STORE_HAS_NO_LOCATION_KEY = 'store_has_no_location';
 
 const toNumberOrNull = (value) => {
     const parsed = Number(value);
@@ -1416,6 +1417,17 @@ export const buildResolveStoreQrUseCase = ({ storeRepository }) => {
 export const buildListStoreLocationsUseCase = ({ storeRepository }) => {
     return async () => {
         try {
+            const settings = mapSettings(await storeRepository.getSettingsByKeys([STORE_HAS_NO_LOCATION_KEY]));
+            const storeHasNoLocation = parseBooleanSetting(settings[STORE_HAS_NO_LOCATION_KEY]?.value, false);
+            if (storeHasNoLocation) {
+                return ok({
+                    locations: [],
+                    primary_location_id: null,
+                    store_has_no_location: true,
+                    map_publication_disabled: true
+                });
+            }
+
             const locations = await storeRepository.listActiveLocations();
             const serialized = (Array.isArray(locations) ? locations : []).map((location) => (
                 serializeLocationSummary(location)
@@ -1424,7 +1436,9 @@ export const buildListStoreLocationsUseCase = ({ storeRepository }) => {
 
             return ok({
                 locations: serialized,
-                primary_location_id: primary?.location_id || null
+                primary_location_id: primary?.location_id || null,
+                store_has_no_location: false,
+                map_publication_disabled: false
             });
         } catch (error) {
             return fail(mapStoreUseCaseError(error, 'Failed to list storefront locations'));

@@ -106,6 +106,7 @@ import DgfyAccountFactory from './Landlord/DgfyAccount.js';
 import DgfyAccountTenantMembershipFactory from './Landlord/DgfyAccountTenantMembership.js';
 import DgfyAccountHandoffFactory from './Landlord/DgfyAccountHandoff.js';
 import DgfyAccountAdminAuditLogFactory from './Landlord/DgfyAccountAdminAuditLog.js';
+import DgfyAccountBusinessAuditLogFactory from './Landlord/DgfyAccountBusinessAuditLog.js';
 import DgfyLegalAcknowledgementFactory from './Landlord/DgfyLegalAcknowledgement.js';
 import DgfyCustomerActivityFactory from './Landlord/DgfyCustomerActivity.js';
 import DgfyCustomerAddressFactory from './Landlord/DgfyCustomerAddress.js';
@@ -137,6 +138,7 @@ const DgfyAccount = DgfyAccountFactory(sequelize);
 const DgfyAccountTenantMembership = DgfyAccountTenantMembershipFactory(sequelize);
 const DgfyAccountHandoff = DgfyAccountHandoffFactory(sequelize);
 const DgfyAccountAdminAuditLog = DgfyAccountAdminAuditLogFactory(sequelize);
+const DgfyAccountBusinessAuditLog = DgfyAccountBusinessAuditLogFactory(sequelize);
 const DgfyLegalAcknowledgement = DgfyLegalAcknowledgementFactory(sequelize);
 const DgfyCustomerActivity = DgfyCustomerActivityFactory(sequelize);
 const DgfyCustomerAddress = DgfyCustomerAddressFactory(sequelize);
@@ -188,6 +190,9 @@ DgfyAccount.hasMany(DgfyAccountHandoff, { foreignKey: 'dgfy_account_id', as: 'ha
 DgfyAccountHandoff.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
 DgfyAccount.hasMany(DgfyAccountAdminAuditLog, { foreignKey: 'dgfy_account_id', as: 'adminAuditLogs' });
 DgfyAccountAdminAuditLog.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
+DgfyAccount.hasMany(DgfyAccountBusinessAuditLog, { foreignKey: 'dgfy_account_id', as: 'businessAuditLogs' });
+DgfyAccountBusinessAuditLog.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
+DgfyAccountBusinessAuditLog.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(DgfyLegalAcknowledgement, { foreignKey: 'tenant_id', as: 'legalAcknowledgements' });
 DgfyLegalAcknowledgement.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 DgfyAccount.hasMany(DgfyLegalAcknowledgement, { foreignKey: 'dgfy_account_id', as: 'legalAcknowledgements' });
@@ -701,6 +706,7 @@ const db = {
   DgfyAccountTenantMembership,
   DgfyAccountHandoff,
   DgfyAccountAdminAuditLog,
+  DgfyAccountBusinessAuditLog,
   DgfyLegalAcknowledgement,
   DgfyCustomerActivity,
   DgfyCustomerAddress,
@@ -835,6 +841,7 @@ export {
   DgfyAccountTenantMembership,
   DgfyAccountHandoff,
   DgfyAccountAdminAuditLog,
+  DgfyAccountBusinessAuditLog,
   DgfyLegalAcknowledgement,
   DgfyCustomerActivity,
   DgfyCustomerAddress,

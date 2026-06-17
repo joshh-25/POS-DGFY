@@ -10,9 +10,15 @@ import { normalizePhoneNumber, isValidPhoneNumber } from '../../../utils/phoneNu
 
 const JWT_EXPIRY = process.env.DGFY_JWT_EXPIRY || process.env.JWT_EXPIRY || '24h';
 const HANDOFF_JWT_EXPIRY = process.env.DGFY_HANDOFF_JWT_EXPIRY || '2m';
+const parseStepUpWindowMinutes = () => {
+    const parsed = Number.parseInt(process.env.DGFY_BUSINESS_STEP_UP_WINDOW_MINUTES || process.env.EMAIL_OTP_TTL_MINUTES || '10', 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : 10;
+};
+const BUSINESS_STEP_UP_WINDOW_MINUTES = parseStepUpWindowMinutes();
 const DEFAULT_EMAIL_OTP_PURPOSES = Object.freeze({
     DGFY_ACCOUNT_VERIFICATION: 'dgfy_account_verification',
-    DGFY_PASSWORD_RESET: 'dgfy_password_reset'
+    DGFY_PASSWORD_RESET: 'dgfy_password_reset',
+    DGFY_BUSINESS_STEP_UP: 'dgfy_business_step_up'
 });
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
@@ -56,6 +62,126 @@ const pickBodyValue = (body, snakeKey, camelKey, fallback) => {
 };
 
 const buildFullName = (account) => normalizeName(`${account?.first_name || ''} ${account?.middle_name || ''} ${account?.last_name || ''}`);
+const normalizeTenantToken = (value) => String(value || '').trim();
+const getBusinessStepUpState = (account) => {
+    const verifiedAt = account?.business_step_up_verified_at
+        ? new Date(account.business_step_up_verified_at)
+        : null;
+    if (!verifiedAt || Number.isNaN(verifiedAt.getTime())) {
+        return {
+            verified: false,
+            verified_at: null,
+            expires_at: null
+        };
+    }
+    const expiresAt = new Date(verifiedAt.getTime() + BUSINESS_STEP_UP_WINDOW_MINUTES * 60 * 1000);
+    const verified = expiresAt.getTime() > Date.now();
+    return {
+        verified,
+        verified_at: verifiedAt,
+        expires_at: verified ? expiresAt : null
+    };
+};
+
+const buildBusinessAuditPayload = ({
+    account,
+    membership = null,
+    tenantId = null,
+    action,
+    result,
+    reason = '',
+    metadata = {}
+} = {}) => ({
+    dgfy_account_id: account?.id,
+    tenant_id: tenantId || membership?.tenant_id || membership?.tenant?.id || null,
+    membership_id: membership?.id || null,
+    action,
+    result,
+    reason: reason ? String(reason).slice(0, 500) : null,
+    request_id: metadata.request_id || null,
+    ip_address: metadata.ip_address || null,
+    user_agent: metadata.user_agent || null,
+    metadata: metadata.extra || null
+});
+
+const serializeCompanyMembership = (membership, { currentTenantToken = '' } = {}) => {
+    const tenant = membership?.tenant || null;
+    const status = String(membership?.status || '').trim().toLowerCase();
+    const tenantStatus = String(tenant?.status || '').trim().toLowerCase();
+    const isAccepted = status === 'accepted';
+    const isTenantActive = tenantStatus === 'active';
+    return {
+        membership_id: membership?.id,
+        tenant_id: membership?.tenant_id || tenant?.id || null,
+        tenant_user_id: membership?.tenant_user_id || null,
+        company_name: tenant?.name || 'Company',
+        role: membership?.role || 'staff',
+        source: membership?.source || 'invite',
+        membership_status: status || 'pending',
+        tenant_status: tenantStatus || 'unknown',
+        plan: tenant?.plan || null,
+        accepted_at: membership?.accepted_at || null,
+        last_selected_at: membership?.last_selected_at || null,
+        is_current: Boolean(
+            currentTenantToken
+            && tenant?.company_token
+            && normalizeTenantToken(currentTenantToken) === normalizeTenantToken(tenant.company_token)
+        ),
+        can_switch: isAccepted && isTenantActive,
+        requires_action: isAccepted && isTenantActive ? null : (
+            status === 'pending'
+                ? 'accept_invitation'
+                : 'unavailable'
+        )
+    };
+};
+
+const verifyBusinessStepUp = async ({
+    account,
+    code,
+    repository = null,
+    verifyEmailOtp,
+    emailOtpPurposes = DEFAULT_EMAIL_OTP_PURPOSES
+}) => {
+    const stepUpState = getBusinessStepUpState(account);
+    if (stepUpState.verified) return stepUpState;
+
+    if (typeof verifyEmailOtp !== 'function') {
+        throw new DomainError(DomainErrorCode.INTERNAL_ERROR, 'DGFY business security check is unavailable.', {
+            statusCode: 500,
+            details: { error_code: 'DGFY_BUSINESS_STEP_UP_UNAVAILABLE' }
+        });
+    }
+    try {
+        await verifyEmailOtp({
+            purpose: emailOtpPurposes.DGFY_BUSINESS_STEP_UP,
+            email: normalizeEmail(account?.email),
+            code: String(code || '').trim(),
+            tenantId: null
+        });
+    } catch (error) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            error.message || 'DGFY business security code is invalid or expired.',
+            { statusCode: error.statusCode || 422, cause: error }
+        );
+    }
+
+    const verifiedAt = new Date();
+    try {
+        await repository?.markBusinessStepUpVerified?.(account, verifiedAt);
+    } catch (error) {
+        throw new DomainError(
+            DomainErrorCode.INTERNAL_ERROR,
+            'DGFY business security check could not be saved.',
+            { statusCode: 500, cause: error }
+        );
+    }
+
+    return getBusinessStepUpState({
+        business_step_up_verified_at: verifiedAt
+    });
+};
 
 export const sanitizeDgfyAccount = (account) => {
     if (!account) return null;
@@ -70,6 +196,7 @@ export const sanitizeDgfyAccount = (account) => {
         is_active: account.is_active,
         email_verified_at: account.email_verified_at || null,
         phone_verified_at: account.phone_verified_at || null,
+        business_step_up_verified_at: account.business_step_up_verified_at || null,
         is_email_verified: Boolean(account.email_verified_at),
         last_login_at: account.last_login_at || null
     };
@@ -193,6 +320,7 @@ export const buildRegisterDgfyAccountUseCase = ({
             }, { transaction });
 
             await repository.mirrorPendingInvitationsForAccount?.(createdAccount, { transaction });
+            await repository.mirrorLegacyFounderMembershipsForAccount?.(createdAccount, { transaction });
             await repository.recordLegalAcknowledgement({
                 ...legalAcknowledgement,
                 dgfy_account_id: createdAccount.id,
@@ -250,6 +378,7 @@ export const buildLoginDgfyAccountUseCase = ({
     await repository.updateLastLogin(account);
     const reloaded = await repository.findById(account.id);
     await repository.mirrorPendingInvitationsForAccount?.(reloaded || account);
+    await repository.mirrorLegacyFounderMembershipsForAccount?.(reloaded || account);
     const token = generateDgfyToken(reloaded || account);
     return ok({
         payload: {
@@ -265,6 +394,7 @@ export const buildLoginDgfyAccountUseCase = ({
 
 export const buildGetDgfyMeUseCase = ({ repository }) => async ({ account }) => {
     await repository.mirrorPendingInvitationsForAccount?.(account);
+    await repository.mirrorLegacyFounderMembershipsForAccount?.(account);
     const memberships = await repository.listMemberships(account.id);
     return ok({
         payload: {
@@ -279,6 +409,7 @@ export const buildGetDgfyMeUseCase = ({ repository }) => async ({ account }) => 
                     status: membership.status,
                     source: membership.source,
                     accepted_at: membership.accepted_at || null,
+                    last_selected_at: membership.last_selected_at || null,
                     company: membership.tenant ? {
                         id: membership.tenant.id,
                         name: membership.tenant.name,
@@ -612,6 +743,7 @@ export const buildExchangeDgfyHandoffUseCase = ({ repository }) => async ({ body
         }
 
         await repository.mirrorPendingInvitationsForAccount?.(account);
+        await repository.mirrorLegacyFounderMembershipsForAccount?.(account);
         const token = generateDgfyToken(account);
         return ok({
             payload: {
@@ -633,14 +765,140 @@ export const buildExchangeDgfyHandoffUseCase = ({ repository }) => async ({ body
     }
 };
 
-export const buildAcceptDgfyInvitationUseCase = ({ repository }) => async ({ account, membershipId }) => {
+export const buildListDgfyAccountCompaniesUseCase = ({ repository }) => async ({ account, currentTenantToken = '' }) => {
+    await repository.mirrorPendingInvitationsForAccount?.(account);
+    await repository.mirrorLegacyFounderMembershipsForAccount?.(account);
+    const memberships = await repository.listMemberships(account.id);
+    const companies = memberships.map((membership) => serializeCompanyMembership(membership, { currentTenantToken }));
+    return ok({
+        payload: {
+            success: true,
+            data: {
+                companies,
+                accepted_count: companies.filter((entry) => entry.can_switch).length,
+                pending_count: companies.filter((entry) => entry.requires_action === 'accept_invitation').length,
+                business_step_up: getBusinessStepUpState(account)
+            }
+        }
+    });
+};
+
+export const buildRequestDgfyBusinessStepUpUseCase = ({
+    requestEmailOtp,
+    emailOtpPurposes = DEFAULT_EMAIL_OTP_PURPOSES
+}) => async ({ account, metadata = {} }) => {
+    if (typeof requestEmailOtp !== 'function') {
+        return fail(new DomainError(DomainErrorCode.INTERNAL_ERROR, 'DGFY business security check is unavailable.', { statusCode: 500 }));
+    }
+
+    try {
+        const otp = await requestEmailOtp({
+            purpose: emailOtpPurposes.DGFY_BUSINESS_STEP_UP,
+            email: normalizeEmail(account?.email),
+            tenantId: null,
+            metadata
+        });
+        return ok({
+            payload: {
+                success: true,
+                data: otp,
+                message: 'DGFY business security code sent.'
+            }
+        });
+    } catch (error) {
+        return fail(new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            error.message || 'Unable to send DGFY business security code.',
+            { statusCode: error.statusCode || 422, cause: error }
+        ));
+    }
+};
+
+export const buildSwitchDgfyCompanyUseCase = ({
+    repository,
+    createTenantSessionForDgfyAccount,
+    verifyEmailOtp,
+    emailOtpPurposes = DEFAULT_EMAIL_OTP_PURPOSES
+}) => async ({ account, tenantId, body = {}, metadata = {} }) => {
+    const resolvedTenantId = String(tenantId || body?.tenant_id || body?.tenantId || '').trim();
+    const emailOtpCode = String(body?.email_otp_code || body?.emailOtpCode || body?.code || '').trim();
+
+    if (!resolvedTenantId) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Company id is required.', { statusCode: 400 }));
+    }
+
+    let membership = null;
+    try {
+        membership = await repository.findMembershipForAccount({
+            dgfyAccountId: account.id,
+            tenantId: resolvedTenantId,
+            status: 'accepted'
+        });
+
+        if (!membership || !membership.tenant || membership.tenant.status !== 'active') {
+            throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'No active accepted company membership is available for this DGFY account.', { statusCode: 403 });
+        }
+
+        await verifyBusinessStepUp({
+            account,
+            code: emailOtpCode,
+            repository,
+            verifyEmailOtp,
+            emailOtpPurposes
+        });
+
+        const session = await createTenantSessionForDgfyAccount({
+            account,
+            tenantId: resolvedTenantId
+        });
+        await repository.updateMembershipLastSelected?.(membership);
+        await repository.createBusinessAuditLog?.(buildBusinessAuditPayload({
+            account,
+            membership,
+            action: 'company_switch_success',
+            result: 'success',
+            metadata
+        }));
+
+        return ok({
+            payload: {
+                success: true,
+                data: session,
+                message: 'Company switched.'
+            }
+        });
+    } catch (error) {
+        await repository.createBusinessAuditLog?.(buildBusinessAuditPayload({
+            account,
+            membership,
+            tenantId: resolvedTenantId,
+            action: 'company_switch_failed',
+            result: 'failure',
+            reason: error.message || 'Company switch failed.',
+            metadata
+        }));
+        if (error instanceof DomainError) return fail(error);
+        return fail(new DomainError(
+            error?.statusCode === 401 ? DomainErrorCode.AUTHENTICATION_FAILED : DomainErrorCode.AUTHORIZATION_FAILED,
+            error.message || 'Unable to switch companies for this DGFY account.',
+            { statusCode: error?.statusCode || 403, cause: error }
+        ));
+    }
+};
+
+export const buildAcceptDgfyInvitationUseCase = ({
+    repository,
+    verifyEmailOtp = null,
+    emailOtpPurposes = DEFAULT_EMAIL_OTP_PURPOSES
+}) => async ({ account, membershipId, body = {}, metadata = {} }) => {
     const id = parsePositiveInt(membershipId);
     if (!id) {
         return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Invitation id is required.', { statusCode: 400 }));
     }
 
+    let membership = null;
     try {
-        const membership = await repository.findMembershipById(id, {
+        membership = await repository.findMembershipById(id, {
             include: [{
                 association: 'tenant',
                 attributes: ['id', 'name', 'company_token', 'status', 'plan']
@@ -662,8 +920,7 @@ export const buildAcceptDgfyInvitationUseCase = ({ repository }) => async ({ acc
                             tenant_user_id: membership.tenant_user_id,
                             company: membership.tenant ? {
                                 id: membership.tenant.id,
-                                name: membership.tenant.name,
-                                company_token: membership.tenant.company_token
+                                name: membership.tenant.name
                             } : null
                         }
                     }
@@ -675,7 +932,22 @@ export const buildAcceptDgfyInvitationUseCase = ({ repository }) => async ({ acc
             throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Only pending DGFY invitations can be accepted.', { statusCode: 409 });
         }
 
+        await verifyBusinessStepUp({
+            account,
+            code: String(body?.email_otp_code || body?.emailOtpCode || body?.code || '').trim(),
+            repository,
+            verifyEmailOtp,
+            emailOtpPurposes
+        });
+
         const acceptedMembership = await repository.acceptInvitationMembership({ membership, account });
+        await repository.createBusinessAuditLog?.(buildBusinessAuditPayload({
+            account,
+            membership: acceptedMembership,
+            action: 'invitation_accept_success',
+            result: 'success',
+            metadata
+        }));
 
         return ok({
             payload: {
@@ -693,7 +965,6 @@ export const buildAcceptDgfyInvitationUseCase = ({ repository }) => async ({ acc
                         company: acceptedMembership.tenant ? {
                             id: acceptedMembership.tenant.id,
                             name: acceptedMembership.tenant.name,
-                            company_token: acceptedMembership.tenant.company_token,
                             status: acceptedMembership.tenant.status,
                             plan: acceptedMembership.tenant.plan
                         } : null
@@ -702,6 +973,14 @@ export const buildAcceptDgfyInvitationUseCase = ({ repository }) => async ({ acc
             }
         });
     } catch (error) {
+        await repository.createBusinessAuditLog?.(buildBusinessAuditPayload({
+            account,
+            membership,
+            action: 'invitation_accept_failed',
+            result: 'failure',
+            reason: error.message || 'DGFY invitation acceptance failed.',
+            metadata
+        }));
         if (error instanceof DomainError) return fail(error);
         return fail(new DomainError(
             DomainErrorCode.INTERNAL_ERROR,
