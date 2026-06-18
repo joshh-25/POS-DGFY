@@ -1346,10 +1346,63 @@ export default function TerminalPage() {
       setFormData((prev) => ({ ...prev, dgfyTenantId: selectedTenantId }));
     } catch (error) {
       setDgfyPosState((prev) => ({ ...prev, loadingCompanies: false }));
+      if (!dgfyPosState.authenticated && Number(error?.response?.status || 0) === 401) {
+        try {
+          await performLegacyTerminalUnlock({ email, password, selectedTerminalId });
+          toast.message('Legacy POS access used. Link this account to DGFY before June 17, 2027.');
+          return;
+        } catch (legacyError) {
+          toast.error(resolveTerminalLoginErrorMessage(legacyError));
+          return;
+        }
+      }
       toast.error(resolveTerminalLoginErrorMessage(error));
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const performLegacyTerminalUnlock = async ({ email, password, selectedTerminalId }) => {
+    const currentCompanyToken = String(getCompanyToken() || '').trim();
+    let resolvedCompanyToken = '';
+    try {
+      resolvedCompanyToken = String(await lookupCompanyToken(email, currentCompanyToken) || '').trim();
+    } catch (lookupError) {
+      if (!currentCompanyToken || !shouldFallbackToCurrentCompanyTokenAfterLookupError(lookupError)) {
+        throw lookupError;
+      }
+      resolvedCompanyToken = currentCompanyToken;
+    }
+    if (!resolvedCompanyToken) {
+      throw createTerminalLoginError(
+        'Unable to resolve company token for this account.',
+        POS_TERMINAL_LOGIN_ERROR_CODES.COMPANY_TOKEN_UNRESOLVED
+      );
+    }
+    try {
+      await loginWithCredentials(
+        { email, password, companyToken: resolvedCompanyToken },
+        SUPPRESS_GLOBAL_ERROR_TOAST
+      );
+    } catch (error) {
+      if (isCompanyTokenResolutionError(error)) {
+        resolvedCompanyToken = String(await lookupCompanyToken(email) || '').trim();
+        if (!resolvedCompanyToken) {
+          throw createTerminalLoginError(
+            'Unable to resolve company token for this account.',
+            POS_TERMINAL_LOGIN_ERROR_CODES.COMPANY_TOKEN_UNRESOLVED
+          );
+        }
+        await loginWithCredentials(
+          { email, password, companyToken: resolvedCompanyToken },
+          SUPPRESS_GLOBAL_ERROR_TOAST
+        );
+        return completeTerminalUnlock(selectedTerminalId);
+      }
+      throw error;
+    }
+
+    return completeTerminalUnlock(selectedTerminalId);
   };
 
   const handleLogin = async (event) => {
@@ -1366,46 +1419,7 @@ export default function TerminalPage() {
 
     setSubmitting(true);
     try {
-      const currentCompanyToken = String(getCompanyToken() || '').trim();
-      let resolvedCompanyToken = '';
-      try {
-        resolvedCompanyToken = String(await lookupCompanyToken(email, currentCompanyToken) || '').trim();
-      } catch (lookupError) {
-        if (!currentCompanyToken || !shouldFallbackToCurrentCompanyTokenAfterLookupError(lookupError)) {
-          toast.error(resolveTerminalLoginErrorMessage(lookupError));
-          return;
-        }
-        resolvedCompanyToken = currentCompanyToken;
-      }
-      if (!resolvedCompanyToken) {
-        toast.error(resolveTerminalLoginErrorMessage(createTerminalLoginError(
-          'Unable to resolve company token for this account.',
-          POS_TERMINAL_LOGIN_ERROR_CODES.COMPANY_TOKEN_UNRESOLVED
-        )));
-        return;
-      }
-      try {
-        await loginWithCredentials(
-          { email, password, companyToken: resolvedCompanyToken },
-          SUPPRESS_GLOBAL_ERROR_TOAST
-        );
-      } catch (error) {
-        if (isCompanyTokenResolutionError(error)) {
-          resolvedCompanyToken = String(await lookupCompanyToken(email) || '').trim();
-          if (!resolvedCompanyToken) {
-            toast.error('Unable to resolve company token for this account.');
-            return;
-          }
-          await loginWithCredentials(
-            { email, password, companyToken: resolvedCompanyToken },
-            SUPPRESS_GLOBAL_ERROR_TOAST
-          );
-        } else {
-          throw error;
-        }
-      }
-
-      await completeTerminalUnlock(selectedTerminalId);
+      await performLegacyTerminalUnlock({ email, password, selectedTerminalId });
     } catch (error) {
       toast.error(resolveTerminalLoginErrorMessage(error));
     } finally {

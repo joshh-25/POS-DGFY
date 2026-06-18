@@ -27,7 +27,7 @@ describe('TerminalPage session contract', () => {
     expect(terminalPageSource).toContain('POS_TERMINAL_LOGIN_ERROR_CODES.MULTIPLE_TENANTS');
     expect(terminalPageSource).toContain('tenants.some((tenant) => tenant?.company_token === normalizedPreferred)');
     expect(terminalPageSource).toContain('shouldFallbackToCurrentCompanyTokenAfterLookupError(lookupError)');
-    expect(terminalPageSource).toContain('resolveTerminalLoginErrorMessage(lookupError)');
+    expect(terminalPageSource).toContain('throw lookupError;');
   });
 
   it('does not auto-bind standalone POS dev sessions to the legacy tenant unless explicitly enabled', () => {
@@ -41,5 +41,13 @@ describe('TerminalPage session contract', () => {
     expect(terminalPageSource).toContain('setLocked(true);');
     expect(terminalPageSource).toContain('setDrawerOpen(true);');
     expect(terminalPageSource).toContain('const shiftOpeningModalOpen = !drawerOpen && requiresOpenShift && canViewPos;');
+  });
+
+  it('falls back to governed legacy POS unlock when DGFY account login rejects tenant-local credentials', () => {
+    expect(terminalPageSource).toContain('performLegacyTerminalUnlock({ email, password, selectedTerminalId })');
+    expect(terminalPageSource).toContain("Number(error?.response?.status || 0) === 401");
+    expect(terminalPageSource).toContain('Legacy POS access used. Link this account to DGFY before June 17, 2027.');
+    expect(terminalPageSource).toContain('loginWithCredentials(');
+    expect(terminalPageSource).toContain('lookupCompanyToken(email, currentCompanyToken)');
   });
 });

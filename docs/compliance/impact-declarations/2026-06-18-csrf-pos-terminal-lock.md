@@ -26,6 +26,7 @@ This declaration covers frontend-only remediation for two production-facing cont
 
 1. Shared tenant and platform-admin API clients now attach the browser-readable `sku_csrf_token` as `x-csrf-token` on unsafe methods when a cookie-backed browser session is present.
 2. The dedicated POS app remains locked until explicit terminal unlock succeeds, so the DGFY POS unlock drawer precedes open-shift prompting.
+3. The DGFY-first POS drawer can fall back to the governed legacy tenant-local login path when `/dgfy/auth/login` rejects an unlinked legacy account with `401`; that fallback still resolves tenant context through `/auth/lookup`, validates tenant credentials, and keeps terminal selection before unlock.
 
 The change is compliance-sensitive because missing CSRF headers caused cookie-authenticated protected actions to fail closed, including platform-admin DGFY account lifecycle actions and POS shift/device actions. The POS lock sequencing is terminal-sensitive because cashier workflows must authenticate and select company/terminal before shift operations.
 
@@ -37,6 +38,7 @@ The change is compliance-sensitive because missing CSRF headers caused cookie-au
 - POS terminal shift/open and other unsafe POS calls inherit the tenant API CSRF header.
 - The dedicated POS app no longer refreshes cookie-only tenant sessions into an unlocked terminal state before the explicit POS unlock flow.
 - The open-shift modal is suppressed while the terminal lock drawer is open, keeping login/company/terminal selection before shift opening.
+- Unlinked legacy tenant-local POS users can use the same primary drawer credentials during the grace period; a DGFY account login `401` falls through to the existing tenant-local login path instead of trapping valid legacy credentials behind a collapsed details control.
 
 ## Compliance Preconditions
 
@@ -44,7 +46,7 @@ The change is compliance-sensitive because missing CSRF headers caused cookie-au
 2. Frontend direct network calls outside the shared tenant/admin clients must still explicitly attach the browser-readable CSRF cookie or move to the shared clients.
 3. DGFY POS unlock remains DGFY sign-in, accessible company selection, terminal/counter selection, then POS session creation.
 4. Open-shift actions remain permission-gated and require a selected terminal identity after unlock.
-5. Legacy POS login remains only a dated grace fallback and must not bypass the terminal lock sequencing.
+5. Legacy POS login remains only a dated grace fallback and must not bypass the terminal lock sequencing, tenant lookup, credential validation, POS permissions, or terminal identity checks.
 
 ## Verification Evidence
 
