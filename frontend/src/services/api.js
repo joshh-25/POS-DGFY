@@ -233,6 +233,7 @@ if (typeof window !== 'undefined') {
 // Request interceptor - Add JWT token to headers
 api.interceptors.request.use(
   async (config) => {
+    config.headers = config.headers || {};
     let token = getAccessToken();
     let companyToken = getCompanyToken();
 
@@ -241,6 +242,11 @@ api.interceptors.request.use(
       companyToken = getCompanyToken();
     }
 
+    const method = String(config.method || 'get').toLowerCase();
+    const authHeaders = getAuthHeaders({
+      includeCsrf: !['get', 'head', 'options'].includes(method)
+    });
+
     if (token && !config.skipTenantAuthHeaders) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -248,6 +254,9 @@ api.interceptors.request.use(
     // This allows login/register to use a different token than what's stored
     if (companyToken && !config.skipTenantAuthHeaders && !config.headers['x-company-token']) {
       config.headers['x-company-token'] = companyToken;
+    }
+    if (authHeaders['x-csrf-token'] && !config.headers['x-csrf-token']) {
+      config.headers['x-csrf-token'] = authHeaders['x-csrf-token'];
     }
     if (config.data instanceof FormData) {
       delete config.headers['Content-Type'];

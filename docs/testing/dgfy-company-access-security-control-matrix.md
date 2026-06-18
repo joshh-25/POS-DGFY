@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: engineering
-last_reviewed: 2026-06-17
+last_reviewed: 2026-06-18
 applies_to: dgfy_company_access,ims,pos,legacy_migration
 topic: dgfy_company_access_security_matrix
 ---
@@ -39,7 +39,7 @@ External security basis:
 | Legacy link request | Accepted legacy tenant user | Legacy IMS/POS tenant session | Only current tenant-local user email is eligible | Tenant-scoped `dgfy_legacy_link` OTP requested to tenant-local email | `legacy_link_started` when telemetry is added; request evidence via OTP logs until then | Missing tenant/user/email blocked | Legacy CTA and deadline banner |
 | Legacy link complete | Accepted legacy tenant user plus matching DGFY session | Legacy IMS/POS tenant session and DGFY account session | DGFY email must exactly match tenant-local email; active account only | Tenant-scoped OTP consumed before landlord transaction; blacklisted DGFY token blocked | `legacy_link_completed`, `legacy_link_failed` | Email mismatch, blacklisted token, inactive account, transaction failure blocked | Link/create DGFY CTA and completion state |
 | Legacy tenant login | Existing accepted tenant-local user | Tenant-local credentials | Grace cohort only until June 17, 2027; new users not eligible | Deadline and flag controlled; no new invite-link setup | `legacy_login_allowed`, `legacy_login_blocked` when telemetry is fully wired | Expired grace blocks with DGFY link route | IMS/POS legacy fallback copy and reminders |
-| DGFY POS unlock | Accepted DGFY account | DGFY session, then POS tenant session | Accepted membership, active tenant, POS permission, terminal registry/location policy | Company selected after access confirmation; terminal id explicit in same drawer; development tenant auto-login is opt-in and excluded from terminal lock routes | `pos_unlock_attempted`, `pos_unlock_success`, `pos_unlock_failed` | No membership, no POS permission, inactive tenant, terminal denial blocked | POS drawer DGFY sign-in, company select, terminal select, legacy fallback |
+| DGFY POS unlock | Accepted DGFY account | DGFY session, then POS tenant session | Accepted membership, active tenant, POS permission, terminal registry/location policy | Company selected after access confirmation; terminal id explicit in same drawer; dedicated POS stays locked until explicit unlock; development tenant auto-login is opt-in and excluded from terminal lock routes | `pos_unlock_attempted`, `pos_unlock_success`, `pos_unlock_failed` | No membership, no POS permission, inactive tenant, terminal denial blocked | POS drawer DGFY sign-in, company select, terminal select, legacy fallback, open-shift prompt only after unlock |
 
 ## Release Evidence Checklist
 

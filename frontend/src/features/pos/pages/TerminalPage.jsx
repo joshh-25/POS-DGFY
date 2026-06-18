@@ -982,6 +982,12 @@ export default function TerminalPage() {
     }
 
     let token = getAccessToken();
+    if (IS_DGFY_POS_SURFACE && !token) {
+      setTerminalUser(null);
+      setLocked(true);
+      setDrawerOpen(true);
+      return;
+    }
     if (!token) {
       try {
         token = await refreshBrowserSession();
@@ -1972,7 +1978,7 @@ export default function TerminalPage() {
   const effectiveSidebarCollapsed = isDesktopWide ? sidebarCollapsed : false;
   const isCheckoutWorkspaceMode = CHECKOUT_VIEW_MODES.includes(posViewMode);
   const isOperationsWorkspaceMode = activeOperationsViewModes.includes(posViewMode);
-  const shiftOpeningModalOpen = requiresOpenShift && canViewPos;
+  const shiftOpeningModalOpen = !drawerOpen && requiresOpenShift && canViewPos;
   const openingCashAmountText = String(openShiftForm.openingFloatAmount ?? '').trim();
   const openingCashAmountNumber = Number(openingCashAmountText);
   const canSubmitOpenShift = (

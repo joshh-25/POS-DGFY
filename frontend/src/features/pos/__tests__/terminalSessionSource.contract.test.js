@@ -35,4 +35,11 @@ describe('TerminalPage session contract', () => {
     expect(standalonePosMainSource).toContain('devAutoLoginCompanyToken');
     expect(standalonePosMainSource).not.toContain('if (import.meta.env.DEV) {');
   });
+
+  it('keeps the dedicated POS app locked until an explicit terminal unlock succeeds', () => {
+    expect(terminalPageSource).toContain('if (IS_DGFY_POS_SURFACE && !token) {');
+    expect(terminalPageSource).toContain('setLocked(true);');
+    expect(terminalPageSource).toContain('setDrawerOpen(true);');
+    expect(terminalPageSource).toContain('const shiftOpeningModalOpen = !drawerOpen && requiresOpenShift && canViewPos;');
+  });
 });

@@ -57,6 +57,13 @@ Object.defineProperty(globalThis, 'window', {
   writable: true,
 });
 
+Object.defineProperty(globalThis, 'document', {
+  value: {
+    cookie: 'sku_csrf_token=csrf-tenant-interceptor'
+  },
+  writable: true,
+});
+
 // ----- BroadcastChannel mock -----
 // Exposes the most-recently created instance via globalThis.__bcInstance so
 // tests can simulate incoming messages from other tabs by calling:
@@ -239,6 +246,24 @@ describe('api.js — Token Refresh Mutex (Interceptor Unit Tests)', () => {
     );
     expect(capturedHeaders[0].Authorization).toBe('Bearer rehydrated-access-token');
     expect(capturedHeaders[0]['x-company-token']).toBe('rehydrated-company-token');
+  });
+
+  it('adds the browser CSRF cookie to unsafe protected requests', async () => {
+    const capturedHeaders = [];
+
+    mockApi.onPost('/pos/terminal/shifts/open').reply((config) => {
+      capturedHeaders.push({ ...config.headers });
+      return [200, { data: { ok: true } }];
+    });
+
+    await api.post('/pos/terminal/shifts/open', {
+      terminal_id: 'COUNTER-01',
+      opening_float_amount: 100
+    });
+
+    expect(capturedHeaders[0].Authorization).toBe('Bearer expired-token');
+    expect(capturedHeaders[0]['x-company-token']).toBe('test-company-token');
+    expect(capturedHeaders[0]['x-csrf-token']).toBe('csrf-tenant-interceptor');
   });
 
   // -------------------------------------------------------------------------

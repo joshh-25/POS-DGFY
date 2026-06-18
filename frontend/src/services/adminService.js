@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { emitGlobalApiError } from '../utils/errorHandler.js';
 import { resolveApiBaseUrl } from '../utils/runtimeConfig.js';
+import { getCsrfToken } from './browserSession.js';
 
 const API_BASE_URL = resolveApiBaseUrl(import.meta.env, typeof window !== 'undefined' ? window.location : undefined);
 const ADMIN_TOKEN_KEY = 'admin_token';
@@ -19,6 +20,18 @@ let authFailureCallback = null;
 export const setAuthFailureCallback = (callback) => {
     authFailureCallback = callback;
 };
+
+adminApi.interceptors.request.use((config) => {
+    config.headers = config.headers || {};
+    const method = String(config.method || 'get').toLowerCase();
+    if (!['get', 'head', 'options'].includes(method) && !config.headers['x-csrf-token']) {
+        const csrfToken = getCsrfToken();
+        if (csrfToken) {
+            config.headers['x-csrf-token'] = csrfToken;
+        }
+    }
+    return config;
+});
 
 // Add response interceptor to handle 401 errors
 adminApi.interceptors.response.use(
