@@ -129,6 +129,7 @@ import {
   getTrackingFlowForOrderMethod
 } from './tracking/fnbAdapter.js';
 import TrackingRouteMap, { extractTrackingMapCoordinates } from './tracking/TrackingRouteMap.jsx';
+import HospitalityBookingPanel from './HospitalityBookingPanel.jsx';
 import {
   WORKFLOW_MODE_LABELS,
   WORKFLOW_MODE_SELECT_VALUES
@@ -1164,6 +1165,23 @@ export const findCanonicalStorefrontSlug = (requestedSlug, stores = []) => {
   if (tenantNameMatch?.slug) return toSlug(tenantNameMatch.slug);
 
   return '';
+};
+
+export const buildStorefrontSlugFallbackQueries = (requestedSlug) => {
+  const normalizedRequestedSlug = toSlug(requestedSlug);
+  if (!normalizedRequestedSlug) return [];
+
+  const withoutHashSuffix = normalizedRequestedSlug
+    .replace(/-[0-9a-f]{6,}$/i, '')
+    .replace(/-[0-9]{4,}$/i, '');
+  const candidates = [
+    normalizedRequestedSlug,
+    withoutHashSuffix,
+    withoutHashSuffix.replace(/-/g, ' '),
+    normalizedRequestedSlug.replace(/-/g, ' ')
+  ];
+
+  return Array.from(new Set(candidates.map((candidate) => String(candidate || '').trim()).filter(Boolean)));
 };
 
 const normalizeStorefrontCategories = (value) => parseOptionalArray(value)
@@ -5753,6 +5771,7 @@ export default function StorefrontApp() {
     };
   }, []);
   const discoveryRequestSequenceRef = useRef(0);
+  const discoveryAbortControllerRef = useRef(null);
   const storeLoadRequestSequenceRef = useRef(0);
   const locationCatalogRequestSequenceRef = useRef(0);
   const lastImmediateDiscoveryRequestRef = useRef({ search: '', at: 0 });
@@ -5778,6 +5797,7 @@ export default function StorefrontApp() {
     isServicesMode,
     isFnbMode,
     isSimpleMode,
+    isHospitalityMode,
     modeAdapter,
     servicesViewModel,
     fnbViewModel,
@@ -6218,6 +6238,9 @@ export default function StorefrontApp() {
     }
     const requestSequence = discoveryRequestSequenceRef.current + 1;
     discoveryRequestSequenceRef.current = requestSequence;
+    discoveryAbortControllerRef.current?.abort?.();
+    const discoveryController = typeof AbortController === 'function' ? new AbortController() : null;
+    discoveryAbortControllerRef.current = discoveryController;
     setLoadingStores(true);
     setStoresError('');
     try {
@@ -6251,17 +6274,24 @@ export default function StorefrontApp() {
         setDiscoveryCoords(null);
       }
       q.set('limit', '100');
-      const data = await requestJson(`/api/v1/storefront/discovery?${q.toString()}`);
+      const data = await requestJson(
+        `/api/v1/storefront/discovery?${q.toString()}`,
+        discoveryController ? { signal: discoveryController.signal } : undefined
+      );
       if (requestSequence === discoveryRequestSequenceRef.current) {
         setStores(Array.isArray(data?.stores) ? data.stores : []);
         setDiscoveryAppliedFilters(data?.applied_filters || null);
       }
     } catch (error) {
+      if (error?.name === 'AbortError') return;
       if (requestSequence === discoveryRequestSequenceRef.current) {
         setDiscoveryAppliedFilters(null);
         setStoresError(error.message || 'Failed to load discovery stores.');
       }
     } finally {
+      if (discoveryAbortControllerRef.current === discoveryController) {
+        discoveryAbortControllerRef.current = null;
+      }
       if (requestSequence === discoveryRequestSequenceRef.current) {
         setLoadingStores(false);
       }
@@ -6286,9 +6316,14 @@ export default function StorefrontApp() {
       } catch (profileError) {
         if (Number(profileError?.status) !== 404) throw profileError;
 
-        const discoveryFallback = await requestJson(`/api/v1/storefront/discovery?search=${encodeURIComponent(normalized)}&limit=20&result_mode=union&stock_filter=include_out_of_stock&pin_scope=tenant_primary&include_match_meta=true`, { cache: 'no-store' });
-        const fallbackStores = Array.isArray(discoveryFallback?.stores) ? discoveryFallback.stores : [];
-        const canonicalSlug = findCanonicalStorefrontSlug(normalized, fallbackStores);
+        let canonicalSlug = '';
+        for (const fallbackQuery of buildStorefrontSlugFallbackQueries(normalized)) {
+          const discoveryFallback = await requestJson(`/api/v1/storefront/discovery?search=${encodeURIComponent(fallbackQuery)}&limit=20&result_mode=union&stock_filter=include_out_of_stock&pin_scope=tenant_primary&include_match_meta=true`, { cache: 'no-store' });
+          const fallbackStores = Array.isArray(discoveryFallback?.stores) ? discoveryFallback.stores : [];
+          canonicalSlug = findCanonicalStorefrontSlug(normalized, fallbackStores)
+            || findCanonicalStorefrontSlug(fallbackQuery, fallbackStores);
+          if (canonicalSlug) break;
+        }
         if (!canonicalSlug) throw profileError;
 
         profile = await requestJson(`/api/v1/storefront/discovery/${encodeURIComponent(canonicalSlug)}`, { cache: 'no-store' });
@@ -13558,6 +13593,16 @@ export default function StorefrontApp() {
                   stores={storeLocations.length > 0 ? storeLocations.map(l => ({ ...l, tenant_name: selectedStore?.tenant_name })) : [selectedStore]}
                   selectedKey={selectedLocationId != null ? `loc-${selectedLocationId}` : null}
                   onSelectStore={(l) => l?.location_id && setSelectedLocationId(l.location_id)}
+                />
+              </section>
+            )}
+
+            {isHospitalityMode && selectedStore && (
+              <section style={{ marginBottom: 24 }}>
+                <HospitalityBookingPanel
+                  selectedStore={selectedStore}
+                  selectedLocationId={selectedLocationId}
+                  isMobileViewport={isMobileViewport}
                 />
               </section>
             )}
