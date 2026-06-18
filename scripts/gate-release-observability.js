@@ -161,13 +161,14 @@ async function buildObservabilityEvidence(options = {}) {
   ensureDir(evidenceDir);
 
   const baseUrl = options.baseUrl || process.env.OBSERVABILITY_BASE_URL || process.env.PROD_BASE_URL || process.env.QA_BASE_URL || '';
+  const healthPath = options.healthPath || process.env.OBSERVABILITY_HEALTH_PATH || '/api/v1/health';
   const enforce = Boolean(options.enforce);
   const checks = [];
   const probeRequestId = `obs-${(targetSha || 'unknown').slice(0, 24)}`;
 
   if (baseUrl) {
-    const health = await fetchText(new URL('/health', baseUrl).toString(), probeRequestId);
-    addCheck(checks, 'health.reachable', health.ok ? 'pass' : 'fail', health.ok ? `status=${health.status}` : (health.error || `status=${health.status}`));
+    const health = await fetchText(new URL(healthPath, baseUrl).toString(), probeRequestId);
+    addCheck(checks, 'health.reachable', health.ok ? 'pass' : 'fail', health.ok ? `status=${health.status}; path=${healthPath}` : (health.error || `status=${health.status}; path=${healthPath}`));
     addCheck(
       checks,
       'trace_context.round_trip',
@@ -272,7 +273,8 @@ async function main() {
     enforce,
     baseUrl: args['base-url'],
     evidenceDir: args['evidence-dir'],
-    targetSha: args.sha
+    targetSha: args.sha,
+    healthPath: args['health-path']
   });
   console.log(`Observability evidence artifact: ${payload.artifact_paths.observability_evidence_file}`);
   if (payload.verdict === 'fail') process.exit(2);

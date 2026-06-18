@@ -65,27 +65,31 @@ describe('observability release gate script', () => {
         );
         fs.writeFileSync(path.join(rootDir, 'backend', 'src', 'middleware', 'requestOutcomeLogger.js'), 'present');
 
-        global.fetch = async (_url, options) => ({
-            ok: true,
-            status: 200,
-            text: async () => JSON.stringify({
-                success: true,
-                services: {
-                    observability: {
-                        runtime_sha: null,
-                        runtime_sha_present: false,
-                        runtime_sha_source: null
+        let requestedUrl = '';
+        global.fetch = async (url, options) => {
+            requestedUrl = url;
+            return {
+                ok: true,
+                status: 200,
+                text: async () => JSON.stringify({
+                    success: true,
+                    services: {
+                        observability: {
+                            runtime_sha: null,
+                            runtime_sha_present: false,
+                            runtime_sha_source: null
+                        }
+                    }
+                }),
+                headers: {
+                    get: (name) => {
+                        if (name === 'x-request-id') return options.headers['x-request-id'];
+                        if (name === 'x-trace-id') return 'trace-1';
+                        return null;
                     }
                 }
-            }),
-            headers: {
-                get: (name) => {
-                    if (name === 'x-request-id') return options.headers['x-request-id'];
-                    if (name === 'x-trace-id') return 'trace-1';
-                    return null;
-                }
-            }
-        });
+            };
+        };
 
         const payload = await buildObservabilityEvidence({
             rootDir,
@@ -94,6 +98,7 @@ describe('observability release gate script', () => {
             evidenceDir: path.join(rootDir, '.tmp', 'release-gates', 'abc1234')
         });
 
+        expect(requestedUrl).toBe('https://skupervisor.example.test/api/v1/health');
         expect(payload.checks).toEqual(expect.arrayContaining([
             expect.objectContaining({
                 name: 'health.runtime_sha.present',
