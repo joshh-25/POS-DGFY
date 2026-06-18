@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeStorefrontPageModel } from '../normalizeStorefrontPageModel.js';
-import { findCanonicalStorefrontSlug } from '../StorefrontApp.jsx';
+import { buildStorefrontSlugFallbackQueries, findCanonicalStorefrontSlug } from '../StorefrontApp.jsx';
 
 describe('normalizeStorefrontPageModel', () => {
   it('derives service mode metadata and section visibility from storefront content', () => {
@@ -118,5 +118,17 @@ describe('normalizeStorefrontPageModel', () => {
     expect(findCanonicalStorefrontSlug('abeezee', [
       { slug: 'abeezee-bb983b', tenant_name: 'ABeeZee' }
     ])).toBe('abeezee-bb983b');
+  });
+
+  it('builds discovery fallback queries for stale hash storefront slugs', () => {
+    expect(buildStorefrontSlugFallbackQueries('space-bar-2193ed')).toEqual([
+      'space-bar-2193ed',
+      'space-bar',
+      'space bar',
+      'space bar 2193ed'
+    ]);
+    expect(findCanonicalStorefrontSlug('space bar', [
+      { slug: 'space-bar-8ddb33', tenant_name: 'Space Bar' }
+    ])).toBe('space-bar-8ddb33');
   });
 });

@@ -1188,6 +1188,23 @@ export const findCanonicalStorefrontSlug = (requestedSlug, stores = []) => {
   return '';
 };
 
+export const buildStorefrontSlugFallbackQueries = (requestedSlug) => {
+  const normalizedRequestedSlug = toSlug(requestedSlug);
+  if (!normalizedRequestedSlug) return [];
+
+  const withoutHashSuffix = normalizedRequestedSlug
+    .replace(/-[0-9a-f]{6,}$/i, '')
+    .replace(/-[0-9]{4,}$/i, '');
+  const candidates = [
+    normalizedRequestedSlug,
+    withoutHashSuffix,
+    withoutHashSuffix.replace(/-/g, ' '),
+    normalizedRequestedSlug.replace(/-/g, ' ')
+  ];
+
+  return Array.from(new Set(candidates.map((candidate) => String(candidate || '').trim()).filter(Boolean)));
+};
+
 const normalizeStorefrontCategories = (value) => parseOptionalArray(value)
   .map((entry) => String(entry || '').trim())
   .filter(Boolean)
@@ -5218,9 +5235,14 @@ export default function StorefrontApp() {
       } catch (profileError) {
         if (Number(profileError?.status) !== 404) throw profileError;
 
-        const discoveryFallback = await requestJson(`/api/v1/storefront/discovery?search=${encodeURIComponent(normalized)}&limit=20&result_mode=union&stock_filter=include_out_of_stock&pin_scope=tenant_primary&include_match_meta=true`, { cache: 'no-store' });
-        const fallbackStores = Array.isArray(discoveryFallback?.stores) ? discoveryFallback.stores : [];
-        const canonicalSlug = findCanonicalStorefrontSlug(normalized, fallbackStores);
+        let canonicalSlug = '';
+        for (const fallbackQuery of buildStorefrontSlugFallbackQueries(normalized)) {
+          const discoveryFallback = await requestJson(`/api/v1/storefront/discovery?search=${encodeURIComponent(fallbackQuery)}&limit=20&result_mode=union&stock_filter=include_out_of_stock&pin_scope=tenant_primary&include_match_meta=true`, { cache: 'no-store' });
+          const fallbackStores = Array.isArray(discoveryFallback?.stores) ? discoveryFallback.stores : [];
+          canonicalSlug = findCanonicalStorefrontSlug(normalized, fallbackStores)
+            || findCanonicalStorefrontSlug(fallbackQuery, fallbackStores);
+          if (canonicalSlug) break;
+        }
         if (!canonicalSlug) throw profileError;
 
         profile = await requestJson(`/api/v1/storefront/discovery/${encodeURIComponent(canonicalSlug)}`, { cache: 'no-store' });
