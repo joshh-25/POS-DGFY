@@ -158,7 +158,7 @@ export function StorefrontHeaderNav({
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobileViewport ? 12 : 14, minWidth: 0, flex: '0 0 auto' }}>
           <button
             type="button"
-            aria-label="Back"
+            aria-label="Back to Discovery"
             onClick={onBack}
             style={{
               width: isMobileViewport ? 44 : 42,

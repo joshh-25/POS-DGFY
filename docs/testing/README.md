@@ -77,21 +77,28 @@ Evidence semantics:
 3. Fixture validation proves shared, VPS, and payment-enabled PayMongo production env shapes stay valid without requiring real production secrets in CI.
 4. These gates do not prove the live server has correct secret values; deploy must still validate the real `backend/.env` on the target host.
 
-## Tenant Invitation Link Security Gates
+## DGFY Company Access And Legacy Invitation Gates
 
-Invitation link security evidence is mandatory for tenant onboarding, user-management invitation, Settings, and AI user-management changes.
+DGFY company-access evidence is mandatory for company registration handoff, user-management invitation, Settings, AI user-management, company switching, ownership transfer, legacy linking, and POS unlock changes.
 
 Required commands:
 1. `npm --prefix backend test -- --runTestsByPath tests/settingsCompanyInfo.usecase.test.js tests/settingsHandlers.companyInfo.test.js tests/userManagementToolRegistry.test.js tests/aiTools.test.js tests/emailTemplates.invitation.test.js`
 2. `npm --prefix backend test -- --runTestsByPath tests/authTenantIsolation.hardening.test.js tests/authUsecases.applicationResult.test.js tests/tenantHandler.emailOtp.test.js tests/emailOtpService.test.js`
-3. `npm --prefix frontend test -- --run Pages/__tests__/AcceptInvite.test.jsx Components/users/__tests__/UserManagementModal.rbacContract.test.js`
+3. `npm --prefix backend test -- --runTestsByPath tests/dgfyAuthUseCases.test.js tests/dgfyLegacyLinkService.test.js tests/dgfyTenantSession.transport.test.js tests/auth.test.js`
+4. `npm --prefix frontend test -- --run Pages/__tests__/AcceptInvite.test.jsx Components/users/__tests__/UserManagementModal.rbacContract.test.js`
+5. `npm --prefix frontend test -- --run src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx Components/users/__tests__/UserInvitationModal.dgfy.test.jsx src/services/__tests__/dgfyAuthService.cookieSession.test.js --testTimeout 20000`
+6. `npm run smoke:dgfy-access-ui` after local IMS, POS, and Storefront dev or preview servers are running.
+7. `DGFY_ACCESS_STRICT_NETWORK=true npm run smoke:dgfy-access-ui` for seeded local-stack or staging proof; local HTTPS-enforced backend smoke may also set `DGFY_ACCESS_FORWARDED_PROTO=https`.
+8. `npm --prefix frontend run build:skupervisor`, `npm --prefix frontend run build:store`, and `npm --prefix frontend run build:pos`.
 
 Evidence semantics:
 1. Settings company-info tests prove the API no longer returns `registration_link`.
 2. AI tests prove the retired `get_company_join_link` tool cannot generate company-token registration URLs.
-3. Email-template and user-management tests prove generated invitation links are `/accept-invite?token=<invitation_token>` only.
-4. Frontend invitation tests prove legacy `company` and `companyToken` URL parameters are ignored for registry-backed validation, OTP request, and acceptance.
-5. These gates do not prove that all historically issued links have expired; ADR 0015 still governs already-issued tenant-local compatibility until expiry.
+3. Email-template and user-management tests prove new DGFY invitations do not expose manual links or `company_token`; the old `/accept-invite?token=...` route is compatibility-only and must remain non-mutating for new business onboarding.
+4. Backend DGFY tests prove account search safe fields, DGFY-only invitation creation, accept/reject, leave, ownership transfer, legacy grace, POS session authorization, owner-transfer demotion, and no normal email-fallback tenant-session authentication.
+5. Frontend invitation/POS/service tests prove the IMS invite modal selects registered DGFY accounts, DGFY auth service errors stay scoped away from generic tenant global toasts, development auto-login is opt-in and excluded from DGFY/POS lock entrypoints, and the POS drawer exposes DGFY sign-in, company, terminal, and legacy-grace states.
+6. The rendered smoke writes structured JSON under `.tmp/rendered-qa/dgfy-access/` plus desktop/mobile screenshots. Default mode is frontend-only and records API failures as diagnostics; strict mode fails on 5xx network responses for full-stack evidence.
+7. These gates do not prove all historically issued links have expired or that POS hardware bridges are device-proven after DGFY unlock. Seeded UAT must still cover receipt printing, cash drawer, iMin warnings, shift state, terminal policy denial, and offline queue replay.
 
 ## Frontend Contract Gates
 
@@ -162,9 +169,22 @@ Use this focused gate when changing the shared IMS MapLibre picker used by onboa
 2. `npm --prefix frontend test -- --run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx`
 
 Evidence semantics:
-1. The focused MapLibre suite proves the picker initializes with the inline OpenStreetMap raster style contract, preserves click/geolocation/drag coordinate updates, disables MapLibre's internal resize tracker for modal/panel teardown safety, skips unsafe hidden-container resize calls, and keeps the coordinate fallback usable when tile resource requests emit MapLibre errors.
+1. The focused MapLibre suite proves the picker initializes with the inline OpenStreetMap raster style contract, preserves click/geolocation/drag coordinate updates, reverse-geocodes selected pins into the editable address field when possible, keeps coordinate updates usable when reverse geocoding fails, disables MapLibre's internal resize tracker for modal/panel teardown safety, skips unsafe hidden-container resize calls, and keeps the coordinate fallback usable when tile resource requests emit MapLibre errors.
 2. The onboarding and Settings suites prove both user-facing surfaces still wire the shared picker into their location forms.
 3. These gates do not prove live tile-provider availability, browser WebGL support, or production CSP/proxy parity; rendered browser QA remains required before claiming visual map parity.
+
+## Item Image Carousel Gate
+
+Use this focused gate when changing onboarding starter-item images, Storefront Catalog item images, or the shared selected-image carousel:
+
+Commands:
+1. `npm --prefix frontend test -- --run src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx src/features/inventory/__tests__/itemProductWizard.contract.test.js`
+
+Expected evidence:
+1. F&B onboarding exposes `Menu Item` as the first-login starter choice and submits the customer-facing `menu_item` preset.
+2. Onboarding file selections append up to the five-image cap instead of replacing the existing selected set.
+3. Onboarding and item create/edit surfaces render the selected-image carousel with a focused image, count/filename context, and one-by-one focused removal.
+4. Storefront Catalog remains the single wizard image upload surface; POS Controls must not reintroduce a separate image uploader.
 
 ## Storefront Public Visibility Gate
 
@@ -536,6 +556,21 @@ Output:
 
 Pass condition:
 1. `verdict` equals `pass` (or `bypassed` only with incident metadata).
+
+## Merge Adoption Gate
+
+Use this whenever a release adopts PR, branch, or `merge-docs/` behavior and the final tree must prove both new behavior and preserved master behavior.
+
+Standalone command:
+1. `npm run check:merge-adoption -- --manifest path/to/merge-adoption.json`
+
+No-staging release integration:
+1. `MERGE_ADOPTION_MANIFEST=path/to/merge-adoption.json RELEASE_TARGET_SHA=<sha> npm run gate:release:no-staging`
+
+Evidence semantics:
+1. The manifest records each feature-area decision as `adopt`, `combine`, `preserve-master`, or `reject`.
+2. The gate verifies required files, required strings, forbidden strings, and optional source-added file adoption/rejection.
+3. A passing gate proves final-tree adoption evidence only. Production completion still needs deploy summary SHA parity, live runtime SHA health proof, frontend asset parity, and rendered/API QA for the affected surface.
 
 ## Local Readiness Gate
 

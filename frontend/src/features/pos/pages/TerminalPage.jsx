@@ -13,6 +13,15 @@ import {
   updateOnlineOrderStatus
 } from '../services/posService';
 import { login as loginWithCredentials, getCurrentUser as fetchCurrentUser } from '@/services/authService.js';
+import {
+  completeDgfyLegacyLink,
+  getStoredDgfyToken,
+  listDgfyAccountCompanies,
+  loginDgfyAccount,
+  requestDgfyLegacyLinkEmailOtp,
+  startDgfyLegacyRegistrationHandoff,
+  startDgfyPosSession
+} from '@/services/dgfyAuthService.js';
 import { getAllSettings } from '@/services/settingsService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
 import { getComplianceProfile } from '@/services/complianceService.js';
@@ -55,13 +64,20 @@ import {
 } from '../utils/terminalIdentity.js';
 
 import TerminalPageLayout from '../components/TerminalPageLayout.jsx';
-import OnboardingSetupModal from '../../onboarding/components/OnboardingSetupModal.jsx';
 import PosHardwareMessageModal from '../components/PosHardwareMessageModal.jsx';
-import { POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
+import OnboardingSetupModal from '../../onboarding/components/OnboardingSetupModal.jsx';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog';
+import { POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 
 const DEFAULT_CURRENCY = 'PHP';
@@ -114,8 +130,6 @@ const COMPLIANCE_REASON_LABELS = Object.freeze({
   BSP_PAYMENT_CONTROL_REQUIRED: 'BSP payment control review incomplete'
 });
 
-const money = (value) => Number(value || 0).toFixed(2);
-
 const normalizeActivationBlocker = (entry) => {
   const code = String(entry?.code || '').trim() || 'COMPLIANCE_BLOCKER';
   const actionTarget = String(entry?.action_target || '').trim() || DEFAULT_COMPLIANCE_ACTION_TARGET;
@@ -156,9 +170,9 @@ const setStoredTerminalLock = (locked) => {
   if (typeof window === 'undefined') return;
   if (locked) {
     window.localStorage.setItem(TERMINAL_LOCK_STORAGE_KEY, '1');
-    return;
+  } else {
+    window.localStorage.removeItem(TERMINAL_LOCK_STORAGE_KEY);
   }
-  window.localStorage.removeItem(TERMINAL_LOCK_STORAGE_KEY);
 };
 
 const readInitialTerminalId = () => resolvePreferredTerminalId(
@@ -259,6 +273,8 @@ export default function TerminalPage() {
   const [loadingUser, setLoadingUser] = useState(false);
   const [terminalUser, setTerminalUser] = useState(null);
   const [onboardingSetupOpen, setOnboardingSetupOpen] = useState(false);
+  const [closeShiftConfirmOpen, setCloseShiftConfirmOpen] = useState(false);
+  const [hardwareMessage, setHardwareMessage] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [activeTerminalId, setActiveTerminalId] = useState(() => readInitialTerminalId());
   const [terminalRegistry, setTerminalRegistry] = useState([]);
@@ -283,11 +299,23 @@ export default function TerminalPage() {
   const [formData, setFormData] = useState({
     email: '',
     password: '',
+    dgfyTenantId: '',
     terminalId: readInitialTerminalId()
+  });
+  const [dgfyPosState, setDgfyPosState] = useState({
+    authenticated: false,
+    account: null,
+    companies: [],
+    loadingCompanies: false
+  });
+  const [legacyLinkState, setLegacyLinkState] = useState({
+    otpSent: false,
+    code: '',
+    loading: false
   });
 
   const [shiftState, setShiftState] = useState({
-    loading: true,
+    loading: false,
     shift: null,
     cashSummary: null
   });
@@ -310,7 +338,6 @@ export default function TerminalPage() {
     closingCashAmount: '',
     closingNote: ''
   });
-  const [closeShiftConfirmOpen, setCloseShiftConfirmOpen] = useState(false);
   const [shiftActionLoading, setShiftActionLoading] = useState({
     open: false,
     switchLocation: false,
@@ -335,7 +362,6 @@ export default function TerminalPage() {
   const [receiptReturnViewMode, setReceiptReturnViewMode] = useState(null);
   const [historyRequestQuery, setHistoryRequestQuery] = useState('');
   const [incomingHistoryOpeningId, setIncomingHistoryOpeningId] = useState(null);
-  const [hardwareMessage, setHardwareMessage] = useState(null);
   const [catalogSearchPrefill, setCatalogSearchPrefill] = useState(() => {
     if (typeof window === 'undefined') return '';
     const params = new URLSearchParams(window.location.search);
@@ -663,7 +689,6 @@ export default function TerminalPage() {
       if (!suppressGlobalErrors && error?.response?.status !== 403) {
         toast.error(error?.response?.data?.message || 'Failed to load terminal operational context.');
       }
-      return { shift: null, cashSummary: null };
     }
   }, [activeTerminalId, canViewPos, locked, operatingLocationId]);
 
@@ -955,7 +980,14 @@ export default function TerminalPage() {
       setDrawerOpen(true);
       return;
     }
+
     let token = getAccessToken();
+    if (IS_DGFY_POS_SURFACE && !token) {
+      setTerminalUser(null);
+      setLocked(true);
+      setDrawerOpen(true);
+      return;
+    }
     if (!token) {
       try {
         token = await refreshBrowserSession();
@@ -1047,7 +1079,6 @@ export default function TerminalPage() {
 
   useEffect(() => {
     const onSessionExpired = () => {
-      setStoredTerminalLock(true);
       setLocked(true);
       setDrawerOpen(true);
       setTerminalUser(null);
@@ -1115,7 +1146,7 @@ export default function TerminalPage() {
       return `Compliant mode activation checklist is incomplete (${complianceGate.missingRequirementCount} unresolved requirement${complianceGate.missingRequirementCount === 1 ? '' : 's'}). Complete required profile, settings, artifacts, and peripherals in Settings > Compliance.`;
     }
     if (!canTransactPos) return 'Your account does not have POS transact permission.';
-    if (!shiftState.shift) return 'You cannot use the POS because the shift is closed.';
+    if (!shiftState.shift) return 'Open a shift before checkout.';
     return '';
   }, [canTransactPos, complianceGate.checklistReady, complianceGate.loadError, complianceGate.missingRequirementCount, complianceGate.modeChoiceRequired, complianceGate.modeState, locked, shiftState.shift]);
 
@@ -1162,105 +1193,233 @@ export default function TerminalPage() {
 
   const activeShiftId = shiftState?.shift?.pos_terminal_shift_id || null;
   const requiresOpenShift = !locked && !shiftState.loading && !activeShiftId;
-  const handleLogin = async (event) => {
-    event.preventDefault();
-    const email = String(formData.email || '').trim();
-    const password = String(formData.password || '');
-    const selectedTerminalId = resolveLoginTerminalId({
+  const showLegacyDgfyLinkBanner = terminalUser
+    && terminalUser.dgfy_link_status
+    && terminalUser.dgfy_link_status !== 'linked';
+
+  const handleRequestLegacyLinkOtp = async () => {
+    setLegacyLinkState((prev) => ({ ...prev, loading: true }));
+    try {
+      await requestDgfyLegacyLinkEmailOtp();
+      setLegacyLinkState((prev) => ({ ...prev, otpSent: true }));
+      toast.success('DGFY linking code sent to your IMS/POS email.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to send DGFY linking code.');
+    } finally {
+      setLegacyLinkState((prev) => ({ ...prev, loading: false }));
+    }
+  };
+
+  const handleCompleteLegacyLink = async () => {
+    const code = String(legacyLinkState.code || '').trim();
+    if (!code) {
+      toast.error('Enter the DGFY linking code.');
+      return;
+    }
+    if (!getStoredDgfyToken()) {
+      toast.error('Sign in with your DGFY account first, then complete linking.');
+      return;
+    }
+    setLegacyLinkState((prev) => ({ ...prev, loading: true }));
+    try {
+      await completeDgfyLegacyLink({ emailOtpCode: code });
+      await hydrateUser({ suppressGlobalErrors: true });
+      setLegacyLinkState({ otpSent: false, code: '', loading: false });
+      toast.success('DGFY account linked to this IMS/POS user.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to link DGFY account.');
+      setLegacyLinkState((prev) => ({ ...prev, loading: false }));
+    }
+  };
+
+  const handleStartLegacyRegistration = async () => {
+    try {
+      const payload = await startDgfyLegacyRegistrationHandoff();
+      const url = payload?.return_to || '/dgfy/auth?intent=legacy-link';
+      if (typeof window !== 'undefined') {
+        window.location.href = url;
+      }
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to start DGFY registration.');
+    }
+  };
+
+  const resolveSelectedLoginTerminalId = () => resolveLoginTerminalId({
       selectedTerminalId: formData.terminalId,
       registryEnforced,
       registryEntries: activeTerminalRegistry,
       registryMode: terminalRegistryMode
     });
+
+  const validateSelectedTerminalForUnlock = (selectedTerminalId) => {
     const registryEntry = terminalRegistryLookup.get(selectedTerminalId);
+    if (registryEnforced && activeTerminalRegistry.length === 0) {
+      toast.error('No active terminals configured. Add one in Settings > POS Setup > Terminal Registry.');
+      return false;
+    }
+    if (registryEnforced && !selectedTerminalId) {
+      toast.error('Terminal ID is required when registry enforcement is enabled.');
+      return false;
+    }
+    if (registryEnforced && !registryEntry) {
+      toast.error('Select an active terminal from the configured registry.');
+      return false;
+    }
+    if (!registryEnforced && selectedTerminalId && !registryEntry && activeTerminalRegistry.length > 0) {
+      toast.warning(`Terminal ID ${selectedTerminalId} is not in the active registry. Continuing in warn mode.`);
+    }
+    return true;
+  };
+
+  const completeTerminalUnlock = async (selectedTerminalId) => {
+    if (typeof window !== 'undefined') {
+      if (selectedTerminalId) {
+        window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, selectedTerminalId);
+      } else {
+        window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);
+      }
+    }
+    setStoredTerminalLock(false);
+    setActiveTerminalId(selectedTerminalId);
+    await hydrateUser({ suppressGlobalErrors: true });
+    await Promise.all([
+      hydrateTerminalMeta({ suppressGlobalErrors: true }),
+      refreshTenantLocations({ suppressGlobalErrors: true }),
+      refreshOperationalContext({
+        terminalIdOverride: selectedTerminalId,
+        suppressGlobalErrors: true
+      }),
+      refreshComplianceGate({ suppressGlobalErrors: true })
+    ]);
+    setFormData((prev) => ({ ...prev, password: '', terminalId: selectedTerminalId }));
+    toast.success(selectedTerminalId ? `Terminal unlocked (${selectedTerminalId}).` : 'Terminal unlocked.');
+  };
+
+  const handleDgfyPosLogin = async (event) => {
+    event.preventDefault();
+    const email = String(formData.email || '').trim();
+    const password = String(formData.password || '');
+    const selectedTerminalId = resolveSelectedLoginTerminalId();
+
+    if (!validateSelectedTerminalForUnlock(selectedTerminalId)) return;
+
+    setSubmitting(true);
+    try {
+      let token = '';
+      if (!dgfyPosState.authenticated) {
+        if (!email || !password) {
+          toast.error('DGFY email and password are required.');
+          return;
+        }
+        const loginResult = await loginDgfyAccount({ email, password });
+        token = loginResult?.token || '';
+        setDgfyPosState((prev) => ({
+          ...prev,
+          authenticated: true,
+          account: loginResult?.account || null
+        }));
+      }
+
+      setDgfyPosState((prev) => ({ ...prev, loadingCompanies: true }));
+      const companiesResult = await listDgfyAccountCompanies(token);
+      const acceptedCompanies = [
+        ...(Array.isArray(companiesResult?.owned_companies) ? companiesResult.owned_companies : []),
+        ...(Array.isArray(companiesResult?.invited_companies) ? companiesResult.invited_companies : [])
+      ].filter((company) => company?.can_switch);
+      const selectedTenantId = String(formData.dgfyTenantId || '').trim()
+        || (acceptedCompanies.length === 1 ? String(acceptedCompanies[0]?.tenant_id || '') : '');
+      setDgfyPosState((prev) => ({
+        ...prev,
+        authenticated: true,
+        companies: acceptedCompanies,
+        loadingCompanies: false
+      }));
+      if (!selectedTenantId) {
+        toast.message('Select the company to unlock for this terminal.');
+        return;
+      }
+      await startDgfyPosSession({
+        tenantId: selectedTenantId,
+        terminalId: selectedTerminalId
+      }, token);
+      await completeTerminalUnlock(selectedTerminalId);
+      setFormData((prev) => ({ ...prev, dgfyTenantId: selectedTenantId }));
+    } catch (error) {
+      setDgfyPosState((prev) => ({ ...prev, loadingCompanies: false }));
+      if (!dgfyPosState.authenticated && Number(error?.response?.status || 0) === 401) {
+        try {
+          await performLegacyTerminalUnlock({ email, password, selectedTerminalId });
+          toast.message('Legacy POS access used. Link this account to DGFY before June 17, 2027.');
+          return;
+        } catch (legacyError) {
+          toast.error(resolveTerminalLoginErrorMessage(legacyError));
+          return;
+        }
+      }
+      toast.error(resolveTerminalLoginErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const performLegacyTerminalUnlock = async ({ email, password, selectedTerminalId }) => {
+    const currentCompanyToken = String(getCompanyToken() || '').trim();
+    let resolvedCompanyToken = '';
+    try {
+      resolvedCompanyToken = String(await lookupCompanyToken(email, currentCompanyToken) || '').trim();
+    } catch (lookupError) {
+      if (!currentCompanyToken || !shouldFallbackToCurrentCompanyTokenAfterLookupError(lookupError)) {
+        throw lookupError;
+      }
+      resolvedCompanyToken = currentCompanyToken;
+    }
+    if (!resolvedCompanyToken) {
+      throw createTerminalLoginError(
+        'Unable to resolve company token for this account.',
+        POS_TERMINAL_LOGIN_ERROR_CODES.COMPANY_TOKEN_UNRESOLVED
+      );
+    }
+    try {
+      await loginWithCredentials(
+        { email, password, companyToken: resolvedCompanyToken },
+        SUPPRESS_GLOBAL_ERROR_TOAST
+      );
+    } catch (error) {
+      if (isCompanyTokenResolutionError(error)) {
+        resolvedCompanyToken = String(await lookupCompanyToken(email) || '').trim();
+        if (!resolvedCompanyToken) {
+          throw createTerminalLoginError(
+            'Unable to resolve company token for this account.',
+            POS_TERMINAL_LOGIN_ERROR_CODES.COMPANY_TOKEN_UNRESOLVED
+          );
+        }
+        await loginWithCredentials(
+          { email, password, companyToken: resolvedCompanyToken },
+          SUPPRESS_GLOBAL_ERROR_TOAST
+        );
+        return completeTerminalUnlock(selectedTerminalId);
+      }
+      throw error;
+    }
+
+    return completeTerminalUnlock(selectedTerminalId);
+  };
+
+  const handleLogin = async (event) => {
+    event.preventDefault();
+    const email = String(formData.email || '').trim();
+    const password = String(formData.password || '');
+    const selectedTerminalId = resolveSelectedLoginTerminalId();
 
     if (!email || !password) {
       toast.error('Email and password are required.');
       return;
     }
-    if (registryEnforced && activeTerminalRegistry.length === 0) {
-      toast.error('No active terminals configured. Add one in Settings > POS Setup > Terminal Registry.');
-      return;
-    }
-    if (registryEnforced && !selectedTerminalId) {
-      toast.error('Terminal ID is required when registry enforcement is enabled.');
-      return;
-    }
-    if (registryEnforced && !registryEntry) {
-      toast.error('Select an active terminal from the configured registry.');
-      return;
-    }
-    if (!registryEnforced && selectedTerminalId && !registryEntry && activeTerminalRegistry.length > 0) {
-      toast.warning(`Terminal ID ${selectedTerminalId} is not in the active registry. Continuing in warn mode.`);
-    }
+    if (!validateSelectedTerminalForUnlock(selectedTerminalId)) return;
 
     setSubmitting(true);
     try {
-      const currentCompanyToken = String(getCompanyToken() || '').trim();
-      let resolvedCompanyToken = '';
-      try {
-        resolvedCompanyToken = String(await lookupCompanyToken(email, currentCompanyToken) || '').trim();
-      } catch (lookupError) {
-        if (!currentCompanyToken || !shouldFallbackToCurrentCompanyTokenAfterLookupError(lookupError)) {
-          toast.error(resolveTerminalLoginErrorMessage(lookupError));
-          return;
-        }
-        resolvedCompanyToken = currentCompanyToken;
-      }
-      if (!resolvedCompanyToken) {
-        toast.error(resolveTerminalLoginErrorMessage(createTerminalLoginError(
-          'Unable to resolve company token for this account.',
-          POS_TERMINAL_LOGIN_ERROR_CODES.COMPANY_TOKEN_UNRESOLVED
-        )));
-        return;
-      }
-      try {
-        await loginWithCredentials(
-          { email, password, companyToken: resolvedCompanyToken },
-          SUPPRESS_GLOBAL_ERROR_TOAST
-        );
-      } catch (error) {
-        if (isCompanyTokenResolutionError(error)) {
-          resolvedCompanyToken = String(await lookupCompanyToken(email) || '').trim();
-          if (!resolvedCompanyToken) {
-            toast.error('Unable to resolve company token for this account.');
-            return;
-          }
-          await loginWithCredentials(
-            { email, password, companyToken: resolvedCompanyToken },
-            SUPPRESS_GLOBAL_ERROR_TOAST
-          );
-        } else {
-          throw error;
-        }
-      }
-
-      if (typeof window !== 'undefined') {
-        if (selectedTerminalId) {
-          window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, selectedTerminalId);
-        } else {
-          window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);
-        }
-      }
-      setStoredTerminalLock(false);
-      setActiveTerminalId(selectedTerminalId);
-      await hydrateUser({ suppressGlobalErrors: true });
-      const [, , operationalContextResult] = await Promise.all([
-        hydrateTerminalMeta({ suppressGlobalErrors: true }),
-        refreshTenantLocations({ suppressGlobalErrors: true }),
-        refreshOperationalContext({
-          terminalIdOverride: selectedTerminalId,
-          suppressGlobalErrors: true
-        }),
-        refreshComplianceGate({ suppressGlobalErrors: true })
-      ]);
-      setFormData((prev) => ({ ...prev, password: '', terminalId: selectedTerminalId }));
-      setPosViewMode('checkout');
-      setMobileNavOpen(false);
-      if (!operationalContextResult?.shift) {
-        toast.message('Please open your shift before using the POS.');
-      }
-      toast.success(selectedTerminalId ? `Terminal unlocked (${selectedTerminalId}).` : 'Terminal unlocked.');
+      await performLegacyTerminalUnlock({ email, password, selectedTerminalId });
     } catch (error) {
       toast.error(resolveTerminalLoginErrorMessage(error));
     } finally {
@@ -1276,10 +1435,10 @@ export default function TerminalPage() {
       emitAuthEvents: true,
       redirectTo: null
     });
-    setPosViewMode('checkout');
-    setMobileNavOpen(false);
     setLocked(true);
     setDrawerOpen(true);
+    setPosViewMode('checkout');
+    setMobileNavOpen(false);
     setTerminalUser(null);
   };
 
@@ -1319,7 +1478,7 @@ export default function TerminalPage() {
     }
     const openingFloatAmount = Number(rawOpeningFloat);
     if (!Number.isFinite(openingFloatAmount) || openingFloatAmount < 0) {
-      toast.error('Opening cash amount must be a valid non-negative number.');
+      toast.error('Opening float must be a non-negative number.');
       return;
     }
 
@@ -1347,15 +1506,12 @@ export default function TerminalPage() {
 
     setShiftActionLoading((prev) => ({ ...prev, open: true }));
     try {
-      const result = await openTerminalShift(payload);
+      await openTerminalShift(payload);
       toast.success('Shift opened successfully.');
       setOpenShiftForm({ openingFloatAmount: '', openingNote: '' });
       await refreshOperationalContext();
       setPosViewMode('checkout');
       setMobileNavOpen(false);
-      if (workspacePaneRef.current) {
-        workspacePaneRef.current.scrollTo({ top: 0, behavior: 'smooth' });
-      }
     } catch (error) {
       if (isRetryableTerminalOperationError(error)) {
         await enqueueTerminalOperationIntent(queueEntry, 'network_failure');
@@ -1414,6 +1570,7 @@ export default function TerminalPage() {
   const handleRecordCashEvent = async () => {
     if (complianceBlockerDetails) {
       toast.error(`${complianceBlockerDetails.title}. ${complianceBlockerDetails.message}`);
+      setCloseShiftConfirmOpen(false);
       return;
     }
     if (!activeShiftId) {
@@ -1490,7 +1647,7 @@ export default function TerminalPage() {
     }
   };
 
-  const handleCloseShift = async () => {
+  const handleCloseShift = () => {
     if (complianceBlockerDetails) {
       toast.error(`${complianceBlockerDetails.title}. ${complianceBlockerDetails.message}`);
       return;
@@ -1505,7 +1662,6 @@ export default function TerminalPage() {
   const handleConfirmCloseShift = async () => {
     if (complianceBlockerDetails) {
       toast.error(`${complianceBlockerDetails.title}. ${complianceBlockerDetails.message}`);
-      setCloseShiftConfirmOpen(false);
       return;
     }
     if (!activeShiftId) {
@@ -1536,11 +1692,11 @@ export default function TerminalPage() {
 
     if (!isOnline) {
       await enqueueTerminalOperationIntent(queueEntry, 'offline');
+      setCloseShiftConfirmOpen(false);
       const pendingCount = Number(queueSummary.pending || 0) + 1;
       toast.message(
         `You are offline. Shift-close action was queued and will replay automatically (${pendingCount} queued).`
       );
-      setCloseShiftConfirmOpen(false);
       return;
     }
 
@@ -1555,19 +1711,11 @@ export default function TerminalPage() {
         shift: null,
         cashSummary: null
       });
-      setTodayDashboard((prev) => ({
-        ...prev,
-        active_shift: null,
-        active_shift_cash_summary: null
-      }));
-      setPosViewMode('checkout');
-      setMobileNavOpen(false);
-      if (workspacePaneRef.current) {
-        workspacePaneRef.current.scrollTo({ top: 0, behavior: 'smooth' });
-      }
+      await refreshOperationalContext();
     } catch (error) {
       if (isRetryableTerminalOperationError(error)) {
         await enqueueTerminalOperationIntent(queueEntry, 'network_failure');
+        setCloseShiftConfirmOpen(false);
         const pendingCount = Number(queueSummary.pending || 0) + 1;
         toast.message(
           `Shift-close action queued after connectivity issue (${pendingCount} queued).`
@@ -1590,11 +1738,6 @@ export default function TerminalPage() {
     const nextStatus = String(fulfillmentStatus || '').trim();
     if (!nextStatus) {
       toast.error('Select a valid status update action.');
-      return;
-    }
-    if (!activeShiftId) {
-      toast.error('You cannot use the POS because the shift is closed.');
-      setMobileNavOpen(false);
       return;
     }
 
@@ -1711,12 +1854,32 @@ export default function TerminalPage() {
       setMobileNavOpen(false);
       return;
     }
+    if (requiresOpenShift) {
+      toast.error('You cannot use the POS because the shift is closed.');
+      setMobileNavOpen(false);
+      return;
+    }
     setPosViewMode(nextMode);
     if (workspacePaneRef.current) {
       workspacePaneRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
     setMobileNavOpen(false);
   }, [activeViewModes, locked, requiresOpenShift]);
+
+  const handleHardwareMessageOpenChange = useCallback((open) => {
+    if (!open) {
+      setHardwareMessage(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handleHardwareMessage = (event) => {
+      setHardwareMessage(event.detail || null);
+    };
+    window.addEventListener(POS_HARDWARE_MESSAGE_EVENT_NAME, handleHardwareMessage);
+    return () => window.removeEventListener(POS_HARDWARE_MESSAGE_EVENT_NAME, handleHardwareMessage);
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -1826,37 +1989,10 @@ export default function TerminalPage() {
     }
   }, [activeViewModes, posViewMode]);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-
-    const handleHardwareMessage = (event) => {
-      const detail = event?.detail;
-      const message = String(detail?.message || '').trim();
-      if (!message) return;
-      setHardwareMessage({
-        title: String(detail?.title || 'Hardware message').trim() || 'Hardware message',
-        message,
-        tone: String(detail?.tone || 'info').trim(),
-        source: String(detail?.source || 'iMin hardware').trim() || 'iMin hardware',
-        details: detail?.details || null,
-        timestamp: detail?.timestamp || new Date().toISOString()
-      });
-    };
-
-    window.addEventListener(POS_HARDWARE_MESSAGE_EVENT_NAME, handleHardwareMessage);
-    return () => window.removeEventListener(POS_HARDWARE_MESSAGE_EVENT_NAME, handleHardwareMessage);
-  }, []);
-
-  const handleHardwareMessageOpenChange = useCallback((open) => {
-    if (open === false) {
-      setHardwareMessage(null);
-    }
-  }, []);
-
   const effectiveSidebarCollapsed = isDesktopWide ? sidebarCollapsed : false;
   const isCheckoutWorkspaceMode = CHECKOUT_VIEW_MODES.includes(posViewMode);
   const isOperationsWorkspaceMode = activeOperationsViewModes.includes(posViewMode);
-  const shiftOpeningModalOpen = requiresOpenShift && canViewPos;
+  const shiftOpeningModalOpen = !drawerOpen && requiresOpenShift && canViewPos;
   const openingCashAmountText = String(openShiftForm.openingFloatAmount ?? '').trim();
   const openingCashAmountNumber = Number(openingCashAmountText);
   const canSubmitOpenShift = (
@@ -1892,7 +2028,7 @@ export default function TerminalPage() {
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="shift-opening-cash-amount" className="text-xs font-extrabold text-[#0F172A]">
-                    Opening Cash Amount ({terminalMeta.pettyCashSymbol})
+                    Opening Cash
                   </Label>
                   <Input
                     id="shift-opening-cash-amount"
@@ -1919,14 +2055,8 @@ export default function TerminalPage() {
                     disabled={shiftActionLoading.open}
                   />
                 </div>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-600">
-                  Terminal {activeTerminalId || 'not selected'} · Location {locationsState.locations.find((location) => Number(location.location_id) === Number(operatingLocationId))?.name || operatingLocationId || 'not selected'}
-                </div>
               </div>
-              <DialogFooter className="border-t border-slate-100 px-5 py-4 sm:justify-between">
-                <Button type="button" variant="outline" onClick={handleLock} disabled={shiftActionLoading.open}>
-                  Lock Terminal
-                </Button>
+              <DialogFooter className="border-t border-slate-100 px-5 py-4">
                 <Button
                   type="submit"
                   className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
@@ -1938,63 +2068,6 @@ export default function TerminalPage() {
             </form>
           </DialogContent>
         </Dialog>
-        <Dialog
-          open={closeShiftConfirmOpen}
-          onOpenChange={(open) => {
-            if (!open && !shiftActionLoading.close) setCloseShiftConfirmOpen(false);
-          }}
-        >
-          <DialogContent className="max-w-md border border-slate-200 p-0 shadow-2xl">
-            <DialogHeader className="border-b border-slate-100 px-5 py-4">
-              <DialogTitle className="text-lg font-extrabold text-[#0F172A]">Close Shift</DialogTitle>
-              <DialogDescription className="text-sm text-slate-600">
-                Are you sure you want to close this shift?
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-3 px-5 py-5">
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-                Closing this shift will disable POS sales until a new shift is opened.
-              </div>
-              <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-[12px] text-slate-600">
-                <span>Expected Cash</span>
-                <span className="text-right font-extrabold text-slate-900">
-                  {terminalMeta.pettyCashSymbol} {money(shiftState.cashSummary?.expected_cash_amount || 0)}
-                </span>
-                <span>Closing Cash</span>
-                <span className="text-right font-extrabold text-slate-900">
-                  {terminalMeta.pettyCashSymbol} {money(
-                    String(closeShiftForm.closingCashAmount || '').trim() === ''
-                      ? shiftState.cashSummary?.expected_cash_amount || 0
-                      : closeShiftForm.closingCashAmount
-                  )}
-                </span>
-              </div>
-            </div>
-            <DialogFooter className="border-t border-slate-100 px-5 py-4 sm:justify-between">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setCloseShiftConfirmOpen(false)}
-                disabled={shiftActionLoading.close}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={handleConfirmCloseShift}
-                disabled={shiftActionLoading.close}
-              >
-                {shiftActionLoading.close ? 'Closing...' : 'Close Shift'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-        <PosHardwareMessageModal
-          open={hardwareMessage !== null}
-          message={hardwareMessage}
-          onOpenChange={handleHardwareMessageOpenChange}
-        />
         {showOnboardingReminder && (
           <div className="fixed right-4 top-4 z-[70] max-w-[min(92vw,420px)] rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 shadow-lg shadow-amber-900/10">
             <span>
@@ -2009,6 +2082,50 @@ export default function TerminalPage() {
             </button>
           </div>
         )}
+        {showLegacyDgfyLinkBanner && (
+          <div className="fixed left-4 top-4 z-[70] max-w-[min(92vw,460px)] rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-xs text-amber-950 shadow-lg shadow-amber-900/10">
+            <div className="font-extrabold">Create or link your DGFY account</div>
+            <p className="mt-1 leading-5">
+              Create or link your DGFY account to keep IMS/POS access after June 17, 2027.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRequestLegacyLinkOtp}
+                disabled={legacyLinkState.loading}
+                className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-extrabold text-amber-950 hover:bg-amber-100 disabled:opacity-60"
+              >
+                {legacyLinkState.otpSent ? 'Resend code' : 'Send link code'}
+              </button>
+              <button
+                type="button"
+                onClick={handleStartLegacyRegistration}
+                className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-extrabold text-amber-950 hover:bg-amber-100"
+              >
+                Create DGFY account
+              </button>
+            </div>
+            {legacyLinkState.otpSent && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <input
+                  value={legacyLinkState.code}
+                  onChange={(event) => setLegacyLinkState((prev) => ({ ...prev, code: event.target.value }))}
+                  placeholder="6-digit code"
+                  className="h-8 w-32 rounded-md border border-amber-300 bg-white px-2 text-xs text-slate-900 outline-none focus:border-amber-500"
+                  inputMode="numeric"
+                />
+                <button
+                  type="button"
+                  onClick={handleCompleteLegacyLink}
+                  disabled={legacyLinkState.loading}
+                  className="rounded-md bg-amber-700 px-3 py-1.5 text-xs font-extrabold text-white hover:bg-amber-800 disabled:opacity-60"
+                >
+                  Link account
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         <OnboardingSetupModal
           open={onboardingSetupOpen}
           onClose={() => setOnboardingSetupOpen(false)}
@@ -2017,6 +2134,42 @@ export default function TerminalPage() {
           workflowMode={workflowMode}
           onRefreshUser={hydrateUser}
         />
+        <PosHardwareMessageModal
+          open={Boolean(hardwareMessage)}
+          message={hardwareMessage}
+          onOpenChange={handleHardwareMessageOpenChange}
+        />
+        <Dialog open={closeShiftConfirmOpen} onOpenChange={setCloseShiftConfirmOpen}>
+          <DialogContent className="border border-slate-200 bg-white shadow-2xl sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-black text-slate-950">Close Shift</DialogTitle>
+              <DialogDescription className="text-sm leading-6 text-slate-600">
+                Are you sure you want to close this shift?
+              </DialogDescription>
+            </DialogHeader>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-950">
+              Confirm the cash count and note before closing. Offline or retryable failures will still be queued for replay.
+            </div>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCloseShiftConfirmOpen(false)}
+                disabled={shiftActionLoading.close}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleConfirmCloseShift}
+                disabled={shiftActionLoading.close}
+                className="bg-[#1A4E8D] font-bold text-white hover:bg-[#143F73]"
+              >
+                {shiftActionLoading.close ? 'Closing...' : 'Close shift'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <TerminalPageLayout
           locked={locked}
           isOnline={isOnline}
@@ -2105,8 +2258,10 @@ export default function TerminalPage() {
           drawerOpen={drawerOpen}
           formData={formData}
           setFormData={setFormData}
+          dgfyPosState={dgfyPosState}
           submitting={submitting}
-          handleLogin={handleLogin}
+          handleLogin={handleDgfyPosLogin}
+          handleLegacyLogin={handleLogin}
         />
       </>
     </Suspense>

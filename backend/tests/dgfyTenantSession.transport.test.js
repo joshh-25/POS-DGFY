@@ -7,23 +7,31 @@ jest.unstable_mockModule('../src/modules/dgfy/index.js', () => ({
   changeDgfyPasswordUseCase: jest.fn(),
   completeDgfyPasswordResetUseCase: jest.fn(),
   createDgfyHandoffUseCase: jest.fn(),
+  createDgfyInvitationUseCase: jest.fn(),
   exchangeDgfyHandoffUseCase: jest.fn(),
   getDgfyLegalTermsUseCase: jest.fn(),
+  leaveDgfyCompanyUseCase: jest.fn(),
   listDgfyAccountCompaniesUseCase: jest.fn(),
   registerDgfyAccountUseCase: jest.fn(),
   loginDgfyAccountUseCase: jest.fn(),
   getDgfyMeUseCase: jest.fn(),
+  rejectDgfyInvitationUseCase: jest.fn(),
   requestDgfyBusinessStepUpUseCase: jest.fn(),
   requestDgfyPasswordResetUseCase: jest.fn(),
   requestDgfyEmailVerificationUseCase: jest.fn(),
+  searchDgfyBusinessAccountsUseCase: jest.fn(),
+  startDgfyPosSessionUseCase: jest.fn(),
   startDgfyTenantSessionUseCase: mockStartDgfyTenantSessionUseCase,
   switchDgfyCompanyUseCase: jest.fn(),
+  transferDgfyCompanyOwnershipUseCase: jest.fn(),
   updateDgfyProfileUseCase: jest.fn(),
   verifyDgfyEmailUseCase: jest.fn()
 }));
 
 jest.unstable_mockModule('../src/services/authService.js', () => ({
-  blacklistToken: jest.fn()
+  blacklistToken: jest.fn(),
+  isTokenBlacklisted: jest.fn().mockResolvedValue(false),
+  verifyToken: jest.fn()
 }));
 
 let startDgfyTenantSession;

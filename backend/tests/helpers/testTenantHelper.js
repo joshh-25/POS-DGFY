@@ -45,6 +45,10 @@ const ensureColumn = async (tableName, columnName, definitionSql, afterColumnNam
 const ensureAuthPhoneSchema = async () => {
     if (process.env.NODE_ENV !== 'test') return;
     await ensureColumn('tenants', 'admin_phone', 'VARCHAR(40) NULL', 'admin_email');
+    await ensureColumn('tenants', 'owner_dgfy_account_id', 'CHAR(36) NULL', 'admin_password_hash');
+    await ensureColumn('tenants', 'ownership_transferred_at', 'DATETIME NULL', 'owner_dgfy_account_id');
+    await ensureColumn('tenants', 'ownership_transferred_by', 'CHAR(36) NULL', 'ownership_transferred_at');
+    await ensureColumn('dgfy_account_tenant_memberships', 'last_selected_at', 'DATETIME NULL', 'accepted_at');
     await ensureColumn('users', 'phone_number', 'VARCHAR(40) NULL', 'email');
 };
 

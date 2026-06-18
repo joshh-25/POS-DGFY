@@ -18,10 +18,10 @@ import {
 import * as emailService from './emailService.js';
 import { buildVisibleWhere, notFoundError } from '../utils/softDeletePolicy.js';
 import { onboardingRepository } from '../modules/onboarding/repositories/onboardingRepository.js';
-import { dgfyAccountRepository } from '../modules/dgfy/index.js';
 import logger from '../config/logger.js';
 import { isValidPhoneNumber, normalizePhoneNumber, PHONE_NUMBER_VALIDATION_MESSAGE } from '../utils/phoneNumber.js';
 import { verifyEmailOtp, EMAIL_OTP_PURPOSES } from './emailOtpService.js';
+import { buildLegacyDgfyLinkStatus } from './dgfyLegacyAccessPolicy.js';
 
 const normalizePermissionArray = (rawPermissions) => {
   let normalized = rawPermissions;
@@ -172,6 +172,7 @@ const mirrorInvitationToDgfyAccount = async ({
   role
 }) => {
   if (!tenantId || tenantId === 'default') return null;
+  const { dgfyAccountRepository } = await import('../modules/dgfy/index.js');
   const account = await dgfyAccountRepository.findByEmail(email).catch(() => null);
   if (!account) return null;
 
@@ -208,7 +209,15 @@ export const getCurrentUser = async (userId) => {
     throw notFoundError('User not found');
   }
 
-  const { tenantPlan, tenantSubscriptionStatus, tenantGracePeriodEnd, tenantPaymentMethod } = dbStore.getStore() || {};
+  const {
+    tenantId,
+    tenantToken,
+    tenantName,
+    tenantPlan,
+    tenantSubscriptionStatus,
+    tenantGracePeriodEnd,
+    tenantPaymentMethod
+  } = dbStore.getStore() || {};
   let onboarding = null;
   if (user.is_master_admin === true) {
     try {
@@ -226,13 +235,21 @@ export const getCurrentUser = async (userId) => {
   }
 
   const workflowMode = await readCurrentWorkflowMode();
+  const dgfyLinkStatus = await buildLegacyDgfyLinkStatus({
+    tenantId,
+    user
+  });
   return buildUserPayload(user, workflowMode, {
     is_active: user.is_active,
     last_login: user.last_login,
     created_at: user.created_at,
     permissions: resolveEffectivePermissions(user),
     is_master_admin: user.is_master_admin,
+    ...dgfyLinkStatus,
     company: {
+      id: tenantId || null,
+      token: tenantToken || null,
+      name: tenantName || null,
       plan: tenantPlan || 'standard',
       subscription_status: tenantSubscriptionStatus || 'active',
       grace_period_end: tenantGracePeriodEnd || null,
@@ -434,18 +451,23 @@ export const getAllUsers = async (options = {}) => {
   });
 
   const workflowMode = await readCurrentWorkflowMode();
-  return users.map(user => buildUserPayload(user, workflowMode, {
-    is_active: user.is_active,
-    last_login: user.last_login,
-    created_at: user.created_at,
-    permissions: resolveEffectivePermissions(user),
-    is_master_admin: user.is_master_admin,
-    invitation_status: user.invitation_status || null,
-    invitation_expires_at: user.invitation_expires_at || null,
-    invitation_delivery_status: user.invitation_delivery_status || null,
-    invitation_delivery_error: user.invitation_delivery_error || null,
-    invitation_last_sent_at: user.invitation_last_sent_at || null,
-    invited_by: user.invited_by || null
+  const tenantId = dbStore.getStore()?.tenantId;
+  return Promise.all(users.map(async (user) => {
+    const dgfyLinkStatus = await buildLegacyDgfyLinkStatus({ tenantId, user });
+    return buildUserPayload(user, workflowMode, {
+      is_active: user.is_active,
+      last_login: user.last_login,
+      created_at: user.created_at,
+      permissions: resolveEffectivePermissions(user),
+      is_master_admin: user.is_master_admin,
+      invitation_status: user.invitation_status || null,
+      invitation_expires_at: user.invitation_expires_at || null,
+      invitation_delivery_status: user.invitation_delivery_status || null,
+      invitation_delivery_error: user.invitation_delivery_error || null,
+      invitation_last_sent_at: user.invitation_last_sent_at || null,
+      invited_by: user.invited_by || null,
+      ...dgfyLinkStatus
+    });
   }));
 };
 
@@ -1096,6 +1118,13 @@ const validateAdminHierarchy = (adminUser, targetUser, action, targetRole = null
  * @returns {Promise<Object>} Invitation result
  */
 export const createUserInvitation = async (adminUserId, invitationData) => {
+  if (process.env.DGFY_LEGACY_USER_INVITES_ENABLED !== 'true') {
+    throw createError(
+      'Direct user invitation links have been retired. Search for a registered DGFY account and send a DGFY account invitation instead.',
+      410
+    );
+  }
+
   const {
     email: rawEmail,
     role: rawRole,
@@ -1284,6 +1313,13 @@ export const createUserInvitation = async (adminUserId, invitationData) => {
  * @returns {Promise<Object>} User data with JWT token
  */
 export const acceptInvitation = async (token, userData) => {
+  if (process.env.DGFY_DIRECT_INVITE_ACCEPTANCE_ENABLED !== 'true') {
+    throw createError(
+      'Direct invitation-link account setup has been retired. Sign in with your registered DGFY account and accept or reject the invitation from My Account > Business.',
+      410
+    );
+  }
+
   const { username, password, phone_number: phoneNumber, email_otp_code: emailOtpCode } = userData;
 
   const User = dbStore.get('User');
@@ -1458,6 +1494,10 @@ export const validateInvitationToken = async (token) => {
 };
 
 export const resendUserInvitation = async (adminUserId, targetUserId) => {
+  if (process.env.DGFY_LEGACY_USER_INVITES_ENABLED !== 'true') {
+    throw createError('Direct invitation links and legacy resends have been retired. Search for a registered DGFY account and send a DGFY account invitation instead.', 410);
+  }
+
   const User = dbStore.get('User');
   const [adminUser, inviteUser] = await Promise.all([
     findVisibleUserById(User, adminUserId),
@@ -1558,6 +1598,10 @@ export const resendUserInvitation = async (adminUserId, targetUserId) => {
 };
 
 export const createInvitationManualLink = async (adminUserId, targetUserId) => {
+  if (process.env.DGFY_LEGACY_USER_INVITES_ENABLED !== 'true') {
+    throw createError('Manual invitation links have been retired. Search for a registered DGFY account and send a DGFY account invitation instead.', 410);
+  }
+
   const User = dbStore.get('User');
   const [adminUser, inviteUser] = await Promise.all([
     findVisibleUserById(User, adminUserId),

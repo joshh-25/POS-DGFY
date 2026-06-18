@@ -1,4 +1,4 @@
-import React, { Suspense, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Bell, Menu, UserRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -113,11 +113,14 @@ export default function TerminalPageLayout({
     drawerOpen,
     formData,
     setFormData,
+    dgfyPosState = {},
     submitting,
-    handleLogin
+    handleLogin,
+    handleLegacyLogin = null
 }) {
   const navigate = useNavigate();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [capabilityNotice, setCapabilityNotice] = useState(null);
   const queueCount = Number(queuedTerminalOperationCount || 0);
   const blockedQueueCount = Number(queuedTerminalBlockedCount || 0);
   const actionableQueueCount = queueCount + blockedQueueCount;
@@ -243,6 +246,20 @@ export default function TerminalPageLayout({
     ? 'fixed inset-0 z-50 lg:hidden'
     : 'fixed inset-0 z-50 xl:hidden';
   const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handleCapabilityBlocked = (event) => {
+      const detail = event?.detail || {};
+      if (detail.capability !== 'tenant_pos_enabled') return;
+      setCapabilityNotice({
+        title: String(detail.title || 'POS access changed').trim(),
+        message: String(detail.message || 'POS access is disabled for this company.').trim(),
+        code: String(detail.code || '').trim()
+      });
+    };
+    window.addEventListener('tenant:capability-blocked', handleCapabilityBlocked);
+    return () => window.removeEventListener('tenant:capability-blocked', handleCapabilityBlocked);
+  }, []);
   const notificationPanel = notificationsOpen ? createPortal(
     <div className="fixed inset-0 z-[120]" onClick={() => setNotificationsOpen(false)}>
       <div
@@ -431,6 +448,29 @@ export default function TerminalPageLayout({
                             type="button"
                             className="rounded border border-sky-200 px-2.5 py-1 text-xs font-semibold text-sky-900"
                             onClick={dismissModeChangeNotice}
+                        >
+                            Dismiss
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {capabilityNotice && (
+                <div className="mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-amber-900">{capabilityNotice.title}</p>
+                            <p className="mt-1 text-xs text-amber-800">{capabilityNotice.message}</p>
+                            {capabilityNotice.code && (
+                                <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-amber-900">
+                                    Reason code: {capabilityNotice.code}
+                                </p>
+                            )}
+                        </div>
+                        <button
+                            type="button"
+                            className="rounded border border-amber-300 bg-white px-2.5 py-1 text-xs font-semibold text-amber-900"
+                            onClick={() => setCapabilityNotice(null)}
                         >
                             Dismiss
                         </button>
@@ -685,12 +725,14 @@ export default function TerminalPageLayout({
                     drawerOpen={drawerOpen}
                     formData={formData}
                     setFormData={setFormData}
+                    dgfyPosState={dgfyPosState}
                     terminalIdOptions={terminalIdOptions}
                     terminalRegistry={terminalRegistry}
                     terminalRegistryMode={terminalRegistryMode}
                     registryEnforced={registryEnforced}
                     submitting={submitting}
                     onSubmit={handleLogin}
+                    onLegacySubmit={handleLegacyLogin}
                 />
             </Suspense>
             </main>

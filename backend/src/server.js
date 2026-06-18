@@ -26,6 +26,7 @@ import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { requestContext } from './middleware/requestContext.js';
 import requestOutcomeLogger from './middleware/requestOutcomeLogger.js';
 import { metricsMiddleware } from './middleware/metricsMiddleware.js';
+import csrfProtection from './middleware/csrfProtection.js';
 import logger from './config/logger.js';
 import { generalLimiter, getRateLimiterStoreMode } from './middleware/rateLimiter.js';
 import { initializeRedis, closeRedis, isRedisConnected } from './config/redis.js';
@@ -274,7 +275,7 @@ const corsOptionsDelegate = (req, callback) => {
     origin: true,
     credentials: true,
     optionsSuccessStatus: 200,
-    exposedHeaders: ['Content-Disposition', 'Content-Length']
+    exposedHeaders: ['Content-Disposition', 'Content-Length', 'x-request-id', 'x-trace-id']
   });
 };
 app.use(cors(corsOptionsDelegate));
@@ -643,6 +644,7 @@ app.use('/uploads', express.static(join(__dirname, '..', 'uploads'), {
 
 // Tenant Resolution & Context Middleware (Must be before API routes)
 import dgfyRoutes from './routes/dgfy.js';
+app.use(csrfProtection);
 app.use('/api/v1/dgfy', dgfyRoutes);
 
 app.use(tenantHandler);

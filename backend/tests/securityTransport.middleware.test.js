@@ -57,4 +57,18 @@ describe('ENC-01 HTTPS transport enforcement middleware', () => {
 
         expect(response.status).not.toBe(426);
     });
+
+    it('exposes request and trace headers for browser-readable diagnostics', async () => {
+        const app = await loadAppWithEnv();
+        const response = await request(app)
+            .get('/health')
+            .set('Origin', 'http://localhost:5173')
+            .set('x-request-id', 'req-health-123');
+
+        expect(response.status).toBe(200);
+        expect(response.headers['x-request-id']).toBe('req-health-123');
+        expect(response.headers['x-trace-id']).toBe('req-health-123');
+        expect(response.headers['access-control-expose-headers']).toContain('x-request-id');
+        expect(response.headers['access-control-expose-headers']).toContain('x-trace-id');
+    });
 });

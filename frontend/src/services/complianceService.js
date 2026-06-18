@@ -2,7 +2,7 @@ import api from './api.js';
 
 const unwrapData = (response) => response?.data?.data;
 
-export const getComplianceProfile = async () => unwrapData(await api.get('/compliance/profile'));
+export const getComplianceProfile = async (requestConfig = {}) => unwrapData(await api.get('/compliance/profile', requestConfig));
 
 export const selectComplianceMode = async (modeChoice) => (
   unwrapData(await api.post('/compliance/mode/select', { mode_choice: modeChoice }))

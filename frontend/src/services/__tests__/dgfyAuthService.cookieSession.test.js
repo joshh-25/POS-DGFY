@@ -10,13 +10,16 @@ const { apiGet, apiPost, setBrowserSessionMock, clearClientSessionMock } = vi.ho
 const dgfyCookieConfig = {
   skipAuthRefresh: true,
   skipTenantAuthHeaders: true,
+  skipGlobalErrorToast: true,
   withCredentials: true
 };
 const dgfyBusinessBridgeConfig = {
-  withCredentials: true
+  withCredentials: true,
+  skipGlobalErrorToast: true
 };
 const dgfyTenantBridgeOnlyConfig = {
   withCredentials: true,
+  skipGlobalErrorToast: true,
   headers: {
     'x-dgfy-auth-mode': 'tenant_membership'
   }
@@ -66,6 +69,38 @@ describe('dgfyAuthService cookie session rehydration', () => {
     expect(result.account.email).toBe('customer@example.test');
     expect(service.getStoredDgfyToken()).toBe('');
     expect(service.getStoredDgfyAccount().id).toBe('acct-cookie');
+  });
+
+  it('suppresses global tenant error toasts for DGFY auth page background requests', async () => {
+    apiGet
+      .mockResolvedValueOnce({ data: { data: { flows: {} } } })
+      .mockResolvedValueOnce({ data: { data: { account: { id: 'acct-cookie' } } } });
+
+    const service = await import('../dgfyAuthService.js');
+    await service.fetchDgfyLegalTerms();
+    await service.fetchDgfyMe('');
+
+    expect(apiGet).toHaveBeenNthCalledWith(1, '/dgfy/legal-terms/current', dgfyCookieConfig);
+    expect(apiGet).toHaveBeenNthCalledWith(2, '/dgfy/auth/me', dgfyCookieConfig);
+  });
+
+  it('suppresses duplicate global tenant error toasts for DGFY login submissions', async () => {
+    apiPost.mockResolvedValueOnce({
+      data: {
+        data: {
+          token: 'dgfy-token',
+          account: { id: 'acct-login' }
+        }
+      }
+    });
+
+    const service = await import('../dgfyAuthService.js');
+    await service.loginDgfyAccount({ email: 'owner@example.test', password: 'password123' });
+
+    expect(apiPost).toHaveBeenCalledWith('/dgfy/auth/login', {
+      email: 'owner@example.test',
+      password: 'password123'
+    }, dgfyCookieConfig);
   });
 
   it('keeps bearer header support for in-memory DGFY access tokens', async () => {

@@ -43,7 +43,9 @@ describe('Food & Beverage storefront contract', () => {
 
     expect(source).toContain('handleOpenBusinessInventory');
     expect(source).toContain('trackedCustomerActivity');
-    expect(accountSource).toContain('Registered Businesses');
+    expect(accountSource).toContain('Your businesses');
+    expect(accountSource).toContain('Pending invitations');
+    expect(accountSource).toContain("startBusinessAction('accept'");
     expect(accountSource).toContain('Go to Inventory');
     expect(accountSource).toContain('businessMemberships');
     expect(accountSource).toContain('onOpenBusinessInventory');
@@ -122,5 +124,15 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).not.toContain('items marked ready now');
     expect(source).not.toContain('Store profile copy is available');
     expect(source).not.toContain('food and beverage backend');
+  });
+
+  it('starts a fresh F&B order after a completed checkout/back navigation', () => {
+    const source = appSource();
+
+    expect(source).toContain('setCheckoutResult(null);');
+    expect(source).toContain('setFnbOrderStep(3);');
+    expect(source).toContain("setCheckoutTab(isFnbMode ? 'cart' : 'review');");
+    expect(source).toContain('setSimpleOrderStep(1)');
+    expect(source).toContain('Back to Menu');
   });
 });

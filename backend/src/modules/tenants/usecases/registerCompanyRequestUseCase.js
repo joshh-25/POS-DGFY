@@ -343,6 +343,7 @@ export const buildRegisterCompanyRequestUseCase = ({
                         compliance_mode_selected_by: 'registration',
                         compliance_policy_version: '2026.04.07',
                         compliance_profile: {},
+                        owner_dgfy_account_id: dgfyAccount.id,
                         settings: {
                             workflow_mode: normalizedWorkflowMode
                         }
@@ -414,6 +415,9 @@ export const buildRegisterCompanyRequestUseCase = ({
                         tenantUserId: provisionedTenant?.admin_user_id || null,
                         role: 'admin'
                     });
+                    if (!tenant.owner_dgfy_account_id) {
+                        await tenant.update({ owner_dgfy_account_id: dgfyAccount.id }).catch(() => {});
+                    }
                 }
 
                 paymongoChildAccountStatus = await createPendingPayMongoChildAccount({

@@ -17,6 +17,9 @@ Namecheap shared hosting GitHub Actions lane:
 No-staging release policy reference:
 - `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
 
+Merge-adoption release proof reference:
+- `docs/ops/MERGE_ADOPTION_GATE.md`
+
 ## Prerequisites
 - SSH access to server (`root@192.53.116.33 -p 64428`)
 - Prefer key-based SSH auth for non-interactive deploys:
@@ -105,6 +108,12 @@ Required before production (no-staging hard gate):
 RELEASE_TARGET_SHA="<target_sha>" npm run gate:release:no-staging
 ```
 
+When the release adopts PR, branch, or `merge-docs/` behavior, include the merge-adoption manifest so the release verdict proves the intended behavior survived final conflict resolution:
+
+```bash
+MERGE_ADOPTION_MANIFEST="path/to/merge-adoption.json" RELEASE_TARGET_SHA="<target_sha>" npm run gate:release:no-staging
+```
+
 Recommended local setup (keeps gate inputs consistent across runs):
 ```bash
 cp .env.qa.local.example .env.qa.local
@@ -160,8 +169,9 @@ Behavior:
 2. Runs no-staging preflight (`npm run gate:release:no-staging:preflight`) before push when `DEPLOY_ENFORCE_NO_STAGING_GATE=1`.
 3. Auto-fetches QA deploy summary evidence (`npm run evidence:qa:deploy-summary`) when local summary file is missing.
 4. Runs no-staging hard gate (`npm run gate:release:no-staging`) for pushed SHA.
-5. Proceeds to production SSH deploy only when gate verdict is pass/bypassed and QA deploy evidence matches the exact target SHA.
-6. Auto-loads `.env.qa.local` and `.env.qa.secrets.local` if present.
+5. Runs the merge-adoption proof gate when `MERGE_ADOPTION_MANIFEST` is set.
+6. Proceeds to production SSH deploy only when gate verdict is pass/bypassed and QA deploy evidence matches the exact target SHA.
+7. Auto-loads `.env.qa.local` and `.env.qa.secrets.local` if present.
 
 No-staging preflight checks:
 1. `QA_BASE_URL` configured (for QA smoke contract).
@@ -230,6 +240,8 @@ Deployment evidence files:
 - `logs/deploy/deploy_<timestamp>.summary.txt`
 - `logs/deploy/deploy_<timestamp>.tenant_schema_sync.json`
 - `.deploy-state/last_deployed_commit` (runtime marker, not source-controlled)
+
+After PM2 reload, `/health` and `/api/v1/health` must report `services.observability.runtime_sha`. Treat a healthy response with a missing runtime SHA as unproven deployment evidence until the health SHA, `.deploy-state/last_deployed_commit`, and deploy-summary `deployed_head` match the target commit.
 
 Tenant sync baseline file (repo-tracked):
 - `backend/config/deploy/tenant-schema-sync-failure-baseline.json`

@@ -30,7 +30,24 @@ export default (sequelize) => {
             allowNull: true
         },
         action: {
-            type: DataTypes.ENUM('company_switch_success', 'company_switch_failed', 'invitation_accept_success', 'invitation_accept_failed'),
+            type: DataTypes.ENUM(
+                'company_switch_success',
+                'company_switch_failed',
+                'invitation_created',
+                'invitation_accept_success',
+                'invitation_accept_failed',
+                'invitation_reject_success',
+                'invitation_reject_failed',
+                'company_leave_success',
+                'company_leave_failed',
+                'ownership_transfer_success',
+                'ownership_transfer_failed',
+                'legacy_link_completed',
+                'legacy_link_failed',
+                'pos_unlock_attempted',
+                'pos_unlock_success',
+                'pos_unlock_failed'
+            ),
             allowNull: false
         },
         result: {

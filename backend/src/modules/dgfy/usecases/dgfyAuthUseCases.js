@@ -104,12 +104,24 @@ const buildBusinessAuditPayload = ({
     metadata: metadata.extra || null
 });
 
-const serializeCompanyMembership = (membership, { currentTenantToken = '' } = {}) => {
+const isMembershipOwner = (membership, accountId = '') => {
+    const tenant = membership?.tenant || null;
+    const ownerAccountId = String(tenant?.owner_dgfy_account_id || '').trim();
+    const currentAccountId = String(accountId || membership?.dgfy_account_id || '').trim();
+    if (ownerAccountId) {
+        return Boolean(currentAccountId && ownerAccountId === currentAccountId);
+    }
+    return String(membership?.source || '').trim().toLowerCase() === 'founder';
+};
+
+const serializeCompanyMembership = (membership, { currentTenantToken = '', accountId = '' } = {}) => {
     const tenant = membership?.tenant || null;
     const status = String(membership?.status || '').trim().toLowerCase();
     const tenantStatus = String(tenant?.status || '').trim().toLowerCase();
     const isAccepted = status === 'accepted';
     const isTenantActive = tenantStatus === 'active';
+    const isOwner = isMembershipOwner(membership, accountId);
+    const canSwitch = isAccepted && isTenantActive;
     return {
         membership_id: membership?.id,
         tenant_id: membership?.tenant_id || tenant?.id || null,
@@ -117,6 +129,8 @@ const serializeCompanyMembership = (membership, { currentTenantToken = '' } = {}
         company_name: tenant?.name || 'Company',
         role: membership?.role || 'staff',
         source: membership?.source || 'invite',
+        ownership: isOwner ? 'owner' : 'member',
+        is_owner: isOwner,
         membership_status: status || 'pending',
         tenant_status: tenantStatus || 'unknown',
         plan: tenant?.plan || null,
@@ -127,8 +141,11 @@ const serializeCompanyMembership = (membership, { currentTenantToken = '' } = {}
             && tenant?.company_token
             && normalizeTenantToken(currentTenantToken) === normalizeTenantToken(tenant.company_token)
         ),
-        can_switch: isAccepted && isTenantActive,
-        requires_action: isAccepted && isTenantActive ? null : (
+        can_switch: canSwitch,
+        can_leave: canSwitch && !isOwner,
+        can_transfer_ownership: canSwitch && isOwner,
+        group: isOwner ? 'owned' : (status === 'pending' ? 'pending' : 'invited'),
+        requires_action: canSwitch ? null : (
             status === 'pending'
                 ? 'accept_invitation'
                 : 'unavailable'
@@ -769,18 +786,113 @@ export const buildListDgfyAccountCompaniesUseCase = ({ repository }) => async ({
     await repository.mirrorPendingInvitationsForAccount?.(account);
     await repository.mirrorLegacyFounderMembershipsForAccount?.(account);
     const memberships = await repository.listMemberships(account.id);
-    const companies = memberships.map((membership) => serializeCompanyMembership(membership, { currentTenantToken }));
+    const companies = memberships.map((membership) => serializeCompanyMembership(membership, {
+        currentTenantToken,
+        accountId: account.id
+    }));
+    const ownedCompanies = companies.filter((entry) => entry.can_switch && entry.is_owner);
+    const invitedCompanies = companies.filter((entry) => entry.can_switch && !entry.is_owner);
+    const pendingInvitations = companies.filter((entry) => entry.requires_action === 'accept_invitation');
     return ok({
         payload: {
             success: true,
             data: {
                 companies,
+                owned_companies: ownedCompanies,
+                invited_companies: invitedCompanies,
+                pending_invitations: pendingInvitations,
                 accepted_count: companies.filter((entry) => entry.can_switch).length,
-                pending_count: companies.filter((entry) => entry.requires_action === 'accept_invitation').length,
+                pending_count: pendingInvitations.length,
                 business_step_up: getBusinessStepUpState(account)
             }
         }
     });
+};
+
+export const buildSearchDgfyBusinessAccountsUseCase = ({ repository }) => async ({ query = '', tenantId = '' }) => {
+    const normalizedQuery = String(query || '').trim();
+    if (normalizedQuery.length < 2) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Search requires at least 2 characters.', { statusCode: 422 }));
+    }
+    const accounts = await repository.searchActiveAccounts(normalizedQuery, { tenantId });
+    return ok({
+        payload: {
+            success: true,
+            data: { accounts }
+        }
+    });
+};
+
+export const buildCreateDgfyInvitationUseCase = ({
+    repository,
+    sendEmail = null
+}) => async ({ tenant, adminUser, body = {}, metadata = {} }) => {
+    const dgfyAccountId = String(body?.dgfy_account_id || body?.dgfyAccountId || '').trim();
+    const role = String(body?.role || 'staff').trim().toLowerCase() || 'staff';
+    const rolePresetKey = body?.role_preset_key || body?.rolePresetKey || null;
+    const permissions = Array.isArray(body?.permissions) ? body.permissions : [];
+    const locationIds = Array.isArray(body?.location_ids) ? body.location_ids : (Array.isArray(body?.locationIds) ? body.locationIds : []);
+
+    if (!dgfyAccountId) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'DGFY account id is required.', { statusCode: 422 }));
+    }
+    if (!tenant?.id || !tenant?.company_token) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Tenant context is required.', { statusCode: 400 }));
+    }
+    if (role === 'admin' && adminUser?.is_master_admin !== true) {
+        return fail(new DomainError(DomainErrorCode.FORBIDDEN, 'Only the company owner or master admin can invite an admin.', { statusCode: 403 }));
+    }
+
+    try {
+        const result = await repository.createInvitationForDgfyAccount({
+            dgfyAccountId,
+            tenant,
+            adminUser,
+            role,
+            rolePresetKey,
+            permissions,
+            locationIds
+        });
+
+        let emailSent = false;
+        let deliveryError = null;
+        if (typeof sendEmail === 'function') {
+            try {
+                await sendEmail({
+                    to: result.account.email,
+                    subject: `Invitation to join ${tenant.name} on DGFY`,
+                    text: `${adminUser?.username || 'A company admin'} invited you to join ${tenant.name}. Sign in to your DGFY account, open My Account > Business, then accept or reject the invitation.`,
+                    html: `<p>${adminUser?.username || 'A company admin'} invited you to join <strong>${tenant.name}</strong>.</p><p>Sign in to your DGFY account, open <strong>My Account &gt; Business</strong>, then accept or reject the invitation.</p>`
+                });
+                emailSent = true;
+            } catch (error) {
+                deliveryError = error.message || 'Email delivery failed.';
+            }
+        }
+
+        await repository.createBusinessAuditLog?.(buildBusinessAuditPayload({
+            account: result.account,
+            membership: result.membership,
+            action: 'invitation_created',
+            result: 'success',
+            metadata
+        }));
+
+        return ok({
+            payload: {
+                success: true,
+                data: {
+                    membership: serializeCompanyMembership(result.membership, { accountId: result.account.id }),
+                    email_sent: emailSent,
+                    delivery_error: deliveryError
+                },
+                message: 'DGFY account invitation created.'
+            }
+        });
+    } catch (error) {
+        if (error instanceof DomainError) return fail(error);
+        return fail(new DomainError(DomainErrorCode.INTERNAL_ERROR, error.message || 'Failed to create DGFY invitation.', { statusCode: error.statusCode || 500, cause: error }));
+    }
 };
 
 export const buildRequestDgfyBusinessStepUpUseCase = ({
@@ -990,6 +1102,177 @@ export const buildAcceptDgfyInvitationUseCase = ({
     }
 };
 
+export const buildRejectDgfyInvitationUseCase = ({
+    repository
+}) => async ({ account, membershipId, metadata = {} }) => {
+    const id = parsePositiveInt(membershipId);
+    if (!id) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Invitation id is required.', { statusCode: 400 }));
+    }
+
+    let membership = null;
+    try {
+        membership = await repository.findMembershipById(id, {
+            include: [{
+                association: 'tenant',
+                attributes: ['id', 'name', 'company_token', 'status', 'plan', 'owner_dgfy_account_id']
+            }]
+        });
+        if (!membership || membership.dgfy_account_id !== account.id || membership.source !== 'invite') {
+            throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'DGFY invitation not found.', { statusCode: 404 });
+        }
+        if (membership.status !== 'pending') {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Only pending invitations can be rejected.', { statusCode: 409 });
+        }
+        const declined = await repository.declineInvitationMembership({ membership });
+        await repository.createBusinessAuditLog?.(buildBusinessAuditPayload({
+            account,
+            membership: declined,
+            action: 'invitation_reject_success',
+            result: 'success',
+            metadata
+        }));
+        return ok({
+            payload: {
+                success: true,
+                data: { membership: serializeCompanyMembership(declined, { accountId: account.id }) },
+                message: 'Invitation rejected.'
+            }
+        });
+    } catch (error) {
+        await repository.createBusinessAuditLog?.(buildBusinessAuditPayload({
+            account,
+            membership,
+            action: 'invitation_reject_failed',
+            result: 'failure',
+            reason: error.message || 'DGFY invitation rejection failed.',
+            metadata
+        }));
+        if (error instanceof DomainError) return fail(error);
+        return fail(new DomainError(DomainErrorCode.INTERNAL_ERROR, 'Failed to reject DGFY invitation.', { statusCode: 500, cause: error }));
+    }
+};
+
+export const buildLeaveDgfyCompanyUseCase = ({ repository }) => async ({ account, tenantId, metadata = {} }) => {
+    const resolvedTenantId = String(tenantId || '').trim();
+    if (!resolvedTenantId) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Company id is required.', { statusCode: 400 }));
+    }
+    let membership = null;
+    try {
+        membership = await repository.findMembershipForAccount({
+            dgfyAccountId: account.id,
+            tenantId: resolvedTenantId,
+            status: 'accepted'
+        });
+        if (!membership || !membership.tenant || membership.tenant.status !== 'active') {
+            throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Active company membership not found.', { statusCode: 404 });
+        }
+        if (isMembershipOwner(membership, account.id)) {
+            throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Company owners must transfer ownership before leaving.', { statusCode: 403 });
+        }
+        const removed = await repository.leaveMembership({ membership });
+        await repository.createBusinessAuditLog?.(buildBusinessAuditPayload({
+            account,
+            membership: removed,
+            action: 'company_leave_success',
+            result: 'success',
+            metadata
+        }));
+        return ok({
+            payload: {
+                success: true,
+                data: { membership: serializeCompanyMembership(removed, { accountId: account.id }) },
+                message: 'You left the company.'
+            }
+        });
+    } catch (error) {
+        await repository.createBusinessAuditLog?.(buildBusinessAuditPayload({
+            account,
+            membership,
+            tenantId: resolvedTenantId,
+            action: 'company_leave_failed',
+            result: 'failure',
+            reason: error.message || 'Company leave failed.',
+            metadata
+        }));
+        if (error instanceof DomainError) return fail(error);
+        return fail(new DomainError(DomainErrorCode.INTERNAL_ERROR, 'Failed to leave company.', { statusCode: 500, cause: error }));
+    }
+};
+
+export const buildTransferDgfyCompanyOwnershipUseCase = ({
+    repository,
+    verifyEmailOtp,
+    emailOtpPurposes = DEFAULT_EMAIL_OTP_PURPOSES
+}) => async ({ account, tenantId, body = {}, metadata = {} }) => {
+    const resolvedTenantId = String(tenantId || '').trim();
+    const targetAccountId = String(body?.target_dgfy_account_id || body?.targetDgfyAccountId || '').trim();
+    if (!resolvedTenantId || !targetAccountId) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Company id and target DGFY account id are required.', { statusCode: 422 }));
+    }
+    let membership = null;
+    try {
+        membership = await repository.findMembershipForAccount({
+            dgfyAccountId: account.id,
+            tenantId: resolvedTenantId,
+            status: 'accepted'
+        });
+        const tenant = membership?.tenant;
+        const isOwner = String(tenant?.owner_dgfy_account_id || '') === String(account.id)
+            || (!tenant?.owner_dgfy_account_id && String(membership?.source || '') === 'founder');
+        if (!membership || !tenant || !isOwner) {
+            throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Only the current company owner can transfer ownership.', { statusCode: 403 });
+        }
+        const targetMembership = await repository.findMembershipForAccount({
+            dgfyAccountId: targetAccountId,
+            tenantId: resolvedTenantId,
+            status: 'accepted'
+        });
+        if (!targetMembership) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Ownership can only be transferred to an accepted company member.', { statusCode: 409 });
+        }
+        await verifyBusinessStepUp({
+            account,
+            code: String(body?.email_otp_code || body?.emailOtpCode || body?.code || '').trim(),
+            repository,
+            verifyEmailOtp,
+            emailOtpPurposes
+        });
+        await repository.transferTenantOwnership({
+            tenant,
+            fromAccountId: account.id,
+            toAccountId: targetAccountId
+        });
+        await repository.createBusinessAuditLog?.(buildBusinessAuditPayload({
+            account,
+            membership,
+            action: 'ownership_transfer_success',
+            result: 'success',
+            metadata: { ...metadata, extra: { target_dgfy_account_id: targetAccountId } }
+        }));
+        return ok({
+            payload: {
+                success: true,
+                data: { tenant_id: resolvedTenantId, owner_dgfy_account_id: targetAccountId },
+                message: 'Company ownership transferred.'
+            }
+        });
+    } catch (error) {
+        await repository.createBusinessAuditLog?.(buildBusinessAuditPayload({
+            account,
+            membership,
+            tenantId: resolvedTenantId,
+            action: 'ownership_transfer_failed',
+            result: 'failure',
+            reason: error.message || 'Ownership transfer failed.',
+            metadata: { ...metadata, extra: { target_dgfy_account_id: targetAccountId || null } }
+        }));
+        if (error instanceof DomainError) return fail(error);
+        return fail(new DomainError(DomainErrorCode.INTERNAL_ERROR, 'Failed to transfer ownership.', { statusCode: 500, cause: error }));
+    }
+};
+
 export const buildStartDgfyTenantSessionUseCase = ({
     createTenantSessionForDgfyAccount
 }) => async ({ account, body }) => {
@@ -1023,5 +1306,96 @@ export const buildStartDgfyTenantSessionUseCase = ({
             error.message || 'Unable to start a SKUpervisor session for this DGFY account.',
             { statusCode: error?.statusCode || 403, cause: error }
         ));
+    }
+};
+
+export const buildStartDgfyPosSessionUseCase = ({
+    createTenantSessionForDgfyAccount,
+    repository = null,
+    validateTerminalPolicy = null
+}) => async ({ account, tenantId, body = {}, metadata = {} }) => {
+    const resolvedTenantId = String(tenantId || body?.tenant_id || body?.tenantId || '').trim();
+    const terminalId = String(body?.terminal_id || body?.terminalId || '').trim().toUpperCase();
+    if (!resolvedTenantId) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Company id is required for POS unlock.', { statusCode: 400 }));
+    }
+    if (!terminalId) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Terminal or counter id is required for POS unlock.', { statusCode: 422 }));
+    }
+    let membership = null;
+    try {
+        if (repository?.findMembershipForAccount) {
+            membership = await repository.findMembershipForAccount({
+                dgfyAccountId: account.id,
+                tenantId: resolvedTenantId,
+                status: 'accepted'
+            });
+            if (!membership || !membership.tenant || membership.tenant.status !== 'active') {
+                throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'No active company membership is available for this DGFY account.', { statusCode: 403 });
+            }
+            await repository.createBusinessAuditLog?.(buildBusinessAuditPayload({
+                account,
+                membership,
+                action: 'pos_unlock_attempted',
+                result: 'success',
+                metadata: { ...metadata, extra: { terminal_id: terminalId } }
+            }));
+        }
+        const session = await createTenantSessionForDgfyAccount({
+            account,
+            tenantId: resolvedTenantId
+        });
+        const permissions = Array.isArray(session?.permissions) ? session.permissions : [];
+        if (!permissions.includes('pos:view') && !permissions.includes('pos:transact')) {
+            throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'This DGFY account does not have POS access for the selected company.', { statusCode: 403 });
+        }
+        const terminalPolicy = typeof validateTerminalPolicy === 'function'
+            ? await validateTerminalPolicy({ tenantId: resolvedTenantId, terminalId })
+            : { terminal_id: terminalId, reason_code: 'NOT_VALIDATED' };
+        await repository?.createBusinessAuditLog?.(buildBusinessAuditPayload({
+            account,
+            membership,
+            tenantId: resolvedTenantId,
+            action: 'pos_unlock_success',
+            result: 'success',
+            metadata: {
+                ...metadata,
+                extra: {
+                    terminal_id: terminalId,
+                    terminal_policy_reason: terminalPolicy?.reason_code || null
+                }
+            }
+        }));
+        return ok({
+            payload: {
+                success: true,
+                data: {
+                    ...session,
+                    pos: {
+                        terminal_id: terminalId,
+                        terminal_identity_policy: terminalPolicy
+                    }
+                },
+                message: 'POS session started.'
+            }
+        });
+    } catch (error) {
+        await repository?.createBusinessAuditLog?.(buildBusinessAuditPayload({
+            account,
+            membership,
+            tenantId: resolvedTenantId,
+            action: 'pos_unlock_failed',
+            result: 'failure',
+            reason: error.message || 'POS unlock failed.',
+            metadata: {
+                ...metadata,
+                extra: {
+                    terminal_id: terminalId || null,
+                    reason_code: error?.details?.terminal_identity_policy?.reason_code || error?.code || null
+                }
+            }
+        }));
+        if (error instanceof DomainError) return fail(error);
+        return fail(new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, error.message || 'Unable to start POS session.', { statusCode: error.statusCode || 403, cause: error }));
     }
 };

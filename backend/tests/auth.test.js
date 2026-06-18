@@ -15,6 +15,7 @@ describe('Authentication API', () => {
   const TEST_USERNAMES = ['testuser', 'testuser2'];
   let TEST_COMPANY_TOKEN;
   let testTenantContext;
+  let previousLegacyTenantRegistrationFlag;
 
   const performTargetedCleanup = async () => {
     // SECURITY GUARD: Never run deletions if not in test environment
@@ -83,6 +84,8 @@ describe('Authentication API', () => {
   };
 
   beforeAll(async () => {
+    previousLegacyTenantRegistrationFlag = process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED;
+    process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED = 'true';
     // Connect to test database
     await sequelize.authenticate();
     testTenantContext = await createTestTenant('authapi');
@@ -95,6 +98,11 @@ describe('Authentication API', () => {
     await performTargetedCleanup();
     if (testTenantContext) {
       await destroyTestTenant(testTenantContext);
+    }
+    if (typeof previousLegacyTenantRegistrationFlag === 'undefined') {
+      delete process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED;
+    } else {
+      process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED = previousLegacyTenantRegistrationFlag;
     }
     await sequelize.close();
   });

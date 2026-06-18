@@ -38,6 +38,12 @@ const sessionStorageMock = (() => {
 })();
 
 Object.defineProperty(globalThis, 'sessionStorage', { value: sessionStorageMock, writable: true });
+Object.defineProperty(globalThis, 'document', {
+  value: {
+    cookie: 'sku_csrf_token=csrf-admin-interceptor'
+  },
+  writable: true
+});
 
 describe('adminService interceptor global error behavior', () => {
   let mockAdminApi;

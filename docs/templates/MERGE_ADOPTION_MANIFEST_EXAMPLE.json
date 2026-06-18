@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "merge_name": "DGFY storefront customer dashboard adoption example",
+  "target_branch": "master",
+  "explicitly_rejected_files": [
+    {
+      "path": "DGFY_version1.1.md",
+      "reason": "Root-level draft docs are not governed release documentation."
+    }
+  ],
+  "feature_areas": [
+    {
+      "id": "dgfy-customer-dashboard",
+      "decision": "combine",
+      "intent": "Adopt the updated dashboard overview while preserving order tracking and business registration entry points.",
+      "master_behaviors_preserved": [
+        "Customers can still track active orders from the account page.",
+        "Business registration remains available from the customer account surface."
+      ],
+      "proof": {
+        "required_files_present": [
+          "frontend/apps/store/src/Components/storefront/pages/DgfyCustomerAccountPage.jsx",
+          "frontend/apps/store/src/__tests__/DgfyCustomerAccountPage.dashboard.test.jsx"
+        ],
+        "required_files_absent": [
+          "DGFY_version1.1.md"
+        ],
+        "required_strings_present": [
+          {
+            "file": "frontend/apps/store/src/Components/storefront/pages/DgfyCustomerAccountPage.jsx",
+            "text": "Grow your business"
+          },
+          {
+            "file": "frontend/apps/store/src/Components/storefront/pages/DgfyCustomerAccountPage.jsx",
+            "text": "Active Orders"
+          },
+          {
+            "file": "frontend/apps/store/src/Components/storefront/pages/DgfyCustomerAccountPage.jsx",
+            "text": "Track Order"
+          }
+        ],
+        "required_strings_absent": [
+          {
+            "file": "frontend/apps/store/src/Components/storefront/pages/DgfyCustomerAccountPage.jsx",
+            "text": "Company token:"
+          }
+        ],
+        "tests": [
+          "npm --prefix frontend test -- --run apps/store/src/__tests__/DgfyCustomerAccountPage.dashboard.test.jsx"
+        ],
+        "rendered_evidence": [
+          "Desktop customer dashboard screenshot shows stats cards, Active Orders, Default Address, Quick Actions, and Grow your business card.",
+          "Mobile storefront screenshot shows the updated header/action layout without overlapping navigation."
+        ],
+        "production_evidence_required": [
+          "Production served bundle contains the deployed SHA asset after deploy.",
+          "Live DGFY customer dashboard screenshot matches the merged dashboard surface."
+        ]
+      }
+    }
+  ]
+}

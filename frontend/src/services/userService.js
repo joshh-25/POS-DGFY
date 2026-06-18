@@ -111,6 +111,28 @@ export const inviteUser = async (email, role, options = {}) => {
   return response.data.data;
 };
 
+export const searchDgfyBusinessAccounts = async (query) => {
+  const response = await api.get('/dgfy/accounts/search', {
+    params: { query }
+  });
+  return response.data.data;
+};
+
+export const inviteDgfyAccountToCompany = async ({
+  dgfyAccountId,
+  role,
+  rolePresetKey = null,
+  locationIds = []
+} = {}) => {
+  const response = await api.post('/dgfy/invitations', {
+    dgfy_account_id: dgfyAccountId,
+    role: role || undefined,
+    role_preset_key: rolePresetKey || undefined,
+    location_ids: Array.isArray(locationIds) ? locationIds : []
+  });
+  return response.data.data;
+};
+
 export const resendUserInvitation = async (userId) => {
   const response = await api.post(`/users/${userId}/invitation/resend`);
   return response.data.data;

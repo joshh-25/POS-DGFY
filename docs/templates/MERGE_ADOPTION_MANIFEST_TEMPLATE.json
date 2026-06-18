@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "merge_name": "PR or branch adoption name",
+  "target_branch": "master",
+  "source_refs": [
+    {
+      "ref": "origin/pr/20",
+      "base": "merge-base-sha-or-ref"
+    }
+  ],
+  "explicitly_rejected_files": [
+    {
+      "path": "path/from/source/that/must/not/land.md",
+      "reason": "Explain the authority or risk that requires rejection."
+    }
+  ],
+  "semantic_conflict_review": {
+    "status": "none",
+    "notes": "Use user-approved when a merge or semantic conflict affects UI, routing, API payloads, checkout steps, auth, customer dashboard data, governed docs, tests, or deployment gates.",
+    "user_approved_decisions": [
+      {
+        "area": "checkout-customer-identity",
+        "question_asked": "Should checkout step 1 use the source branch guest/account chooser, preserve master behavior, combine both, or reject both and implement a third resolution?",
+        "resolution": "combine",
+        "approved_by": "user-name-or-handoff-reference",
+        "rationale": "The source UI is adopted while preserving master account-owned order linkage and release gates."
+      }
+    ]
+  },
+  "feature_areas": [
+    {
+      "id": "short-feature-id",
+      "decision": "combine",
+      "intent": "State the user-visible or API behavior that must survive the merge.",
+      "source_refs": [
+        "origin/pr/20"
+      ],
+      "master_behaviors_preserved": [
+        "State any existing master behavior that the new code must not remove."
+      ],
+      "proof": {
+        "required_files_present": [
+          "frontend/apps/store/src/Components/storefront/pages/DgfyCustomerAccountPage.jsx"
+        ],
+        "required_files_absent": [
+          "DGFY_version1.1.md"
+        ],
+        "required_strings_present": [
+          {
+            "file": "frontend/apps/store/src/Components/storefront/pages/DgfyCustomerAccountPage.jsx",
+            "text": "Grow your business"
+          }
+        ],
+        "required_strings_absent": [
+          {
+            "file": "frontend/apps/store/src/Components/storefront/pages/DgfyCustomerAccountPage.jsx",
+            "text": "Company token:"
+          }
+        ],
+        "tests": [
+          "npm --prefix frontend test -- --run apps/store/src/__tests__/DgfyCustomerAccountPage.dashboard.test.jsx"
+        ],
+        "rendered_evidence": [
+          "Attach or record desktop and mobile screenshots for the updated customer dashboard."
+        ],
+        "production_evidence_required": [
+          "After deploy, prove the served asset SHA and capture the live page that contains the adopted UI."
+        ]
+      }
+    }
+  ]
+}

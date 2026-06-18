@@ -121,6 +121,47 @@ export const resolveStorefrontHomeUrl = () => {
   }
 };
 
+const DEFAULT_STOREFRONT_RETURN_ORIGINS = [
+  'https://dgfy.ph',
+  'https://www.dgfy.ph',
+  'https://skupervisor.dgfy.ph'
+];
+
+const normalizeOrigin = (value = '') => {
+  const candidate = String(value || '').trim();
+  if (!candidate) return '';
+  try {
+    const url = new URL(candidate);
+    if (!/^https?:$/i.test(url.protocol)) return '';
+    return url.origin.toLowerCase();
+  } catch {
+    return '';
+  }
+};
+
+const configuredReturnOrigins = () => {
+  const raw = typeof import.meta !== 'undefined'
+    ? String(import.meta.env?.VITE_DGFY_RETURN_ALLOWED_ORIGINS || '').trim()
+    : '';
+  if (!raw) return [];
+  return raw.split(',').map(normalizeOrigin).filter(Boolean);
+};
+
+const storefrontReturnAllowedOrigins = () => {
+  const origins = new Set([
+    ...DEFAULT_STOREFRONT_RETURN_ORIGINS.map(normalizeOrigin).filter(Boolean),
+    ...configuredReturnOrigins()
+  ]);
+
+  const currentOrigin = normalizeOrigin(resolveCurrentAppOrigin());
+  if (currentOrigin) origins.add(currentOrigin);
+
+  const storefrontOrigin = normalizeOrigin(resolveStorefrontAccountUrl());
+  if (storefrontOrigin) origins.add(storefrontOrigin);
+
+  return origins;
+};
+
 const isValidStorefrontReturnPath = (pathname = '') => {
   const normalizedPath = String(pathname || '').trim().replace(/\/+$/, '') || '/';
   if (normalizedPath === '/map-dgfy/account') return true;
@@ -132,26 +173,34 @@ const isValidStorefrontReturnPath = (pathname = '') => {
   return false;
 };
 
+export const isApprovedDgfyAbsoluteReturnTarget = (target = '') => {
+  const normalizedTarget = String(target || '').trim();
+  if (!hasAbsoluteNavigationTarget(normalizedTarget)) return false;
+  try {
+    const url = new URL(normalizedTarget);
+    if (!isValidStorefrontReturnPath(url.pathname)) return false;
+    return storefrontReturnAllowedOrigins().has(url.origin.toLowerCase());
+  } catch {
+    return false;
+  }
+};
+
 export const normalizeDgfyReturnTarget = (target = '') => {
   const normalizedTarget = String(target || '').trim();
   if (!normalizedTarget) return '';
 
   if (hasAbsoluteNavigationTarget(normalizedTarget)) {
-    try {
-      const url = new URL(normalizedTarget);
-      if (!isValidStorefrontReturnPath(url.pathname)) {
-        return resolveStorefrontAccountUrl();
-      }
-      return url.toString();
-    } catch {
-      return resolveStorefrontAccountUrl();
-    }
+    return isApprovedDgfyAbsoluteReturnTarget(normalizedTarget)
+      ? new URL(normalizedTarget).toString()
+      : resolveStorefrontAccountUrl();
+  }
+
+  if (normalizedTarget.startsWith('//')) {
+    return resolveStorefrontAccountUrl();
   }
 
   if (normalizedTarget.startsWith('/')) {
-    return isValidStorefrontReturnPath(normalizedTarget)
-      ? normalizedTarget
-      : resolveStorefrontAccountUrl();
+    return normalizedTarget;
   }
 
   return resolveStorefrontAccountUrl();
@@ -172,6 +221,9 @@ export const appendDgfyHandoffToken = (target = '', handoffToken = '') => {
   const normalizedToken = String(handoffToken || '').trim();
   if (!normalizedTarget || !normalizedToken || !hasAbsoluteNavigationTarget(normalizedTarget)) {
     return normalizedTarget;
+  }
+  if (!isApprovedDgfyAbsoluteReturnTarget(normalizedTarget)) {
+    return resolveStorefrontAccountUrl();
   }
   try {
     const url = new URL(normalizedTarget);

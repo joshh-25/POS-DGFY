@@ -52,6 +52,18 @@
       "expected_authority_level": "authoritative"
     },
     {
+      "path": "docs/ops/MERGE_ADOPTION_GATE.md",
+      "topic": "merge_adoption_gate",
+      "expected_status": "reference",
+      "expected_authority_level": "reference"
+    },
+    {
+      "path": "docs/ops/CURRENT_PRODUCTION_RELEASE_2026-06-18.md",
+      "topic": "current_production_release_state",
+      "expected_status": "reference",
+      "expected_authority_level": "reference"
+    },
+    {
       "path": "docs/testing/ai-doc-discovery-validation.md",
       "topic": "ai_doc_discovery_validation",
       "expected_status": "authoritative",

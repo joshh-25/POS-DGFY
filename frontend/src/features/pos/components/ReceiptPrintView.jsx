@@ -175,7 +175,7 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                         <span>Item</span>
                         <span className="text-right">Unit Price</span>
                         <span className="text-right">Qty</span>
-                        <span className="text-right">Total</span>
+                        <span className="text-right">Line</span>
                     </div>
                 )}
                 {lines.map((line) => {

@@ -1,3 +1,5 @@
+import { getStorefrontAccessModeMessage } from '../../../src/utils/tenantCapabilityMessages.js';
+
 export const normalizeStorefrontErrorMessage = (error, fallback = 'Request failed.') => {
   if (error?.isNetworkError) {
     return 'Request failed before reaching API. Check store API proxy/CORS connectivity.';
@@ -36,6 +38,22 @@ export const normalizeStorefrontErrorMessage = (error, fallback = 'Request faile
   }
   if (errorCode === 'AUTHENTICATION_FAILED' || errorCode === 'AUTHORIZATION_FAILED') {
     return 'Session or permission check failed. Sign in again, then retry.';
+  }
+  if (errorCode === 'CUSTOMER_ACCESS_MODE_BLOCKED') {
+    const effectiveMode = String(
+      details?.effective_customer_access_mode
+        || details?.effective_mode
+        || details?.customer_access_mode
+        || ''
+    ).trim().toLowerCase();
+    const requestedMode = String(
+      details?.requested_customer_access_mode
+        || details?.requested_mode
+        || ''
+    ).trim().toLowerCase();
+    return getStorefrontAccessModeMessage(effectiveMode)
+      || getStorefrontAccessModeMessage(requestedMode)
+      || 'This Storefront action is not available in the current customer access mode.';
   }
 
   const normalized = baseMessage.toLowerCase();

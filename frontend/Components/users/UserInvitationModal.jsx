@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Mail, UserPlus } from 'lucide-react';
+import { CheckCircle2, Search, UserPlus } from 'lucide-react';
 import { toast } from "sonner";
 import * as userService from '../../src/services/userService.js';
 import { listTenantLocations } from '../../src/services/tenantLocationService.js';
@@ -30,13 +30,15 @@ const LEGACY_ROLE_OPTIONS = [
 ];
 
 export default function UserInvitationModal({ open, onOpenChange, onSuccess, roleCatalog = null }) {
-    const [email, setEmail] = useState('');
+    const [accountQuery, setAccountQuery] = useState('');
+    const [accountResults, setAccountResults] = useState([]);
+    const [accountSearchLoading, setAccountSearchLoading] = useState(false);
+    const [accountSearchError, setAccountSearchError] = useState('');
+    const [selectedDgfyAccount, setSelectedDgfyAccount] = useState(null);
     const [role, setRole] = useState('staff');
     const [loading, setLoading] = useState(false);
     const [locations, setLocations] = useState([]);
     const [selectedLocationIds, setSelectedLocationIds] = useState([]);
-    const [manualLink, setManualLink] = useState('');
-    const [deliveryMode, setDeliveryMode] = useState('email');
 
     const roleOptions = useMemo(() => {
         const presets = Array.isArray(roleCatalog?.presets) ? roleCatalog.presets : [];
@@ -56,7 +58,10 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
 
     useEffect(() => {
         if (!open) return;
-        setManualLink('');
+        setAccountQuery('');
+        setAccountResults([]);
+        setAccountSearchError('');
+        setSelectedDgfyAccount(null);
         const firstAssignableRole = roleOptions.find((option) => option.role !== 'admin') || roleOptions[0];
         if (firstAssignableRole && !roleOptions.some((option) => option.key === role)) {
             setRole(firstAssignableRole.key);
@@ -71,6 +76,41 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
             })
             .catch(() => setLocations([]));
     }, [open, roleOptions, role]);
+
+    useEffect(() => {
+        if (!open) return undefined;
+        const query = String(accountQuery || '').trim();
+        if (query.length < 2) {
+            setAccountResults([]);
+            setAccountSearchError('');
+            setAccountSearchLoading(false);
+            return undefined;
+        }
+
+        let cancelled = false;
+        setAccountSearchLoading(true);
+        const timeoutId = window.setTimeout(() => {
+            userService.searchDgfyBusinessAccounts(query)
+                .then((payload) => {
+                    if (cancelled) return;
+                    setAccountResults(Array.isArray(payload?.accounts) ? payload.accounts : []);
+                    setAccountSearchError('');
+                })
+                .catch((error) => {
+                    if (cancelled) return;
+                    setAccountResults([]);
+                    setAccountSearchError(error?.response?.data?.message || 'Unable to search DGFY accounts.');
+                })
+                .finally(() => {
+                    if (!cancelled) setAccountSearchLoading(false);
+                });
+        }, 300);
+
+        return () => {
+            cancelled = true;
+            window.clearTimeout(timeoutId);
+        };
+    }, [open, accountQuery]);
 
     useEffect(() => {
         if (activeLocations.length === 1) {
@@ -90,23 +130,11 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
         ));
     };
 
-    const copyManualLink = async () => {
-        try {
-            if (!navigator.clipboard?.writeText) {
-                throw new Error('Clipboard is not available in this browser');
-            }
-            await navigator.clipboard.writeText(manualLink);
-            toast.success('Invitation link copied');
-        } catch (error) {
-            toast.error(error.message || 'Failed to copy invitation link');
-        }
-    };
-
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        if (!email) {
-            toast.error('Please enter an email address');
+        if (!selectedDgfyAccount?.dgfy_account_id) {
+            toast.error('Select a registered DGFY account to invite');
             return;
         }
 
@@ -117,33 +145,29 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
 
         setLoading(true);
         try {
-            const result = await userService.inviteUser(email, selectedRoleOption.role, {
+            const result = await userService.inviteDgfyAccountToCompany({
+                dgfyAccountId: selectedDgfyAccount.dgfy_account_id,
+                role: selectedRoleOption.role,
                 rolePresetKey: selectedRoleOption.rolePresetKey || null,
-                locationIds: selectedLocationIds,
-                deliveryMode
+                locationIds: selectedLocationIds
             });
 
             if (result.email_sent) {
-                toast.success(`Invitation sent to ${email}`);
+                toast.success(`Invitation sent to ${selectedDgfyAccount.email}`);
             } else {
-                setManualLink(result.invitation_url || '');
-                toast.success(
-                    result.delivery_status === 'failed'
-                        ? `Invitation created, but email delivery failed`
-                        : `Invitation link ready for ${email}`
-                );
+                toast.success('Invitation created. Email delivery needs attention, but the invite is visible in DGFY My Account.');
             }
 
             // Reset form
-            setEmail('');
+            setAccountQuery('');
+            setAccountResults([]);
+            setSelectedDgfyAccount(null);
             setRole((roleOptions.find((option) => option.role !== 'admin') || roleOptions[0] || LEGACY_ROLE_OPTIONS[0]).key);
             setSelectedLocationIds(activeLocations.length === 1 ? [Number(activeLocations[0].location_id)] : []);
 
             // Refresh parent list
             if (onSuccess) onSuccess();
-            if (result.email_sent) {
-                onOpenChange(false);
-            }
+            onOpenChange(false);
 
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to send invitation');
@@ -154,47 +178,81 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent className="sm:max-w-[520px]">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <UserPlus className="w-5 h-5 text-teal-600" />
-                        Invite New User
+                        Invite DGFY Account
                     </DialogTitle>
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit} className="grid gap-4 py-4">
-                    {manualLink && (
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                            <p className="text-sm font-medium text-amber-900">Manual invitation link</p>
-                            <p className="mt-1 break-all text-xs text-amber-800">{manualLink}</p>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="mt-2"
-                                onClick={copyManualLink}
-                            >
-                                Copy Link
-                            </Button>
-                        </div>
-                    )}
                     <div className="grid gap-2">
-                        <Label htmlFor="email">Email Address</Label>
+                        <Label htmlFor="dgfy-account-search">Search registered DGFY account</Label>
                         <div className="relative">
-                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                             <Input
-                                id="email"
-                                type="email"
-                                placeholder="colleague@company.com"
+                                id="dgfy-account-search"
+                                type="search"
+                                placeholder="Search by email or phone"
                                 className="pl-9"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
+                                value={accountQuery}
+                                onChange={(e) => {
+                                    setAccountQuery(e.target.value);
+                                    setSelectedDgfyAccount(null);
+                                }}
                                 autoFocus
                             />
                         </div>
                         <p className="text-xs text-slate-500">
-                            If this email belongs to a DGFY account, the invite also appears in that user&apos;s DGFY account Business tab.
+                            Invitations can only be sent to active users who already registered a DGFY account.
                         </p>
+                        {accountSearchLoading && (
+                            <p className="text-xs text-slate-500">Searching DGFY accounts...</p>
+                        )}
+                        {accountSearchError && (
+                            <p className="text-xs text-rose-600">{accountSearchError}</p>
+                        )}
+                        {selectedDgfyAccount ? (
+                            <div className="rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm">
+                                <div className="flex items-center gap-2 font-semibold text-teal-900">
+                                    <CheckCircle2 className="h-4 w-4" />
+                                    {selectedDgfyAccount.display_name || selectedDgfyAccount.email}
+                                </div>
+                                <p className="mt-1 text-xs text-teal-800">
+                                    {selectedDgfyAccount.email} {selectedDgfyAccount.masked_phone ? `| ${selectedDgfyAccount.masked_phone}` : ''}
+                                </p>
+                            </div>
+                        ) : accountResults.length > 0 ? (
+                            <div className="max-h-44 overflow-y-auto rounded-lg border border-slate-200 bg-white">
+                                {accountResults.map((account) => {
+                                    const disabled = account.already_connected === true;
+                                    return (
+                                        <button
+                                            key={account.dgfy_account_id}
+                                            type="button"
+                                            className={`flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 ${disabled ? 'cursor-not-allowed bg-slate-50 text-slate-400' : 'hover:bg-teal-50'}`}
+                                            disabled={disabled}
+                                            onClick={() => setSelectedDgfyAccount(account)}
+                                        >
+                                            <span>
+                                                <span className="block font-semibold">{account.display_name || account.email}</span>
+                                                <span className="block text-xs text-slate-500">
+                                                    {account.email} {account.masked_phone ? `| ${account.masked_phone}` : ''}
+                                                </span>
+                                            </span>
+                                            <span className="text-xs font-medium text-slate-500">
+                                                {disabled ? 'Connected' : account.account_status || 'active'}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        ) : accountQuery.trim().length >= 2 && !accountSearchLoading ? (
+                            <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                                No registered active DGFY account found for this search.
+                            </p>
+                        ) : null}
                     </div>
 
                     <div className="grid gap-2">
@@ -214,19 +272,6 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
                         <p className="text-xs text-slate-500">
                             {selectedRoleOption?.description}
                         </p>
-                    </div>
-
-                    <div className="grid gap-2">
-                        <Label htmlFor="deliveryMode">Delivery</Label>
-                        <Select value={deliveryMode} onValueChange={setDeliveryMode}>
-                            <SelectTrigger>
-                                <SelectValue placeholder="Delivery mode" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="email">Send email</SelectItem>
-                                <SelectItem value="manual">Create manual link</SelectItem>
-                            </SelectContent>
-                        </Select>
                     </div>
 
                     {activeLocations.length > 0 && (
@@ -256,7 +301,7 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
                             Cancel
                         </Button>
                         <Button type="submit" className="bg-teal-600 hover:bg-teal-700" disabled={loading}>
-                            {loading ? 'Creating...' : (deliveryMode === 'manual' ? 'Create Link' : 'Send Invitation')}
+                            {loading ? 'Sending...' : 'Send DGFY Invitation'}
                         </Button>
                     </DialogFooter>
                 </form>

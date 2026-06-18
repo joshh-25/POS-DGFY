@@ -37,7 +37,7 @@ Adopt a tenant-scoped onboarding lifecycle with soft-reminder UX:
 
 4. First-login wizard steps
 - `brand_assets`: optional storefront profile picture and cover photo. Missing images never block completion.
-- `primary_location`: captures whether the tenant wants a public/searchable storefront and whether that storefront has a published map pin. Public visibility is opt-in. When enabled with a location, this step creates or updates the active primary storefront location pin used by discovery map surfaces. When enabled with `store_has_no_location=true`, the tenant remains searchable and has a public storefront page, but discovery sync materializes nullable location fields and excludes the tenant from map pins until a location is published. IMS setup surfaces use a MapLibre pin picker for click-to-place, drag-to-adjust, geolocation, delivery-radius preview, and initial Storefront business-hours setup while preserving editable coordinate fields when a location is required.
+- `primary_location`: captures whether the tenant wants a public/searchable storefront and whether that storefront has a published map pin. Public visibility is opt-in. When enabled with a location, this step creates or updates the active primary storefront location pin used by discovery map surfaces. When enabled with `store_has_no_location=true`, the tenant remains searchable and has a public storefront page, but discovery sync materializes nullable location fields and excludes the tenant from map pins until a location is published. IMS setup surfaces use a MapLibre pin picker for click-to-place, drag-to-adjust, geolocation, delivery-radius preview, reverse-geocoded address autofill, and initial Storefront business-hours setup while preserving editable coordinate fields when a location is required.
 - `bulk_items`: create starter catalog rows from the active workflow mode's onboarding item presets.
 
 5. Required completion checklist
@@ -55,6 +55,7 @@ Adopt a tenant-scoped onboarding lifecycle with soft-reminder UX:
 - At the F&B onboarding boundary only, legacy starter item input values `raw material`, `raw_material`, and `ingredient` normalize to `mode_item_preset=ingredient`; the persisted item category remains `raw_material`.
 - Placeholder modes keep conservative default item behavior until their governed taxonomy is promoted.
 - Bulk onboarding rows require only `mode_item_preset`, `name`, and positive `default_sale_price`. `cost_per_unit`, `current_stock`, and item image upload are optional.
+- Onboarding image selection is appendable and capped at five images per starter item. The UI must show the selected-image carousel with one focused image at a time and remove only the focused image when requested; selecting files again appends to the queued images instead of replacing the existing queue.
 - The backend derives hidden item fields from the preset, generates a deterministic onboarding SKU when the UI does not expose one, creates valid rows, and returns row-level errors for invalid rows without discarding successful rows.
 - If the primary location step has saved a location, starter item rows include that `location_id` so optional initial stock can be recorded through the existing location-scoped stock movement path.
 - Previously created rows must not be resubmitted by the frontend. Duplicate row keys and generated SKU conflicts return row-level failures instead of retrying into duplicate inventory records.
@@ -110,7 +111,7 @@ Adopt a tenant-scoped onboarding lifecycle with soft-reminder UX:
 ## Addendum (2026-05-18): Mode-Aware Three-Step Onboarding
 1. The previous business-profile, business-classification, and readiness-only wizard contract is replaced by three merchant setup steps: optional brand assets, primary storefront location, and mode-aware bulk starter items.
 2. Completion readiness now checks `store_name_ready`, `has_primary_storefront_location`, and `has_priced_starter_item`.
-3. Stock quantity and item image uploads are optional onboarding data. A zero-stock active item can complete onboarding when it has a positive customer selling price and, for corrected modes, a valid onboarding preset. Merchant-facing onboarding copy uses `Item image`; images upload only after item creation succeeds and are capped at 5 images per item. The existing Storefront catalog image storage/API contract remains unchanged.
+3. Stock quantity and item image uploads are optional onboarding data. A zero-stock active item can complete onboarding when it has a positive customer selling price and, for corrected modes, a valid onboarding preset. Merchant-facing onboarding copy uses `Item image`; images upload only after item creation succeeds, repeated selections append instead of replace, the selected-image carousel supports focused one-by-one removal, and uploads are capped at 5 images per item. The existing Storefront catalog image storage/API contract remains unchanged.
 4. Future workflow modes must define onboarding item choices, default hidden fields, financial rules, stock behavior, and backend/frontend tests before being considered production-ready.
 
 ## Addendum (2026-05-28): Business Hours Capture

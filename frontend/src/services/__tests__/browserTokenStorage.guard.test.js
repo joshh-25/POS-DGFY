@@ -18,6 +18,63 @@ const forbiddenPatterns = [
   /sessionStorage\.getItem\(['"`]admin_token['"`]/
 ];
 
+const forbiddenLocalStorageTokenKeys = [
+  'authToken',
+  'refreshToken',
+  'companyToken',
+  'dgfyAccountToken',
+  'dgfy_customer_account_token',
+  'dgfy_account_token',
+  'dgfy_store_customer_token',
+  'store_customer_token',
+  'store_token'
+];
+
+const forbiddenSessionStorageTokenKeys = [
+  'admin_token'
+];
+
+const containsForbiddenKey = (source, keys) => keys.some((key) => (
+  new RegExp(`['"\`]${key}['"\`]`).test(source)
+));
+
+const findTokenKeyCollections = (source, keys) => {
+  const collections = [];
+  const declarationPattern = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*\[([\s\S]*?)\]/g;
+  let match;
+  while ((match = declarationPattern.exec(source)) !== null) {
+    if (containsForbiddenKey(match[2], keys)) {
+      collections.push(match[1]);
+    }
+  }
+  return collections;
+};
+
+const hasCollectionStorageReadWrite = (source, collectionName, storageName) => {
+  const escapedName = collectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (new RegExp(`${storageName}\\.(getItem|setItem)\\s*\\(\\s*${escapedName}\\s*\\[`).test(source)) {
+    return true;
+  }
+
+  const forOfPattern = new RegExp(`for\\s*\\(\\s*(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s+of\\s+${escapedName}\\s*\\)\\s*{([\\s\\S]*?)}`, 'g');
+  let forOfMatch;
+  while ((forOfMatch = forOfPattern.exec(source)) !== null) {
+    const loopKey = forOfMatch[1];
+    const body = forOfMatch[2];
+    if (new RegExp(`${storageName}\\.(getItem|setItem)\\s*\\(\\s*${loopKey}\\b`).test(body)) return true;
+  }
+
+  const forEachPattern = new RegExp(`${escapedName}(?:\\.slice\\([^)]*\\))?\\.forEach\\s*\\(\\s*(?:\\(?\\s*([A-Za-z_$][\\w$]*)\\s*\\)?\\s*=>|function\\s*\\(\\s*([A-Za-z_$][\\w$]*))([\\s\\S]*?)\\)`, 'g');
+  let forEachMatch;
+  while ((forEachMatch = forEachPattern.exec(source)) !== null) {
+    const loopKey = forEachMatch[1] || forEachMatch[2];
+    const body = forEachMatch[3];
+    if (loopKey && new RegExp(`${storageName}\\.(getItem|setItem)\\s*\\(\\s*${loopKey}\\b`).test(body)) return true;
+  }
+
+  return false;
+};
+
 const shouldScanFile = (filePath) => (
   /\.(js|jsx)$/.test(filePath)
   && !filePath.includes('__tests__')
@@ -47,6 +104,23 @@ const listSourceFiles = (relativeRoot) => {
 };
 
 describe('browser token storage guard', () => {
+  it('detects privileged token key collections passed to localStorage directly or through loops', () => {
+    const directSource = `
+      const TOKEN_KEYS = ['dgfy_store_customer_token'];
+      window.localStorage.setItem(TOKEN_KEYS[0], token);
+    `;
+    const loopSource = `
+      const TOKEN_KEYS = ['dgfy_store_customer_token'];
+      for (const key of TOKEN_KEYS) {
+        window.localStorage.getItem(key);
+      }
+    `;
+
+    expect(findTokenKeyCollections(directSource, forbiddenLocalStorageTokenKeys)).toEqual(['TOKEN_KEYS']);
+    expect(hasCollectionStorageReadWrite(directSource, 'TOKEN_KEYS', 'localStorage')).toBe(true);
+    expect(hasCollectionStorageReadWrite(loopSource, 'TOKEN_KEYS', 'localStorage')).toBe(true);
+  });
+
   it('does not persist privileged session tokens in browser-readable storage', () => {
     const violations = [];
     const guardedFiles = guardedRoots.flatMap(listSourceFiles);
@@ -56,6 +130,16 @@ describe('browser token storage guard', () => {
       for (const pattern of forbiddenPatterns) {
         if (pattern.test(source)) {
           violations.push(`${file}: ${pattern}`);
+        }
+      }
+      for (const collectionName of findTokenKeyCollections(source, forbiddenLocalStorageTokenKeys)) {
+        if (hasCollectionStorageReadWrite(source, collectionName, 'localStorage')) {
+          violations.push(`${file}: localStorage getItem/setItem with privileged token key collection ${collectionName}`);
+        }
+      }
+      for (const collectionName of findTokenKeyCollections(source, forbiddenSessionStorageTokenKeys)) {
+        if (hasCollectionStorageReadWrite(source, collectionName, 'sessionStorage')) {
+          violations.push(`${file}: sessionStorage getItem/setItem with privileged token key collection ${collectionName}`);
         }
       }
     }

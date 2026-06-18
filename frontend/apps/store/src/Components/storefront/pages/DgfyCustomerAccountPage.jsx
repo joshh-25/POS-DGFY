@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft,
   Bell,
@@ -85,7 +85,17 @@ export function DgfyCustomerAccountPage({
   onSignOut,
   onHelp,
   onRegisterBusiness,
+  onRequestBusinessStepUp,
+  onAcceptCompanyInvitation,
+  onRejectCompanyInvitation,
+  onLeaveCompany,
+  onSwitchCompany,
   onClearSavedDetails,
+  onUseAddressForCheckout,
+  onSaveAddress,
+  onDeleteAddress,
+  onSetDefaultAddress,
+  renderAddressPinEditor,
   accountIdentityInitials,
   accountIdentityName,
   accountIdentityContact,
@@ -97,7 +107,8 @@ export function DgfyCustomerAccountPage({
   trackedCustomerActivity,
   customerTrackLoadingReference,
   customerTrackError,
-  onOpenBusinessInventory
+  onOpenBusinessInventory,
+  accountAddressActionId = ''
 }) {
   const allOrders = Array.isArray(accountPanel?.orders) ? accountPanel.orders : [];
   const allBookings = Array.isArray(accountPanel?.bookings) ? accountPanel.bookings : [];
@@ -112,10 +123,19 @@ export function DgfyCustomerAccountPage({
   const businessMemberships = Array.isArray(accountPanel?.memberships)
     ? accountPanel.memberships.filter((membership) => membership?.company)
     : [];
+  const businessCompanies = Array.isArray(accountPanel?.businessCompanies) ? accountPanel.businessCompanies : [];
+  const businessStepUp = accountPanel?.businessStepUp || accountPanel?.business_step_up || {};
   
   const [activeNav, setActiveNav] = useState('overview');
   const [activeActivityTab, setActiveActivityTab] = useState('active_orders');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [businessStepUpAction, setBusinessStepUpAction] = useState(null);
+  const [businessEmailOtpCode, setBusinessEmailOtpCode] = useState('');
+  const [businessActionLoading, setBusinessActionLoading] = useState(false);
+  const [businessActionError, setBusinessActionError] = useState('');
+  const [addressDraft, setAddressDraft] = useState({ label: 'Home', address_line: '', latitude: null, longitude: null, is_default: false });
+  const [editingAddressId, setEditingAddressId] = useState(null);
+  const [editingAddressDraft, setEditingAddressDraft] = useState({ label: '', address_line: '', latitude: null, longitude: null, is_default: false });
 
   useEffect(() => {
     if (isMobileViewport) {
@@ -135,6 +155,13 @@ export function DgfyCustomerAccountPage({
   ];
 
   // --- REUSABLE COMPONENTS ---
+
+  const EmptyState = ({ title, desc }) => (
+    <div style={{ border: `1px dashed ${THEME.border}`, borderRadius: 14, padding: isMobileViewport ? 22 : 30, textAlign: 'center', background: THEME.bg }}>
+      <div style={{ fontSize: 16, fontWeight: 700, color: THEME.text }}>{title}</div>
+      {desc ? <div style={{ marginTop: 6, fontSize: 14, color: THEME.muted }}>{desc}</div> : null}
+    </div>
+  );
 
   const StatusBadge = ({ status }) => {
     const s = String(status).toLowerCase();
@@ -171,106 +198,55 @@ export function DgfyCustomerAccountPage({
     );
   };
 
+  const performBusinessAction = async (action, emailOtpCode = '') => {
+    if (action.type === 'accept') return onAcceptCompanyInvitation?.({ membershipId: action.company.membership_id, emailOtpCode });
+    if (action.type === 'reject') return onRejectCompanyInvitation?.({ membershipId: action.company.membership_id });
+    if (action.type === 'leave') return onLeaveCompany?.({ tenantId: action.company.tenant_id });
+    if (action.type === 'switch') return onSwitchCompany?.({ tenantId: action.company.tenant_id, emailOtpCode });
+    return undefined;
+  };
+  const startBusinessAction = async (type, company) => {
+    const action = { type, company };
+    setBusinessActionError('');
+    if (type === 'reject' || type === 'leave' || businessStepUp?.verified === true) {
+      setBusinessActionLoading(true);
+      try { await performBusinessAction(action); } catch (error) { setBusinessActionError(error?.message || 'Unable to complete this business action.'); } finally { setBusinessActionLoading(false); }
+      return;
+    }
+    setBusinessStepUpAction(action);
+    setBusinessEmailOtpCode('');
+    setBusinessActionLoading(true);
+    try { await onRequestBusinessStepUp?.(); } catch (error) { setBusinessStepUpAction(null); setBusinessActionError(error?.message || 'Unable to send the security code.'); } finally { setBusinessActionLoading(false); }
+  };
+  const submitBusinessStepUpAction = async () => {
+    if (!/^\d{6}$/.test(businessEmailOtpCode) || !businessStepUpAction) {
+      setBusinessActionError('Enter the 6-digit security code sent to your DGFY email.');
+      return;
+    }
+    setBusinessActionLoading(true);
+    setBusinessActionError('');
+    try { await performBusinessAction(businessStepUpAction, businessEmailOtpCode); setBusinessStepUpAction(null); setBusinessEmailOtpCode(''); } catch (error) { setBusinessActionError(error?.message || 'Unable to complete this business action.'); } finally { setBusinessActionLoading(false); }
+  };
+
   const renderBusiness = () => {
-    const registeredBusinesses = businessMemberships;
-    
+    const normalizedCompanies = businessCompanies.length > 0
+      ? businessCompanies
+      : businessMemberships.map((membership) => ({ ...membership.company, ...membership, company_name: membership.company?.name }));
+    const pending = normalizedCompanies.filter((company) => company.requires_action === 'accept_invitation' || company.status === 'pending');
+    const accepted = normalizedCompanies.filter((company) => !pending.includes(company));
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: isMobileViewport ? 18 : 24, animation: 'fadeIn 300ms ease-in-out' }}>
-        <h2 style={{ fontSize: isMobileViewport ? 20 : 24, fontWeight: 700, color: THEME.text, margin: 0 }}>Registered Businesses</h2>
-        
-        {registeredBusinesses.length > 0 ? (
-          <div style={{ display: 'grid', gap: isMobileViewport ? 16 : 20 }}>
-            {registeredBusinesses.map((membership) => {
-              const company = membership.company || {};
-              const companyName = String(company.name || 'Business').trim();
-              const companyInitials = companyName
-                .split(/\s+/)
-                .filter(Boolean)
-                .slice(0, 2)
-                .map((part) => part.charAt(0).toUpperCase())
-                .join('') || 'B';
-              const companyStatus = prettyStatus(company.status || membership.status || 'active');
-              const roleLabel = prettyStatus(membership.role || 'member');
-              const planLabel = prettyStatus(company.plan || 'premium');
-              return (
-                <div key={membership.id || `${membership.tenant_id}-${company.company_token || companyName}`} style={{ background: THEME.surface, borderRadius: isMobileViewport ? 16 : 20, border: `1px solid ${THEME.border}`, overflow: 'hidden', boxShadow: '0 10px 30px rgba(16,24,40,0.06)' }}>
-                  <div style={{ height: isMobileViewport ? 92 : 140, background: 'linear-gradient(135deg, #1A4E8D 0%, #4F8CC9 58%, #AEE8F4 100%)', position: 'relative' }}>
-                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(16,24,40,0.18) 100%)' }} />
-                  </div>
-                  <div style={{ padding: isMobileViewport ? 16 : 24, display: 'grid', gap: isMobileViewport ? 14 : 18, marginTop: isMobileViewport ? -34 : -52, position: 'relative' }}>
-                    <div style={{ display: 'flex', alignItems: isMobileViewport ? 'stretch' : 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', flexDirection: isMobileViewport ? 'column' : 'row' }}>
-                      <div style={{ display: 'flex', alignItems: isMobileViewport ? 'center' : 'flex-end', gap: isMobileViewport ? 12 : 16 }}>
-                        <div style={{ width: isMobileViewport ? 64 : 96, height: isMobileViewport ? 64 : 96, borderRadius: '50%', border: isMobileViewport ? '3px solid #FFFFFF' : '4px solid #FFFFFF', background: '#EAF3FF', color: THEME.primary, display: 'grid', placeItems: 'center', fontSize: isMobileViewport ? 22 : 30, fontWeight: 800, boxShadow: '0 10px 24px rgba(16,24,40,0.12)', flexShrink: 0 }}>
-                          {companyInitials}
-                        </div>
-                        <div style={{ display: 'grid', gap: 8, paddingBottom: isMobileViewport ? 0 : 6, minWidth: 0, flex: 1 }}>
-                          <div style={{ fontSize: isMobileViewport ? 18 : 24, fontWeight: 800, color: THEME.text, lineHeight: 1.2 }}>{companyName}</div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, background: THEME.successBg, color: THEME.success, fontSize: 12, fontWeight: 700 }}>
-                              <CheckCircle2 size={14} /> {companyStatus}
-                            </span>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, background: THEME.infoBg, color: THEME.info, fontSize: 12, fontWeight: 700 }}>
-                              <Store size={14} /> {roleLabel}
-                            </span>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 10px', borderRadius: 999, background: THEME.purpleBg, color: THEME.purple, fontSize: 12, fontWeight: 700 }}>
-                              {planLabel}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => onOpenBusinessInventory?.(membership)}
-                        style={{ background: THEME.primary, color: '#FFFFFF', border: 'none', borderRadius: 10, padding: isMobileViewport ? '11px 14px' : '12px 18px', fontSize: isMobileViewport ? 13 : 14, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, whiteSpace: 'nowrap', width: isMobileViewport ? '100%' : 'auto' }}
-                      >
-                        Go to Inventory
-                        <ChevronRight size={16} />
-                      </button>
-                    </div>
-                    <div style={{ display: 'grid', gap: 8 }}>
-                      <div style={{ fontSize: 13, color: THEME.muted }}>
-                        Open this business directly in IMS using your current DGFY account session.
-                      </div>
-                      {company.company_token ? (
-                        <div style={{ fontSize: 12, color: THEME.muted }}>
-                          Company token: <span style={{ color: THEME.text, fontWeight: 600 }}>{company.company_token}</span>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: isMobileViewport ? '32px 18px' : '64px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-            <div style={{ width: isMobileViewport ? 64 : 80, height: isMobileViewport ? 64 : 80, borderRadius: '50%', background: THEME.infoBg, color: THEME.info, display: 'grid', placeItems: 'center', marginBottom: isMobileViewport ? 18 : 24 }}>
-              <Store size={isMobileViewport ? 30 : 40} />
-            </div>
-            <h3 style={{ fontSize: isMobileViewport ? 18 : 22, fontWeight: 700, color: THEME.text, marginBottom: 12 }}>Ready to reach more customers?</h3>
-            <p style={{ fontSize: isMobileViewport ? 14 : 16, color: THEME.muted, lineHeight: 1.5, maxWidth: 480, marginBottom: isMobileViewport ? 24 : 32 }}>
-              It looks like you haven't registered a business to this account yet. Set up your storefront to digitize your catalog and get discovered on the local map!
-            </p>
-            <button
-              onClick={onRegisterBusiness}
-              style={{ background: THEME.primary, color: '#FFFFFF', border: 'none', borderRadius: 8, padding: isMobileViewport ? '12px 18px' : '14px 28px', fontSize: isMobileViewport ? 14 : 16, fontWeight: 600, cursor: 'pointer', transition: 'background 200ms', width: isMobileViewport ? '100%' : 'auto' }}
-              onMouseOver={e => e.currentTarget.style.background = THEME.info}
-              onMouseOut={e => e.currentTarget.style.background = THEME.primary}
-            >
-              Register Your Business
-            </button>
-          </div>
-        )}
+      <div style={{ display: 'grid', gap: isMobileViewport ? 16 : 22 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div><h2 style={{ margin: 0, fontSize: isMobileViewport ? 20 : 24 }}>Your businesses</h2><p style={{ margin: '6px 0 0', color: THEME.muted }}>Manage companies and invitations connected to this DGFY account.</p></div>
+          <button type="button" onClick={onRegisterBusiness} style={{ border: 0, borderRadius: 10, background: THEME.primary, color: '#fff', minHeight: 42, padding: '0 16px', fontWeight: 700, cursor: 'pointer' }}>Register New Company</button>
+        </div>
+        {businessActionError ? <div role="alert" style={{ borderRadius: 10, background: '#FEF2F2', color: '#991B1B', padding: 12 }}>{businessActionError}</div> : null}
+        {pending.length > 0 ? <section style={{ display: 'grid', gap: 10 }}><strong>Pending invitations</strong>{pending.map((company) => <div key={`invite-${company.membership_id}`} style={{ border: `1px solid ${THEME.border}`, borderRadius: 14, background: THEME.infoBg, padding: 14, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}><div><strong>{company.company_name || company.name || 'Company invitation'}</strong><div style={{ marginTop: 4, color: THEME.muted, fontSize: 13 }}>Invitation from IMS</div></div><div style={{ display: 'flex', gap: 8 }}><button type="button" disabled={businessActionLoading} onClick={() => startBusinessAction('reject', company)}>Reject</button><button type="button" disabled={businessActionLoading} onClick={() => startBusinessAction('accept', company)}>Accept</button></div></div>)}</section> : null}
+        {businessStepUpAction ? <section style={{ border: `1px solid ${THEME.border}`, borderRadius: 14, padding: 14, display: 'grid', gap: 10 }}><strong>Email security check</strong><span style={{ color: THEME.muted, fontSize: 13 }}>Enter the 6-digit code sent to your DGFY email.</span><input inputMode="numeric" value={businessEmailOtpCode} onChange={(event) => setBusinessEmailOtpCode(event.target.value.replace(/\D/g, '').slice(0, 6))} maxLength={6} aria-label="Business security code" /><div style={{ display: 'flex', gap: 8 }}><button type="button" onClick={() => setBusinessStepUpAction(null)}>Cancel</button><button type="button" disabled={businessActionLoading} onClick={submitBusinessStepUpAction}>Verify and continue</button></div></section> : null}
+        {accepted.length > 0 ? <div style={{ display: 'grid', gap: 14 }}>{accepted.map((company) => { const name=company.company_name || company.name || 'Business'; const owned=company.is_owner === true || company.membership_type === 'owner' || company.role === 'owner'; return <article key={`company-${company.membership_id || company.tenant_id}`} style={{ border: `1px solid ${THEME.border}`, borderRadius: 18, overflow: 'hidden', background: '#fff' }}><div style={{ height: isMobileViewport ? 72 : 104, background: 'linear-gradient(135deg,#1A4E8D,#4F8CC9,#AEE8F4)' }} /><div style={{ padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}><div><div style={{ fontSize: 18, fontWeight: 800 }}>{name}</div><div style={{ marginTop: 4, color: THEME.muted, fontSize: 13 }}>{owned ? 'Company you own' : 'Company membership'}</div></div><div style={{ display: 'flex', gap: 8 }} >{!owned && company.can_leave !== false ? <button type="button" disabled={businessActionLoading} onClick={() => startBusinessAction('leave', company)}>Leave</button> : null}<button type="button" disabled={businessActionLoading} onClick={() => company.tenant_id ? startBusinessAction('switch', company) : onOpenBusinessInventory?.(company)}>Go to Inventory</button></div></div></article>; })}</div> : <div style={{ border: `1px solid ${THEME.border}`, borderRadius: 16, padding: 28, textAlign: 'center' }}><Store size={36} color={THEME.primary} /><h3>No registered business yet</h3><p style={{ color: THEME.muted }}>Register a business or accept an IMS invitation.</p></div>}
       </div>
     );
   };
-
-  const EmptyState = ({ title, desc }) => (
-    <div style={{ padding: '32px 0', textAlign: 'center', color: THEME.muted }}>
-      <div style={{ fontSize: 14, fontWeight: 500 }}>{title}</div>
-      <div style={{ fontSize: 13, marginTop: 4 }}>{desc}</div>
-    </div>
-  );
-
   // --- SECTIONS ---
 
   const renderOverview = () => (
@@ -572,7 +548,7 @@ export function DgfyCustomerAccountPage({
               </div>
               <div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: THEME.text, marginBottom: 4 }}>{order.store_name || 'DGFY Store'}</div>
-                <div style={{ fontSize: 13, color: THEME.muted }}>{order.reference} • {formatDate(order.occurred_at)}</div>
+                <div style={{ fontSize: 13, color: THEME.muted }}>{order.reference} â€¢ {formatDate(order.occurred_at)}</div>
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
@@ -607,7 +583,7 @@ export function DgfyCustomerAccountPage({
               </div>
               <div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: THEME.text, marginBottom: 4 }}>{booking.store_name || 'DGFY Service'}</div>
-                <div style={{ fontSize: 13, color: THEME.muted }}>{booking.reference} • {formatDate(booking.occurred_at)}</div>
+                <div style={{ fontSize: 13, color: THEME.muted }}>{booking.reference} â€¢ {formatDate(booking.occurred_at)}</div>
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
@@ -625,41 +601,26 @@ export function DgfyCustomerAccountPage({
   );
 
   const renderAddresses = () => (
-    <div style={{ display: 'grid', gap: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ fontSize: 24, fontWeight: 800, color: THEME.text }}>Addresses</h2>
-        <button onClick={() => alert('Address adding is currently disabled for this demo.')} style={{ background: THEME.primary, border: 'none', color: '#FFF', borderRadius: 8, padding: '8px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <MapPin size={16} /> Add Address
-        </button>
-      </div>
-      <div style={{ display: 'grid', gap: 16 }}>
-        {allAddresses.length === 0 ? (
-          <EmptyState title="No addresses saved" desc="Add an address for faster checkout." />
-        ) : allAddresses.map((address) => (
-          <div key={`addr-${address.address_id}`} style={{ background: THEME.surface, borderRadius: 16, border: `1px solid ${THEME.border}`, padding: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
-            <div style={{ display: 'flex', gap: 16 }}>
-              <div style={{ width: 48, height: 48, borderRadius: 12, background: THEME.orangeBg, color: THEME.orange, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                <MapPin size={24} />
-              </div>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: THEME.text }}>{String(address.label || 'Address').trim() || 'Address'}</div>
-                  {address.is_default && (
-                    <span style={{ background: THEME.successBg, color: THEME.success, fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999 }}>Default</span>
-                  )}
-                </div>
-                <div style={{ fontSize: 14, color: THEME.muted, lineHeight: 1.5, maxWidth: 400 }}>{address.address_line || 'Address details unavailable.'}</div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button onClick={() => alert('Address editing is currently disabled.')} style={{ background: 'transparent', border: `1px solid ${THEME.border}`, color: THEME.text, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Edit</button>
-            </div>
-          </div>
-        ))}
+    <div style={{ display: 'grid', gap: 18 }}>
+      <div><h2 style={{ margin: 0, fontSize: isMobileViewport ? 20 : 24 }}>Saved Locations</h2><p style={{ margin: '6px 0 0', color: THEME.muted }}>Locations saved here are available during checkout and booking.</p></div>
+      {typeof onSaveAddress === 'function' ? <form onSubmit={async (event) => { event.preventDefault(); if (await onSaveAddress(addressDraft)) setAddressDraft({ label: 'Home', address_line: '', latitude: null, longitude: null, is_default: false }); }} style={{ border: `1px solid ${THEME.border}`, borderRadius: 14, padding: 16, display: 'grid', gap: 12 }}>
+        <strong>Add Location</strong>
+        <input value={addressDraft.label} onChange={(event) => setAddressDraft((previous) => ({ ...previous, label: event.target.value }))} placeholder="Label, e.g. Home" />
+        <textarea value={addressDraft.address_line} onChange={(event) => setAddressDraft((previous) => ({ ...previous, address_line: event.target.value }))} placeholder="Street, barangay, city, province" rows={3} />
+        {renderAddressPinEditor?.({ draft: addressDraft, onChange: setAddressDraft, mode: 'create' })}
+        <label><input type="checkbox" checked={addressDraft.is_default} onChange={(event) => setAddressDraft((previous) => ({ ...previous, is_default: event.target.checked }))} /> Make default address</label>
+        <button type="submit" disabled={accountAddressActionId === 'new'} style={{ justifySelf: 'start' }}>{accountAddressActionId === 'new' ? 'Saving...' : 'Save Location'}</button>
+      </form> : null}
+      <div style={{ display: 'grid', gap: 12 }}>
+        {allAddresses.length === 0 ? <EmptyState title="No addresses saved" desc="Add an address for faster checkout." /> : allAddresses.map((address) => {
+          const isEditing = editingAddressId === address.address_id;
+          const busy = accountAddressActionId === String(address.address_id);
+          if (isEditing) return <form key={`edit-${address.address_id}`} onSubmit={async (event) => { event.preventDefault(); if (await onSaveAddress?.(editingAddressDraft, address)) setEditingAddressId(null); }} style={{ border: `1px solid ${THEME.border}`, borderRadius: 14, padding: 16, display: 'grid', gap: 10 }}><input value={editingAddressDraft.label} onChange={(event) => setEditingAddressDraft((previous) => ({ ...previous, label: event.target.value }))} /><textarea rows={3} value={editingAddressDraft.address_line} onChange={(event) => setEditingAddressDraft((previous) => ({ ...previous, address_line: event.target.value }))} />{renderAddressPinEditor?.({ draft: editingAddressDraft, onChange: setEditingAddressDraft, mode: `edit-${address.address_id}` })}<div style={{ display: 'flex', gap: 8 }}><button type="button" onClick={() => setEditingAddressId(null)}>Cancel</button><button type="submit" disabled={busy}>Save Changes</button></div></form>;
+          return <article key={`addr-${address.address_id}`} style={{ border: `1px solid ${THEME.border}`, borderRadius: 14, padding: 16, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}><div><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><MapPin size={18} color={THEME.primary} /><strong>{address.label || 'Address'}</strong>{address.is_default ? <span style={{ color: THEME.success, fontSize: 12 }}>Default</span> : null}</div><div style={{ marginTop: 8, color: THEME.muted }}>{address.address_line}</div></div><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{onUseAddressForCheckout ? <button type="button" onClick={() => onUseAddressForCheckout(address)}>Use in Checkout</button> : null}<button type="button" onClick={() => { setEditingAddressId(address.address_id); setEditingAddressDraft({ label: address.label || 'Address', address_line: address.address_line || '', latitude: address.latitude, longitude: address.longitude, is_default: address.is_default === true }); }}>Edit</button>{!address.is_default ? <button type="button" disabled={busy} onClick={() => onSetDefaultAddress?.(address)}>Set Default</button> : null}<button type="button" disabled={busy} onClick={() => onDeleteAddress?.(address)}>Remove</button></div></article>;
+        })}
       </div>
     </div>
   );
-
   const renderLoyalty = () => (
     <div style={{ display: 'grid', gap: 24 }}>
       <h2 style={{ fontSize: 24, fontWeight: 800, color: THEME.text, marginBottom: 8 }}>Loyalty Rewards</h2>
@@ -807,7 +768,7 @@ export function DgfyCustomerAccountPage({
             </div>
             <div>
               <div style={{ fontSize: 13, color: THEME.text, fontWeight: 700 }}>Password</div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: THEME.text, marginTop: 4, letterSpacing: 2, lineHeight: 1 }}>••••••••</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: THEME.text, marginTop: 4, letterSpacing: 2, lineHeight: 1 }}>â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢</div>
             </div>
           </div>
           <button onClick={() => alert('Change password flow initiated.')} style={{ background: 'transparent', border: 'none', color: THEME.primary, fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>

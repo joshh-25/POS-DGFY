@@ -41,7 +41,10 @@ import DgfyAuthPage from '../DgfyAuthPage.jsx';
 import DgfyResetPasswordPage from '../DgfyResetPasswordPage.jsx';
 import LegalDocument from '../LegalDocument.jsx';
 import RegisterCompany from '../RegisterCompany.jsx';
-import { appendDgfyHandoffToken } from '../../src/features/dgfyRouteHelpers.js';
+import {
+  appendDgfyHandoffToken,
+  normalizeDgfyReturnTarget
+} from '../../src/features/dgfyRouteHelpers.js';
 
 const dgfyAccount = {
   id: 'dgfy-1',
@@ -141,6 +144,20 @@ describe('DGFY auth and business registration routes', () => {
     );
 
     expect(target).toBe('https://dgfy.ph/map-dgfy/account?dgfy_account=1&handoff_token=handoff-token-1');
+  });
+
+  it('rejects malicious absolute and protocol-relative DGFY return targets', () => {
+    const safeFallback = normalizeDgfyReturnTarget('not-a-route');
+
+    expect(normalizeDgfyReturnTarget('https://evil.test/map-dgfy/account')).toBe(safeFallback);
+    expect(normalizeDgfyReturnTarget('//evil.test/map-dgfy/account')).toBe(safeFallback);
+    expect(normalizeDgfyReturnTarget(decodeURIComponent('%2F%2Fevil.test%2Fmap-dgfy%2Faccount'))).toBe(safeFallback);
+    expect(appendDgfyHandoffToken('https://evil.test/map-dgfy/account', 'handoff-token-1')).toBe(safeFallback);
+  });
+
+  it('allows approved absolute Storefront return targets before appending handoff tokens', () => {
+    expect(normalizeDgfyReturnTarget('https://dgfy.ph/map-dgfy/account')).toBe('https://dgfy.ph/map-dgfy/account');
+    expect(appendDgfyHandoffToken('https://dgfy.ph/map-dgfy/account', 'handoff-token-1')).toBe('https://dgfy.ph/map-dgfy/account?handoff_token=handoff-token-1');
   });
 
   it('renders the canonical DGFY sign-in route and returns to the supplied intent target', async () => {

@@ -10,6 +10,7 @@ const dgfyRequestConfig = (token = getStoredDgfyToken()) => {
   const base = {
     skipTenantAuthHeaders: true,
     skipAuthRefresh: true,
+    skipGlobalErrorToast: true,
     withCredentials: true
   };
   return normalizedToken
@@ -26,12 +27,14 @@ const dgfyBusinessRequestConfig = (token = getStoredDgfyToken()) => {
   const normalizedToken = String(token || '').trim();
   if (normalizedToken) return dgfyRequestConfig(normalizedToken);
   return {
-    withCredentials: true
+    withCredentials: true,
+    skipGlobalErrorToast: true
   };
 };
 
 const dgfyTenantBridgeRequestConfig = () => ({
   withCredentials: true,
+  skipGlobalErrorToast: true,
   headers: {
     'x-dgfy-auth-mode': 'tenant_membership'
   }
@@ -112,27 +115,29 @@ export const clearDgfySession = () => {
 };
 
 export const registerDgfyAccount = async (payload) => {
-  const response = await api.post('/dgfy/auth/register', payload);
+  const response = await api.post('/dgfy/auth/register', payload, dgfyRequestConfig(''));
   const data = response.data.data;
   storeDgfySession(data);
   return data;
 };
 
-export const requestDgfySignupOtp = async (email) => {
+export const requestDgfyRegistrationEmailVerification = async (email) => {
   const response = await api.post('/auth/email-otp/request', {
     purpose: 'dgfy_account_verification',
     email
-  });
+  }, dgfyRequestConfig(''));
   return response.data.data;
 };
 
+export const requestDgfySignupOtp = requestDgfyRegistrationEmailVerification;
+
 export const fetchDgfyLegalTerms = async () => {
-  const response = await api.get('/dgfy/legal-terms/current');
+  const response = await api.get('/dgfy/legal-terms/current', dgfyRequestConfig(''));
   return response.data.data;
 };
 
 export const loginDgfyAccount = async (payload) => {
-  const response = await api.post('/dgfy/auth/login', payload);
+  const response = await api.post('/dgfy/auth/login', payload, dgfyRequestConfig(''));
   const data = response.data.data;
   storeDgfySession(data);
   return data;
@@ -172,12 +177,12 @@ export const verifyDgfyEmail = async (code, token = getStoredDgfyToken()) => {
 };
 
 export const requestDgfyPasswordReset = async (email) => {
-  const response = await api.post('/dgfy/auth/password-reset/request', { email });
+  const response = await api.post('/dgfy/auth/password-reset/request', { email }, dgfyRequestConfig(''));
   return response.data.data;
 };
 
 export const completeDgfyPasswordReset = async (payload) => {
-  const response = await api.post('/dgfy/auth/password-reset/complete', payload);
+  const response = await api.post('/dgfy/auth/password-reset/complete', payload, dgfyRequestConfig(''));
   return response.data.data;
 };
 
@@ -212,6 +217,18 @@ export const acceptDgfyInvitation = async (membershipId, token = getStoredDgfyTo
   return response.data.data;
 };
 
+export const searchDgfyBusinessAccounts = async (query) => {
+  const params = new URLSearchParams();
+  params.set('query', String(query || '').trim());
+  const response = await api.get(`/dgfy/accounts/search?${params.toString()}`);
+  return response.data.data;
+};
+
+export const createDgfyCompanyInvitation = async (payload) => {
+  const response = await api.post('/dgfy/invitations', payload);
+  return response.data.data;
+};
+
 export const requestDgfyBusinessStepUp = async (token = getStoredDgfyToken()) => {
   const response = await callDgfyBusinessEndpoint(
     (config) => api.post('/dgfy/account/business-step-up/request', {}, config),
@@ -242,6 +259,32 @@ export const listDgfyAccountCompaniesForTenantSession = async () => {
   return response.data.data;
 };
 
+export const getDgfyLegacyLinkStatus = async () => {
+  const response = await api.get('/dgfy/legacy-link/status');
+  return response.data.data;
+};
+
+export const requestDgfyLegacyLinkEmailOtp = async () => {
+  const response = await api.post('/dgfy/legacy-link/request-email-otp');
+  return response.data.data;
+};
+
+export const completeDgfyLegacyLink = async ({
+  emailOtpCode,
+  dgfyAccountToken = getStoredDgfyToken()
+} = {}) => {
+  const response = await api.post('/dgfy/legacy-link/complete', {
+    email_otp_code: emailOtpCode,
+    dgfy_account_token: dgfyAccountToken
+  });
+  return response.data.data;
+};
+
+export const startDgfyLegacyRegistrationHandoff = async () => {
+  const response = await api.post('/dgfy/legacy-link/start-registration-handoff');
+  return response.data.data;
+};
+
 export const acceptDgfyCompanyInvitation = async ({
   membershipId,
   emailOtpCode
@@ -250,6 +293,14 @@ export const acceptDgfyCompanyInvitation = async ({
     (config) => api.post(`/dgfy/invitations/${membershipId}/accept`, {
       email_otp_code: emailOtpCode
     }, config),
+    token
+  );
+  return response.data.data;
+};
+
+export const rejectDgfyCompanyInvitation = async ({ membershipId } = {}, token = getStoredDgfyToken()) => {
+  const response = await callDgfyBusinessEndpoint(
+    (config) => api.post(`/dgfy/invitations/${membershipId}/reject`, {}, config),
     token
   );
   return response.data.data;
@@ -311,6 +362,41 @@ export const switchDgfyCompany = async ({
   return data;
 };
 
+export const leaveDgfyCompany = async ({ tenantId } = {}, token = getStoredDgfyToken()) => {
+  const response = await callDgfyBusinessEndpoint(
+    (config) => api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/leave`, {}, config),
+    token
+  );
+  return response.data.data;
+};
+
+export const transferDgfyCompanyOwnership = async ({
+  tenantId,
+  targetDgfyAccountId,
+  emailOtpCode
+} = {}, token = getStoredDgfyToken()) => {
+  const response = await callDgfyBusinessEndpoint(
+    (config) => api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/transfer-ownership`, {
+      target_dgfy_account_id: targetDgfyAccountId,
+      email_otp_code: emailOtpCode
+    }, config),
+    token
+  );
+  return response.data.data;
+};
+
+export const transferDgfyCompanyOwnershipForTenantSession = async ({
+  tenantId,
+  targetDgfyAccountId,
+  emailOtpCode
+} = {}) => {
+  const response = await api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/transfer-ownership`, {
+    target_dgfy_account_id: targetDgfyAccountId,
+    email_otp_code: emailOtpCode
+  }, dgfyTenantBridgeRequestConfig());
+  return response.data.data;
+};
+
 export const switchDgfyCompanyForTenantSession = async ({
   tenantId,
   emailOtpCode
@@ -366,6 +452,21 @@ export const startDgfyTenantSession = async ({
   setBrowserSession({
     token: data?.token,
     companyToken: data?.company?.token || companyToken
+  });
+  return data;
+};
+
+export const startDgfyPosSession = async ({
+  tenantId,
+  terminalId
+} = {}, token = getStoredDgfyToken()) => {
+  const response = await api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/pos-session`, {
+    terminal_id: terminalId
+  }, dgfyRequestConfig(token));
+  const data = response.data.data;
+  setBrowserSession({
+    token: data?.token,
+    companyToken: data?.company?.token
   });
   return data;
 };

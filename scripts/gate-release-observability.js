@@ -24,7 +24,7 @@ function parseArgs(argv) {
 function runCapture(command, args, options = {}) {
   const result = spawnSync(command, args, {
     encoding: 'utf8',
-    shell: process.platform === 'win32',
+    shell: false,
     ...options
   });
   return result.status === 0 ? String(result.stdout || '').trim() : '';
@@ -33,7 +33,7 @@ function runCapture(command, args, options = {}) {
 function runCommand(command, args, options = {}) {
   const result = spawnSync(command, args, {
     stdio: options.stdio || 'ignore',
-    shell: process.platform === 'win32',
+    shell: false,
     env: { ...process.env, ...(options.env || {}) },
     ...options
   });
@@ -53,6 +53,29 @@ function addCheck(checks, name, status, detail) {
 function parseDeployedHead(summaryContent) {
   const match = String(summaryContent || '').match(/deployed_head=([a-f0-9]{7,40})/i);
   return match ? match[1].toLowerCase() : '';
+}
+
+function normalizeSha(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return /^[a-f0-9]{7,40}$/.test(normalized) ? normalized : '';
+}
+
+function parseHealthRuntimeSha(healthText) {
+  try {
+    const payload = JSON.parse(String(healthText || '{}'));
+    const observability = payload?.services?.observability || {};
+    return {
+      runtimeSha: normalizeSha(observability.runtime_sha),
+      source: observability.runtime_sha_source || null,
+      present: Boolean(observability.runtime_sha_present || normalizeSha(observability.runtime_sha))
+    };
+  } catch (_error) {
+    return {
+      runtimeSha: '',
+      source: null,
+      present: false
+    };
+  }
 }
 
 async function fetchText(url, requestId) {
@@ -138,19 +161,46 @@ async function buildObservabilityEvidence(options = {}) {
   ensureDir(evidenceDir);
 
   const baseUrl = options.baseUrl || process.env.OBSERVABILITY_BASE_URL || process.env.PROD_BASE_URL || process.env.QA_BASE_URL || '';
+  const healthPath = options.healthPath || process.env.OBSERVABILITY_HEALTH_PATH || '/api/v1/health';
   const enforce = Boolean(options.enforce);
   const checks = [];
   const probeRequestId = `obs-${(targetSha || 'unknown').slice(0, 24)}`;
 
   if (baseUrl) {
-    const health = await fetchText(new URL('/health', baseUrl).toString(), probeRequestId);
-    addCheck(checks, 'health.reachable', health.ok ? 'pass' : 'fail', health.ok ? `status=${health.status}` : (health.error || `status=${health.status}`));
+    const health = await fetchText(new URL(healthPath, baseUrl).toString(), probeRequestId);
+    addCheck(checks, 'health.reachable', health.ok ? 'pass' : 'fail', health.ok ? `status=${health.status}; path=${healthPath}` : (health.error || `status=${health.status}; path=${healthPath}`));
     addCheck(
       checks,
       'trace_context.round_trip',
       health.headers.request_id === probeRequestId && Boolean(health.headers.trace_id) ? 'pass' : 'fail',
       `x-request-id=${health.headers.request_id || '<missing>'}; x-trace-id=${health.headers.trace_id || '<missing>'}`
     );
+
+    const runtimeSha = health.ok ? parseHealthRuntimeSha(health.text) : { runtimeSha: '', source: null, present: false };
+    addCheck(
+      checks,
+      'health.runtime_sha.present',
+      runtimeSha.present && runtimeSha.runtimeSha ? 'pass' : 'fail',
+      `runtime_sha=${runtimeSha.runtimeSha || '<missing>'}; source=${runtimeSha.source || '<missing>'}`
+    );
+    if (targetSha && runtimeSha.runtimeSha) {
+      const matchesTarget = runtimeSha.runtimeSha === targetSha
+        || runtimeSha.runtimeSha.startsWith(targetSha)
+        || targetSha.startsWith(runtimeSha.runtimeSha);
+      addCheck(
+        checks,
+        'health.runtime_sha.matches_target',
+        matchesTarget ? 'pass' : 'fail',
+        `runtime_sha=${runtimeSha.runtimeSha}; target_sha=${targetSha}`
+      );
+    } else {
+      addCheck(
+        checks,
+        'health.runtime_sha.matches_target',
+        'warn',
+        `runtime_sha=${runtimeSha.runtimeSha || '<missing>'}; target_sha=${targetSha || '<missing>'}`
+      );
+    }
 
     if (String(process.env.METRICS_ENABLED || '').toLowerCase() === 'true') {
       const metrics = await fetchText(new URL('/metrics', baseUrl).toString(), probeRequestId);
@@ -223,7 +273,8 @@ async function main() {
     enforce,
     baseUrl: args['base-url'],
     evidenceDir: args['evidence-dir'],
-    targetSha: args.sha
+    targetSha: args.sha,
+    healthPath: args['health-path']
   });
   console.log(`Observability evidence artifact: ${payload.artifact_paths.observability_evidence_file}`);
   if (payload.verdict === 'fail') process.exit(2);
@@ -239,6 +290,7 @@ if (require.main === module) {
 module.exports = {
   buildObservabilityEvidence,
   parseDeployedHead,
+  parseHealthRuntimeSha,
   evaluateReleaseVerdict,
   parseArgs
 };

@@ -80,6 +80,8 @@ Default output:
 
 The gate checks health reachability, request/trace header round-trip, metrics reachability when enabled, structured request logging configuration, incident bundle dry-run, deployed SHA evidence, and stale QA deploy-head review.
 
+`/health` and `/api/v1/health` must expose `services.observability.runtime_sha` with the deployed commit. A healthy response with `runtime_sha=null` is not enough to prove what is live; compare the health value with `.deploy-state/last_deployed_commit`, the newest deploy summary `deployed_head`, and the intended release SHA before marking a rollout production-proven.
+
 The first rollout remains report-only. After one successful production release includes `observability_evidence.json`, set:
 
 ```bash
@@ -88,7 +90,7 @@ OBSERVABILITY_GATE_MODE=enforce
 
 ## Investigation Order
 
-1. Confirm the production SHA from deploy summary and `.deploy-state/last_deployed_commit`.
+1. Confirm the production SHA from `/health.services.observability.runtime_sha`, deploy summary, and `.deploy-state/last_deployed_commit`.
 2. Search by `request_id` or `trace_id` in the incident bundle.
 3. Check the request outcome line for route, surface, status, error code, and duration.
 4. Compare `/health` and `/metrics` snapshots for degraded runtime, schema, telemetry, or error-rate signals.

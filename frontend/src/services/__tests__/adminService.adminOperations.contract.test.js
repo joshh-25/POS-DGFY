@@ -17,6 +17,13 @@ Object.defineProperty(globalThis, 'sessionStorage', {
   writable: true
 });
 
+Object.defineProperty(globalThis, 'document', {
+  value: {
+    cookie: 'sku_csrf_token=csrf-admin-contract'
+  },
+  writable: true
+});
+
 const ADMIN_TOKEN = 'admin-contract-token';
 
 describe('adminService admin operation contracts', () => {
@@ -54,10 +61,15 @@ describe('adminService admin operation contracts', () => {
     ['operateTenantPayMongoChildAccount', 'post', '/commerce-payments/admin/tenants/tenant-1/paymongo-child-account/sync-readiness', () => adminService.operateTenantPayMongoChildAccount('tenant-1', 'sync-readiness')],
     ['createCommercePaymentRefund', 'post', '/commerce-payments/admin/payment-sessions/PAY-123/refunds', () => adminService.createCommercePaymentRefund('PAY-123', { amount: 25 })],
     ['retryCommercePaymentFinalization', 'post', '/commerce-payments/admin/payment-sessions/PAY-123/retry-finalization', () => adminService.retryCommercePaymentFinalization('PAY-123')]
-  ])('%s sends %s %s with the admin bearer token', async (_name, method, path, callService) => {
+  ])('%s sends %s %s with the admin bearer token and CSRF header for unsafe methods', async (_name, method, path, callService) => {
     mockAdminApi.onAny(path).reply((config) => {
       expect(config.method).toBe(method);
       expect(config.headers.Authorization).toBe(`Bearer ${ADMIN_TOKEN}`);
+      if (['post', 'put', 'patch', 'delete'].includes(method)) {
+        expect(config.headers['x-csrf-token']).toBe('csrf-admin-contract');
+      } else {
+        expect(config.headers['x-csrf-token']).toBeUndefined();
+      }
       return [200, { success: true, data: { ok: true } }];
     });
 

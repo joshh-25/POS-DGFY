@@ -267,6 +267,25 @@ function buildPinnedDeliveryAddress(pin) {
   return `Pinned map location (${latitude.toFixed(6)}, ${longitude.toFixed(6)})`;
 }
 
+function normalizeCoordinatePair({ latitude, longitude } = {}) {
+  if (latitude == null || longitude == null || latitude === '' || longitude === '') return null;
+  const parsedLatitude = Number(latitude);
+  const parsedLongitude = Number(longitude);
+  if (!Number.isFinite(parsedLatitude) || !Number.isFinite(parsedLongitude)) return null;
+  return { latitude: parsedLatitude, longitude: parsedLongitude };
+}
+
+async function reverseGeocodeDeliveryPin(pin, { signal } = {}) {
+  const normalized = normalizeCoordinatePair(pin);
+  if (!normalized) return '';
+  const response = await fetch(
+    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(normalized.latitude)}&lon=${encodeURIComponent(normalized.longitude)}`,
+    { signal, headers: { Accept: 'application/json' } }
+  );
+  if (!response.ok) return buildPinnedDeliveryAddress(normalized);
+  return formatReverseGeocodedAddress(await response.json()) || buildPinnedDeliveryAddress(normalized);
+}
+
 function extractSavedLocationLabel(address = '') {
   const normalized = String(address || '').trim();
   if (!normalized) return 'Saved location';
@@ -5647,6 +5666,10 @@ export default function StorefrontApp() {
   const [isGuestTrackingDrawerOpen, setIsGuestTrackingDrawerOpen] = useState(false);
   const [isAccountDrawerOpen, setIsAccountDrawerOpen] = useState(false);
   const [accountPanel, setAccountPanel] = useState(EMPTY_ACCOUNT_PANEL);
+  const [accountOrderActionReference, setAccountOrderActionReference] = useState('');
+  const [accountAddressActionId, setAccountAddressActionId] = useState('');
+  const [accountAddressPinAction, setAccountAddressPinAction] = useState({ mode: '', loading: false, error: '' });
+  const accountAddressPinRequestRef = useRef(0);
   const [trackedCustomerActivity, setTrackedCustomerActivity] = useState(null);
   const [customerTrackLoadingReference, setCustomerTrackLoadingReference] = useState('');
   const [customerTrackError, setCustomerTrackError] = useState('');
@@ -6792,7 +6815,7 @@ export default function StorefrontApp() {
     if (!normalized || typeof window === 'undefined') return;
     const persistedTrackedOrders = readTrackedOrdersForStore(normalized).filter((entry) => !TERMINAL_TRACKING_STATUSES.has(String(entry.status || '').trim().toLowerCase()));
     const resolvedInitialTab = initialTab || 'checkout';
-    const target = storePath(normalized, STORE_ORDER_SUBPAGE);
+    const target = storePath(normalized, STORE_ORDER_SUBPAGE, '', selectedLocationId);
     if (`${window.location.pathname}${window.location.search}` !== target) {
       window.history.pushState({ storeSlug: normalized, storeSubpage: STORE_ORDER_SUBPAGE }, '', target);
     }
@@ -8697,6 +8720,52 @@ export default function StorefrontApp() {
       toast.error(normalizeStorefrontErrorMessage(error, 'Unable to start business registration.'));
     }
   }, [dgfyAuthToken, isDgfyCustomerSignedIn, openCanonicalDgfyAuth]);
+  const requestDgfyBusinessSecurityCode = useCallback(async () => {
+    await requestJson('/api/v1/dgfy/account/business-step-up/request', {
+      method: 'POST',
+      authToken: readDgfyAuthToken(),
+      cache: 'no-store'
+    });
+  }, []);
+  const handleAcceptDgfyCompanyInvitation = useCallback(async ({ membershipId, emailOtpCode }) => {
+    await requestJson(`/api/v1/dgfy/invitations/${encodeURIComponent(membershipId)}/accept`, {
+      method: 'POST',
+      authToken: readDgfyAuthToken(),
+      body: { email_otp_code: emailOtpCode },
+      cache: 'no-store'
+    });
+    toast.success('Company invitation accepted.');
+    await handleLoadAccountPanel();
+  }, []);
+  const handleRejectDgfyCompanyInvitation = useCallback(async ({ membershipId }) => {
+    await requestJson(`/api/v1/dgfy/invitations/${encodeURIComponent(membershipId)}/reject`, {
+      method: 'POST',
+      authToken: readDgfyAuthToken(),
+      cache: 'no-store'
+    });
+    toast.success('Company invitation rejected.');
+    await handleLoadAccountPanel();
+  }, []);
+  const handleLeaveDgfyCompany = useCallback(async ({ tenantId }) => {
+    await requestJson(`/api/v1/dgfy/account/companies/${encodeURIComponent(tenantId)}/leave`, {
+      method: 'POST',
+      authToken: readDgfyAuthToken(),
+      cache: 'no-store'
+    });
+    toast.success('You left the company.');
+    await handleLoadAccountPanel();
+  }, []);
+  const switchDgfyCompanyFromStorefront = useCallback(async ({ tenantId, emailOtpCode }) => {
+    const normalizedTenantId = String(tenantId || '').trim();
+    if (!normalizedTenantId) throw new Error('Select a company to open in SKUpervisor.');
+    await requestJson(`/api/v1/dgfy/account/companies/${encodeURIComponent(normalizedTenantId)}/switch`, {
+      method: 'POST',
+      authToken: readDgfyAuthToken(),
+      body: { email_otp_code: emailOtpCode },
+      cache: 'no-store'
+    });
+    window.location.href = buildDgfyAuthUrl({ intent: 'customer', mode: 'sign-in', returnTo: '/' });
+  }, []);
   const openAccountPanel = () => {
     setIsCheckoutOpen(false);
     setIsGuestTrackingDrawerOpen(false);
@@ -8934,6 +9003,74 @@ export default function StorefrontApp() {
       setCustomerPin(null);
     }
   }, []);
+  const useAccountAddressForCheckout = useCallback((address) => {
+    if (!address) return;
+    const addressLine = String(address.address_line || address.fullAddress || address.formatted_address || '').trim();
+    const coordinates = normalizeCoordinatePair(address);
+    setDeliveryLocationAction('saved');
+    setSelectedSavedLocationId(String(address.id || (address.address_id ? `account-address-${address.address_id}` : 'account-address')));
+    setPinLocationError('');
+    if (addressLine) {
+      setResolvedDeliveryAddress(addressLine);
+      setCustomerAddress(addressLine);
+    }
+    if (coordinates) setCustomerPin(coordinates);
+    toast.success('Saved address applied to checkout.');
+  }, []);
+
+  const applyAccountAddressPin = useCallback(async ({ pin, onChange, mode }) => {
+    const coordinates = normalizeCoordinatePair(pin);
+    if (!coordinates || typeof onChange !== 'function') return;
+    const requestId = ++accountAddressPinRequestRef.current;
+    onChange((previous) => ({
+      ...previous,
+      ...coordinates,
+      address_line: String(previous?.address_line || '').trim() || buildPinnedDeliveryAddress(coordinates)
+    }));
+    setAccountAddressPinAction({ mode, loading: true, error: '' });
+    try {
+      const resolvedAddress = await reverseGeocodeDeliveryPin(coordinates);
+      if (accountAddressPinRequestRef.current !== requestId) return;
+      onChange((previous) => ({
+        ...previous,
+        ...coordinates,
+        address_line: String(previous?.address_line || '').trim() || resolvedAddress
+      }));
+      setAccountAddressPinAction({ mode: '', loading: false, error: '' });
+    } catch {
+      if (accountAddressPinRequestRef.current !== requestId) return;
+      setAccountAddressPinAction({ mode, loading: false, error: 'Address lookup failed. The pin remains selected; edit the address text if needed.' });
+    }
+  }, []);
+
+  const handleAccountAddressCurrentLocation = useCallback(({ onChange, mode }) => {
+    if (!navigator?.geolocation) {
+      setAccountAddressPinAction({ mode, loading: false, error: 'Geolocation is not supported on this device/browser.' });
+      return;
+    }
+    setAccountAddressPinAction({ mode, loading: true, error: '' });
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => applyAccountAddressPin({ pin: { latitude: coords.latitude, longitude: coords.longitude }, onChange, mode }),
+      () => setAccountAddressPinAction({ mode, loading: false, error: 'Unable to get your current location. Pin the address on the map instead.' }),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }, [applyAccountAddressPin]);
+
+  const renderAddressPinEditor = useCallback(({ draft = {}, onChange, mode = 'address' }) => {
+    const pin = normalizeCoordinatePair(draft);
+    const isBusy = accountAddressPinAction.loading && accountAddressPinAction.mode === mode;
+    const errorMessage = accountAddressPinAction.mode === mode ? accountAddressPinAction.error : '';
+    return (
+      <div style={{ display: 'grid', gap: 10, border: '1px solid #dbe5ee', borderRadius: 14, background: '#f8fafc', padding: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div><strong>Location Pin</strong><div style={{ fontSize: 12, color: '#64748b' }}>Optional exact point for this address.</div></div>
+          <button type="button" onClick={() => handleAccountAddressCurrentLocation({ onChange, mode })} disabled={isBusy}>Use Current Location</button>
+        </div>
+        <DeliveryPinMap pin={pin} onPinChange={(nextPin) => applyAccountAddressPin({ pin: nextPin, onChange, mode })} disabled={isBusy} height={180} highlighted={Boolean(pin)} />
+        {errorMessage ? <div style={{ fontSize: 12, color: '#b91c1c' }}>{errorMessage}</div> : null}
+      </div>
+    );
+  }, [accountAddressPinAction, applyAccountAddressPin, handleAccountAddressCurrentLocation]);
 
   const refreshDgfyCheckoutAddresses = useCallback(async () => {
     if (!isDgfyCustomerSignedIn) return [];
@@ -9754,11 +9891,12 @@ export default function StorefrontApp() {
     setAccountPanel((prev) => ({ ...prev, loading: true, error: '' }));
     try {
       if (dgfyToken || dgfySessionAccount?.id) {
-        const [meData, dashboardData, activitiesData, loyaltyData] = await Promise.all([
+        const [meData, dashboardData, activitiesData, loyaltyData, companiesData] = await Promise.all([
           requestJson('/api/v1/dgfy/auth/me', { authToken: dgfyToken, cache: 'no-store' }),
           requestJson('/api/v1/dgfy/customer/dashboard', { authToken: dgfyToken, cache: 'no-store' }),
           requestJson('/api/v1/dgfy/customer/activities?limit=100', { authToken: dgfyToken, cache: 'no-store' }).catch(() => ({ activities: [] })),
-          requestJson('/api/v1/dgfy/customer/loyalty', { authToken: dgfyToken, cache: 'no-store' }).catch(() => null)
+          requestJson('/api/v1/dgfy/customer/loyalty', { authToken: dgfyToken, cache: 'no-store' }).catch(() => null),
+          requestJson('/api/v1/dgfy/account/companies', { authToken: dgfyToken, cache: 'no-store' }).catch(() => ({ companies: [] }))
         ]);
         const activityCollections = deriveAccountActivityCollections({ dashboardData, activitiesData });
         setDgfySessionAccount(meData?.account || dashboardData?.account || meData || dgfySessionAccount || null);
@@ -9771,7 +9909,9 @@ export default function StorefrontApp() {
           orders: activityCollections.orders,
           bookings: activityCollections.bookings,
           addresses: Array.isArray(dashboardData?.addresses) ? dashboardData.addresses : [],
-          loyalty: loyaltyData?.loyalty || dashboardData?.loyalty || null
+          loyalty: loyaltyData?.loyalty || dashboardData?.loyalty || null,
+          businessCompanies: Array.isArray(companiesData?.companies) ? companiesData.companies : [],
+          businessStepUp: companiesData?.business_step_up || { verified: false }
         });
         return;
       }
@@ -9794,7 +9934,9 @@ export default function StorefrontApp() {
         orders: Array.isArray(ordersData?.orders) ? ordersData.orders : [],
         bookings: Array.isArray(bookingsData?.bookings) ? bookingsData.bookings : [],
         addresses: [],
-        loyalty: null
+        loyalty: null,
+        businessCompanies: [],
+        businessStepUp: { verified: false }
       });
     } catch (error) {
       setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: normalizeStorefrontErrorMessage(error, 'Unable to load account.') });
@@ -9846,6 +9988,49 @@ export default function StorefrontApp() {
       setCustomerTrackLoadingReference('');
     }
   }, [dgfySessionAccount?.id, goStoreTrackPage, routeSlug, selectedStore]);
+  const handleSaveAccountAddress = useCallback(async (draft = {}, existingAddress = null) => {
+    const token = readDgfyAuthToken();
+    const addressLine = String(draft.address_line || '').trim();
+    if (!token || !addressLine) {
+      toast.error(token ? 'Enter an address before saving.' : 'Sign in to manage saved addresses.');
+      return false;
+    }
+    const addressId = existingAddress?.address_id;
+    setAccountAddressActionId(addressId ? String(addressId) : 'new');
+    try {
+      const coordinates = normalizeCoordinatePair(draft);
+      await requestJson(addressId ? `/api/v1/dgfy/customer/addresses/${encodeURIComponent(addressId)}` : '/api/v1/dgfy/customer/addresses', {
+        method: addressId ? 'PUT' : 'POST', authToken: token, cache: 'no-store',
+        body: { label: String(draft.label || 'Address').trim() || 'Address', address_line: addressLine, latitude: coordinates?.latitude ?? null, longitude: coordinates?.longitude ?? null, is_default: draft.is_default === true }
+      });
+      toast.success(addressId ? 'Address updated.' : 'Address saved.');
+      await handleLoadAccountPanel();
+      return true;
+    } catch (error) {
+      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to save this address.'));
+      return false;
+    } finally { setAccountAddressActionId(''); }
+  }, []);
+  const handleSetDefaultAccountAddress = useCallback(async (address = {}) => {
+    const addressId = address?.address_id;
+    if (!addressId) return;
+    setAccountAddressActionId(String(addressId));
+    try {
+      await requestJson(`/api/v1/dgfy/customer/addresses/${encodeURIComponent(addressId)}/default`, { method: 'PATCH', authToken: readDgfyAuthToken(), cache: 'no-store' });
+      await handleLoadAccountPanel();
+    } finally { setAccountAddressActionId(''); }
+  }, []);
+  const handleDeleteAccountAddress = useCallback(async (address = {}) => {
+    const addressId = address?.address_id;
+    if (!addressId) return;
+    setAccountAddressActionId(String(addressId));
+    try {
+      await requestJson(`/api/v1/dgfy/customer/addresses/${encodeURIComponent(addressId)}`, { method: 'DELETE', authToken: readDgfyAuthToken(), cache: 'no-store' });
+      toast.success('Address deleted.');
+      await handleLoadAccountPanel();
+    } finally { setAccountAddressActionId(''); }
+  }, []);
+
   const closeAccountDrawer = useCallback(() => {
     setIsAccountDrawerOpen(false);
   }, []);
@@ -11152,7 +11337,17 @@ export default function StorefrontApp() {
         onSignOut={handleStorefrontSignOut}
         onHelp={() => toast.info('Help center is not connected yet.')}
         onRegisterBusiness={openBusinessRegistrationFlow}
+        onRequestBusinessStepUp={requestDgfyBusinessSecurityCode}
+        onAcceptCompanyInvitation={handleAcceptDgfyCompanyInvitation}
+        onRejectCompanyInvitation={handleRejectDgfyCompanyInvitation}
+        onLeaveCompany={handleLeaveDgfyCompany}
+        onSwitchCompany={switchDgfyCompanyFromStorefront}
         onClearSavedDetails={clearSavedCustomerDetailsForDevice}
+        onUseAddressForCheckout={useAccountAddressForCheckout}
+        onSaveAddress={handleSaveAccountAddress}
+        onDeleteAddress={handleDeleteAccountAddress}
+        onSetDefaultAddress={handleSetDefaultAccountAddress}
+        renderAddressPinEditor={renderAddressPinEditor}
         accountIdentityInitials={accountIdentityInitials}
         accountIdentityName={accountIdentityName}
         accountIdentityContact={accountIdentityContact}
@@ -11164,6 +11359,8 @@ export default function StorefrontApp() {
         trackedCustomerActivity={trackedCustomerActivity}
         customerTrackLoadingReference={customerTrackLoadingReference}
         customerTrackError={customerTrackError}
+        accountOrderActionReference={accountOrderActionReference}
+        accountAddressActionId={accountAddressActionId}
       />
     );
   }
@@ -20573,7 +20770,17 @@ return (
           onSignOut={handleStorefrontSignOut}
           onHelp={() => toast.info('Help center is not connected yet.')}
           onRegisterBusiness={openBusinessRegistrationFlow}
+          onRequestBusinessStepUp={requestDgfyBusinessSecurityCode}
+          onAcceptCompanyInvitation={handleAcceptDgfyCompanyInvitation}
+          onRejectCompanyInvitation={handleRejectDgfyCompanyInvitation}
+          onLeaveCompany={handleLeaveDgfyCompany}
+          onSwitchCompany={switchDgfyCompanyFromStorefront}
           onClearSavedDetails={clearSavedCustomerDetailsForDevice}
+          onUseAddressForCheckout={useAccountAddressForCheckout}
+          onSaveAddress={handleSaveAccountAddress}
+          onDeleteAddress={handleDeleteAccountAddress}
+          onSetDefaultAddress={handleSetDefaultAccountAddress}
+          renderAddressPinEditor={renderAddressPinEditor}
           accountIdentityInitials={accountIdentityInitials}
           accountIdentityName={accountIdentityName}
           accountIdentityContact={accountIdentityContact}
@@ -20585,6 +20792,8 @@ return (
           trackedCustomerActivity={trackedCustomerActivity}
           customerTrackLoadingReference={customerTrackLoadingReference}
           customerTrackError={customerTrackError}
+          accountOrderActionReference={accountOrderActionReference}
+          accountAddressActionId={accountAddressActionId}
           onOpenBusinessInventory={handleOpenBusinessInventory}
         />
       ))}

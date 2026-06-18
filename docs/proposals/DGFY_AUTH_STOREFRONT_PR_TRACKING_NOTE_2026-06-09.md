@@ -240,8 +240,8 @@ Potentially local-only config/runtime changes that should be reviewed before pub
 - Check whether the current modifications are only local runtime/CORS additions.
 - If yes, keep them out of the PR.
 
-`frontend/public/bg-modals.png`
-- Root public copy can stay local if the bundled `frontend/src/assets/dgfy/bg-modals.png` is the version intended for publish.
+`frontend/src/assets/dgfy/bg-modals.png`
+- Bundled hero asset is the publish path. Do not add a duplicate root public copy unless a runtime `/bg-modals.png` reference is introduced and covered by tests.
 
 Additional current local exclusions not pushed in this scope:
 

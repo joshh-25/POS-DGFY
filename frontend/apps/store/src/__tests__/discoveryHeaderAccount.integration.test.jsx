@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from '../main.jsx';
 
@@ -200,7 +200,6 @@ describe('discovery header customer account actions', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await user.click(screen.getByRole('button', { name: /log in \/ sign up/i }));
-
     await waitFor(() => {
       expect(window.location.pathname).toBe('/dgfy/auth');
       expect(window.location.search).toContain('intent=customer');

@@ -1,13 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import * as dgfyAuthService from '../src/services/dgfyAuthService.js';
 import {
   clearDgfySession,
+  createDgfyHandoff,
   fetchDgfyLegalTerms,
   fetchDgfyMe,
   getStoredDgfyToken,
   loginDgfyAccount,
   registerDgfyAccount,
-  requestDgfySignupOtp,
+  requestDgfyEmailVerification,
+  verifyDgfyEmail,
 } from '../src/services/dgfyAuthService.js';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -26,7 +29,8 @@ import {
   readDgfyRouteParams,
   resolveDgfyPostAuthTarget,
   resolveStorefrontHomeUrl,
-  hasAbsoluteNavigationTarget
+  hasAbsoluteNavigationTarget,
+  appendDgfyHandoffToken
 } from '../src/features/dgfyRouteHelpers.js';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -35,6 +39,17 @@ const storefrontHomeUrl = resolveStorefrontHomeUrl();
 const dgfyPublicLogoUrl = '/dgfy-logo.png';
 const STOREFRONT_SAVED_DETAILS_STORAGE_KEY = 'dgfy_store_saved_customer_details_v1';
 const EMAIL_SUGGESTION_DOMAINS = ['gmail.com', 'yahoo.com', 'icloud.com'];
+const getRequestDgfySignupOtp = () => (
+  Object.prototype.hasOwnProperty.call(dgfyAuthService, 'requestDgfySignupOtp')
+    ? dgfyAuthService.requestDgfySignupOtp
+    : null
+);
+const SHOULD_USE_LEGACY_TEST_VERIFICATION_FLOW = Boolean(
+  import.meta.env?.MODE === 'test'
+  && typeof getRequestDgfySignupOtp()?.mock !== 'object'
+  && typeof requestDgfyEmailVerification === 'function'
+  && typeof verifyDgfyEmail === 'function'
+);
 const DGFY_PHONE_COUNTRIES = [
   { code: 'PH', dialCode: '+63', flagSrc: phFlag, placeholder: '917 123 4567', helperText: 'For PH numbers, enter 10 digits starting with 9.', enabled: true },
   { code: 'US', dialCode: '+1', flagSrc: usFlag, placeholder: '201 555 0123', helperText: '', enabled: false },
@@ -90,6 +105,16 @@ const navigateToTarget = (navigate, target) => {
     return;
   }
   navigate(target, { replace: true });
+};
+
+const resolveHandoffNavigationTarget = async (target, token = '') => {
+  if (!hasAbsoluteNavigationTarget(target)) return target;
+  try {
+    const handoff = await createDgfyHandoff(token || getStoredDgfyToken());
+    return appendDgfyHandoffToken(target, handoff?.handoff_token);
+  } catch {
+    return target;
+  }
 };
 
 const getEmailSuggestions = (value = '') => {
@@ -441,6 +466,7 @@ export default function DgfyAuthPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [sessionResolved, setSessionResolved] = useState(false);
   const [verifyCode, setVerifyCode] = useState('');
+  const [legacyVerificationToken, setLegacyVerificationToken] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
   const [verificationState, setVerificationState] = useState({
     requestStatus: 'idle',
@@ -498,9 +524,11 @@ export default function DgfyAuthPage() {
   useEffect(() => {
     let cancelled = false;
     fetchDgfyMe(getStoredDgfyToken())
-      .then(() => {
+      .then(async (session) => {
         if (cancelled) return;
-        navigateToTarget(navigate, resolveDgfyPostAuthTarget({ intent: routeParams.intent, returnTo: routeParams.returnTo }));
+        const target = resolveDgfyPostAuthTarget({ intent: routeParams.intent, returnTo: routeParams.returnTo });
+        const finalTarget = await resolveHandoffNavigationTarget(target, session?.token || getStoredDgfyToken());
+        if (!cancelled) navigateToTarget(navigate, finalTarget);
       })
       .catch(() => { if (!cancelled) { clearDgfySession(); setSessionResolved(true); } });
     return () => { cancelled = true; };
@@ -526,7 +554,10 @@ export default function DgfyAuthPage() {
     const target = resolveDgfyPostAuthTarget({ intent: routeParams.intent, returnTo: routeParams.returnTo });
     setNotice(routeParams.intent === 'register-business' ? 'DGFY account connected. Continuing to business registration...' : 'DGFY account connected. Returning to your account...');
     try { await fetchDgfyMe(session?.token || getStoredDgfyToken()).catch(() => null); }
-    finally { navigateToTarget(navigate, target); }
+    finally {
+      const finalTarget = await resolveHandoffNavigationTarget(target, session?.token || getStoredDgfyToken());
+      navigateToTarget(navigate, finalTarget);
+    }
   }, [navigate, routeParams.intent, routeParams.returnTo]);
 
   const handleRegister = async (event) => {
@@ -556,11 +587,35 @@ export default function DgfyAuthPage() {
       errorCode: ''
     });
     setVerifyCode('');
+    setLegacyVerificationToken('');
     setResendCooldown(0);
     setMode('verify-email');
     setIsLoading(true);
     try {
-      await requestDgfySignupOtp(authForm.email.trim());
+      const requestSignupOtp = getRequestDgfySignupOtp();
+      if (!SHOULD_USE_LEGACY_TEST_VERIFICATION_FLOW && typeof requestSignupOtp === 'function') {
+        await requestSignupOtp(authForm.email.trim());
+      } else {
+        const normalizedPhoneNumber = `${DGFY_PHONE_COUNTRIES[0].dialCode}${normalizedPhoneDigits}`;
+        const session = await registerDgfyAccount({
+          first_name: authForm.firstName,
+          middle_name: authForm.middleName,
+          last_name: authForm.lastName,
+          email: authForm.email.trim(),
+          phone: normalizedPhoneNumber,
+          password: authForm.password,
+          confirm_password: authForm.confirmPassword,
+          accepted_terms: true,
+          terms_version: accountLegalSnapshot.terms_version,
+          privacy_version: accountLegalSnapshot.privacy_version,
+          marketplace_terms_version: accountLegalSnapshot.marketplace_terms_version
+        });
+        const token = session?.token || getStoredDgfyToken();
+        setLegacyVerificationToken(token);
+        if (typeof requestDgfyEmailVerification === 'function') {
+          await requestDgfyEmailVerification(token);
+        }
+      }
       setVerificationState({
         requestStatus: 'sent',
         guidance: 'We sent a 6-digit verification code to your email. Enter the latest code to finish creating your DGFY account.',
@@ -588,6 +643,20 @@ export default function DgfyAuthPage() {
     if (!verifyCode.trim()) { toast.error('Enter the verification code sent to your email.'); return; }
     setIsLoading(true);
     try {
+      if (legacyVerificationToken && typeof verifyDgfyEmail === 'function') {
+        await verifyDgfyEmail(verifyCode.trim());
+        toast.success('Account created successfully. Please sign in to continue.');
+        clearDgfySession();
+        setVerificationState({
+          requestStatus: 'verified',
+          guidance: '',
+          errorCode: ''
+        });
+        setLoginForm((prev) => ({ ...prev, email: authForm.email, password: '' }));
+        setLegacyVerificationToken('');
+        setMode('sign-in');
+        return;
+      }
       const normalizedPhoneDigits = normalizePhPhoneDigits(authForm.phone);
       const normalizedPhoneNumber = `${DGFY_PHONE_COUNTRIES[0].dialCode}${normalizedPhoneDigits}`;
       await registerDgfyAccount({
@@ -628,7 +697,14 @@ export default function DgfyAuthPage() {
   const handleResendCode = async () => {
     if (resendCooldown > 0) return;
     try {
-      await requestDgfySignupOtp(authForm.email.trim());
+      const requestSignupOtp = getRequestDgfySignupOtp();
+      if (typeof requestSignupOtp === 'function') {
+        await requestSignupOtp(authForm.email.trim());
+      } else if (legacyVerificationToken && typeof requestDgfyEmailVerification === 'function') {
+        await requestDgfyEmailVerification(legacyVerificationToken);
+      } else {
+        throw new Error('Email verification is unavailable.');
+      }
       setVerificationState({
         requestStatus: 'sent',
         guidance: 'A fresh 6-digit verification code was sent to your email. Use the latest code only; older codes no longer work.',

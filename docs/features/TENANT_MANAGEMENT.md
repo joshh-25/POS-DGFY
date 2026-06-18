@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-06-16
+last_reviewed: 2026-06-17
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -34,6 +34,14 @@ The SKU Inventory Manager uses a **Multi-Tenant Architecture** with **Database I
 - **Storefront Handoff**: `Register Your Business` launched from DGFY/storefront discovery must start from the signed-in DGFY account surface when possible, create a short-lived DGFY handoff token, and send the user to `/register-company?source=dgfy&auth=login&handoff_token=<token>#business-registration`. If no valid DGFY session exists, the launcher must route the user to `/dgfy/auth?intent=register-business&return_to=/register-company#business-registration` first. `/register-company` must exchange the token once, remove `handoff_token` from the URL after success or failure, and keep the canonical DGFY sign-in fallback focused on `#business-registration` when the handoff is expired or already consumed. The browser registration flow uses the exchange endpoint's `soft_fail` mode so expected expired/consumed handoff recovery returns an invalid status payload instead of a browser-visible 4xx resource error; strict replay failure remains the default API behavior when `soft_fail` is not requested. The authenticated company-registration area is focused before tenant registration can proceed, and the page no longer owns create-account or reset-password UI directly.
 - **Email Mapping**: Manual pending registrations create the founder email-to-tenant mapping at registration time so lookup can show pending status. Auto-provisioned registrations leave mapping creation to the provisioning path so the mapping is written only after tenant activation succeeds.
 - **Abuse Control**: Public company registration is IP rate-limited (`RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS=5` per `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS=3600000` by default in production). Keep this strict because default accepted registrations create tenant databases.
+
+### Legacy Direct Tenant Login Grace
+
+Direct tenant-local IMS/POS login remains only as a migration grace path for accepted existing users who do not yet have an accepted DGFY membership. The default grace deadline is June 17, 2027 through `LEGACY_TENANT_LOGIN_GRACE_END=2027-06-17` and `LEGACY_TENANT_LOGIN_GRACE_ENABLED=true`. Login, current-user, and Manage Users responses expose `dgfy_link_status`, `legacy_grace_expires_at`, `dgfy_membership_id`, `dgfy_account_id`, `can_legacy_login`, and `legacy_login_block_reason` so IMS/POS can show direct DGFY-linking reminders, admins can report unlinked accounts, and owner-transfer UI can target accepted linked members.
+
+New non-DGFY business users are not allowed during the grace period. Direct tenant-user registration is blocked unless `DGFY_LEGACY_TENANT_REGISTRATION_ENABLED=true` is intentionally set for an emergency operator exception, and new invitations remain DGFY-account search/selection only. After June 17, 2027, unlinked legacy users are blocked from IMS/POS until they create or link a DGFY account.
+
+Legacy link completion is hardened as a repairable landlord transaction after OTP verification: accepted membership state, founder ownership bootstrap, email-to-tenant mapping, and success audit complete together. If a landlord write fails, the link is not reported as successful and a `legacy_link_failed` business audit row records the repair context. DGFY POS unlock also writes separate attempt, success, and failure business audit events so no-access, permission-denied, terminal-registry, and hardware-adjacent warnings can be tracked independently during rollout. During the grace period, the DGFY-first POS drawer may fall back to the governed tenant-local login path when the submitted email is not yet a DGFY account or DGFY login returns `401`; that fallback still uses `/auth/lookup`, tenant-local password validation, POS permission checks, and explicit terminal identity before unlock.
 
 ### 2. Approval & Provisioning (Active)
 - Public registration auto-accepts and provisions the tenant when `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` (default). Admin clicks **Approve** in the Tenant Manager only for pending accounts created while `TENANT_REGISTRATION_APPROVAL_MODE=manual` is explicitly configured.
@@ -130,7 +138,7 @@ Tenant-facing UX is reactive in-app messaging only. `TENANT_CAPABILITY_DISABLED`
 Current production status as of 2026-06-11:
 - DGFY OTP-first account signup, global OTP scoping, no-company-token OTP request access, and automatic IMS tenant-session handoff are deployed at SHA `8b03dfea4f9615d665baa14df59a78de5c797a60`.
 - Production remote `HEAD`, remote `origin/master`, and `.deploy-state/last_deployed_commit` matched that SHA at proof time; deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260610_234107.summary.txt` reports backend health, IMS, POS, Storefront, public endpoints, tenant-store asset integrity, frontend asset parity, tenant schema sync, tenant schema sync regression, tenant index headroom, permission backfill, Storefront discovery index reconciliation, and PM2 reload passing.
-- The release used the documented emergency no-staging bypass because stale QA deployed-head evidence was the sole failed gate after QA smoke, rollback, restore, docs, and architecture passed. `System_Audit/7.2-Release_evidence_depends_on_stale_or_bypassable_QA_paths.md` remains open until QA deployed-head evidence is deterministic.
+- The June 18, 2026 production proof for SHA `4cf4c372c9eae91c6ead5932e19476f4c1b98e83` passed no-staging SHA parity without emergency bypass after the production summary evidence was refreshed. `System_Audit/7.2-Release_evidence_depends_on_stale_or_bypassable_QA_paths.md` is remediated for this release, while future releases must keep exact QA deployed-head parity deterministic.
 - Local validation for the latest DGFY OTP hotfix included `npm --prefix backend test -- --runInBand tests/tenantHandler.emailOtp.test.js tests/authEmailOtpTenantScope.test.js tests/emailOtpService.test.js tests/dgfyAuthUseCases.test.js`, `npm run check:architecture`, `npm run check:compliance`, and `git diff --check`.
 - Live proof after deployment showed `POST /api/v1/auth/email-otp/request` with purpose `dgfy_account_verification` and no company token no longer returns `TENANT_TOKEN_REQUIRED`; an intentionally invalid email returns normal request validation instead.
 
@@ -249,41 +257,40 @@ The `landlordService.js` functions handle mapping CRUD: `addEmailTenantMapping`,
 
 ## Company User Invitations
 
-Master admins invite users from **Settings -> Company -> Manage Users**. The current invitation flow is token-first: new invitation links resolve tenant context from a landlord-level invitation registry and do not require `company_token` in the URL. Legacy links with `company` remain accepted only while their underlying tenant invite is still valid.
+Master admins invite users from **Settings -> Company -> Manage Users**. The current invitation flow is DGFY-account-first: admins search for an active registered DGFY account by email or phone, select the account, assign role and location scope, and send the invitation. New direct invitation links, manual-link recovery, and tenant-local password setup for invited business users are retired by default.
 
-### Registry And Token Policy
-- The landlord `UserInvitation` registry stores tenant ID, tenant user ID, email, role, token hash, expiry, delivery status, and lifecycle timestamps.
-- New invitation tokens are stored as hashes. Raw tokens are exposed only for explicit admin manual-link actions.
-- Legacy raw-token tenant rows are still supported during acceptance so old pending links can expire naturally.
-- Resending or generating a manual link invalidates the previous token by replacing the token hash and expiry.
+### Registry And Identity Policy
+- The landlord `UserInvitation` registry stores tenant ID, tenant user ID, email, role, status, delivery status, and lifecycle timestamps for IMS visibility.
+- The durable identity link is `DgfyAccountTenantMembership`; switching, acceptance, rejection, leave-company, ownership transfer, and POS unlock all require this membership.
+- Tenant-local `users` rows are authorization profiles only. They store role, permissions, location scope, and audit actor mapping; they must not receive copied DGFY password hashes.
+- Legacy raw-token tenant rows are blocked by default for new acceptance and may remain only as a safe compatibility error/redirect path while old invitations expire.
 
 ### Lifecycle
 Invitation rows use these statuses:
 - `pending`: invite has not been accepted yet.
-- `accepted`: password setup succeeded and the user can log in.
+- `accepted`: DGFY invitation acceptance succeeded and the user can access the tenant through DGFY membership.
+- `declined`: invited DGFY account rejected the invitation.
 - `expired`: expiry has passed; acceptance is blocked.
 - `cancelled`: admin cancelled the invite; acceptance is blocked.
 
-Pending, expired, and cancelled invitation rows are non-login rows and cannot be edited through role/status/permission/location-scope controls. Admins must resend, copy a fresh link, cancel, or wait for acceptance.
+Pending, declined, expired, and cancelled invitation rows are non-login rows and cannot be edited through role/status/permission/location-scope controls. Admins can cancel pending invitations or create a new DGFY-account invitation after the prior invitation is closed.
 
 ### Admin UX
-The **Users** tab shows accepted users, including phone number when present and a missing-phone marker for accepted legacy rows. User search matches username, email, and phone number, and the **Missing Phone** filter isolates accepted legacy accounts that still need remediation before tenant-level enforcement is enabled for them. The **Pending Invitations** tab shows invite email, role, expiry, delivery state, inviter, and actions:
-- Resend email
-- Copy/generate manual link
-- Cancel invitation
+The **Users** tab shows accepted users, including phone number when present and a missing-phone marker for accepted legacy rows. User search matches username, email, and phone number, and the **Missing Phone** filter isolates accepted legacy accounts that still need remediation before tenant-level enforcement is enabled for them. Linked accepted members expose a transfer-ownership action for owner/master-admin flows; it opens a confirmation dialog, sends `dgfy_business_step_up`, and calls the DGFY owner-transfer endpoint. The backend remains authoritative: only the current owner can complete the transfer, and the target must be an accepted active DGFY member. The **Pending Invitations** tab shows invite email, role, expiry, delivery state, inviter, and lifecycle state. It does not expose or generate invite links. Pending rows can be cancelled; accepted, declined, expired, and cancelled rows are shown for tracking.
 
 Invite creation supports:
-- `delivery_mode=email`: attempts email delivery; returns manual-link recovery details if SMTP is missing or delivery fails.
-- `delivery_mode=manual`: creates the invite and returns the manual link without attempting SMTP.
-- Optional `location_ids`: invite-time location scope. Operational roles require explicit selection when multiple active locations exist; admin-like roles default to all active locations but remain editable before submission.
+- Search-only account targeting through rate-limited `GET /api/v1/dgfy/accounts/search?query=...`.
+- Selected-account invitation through `POST /api/v1/dgfy/invitations` with `dgfy_account_id`, role or role preset, and optional `location_ids`.
+- Email delivery plus DGFY in-account notification. If email delivery fails, the invite still appears in the invited account's Business area; no manual link is generated.
+- Optional `location_ids`: invite-time location scope. Operational roles require explicit selection when multiple active locations exist; admin-like roles default to tenant scope but remain governed by admin hierarchy.
 
 ### Acceptance UX
-`/accept-invite?token=<token>` validates the token without needing tenant context in the URL. Settings, AI user-management tooling, invitation email templates, resend, and manual-link recovery must not generate company-token registration links for tenant user onboarding. The page shows company, inviter, invite email, role, and expiry before password setup. The invited user must request an invitation-acceptance OTP from the same page and submit `email_otp_code` with the token, username, phone number, and password. The API resolves tenant context from `invitation_token` for token-only OTP requests, matching validation and acceptance behavior, and the frontend ignores legacy `company` / `companyToken` query parameters for registry-backed invite links. Successful acceptance returns the same usable auth shape as login (`user`, `token`, `expiresIn`, `company`), establishes refresh authority through HttpOnly session cookies, and immediately signs the invited user into the app.
+`/accept-invite?token=<token>` is no longer the normal business-user onboarding path. New Settings, AI user-management tooling, invitation email templates, resend, and manual-link recovery must not generate direct invitation links. The compatibility route must be non-mutating by default and tell users to sign in with their registered DGFY account and open My Account -> Business.
 
-If the invited email already belongs to a global DGFY account, invite creation also mirrors a pending DGFY membership. The invited user can sign in with their DGFY account, see the company invitation in the registration/account surface, and accept it without a registration link. Acceptance activates the tenant-local user row from the authenticated DGFY identity and keeps the tenant staff row separate from storefront customer records.
+Invited users sign in with DGFY, see pending invitations in My Account -> Business, and can accept or reject. Accept requires `dgfy_business_step_up` email OTP unless a recent step-up is still valid. Reject marks the membership and tenant invitation `declined` and audits the action. Successful acceptance activates the tenant authorization profile from the authenticated DGFY membership and does not create a separate tenant login password.
 
 ### Delivery And Recovery Status
-The product handles SMTP/API unavailable or failed delivery as a first-class state and gives the admin a manual link for non-OTP invitation recovery.
+The product handles SMTP/API unavailable or failed delivery as a first-class state, but recovery is through the DGFY in-account invitation notification, not a manual link.
 
 Current verified status as of `2026-05-17`:
 - Local Gmail SMTP is configured, but the saved credential fails with `EAUTH 535 BadCredentials`. Use a valid Gmail App Password for local/testing SMTP.
@@ -292,7 +299,7 @@ Current verified status as of `2026-05-17`:
 - Brevo HTTPS API delivery is supported through `BREVO_API_KEY`, `BREVO_API_URL`, `EMAIL_DELIVERY_PROVIDER`, and `EMAIL_DELIVERY_FALLBACK_TO_BREVO_API`; production has the non-secret fallback keys present, but `BREVO_API_KEY` remains empty because SMTP is the verified active provider.
 - Before enabling enforced OTP flows in any new environment, run `npm run verify:email` and then `npm run verify:email -- --send-to operator@example.com` from that environment.
 
-Production email delivery is closed for the SMTP path. Manual-link invitation recovery remains available for non-OTP invitation sends, but email-ownership OTP flows now have a verified production delivery path and still fail closed if provider delivery fails.
+Production email delivery is closed for the SMTP path. DGFY in-account invitation recovery remains available when email delivery fails, but email-ownership OTP flows now have a verified production delivery path and still fail closed if provider delivery fails.
 
 ---
 
