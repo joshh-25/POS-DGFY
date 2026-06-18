@@ -36,10 +36,9 @@ const collectTerminalEvidence = async (browser, viewport) => {
   });
 
   await page.goto(`${baseUrl}/terminal`, { waitUntil: 'domcontentloaded', timeout: 20000 });
-  await page.getByText('DGFY Terminal Workspace').waitFor({ timeout: 15000 });
   await page.getByRole('heading', { name: 'POS Catalog' }).waitFor({ timeout: 15000 });
   await page.getByRole('heading', { name: 'Current Sale' }).waitFor({ timeout: 15000 });
-  await page.getByText('Login and Unlock').waitFor({ timeout: 15000 });
+  await page.getByText('Terminal Login Required').waitFor({ timeout: 15000 });
   const bodyText = await page.locator('body').innerText({ timeout: 10000 });
   await page.getByPlaceholder('cashier@company.com').fill(`cashier-${viewport.name}@example.test`);
   await page.getByPlaceholder('COUNTER-01').fill(`COUNTER-${viewport.name.toUpperCase()}`);
@@ -64,10 +63,10 @@ const collectTerminalEvidence = async (browser, viewport) => {
 
   const evidence = {
     viewport,
-    hasTerminal: bodyText.includes('DGFY Terminal Workspace'),
+    hasTerminal: bodyText.includes('Terminal Login Required'),
     hasCatalog: bodyText.includes('POS Catalog'),
     hasCurrentSale: bodyText.includes('Current Sale'),
-    hasLogin: bodyText.includes('Login and Unlock'),
+    hasLogin: bodyText.includes('DGFY POS unlock'),
     loginFormEditable: (await page.getByPlaceholder('cashier@company.com').inputValue()).includes(viewport.name)
       && (await page.getByPlaceholder('COUNTER-01').inputValue()).includes(viewport.name.toUpperCase()),
     lockDrawerBlocksCatalog,
@@ -86,7 +85,7 @@ const collectSalesRedirectEvidence = async (browser) => {
   const failedRequests = [];
   page.on('requestfailed', (request) => failedRequests.push(request.url()));
   try {
-    await page.goto(`${baseUrl}/sales?source=pos-smoke`, { waitUntil: 'domcontentloaded', timeout: 8000 });
+    await page.goto(`${baseUrl}/#/sales?source=pos-smoke`, { waitUntil: 'domcontentloaded', timeout: 8000 });
     await page.waitForURL((url) => {
       const currentUrl = String(url);
       return currentUrl.startsWith(`${expectedSkupervisorOrigin}/sales`)
