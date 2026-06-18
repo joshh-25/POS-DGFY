@@ -56,6 +56,8 @@ function main() {
   const verdictMirrorFile = process.env.RELEASE_VERDICT_MIRROR_FILE || '';
   const mergeAdoptionManifest = process.env.MERGE_ADOPTION_MANIFEST || process.env.RELEASE_MERGE_ADOPTION_MANIFEST || '';
   const mergeAdoptionReportFile = process.env.MERGE_ADOPTION_REPORT_FILE || path.join(evidenceDir, 'merge_adoption_report.json');
+  const mergeAdoptionBase = process.env.RELEASE_MERGE_ADOPTION_BASE || process.env.MERGE_ADOPTION_BASE || process.env.RELEASE_PREVIOUS_DEPLOYED_SHA || 'origin/master';
+  const deploySourceContractReportFile = process.env.DEPLOY_SOURCE_CONTRACT_REPORT || path.join(evidenceDir, 'deploy_source_contract.json');
   const emergencyBypass = process.env.RELEASE_EMERGENCY_BYPASS === '1';
   const bypassReason = process.env.RELEASE_EMERGENCY_REASON || '';
   const bypassActor = process.env.RELEASE_EMERGENCY_ACTOR || '';
@@ -63,8 +65,24 @@ function main() {
   const gates = [];
 
   addGate(gates, 'release.target_sha', Boolean(targetSha), `target_sha=${targetSha || '<missing>'}`);
+  addGate(
+    gates,
+    'deploy.source_contract',
+    runCmd('npm', ['run', 'check:deploy-source-contract', '--', '--target-sha', targetSha, '--skip-remote-match', '--report', deploySourceContractReportFile]),
+    `npm run check:deploy-source-contract -- --target-sha ${targetSha}`
+  );
   addGate(gates, 'docs.lint', runCmd('npm', ['run', 'lint:docs']), 'npm run lint:docs');
   addGate(gates, 'architecture.guardrails', runCmd('npm', ['run', 'check:architecture']), 'npm run check:architecture');
+  const mergeAdoptionRequiredArgs = ['run', 'check:merge-adoption-required', '--', '--base', mergeAdoptionBase, '--head', targetSha];
+  if (mergeAdoptionManifest) {
+    mergeAdoptionRequiredArgs.push('--manifest', mergeAdoptionManifest);
+  }
+  addGate(
+    gates,
+    'merge.adoption.required',
+    runCmd('npm', mergeAdoptionRequiredArgs),
+    `npm run check:merge-adoption-required -- --base ${mergeAdoptionBase} --head ${targetSha}`
+  );
   if (mergeAdoptionManifest) {
     addGate(
       gates,
@@ -77,7 +95,7 @@ function main() {
       gates,
       'merge.adoption.not_required',
       true,
-      'No MERGE_ADOPTION_MANIFEST provided. Required for multi-branch or PR-adoption releases.'
+      `No MERGE_ADOPTION_MANIFEST provided; required-proof gate used base=${mergeAdoptionBase} head=${targetSha}.`
     );
   }
 
@@ -152,16 +170,31 @@ function main() {
   });
   addGate(gates, 'observability.evidence.report', observabilityOk, 'npm run gate:release:observability -- --evidence-dir <release-evidence-dir>');
 
-  const failed = gates.filter((gate) => !gate.ok);
+  let failed = gates.filter((gate) => !gate.ok);
   let verdict = failed.length === 0 ? 'pass' : 'fail';
   let bypass = null;
 
   if (verdict === 'fail' && emergencyBypass) {
+    const nonBypassableGateNames = new Set([
+      'deploy.source_contract',
+      'merge.adoption.required',
+      'merge.adoption',
+    ]);
+    const nonBypassableFailures = failed.filter((gate) => nonBypassableGateNames.has(gate.name));
     const hasReason = bypassReason.trim().length > 0;
     const hasActor = bypassActor.trim().length > 0;
     addGate(gates, 'emergency_bypass.reason_present', hasReason, 'RELEASE_EMERGENCY_REASON');
     addGate(gates, 'emergency_bypass.actor_present', hasActor, 'RELEASE_EMERGENCY_ACTOR');
-    if (hasReason && hasActor) {
+    if (nonBypassableFailures.length > 0) {
+      addGate(
+        gates,
+        'emergency_bypass.non_bypassable_clear',
+        false,
+        `Non-bypassable failures: ${nonBypassableFailures.map((gate) => gate.name).join(', ')}`
+      );
+    }
+    failed = gates.filter((gate) => !gate.ok);
+    if (hasReason && hasActor && nonBypassableFailures.length === 0) {
       verdict = 'bypassed';
       bypass = {
         enabled: true,
@@ -184,6 +217,7 @@ function main() {
       qa_rollback_drill_file: qaRollbackResultFile,
       qa_restore_drill_file: qaRestoreResultFile,
       merge_adoption_report_file: mergeAdoptionManifest ? mergeAdoptionReportFile : null,
+      deploy_source_contract_report_file: deploySourceContractReportFile,
       release_verdict_file: verdictFile,
       observability_evidence_file: path.join(evidenceDir, 'observability_evidence.json'),
     },

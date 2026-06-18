@@ -56,7 +56,9 @@ For no-staging production releases, make it part of the hard release gate:
 MERGE_ADOPTION_MANIFEST=path/to/merge-adoption.json RELEASE_TARGET_SHA=<sha> npm run gate:release:no-staging
 ```
 
-`scripts/gate-release-no-staging.js` records the merge adoption report path in `release_verdict.json` when `MERGE_ADOPTION_MANIFEST` is set.
+`scripts/gate-release-no-staging.js` now runs the required-proof gate for every release. If high-risk customer-flow paths changed, the release must provide a manifest and the verdict records the merge adoption report path. If no high-risk paths changed, the verdict may record `merge.adoption.not_required` with the checked base/head detail.
+
+Missing or failing required adoption proof is non-bypassable. Emergency bypass can document incident context, but it cannot make a release deployable when the final tree lacks adoption proof for high-risk Storefront, checkout, DGFY auth, tracking, customer dashboard, Store API, or customer-order changes.
 
 ## Source-Added File Check
 If the manifest includes `source_refs`, the gate inspects files added by each source branch:
@@ -82,6 +84,7 @@ A merge adoption gate passing locally is not enough to call production complete.
 3. Rendered desktop and mobile QA for the affected surface.
 4. Backend/API smoke or focused tests for affected server behavior.
 5. A note in the release evidence that the adopted feature areas from the manifest were checked live.
+6. Production deployment source contract evidence proving Git HEAD, `.deploy-state`, deploy summary, and runtime health SHA all match the target SHA.
 
 ## References
 - `docs/START_HERE.md`

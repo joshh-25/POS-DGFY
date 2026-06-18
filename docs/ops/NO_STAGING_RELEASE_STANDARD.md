@@ -10,7 +10,9 @@ Production release is blocked unless all of the following are true for the exact
 3. QA rollback drill result is passing.
 4. QA restore drill result is passing.
 5. Local governance gates pass (`lint:docs`, `check:architecture`).
-6. Merge adoption proof passes when the release adopts PR, branch, or `merge-docs/` behavior that must survive conflict resolution.
+6. Deploy source contract passes: the deploy target is a clean, committed SHA and local-only files are not silently excluded.
+7. Merge adoption proof passes when high-risk Storefront, checkout, DGFY auth, tracking, customer dashboard, or customer-order paths changed.
+8. Production deploy completion proves remote Git HEAD, `.deploy-state/last_deployed_commit`, deployment summary, and runtime health SHA all match the target SHA.
 
 The enforced command is:
 ```bash
@@ -40,6 +42,10 @@ MERGE_ADOPTION_MANIFEST=path/to/merge-adoption.json RELEASE_TARGET_SHA=<target_s
 
 Use `docs/templates/MERGE_ADOPTION_MANIFEST_TEMPLATE.json` and `docs/ops/MERGE_ADOPTION_GATE.md`.
 
+The hard gate now runs `check:merge-adoption-required` for every release. `merge.adoption.not_required` is valid only when that checker proves no high-risk customer-flow paths changed between the configured merge-adoption base and the target SHA. Missing adoption proof for high-risk changes is non-bypassable.
+
+The one-command remote deploy wrapper now refuses dirty local worktrees, including untracked files. Commit or stash local changes before deployment; `--yes` does not mean "deploy only committed HEAD while ignoring local files."
+
 ## Evidence Contracts
 Default evidence root:
 ```text
@@ -54,6 +60,9 @@ Required files:
 5. `release_verdict.json` (final aggregated verdict)
 6. `observability_evidence.json` (report-mode until one production release proves the workflow)
 7. `merge_adoption_report.json` (required when `MERGE_ADOPTION_MANIFEST` is set)
+8. `deploy_source_contract.json`
+9. `frontend_build_manifest.json` from production deploy logs
+10. `production_contract.json` from production deploy logs
 
 Current behavior note:
 1. `qa_deploy_summary.txt` must prove that QA deployed the exact `RELEASE_TARGET_SHA`.
@@ -94,6 +103,12 @@ Allowed only during incident response with explicit metadata:
 3. `RELEASE_EMERGENCY_ACTOR=<name_or_id>`
 
 Bypass is recorded in `release_verdict.json` and must be linked in incident notes.
+
+Emergency bypass cannot override:
+1. Dirty or mismatched deploy source contract.
+2. Missing or failing merge adoption proof when high-risk paths changed.
+3. Stale frontend build parity.
+4. Production runtime SHA mismatch after deploy.
 
 ## References
 1. `docs/ops/PRODUCTION_CHECKLIST.md`

@@ -176,27 +176,13 @@ fi
 # ------------------------------------------
 echo -e "\n${YELLOW}Checking local git status...${NC}"
 
-if ! git diff --quiet || ! git diff --cached --quiet; then
-    echo -e "${YELLOW}You have uncommitted local changes:${NC}"
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo -e "${RED}Production deploy source contract failed: local worktree is not clean.${NC}"
+    echo -e "${YELLOW}These files are local-only until committed, so production would not receive the full codebase you see locally:${NC}"
     git status --short
     echo ""
-    if [[ "$AUTO_CONFIRM" == "1" ]]; then
-        echo -e "${YELLOW}--yes supplied: skipping auto-commit and proceeding with existing committed HEAD only.${NC}"
-    else
-        read -p "Commit them now before deploying? (y/N) " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            read -p "Commit message: " COMMIT_MSG
-            if [ -z "${COMMIT_MSG:-}" ]; then
-                COMMIT_MSG="chore: pre-deploy changes"
-            fi
-            git add -A
-            git commit -m "$COMMIT_MSG"
-            echo -e "${GREEN}Changes committed.${NC}"
-        else
-            echo -e "${YELLOW}Proceeding without committing local changes (they won't be deployed).${NC}"
-        fi
-    fi
+    echo -e "${RED}Commit or stash these files before running production deploy.${NC}"
+    exit 1
 fi
 
 # ------------------------------------------
@@ -227,6 +213,11 @@ fi
 # Step 3.5: No-staging gate preflight (before push)
 # ------------------------------------------
 LOCAL_COMMIT="$(git rev-parse HEAD)"
+SOURCE_CONTRACT_REPORT_EFFECTIVE="$(host_path ".tmp/release-gates/${LOCAL_COMMIT}/deploy_source_contract.pre_push.json")"
+echo -e "\n${YELLOW}Checking deploy source contract before push for commit ${LOCAL_COMMIT}...${NC}"
+RELEASE_TARGET_SHA="$LOCAL_COMMIT" DEPLOY_SOURCE_CONTRACT_REPORT="$SOURCE_CONTRACT_REPORT_EFFECTIVE" npm run check:deploy-source-contract -- --target-sha "$LOCAL_COMMIT" --skip-remote-match --report "$SOURCE_CONTRACT_REPORT_EFFECTIVE"
+echo -e "${GREEN}Deploy source contract pre-push check passed.${NC}"
+
 if [[ "$DEPLOY_ENFORCE_NO_STAGING_GATE" == "1" ]]; then
     echo -e "\n${YELLOW}Running no-staging release preflight for commit ${LOCAL_COMMIT}...${NC}"
     RELEASE_TARGET_SHA="$LOCAL_COMMIT" DEPLOY_ENFORCE_NO_STAGING_GATE=1 npm run gate:release:no-staging:preflight
@@ -240,12 +231,18 @@ echo -e "\n${YELLOW}Pushing to GitHub ($TARGET_BRANCH)...${NC}"
 git push origin "$TARGET_BRANCH"
 echo -e "${GREEN}Push successful.${NC}"
 
+SOURCE_CONTRACT_REPORT_PUSHED_EFFECTIVE="$(host_path ".tmp/release-gates/${LOCAL_COMMIT}/deploy_source_contract.pushed.json")"
+echo -e "\n${YELLOW}Checking deploy source contract after push for commit ${LOCAL_COMMIT}...${NC}"
+RELEASE_TARGET_SHA="$LOCAL_COMMIT" DEPLOY_REQUIRE_REMOTE_MATCH=1 DEPLOY_SOURCE_CONTRACT_REPORT="$SOURCE_CONTRACT_REPORT_PUSHED_EFFECTIVE" npm run check:deploy-source-contract -- --target-sha "$LOCAL_COMMIT" --remote-ref "origin/$TARGET_BRANCH" --require-remote-match --report "$SOURCE_CONTRACT_REPORT_PUSHED_EFFECTIVE"
+echo -e "${GREEN}Deploy source contract pushed check passed.${NC}"
+
 # ------------------------------------------
 # Step 5: Enforce no-staging release hard gate
 # ------------------------------------------
 if [[ "$DEPLOY_ENFORCE_NO_STAGING_GATE" == "1" ]]; then
     QA_DEPLOY_SUMMARY_FILE_EFFECTIVE="${QA_DEPLOY_SUMMARY_FILE:-$(host_path ".tmp/release-gates/${LOCAL_COMMIT}/qa_deploy_summary.txt")}"
     RELEASE_VERDICT_FILE_EFFECTIVE="${RELEASE_VERDICT_FILE:-$(host_path ".tmp/release-gates/${LOCAL_COMMIT}/release_verdict.json")}"
+    SOURCE_CONTRACT_REPORT_GATE_EFFECTIVE="${DEPLOY_SOURCE_CONTRACT_REPORT:-$(host_path ".tmp/release-gates/${LOCAL_COMMIT}/deploy_source_contract.release_gate.json")}"
     if [[ ! -f "$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" ]]; then
         echo -e "\n${YELLOW}QA deploy summary not found locally. Attempting fetch over SSH evidence path...${NC}"
         RELEASE_TARGET_SHA="$LOCAL_COMMIT" QA_DEPLOY_SUMMARY_FILE="$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" npm run evidence:qa:deploy-summary
@@ -257,7 +254,7 @@ if [[ "$DEPLOY_ENFORCE_NO_STAGING_GATE" == "1" ]]; then
     fi
 
     echo -e "\n${YELLOW}Running no-staging release gate for commit ${LOCAL_COMMIT}...${NC}"
-    RELEASE_TARGET_SHA="$LOCAL_COMMIT" QA_DEPLOY_SUMMARY_FILE="$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" RELEASE_VERDICT_FILE="$RELEASE_VERDICT_FILE_EFFECTIVE" npm run gate:release:no-staging
+    RELEASE_TARGET_SHA="$LOCAL_COMMIT" QA_DEPLOY_SUMMARY_FILE="$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" RELEASE_VERDICT_FILE="$RELEASE_VERDICT_FILE_EFFECTIVE" DEPLOY_SOURCE_CONTRACT_REPORT="$SOURCE_CONTRACT_REPORT_GATE_EFFECTIVE" npm run gate:release:no-staging
     RELEASE_TARGET_SHA="$LOCAL_COMMIT" node scripts/verify-release-verdict.js --file "$RELEASE_VERDICT_FILE_EFFECTIVE" --sha "$LOCAL_COMMIT" --require-pass true
     echo -e "${GREEN}No-staging release gate passed.${NC}"
 else
