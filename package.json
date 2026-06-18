@@ -11,6 +11,7 @@
     "dev:store": "cd frontend && npm run dev:store",
     "dev:backend": "cd backend && npm run dev",
     "dev:device-bridge": "cd backend && npm run dev:device-bridge",
+    "maildev:local": "node scripts/start-maildev-local.cjs",
     "build": "npm run build:frontend && npm run build:backend",
     "build:frontend": "cd frontend && npm run build",
     "build:skupervisor": "cd frontend && npm run build:skupervisor",
@@ -36,6 +37,7 @@
     "test:hosting:shared": "cd backend && npm run test:hosting:shared",
     "test:hosting:vps": "cd backend && npm run test:hosting:vps",
     "check:frontend-budgets": "node scripts/check-frontend-budgets.js",
+    "check:deploy-source-contract": "node scripts/check-deploy-source-contract.js",
     "check:merge-adoption": "node scripts/check-merge-adoption.js",
     "check:merge-adoption-required": "node scripts/check-merge-adoption-required.js",
     "check:docs": "npm run lint:docs",
@@ -83,9 +85,12 @@
     "gate:release:prod-contracts:env": "powershell -ExecutionPolicy Bypass -File scripts/run-prod-contract-gate.ps1",
     "gate:release:observability": "node scripts/gate-release-observability.js",
     "gate:release:local": "node scripts/gate-release-local.js",
+    "record:frontend-build-manifest": "node scripts/record-frontend-build-manifest.js",
     "uat:production:dgfy": "node scripts/run-dgfy-production-uat.js",
     "verify:release-verdict": "node scripts/verify-release-verdict.js",
+    "verify:production-deploy-contract": "node scripts/verify-production-deploy-contract.js",
     "test:deploy:namecheap": "node scripts/deploy/namecheap-shared/upload-artifacts.test.js",
+    "test:deploy-contract": "node scripts/check-deploy-source-contract.test.js && node scripts/verify-production-deploy-contract.test.js",
     "test:merge-adoption": "node scripts/check-merge-adoption.test.js && node scripts/check-merge-adoption-required.test.js"
   },
   "keywords": [

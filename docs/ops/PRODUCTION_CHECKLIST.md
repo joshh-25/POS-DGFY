@@ -12,6 +12,11 @@ Use this checklist for every production rollout.
 
 ## 1. Pre-Deployment (Local)
 - [ ] All intended code/docs changes are committed
+- [ ] Local worktree is clean; local-only changes are not deployable:
+  ```bash
+  git status --short
+  RELEASE_TARGET_SHA="$(git rev-parse HEAD)" npm run check:deploy-source-contract -- --target-sha "$(git rev-parse HEAD)" --skip-remote-match
+  ```
 - [ ] Changes are pushed to the remote branch you will deploy
 - [ ] Optional: CI checks are green
 - [ ] Local production PM2 preview is healthy when using the VPS profile:
@@ -33,6 +38,7 @@ Use this checklist for every production rollout.
   ```bash
   MERGE_ADOPTION_MANIFEST="path/to/merge-adoption.json" RELEASE_TARGET_SHA="<target_sha>" npm run gate:release:no-staging
   ```
+- [ ] For high-risk Storefront, checkout, DGFY auth, tracking, customer dashboard, Store API, or customer-order changes, the release verdict must show `merge.adoption.required` passing. `merge.adoption.not_required` is valid only when the required-proof gate found no high-risk changes.
 - [ ] Production multi-location contract smoke gate is green:
   ```bash
   # one-time local setup
@@ -106,6 +112,7 @@ DEPLOY_VERIFY_TENANT_NAME="Premium Corp" DEPLOY_VERIFY_SKIP_IF_MISSING=1 bash sc
 If using local one-command remote deploy:
 ```bash
 # This command now runs no-staging hard gate after push and before prod SSH deploy.
+# It refuses dirty local worktrees even with --yes.
 bash scripts/deploy-remote.sh
 ```
 
@@ -170,6 +177,14 @@ bash scripts/deploy-remote.sh
 - [ ] Summary commit matches target commit:
   ```bash
   ls -1t logs/deploy/deploy_*.summary.txt | head -1 | xargs -I{} tail -n 30 {}
+  ```
+- [ ] Latest production deployment contract exists and passed:
+  ```bash
+  ls -1t logs/deploy/deploy_*.production_contract.json | head -1 | xargs -I{} cat {}
+  ```
+- [ ] Latest frontend build manifest exists for the deployed SHA:
+  ```bash
+  ls -1t logs/deploy/deploy_*.frontend_build_manifest.json | head -1 | xargs -I{} cat {}
   ```
 - [ ] `qa.deploy.summary.sha_match` passes for the exact production target SHA. A stale QA deploy summary blocks normal release.
 - [ ] If `MERGE_ADOPTION_MANIFEST` was used, `release_verdict.json` includes `merge_adoption_report_file` and the report is `pass`.

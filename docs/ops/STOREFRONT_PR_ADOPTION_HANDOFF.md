@@ -20,7 +20,8 @@ Use this when another developer opens a PR that adopts Storefront, checkout, DGF
 5. If a merge or semantic conflict affects UI, routing, API payloads, checkout steps, auth, customer dashboard data, governed docs, tests, or deployment gates, ask the user what should win before resolving it.
 6. Record every user-approved behavior decision in the merge adoption manifest under `semantic_conflict_review.user_approved_decisions`.
 7. Add or update `docs/release/merge-adoption/<pr-name>.json`.
-8. Run the validation commands below before requesting review.
+8. Commit all intended files. Do not leave UI, checkout, auth, tracking, or dashboard changes as local-only working tree edits.
+9. Run the validation commands below before requesting review.
 
 ## Required Commands
 
@@ -40,6 +41,8 @@ For Storefront/customer journey UI changes, also run the relevant frontend/backe
 - Rejected source files or behaviors are explicitly listed with reasons.
 - Rendered evidence proves the customer journey, not only that code compiled.
 - Production deploy uses the applicable merge adoption manifest, so the release verdict records merge adoption as passing instead of `merge.adoption.not_required`.
+- Production deploy source contract passes, so the exact committed and pushed target SHA is what production serves.
+- Production deploy evidence proves `.deploy-state`, deploy summary, frontend build manifest, and runtime health SHA match the target SHA.
 
 ## References
 
