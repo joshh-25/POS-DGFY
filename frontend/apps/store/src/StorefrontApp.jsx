@@ -2717,7 +2717,7 @@ const FnbHero = ({
       <StorefrontHeroShell
         fullBleed
         sectionStyle={{
-          minHeight: isMobileViewport ? 290 : 316,
+          minHeight: isMobileViewport ? 520 : 316,
           borderRadius: 0,
           overflow: 'visible',
           background: heroSectionModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`)
@@ -2750,14 +2750,17 @@ const FnbHero = ({
           position: 'absolute',
           left: isMobileViewport ? 20 : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
           right: isMobileViewport ? 20 : `max(42px, calc((100vw - ${HERO_CANVAS_MAX_WIDTH}px) / 2 + 42px))`,
-          bottom: isMobileViewport ? -45 : -25,
+          top: isMobileViewport ? 130 : 'auto',
+          bottom: isMobileViewport ? 78 : -25,
           zIndex: 10,
           display: 'flex',
-          alignItems: 'center',
-          gap: isMobileViewport ? 16 : 28,
-          paddingLeft: isMobileViewport ? 126 : 218
+          flexDirection: isMobileViewport ? 'column' : 'row',
+          alignItems: isMobileViewport ? 'stretch' : 'center',
+          justifyContent: isMobileViewport ? 'flex-end' : 'initial',
+          gap: isMobileViewport ? 18 : 28,
+          paddingLeft: isMobileViewport ? 0 : 218
         }}>
-          <div style={{ display: 'grid', gap: 12, maxWidth: 700, minWidth: 0, flex: 1, marginBottom: isMobileViewport ? 8 : 35 }}>
+          <div style={{ display: 'grid', gap: 12, maxWidth: 700, minWidth: 0, flex: 1, marginBottom: isMobileViewport ? 0 : 35 }}>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff" style={{ fontFamily: heroTheme.bodyFont }}>{heroSectionModel.statusLabel}</Badge>
               {Number.isFinite(Number(fnbViewModel.startingPrice)) && (
@@ -2806,12 +2809,13 @@ const FnbHero = ({
             gap: 12,
             flexDirection: 'column',
             flexShrink: 0,
-            marginLeft: 'auto',
-            marginBottom: isMobileViewport ? 8 : 35
+            marginLeft: isMobileViewport ? 0 : 'auto',
+            marginBottom: isMobileViewport ? 0 : 35,
+            width: isMobileViewport ? '100%' : 'auto'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexDirection: isMobileViewport ? 'column' : 'row', width: isMobileViewport ? '100%' : 'auto' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexDirection: 'row', width: isMobileViewport ? '100%' : 'auto' }}>
               {heroSectionModel.actions?.canCall && (
-                <GhostButton onClick={() => openStorefrontActionLink(heroSectionModel.actions.callHref)} style={{ minWidth: isMobileViewport ? '100%' : 110, background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(12px)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, fontFamily: heroTheme.bodyFont, fontWeight: 800 }}>
+                <GhostButton onClick={() => openStorefrontActionLink(heroSectionModel.actions.callHref)} style={{ flex: isMobileViewport ? '1 1 0' : '0 0 auto', minWidth: isMobileViewport ? 0 : 110, background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(12px)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, fontFamily: heroTheme.bodyFont, fontWeight: 800 }}>
                   <Phone size={18} />
                   Call
                 </GhostButton>
@@ -2822,7 +2826,7 @@ const FnbHero = ({
                   return;
                 }
                 document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              }} style={{ minWidth: isMobileViewport ? '100%' : 150, background: heroTheme.accent || '#f97316', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: '0 10px 25px rgba(249,115,22,0.3)', border: 'none', fontWeight: 800, fontFamily: heroTheme.bodyFont }}>
+              }} style={{ flex: isMobileViewport ? '1 1 0' : '0 0 auto', minWidth: isMobileViewport ? 0 : 150, background: heroTheme.accent || '#f97316', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: '0 10px 25px rgba(249,115,22,0.3)', border: 'none', fontWeight: 800, fontFamily: heroTheme.bodyFont }}>
                 <MousePointer2 size={18} />
                 {orderLabel}
               </PrimaryButton>
