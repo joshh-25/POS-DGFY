@@ -1274,6 +1274,28 @@ const EMPTY_ACCOUNT_PANEL = Object.freeze({
   businessStepUp: { verified: false }
 });
 
+const normalizeDgfyAccountPayload = (payload = {}) => {
+  if (!payload || typeof payload !== 'object') return null;
+  const account = payload.account && typeof payload.account === 'object' ? payload.account : payload;
+  if (!account || typeof account !== 'object') return null;
+  const firstName = String(account.first_name || account.firstName || '').trim();
+  const lastName = String(account.last_name || account.lastName || '').trim();
+  const fullName = [firstName, lastName].filter(Boolean).join(' ').trim()
+    || String(account.name || account.customer_name || account.display_name || account.username || '').trim();
+  const email = String(account.email || account.email_address || '').trim();
+  const phone = String(account.phone || account.contact_number || account.mobile_number || account.phone_number || '').trim();
+  if (!fullName && !email && !phone && !account.id && !account.account_id) return null;
+  return {
+    ...account,
+    id: account.id || account.account_id || account.dgfy_account_id || null,
+    first_name: firstName || account.first_name || '',
+    last_name: lastName || account.last_name || '',
+    name: fullName || email || phone || 'DGFY customer',
+    email,
+    phone
+  };
+};
+
 const readStoreAuthToken = () => {
   return storefrontAuthTokenMemory || (typeof window !== 'undefined' ? String(window.__SKU_STOREFRONT_AUTH_TOKEN__ || '') : '');
 };
@@ -4461,6 +4483,7 @@ export default function StorefrontApp() {
   const [fnbSortOption, setFnbSortOption] = useState('name_asc');
   const [fnbOrderStep, setFnbOrderStep] = useState(2);
   const [simpleOrderStep, setSimpleOrderStep] = useState(1);
+  const [checkoutIdentityChoice, setCheckoutIdentityChoice] = useState('');
   const [fnbPaymentType, setFnbPaymentType] = useState('cash');
   const [fnbScheduledFor, setFnbScheduledFor] = useState('');
   const [fnbScheduleMode, setFnbScheduleMode] = useState('asap');
@@ -4611,7 +4634,7 @@ export default function StorefrontApp() {
           });
           if (cancelled) return;
           const token = String(payload?.token || '').trim();
-          const account = payload?.account && typeof payload.account === 'object' ? payload.account : null;
+          const account = normalizeDgfyAccountPayload(payload);
           if (token) {
             writeDgfyAuthToken(token);
             setDgfyAuthTokenState(token);
@@ -4644,8 +4667,7 @@ export default function StorefrontApp() {
       try {
         const payload = await requestJson('/api/v1/dgfy/auth/me', { cache: 'no-store' });
         if (cancelled) return;
-        const account = payload?.account || payload || null;
-        setDgfySessionAccount(account && typeof account === 'object' ? account : null);
+        setDgfySessionAccount(normalizeDgfyAccountPayload(payload));
       } catch {
         if (cancelled) return;
         setDgfySessionAccount(null);
@@ -4781,6 +4803,7 @@ export default function StorefrontApp() {
     if (sessionEmail) return sessionEmail;
     const savedName = String(savedCustomerDetails?.name || '').trim();
     if (savedName) return savedName;
+    if (isStorefrontAccountAuthenticated || isStandaloneAccountPage || isAccountSubpage) return 'DGFY customer';
     return 'Guest customer';
   }, [
     accountPanel.me?.email,
@@ -4793,6 +4816,9 @@ export default function StorefrontApp() {
     dgfySessionAccount?.last_name,
     dgfySessionAccount?.name,
     dgfySessionAccount?.username,
+    isAccountSubpage,
+    isStandaloneAccountPage,
+    isStorefrontAccountAuthenticated,
     savedCustomerDetails?.name
   ]);
   const accountIdentityName = useMemo(() => (
@@ -4821,6 +4847,18 @@ export default function StorefrontApp() {
     return initials || 'GU';
   }, [accountDisplayName]);
   const isGuestAccountDrawerState = !isStorefrontAccountAuthenticated;
+  const signedInCheckoutAccount = useMemo(() => (
+    normalizeDgfyAccountPayload(accountPanel.me)
+    || normalizeDgfyAccountPayload(dgfySessionAccount)
+  ), [accountPanel.me, dgfySessionAccount]);
+  const signedInCheckoutName = String(signedInCheckoutAccount?.name || accountIdentityName || '').trim();
+  const signedInCheckoutPhone = String(signedInCheckoutAccount?.phone || '').trim();
+  const signedInCheckoutEmail = String(signedInCheckoutAccount?.email || '').trim();
+  const hasSignedInCheckoutIdentity = Boolean(
+    isDgfyCustomerSignedIn
+    && signedInCheckoutName
+    && (signedInCheckoutPhone || signedInCheckoutEmail)
+  );
   const activeCustomerOrders = useMemo(() => {
     const activeStatuses = new Set(['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery']);
     return (Array.isArray(accountPanel.orders) ? accountPanel.orders : []).filter((order) => (
@@ -4859,7 +4897,7 @@ export default function StorefrontApp() {
         setAccountPanel({
           loading: false,
           error: '',
-          me: meData?.account || dashboardData?.account || meData || null,
+          me: normalizeDgfyAccountPayload(meData) || normalizeDgfyAccountPayload(dashboardData),
           activities: Array.isArray(activitiesData?.activities) && activitiesData.activities.length
             ? activitiesData.activities
             : (Array.isArray(dashboardData?.activities) ? dashboardData.activities : []),
@@ -4870,7 +4908,7 @@ export default function StorefrontApp() {
           businessCompanies: Array.isArray(companiesData?.companies) ? companiesData.companies : [],
           businessStepUp: companiesData?.business_step_up || { verified: false }
         });
-        setDgfySessionAccount(meData?.account || dashboardData?.account || meData || null);
+        setDgfySessionAccount(normalizeDgfyAccountPayload(meData) || normalizeDgfyAccountPayload(dashboardData));
         return;
       }
 
@@ -4964,6 +5002,59 @@ export default function StorefrontApp() {
       </label>
       <div style={{ fontSize: 11, color: '#64748b' }}>Saved details are used only to speed up your checkout.</div>
     </div>
+  );
+  const renderSignedInCheckoutCard = () => (
+    <div style={{ border: '1px solid #bfdbfe', borderRadius: 14, padding: '12px 14px', background: '#eff6ff', display: 'grid', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#1A4E8D', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 900, flexShrink: 0 }}>
+          {accountIdentityInitials}
+        </div>
+        <div style={{ display: 'grid', gap: 3, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 900, color: '#1e293b' }}>Signed in DGFY account</div>
+          <div style={{ fontSize: 16, fontWeight: 900, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{signedInCheckoutName || 'DGFY customer'}</div>
+          <div style={{ fontSize: 12, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {[signedInCheckoutPhone, signedInCheckoutEmail].filter(Boolean).join(' | ') || 'Account contact will be used for this checkout.'}
+          </div>
+        </div>
+      </div>
+      <div style={{ fontSize: 12, color: '#1e40af', lineHeight: 1.5 }}>
+        This order will be linked to your DGFY account. Guest name, email, and phone fields are skipped.
+      </div>
+    </div>
+  );
+  const continueCheckoutAsGuest = () => {
+    setCheckoutIdentityChoice('guest');
+    setFnbOrderStep(2);
+    setSimpleOrderStep(1);
+  };
+  const continueCheckoutAsAccount = () => {
+    openCanonicalDgfyAuth('customer');
+  };
+  const renderCheckoutIdentityChooser = ({ mode = 'product' } = {}) => (
+    <section style={{ border: '1px solid #dbe5ee', borderRadius: 18, background: '#fff', padding: isMobileViewport ? 16 : 22, display: 'grid', gap: 16, boxShadow: '0 12px 28px rgba(15,23,42,.06)' }}>
+      <div style={{ display: 'grid', gap: 6 }}>
+        <div style={{ fontSize: 12, fontWeight: 900, color: '#1A4E8D', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Checkout identity</div>
+        <div style={{ fontSize: isMobileViewport ? 22 : 28, fontWeight: 900, color: '#0f172a', lineHeight: 1.1 }}>
+          Continue with a DGFY account or checkout as guest
+        </div>
+        <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.55 }}>
+          Account checkout links {mode === 'menu' ? 'this menu order' : 'this order'} to your dashboard. Guest checkout keeps tracking on this storefront only.
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
+        <button type="button" onClick={continueCheckoutAsAccount} style={{ border: '1px solid #1A4E8D', borderRadius: 14, background: '#1A4E8D', color: '#fff', minHeight: 88, padding: '14px 16px', display: 'grid', gap: 6, textAlign: 'left', cursor: 'pointer' }}>
+          <span style={{ fontSize: 16, fontWeight: 900 }}>Create or sign in to DGFY</span>
+          <span style={{ fontSize: 12, lineHeight: 1.45, opacity: 0.92 }}>Use saved locations and see the order in My Account.</span>
+        </button>
+        <button type="button" onClick={continueCheckoutAsGuest} style={{ border: '1px solid #dbe5ee', borderRadius: 14, background: '#fff', color: '#0f172a', minHeight: 88, padding: '14px 16px', display: 'grid', gap: 6, textAlign: 'left', cursor: 'pointer' }}>
+          <span style={{ fontSize: 16, fontWeight: 900 }}>Continue as Guest</span>
+          <span style={{ fontSize: 12, lineHeight: 1.45, color: '#64748b' }}>Enter first and last name, contact, and track by PIN.</span>
+        </button>
+      </div>
+      <button type="button" onClick={goStoreCatalogPage} style={{ justifySelf: 'start', border: 'none', background: 'transparent', color: '#334155', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>
+        Back to catalog
+      </button>
+    </section>
   );
 
   const markDiscoveryLocationPermissionGranted = useCallback(() => {
@@ -5468,16 +5559,26 @@ export default function StorefrontApp() {
   }, [accountPanel.me]);
 
   useEffect(() => {
+    if (isDgfyCustomerSignedIn) {
+      setCheckoutIdentityChoice('account');
+    }
+  }, [isDgfyCustomerSignedIn]);
+
+  useEffect(() => {
     const me = accountPanel?.me;
     if (!me || typeof me !== 'object') return;
+    const normalizedAccount = normalizeDgfyAccountPayload(me);
     const profileFromAccount = normalizeSavedCustomerDetails({
-      name: me.customer_name || me.name || '',
-      phone: me.customer_phone || me.phone || me.mobile || '',
-      email: me.customer_email || me.email || '',
+      name: normalizedAccount?.name || '',
+      phone: normalizedAccount?.phone || '',
+      email: normalizedAccount?.email || '',
       source: 'account',
       updatedAt: Date.now()
     });
     if (!profileFromAccount) return;
+    setCustomerName((previous) => String(previous || '').trim() ? previous : profileFromAccount.name);
+    setCustomerPhone((previous) => String(previous || '').trim() ? previous : profileFromAccount.phone);
+    setCustomerEmail((previous) => String(previous || '').trim() ? previous : profileFromAccount.email);
     setSavedCustomerDetails(profileFromAccount);
     writeSavedCustomerDetails(profileFromAccount);
   }, [accountPanel.me]);
@@ -5495,7 +5596,7 @@ export default function StorefrontApp() {
     requestJson('/api/v1/dgfy/auth/me', { cache: 'no-store' })
       .then((meData) => {
         if (cancelled) return;
-        const account = meData?.account || meData || null;
+        const account = normalizeDgfyAccountPayload(meData);
         if (!account) return;
         setDgfySessionAccount(account);
         setAccountPanel((previous) => (
@@ -5708,8 +5809,12 @@ export default function StorefrontApp() {
       setTrackingPinInput(preferredPin);
     }
     if (!selectedTrackingPin && preferredPin) setSelectedTrackingPin(preferredPin);
-    setFnbOrderStep(checkoutResult ? 4 : 2);
-    setSimpleOrderStep(checkoutResult ? 4 : 1);
+    const nextIdentityChoice = isDgfyCustomerSignedIn ? 'account' : checkoutIdentityChoice;
+    if (isDgfyCustomerSignedIn && checkoutIdentityChoice !== 'account') {
+      setCheckoutIdentityChoice('account');
+    }
+    setFnbOrderStep(checkoutResult ? 4 : (nextIdentityChoice ? 2 : 1));
+    setSimpleOrderStep(checkoutResult ? 4 : (nextIdentityChoice ? 1 : 0));
     setCheckoutTab(resolvedInitialTab);
     setIsCheckoutOpen(false);
   };
@@ -5752,8 +5857,12 @@ export default function StorefrontApp() {
         if (!selectedTrackingPin) setSelectedTrackingPin(preferredPin);
       }
     }
-    setFnbOrderStep(checkoutResult ? 4 : 2);
-    setSimpleOrderStep(checkoutResult ? 4 : 1);
+    const nextIdentityChoice = isDgfyCustomerSignedIn ? 'account' : checkoutIdentityChoice;
+    if (isDgfyCustomerSignedIn && checkoutIdentityChoice !== 'account') {
+      setCheckoutIdentityChoice('account');
+    }
+    setFnbOrderStep(checkoutResult ? 4 : (nextIdentityChoice ? 2 : 1));
+    setSimpleOrderStep(checkoutResult ? 4 : (nextIdentityChoice ? 1 : 0));
     setCheckoutTab(resolvedInitialTab);
     setIsCheckoutOpen(false);
   };
@@ -7798,9 +7907,9 @@ export default function StorefrontApp() {
   const checkoutPayload = () => ({
     location_id: selectedLocationId ?? selectedStore?.location_id,
     order_method: orderMethod,
-    customer_name: customerName,
-    customer_phone: customerPhone,
-    customer_email: customerEmail,
+    customer_name: hasSignedInCheckoutIdentity ? signedInCheckoutName : customerName,
+    customer_phone: hasSignedInCheckoutIdentity ? signedInCheckoutPhone : customerPhone,
+    customer_email: hasSignedInCheckoutIdentity ? signedInCheckoutEmail : customerEmail,
     delivery_address: isDeliveryOrder ? (resolvedDeliveryAddress || customerAddress || buildPinnedDeliveryAddress(customerPin)) : '',
     delivery_latitude: isDeliveryOrder ? toNumberOrNull(customerPin?.latitude) : null,
     delivery_longitude: isDeliveryOrder ? toNumberOrNull(customerPin?.longitude) : null,
@@ -8531,9 +8640,9 @@ export default function StorefrontApp() {
           body: {
             service_item_id: Number(serviceBookingLine.item_id),
             start_at: new Date(serviceAppointmentAt).toISOString(),
-            customer_name: customerName,
-            customer_email: customerEmail,
-            customer_phone: customerPhone,
+            customer_name: hasSignedInCheckoutIdentity ? signedInCheckoutName : customerName,
+            customer_email: hasSignedInCheckoutIdentity ? signedInCheckoutEmail : customerEmail,
+            customer_phone: hasSignedInCheckoutIdentity ? signedInCheckoutPhone : customerPhone,
             location_id: selectedLocationId ?? selectedStore?.location_id,
             payment_timing: servicePaymentTiming,
             intake_responses: bookingPageIntakeFields.length > 0 ? serviceIntakeResponses : null,
@@ -8565,9 +8674,9 @@ export default function StorefrontApp() {
       });
       if (rememberCustomerDetails) {
         const persistedDetails = writeSavedCustomerDetails({
-          name: customerName,
-          phone: customerPhone,
-          email: customerEmail,
+          name: hasSignedInCheckoutIdentity ? signedInCheckoutName : customerName,
+          phone: hasSignedInCheckoutIdentity ? signedInCheckoutPhone : customerPhone,
+          email: hasSignedInCheckoutIdentity ? signedInCheckoutEmail : customerEmail,
           source: authToken ? 'account' : 'guest',
           updatedAt: Date.now()
         });
@@ -9284,7 +9393,7 @@ export default function StorefrontApp() {
   const fnbHasCustomerName = String(customerName || '').trim().length > 0;
   const fnbHasPrimaryContact = String(customerPhone || '').trim().length > 0 || String(customerEmail || '').trim().length > 0;
   const fnbHasDeliveryAddress = !isDeliveryOrder || String(activePinnedDeliveryAddress || customerAddress || '').trim().length > 0;
-  const fnbCustomerStepComplete = fnbHasCustomerName && fnbHasPrimaryContact && fnbHasDeliveryAddress;
+  const fnbCustomerStepComplete = (hasSignedInCheckoutIdentity || (fnbHasCustomerName && fnbHasPrimaryContact)) && fnbHasDeliveryAddress;
   const fnbOrderBrand = '#1A4E8D';
   const fnbOrderBrandDark = '#1A4586';
   const fnbOrderBrandSoft = '#AEE8F4';
@@ -9300,7 +9409,7 @@ export default function StorefrontApp() {
   const simpleHasCustomerName = String(customerName || '').trim().length > 0;
   const simpleHasPrimaryContact = String(customerPhone || '').trim().length > 0 || String(customerEmail || '').trim().length > 0;
   const simpleHasDeliveryAddress = !isDeliveryOrder || String(customerAddress || '').trim().length > 0;
-  const simpleCustomerStepComplete = simpleHasCustomerName && simpleHasPrimaryContact && simpleHasDeliveryAddress;
+  const simpleCustomerStepComplete = (hasSignedInCheckoutIdentity || (simpleHasCustomerName && simpleHasPrimaryContact)) && simpleHasDeliveryAddress;
   const simpleCheckoutAllowed = checkoutAllowed && simpleCustomerStepComplete;
   const discoveryResultsPerPage = useMemo(() => {
     if (viewMode === 'list') return 3;
@@ -15068,8 +15177,9 @@ return (
             </div>
           </section>
 
-          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr 1fr' : 'repeat(4, minmax(0, 1fr))', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr 1fr' : 'repeat(5, minmax(0, 1fr))', gap: 10 }}>
             {[
+              { realStep: 0, displayStep: 0, label: 'Account', allow: !isDgfyCustomerSignedIn && !checkoutIdentityChoice },
               { realStep: 1, displayStep: 1, label: 'Fulfillment', allow: true },
               { realStep: 2, displayStep: 2, label: 'Customer', allow: cart.length > 0 },
               { realStep: 3, displayStep: 3, label: 'Review & Pay', allow: cart.length > 0 && simpleCustomerStepComplete },
@@ -15106,6 +15216,20 @@ return (
               );
             })}
           </div>
+
+          {simpleOrderStep === 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.45fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
+              {renderCheckoutIdentityChooser({ mode: 'product' })}
+              <aside style={{ border: '1px solid #d9e4e8', borderRadius: 16, padding: 14, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 10, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Summary</div>
+                <div style={{ fontSize: 38, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{money(totalsForDisplay.total_amount)}</div>
+                <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#334155' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Items</span><strong>{cartCount}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Status</span><strong>Choose checkout identity</strong></div>
+                </div>
+              </aside>
+            </div>
+          )}
 
           {simpleOrderStep === 1 && (
             <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.45fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
@@ -15183,20 +15307,24 @@ return (
               <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
                 <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Step 2: Customer Details</div>
                 <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Ask only for one name, one contact method, and a delivery address when delivery is selected.</div>
-                {renderSavedDetailsCard()}
+                {hasSignedInCheckoutIdentity ? renderSignedInCheckoutCard() : renderSavedDetailsCard()}
                 <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
-                  <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-                    Customer Name *
-                    <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Ex. Juan Dela Cruz" style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
-                  </label>
-                  <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-                    Contact Number
-                    <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="09XX XXX XXXX" style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
-                  </label>
-                  <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
-                    Email {String(customerPhone || '').trim() ? '(optional)' : '*'}
-                    <input value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} placeholder="name@email.com" style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
-                  </label>
+                  {!hasSignedInCheckoutIdentity && (
+                    <>
+                      <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                        First and Last Name *
+                        <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Ex. Juan Dela Cruz" style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                      </label>
+                      <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                        Contact Number
+                        <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="09XX XXX XXXX" style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                      </label>
+                      <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
+                        Email {String(customerPhone || '').trim() ? '(optional)' : '*'}
+                        <input value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} placeholder="name@email.com" style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
+                      </label>
+                    </>
+                  )}
                   {isDeliveryOrder && (
                     <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
                       {locationCopy.addressLabel} *
@@ -16747,8 +16875,9 @@ return (
                   <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>Share your details once, choose fulfillment, review the order, and submit payment to the store team.</div>
                 </section>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0, borderBottom: '1px solid #e2e8f0', background: '#fff', borderRadius: '12px 12px 0 0', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0, borderBottom: '1px solid #e2e8f0', background: '#fff', borderRadius: '12px 12px 0 0', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                   {[
+                    { realStep: 1, displayStep: 0, label: 'Account' },
                     { realStep: 2, displayStep: 1, label: 'Fulfillment' },
                     { realStep: 3, displayStep: 2, label: 'Customer' },
                     { realStep: 4, displayStep: 3, label: 'Payment' }
@@ -16760,6 +16889,10 @@ return (
                         key={`fnb-order-step-${item.realStep}`}
                         type="button"
                         onClick={() => {
+                          if (item.realStep === 1 && !isDgfyCustomerSignedIn && !checkoutIdentityChoice) {
+                            setFnbOrderStep(1);
+                            return;
+                          }
                           if (item.realStep === 2 && cart.length > 0) {
                             setFnbOrderStep(2);
                             return;
@@ -16798,6 +16931,22 @@ return (
                     );
                   })}
                 </div>
+
+                {fnbOrderStep === 1 && (
+                  <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.5fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
+                    {renderCheckoutIdentityChooser({ mode: 'menu' })}
+                    <aside style={{ display: 'grid', gap: 14, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
+                      <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 18, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 14 }}>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: fnbOrderBrand, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Summary</div>
+                        <div style={{ fontSize: 38, fontWeight: 900, color: '#1e293b', lineHeight: 1 }}>{money(totalsForDisplay.total_amount)}</div>
+                        <div style={{ display: 'grid', gap: 10, fontSize: 13, color: '#334155' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Items</span><strong>{cartCount} item{cartCount === 1 ? '' : 's'}</strong></div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Status</span><strong>Choose checkout identity</strong></div>
+                        </div>
+                      </div>
+                    </aside>
+                  </div>
+                )}
 
                 {fnbOrderStep === 2 && (
                   <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.5fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
