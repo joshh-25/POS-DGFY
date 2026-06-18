@@ -1,6 +1,8 @@
 const POS_SURFACE = String(import.meta.env?.VITE_APP_SURFACE || '').trim().toLowerCase();
 const POS_HARDWARE_MESSAGE_EVENT = 'pos:hardware-message';
 
+export const POS_HARDWARE_MESSAGE_MODAL_ENABLED = false;
+
 const toSafeText = (value, fallback = '') => {
   const text = String(value ?? fallback).trim();
   return text || fallback;
@@ -39,6 +41,9 @@ export const emitPosHardwareMessage = (
     timestamp: new Date().toISOString()
   };
 
-  windowObj.dispatchEvent(new CustomEvent(POS_HARDWARE_MESSAGE_EVENT, { detail: payload }));
+  if (POS_HARDWARE_MESSAGE_MODAL_ENABLED) {
+    windowObj.dispatchEvent(new CustomEvent(POS_HARDWARE_MESSAGE_EVENT, { detail: payload }));
+  }
+
   return payload;
 };
