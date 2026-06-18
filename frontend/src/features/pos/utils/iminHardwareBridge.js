@@ -1,3 +1,5 @@
+import { emitPosHardwareMessage } from './posHardwareMessageBus.js';
+
 const RECEIPT_COLUMNS = 42;
 const DGFY_BRAND_NAME = 'DGFY';
 
@@ -331,6 +333,14 @@ export const printReceiptWithIminBridge = ({ transaction, businessSettings = {},
         'Receipt print command sent.'
     );
 
+    emitPosHardwareMessage({
+        title: 'iMin receipt printer',
+        message: result.message || 'Receipt print command sent.',
+        tone: result.success ? 'success' : 'error',
+        source: 'iMin hardware',
+        details: result.diagnostics || null
+    });
+
     if (!result.success) {
         throw new Error(`${result.message || 'Failed to print on iMin printer.'}${formatDiagnostics(result.diagnostics)}`);
     }
@@ -412,6 +422,14 @@ export const printOrderWithIminBridge = ({ cart = [], terminalId = '', orderMeth
         'Order ticket print command sent.'
     );
 
+    emitPosHardwareMessage({
+        title: 'iMin order printer',
+        message: result.message || 'Order ticket print command sent.',
+        tone: result.success ? 'success' : 'error',
+        source: 'iMin hardware',
+        details: result.diagnostics || null
+    });
+
     if (!result.success) {
         throw new Error(`${result.message || 'Failed to print order ticket on iMin printer.'}${formatDiagnostics(result.diagnostics)}`);
     }
@@ -430,6 +448,14 @@ export const openDrawerWithIminBridge = () => {
         'Cash drawer open command sent.'
     );
 
+    emitPosHardwareMessage({
+        title: 'iMin cash drawer',
+        message: result.message || 'Cash drawer open command sent.',
+        tone: result.success ? 'success' : 'error',
+        source: 'iMin hardware',
+        details: result.diagnostics || null
+    });
+
     if (!result.success) {
         throw new Error(`${result.message || 'Failed to open the iMin cash drawer.'}${formatDiagnostics(result.diagnostics)}`);
     }
@@ -443,11 +469,19 @@ export const getIminHardwareDiagnostics = () => {
         return { handled: false };
     }
 
-    return {
+    const diagnostics = {
         handled: true,
         result: parseBridgeResult(
             bridge.getHardwareDiagnostics(),
             'iMin hardware diagnostics loaded.'
         )
     };
+    emitPosHardwareMessage({
+        title: 'iMin hardware diagnostics',
+        message: diagnostics.result?.message || 'iMin hardware diagnostics loaded.',
+        tone: diagnostics.result?.success === false ? 'error' : 'info',
+        source: 'iMin hardware',
+        details: diagnostics.result?.diagnostics || null
+    });
+    return diagnostics;
 };

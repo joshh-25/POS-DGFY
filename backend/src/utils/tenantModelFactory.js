@@ -12,6 +12,7 @@ const NON_TENANT_MODEL_EXPORTS = new Set([
     'DgfyAccountHandoff',
     'DgfyAccountTenantMembership',
     'DgfyAccountAdminAuditLog',
+    'DgfyAccountBusinessAuditLog',
     'DgfyLegalAcknowledgement',
     'Payment',
     'WebhookLog',

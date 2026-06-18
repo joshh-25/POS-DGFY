@@ -867,6 +867,87 @@ const validateOnlineOrderTransition = ({ currentStatus, nextStatus, orderMethod 
     }
 };
 
+const buildShiftClosedError = () => new DomainError(
+    DomainErrorCode.VALIDATION_FAILED,
+    'You cannot use the POS because the shift is closed.',
+    {
+        statusCode: 422,
+        details: {
+            reason_code: 'POS_SHIFT_CLOSED'
+        }
+    }
+);
+
+const assertOpenShiftForPosMutation = async ({
+    posRepository,
+    cashierId,
+    shiftId = null,
+    terminalId = null,
+    locationId = null,
+    transaction = null,
+    lock = true
+} = {}) => {
+    const normalizedCashierId = parsePositiveInt(cashierId);
+    if (!normalizedCashierId) {
+        throw new DomainError(
+            DomainErrorCode.AUTHENTICATION_FAILED,
+            'Authenticated POS user is required',
+            { statusCode: 401 }
+        );
+    }
+
+    const normalizedShiftId = parsePositiveInt(shiftId);
+    if (shiftId != null && !normalizedShiftId) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'shift_id must be a positive integer when provided',
+            { statusCode: 422 }
+        );
+    }
+
+    const options = transaction ? { transaction, lock } : {};
+    const shift = normalizedShiftId
+        ? await posRepository.getTerminalShiftById(normalizedShiftId, options)
+        : await posRepository.findOpenTerminalShift({
+            terminalId: terminalId || null,
+            cashierId: normalizedCashierId,
+            locationId: locationId || null
+        }, options);
+
+    if (!shift || shift.status !== 'open') {
+        throw buildShiftClosedError();
+    }
+    if (Number(shift.cashier_id) !== normalizedCashierId) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'Shift does not belong to the authenticated cashier.',
+            { statusCode: 403 }
+        );
+    }
+    if (terminalId && String(shift.terminal_id) !== String(terminalId)) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'Shift terminal_id does not match POS terminal_id.',
+            { statusCode: 422 }
+        );
+    }
+    const shiftLocationId = parsePositiveInt(shift.location_id);
+    if (locationId && shiftLocationId && shiftLocationId !== Number(locationId)) {
+        throw buildLocationScopeDeniedError({
+            message: 'POS location must match active shift location.',
+            reasonCode: LOCATION_SCOPE_REASON_CODES.SHIFT_LOCATION_MISMATCH,
+            statusCode: 422,
+            details: {
+                shift_id: shift.pos_terminal_shift_id,
+                shift_location_id: shiftLocationId,
+                pos_location_id: Number(locationId)
+            }
+        });
+    }
+
+    return toSerializable(shift);
+};
+
 const buildOnlineOrderStockMovements = async ({ order = {}, posRepository, options = {} } = {}) => {
     const orderId = parsePositiveInt(order?.pos_transaction_id);
     if (!orderId) {
@@ -1215,8 +1296,55 @@ const resolveCheckoutDiscount = ({ payload, subtotalAmount, settings }) => {
     const profileName = String(payload?.discount_profile_name || '').trim();
     const requestedDiscount = round4(payload?.discount_amount || 0);
     const requestedRate = payload?.discount_rate;
+    const explicitDiscountMode = String(payload?.discount_mode || '').trim().toLowerCase();
 
     if (!profileName) {
+        if (explicitDiscountMode === 'none') {
+            if (requestedDiscount > 0 || requestedRate != null) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'discount_mode none cannot include discount values.',
+                    { statusCode: 422 }
+                );
+            }
+            return {
+                discountAmount: 0,
+                discountLabelSnapshot: null,
+                discountRateSnapshot: null
+            };
+        }
+
+        if (explicitDiscountMode === 'amount') {
+            if (requestedRate != null) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'discount_mode amount cannot include discount_rate.',
+                    { statusCode: 422 }
+                );
+            }
+            return {
+                discountAmount: Math.min(requestedDiscount, subtotalAmount),
+                discountLabelSnapshot: requestedDiscount > 0 ? 'Manual Discount' : null,
+                discountRateSnapshot: null
+            };
+        }
+
+        if (explicitDiscountMode === 'percentage') {
+            if (requestedRate == null) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'discount_mode percentage requires discount_rate.',
+                    { statusCode: 422 }
+                );
+            }
+            const manualRate = round4(requestedRate);
+            return {
+                discountAmount: Math.min(round4(subtotalAmount * (manualRate / 100)), subtotalAmount),
+                discountLabelSnapshot: manualRate > 0 ? 'Manual Discount' : null,
+                discountRateSnapshot: manualRate
+            };
+        }
+
         if (requestedDiscount > 0) {
             const manualRate = requestedRate == null ? null : round4(requestedRate);
             const manualDiscountAmount = manualRate == null
@@ -1240,6 +1368,14 @@ const resolveCheckoutDiscount = ({ payload, subtotalAmount, settings }) => {
             discountLabelSnapshot: null,
             discountRateSnapshot: null
         };
+    }
+
+    if (explicitDiscountMode && explicitDiscountMode !== 'preset') {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'discount_mode preset is required when discount_profile_name is provided.',
+            { statusCode: 422 }
+        );
     }
 
     const profiles = parseDiscountProfiles(settings);
@@ -1728,6 +1864,28 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 });
             }
 
+            const activeShift = await assertOpenShiftForPosMutation({
+                posRepository,
+                cashierId: normalizedUserId,
+                shiftId: payload.shift_id,
+                terminalId: normalizedTerminalId || null,
+                locationId: enforcedCheckoutLocationId || null,
+                transaction,
+                lock: true
+            });
+            const normalizedShiftId = parsePositiveInt(activeShift?.pos_terminal_shift_id);
+            const shiftLocationId = parsePositiveInt(activeShift?.location_id);
+            if (!shiftLocationId && terminalPolicySettings.binding_enforced === true) {
+                throw buildLocationScopeDeniedError({
+                    message: 'Active shift is missing location binding.',
+                    reasonCode: LOCATION_SCOPE_REASON_CODES.SHIFT_LOCATION_MISMATCH,
+                    statusCode: 422,
+                    details: {
+                        shift_id: normalizedShiftId
+                    }
+                });
+            }
+
             const itemIds = [...new Set(lines.map((line) => Number.parseInt(line.item_id, 10)))];
             const items = await posRepository.findSellableItemsByIds(itemIds, {
                 transaction,
@@ -1754,66 +1912,6 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 compositions: productCompositions,
                 locationId: enforcedCheckoutLocationId
             });
-
-            const normalizedShiftId = parsePositiveInt(payload.shift_id);
-            if (payload.shift_id != null) {
-                if (!normalizedShiftId) {
-                    throw new DomainError(
-                        DomainErrorCode.VALIDATION_FAILED,
-                        'shift_id must be a positive integer when provided',
-                        { statusCode: 422 }
-                    );
-                }
-                const shift = await posRepository.getTerminalShiftById(normalizedShiftId, { transaction, lock: true });
-                if (!shift || shift.status !== 'open') {
-                    throw new DomainError(
-                        DomainErrorCode.VALIDATION_FAILED,
-                        'Selected terminal shift is not open or no longer available.',
-                        { statusCode: 422 }
-                    );
-                }
-                if (Number(shift.cashier_id) !== normalizedUserId) {
-                    throw new DomainError(
-                        DomainErrorCode.AUTHORIZATION_FAILED,
-                        'Shift does not belong to the authenticated cashier.',
-                        { statusCode: 403 }
-                    );
-                }
-                if (normalizedTerminalId && String(shift.terminal_id) !== String(normalizedTerminalId)) {
-                    throw new DomainError(
-                        DomainErrorCode.VALIDATION_FAILED,
-                        'Shift terminal_id does not match checkout terminal_id.',
-                        { statusCode: 422 }
-                    );
-                }
-                const shiftLocationId = parsePositiveInt(shift.location_id);
-                if (!shiftLocationId && terminalPolicySettings.binding_enforced === true) {
-                    throw buildLocationScopeDeniedError({
-                        message: 'Active shift is missing location binding.',
-                        reasonCode: LOCATION_SCOPE_REASON_CODES.SHIFT_LOCATION_MISMATCH,
-                        statusCode: 422,
-                        details: {
-                            shift_id: normalizedShiftId
-                        }
-                    });
-                }
-                if (
-                    terminalPolicySettings.binding_enforced === true
-                    && shiftLocationId
-                    && shiftLocationId !== enforcedCheckoutLocationId
-                ) {
-                    throw buildLocationScopeDeniedError({
-                        message: 'Checkout location must match active shift location.',
-                        reasonCode: LOCATION_SCOPE_REASON_CODES.SHIFT_LOCATION_MISMATCH,
-                        statusCode: 422,
-                        details: {
-                            shift_id: normalizedShiftId,
-                            shift_location_id: shiftLocationId,
-                            checkout_location_id: enforcedCheckoutLocationId
-                        }
-                    });
-                }
-            }
 
             if (itemMap.size !== itemIds.length) {
                 const missingIds = itemIds.filter((itemId) => !itemMap.has(itemId));
@@ -2395,6 +2493,15 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, stockMovementSer
                     { statusCode: 409 }
                 );
             }
+
+            await assertOpenShiftForPosMutation({
+                posRepository,
+                cashierId: actorUserId,
+                terminalId: sanitizeTerminalId(existing.terminal_id) || null,
+                locationId: parsePositiveInt(existing.location_id) || null,
+                transaction,
+                lock: true
+            });
 
             const stockMovements = typeof posRepository.listStockMovementsForPosTransaction === 'function'
                 ? await posRepository.listStockMovementsForPosTransaction(normalizedTransactionId, { transaction })
@@ -3945,7 +4052,14 @@ export const buildOpenTerminalShiftUseCase = ({ posRepository }) => {
         const businessDate = payload?.business_date
             ? String(payload.business_date).slice(0, 10)
             : nowInManilaBusinessDate();
-        const openingFloatAmount = round4(Number(payload?.opening_float_amount || 0));
+        if (payload?.opening_float_amount == null || String(payload.opening_float_amount).trim() === '') {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Opening cash amount is required',
+                { statusCode: 422 }
+            ));
+        }
+        const openingFloatAmount = round4(Number(payload.opening_float_amount));
         const openingNote = String(payload?.opening_note || '').trim() || null;
         const requestedLocationId = payload?.location_id == null
             ? null
@@ -4023,11 +4137,24 @@ export const buildOpenTerminalShiftUseCase = ({ posRepository }) => {
             });
 
             const existing = await posRepository.findOpenTerminalShift({
-                terminalId,
                 cashierId: normalizedUserId
             });
             if (existing) {
                 const existingLocationId = parsePositiveInt(existing.location_id);
+                if (String(existing.terminal_id || '') !== String(terminalId || '')) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Cashier already has an active open shift.',
+                        {
+                            statusCode: 409,
+                            details: {
+                                existing_shift_id: existing.pos_terminal_shift_id,
+                                existing_terminal_id: existing.terminal_id || null,
+                                requested_terminal_id: terminalId || null
+                            }
+                        }
+                    );
+                }
                 if (existingLocationId && existingLocationId !== enforcedShiftLocationId) {
                     throw buildLocationScopeDeniedError({
                         message: 'Existing open shift is bound to a different location.',
@@ -4670,7 +4797,8 @@ export const buildGetTerminalTodayDashboardUseCase = ({ posRepository }) => {
                 startAt,
                 endAt,
                 terminalId,
-                locationId: locationScope.location_id
+                locationId: locationScope.location_id,
+                includeOnlineStoreAcrossTerminals: true
             });
             const openShift = await posRepository.findOpenTerminalShift({
                 terminalId,
@@ -4817,6 +4945,13 @@ export const buildUpdateOnlineOrderStatusUseCase = ({ posRepository, stockMoveme
                     { statusCode: 409 }
                 );
             }
+            await assertOpenShiftForPosMutation({
+                posRepository,
+                cashierId: actingUserId,
+                locationId: parsePositiveInt(existing.location_id) || null,
+                transaction,
+                lock: true
+            });
 
             const currentStatus = normalizeOnlineFulfillmentStatus(existing.fulfillment_status);
             if (!currentStatus) {

@@ -1103,6 +1103,10 @@ export default function POSCheckoutTerminal({
         () => round4(netItemsTotal + serviceFeeAmount + restaurantServiceChargeAmount),
         [netItemsTotal, restaurantServiceChargeAmount, serviceFeeAmount]
     );
+    const posActionsBlocked = Boolean(checkoutBlockedReason);
+    const notifyPosActionBlocked = () => {
+        toast.error(checkoutBlockedReason || 'You cannot use the POS because the shift is closed.');
+    };
     const itemStockById = useMemo(
         () => new Map((catalog || []).map((item) => {
             if (isServiceCatalogItem(item)) {
@@ -1118,6 +1122,10 @@ export default function POSCheckoutTerminal({
     );
 
     const addToCart = (item, options = {}) => {
+        if (posActionsBlocked) {
+            notifyPosActionBlocked();
+            return;
+        }
         const requestedAddQty = Math.max(0.0001, Number(options.quantity || 1));
         const stockFromCatalog = itemStockById.get(Number(item.item_id));
         const maxStock = Number.isFinite(stockFromCatalog)
@@ -1203,6 +1211,10 @@ export default function POSCheckoutTerminal({
     };
 
     const updateCartLine = (lineKey, patch) => {
+        if (posActionsBlocked) {
+            notifyPosActionBlocked();
+            return;
+        }
         setCart((prev) => prev.map((line) => (
             getLineKey(line) === lineKey
                 ? { ...line, ...patch }
@@ -1210,6 +1222,10 @@ export default function POSCheckoutTerminal({
         )));
     };
     const updateCartQuantity = (lineKey, requestedQuantity) => {
+        if (posActionsBlocked) {
+            notifyPosActionBlocked();
+            return;
+        }
         const parsedQty = Number(requestedQuantity);
         if (!Number.isFinite(parsedQty)) return;
 
@@ -1275,6 +1291,10 @@ export default function POSCheckoutTerminal({
     };
 
     const removeCartLine = (lineKey) => {
+        if (posActionsBlocked) {
+            notifyPosActionBlocked();
+            return;
+        }
         setCart((prev) => prev.filter((line) => getLineKey(line) !== lineKey));
     };
 
@@ -1785,21 +1805,24 @@ export default function POSCheckoutTerminal({
                                 <div
                                     key={item.item_id}
                                     onClick={() => {
-                                        if (isOutOfStock) return;
+                                        if (isOutOfStock || posActionsBlocked) {
+                                            if (posActionsBlocked) notifyPosActionBlocked();
+                                            return;
+                                        }
                                         addToCart(item);
                                     }}
                                     onKeyDown={(event) => {
-                                        if (isOutOfStock) return;
+                                        if (isOutOfStock || posActionsBlocked) return;
                                         if (event.key === 'Enter' || event.key === ' ') {
                                             event.preventDefault();
                                             addToCart(item);
                                         }
                                     }}
-                                    role={isOutOfStock ? 'group' : 'button'}
-                                    tabIndex={isOutOfStock ? -1 : 0}
-                                    aria-disabled={isOutOfStock}
+                                    role={isOutOfStock || posActionsBlocked ? 'group' : 'button'}
+                                    tabIndex={isOutOfStock || posActionsBlocked ? -1 : 0}
+                                    aria-disabled={isOutOfStock || posActionsBlocked}
                                     className={`flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-2 text-left shadow-sm transition-all md:h-[11rem] md:p-1.5 xl:h-[12rem] ${
-                                        isOutOfStock
+                                        isOutOfStock || posActionsBlocked
                                             ? 'cursor-not-allowed opacity-75 blur-[0.5px]'
                                             : 'cursor-pointer hover:-translate-y-0.5 hover:border-teal-400 hover:bg-teal-50 hover:shadow-md'
                                     }`}
@@ -2003,6 +2026,7 @@ export default function POSCheckoutTerminal({
                                             size="sm"
                                             className="h-11 px-3 text-base"
                                             onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) - 1)}
+                                            disabled={posActionsBlocked}
                                         >
                                             -
                                         </Button>
@@ -2013,6 +2037,7 @@ export default function POSCheckoutTerminal({
                                             value={line.quantity}
                                             onChange={(event) => updateCartQuantity(lineKey, event.target.value || 0)}
                                             className="h-11 text-base"
+                                            disabled={posActionsBlocked}
                                         />
                                         <Button
                                             type="button"
@@ -2020,6 +2045,7 @@ export default function POSCheckoutTerminal({
                                             size="sm"
                                             className="h-11 px-3 text-base"
                                             onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) + 1)}
+                                            disabled={posActionsBlocked}
                                         >
                                             +
                                         </Button>
@@ -2036,7 +2062,7 @@ export default function POSCheckoutTerminal({
                                             sale_price: Number(event.target.value || 0)
                                         })}
                                         className="h-11 text-base"
-                                        disabled={!canOverridePrice}
+                                        disabled={posActionsBlocked || !canOverridePrice}
                                     />
                                 </label>
                             </div>
@@ -2085,6 +2111,7 @@ export default function POSCheckoutTerminal({
                                     <select
                                         value={line.course || 'main'}
                                         onChange={(event) => updateCartLine(lineKey, { course: event.target.value })}
+                                        disabled={posActionsBlocked}
                                         className={`mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm ${POS_FORM_SELECT_CLASS}`}
                                     >
                                         <option value="appetizer">Appetizer</option>
@@ -2100,6 +2127,7 @@ export default function POSCheckoutTerminal({
                                         <select
                                             value={line.kitchen_station_id || ''}
                                             onChange={(event) => updateCartLine(lineKey, { kitchen_station_id: event.target.value ? Number(event.target.value) : null })}
+                                            disabled={posActionsBlocked}
                                             className={`mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm ${POS_FORM_SELECT_CLASS}`}
                                         >
                                             <option value="">Default station</option>
@@ -2117,6 +2145,7 @@ export default function POSCheckoutTerminal({
                                         value={line.special_instructions || ''}
                                         onChange={(event) => updateCartLine(lineKey, { special_instructions: event.target.value })}
                                         placeholder="No onions, sauce side"
+                                        disabled={posActionsBlocked}
                                         className={POS_FORM_INPUT_CLASS}
                                     />
                                 </label>
@@ -2128,6 +2157,7 @@ export default function POSCheckoutTerminal({
                                         value={line.price_override_reason || ''}
                                         onChange={(event) => updateCartLine(lineKey, { price_override_reason: event.target.value })}
                                         placeholder="Required when changing price"
+                                        disabled={posActionsBlocked}
                                         className={POS_FORM_INPUT_CLASS}
                                     />
                                 </label>
@@ -2141,7 +2171,7 @@ export default function POSCheckoutTerminal({
                                 <span className="text-xs text-slate-500">
                                     Subtotal: PHP {money(Number(line.quantity) * Number(line.sale_price))}
                                 </span>
-                                <Button type="button" variant="outline" size="sm" onClick={() => removeCartLine(lineKey)}>
+                                <Button type="button" variant="outline" size="sm" onClick={() => removeCartLine(lineKey)} disabled={posActionsBlocked}>
                                     Remove
                                 </Button>
                             </div>
@@ -2166,6 +2196,7 @@ export default function POSCheckoutTerminal({
                                 setManualDiscountRateInput('');
                             }
                         }}
+                        disabled={posActionsBlocked}
                         className={`w-full mt-1 border border-slate-200 rounded-lg px-2 py-2 text-sm ${POS_FORM_SELECT_CLASS}`}
                     >
                         <option value="">No Discount</option>
@@ -2195,6 +2226,7 @@ export default function POSCheckoutTerminal({
                             }
                         }}
                         placeholder="0.00"
+                        disabled={posActionsBlocked}
                         className={POS_FORM_INPUT_CLASS}
                     />
                     <span className="mt-1 block text-[11px] text-slate-500">
@@ -2300,14 +2332,14 @@ export default function POSCheckoutTerminal({
                         type="button"
                         variant="outline"
                         onClick={handlePrintOrder}
-                        disabled={cart.length === 0}
+                        disabled={posActionsBlocked || cart.length === 0}
                     >
                         Print Order
                     </Button>
                     <Button
                         type="button"
                         onClick={handleCheckout}
-                        disabled={checkoutLoading}
+                        disabled={posActionsBlocked || checkoutLoading}
                     >
                         {checkoutLoading ? 'Processing...' : 'Checkout'}
                     </Button>
@@ -2318,7 +2350,7 @@ export default function POSCheckoutTerminal({
                         type="button"
                         variant="outline"
                         onClick={() => handlePrintReceipt(lastReceipt, 'last_receipt_panel')}
-                        disabled={!lastReceipt || receiptPrinting}
+                        disabled={posActionsBlocked || !lastReceipt || receiptPrinting}
                     >
                         {receiptPrinting ? 'Printing...' : 'Print Last Receipt'}
                     </Button>
@@ -2370,7 +2402,7 @@ export default function POSCheckoutTerminal({
                                 variant="outline"
                                 size="sm"
                                 data-testid="pos-receipt-open-sales-report"
-                                disabled={!lastReceipt}
+                                disabled={posActionsBlocked || !lastReceipt}
                                 onClick={() => openInSalesReport(lastReceipt)}
                             >
                                 Open in Sales Report
@@ -2380,7 +2412,7 @@ export default function POSCheckoutTerminal({
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handlePrintReceipt(lastReceipt, 'receipt_preview')}
-                                disabled={!lastReceipt || receiptPrinting}
+                                disabled={posActionsBlocked || !lastReceipt || receiptPrinting}
                             >
                                 {receiptPrinting ? 'Printing...' : 'Send to Printer'}
                             </Button>

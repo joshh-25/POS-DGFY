@@ -6,6 +6,7 @@ const ORDER_SOURCES = ['in_store', 'online_store'];
 const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer'];
 const PAYMENT_HANDOFF_MODES = ['external', 'internal'];
 const DOCUMENT_CONTEXTS = ['fiscal', 'non_fiscal', 'training_test'];
+const DISCOUNT_MODES = ['none', 'preset', 'percentage', 'amount'];
 const ONLINE_FULFILLMENT_STATUSES = ['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected'];
 const DISCOUNT_BENEFICIARY_CATEGORIES = ['senior', 'pwd', 'national_athlete'];
 const FNB_COURSES = ['appetizer', 'main', 'dessert', 'drink', 'other'];
@@ -79,6 +80,7 @@ const checkoutPosSchema = Joi.object({
     fnb_server_id: Joi.number().integer().positive().allow(null).optional(),
     server_id: Joi.number().integer().positive().allow(null).optional(),
     restaurant_service_charge: restaurantServiceChargeSchema.optional(),
+    discount_mode: Joi.string().valid(...DISCOUNT_MODES).optional(),
     discount_amount: Joi.number().min(0).precision(4).default(0),
     discount_profile_name: Joi.string().trim().max(80).allow('', null).optional(),
     discount_rate: Joi.number().min(0).max(100).precision(2).allow(null).optional(),
@@ -98,6 +100,31 @@ const checkoutPosSchema = Joi.object({
     const discountAmount = Number(value?.discount_amount || 0);
     const hasProfile = Boolean(String(value?.discount_profile_name || '').trim());
     const hasDiscountRate = value?.discount_rate !== undefined && value?.discount_rate !== null;
+    const discountMode = String(value?.discount_mode || '').trim() || (hasProfile ? 'preset' : (hasDiscountRate ? 'percentage' : (discountAmount > 0 ? 'amount' : 'none')));
+
+    if (discountMode === 'none' && (hasProfile || hasDiscountRate || discountAmount > 0)) {
+        return helpers.error('any.invalid', {
+            message: 'discount_mode none cannot include discount values'
+        });
+    }
+
+    if (discountMode === 'preset' && !hasProfile) {
+        return helpers.error('any.invalid', {
+            message: 'discount_mode preset requires discount_profile_name'
+        });
+    }
+
+    if (discountMode === 'amount' && (hasProfile || hasDiscountRate)) {
+        return helpers.error('any.invalid', {
+            message: 'discount_mode amount cannot include discount profile or rate'
+        });
+    }
+
+    if (discountMode === 'percentage' && hasProfile) {
+        return helpers.error('any.invalid', {
+            message: 'discount_mode percentage cannot include discount profile'
+        });
+    }
 
     if (hasDiscountRate && !hasProfile && discountAmount <= 0) {
         return helpers.error('any.invalid', {
@@ -207,7 +234,11 @@ const openTerminalShiftSchema = Joi.object({
     }),
     location_id: Joi.number().integer().positive().allow(null).optional(),
     business_date: Joi.date().iso().optional(),
-    opening_float_amount: Joi.number().min(0).precision(4).default(0),
+    opening_float_amount: Joi.number().min(0).precision(4).required().messages({
+        'any.required': 'Opening cash amount is required',
+        'number.base': 'Opening cash amount must be a valid number',
+        'number.min': 'Opening cash amount must be 0 or greater'
+    }),
     opening_note: Joi.string().trim().max(255).allow(null, '').optional()
 });
 

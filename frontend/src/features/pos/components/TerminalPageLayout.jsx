@@ -242,6 +242,7 @@ export default function TerminalPageLayout({
   const overlayContainerClassName = IS_DGFY_POS_SURFACE
     ? 'fixed inset-0 z-50 lg:hidden'
     : 'fixed inset-0 z-50 xl:hidden';
+  const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
   const notificationPanel = notificationsOpen ? createPortal(
     <div className="fixed inset-0 z-[120]" onClick={() => setNotificationsOpen(false)}>
       <div
@@ -326,11 +327,10 @@ export default function TerminalPageLayout({
         <div className={`dgfy-pos-shell h-[100dvh] min-h-screen min-h-[100dvh] overflow-hidden bg-[#F1F5F9] text-[#0F172A] ${shellLayoutClassName}`}>
             {notificationPanel}
             {!effectiveSidebarCollapsed && (
-            <div className={persistentSidebarClassName}>
+            <div className={`${persistentSidebarClassName} ${lockedSurfaceClassName}`}>
                 <Suspense fallback={<div className={persistentSidebarFallbackClassName}>Loading POS navigation...</div>}>
                     <TerminalWorkspaceSidebar
                         className={persistentSidebarBodyClassName}
-                        showScrollZoneBadge
                         locked={locked}
                         isMsmeMode={isMsmeMode}
                         terminalUser={terminalUser}
@@ -351,20 +351,22 @@ export default function TerminalPageLayout({
             </div>
             )}
             <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-            <div className="border-b border-slate-200 bg-white/95 px-4 py-1.5 backdrop-blur sm:px-5 lg:px-7">
+            <div className={`border-b border-slate-200 bg-white/95 px-4 py-1.5 backdrop-blur sm:px-5 lg:px-7 ${lockedSurfaceClassName}`}>
                 <div className={headerShellClassName}>
                     <div className="flex min-w-0 items-center justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-3">
                         <button
                             type="button"
                             onClick={() => {
+                                if (locked) return;
                                 if (isDesktopWide) {
                                     setSidebarCollapsed((collapsed) => !collapsed);
                                     return;
                                 }
                                 setMobileNavOpen(true);
                             }}
-                            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[#1A4E8D] hover:bg-slate-100"
+                            disabled={locked}
+                            className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[#1A4E8D] ${locked ? 'cursor-not-allowed opacity-45' : 'hover:bg-slate-100'}`}
                             aria-label={isDesktopWide ? (effectiveSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar') : 'Open sidebar menu'}
                             aria-pressed={isDesktopWide ? effectiveSidebarCollapsed : undefined}
                         >
@@ -410,7 +412,7 @@ export default function TerminalPageLayout({
 
             <div
                 ref={workspacePaneRef}
-                className={`dgfy-pos-scrollbar-hidden flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y xl:overflow-y-auto xl:overscroll-contain xl:overscroll-y-contain xl:touch-pan-y ${locked ? 'pointer-events-none select-none opacity-90 blur-[1px]' : ''}`}
+                className={`dgfy-pos-scrollbar-hidden flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y xl:overflow-y-auto xl:overscroll-contain xl:overscroll-y-contain xl:touch-pan-y ${lockedSurfaceClassName}`}
             >
             {modeChangeNotice && (
                 <div className="mx-4 mt-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3">
@@ -545,7 +547,6 @@ export default function TerminalPageLayout({
                                 className="flex"
                                 showBrand={false}
                                 showIdentityInSidebar
-                                showScrollZoneBadge={false}
                                 locked={locked}
                                 isMsmeMode={isMsmeMode}
                                 terminalUser={terminalUser}
@@ -678,8 +679,6 @@ export default function TerminalPageLayout({
                 </div>
             </div>
             </div>
-
-            {locked && <div className="fixed inset-0 bg-slate-900/20 pointer-events-none" />}
 
             <Suspense fallback={null}>
                 <TerminalLockDrawer

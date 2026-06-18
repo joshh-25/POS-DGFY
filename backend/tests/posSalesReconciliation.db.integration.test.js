@@ -9,6 +9,7 @@ import { getTenantModels } from '../src/utils/tenantModelFactory.js';
 import {
   checkoutPosUseCase,
   getDailyZReadingUseCase,
+  getTerminalTodayDashboardUseCase,
   updateOnlineOrderStatusUseCase
 } from '../src/modules/pos/index.js';
 import { listSalesTransactionsUseCase } from '../src/modules/sales/index.js';
@@ -258,6 +259,50 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       customer_name: 'Online Buyer',
       customer_phone: '09170000000',
       delivery_address: 'Online Address'
+    });
+
+    await models.PosTransactionLine.create({
+      pos_transaction_id: transaction.pos_transaction_id,
+      item_id: item.item_id,
+      quantity: 1,
+      unit_of_measure: item.unit_of_measure,
+      cost_snapshot: item.cost_per_unit,
+      sale_price: money4(totalAmount),
+      line_subtotal: money4(totalAmount),
+      vat_type_snapshot: 'vatable',
+      vat_rate_snapshot: 0.12
+    });
+
+    return transaction;
+  };
+
+  const createInStoreTerminalTransaction = async ({
+    item,
+    cashierId,
+    terminalId = 'COUNTER-01',
+    totalAmount = 100
+  }) => {
+    const suffix = crypto.randomUUID().slice(0, 8);
+    const transaction = await models.PosTransaction.create({
+      invoice_number: `POS-${suffix}`,
+      idempotency_key: `pos-idem-${suffix}`,
+      request_hash: crypto.createHash('sha256').update(`pos-${suffix}`).digest('hex'),
+      cashier_id: cashierId,
+      shift_id: null,
+      terminal_id: terminalId,
+      order_source: 'in_store',
+      order_method: 'dine_in',
+      fulfillment_status: 'completed',
+      payment_type: 'cash',
+      subtotal_amount: money4(totalAmount),
+      vatable_sales: money4(totalAmount / 1.12),
+      vat_amount: money4(totalAmount - (totalAmount / 1.12)),
+      vat_exempt_sales: 0,
+      zero_rated_sales: 0,
+      discount_amount: 0,
+      service_fee_amount: 0,
+      total_amount: money4(totalAmount),
+      status: 'completed'
     });
 
     await models.PosTransactionLine.create({
@@ -828,6 +873,61 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     expect(references).toContain(onlineCompleted.invoice_number);
     expect(references).not.toContain(onlinePlaced.invoice_number);
     expect(references).not.toContain(onlineRejected.invoice_number);
+  });
+
+  itRuntimeReady('includes completed online-store POS sales in terminal daily dashboard totals', async () => {
+    const cashier = await createCashier();
+    const item = await createFinishedGood({
+      vat_type: 'vatable',
+      default_sale_price: 100,
+      cost_per_unit: 35
+    });
+
+    const businessDate = todayInManila();
+    const terminalId = 'COUNTER-01';
+    const baselineDashboard = await runInTenantContext(() => getTerminalTodayDashboardUseCase({
+      query: {
+        business_date: businessDate,
+        terminal_id: terminalId
+      },
+      user: { user_id: cashier.user_id }
+    }));
+    expect(baselineDashboard.success).toBe(true);
+
+    await runInTenantContext(() => createInStoreTerminalTransaction({
+      item,
+      cashierId: cashier.user_id,
+      terminalId,
+      totalAmount: 100
+    }));
+    await runInTenantContext(() => createOnlineOrderTransaction({
+      item,
+      cashierId: cashier.user_id,
+      fulfillmentStatus: 'placed',
+      totalAmount: 120
+    }));
+    await runInTenantContext(() => createOnlineOrderTransaction({
+      item,
+      cashierId: cashier.user_id,
+      fulfillmentStatus: 'completed',
+      totalAmount: 150
+    }));
+
+    const dashboardResult = await runInTenantContext(() => getTerminalTodayDashboardUseCase({
+      query: {
+        business_date: businessDate,
+        terminal_id: terminalId
+      },
+      user: { user_id: cashier.user_id }
+    }));
+
+    expect(dashboardResult.success).toBe(true);
+    expect(
+      money4(dashboardResult.data.sales_summary.total_amount - baselineDashboard.data.sales_summary.total_amount)
+    ).toBe(250);
+    expect(
+      dashboardResult.data.sales_summary.transaction_count - baselineDashboard.data.sales_summary.transaction_count
+    ).toBe(2);
   });
 
   itRuntimeReady('deducts inventory exactly once when online orders transition to completed', async () => {

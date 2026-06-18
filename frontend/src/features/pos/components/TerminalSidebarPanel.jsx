@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Banknote, ChevronLeft, ChevronRight, Clock3, LogIn, LogOut, UserCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,6 +42,12 @@ const WORKSPACE_VIEW_CONFIG = {
 };
 
 const money = (value) => Number(value || 0).toFixed(2);
+
+const isValidOpeningCashAmount = (value) => {
+  const rawValue = String(value ?? '').trim();
+  const numericValue = Number(rawValue);
+  return rawValue !== '' && Number.isFinite(numericValue) && numericValue >= 0;
+};
 
 const parseIsoDateTime = (value) => {
   if (!value) return '-';
@@ -124,6 +130,7 @@ export default function TerminalSidebarPanel({
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
   const hiddenSectionsInMsme = new Set(['incoming_queue', 'location_scope', 'cash_drawer', 'sales_today', 'terminal_setup']);
   const [switchReason, setSwitchReason] = useState('');
+  const canSubmitOpenShift = isValidOpeningCashAmount(openShiftForm.openingFloatAmount);
 
   const showSection = (key) => {
     if (isMsmeMode && hiddenSectionsInMsme.has(key)) return false;
@@ -262,7 +269,9 @@ export default function TerminalSidebarPanel({
 
       {showSection('shift_controls') && (
         <div id={sectionIds.activeShift} className="space-y-3 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm shadow-slate-200/70">
-          <p className="text-xs font-extrabold uppercase tracking-wide text-[#334155]">Active Shift</p>
+          <p className="text-xs font-extrabold uppercase tracking-wide text-[#334155]">
+            {shiftState.shift ? 'Shift Open' : 'Shift Closed'}
+          </p>
           <Label className="text-xs">Operating Location</Label>
           <select
             className="w-full rounded-md border border-slate-200 px-2 py-2 text-sm"
@@ -356,16 +365,17 @@ export default function TerminalSidebarPanel({
           ) : (
             <div className="space-y-2">
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
-                No open shift. Open a shift to enable checkout.
+                Shift Closed. Please open your shift before using the POS.
               </p>
               <Label className="text-xs">Opening Float ({terminalMeta.pettyCashSymbol})</Label>
               <Input
                 type="number"
                 min="0"
                 step="0.01"
+                required
                 value={openShiftForm.openingFloatAmount}
                 onChange={(event) => setOpenShiftForm((prev) => ({ ...prev, openingFloatAmount: event.target.value }))}
-                placeholder={money(terminalMeta.pettyCashAmount)}
+                placeholder="0.00"
               />
               <p className="text-[11px] text-slate-500">
                 Opening float is the starting cash in the drawer before the first sale.
@@ -376,7 +386,7 @@ export default function TerminalSidebarPanel({
                 onChange={(event) => setOpenShiftForm((prev) => ({ ...prev, openingNote: event.target.value }))}
                 placeholder="Opening shift cash note"
               />
-              <Button type="button" onClick={handleOpenShift} disabled={shiftActionLoading.open || locked || !canTransactPos}>
+              <Button type="button" onClick={handleOpenShift} disabled={shiftActionLoading.open || locked || !canTransactPos || !canSubmitOpenShift}>
                 {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
               </Button>
               {!canTransactPos && (
@@ -574,7 +584,7 @@ export default function TerminalSidebarPanel({
                           size="sm"
                           variant={status === 'rejected' ? 'destructive' : 'outline'}
                           className="h-7 text-[11px]"
-                          disabled={Boolean(actionLoading) || !canTransactPos || locked}
+                          disabled={Boolean(actionLoading) || !canTransactPos || locked || !shiftState.shift}
                           onClick={() => handleIncomingOrderStatusChange?.(order.pos_transaction_id, status)}
                         >
                           {actionLoading === status ? 'Saving...' : (FULFILLMENT_STATUS_LABELS[status] || status)}
