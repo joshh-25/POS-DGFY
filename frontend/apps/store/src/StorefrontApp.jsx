@@ -115,12 +115,12 @@ import { SolutionsPage } from './Components/storefront/pages/SolutionsPage.jsx';
 import { FnbProductDetailsPage } from './Components/storefront/pages/FnbProductDetailsPage.jsx';
 import { DgfyCustomerAuthModal } from './Components/storefront/pages/DgfyCustomerAuthModal.jsx';
 import { DgfyCustomerAccountPage } from './Components/storefront/pages/DgfyCustomerAccountPage.jsx';
-import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from './components/storefront/hero/StorefrontHeroNameCluster.jsx';
-import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from './components/storefront/hero/StorefrontHeaderNav.jsx';
-import { StorefrontShareQr as SharedStorefrontShareQr } from './components/storefront/hero/StorefrontShareQr.jsx';
-import { StorefrontPromoSection as SharedStorefrontPromoSection } from './components/storefront/sections/StorefrontPromoSection.jsx';
-import { StorefrontReviewsSection as SharedStorefrontReviewsSection } from './components/storefront/sections/StorefrontReviewsSection.jsx';
-import { StorefrontFooterSection as SharedStorefrontFooterSection } from './components/storefront/sections/StorefrontFooterSection.jsx';
+import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from './Components/storefront/hero/StorefrontHeroNameCluster.jsx';
+import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from './Components/storefront/hero/StorefrontHeaderNav.jsx';
+import { StorefrontShareQr as SharedStorefrontShareQr } from './Components/storefront/hero/StorefrontShareQr.jsx';
+import { StorefrontPromoSection as SharedStorefrontPromoSection } from './Components/storefront/sections/StorefrontPromoSection.jsx';
+import { StorefrontReviewsSection as SharedStorefrontReviewsSection } from './Components/storefront/sections/StorefrontReviewsSection.jsx';
+import { StorefrontFooterSection as SharedStorefrontFooterSection } from './Components/storefront/sections/StorefrontFooterSection.jsx';
 import { getServicesResponsiveLayout } from './storefrontViewport.js';
 import { createTrackingAdapterRegistry, fetchNormalizedTrackingEntity } from './tracking/core.js';
 import {
