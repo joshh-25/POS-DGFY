@@ -3,7 +3,7 @@ import express from 'express';
 import { requireBridgeAuth } from './auth/bridgeAuth.js';
 import { openDrawer } from './drawer/openDrawer.js';
 import { runtimeConfig } from './config/runtime.js';
-import { logError, logInfo } from './logs/bridgeLogger.js';
+import { logError, logInfo } from './bridgeLogger.js';
 import { listUsbPrinters, printTestReceipt, printReceiptPayload } from './printers/usbPrinter.js';
 
 const app = express();
