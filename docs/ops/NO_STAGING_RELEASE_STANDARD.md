@@ -10,6 +10,7 @@ Production release is blocked unless all of the following are true for the exact
 3. QA rollback drill result is passing.
 4. QA restore drill result is passing.
 5. Local governance gates pass (`lint:docs`, `check:architecture`).
+6. Merge adoption proof passes when the release adopts PR, branch, or `merge-docs/` behavior that must survive conflict resolution.
 
 The enforced command is:
 ```bash
@@ -32,6 +33,13 @@ npm run gate:release:no-staging:preflight
 ```
 The preflight fails early if required QA environment inputs are missing.
 
+For multi-branch or PR-adoption releases, provide a manifest so the hard gate proves the intended changes survived the final tree:
+```bash
+MERGE_ADOPTION_MANIFEST=path/to/merge-adoption.json RELEASE_TARGET_SHA=<target_sha> npm run gate:release:no-staging
+```
+
+Use `docs/templates/MERGE_ADOPTION_MANIFEST_TEMPLATE.json` and `docs/ops/MERGE_ADOPTION_GATE.md`.
+
 ## Evidence Contracts
 Default evidence root:
 ```text
@@ -45,6 +53,7 @@ Required files:
 4. `restore_drill_result.json`
 5. `release_verdict.json` (final aggregated verdict)
 6. `observability_evidence.json` (report-mode until one production release proves the workflow)
+7. `merge_adoption_report.json` (required when `MERGE_ADOPTION_MANIFEST` is set)
 
 Current behavior note:
 1. `qa_deploy_summary.txt` must prove that QA deployed the exact `RELEASE_TARGET_SHA`.

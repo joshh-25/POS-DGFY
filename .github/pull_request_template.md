@@ -44,6 +44,19 @@
 - [ ] Feature flag/gradual rollout strategy documented (if needed)
 - [ ] Backward compatibility validated
 
+## Merge Adoption Evidence
+- [ ] This PR does not require merge-adoption proof
+- [ ] Merge-adoption manifest prepared for final master/deploy adoption
+- Manifest path:
+- Source refs and merge base:
+- [ ] New PR/branch behavior is proved present in the final tree
+- [ ] Preserved master behavior is listed and proved when the resolution combines both sides
+- [ ] Rejected files/behavior have explicit reasons
+- Required command:
+```bash
+npm run check:merge-adoption -- --manifest <manifest>
+```
+
 ## Documentation Citation (Required For Planning/Design Changes)
 - Authoritative docs used:
 - ADR referenced:

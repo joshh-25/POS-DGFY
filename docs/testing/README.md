@@ -557,6 +557,21 @@ Output:
 Pass condition:
 1. `verdict` equals `pass` (or `bypassed` only with incident metadata).
 
+## Merge Adoption Gate
+
+Use this whenever a release adopts PR, branch, or `merge-docs/` behavior and the final tree must prove both new behavior and preserved master behavior.
+
+Standalone command:
+1. `npm run check:merge-adoption -- --manifest path/to/merge-adoption.json`
+
+No-staging release integration:
+1. `MERGE_ADOPTION_MANIFEST=path/to/merge-adoption.json RELEASE_TARGET_SHA=<sha> npm run gate:release:no-staging`
+
+Evidence semantics:
+1. The manifest records each feature-area decision as `adopt`, `combine`, `preserve-master`, or `reject`.
+2. The gate verifies required files, required strings, forbidden strings, and optional source-added file adoption/rejection.
+3. A passing gate proves final-tree adoption evidence only. Production completion still needs deploy summary SHA parity, live runtime SHA health proof, frontend asset parity, and rendered/API QA for the affected surface.
+
 ## Local Readiness Gate
 
 Use this local-only release readiness gate when you need deterministic project health evidence without remote QA dependency.

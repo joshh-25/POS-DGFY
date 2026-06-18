@@ -54,6 +54,8 @@ function main() {
   const qaDeploySummaryFile = process.env.QA_DEPLOY_SUMMARY_FILE || path.join(evidenceDir, 'qa_deploy_summary.txt');
   const verdictFile = process.env.RELEASE_VERDICT_FILE || path.join(evidenceDir, 'release_verdict.json');
   const verdictMirrorFile = process.env.RELEASE_VERDICT_MIRROR_FILE || '';
+  const mergeAdoptionManifest = process.env.MERGE_ADOPTION_MANIFEST || process.env.RELEASE_MERGE_ADOPTION_MANIFEST || '';
+  const mergeAdoptionReportFile = process.env.MERGE_ADOPTION_REPORT_FILE || path.join(evidenceDir, 'merge_adoption_report.json');
   const emergencyBypass = process.env.RELEASE_EMERGENCY_BYPASS === '1';
   const bypassReason = process.env.RELEASE_EMERGENCY_REASON || '';
   const bypassActor = process.env.RELEASE_EMERGENCY_ACTOR || '';
@@ -63,6 +65,21 @@ function main() {
   addGate(gates, 'release.target_sha', Boolean(targetSha), `target_sha=${targetSha || '<missing>'}`);
   addGate(gates, 'docs.lint', runCmd('npm', ['run', 'lint:docs']), 'npm run lint:docs');
   addGate(gates, 'architecture.guardrails', runCmd('npm', ['run', 'check:architecture']), 'npm run check:architecture');
+  if (mergeAdoptionManifest) {
+    addGate(
+      gates,
+      'merge.adoption',
+      runCmd('npm', ['run', 'check:merge-adoption', '--', '--manifest', mergeAdoptionManifest, '--report', mergeAdoptionReportFile]),
+      `npm run check:merge-adoption -- --manifest ${mergeAdoptionManifest}`
+    );
+  } else {
+    addGate(
+      gates,
+      'merge.adoption.not_required',
+      true,
+      'No MERGE_ADOPTION_MANIFEST provided. Required for multi-branch or PR-adoption releases.'
+    );
+  }
 
   const qaSmokeOk = runCmd('npm', ['run', 'gate:release:qa-contracts'], {
     RELEASE_TARGET_SHA: targetSha,
@@ -166,6 +183,7 @@ function main() {
       qa_smoke_result_file: qaSmokeResultFile,
       qa_rollback_drill_file: qaRollbackResultFile,
       qa_restore_drill_file: qaRestoreResultFile,
+      merge_adoption_report_file: mergeAdoptionManifest ? mergeAdoptionReportFile : null,
       release_verdict_file: verdictFile,
       observability_evidence_file: path.join(evidenceDir, 'observability_evidence.json'),
     },

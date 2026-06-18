@@ -29,6 +29,10 @@ Use this checklist for every production rollout.
   # export QA_DEPLOY_SUMMARY_FILE=".tmp/release-gates/<sha>/qa_deploy_summary.txt"
   RELEASE_TARGET_SHA="<target_sha>" npm run gate:release:no-staging
   ```
+- [ ] If this release adopts PR, branch, or `merge-docs/` behavior, merge-adoption proof passes:
+  ```bash
+  MERGE_ADOPTION_MANIFEST="path/to/merge-adoption.json" RELEASE_TARGET_SHA="<target_sha>" npm run gate:release:no-staging
+  ```
 - [ ] Production multi-location contract smoke gate is green:
   ```bash
   # one-time local setup
@@ -168,6 +172,7 @@ bash scripts/deploy-remote.sh
   ls -1t logs/deploy/deploy_*.summary.txt | head -1 | xargs -I{} tail -n 30 {}
   ```
 - [ ] `qa.deploy.summary.sha_match` passes for the exact production target SHA. A stale QA deploy summary blocks normal release.
+- [ ] If `MERGE_ADOPTION_MANIFEST` was used, `release_verdict.json` includes `merge_adoption_report_file` and the report is `pass`.
 
 ## 6. If `npm ci` Fails with `EPERM`/File Lock
 - [ ] Treat as transient lock unless repeated after retries.

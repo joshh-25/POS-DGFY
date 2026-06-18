@@ -195,7 +195,29 @@ Recommended secret layout:
 1. Non-secret QA defaults in `.env.qa.local`
 2. Sensitive QA values (`QA_COMPANY_TOKEN`, optional `QA_AUTH_JWT`) in `.env.qa.secrets.local` (gitignored)
 
-## 2c. Runtime Schema Doctor (`npm run doctor:runtime`)
+## 2c. `scripts/check-merge-adoption.js`
+Merge adoption proof gate for PR, branch, or `merge-docs/` releases.
+
+Usage:
+```bash
+npm run check:merge-adoption -- --manifest path/to/merge-adoption.json
+npm run check:merge-adoption -- --manifest path/to/merge-adoption.json --report .tmp/release-gates/<sha>/merge_adoption_report.json
+```
+
+Behavior:
+- Validates that each adopted feature area has an explicit `adopt`, `combine`, `preserve-master`, or `reject` decision.
+- Verifies required files and required/forbidden strings in the final tree.
+- Checks PR-added files from optional `source_refs`; every added file must exist in the final tree or be listed under `explicitly_rejected_files` with a reason.
+- Writes a machine-readable report when `--report` is provided.
+
+No-staging release integration:
+```bash
+MERGE_ADOPTION_MANIFEST=path/to/merge-adoption.json RELEASE_TARGET_SHA=<sha> npm run gate:release:no-staging
+```
+
+Use this for releases where ancestry alone is not enough proof, especially visible UI replacements, backend contract merges, auth/security changes, or any merge guided by `merge-docs/`.
+
+## 2d. Runtime Schema Doctor (`npm run doctor:runtime`)
 Use this before storefront/IMS/POS manual verification and after backend restart/deploy.
 
 Usage:
@@ -220,7 +242,7 @@ npm run migrate
 npm run doctor:runtime
 ```
 
-## 2d. `scripts/check-hosting-profile.js`
+## 2e. `scripts/check-hosting-profile.js`
 Hosting profile preflight validator for shared hosting and Redis-capable VPS deployments.
 
 Usage:
