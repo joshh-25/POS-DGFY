@@ -34,6 +34,14 @@ This document only lists the important changes recently made to the POS, Storefr
 - The receipt preview `X` button was removed.
 - The `Close` button was moved to the top-right.
 - The `Print` button was moved to the bottom-right.
+- Receipt preview and print now support `80mm (3 1/8 inches)` paper width.
+- Receipt preview and print now support `57mm (2 1/4 inches)` paper width.
+- SKUpervisor receipt preview and print now use the same paper width selection.
+
+## DGFY Account Popup
+
+- The POS DGFY account prompt now has an `X` dismiss button.
+- The cashier can close the prompt without sending a link code or creating a DGFY account.
 
 ## Discount
 
@@ -63,6 +71,7 @@ This document only lists the important changes recently made to the POS, Storefr
 
 - `frontend/src/features/pos/components/POSCheckoutTerminal.jsx`
 - `frontend/src/features/pos/components/ReceiptPrintView.jsx`
+- `frontend/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx`
 - `frontend/src/features/pos/pages/TerminalPage.jsx`
 - `frontend/src/features/pos/components/TerminalPageLayout.jsx`
 - `frontend/src/features/pos/components/TerminalWorkspaceSidebar.jsx`
