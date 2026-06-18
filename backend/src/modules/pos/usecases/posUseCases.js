@@ -31,6 +31,7 @@ import {
 } from '../../shared/utils/stockBearingPolicy.js';
 import { requireExplicitSalePrice } from '../../shared/utils/itemFinancialPolicy.js';
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
+import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
@@ -4872,7 +4873,11 @@ export const buildListIncomingOnlineOrdersUseCase = ({ posRepository }) => {
     };
 };
 
-export const buildUpdateOnlineOrderStatusUseCase = ({ posRepository, stockMovementService }) => {
+export const buildUpdateOnlineOrderStatusUseCase = ({
+    posRepository,
+    stockMovementService,
+    activityRecorder = recordDgfyOrderActivity
+}) => {
     return async ({ posTransactionId, payload, user }) => {
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         if (!normalizedTransactionId) {
@@ -5014,6 +5019,18 @@ export const buildUpdateOnlineOrderStatusUseCase = ({ posRepository, stockMoveme
             });
 
             await transaction.commit();
+            const currentTenantId = dbStore.getStore()?.tenantId || null;
+            await activityRecorder({
+                tenantId: currentTenantId,
+                order: updated,
+                storeCustomer: updated?.storeCustomer || updated?.store_customer || null
+            }).catch((activityError) => {
+                logger.warn('Failed to sync DGFY order activity after POS status update', {
+                    pos_transaction_id: normalizedTransactionId,
+                    tracking_pin: updated?.tracking_pin || null,
+                    error: activityError?.message || activityError
+                });
+            });
             const replayPayload = {
                 order: toSerializable(updated),
                 status_transition: {

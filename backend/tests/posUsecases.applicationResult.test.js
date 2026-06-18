@@ -925,10 +925,22 @@ describe('pos use-cases application result contract', () => {
         };
         const updatedOrder = {
             ...existingOrder,
-            fulfillment_status: 'completed'
+            fulfillment_status: 'completed',
+            storeCustomer: {
+                customer_id: 44,
+                dgfy_account_id: 'acct-44',
+                email: 'customer@example.com',
+                phone: '09123456789'
+            }
         };
 
         const posRepository = {
+            findOpenTerminalShift: jest.fn().mockResolvedValue({
+                shift_id: 10,
+                cashier_id: 7,
+                location_id: 3,
+                status: 'open'
+            }),
             getOrderByIdForLifecycle: jest
                 .fn()
                 .mockResolvedValueOnce(existingOrder)
@@ -938,13 +950,15 @@ describe('pos use-cases application result contract', () => {
         const stockMovementService = {
             createStockMovement: jest.fn().mockResolvedValue({ movement_id: 1 })
         };
+        const activityRecorder = jest.fn().mockResolvedValue({ activity_id: 90 });
 
         const useCase = buildUpdateOnlineOrderStatusUseCase({
             posRepository,
-            stockMovementService
+            stockMovementService,
+            activityRecorder
         });
 
-        const result = await dbStore.run({ sequelize: fakeSequelize }, () => useCase({
+        const result = await dbStore.run({ sequelize: fakeSequelize, tenantId: 'tenant-activity' }, () => useCase({
             posTransactionId: 55,
             payload: { fulfillment_status: 'completed' },
             user: { user_id: 7 }
@@ -964,6 +978,11 @@ describe('pos use-cases application result contract', () => {
             7,
             transaction
         );
+        expect(activityRecorder).toHaveBeenCalledWith({
+            tenantId: 'tenant-activity',
+            order: updatedOrder,
+            storeCustomer: updatedOrder.storeCustomer
+        });
         expect(posRepository.updateOrderById).toHaveBeenCalledWith(
             55,
             { fulfillment_status: 'completed', cashier_id: 7 },
@@ -1008,6 +1027,12 @@ describe('pos use-cases application result contract', () => {
         };
 
         const posRepository = {
+            findOpenTerminalShift: jest.fn().mockResolvedValue({
+                shift_id: 11,
+                cashier_id: 7,
+                location_id: 4,
+                status: 'open'
+            }),
             getOrderByIdForLifecycle: jest
                 .fn()
                 .mockResolvedValueOnce(existingOrder)
@@ -1083,6 +1108,11 @@ describe('pos use-cases application result contract', () => {
         };
 
         const posRepository = {
+            findOpenTerminalShift: jest.fn().mockResolvedValue({
+                shift_id: 12,
+                cashier_id: 8,
+                status: 'open'
+            }),
             getOrderByIdForLifecycle: jest
                 .fn()
                 .mockResolvedValueOnce(completedOrder)

@@ -144,7 +144,6 @@ import {
   clearStoreAuthToken,
   readDgfyAuthToken,
   readStoreAuthToken,
-  writeDgfyAuthToken,
   writeStoreAuthToken
 } from './auth/storefrontSessionStorage.js';
 import { requestJson } from './services/requestJson.js';
@@ -5688,6 +5687,7 @@ export default function StorefrontApp() {
   const [accountAddressActionId, setAccountAddressActionId] = useState('');
   const [accountAddressPinAction, setAccountAddressPinAction] = useState({ mode: '', loading: false, error: '' });
   const accountAddressPinRequestRef = useRef(0);
+  const accountPanelRefreshInFlightRef = useRef(false);
   const [trackedCustomerActivity, setTrackedCustomerActivity] = useState(null);
   const [customerTrackLoadingReference, setCustomerTrackLoadingReference] = useState('');
   const [customerTrackError, setCustomerTrackError] = useState('');
@@ -5751,15 +5751,61 @@ export default function StorefrontApp() {
     let cancelled = false;
 
     const bootstrapDgfyCookieSession = async () => {
-      if (readDgfyAuthToken()) {
-        return;
+      let consumedHandoff = false;
+      if (typeof window !== 'undefined') {
+        const currentUrl = new URL(window.location.href);
+        const handoffToken = String(currentUrl.searchParams.get('handoff_token') || '').trim();
+        if (handoffToken) {
+          currentUrl.searchParams.delete('handoff_token');
+          window.history.replaceState({}, '', currentUrl.toString());
+          try {
+            const handoffPayload = await requestJson('/api/v1/dgfy/auth/handoff/exchange', {
+              method: 'POST',
+              cache: 'no-store',
+              body: {
+                handoff_token: handoffToken,
+                soft_fail: true
+              }
+            });
+            consumedHandoff = handoffPayload?.status !== 'invalid';
+            clearDgfyAuthToken();
+            setDgfyAuthTokenState('');
+          } catch {
+            clearDgfyAuthToken();
+            setDgfyAuthTokenState('');
+          }
+          if (cancelled) return;
+        }
       }
+
+      const legacyToken = readDgfyAuthToken();
       try {
         const payload = await requestJson('/api/v1/dgfy/auth/me', { cache: 'no-store' });
         if (cancelled) return;
         const account = payload?.account || payload || null;
         setDgfySessionAccount(account && typeof account === 'object' ? account : null);
+        if (account && typeof account === 'object') {
+          clearDgfyAuthToken();
+          setDgfyAuthTokenState('');
+        }
       } catch {
+        if (cancelled) return;
+        if (legacyToken && !consumedHandoff) {
+          try {
+            const payload = await requestJson('/api/v1/dgfy/auth/me', {
+              authToken: legacyToken,
+              cache: 'no-store'
+            });
+            if (cancelled) return;
+            const account = payload?.account || payload || null;
+            setDgfySessionAccount(account && typeof account === 'object' ? account : null);
+            return;
+          } catch {
+            if (cancelled) return;
+          }
+        }
+        clearDgfyAuthToken();
+        setDgfyAuthTokenState('');
         if (cancelled) return;
         setDgfySessionAccount(null);
       }
@@ -6623,9 +6669,9 @@ export default function StorefrontApp() {
   }, [currentPathSubpage, isFnbOrderSubpage, pendingOrderInitialTab, routeSlug, routeSubpage, selectedStore?.slug, trackingPinInput, selectedTrackingPin]);
 
   useEffect(() => {
-    const isSignedIn = Boolean(readStoreAuthToken() || readDgfyAuthToken());
+    const isSignedIn = Boolean(readStoreAuthToken() || readDgfyAuthToken() || dgfySessionAccount?.id);
     setRememberCustomerDetails((previous) => (previous ? true : isSignedIn));
-  }, [accountPanel.me]);
+  }, [accountPanel.me, dgfySessionAccount?.id]);
 
   useEffect(() => {
     const me = accountPanel?.me;
@@ -6645,10 +6691,10 @@ export default function StorefrontApp() {
   }, [accountPanel.me]);
 
   useEffect(() => {
-    if (isGuestTrackingDrawerOpen && (!canOpenTrackingDrawer || !selectedStore?.slug)) {
+    if (isGuestTrackingDrawerOpen && (!canOpenTrackingDrawer || (!isDgfyCustomerSignedIn && !selectedStore?.slug))) {
       setIsGuestTrackingDrawerOpen(false);
     }
-  }, [canOpenTrackingDrawer, isGuestTrackingDrawerOpen, selectedStore?.slug]);
+  }, [canOpenTrackingDrawer, isDgfyCustomerSignedIn, isGuestTrackingDrawerOpen, selectedStore?.slug]);
 
   useEffect(() => {
     if (!dgfyAuthToken || accountPanel.loading) return;
@@ -6670,6 +6716,49 @@ export default function StorefrontApp() {
       setCustomerTrackLoadingReference('');
     }
   }, [isAccountDrawerOpen]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !isDgfyCustomerSignedIn) return undefined;
+    const shouldPollAccountOrders = isAccountDrawerOpen
+      || isStandaloneAccountPage
+      || isGuestTrackingDrawerOpen
+      || activeCustomerOrderCount > 0;
+    if (!shouldPollAccountOrders) return undefined;
+    let cancelled = false;
+    const refreshAccountOrders = async () => {
+      if (cancelled || accountPanelRefreshInFlightRef.current) return;
+      accountPanelRefreshInFlightRef.current = true;
+      try {
+        await handleLoadAccountPanel();
+      } finally {
+        accountPanelRefreshInFlightRef.current = false;
+      }
+    };
+    const pollMs = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return 30000;
+      return activeCustomerOrderCount > 0 ? 3000 : 15000;
+    };
+    let timerId = null;
+    const scheduleNext = () => {
+      if (cancelled) return;
+      timerId = window.setTimeout(async () => {
+        await refreshAccountOrders();
+        scheduleNext();
+      }, pollMs());
+    };
+    refreshAccountOrders();
+    scheduleNext();
+    return () => {
+      cancelled = true;
+      if (timerId) window.clearTimeout(timerId);
+    };
+  }, [
+    activeCustomerOrderCount,
+    isAccountDrawerOpen,
+    isDgfyCustomerSignedIn,
+    isGuestTrackingDrawerOpen,
+    isStandaloneAccountPage
+  ]);
 
   useEffect(() => {
     if (!isAccountDrawerOpen) return undefined;
@@ -9924,17 +10013,44 @@ export default function StorefrontApp() {
       return;
     }
     setAccountPanel((prev) => ({ ...prev, loading: true, error: '' }));
+    const loadDgfyAccountPanel = async (authToken = '') => {
+      const [meData, dashboardData, activitiesData, loyaltyData, companiesData] = await Promise.all([
+        requestJson('/api/v1/dgfy/auth/me', { authToken, cache: 'no-store' }),
+        requestJson('/api/v1/dgfy/customer/dashboard', { authToken, cache: 'no-store' }),
+        requestJson('/api/v1/dgfy/customer/activities?limit=100', { authToken, cache: 'no-store' }).catch(() => ({ activities: [] })),
+        requestJson('/api/v1/dgfy/customer/loyalty', { authToken, cache: 'no-store' }).catch(() => null),
+        requestJson('/api/v1/dgfy/account/companies', { authToken, cache: 'no-store' }).catch(() => ({ companies: [] }))
+      ]);
+      return {
+        meData,
+        dashboardData,
+        activitiesData,
+        loyaltyData,
+        companiesData
+      };
+    };
     try {
       if (dgfyToken || dgfySessionAccount?.id) {
-        const [meData, dashboardData, activitiesData, loyaltyData, companiesData] = await Promise.all([
-          requestJson('/api/v1/dgfy/auth/me', { authToken: dgfyToken, cache: 'no-store' }),
-          requestJson('/api/v1/dgfy/customer/dashboard', { authToken: dgfyToken, cache: 'no-store' }),
-          requestJson('/api/v1/dgfy/customer/activities?limit=100', { authToken: dgfyToken, cache: 'no-store' }).catch(() => ({ activities: [] })),
-          requestJson('/api/v1/dgfy/customer/loyalty', { authToken: dgfyToken, cache: 'no-store' }).catch(() => null),
-          requestJson('/api/v1/dgfy/account/companies', { authToken: dgfyToken, cache: 'no-store' }).catch(() => ({ companies: [] }))
-        ]);
+        const preferredToken = dgfySessionAccount?.id ? '' : dgfyToken;
+        let panelData;
+        try {
+          panelData = await loadDgfyAccountPanel(preferredToken);
+        } catch (error) {
+          if (error?.status === 401 && preferredToken) {
+            clearDgfyAuthToken();
+            setDgfyAuthTokenState('');
+            panelData = await loadDgfyAccountPanel('');
+          } else {
+            throw error;
+          }
+        }
+        const { meData, dashboardData, activitiesData, loyaltyData, companiesData } = panelData;
         const activityCollections = deriveAccountActivityCollections({ dashboardData, activitiesData });
         setDgfySessionAccount(meData?.account || dashboardData?.account || meData || dgfySessionAccount || null);
+        if (meData?.account || dashboardData?.account || meData) {
+          clearDgfyAuthToken();
+          setDgfyAuthTokenState('');
+        }
         setAccountPanel({
           loading: false,
           error: '',
@@ -9974,6 +10090,11 @@ export default function StorefrontApp() {
         businessStepUp: { verified: false }
       });
     } catch (error) {
+      if (error?.status === 401) {
+        clearDgfyAuthToken();
+        setDgfyAuthTokenState('');
+        setDgfySessionAccount(null);
+      }
       setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, error: normalizeStorefrontErrorMessage(error, 'Unable to load account.') });
     }
   };
@@ -10025,9 +10146,10 @@ export default function StorefrontApp() {
   }, [dgfySessionAccount?.id, goStoreTrackPage, routeSlug, selectedStore]);
   const handleSaveAccountAddress = useCallback(async (draft = {}, existingAddress = null) => {
     const token = readDgfyAuthToken();
+    const hasDgfySession = Boolean(token || dgfySessionAccount?.id);
     const addressLine = String(draft.address_line || '').trim();
-    if (!token || !addressLine) {
-      toast.error(token ? 'Enter an address before saving.' : 'Sign in to manage saved addresses.');
+    if (!hasDgfySession || !addressLine) {
+      toast.error(hasDgfySession ? 'Enter an address before saving.' : 'Sign in to manage saved addresses.');
       return false;
     }
     const addressId = existingAddress?.address_id;
@@ -10045,7 +10167,7 @@ export default function StorefrontApp() {
       toast.error(normalizeStorefrontErrorMessage(error, 'Unable to save this address.'));
       return false;
     } finally { setAccountAddressActionId(''); }
-  }, []);
+  }, [dgfySessionAccount?.id]);
   const handleSetDefaultAccountAddress = useCallback(async (address = {}) => {
     const addressId = address?.address_id;
     if (!addressId) return;
