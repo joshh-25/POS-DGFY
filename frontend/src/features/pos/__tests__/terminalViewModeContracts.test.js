@@ -119,9 +119,12 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('shiftOpeningModalOpen');
     expect(terminalPageContent).toContain('handleShiftOpeningModalOpenChange');
     expect(terminalPageContent).toContain('handleShiftOpeningModalSubmit');
+    expect(terminalPageContent).toContain('handleShiftOpeningModalLock');
     expect(terminalPageContent).toContain('<Dialog open={shiftOpeningModalOpen}');
     expect(terminalPageContent).toContain('canSubmitOpenShift');
     expect(terminalPageContent).toContain('required');
+    expect(terminalPageContent).toContain('Lock Terminal');
+    expect(terminalPageContent).toContain('Terminal locked. Unlock again when you are ready to open a shift.');
     expect(terminalPageContent).not.toContain('openingFloatAmount: configuredPettyCash.toFixed(2)');
     expect(terminalPageContent).toContain('Please open your shift before using the POS.');
     expect(terminalPageContent).toContain('You cannot use the POS because the shift is closed.');

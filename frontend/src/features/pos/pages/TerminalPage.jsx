@@ -1429,7 +1429,7 @@ export default function TerminalPage() {
     }
   };
 
-  const handleLock = () => {
+  const handleLock = useCallback(() => {
     setStoredTerminalLock(true);
     clearClientSession({
       reason: 'logout',
@@ -1442,7 +1442,7 @@ export default function TerminalPage() {
     setPosViewMode('checkout');
     setMobileNavOpen(false);
     setTerminalUser(null);
-  };
+  }, []);
 
   const handleOpenShift = async () => {
     if (complianceBlockerDetails) {
@@ -2011,6 +2011,10 @@ export default function TerminalPage() {
     event.preventDefault();
     handleOpenShift();
   }, [handleOpenShift]);
+  const handleShiftOpeningModalLock = useCallback(() => {
+    handleLock();
+    toast.message('Terminal locked. Unlock again when you are ready to open a shift.');
+  }, [handleLock]);
 
   return (
     <Suspense fallback={<div className="min-h-screen bg-slate-100 p-6 text-sm text-slate-500">Loading terminal workspace...</div>}>
@@ -2058,7 +2062,15 @@ export default function TerminalPage() {
                   />
                 </div>
               </div>
-              <DialogFooter className="border-t border-slate-100 px-5 py-4">
+              <DialogFooter className="border-t border-slate-100 px-5 py-4 sm:justify-between">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleShiftOpeningModalLock}
+                  disabled={shiftActionLoading.open}
+                >
+                  Lock Terminal
+                </Button>
                 <Button
                   type="submit"
                   className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
