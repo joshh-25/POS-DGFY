@@ -58,6 +58,12 @@
       "expected_authority_level": "reference"
     },
     {
+      "path": "docs/ops/CURRENT_PRODUCTION_RELEASE_2026-06-18.md",
+      "topic": "current_production_release_state",
+      "expected_status": "reference",
+      "expected_authority_level": "reference"
+    },
+    {
       "path": "docs/testing/ai-doc-discovery-validation.md",
       "topic": "ai_doc_discovery_validation",
       "expected_status": "authoritative",

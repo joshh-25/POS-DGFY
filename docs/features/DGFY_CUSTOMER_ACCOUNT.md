@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-06-17
+last_reviewed: 2026-06-18
 applies_to: dgfy_customer_account, storefront_account, customer_tracking
 topic: dgfy_customer_account
 ---
@@ -30,7 +30,7 @@ The controlled production mutation UAT passed on June 13, 2026 with dedicated QA
 
 The UAT ratings recorded by the gate are DGFY account UI shell `9.2`, DGFY signup/business registration `9.2`, e-commerce Storefront checkout `9.2`, POS order/inventory flow `9.2`, admin/payment/capability operations `9.1`, and production readiness `9.2`. The QA tenant, item, location, order, and account records are retained for audit cleanup and must not be treated as customer/operator data.
 
-The DGFY multi-company switching and email-only business step-up rollout is included in the latest production runtime SHA `156b7a199e359efe8731e4afbdafccf0b06c8b4a` with deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260617_020652.summary.txt`. The deployed contract includes IMS company switching, Storefront account Business / Your Businesses invitation visibility, pending invitation acceptance after `dgfy_business_step_up`, selected-company opening into SKUpervisor, no `company_token` exposure in the new switcher or invitation-acceptance payloads, direct IMS switcher loading only when the tenant-local user is linked to an accepted DGFY membership, founder/master-admin membership bootstrap from verified ownership evidence, and current-company rendering even when the accepted membership list contains only the active tenant. Production migration status reports `up 20260616000001-add-dgfy-company-switching.cjs`; unauthenticated route smoke for `/api/v1/dgfy/account/companies` returned `401`, proving the route is mounted and protected.
+The DGFY multi-company switching, DGFY-only company-access hardening, post-merge Storefront customer-flow hardening, and updated customer dashboard are included in the latest production runtime SHA `5caa201cb0468106fef859501181024f93746c49`. Fetched release evidence `.tmp/release-gates/5caa201cb0468106fef859501181024f93746c49/qa_deploy_summary.txt` records production summary `/var/www/skupervisor/logs/deploy/deploy_20260618_104004.summary.txt` with `deployed_head`, `remote_head`, and `expected_commit` all matching that SHA, and live `/api/v1/health` reports the same `services.observability.runtime_sha`. The deployed contract includes IMS company switching, Storefront account Business / Your Businesses invitation visibility, pending invitation acceptance after `dgfy_business_step_up`, selected-company opening into SKUpervisor, no `company_token` exposure in switcher/invitation/customer surfaces, direct IMS switcher loading only when the tenant-local user is linked to an accepted DGFY membership, founder/master-admin membership bootstrap from verified ownership evidence, current-company rendering even when the accepted membership list contains only the active tenant, return-target allowlist enforcement before handoff-token append, no browser-readable DGFY/customer token persistence, and no silent same-email tenant-local customer claiming without explicit `dgfy_account_id`.
 
 ## Guest Users
 

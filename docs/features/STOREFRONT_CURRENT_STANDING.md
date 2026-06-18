@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: frontend
-last_reviewed: 2026-06-16
+last_reviewed: 2026-06-18
 applies_to: storefront_all_modes
 topic: storefront_current_standing
 ---
@@ -55,6 +55,8 @@ This is a frontend capability/status reference, not a new architecture decision.
 - Storefront map/search stabilization is locally validated as of 2026-06-09. Submitted text searches stay storefront-first, item matches render tenant storefront result cards without auto-opening marker preview cards, repeated identical searches do not refit/flicker, duplicate-coordinate and 13-meter near-coordinate groups render as count pins that scope the existing results panel, hover previews collapse on pin leave, click/tap previews persist until closed, and visible discovery pins are renderer-owned map layer symbols rather than detached DOM overlays.
 - Branch-level Storefront availability is preserved from IMS item and product draft saves as well as final create/update flows. Draft saves now apply submitted branch toggles through the same `storefront_location_item_overrides` path used by active item edits.
 - F&B product detail pages render ordered item galleries as a carousel with previous/next controls, dot navigation, thumbnails, touch swipe support, and ARIA carousel labels. Gallery data is preserved from `storefront_image_gallery` JSON before legacy single-image fallback so multi-image customer-facing media remains available after catalog reads.
+- Storefront discovery search uses the PR #18 relevance closeout: Fuse.js ranking, exact/token fallback ordering, and map-pin fallback for search results without usable coordinates are production-live in SHA `5caa201cb0468106fef859501181024f93746c49`.
+- The routed DGFY customer dashboard uses the updated overview/orders/business layout and is production-live in SHA `5caa201cb0468106fef859501181024f93746c49`; dashboard/order surfaces must retain tracking actions and business registration while avoiding customer-visible `company_token`.
 - The merged storefront pilot keeps mode-specific view-model logic in the storefront app while preserving existing backend/source-of-truth contracts.
 
 ## Mode Standing
@@ -109,13 +111,13 @@ Targeted matrix result:
 - June 9 cluster panel/strict-hover follow-up slice: `PASS` (`39/39` targeted frontend tests). Coverage includes strict hover-preview dismissal when the pointer leaves a pin, click-preview persistence, duplicate-coordinate and 13-meter cluster count pins, cluster click routing into the existing results panel instead of a map list widget, and non-scaling View Results pulse CSS.
 - June 9 non-PayMongo frontend polish deployment slice: `PASS` (`42/42` targeted frontend tests). Coverage includes Storefront results-panel collapse behavior, route-aware tenant permission reload after login navigation, and fixed IMS item modal dimensions.
 - June 9 IMS item/product wizard sizing follow-up: `PASS` (`12/12` targeted frontend tests plus SKUpervisor build). Coverage includes the CSS-owned fixed wizard shell and standardized create/edit item/product modal dimensions across wizard steps.
-- June 16 runtime standing: latest production evidence available in this workspace records deployed code SHA `14de6e0f0d4497d7821e047704a66705b6164f29`; at proof time remote `HEAD`, remote `origin/master`, and `.deploy-state/last_deployed_commit` matched that SHA. The Storefront gallery preservation work from `5e327ba74fd83aa457339233536232efdd8fa8d0`, later wizard image-upload corrections, and the Storefront access-mode ceiling UI correction are included in that production runtime evidence. Space Bar remains requested `transaction` but effective `catalog`; checkout is intentionally unavailable until registration readiness permits effective `transaction`.
+- June 18 runtime standing: latest production evidence available in this workspace records deployed code SHA `5caa201cb0468106fef859501181024f93746c49`; fetched deploy evidence and live `/api/v1/health.services.observability.runtime_sha` match that SHA. This includes Storefront gallery preservation, wizard image-upload corrections, Storefront access-mode ceiling UI correction, PR #18 discovery ranking/pin fallback, PR #20 DGFY Storefront customer-flow updates, F&B mobile hero stabilization, and restored customer dashboard layout. Space Bar remains requested `transaction` but effective `catalog`; checkout is intentionally unavailable until registration readiness permits effective `transaction`.
 - Storefront discovery flow, map DOM, marker preview, and presentation suites: `PASS` (`42/42` targeted tests). npm printed the existing unknown `--pool` warning but executed the suites.
 - Backend Storefront discovery repository and map-pin use-case suites: `PASS` (`19/19` targeted tests), including union store/item matching, out-of-stock inclusion, nearest matching branches, and degraded snapshot behavior.
 - Storefront production build: `PASS`
 - Architecture guardrails and controller-boundary checks: `PASS`
 - Diff whitespace check: `PASS`
-- Local rendered route health: `PASS` for `/map-dgfy` page identity, desktop search controls, map region, overlay-free render, search-field interaction, and zero relevant console warnings/errors. Production route smoke passed for `https://dgfy.ph/map-dgfy` after deploying SHA `f72d5e93c3e96ee2f0b1ee305c32c37856016ca6`. The latest production evidence available in this workspace is deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260616_021931.summary.txt` for SHA `14de6e0f0d4497d7821e047704a66705b6164f29`, reporting Storefront runtime, public endpoint, tenant-store asset integrity, and frontend asset parity passing. Seeded-data zoom QA remains useful for real-pin placement evidence.
+- Local rendered route health: `PASS` for `/map-dgfy` page identity, desktop search controls, map region, overlay-free render, search-field interaction, and zero relevant console warnings/errors. Production route smoke passed for `https://dgfy.ph/map-dgfy` after deploying SHA `f72d5e93c3e96ee2f0b1ee305c32c37856016ca6`. The latest production evidence available in this workspace is deploy summary `/var/www/skupervisor/logs/deploy/deploy_20260618_104004.summary.txt` for SHA `5caa201cb0468106fef859501181024f93746c49`, reporting Storefront runtime evidence through public endpoint checks, frontend asset parity passing, and live runtime SHA health proof. Seeded-data zoom QA remains useful for real-pin placement evidence.
 
 ## Notes
 - This file intentionally tracks the frontend standing and test evidence snapshot only.
