@@ -1,10 +1,109 @@
-import { buildHealthResponse } from '../src/services/healthService.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { buildHealthResponse, resolveRuntimeShaInfo } from '../src/services/healthService.js';
 
 const originalEnv = { ...process.env };
 
 describe('healthService', () => {
     afterEach(() => {
         process.env = { ...originalEnv };
+    });
+
+    it('prefers release environment SHA over deploy marker fallback', () => {
+        const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sku-health-sha-'));
+        const markerPath = path.join(rootDir, 'last_deployed_commit');
+        fs.writeFileSync(markerPath, '1111111111111111111111111111111111111111\n');
+        process.env = {
+            ...originalEnv,
+            RELEASE_TARGET_SHA: '2222222222222222222222222222222222222222'
+        };
+
+        expect(resolveRuntimeShaInfo({
+            deployStatePath: markerPath,
+            environment: 'production'
+        })).toEqual({
+            runtimeSha: '2222222222222222222222222222222222222222',
+            source: 'env:RELEASE_TARGET_SHA',
+            present: true
+        });
+    });
+
+    it('uses production deploy marker as runtime SHA fallback', async () => {
+        const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sku-health-sha-'));
+        const markerPath = path.join(rootDir, 'last_deployed_commit');
+        fs.writeFileSync(markerPath, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n');
+        process.env = {
+            ...originalEnv,
+            RELEASE_TARGET_SHA: '',
+            DEPLOYED_COMMIT: '',
+            RELEASE_SHA: '',
+            GIT_SHA: '',
+            GIT_COMMIT: '',
+            COMMIT_SHA: '',
+            SOURCE_VERSION: '',
+            RENDER_GIT_COMMIT: '',
+            VERCEL_GIT_COMMIT_SHA: ''
+        };
+
+        const { health, statusCode } = await buildHealthResponse({
+            testConnectionFn: async () => true,
+            isRedisConnectedFn: () => false,
+            getTenantPoolStatsFn: () => ({
+                total: 1,
+                pending: 0,
+                capacity: 20,
+                utilizationPercent: 5
+            }),
+            getRateLimiterStoreModeFn: () => 'memory',
+            deployStatePath: markerPath,
+            environment: 'production'
+        });
+
+        expect(statusCode).toBe(200);
+        expect(health.services.observability).toEqual(expect.objectContaining({
+            status: 'healthy',
+            runtime_sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            runtime_sha_present: true,
+            runtime_sha_source: 'deploy_state:last_deployed_commit'
+        }));
+    });
+
+    it('warns when production cannot prove a runtime SHA', async () => {
+        process.env = {
+            ...originalEnv,
+            RELEASE_TARGET_SHA: '',
+            DEPLOYED_COMMIT: '',
+            RELEASE_SHA: '',
+            GIT_SHA: '',
+            GIT_COMMIT: '',
+            COMMIT_SHA: '',
+            SOURCE_VERSION: '',
+            RENDER_GIT_COMMIT: '',
+            VERCEL_GIT_COMMIT_SHA: ''
+        };
+
+        const { health, statusCode } = await buildHealthResponse({
+            testConnectionFn: async () => true,
+            isRedisConnectedFn: () => false,
+            getTenantPoolStatsFn: () => ({
+                total: 1,
+                pending: 0,
+                capacity: 20,
+                utilizationPercent: 5
+            }),
+            getRateLimiterStoreModeFn: () => 'memory',
+            deployStatePath: path.join(os.tmpdir(), 'missing-sku-deploy-marker'),
+            environment: 'production'
+        });
+
+        expect(statusCode).toBe(200);
+        expect(health.services.observability).toEqual(expect.objectContaining({
+            status: 'warning',
+            runtime_sha: null,
+            runtime_sha_present: false,
+            runtime_sha_source: null
+        }));
     });
 
     it('returns schema index payload and degrades health to 503 when indexes are degraded', async () => {

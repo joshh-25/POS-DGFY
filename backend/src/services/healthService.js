@@ -14,17 +14,71 @@ import {
     resolveSchedulerLockMode,
     resolveTempFileStorageMode
 } from '../config/hostingProfile.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { metricsEnabled } from './metricsService.js';
 import { isStructuredRequestLoggingEnabled } from './observabilityUtils.js';
 
 const buildUptime = (seconds) => `${Math.floor(seconds)}s`;
 
-const resolveRuntimeSha = () => (
-    process.env.RELEASE_TARGET_SHA
-    || process.env.DEPLOYED_COMMIT
-    || process.env.GIT_SHA
-    || null
-);
+const currentFilePath = fileURLToPath(import.meta.url);
+const repoRoot = path.resolve(path.dirname(currentFilePath), '../../..');
+const defaultDeployStatePath = path.join(repoRoot, '.deploy-state', 'last_deployed_commit');
+
+const runtimeShaPattern = /^[a-f0-9]{7,40}$/i;
+
+const normalizeRuntimeSha = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return runtimeShaPattern.test(normalized) ? normalized : null;
+};
+
+const readDeployStateSha = (deployStatePath) => {
+    try {
+        return normalizeRuntimeSha(fs.readFileSync(deployStatePath, 'utf8'));
+    } catch (_error) {
+        return null;
+    }
+};
+
+export const resolveRuntimeShaInfo = ({
+    explicitRuntimeSha,
+    deployStatePath = defaultDeployStatePath,
+    environment = process.env.NODE_ENV || 'development'
+} = {}) => {
+    const explicitSha = normalizeRuntimeSha(explicitRuntimeSha);
+    if (explicitSha) {
+        return { runtimeSha: explicitSha, source: 'argument', present: true };
+    }
+
+    const envCandidates = [
+        ['RELEASE_TARGET_SHA', process.env.RELEASE_TARGET_SHA],
+        ['DEPLOYED_COMMIT', process.env.DEPLOYED_COMMIT],
+        ['RELEASE_SHA', process.env.RELEASE_SHA],
+        ['GIT_SHA', process.env.GIT_SHA],
+        ['GIT_COMMIT', process.env.GIT_COMMIT],
+        ['COMMIT_SHA', process.env.COMMIT_SHA],
+        ['SOURCE_VERSION', process.env.SOURCE_VERSION],
+        ['RENDER_GIT_COMMIT', process.env.RENDER_GIT_COMMIT],
+        ['VERCEL_GIT_COMMIT_SHA', process.env.VERCEL_GIT_COMMIT_SHA]
+    ];
+
+    for (const [source, value] of envCandidates) {
+        const sha = normalizeRuntimeSha(value);
+        if (sha) {
+            return { runtimeSha: sha, source: `env:${source}`, present: true };
+        }
+    }
+
+    if (environment === 'production' || process.env.RUNTIME_SHA_DEPLOY_STATE_FALLBACK === '1') {
+        const deployStateSha = readDeployStateSha(deployStatePath);
+        if (deployStateSha) {
+            return { runtimeSha: deployStateSha, source: 'deploy_state:last_deployed_commit', present: true };
+        }
+    }
+
+    return { runtimeSha: null, source: null, present: false };
+};
 
 export const buildHealthResponse = async ({
     testConnectionFn,
@@ -34,14 +88,21 @@ export const buildHealthResponse = async ({
     runtimeSchemaAuditState = {},
     schemaIndexAuditState = {},
     billingFunnelAuditState = {},
-    runtimeSha = resolveRuntimeSha(),
     environment = process.env.NODE_ENV || 'development',
+    runtimeSha,
+    deployStatePath = defaultDeployStatePath,
     timestamp = new Date().toISOString(),
     uptimeSeconds = process.uptime()
 } = {}) => {
     const hostingProfile = getHostingProfile();
     const redisConfigured = isRedisConfigured();
     const redisRequired = hostingProfile === 'vps';
+    const runtimeShaInfo = resolveRuntimeShaInfo({
+        explicitRuntimeSha: runtimeSha,
+        deployStatePath,
+        environment
+    });
+    const runtimeShaMissingInProduction = environment === 'production' && !runtimeShaInfo.present;
     const health = {
         success: true,
         message: 'Server is running',
@@ -62,13 +123,15 @@ export const buildHealthResponse = async ({
             schemaIndexes: getSchemaIndexHealthService(schemaIndexAuditState),
             billingFunnelTelemetry: getBillingFunnelTelemetryHealthService(billingFunnelAuditState),
             observability: {
-                status: 'healthy',
+                status: runtimeShaMissingInProduction ? 'warning' : 'healthy',
                 trace_context_enabled: true,
                 request_id_header: 'x-request-id',
                 trace_id_header: 'x-trace-id',
                 structured_request_logging_enabled: isStructuredRequestLoggingEnabled(),
                 metrics_enabled: metricsEnabled(),
-                runtime_sha: runtimeSha,
+                runtime_sha: runtimeShaInfo.runtimeSha,
+                runtime_sha_present: runtimeShaInfo.present,
+                runtime_sha_source: runtimeShaInfo.source,
                 telemetry_audit_status: billingFunnelAuditState?.status || 'unknown',
                 telemetry_audit_last_checked_at: billingFunnelAuditState?.last_checked_at || null
             }

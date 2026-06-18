@@ -24,7 +24,7 @@ function parseArgs(argv) {
 function runCapture(command, args, options = {}) {
   const result = spawnSync(command, args, {
     encoding: 'utf8',
-    shell: process.platform === 'win32',
+    shell: false,
     ...options
   });
   return result.status === 0 ? String(result.stdout || '').trim() : '';
@@ -33,7 +33,7 @@ function runCapture(command, args, options = {}) {
 function runCommand(command, args, options = {}) {
   const result = spawnSync(command, args, {
     stdio: options.stdio || 'ignore',
-    shell: process.platform === 'win32',
+    shell: false,
     env: { ...process.env, ...(options.env || {}) },
     ...options
   });
@@ -53,6 +53,29 @@ function addCheck(checks, name, status, detail) {
 function parseDeployedHead(summaryContent) {
   const match = String(summaryContent || '').match(/deployed_head=([a-f0-9]{7,40})/i);
   return match ? match[1].toLowerCase() : '';
+}
+
+function normalizeSha(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return /^[a-f0-9]{7,40}$/.test(normalized) ? normalized : '';
+}
+
+function parseHealthRuntimeSha(healthText) {
+  try {
+    const payload = JSON.parse(String(healthText || '{}'));
+    const observability = payload?.services?.observability || {};
+    return {
+      runtimeSha: normalizeSha(observability.runtime_sha),
+      source: observability.runtime_sha_source || null,
+      present: Boolean(observability.runtime_sha_present || normalizeSha(observability.runtime_sha))
+    };
+  } catch (_error) {
+    return {
+      runtimeSha: '',
+      source: null,
+      present: false
+    };
+  }
 }
 
 async function fetchText(url, requestId) {
@@ -152,6 +175,32 @@ async function buildObservabilityEvidence(options = {}) {
       `x-request-id=${health.headers.request_id || '<missing>'}; x-trace-id=${health.headers.trace_id || '<missing>'}`
     );
 
+    const runtimeSha = health.ok ? parseHealthRuntimeSha(health.text) : { runtimeSha: '', source: null, present: false };
+    addCheck(
+      checks,
+      'health.runtime_sha.present',
+      runtimeSha.present && runtimeSha.runtimeSha ? 'pass' : 'fail',
+      `runtime_sha=${runtimeSha.runtimeSha || '<missing>'}; source=${runtimeSha.source || '<missing>'}`
+    );
+    if (targetSha && runtimeSha.runtimeSha) {
+      const matchesTarget = runtimeSha.runtimeSha === targetSha
+        || runtimeSha.runtimeSha.startsWith(targetSha)
+        || targetSha.startsWith(runtimeSha.runtimeSha);
+      addCheck(
+        checks,
+        'health.runtime_sha.matches_target',
+        matchesTarget ? 'pass' : 'fail',
+        `runtime_sha=${runtimeSha.runtimeSha}; target_sha=${targetSha}`
+      );
+    } else {
+      addCheck(
+        checks,
+        'health.runtime_sha.matches_target',
+        'warn',
+        `runtime_sha=${runtimeSha.runtimeSha || '<missing>'}; target_sha=${targetSha || '<missing>'}`
+      );
+    }
+
     if (String(process.env.METRICS_ENABLED || '').toLowerCase() === 'true') {
       const metrics = await fetchText(new URL('/metrics', baseUrl).toString(), probeRequestId);
       addCheck(checks, 'metrics.reachable', metrics.ok && metrics.text.includes('sku_http_requests_total') ? 'pass' : 'fail', metrics.error || `status=${metrics.status}`);
@@ -239,6 +288,7 @@ if (require.main === module) {
 module.exports = {
   buildObservabilityEvidence,
   parseDeployedHead,
+  parseHealthRuntimeSha,
   evaluateReleaseVerdict,
   parseArgs
 };

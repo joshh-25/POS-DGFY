@@ -231,6 +231,8 @@ Deployment evidence files:
 - `logs/deploy/deploy_<timestamp>.tenant_schema_sync.json`
 - `.deploy-state/last_deployed_commit` (runtime marker, not source-controlled)
 
+After PM2 reload, `/health` and `/api/v1/health` must report `services.observability.runtime_sha`. Treat a healthy response with a missing runtime SHA as unproven deployment evidence until the health SHA, `.deploy-state/last_deployed_commit`, and deploy-summary `deployed_head` match the target commit.
+
 Tenant sync baseline file (repo-tracked):
 - `backend/config/deploy/tenant-schema-sync-failure-baseline.json`
 

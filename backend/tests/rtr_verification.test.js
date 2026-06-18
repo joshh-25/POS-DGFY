@@ -10,10 +10,13 @@ jest.setTimeout(120000);
 describe('Refresh Token Rotation (RTR) Verification', () => {
     let testTenantContext;
     let companyToken;
+    let previousLegacyTenantRegistrationFlag;
     const REFRESH_COOKIE = 'sku_refresh_token';
     const CSRF_COOKIE = 'sku_csrf_token';
 
     beforeAll(async () => {
+        previousLegacyTenantRegistrationFlag = process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED;
+        process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED = 'true';
         await sequelize.authenticate();
         testTenantContext = await createTestTenant('rtrverify');
         companyToken = testTenantContext.token;
@@ -22,6 +25,11 @@ describe('Refresh Token Rotation (RTR) Verification', () => {
     afterAll(async () => {
         if (testTenantContext) {
             await destroyTestTenant(testTenantContext);
+        }
+        if (typeof previousLegacyTenantRegistrationFlag === 'undefined') {
+            delete process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED;
+        } else {
+            process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED = previousLegacyTenantRegistrationFlag;
         }
         await sequelize.close();
     });
