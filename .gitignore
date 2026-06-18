@@ -79,3 +79,6 @@ nul
 /*.txt
 /*.log
 pixel-agents/
+
+# Bun
+bun.lock

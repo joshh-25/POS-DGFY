@@ -65,6 +65,7 @@ These commits are local-only and therefore are not deployable through `scripts/d
 | `be591f64` | Not pushed, not deployed | Merge commit for PR #20 POS and Storefront updates. |
 | `20c3d36f` | Not pushed, not deployed | Post-merge hardening: DGFY return-target allowlist, no browser-readable customer token drift, no silent same-email store-customer linking, and production-source test anchor cleanup. |
 | `HEAD hardening commit` | Not pushed, not deployed | Pending-production proof and hardening: runtime SHA health proof, trace-header CORS exposure, CSRF route mounting, observability gate hardening, official pending-release inventory, and DGFY auth modal asset optimization. |
+| `HEAD PR #18 closeout commit` | Not pushed, not deployed | PR #18 closeout: Storefront discovery Fuse.js relevance ranking, search-result pin fallback, unreachable legacy discovery block removal, discovery ranking tests/docs, and root `bun.lock` ignore rule. |
 
 ## Readiness Hardening Added By This Pass
 
@@ -82,11 +83,11 @@ This pass adds production traceability hardening that must be included in the ne
 
 ## Feature And Surface Inventory Not Yet Production-Live
 
-The diff from proven production SHA `fe740baa0004bb903f482e1ac403c2e0826a3c92` to the local release candidate spans 133 files. The release surfaces are:
+The diff from proven production SHA `fe740baa0004bb903f482e1ac403c2e0826a3c92` to the local release candidate spans 137 files after the PR #18 closeout commit. The release surfaces are:
 
 - DGFY company access and switching: membership-only authorization, DGFY invitations, owner transfer, legacy link repair, company switcher, POS unlock, DGFY business audit rows, and migration support.
 - DGFY customer account and Storefront customer flow: global account entry, absolute return handoff, guest/account checkout chooser, signed-in customer context, saved address behavior, tracking drawer, account page/business actions, and no customer-visible `company_token`.
-- Storefront display and cosmetics: discovery/header account entry, F&B detail page, promo/review/footer sections, Solutions page, Storefront styles, optimized modal imagery, country flags, QR/share UI, and Storefront error copy.
+- Storefront display and cosmetics: discovery/header account entry, F&B detail page, promo/review/footer sections, Solutions page, Storefront styles, optimized modal imagery, country flags, QR/share UI, Storefront error copy, and discovery nearest-good-match ranking with map-pin fallback.
 - POS safety and operations: persistent terminal lock, DGFY POS unlock, shift open/close safety, opening cash requirement, closed-shift mutation blocking, POS discount validation, hardware message modal/bus, receipt print view updates, iMin bridge messaging, and reconciliation coverage.
 - Security and session hardening: HttpOnly browser-session guard coverage, DGFY handoff/return allowlist, DGFY cookie fallback store-auth without silent email claiming, DGFY auth service cookie-session behavior, and token-storage guard expansion.
 - Observability and release readiness: runtime SHA health proof, observability gate SHA checks, DGFY rendered UI smoke script, updated production/release docs, and compliance impact declarations.
