@@ -49,12 +49,16 @@
 - [ ] Merge-adoption manifest prepared for final master/deploy adoption
 - Manifest path:
 - Source refs and merge base:
+- User-approved merge decisions:
+  - If any conflict or semantic conflict affects UI, routing, API payloads, checkout steps, auth flow, customer dashboard data, governed docs, tests, or deployment gates, the AI agent asked the user what should win.
+  - Approved decisions are recorded in `semantic_conflict_review.user_approved_decisions`.
 - [ ] New PR/branch behavior is proved present in the final tree
 - [ ] Preserved master behavior is listed and proved when the resolution combines both sides
 - [ ] Rejected files/behavior have explicit reasons
 - Required command:
 ```bash
 npm run check:merge-adoption -- --manifest <manifest>
+npm run check:merge-adoption-required -- --base origin/master --head HEAD --manifest <manifest>
 ```
 
 ## Documentation Citation (Required For Planning/Design Changes)

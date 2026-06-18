@@ -14,6 +14,19 @@
       "reason": "Explain the authority or risk that requires rejection."
     }
   ],
+  "semantic_conflict_review": {
+    "status": "none",
+    "notes": "Use user-approved when a merge or semantic conflict affects UI, routing, API payloads, checkout steps, auth, customer dashboard data, governed docs, tests, or deployment gates.",
+    "user_approved_decisions": [
+      {
+        "area": "checkout-customer-identity",
+        "question_asked": "Should checkout step 1 use the source branch guest/account chooser, preserve master behavior, combine both, or reject both and implement a third resolution?",
+        "resolution": "combine",
+        "approved_by": "user-name-or-handoff-reference",
+        "rationale": "The source UI is adopted while preserving master account-owned order linkage and release gates."
+      }
+    ]
+  },
   "feature_areas": [
     {
       "id": "short-feature-id",

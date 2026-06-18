@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 const ALLOWED_DECISIONS = new Set(['adopt', 'combine', 'preserve-master', 'reject']);
+const ALLOWED_SEMANTIC_CONFLICT_STATUSES = new Set(['none', 'user-approved']);
 
 class MergeAdoptionError extends Error {
   constructor(message, options = {}) {
@@ -107,7 +108,6 @@ function runGit(projectRoot, args) {
   const result = spawnSync('git', args, {
     cwd: projectRoot,
     encoding: 'utf8',
-    shell: process.platform === 'win32',
   });
 
   return {
@@ -191,6 +191,35 @@ function validateManifest({ projectRoot, manifestPath, reportPath = '', logger =
   if (!manifest.target_branch) errors.push('manifest.target_branch is required');
   if (!Array.isArray(manifest.feature_areas) || manifest.feature_areas.length === 0) {
     errors.push('manifest.feature_areas must include at least one feature area');
+  }
+
+  const semanticReview = manifest.semantic_conflict_review;
+  if (!semanticReview || typeof semanticReview !== 'object') {
+    errors.push('manifest.semantic_conflict_review is required');
+  } else {
+    const status = semanticReview.status || '';
+    if (!ALLOWED_SEMANTIC_CONFLICT_STATUSES.has(status)) {
+      errors.push(
+        `manifest.semantic_conflict_review.status must be one of ${Array.from(ALLOWED_SEMANTIC_CONFLICT_STATUSES).join(', ')}`
+      );
+    }
+    const decisions = normalizeList(semanticReview.user_approved_decisions);
+    if (status === 'user-approved' && decisions.length === 0) {
+      errors.push('manifest.semantic_conflict_review.user_approved_decisions is required when status is user-approved');
+    }
+    for (const decision of decisions) {
+      if (!decision || typeof decision !== 'object') {
+        errors.push('semantic conflict decisions must be objects');
+        continue;
+      }
+      if (!decision.area) errors.push('semantic conflict decision requires area');
+      if (!decision.question_asked) errors.push('semantic conflict decision requires question_asked');
+      if (!ALLOWED_DECISIONS.has(decision.resolution || '')) {
+        errors.push(`semantic conflict decision resolution must be one of ${Array.from(ALLOWED_DECISIONS).join(', ')}`);
+      }
+      if (!decision.approved_by) errors.push('semantic conflict decision requires approved_by');
+      if (!decision.rationale) errors.push('semantic conflict decision requires rationale');
+    }
   }
 
   const rejectedFiles = normalizeRejectedFiles(manifest);
@@ -351,6 +380,7 @@ if (require.main === module) {
 
 module.exports = {
   ALLOWED_DECISIONS,
+  ALLOWED_SEMANTIC_CONFLICT_STATUSES,
   MergeAdoptionError,
   parseArgs,
   validateManifest,

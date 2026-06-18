@@ -36,6 +36,11 @@ function baseManifest(overrides = {}) {
     version: 1,
     merge_name: 'test merge',
     target_branch: 'master',
+    semantic_conflict_review: {
+      status: 'none',
+      notes: 'No behavioral merge conflicts were found in this test fixture.',
+      user_approved_decisions: [],
+    },
     feature_areas: [
       {
         id: 'storefront-customer-dashboard',

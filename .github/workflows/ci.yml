@@ -27,6 +27,20 @@ jobs:
       - name: Validate release verdict contract when present
         run: node scripts/verify-release-verdict.js --file .tmp/release-gates/release_verdict.json --sha "${GITHUB_SHA}" --allow-missing true
 
+  merge-adoption-required:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Require merge adoption proof for storefront customer-flow PRs
+        run: npm run check:merge-adoption-required -- --base "origin/${{ github.base_ref }}" --head "${{ github.sha }}"
+
   dependency-audit:
     runs-on: ubuntu-latest
     steps:
