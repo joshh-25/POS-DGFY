@@ -3118,7 +3118,7 @@ export default function POSCheckoutTerminal({
                                 </div>
                             )}
                         </div>
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-4 py-3 print:hidden">
+                        <div className="pos-receipt-print-footer flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-4 py-3 print:hidden">
                             <label className="flex items-center gap-2 text-xs font-extrabold text-slate-700">
                                 Paper
                                 <select
