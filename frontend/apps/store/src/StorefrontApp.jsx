@@ -16875,7 +16875,7 @@ return (
                   <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>Share your details once, choose fulfillment, review the order, and submit payment to the store team.</div>
                 </section>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0, borderBottom: '1px solid #e2e8f0', background: '#fff', borderRadius: '12px 12px 0 0', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 0, borderBottom: '1px solid #e2e8f0', background: '#fff', borderRadius: '12px 12px 0 0', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                   {[
                     { realStep: 1, displayStep: 0, label: 'Account' },
                     { realStep: 2, displayStep: 1, label: 'Fulfillment' },
