@@ -6,13 +6,16 @@ import {
   CalendarDays,
   ChevronRight,
   Clock3,
+  Edit,
   HeadphonesIcon,
   Home,
   HelpCircle,
   LogOut,
+  Mail,
   MapPin,
   Menu,
   Package,
+  Phone,
   RotateCcw,
   ShieldCheck,
   ShoppingBag,
@@ -274,6 +277,427 @@ export function DgfyCustomerAccountPage({
       ? renderAddressPinEditor({ draft, onChange: setDraft, mode })
       : null
   );
+
+  if (isPage && !isMobileViewport) {
+    const defaultAddress = allAddresses.find((address) => address?.is_default === true) || allAddresses[0];
+    const accountContactParts = String(accountIdentityContact || '')
+      .split('|')
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const overviewPhone = accountPanel?.me?.phone || accountContactParts.find((part) => /^\+|^\d/.test(part)) || '';
+    const overviewEmail = accountPanel?.me?.email || accountContactParts.find((part) => part.includes('@')) || '';
+    const activeOrderPreview = activeOrders.slice(0, 2);
+    const navButtonStyle = (selected) => ({
+      minHeight: 54,
+      border: 'none',
+      borderLeft: `4px solid ${selected ? '#1A4E8D' : 'transparent'}`,
+      borderRadius: '0 8px 8px 0',
+      background: selected ? '#AEE8F4' : 'transparent',
+      color: selected ? '#1A4E8D' : MUTED,
+      padding: '0 22px',
+      fontSize: 18,
+      fontWeight: selected ? 800 : 600,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 16,
+      textAlign: 'left',
+      cursor: 'pointer'
+    });
+    const desktopStatusBadge = (status) => {
+      const normalized = String(status || '').toLowerCase();
+      const isComplete = normalized.includes('complete') || normalized.includes('done');
+      const isConfirmed = normalized.includes('confirm') || normalized.includes('progress') || normalized.includes('prepar');
+      const color = isComplete ? '#16A34A' : isConfirmed ? '#1A4E8D' : '#667085';
+      const bg = isComplete ? '#ECFDF3' : isConfirmed ? '#AEE8F4' : '#F2F4F7';
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, background: bg, color, padding: '5px 11px', fontSize: 14, fontWeight: 800 }}>
+          {prettyStatus(status)}
+        </span>
+      );
+    };
+    const orderRow = (order, compact = false) => (
+      <div
+        key={`desktop-order-${order.activity_id || order.reference}`}
+        style={{
+          borderRadius: compact ? 0 : 16,
+          border: compact ? 'none' : `1px solid ${BORDER}`,
+          borderBottom: compact ? `1px solid ${BORDER}` : undefined,
+          background: '#FFFFFF',
+          padding: compact ? '22px 28px' : '34px 28px',
+          display: 'grid',
+          gridTemplateColumns: compact ? 'minmax(0, 1fr) 190px 170px' : 'minmax(0, 1.2fr) 220px 220px',
+          alignItems: 'center',
+          gap: 24,
+          minHeight: compact ? 94 : 124
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 18, minWidth: 0 }}>
+          <div style={{ width: compact ? 56 : 54, height: compact ? 56 : 54, borderRadius: compact ? '50%' : 12, background: compact ? '#101828' : '#AEE8F4', color: compact ? '#FFFFFF' : '#1A4E8D', display: 'grid', placeItems: 'center', fontSize: compact ? 12 : 0, fontWeight: 900, flexShrink: 0, lineHeight: 1.05, textAlign: 'center' }}>
+            {compact ? String(order.store_name || 'STORE').slice(0, 4).toUpperCase() : <Package size={26} strokeWidth={2.2} />}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: compact ? 18 : 16, fontWeight: 800, color: TEXT, lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {order.store_name || 'DGFY Store'}
+            </div>
+            <div style={{ marginTop: 5, fontSize: compact ? 14 : 13, color: MUTED, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {order.reference}{compact ? '' : ` - ${formatDate(order.occurred_at)}`}
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gap: 9, justifyItems: compact ? 'start' : 'center' }}>
+          {!compact ? <div style={{ fontSize: 22, fontWeight: 900, color: TEXT }}>{money(order.total_amount)}</div> : <div style={{ fontSize: 13, color: MUTED }}>Placed on {formatDate(order.occurred_at)}</div>}
+          {desktopStatusBadge(order.status_label || order.status)}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
+          <button
+            type="button"
+            onClick={() => onTrackReference(order.reference)}
+            disabled={customerTrackLoadingReference === order.reference}
+            style={{ minHeight: 42, borderRadius: 8, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: '#1A4E8D', padding: '0 20px', fontSize: 14, fontWeight: 800, cursor: customerTrackLoadingReference === order.reference ? 'wait' : 'pointer' }}
+          >
+            {customerTrackLoadingReference === order.reference ? 'Loading...' : (compact ? 'Track Order' : 'Track')}
+          </button>
+          {!compact ? (
+            <button
+              type="button"
+              onClick={() => onTrackReference(order.reference)}
+              style={{ minHeight: 42, borderRadius: 8, border: 'none', background: '#1A4E8D', color: '#FFFFFF', padding: '0 22px', fontSize: 14, fontWeight: 800, cursor: 'pointer' }}
+            >
+              View Receipt
+            </button>
+          ) : (
+            <ChevronRight size={18} color={MUTED} />
+          )}
+        </div>
+      </div>
+    );
+    const quickActions = [
+      { label: 'Reorder Items', icon: ShoppingBag, color: '#16A34A', action: () => setActiveNav('orders') },
+      { label: 'Add Address', icon: MapPin, color: '#E11D48', action: () => setActiveNav('addresses') },
+      { label: 'Update Profile', icon: User, color: '#1A4E8D', action: () => setActiveNav('account') },
+      { label: 'Help Center', icon: HelpCircle, color: '#7A5AF8', action: onHelp },
+      { label: 'Contact Support', icon: HeadphonesIcon, color: '#1A4E8D', action: onHelp }
+    ];
+    const ActiveSectionIcon = navItems.find((item) => item.id === activeNav)?.icon || User;
+
+    return (
+      <section aria-label="My Account" style={{ minHeight: '100vh', background: '#F9FAFB', display: 'grid', gridTemplateColumns: '296px minmax(0, 1fr)', color: TEXT }}>
+        <aside style={{ background: '#FFFFFF', borderRight: `1px solid ${BORDER}`, minHeight: '100vh', display: 'grid', gridTemplateRows: 'auto 1fr auto', position: 'sticky', top: 0 }}>
+          <div style={{ padding: '18px 28px 16px', borderBottom: `1px solid ${BORDER}` }}>
+            <img src="/dgfy-logo.png" alt="DGFY" style={{ width: 92, height: 'auto', display: 'block' }} />
+            <div style={{ marginTop: 4, color: '#1A4E8D', fontSize: 12, fontWeight: 700 }}>Discover Goods For You</div>
+          </div>
+          <nav style={{ padding: '28px 18px 18px', display: 'grid', alignContent: 'start', gap: 6 }}>
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const selected = activeNav === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveNav(item.id)}
+                  aria-current={selected ? 'page' : undefined}
+                  style={navButtonStyle(selected)}
+                >
+                  <Icon size={22} strokeWidth={2.1} />
+                  {item.label}
+                </button>
+              );
+            })}
+            <div style={{ height: 1, background: BORDER, margin: '26px 0 20px' }} />
+            <button type="button" onClick={onHelp} style={navButtonStyle(false)}>
+              <HelpCircle size={22} strokeWidth={2.1} />
+              Help Center
+            </button>
+            <button type="button" onClick={onHelp} style={navButtonStyle(false)}>
+              <HeadphonesIcon size={22} strokeWidth={2.1} />
+              Contact Support
+            </button>
+          </nav>
+          <div style={{ padding: '20px 28px 28px' }}>
+            <button type="button" onClick={onSignOut} style={{ border: 'none', background: 'transparent', color: '#DC2626', fontSize: 16, fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+              <LogOut size={20} strokeWidth={2.2} />
+              Sign out
+            </button>
+          </div>
+        </aside>
+
+        <main style={{ minWidth: 0 }}>
+          <header style={{ height: 82, borderBottom: `1px solid ${BORDER}`, background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 36px', position: 'sticky', top: 0, zIndex: 3 }}>
+            <button type="button" onClick={onClose} style={{ border: 'none', background: 'transparent', color: TEXT, fontSize: 16, fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+              <ChevronRight size={20} strokeWidth={2.4} style={{ transform: 'rotate(180deg)' }} />
+              Back to Discovery
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+              <button type="button" aria-label="Notifications" style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: '#FFFFFF', color: TEXT, display: 'grid', placeItems: 'center', cursor: 'pointer', position: 'relative' }}>
+                <Bell size={22} strokeWidth={2.1} />
+                <span style={{ position: 'absolute', top: 6, right: 5, minWidth: 15, height: 15, borderRadius: 999, background: '#DC2626', color: '#FFFFFF', fontSize: 9, fontWeight: 900, display: 'grid', placeItems: 'center' }}>3</span>
+              </button>
+              <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#AEE8F4', color: '#1A4E8D', display: 'grid', placeItems: 'center', fontSize: 14, fontWeight: 900 }}>
+                {accountIdentityInitials}
+              </div>
+              <button type="button" onClick={() => setActiveNav('account')} style={{ border: 'none', background: 'transparent', color: TEXT, fontSize: 16, fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                {accountIdentityName || 'Account'}
+                <ChevronRight size={16} strokeWidth={2.2} style={{ transform: 'rotate(90deg)' }} />
+              </button>
+            </div>
+          </header>
+
+          <div style={{ width: 'min(100%, 1280px)', margin: '0 auto', padding: activeNav === 'orders' ? '50px 40px' : '48px 40px', display: 'grid', gap: 28 }}>
+            {accountPanel?.error ? (
+              <div style={{ borderRadius: 12, border: '1px solid #FECACA', background: '#FEF2F2', color: '#B42318', padding: '12px 16px', fontSize: 14, fontWeight: 700 }}>
+                {accountPanel.error}
+              </div>
+            ) : null}
+            {accountPanel?.loading ? (
+              <div style={{ borderRadius: 12, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: MUTED, padding: '14px 16px', fontSize: 14 }}>
+                Loading your customer account data...
+              </div>
+            ) : null}
+
+            {activeNav === 'overview' ? (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.55fr) minmax(360px, 0.95fr)', gap: 28 }}>
+                  <section style={{ background: '#FFFFFF', border: `1px solid ${BORDER}`, borderRadius: 16, padding: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 28 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 24, minWidth: 0 }}>
+                      <div style={{ position: 'relative', flexShrink: 0 }}>
+                        <div style={{ width: 90, height: 90, borderRadius: '50%', background: '#AEE8F4', color: '#1A4E8D', display: 'grid', placeItems: 'center', fontSize: 32, fontWeight: 900 }}>
+                          {accountIdentityInitials}
+                        </div>
+                        {Boolean(accountPanel?.me?.is_email_verified) ? (
+                          <div style={{ position: 'absolute', right: 4, bottom: 4, width: 22, height: 22, borderRadius: '50%', background: '#16A34A', border: '2px solid #FFFFFF', color: '#FFFFFF', display: 'grid', placeItems: 'center' }}>
+                            <ShieldCheck size={14} strokeWidth={2.8} />
+                          </div>
+                        ) : null}
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+                          <h1 style={{ margin: 0, fontSize: 28, lineHeight: 1.1, fontWeight: 900, color: TEXT }}>{accountIdentityName}</h1>
+                          {Boolean(accountPanel?.me?.is_email_verified) ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#1A4E8D', color: '#FFFFFF', borderRadius: 4, padding: '4px 7px', fontSize: 11, fontWeight: 900 }}>
+                              <ShieldCheck size={12} strokeWidth={2.4} />
+                              Verified
+                            </span>
+                          ) : null}
+                        </div>
+                        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 18, color: MUTED, fontSize: 14, flexWrap: 'wrap' }}>
+                          {overviewPhone ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Phone size={17} /> {overviewPhone}</span> : null}
+                          {overviewEmail ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Mail size={17} /> {overviewEmail}</span> : null}
+                        </div>
+                      </div>
+                    </div>
+                    <button type="button" onClick={() => setActiveNav('account')} style={{ minHeight: 40, borderRadius: 8, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: '#1A4E8D', padding: '0 18px', fontSize: 14, fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      <Edit size={16} />
+                      Edit Profile
+                    </button>
+                  </section>
+
+                  <button type="button" onClick={onRegisterBusiness} style={{ background: '#FFFFFF', border: `1px solid ${BORDER}`, borderRadius: 16, padding: 28, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20, textAlign: 'left', cursor: 'pointer' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 22 }}>
+                      <span style={{ width: 72, height: 72, borderRadius: 16, background: '#AEE8F4', color: '#1A4E8D', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                        <Store size={34} strokeWidth={2.1} />
+                      </span>
+                      <span>
+                        <span style={{ display: 'block', fontSize: 22, fontWeight: 900, color: TEXT }}>Grow your business</span>
+                        <span style={{ display: 'block', marginTop: 7, fontSize: 16, lineHeight: 1.45, color: MUTED }}>Register your business on DGFY and unlock more opportunities.</span>
+                      </span>
+                    </span>
+                    <ChevronRight size={28} color={TEXT} />
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 18 }}>
+                  {[
+                    { label: 'Active Orders', value: activeOrderCount, icon: ShoppingBag, color: '#16A34A', bg: '#ECFDF3', link: 'View all', action: () => setActiveNav('orders') },
+                    { label: 'Past Orders', value: allOrders.length, icon: Package, color: '#1A4E8D', bg: '#AEE8F4', link: 'View all', action: () => setActiveNav('orders') },
+                    { label: 'Bookings', value: allBookings.length, icon: CalendarDays, color: '#7A5AF8', bg: '#F4F3FF', link: 'View all', action: () => setActiveNav('bookings') },
+                    { label: 'Addresses', value: allAddresses.length, icon: MapPin, color: '#E11D48', bg: '#FFF1F2', link: 'Manage', action: () => setActiveNav('addresses') },
+                    { label: 'Loyalty Points', value: Number(loyalty.balance || 0), icon: Award, color: '#16A34A', bg: '#ECFDF3', link: 'View details', action: () => setActiveNav('loyalty') }
+                  ].map((stat) => {
+                    const Icon = stat.icon;
+                    return (
+                      <button key={stat.label} type="button" onClick={stat.action} style={{ background: '#FFFFFF', border: `1px solid ${BORDER}`, borderRadius: 12, padding: 18, display: 'grid', gap: 12, textAlign: 'left', cursor: 'pointer', minHeight: 120 }}>
+                        <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 12 }}>
+                          <span>
+                            <span style={{ display: 'block', fontSize: 28, lineHeight: 1, fontWeight: 900, color: TEXT }}>{stat.value}</span>
+                            <span style={{ display: 'block', marginTop: 6, fontSize: 14, color: MUTED }}>{stat.label}</span>
+                          </span>
+                          <span style={{ width: 40, height: 40, borderRadius: 10, background: stat.bg, color: stat.color, display: 'grid', placeItems: 'center' }}>
+                            <Icon size={21} strokeWidth={2.1} />
+                          </span>
+                        </span>
+                        <span style={{ marginTop: 'auto', color: '#1A4E8D', fontSize: 14, fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          {stat.link} <ChevronRight size={15} />
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(340px, 1fr)', gap: 28 }}>
+                  <section style={{ background: '#FFFFFF', border: `1px solid ${BORDER}`, borderRadius: 16, overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${BORDER}`, padding: '0 28px' }}>
+                      {[
+                        ['active_orders', 'Active Orders', ShoppingBag],
+                        ['upcoming_bookings', 'Upcoming Bookings', CalendarDays],
+                        ['need_reviews', 'Need Reviews', Star]
+                      ].map(([tabId, label, Icon]) => {
+                        const selected = activeNav === 'overview' && (tabId === 'active_orders');
+                        return (
+                          <button key={tabId} type="button" style={{ minHeight: 70, border: 'none', borderBottom: selected ? '2px solid #1A4E8D' : '2px solid transparent', background: 'transparent', color: selected ? '#1A4E8D' : MUTED, fontSize: 16, fontWeight: selected ? 900 : 700, display: 'inline-flex', alignItems: 'center', gap: 9, padding: '0 18px', cursor: 'pointer' }}>
+                            <Icon size={18} />
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: 'grid' }}>
+                      {activeOrderPreview.length > 0 ? activeOrderPreview.map((order) => orderRow(order, true)) : (
+                        <div style={{ padding: 28, color: MUTED, fontSize: 15 }}>No active orders.</div>
+                      )}
+                      {activeOrderPreview.length > 0 ? (
+                        <button type="button" onClick={() => setActiveNav('orders')} style={{ minHeight: 64, border: 'none', background: '#FFFFFF', color: '#1A4E8D', fontSize: 16, fontWeight: 900, cursor: 'pointer' }}>
+                          View all active orders
+                        </button>
+                      ) : null}
+                    </div>
+                  </section>
+
+                  <section style={{ background: '#FFFFFF', border: `1px solid ${BORDER}`, borderRadius: 16, overflow: 'hidden' }}>
+                    <div style={{ padding: 28, borderBottom: `1px solid ${BORDER}`, display: 'grid', gap: 24 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+                        <div style={{ fontSize: 18, fontWeight: 900, color: TEXT }}>Default Address</div>
+                        <button type="button" onClick={() => setActiveNav('addresses')} style={{ border: 'none', background: 'transparent', color: '#1A4E8D', fontSize: 14, fontWeight: 800, cursor: 'pointer' }}>
+                          Manage addresses
+                        </button>
+                      </div>
+                      {defaultAddress ? (
+                        <div style={{ display: 'flex', gap: 18, alignItems: 'start' }}>
+                          <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#AEE8F4', color: '#1A4E8D', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                            <Home size={22} />
+                          </div>
+                          <div>
+                            <span style={{ display: 'inline-flex', background: '#ECFDF3', color: '#16A34A', borderRadius: 4, padding: '3px 8px', fontSize: 11, fontWeight: 900 }}>Default</span>
+                            <div style={{ marginTop: 10, fontSize: 15, lineHeight: 1.55, color: MUTED }}>{defaultAddress.address_line || 'Address line unavailable.'}</div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ color: MUTED, fontSize: 15 }}>No default address saved.</div>
+                      )}
+                    </div>
+                    <button type="button" onClick={() => setActiveNav('addresses')} style={{ minHeight: 64, border: 'none', background: '#FFFFFF', padding: '0 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: MUTED, fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+                      {allAddresses.length} saved addresses
+                      <ChevronRight size={18} />
+                    </button>
+                  </section>
+                </div>
+
+                <section style={{ display: 'grid', gap: 16 }}>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: TEXT }}>Quick Actions</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 18 }}>
+                    {quickActions.map((action) => {
+                      const Icon = action.icon;
+                      return (
+                        <button key={action.label} type="button" onClick={action.action} style={{ minHeight: 60, borderRadius: 8, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: TEXT, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '0 18px', fontSize: 15, fontWeight: 800, cursor: 'pointer' }}>
+                          <Icon size={19} color={action.color} />
+                          {action.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              </>
+            ) : null}
+
+            {activeNav === 'orders' ? (
+              <section style={{ display: 'grid', gap: 36 }}>
+                <h1 style={{ margin: 0, fontSize: 30, fontWeight: 900, color: TEXT }}>Orders</h1>
+                <div style={{ display: 'grid', gap: 20 }}>
+                  {allOrders.length > 0 ? allOrders.map((order) => orderRow(order, false)) : (
+                    <div style={{ borderRadius: 16, border: `1px dashed ${BORDER}`, background: '#FFFFFF', padding: 32, color: MUTED, fontSize: 16 }}>No account-linked orders yet.</div>
+                  )}
+                </div>
+              </section>
+            ) : null}
+
+            {activeNav !== 'overview' && activeNav !== 'orders' ? (
+              <section style={{ background: '#FFFFFF', border: `1px solid ${BORDER}`, borderRadius: 16, padding: 28, display: 'grid', gap: 18 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div style={{ width: 54, height: 54, borderRadius: 16, background: '#EAF2FF', color: '#1A4E8D', display: 'grid', placeItems: 'center' }}>
+                    <ActiveSectionIcon size={24} strokeWidth={2.2} />
+                  </div>
+                  <div>
+                    <h1 style={{ margin: 0, fontSize: 28, fontWeight: 900, color: TEXT }}>{navItems.find((item) => item.id === activeNav)?.label || 'Account'}</h1>
+                    <div style={{ marginTop: 6, fontSize: 15, color: MUTED }}>This section keeps the hardened DGFY account behavior from the current master branch.</div>
+                  </div>
+                </div>
+                {activeNav === 'bookings' ? (
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {allBookings.length ? allBookings.map((booking) => (
+                      <div key={`desktop-booking-${booking.activity_id || booking.reference}`} style={{ borderRadius: 12, border: `1px solid ${BORDER}`, padding: 16, display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                        <strong>{booking.store_name || 'DGFY Store'}</strong>
+                        <span>{booking.reference}</span>
+                        <span>{formatDate(booking.occurred_at)}</span>
+                      </div>
+                    )) : <div style={{ color: MUTED }}>No account-linked bookings yet.</div>}
+                  </div>
+                ) : null}
+                {activeNav === 'addresses' ? (
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {allAddresses.length ? allAddresses.map((address) => (
+                      <div key={`desktop-address-${address.address_id}`} style={{ borderRadius: 12, border: `1px solid ${BORDER}`, padding: 16 }}>
+                        <strong>{address.label || 'Address'}{address.is_default ? ' - Default' : ''}</strong>
+                        <div style={{ marginTop: 6, color: MUTED }}>{address.address_line || 'Address details unavailable.'}</div>
+                      </div>
+                    )) : <div style={{ color: MUTED }}>No saved locations yet.</div>}
+                  </div>
+                ) : null}
+                {activeNav === 'loyalty' ? (
+                  <div style={{ borderRadius: 12, border: `1px solid ${BORDER}`, padding: 18 }}>
+                    <div style={{ fontSize: 14, color: MUTED }}>Current balance</div>
+                    <div style={{ marginTop: 6, fontSize: 32, fontWeight: 900 }}>{Number(loyalty.balance || 0)}</div>
+                  </div>
+                ) : null}
+                {activeNav === 'account' ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 14 }}>
+                    {[
+                      ['Name', accountIdentityName],
+                      ['Contact', accountIdentityContact],
+                      ['Email status', accountPanel?.me?.is_email_verified ? 'Verified' : 'Unverified'],
+                      ['Account scope', 'Global DGFY customer']
+                    ].map(([label, value]) => (
+                      <div key={label} style={{ borderRadius: 12, border: `1px solid ${BORDER}`, background: '#F8FAFC', padding: 16 }}>
+                        <div style={{ fontSize: 12, fontWeight: 900, color: MUTED, textTransform: 'uppercase' }}>{label}</div>
+                        <div style={{ marginTop: 5, fontSize: 16, fontWeight: 800 }}>{value || 'Not available'}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {activeNav === 'business' ? (
+                  <div style={{ display: 'grid', gap: 14 }}>
+                    <button type="button" onClick={onRegisterBusiness} style={{ justifySelf: 'start', minHeight: 44, border: 'none', borderRadius: 10, background: '#1A4E8D', color: '#FFFFFF', padding: '0 18px', fontSize: 14, fontWeight: 900, cursor: 'pointer' }}>
+                      Register Your Business
+                    </button>
+                    {[...ownedCompanies, ...invitedCompanies, ...pendingInvitations].length ? [...ownedCompanies, ...invitedCompanies, ...pendingInvitations].map((company) => (
+                      <div key={`desktop-company-${company.membership_id || company.tenant_id}`} style={{ borderRadius: 12, border: `1px solid ${BORDER}`, background: '#F8FAFC', padding: 16, display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                        <div>
+                          <strong>{company.company_name || 'Company'}</strong>
+                          <div style={{ marginTop: 4, color: MUTED }}>{prettyStatus(company.role)} - {prettyStatus(company.status || company.requires_action || 'active')}</div>
+                        </div>
+                        {company.can_switch ? (
+                          <button type="button" onClick={() => startBusinessAction('switch', company)} style={{ minHeight: 40, borderRadius: 8, border: `1px solid ${BORDER}`, background: '#FFFFFF', color: TEXT, padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}>Open in SKUpervisor</button>
+                        ) : null}
+                      </div>
+                    )) : <div style={{ color: MUTED }}>No companies connected to this DGFY account yet.</div>}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+          </div>
+        </main>
+      </section>
+    );
+  }
 
   return (
     <>
