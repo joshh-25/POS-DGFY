@@ -1137,7 +1137,7 @@ describe('storefront discovery integration flow', () => {
     await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'space');
     await user.click(screen.getByRole('button', { name: /^Search$/i }));
     await waitFor(() => expect(screen.getAllByText('Space Bar').length).toBeGreaterThan(1));
-    await user.click(screen.getByRole('button', { name: /View Results \(1\)/i }));
+    expect(screen.getByRole('button', { name: /Hide Results/i })).toBeTruthy();
 
     await user.click(screen.getAllByRole('button', { name: 'Order Now' })[0]);
 

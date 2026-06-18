@@ -200,6 +200,8 @@ describe('discovery header customer account actions', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await user.click(screen.getByRole('button', { name: /log in \/ sign up/i }));
+    const dialog = await screen.findByRole('dialog', { name: 'DGFY Account' });
+    await user.click(within(dialog).getByRole('button', { name: /sign in \/ create account/i }));
 
     await waitFor(() => {
       expect(window.location.pathname).toBe('/dgfy/auth');

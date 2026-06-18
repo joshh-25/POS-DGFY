@@ -121,6 +121,12 @@ import { StorefrontShareQr as SharedStorefrontShareQr } from './Components/store
 import { StorefrontPromoSection as SharedStorefrontPromoSection } from './Components/storefront/sections/StorefrontPromoSection.jsx';
 import { StorefrontReviewsSection as SharedStorefrontReviewsSection } from './Components/storefront/sections/StorefrontReviewsSection.jsx';
 import { StorefrontFooterSection as SharedStorefrontFooterSection } from './Components/storefront/sections/StorefrontFooterSection.jsx';
+import { CheckoutHeroHeader } from './checkout/components/CheckoutHeroHeader.jsx';
+import { CheckoutStepProgressHeader } from './checkout/components/CheckoutStepProgressHeader.jsx';
+import { CustomerIdentityCard } from './checkout/components/CustomerIdentityCard.jsx';
+import { GuestIdentityForm } from './checkout/components/GuestIdentityForm.jsx';
+import { SavedCustomerDetailsPanel } from './checkout/components/SavedCustomerDetailsPanel.jsx';
+import { GuestTrackingDrawer } from './tracking/components/GuestTrackingDrawer.jsx';
 import { getServicesResponsiveLayout } from './storefrontViewport.js';
 import { createTrackingAdapterRegistry, fetchNormalizedTrackingEntity } from './tracking/core.js';
 import {
@@ -142,6 +148,7 @@ import {
 } from './businessRegistrationUrl.js';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
+const STOREFRONT_GUEST_TRACKING_DRAWER_COPY = 'Active guest orders for this store only.';
 const DEFAULT_CENTER = { latitude: 10.7202, longitude: 122.5621 };
 const PROVISIONED_PLACEHOLDER_COORDINATES = [
   { latitude: 10.699817, longitude: 122.559893 }
@@ -1468,6 +1475,23 @@ const maskValue = (value = '', keepPrefix = 2, keepSuffix = 1) => {
   if (raw.length <= keepPrefix + keepSuffix) return '*'.repeat(Math.max(2, raw.length));
   return `${raw.slice(0, keepPrefix)}${'*'.repeat(Math.max(2, raw.length - keepPrefix - keepSuffix))}${raw.slice(-keepSuffix)}`;
 };
+
+const splitCustomerName = (value = '') => {
+  const parts = String(value || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) {
+    return { firstName: parts[0] || '', lastName: '' };
+  }
+  return {
+    firstName: parts.slice(0, -1).join(' '),
+    lastName: parts[parts.length - 1]
+  };
+};
+
+const buildCustomerFullName = (firstName = '', lastName = '') => [firstName, lastName]
+  .map((part) => String(part || '').trim())
+  .filter(Boolean)
+  .join(' ')
+  .trim();
 
 const requestJson = async (url, { method = 'GET', body, storeSlug, authToken = '', cache = 'default', signal } = {}) => {
   let response;
@@ -4512,9 +4536,12 @@ export default function StorefrontApp() {
   const [, setCatalogImageErrors] = useState(() => new Set());
   const [cartImageErrors, setCartImageErrors] = useState(() => new Set());
   const [brandingImageErrors, setBrandingImageErrors] = useState(() => new Set());
+  const [customerFirstName, setCustomerFirstName] = useState('');
+  const [customerLastName, setCustomerLastName] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
+  const [guestCheckoutUnlocked, setGuestCheckoutUnlocked] = useState(false);
   const [rememberCustomerDetails, setRememberCustomerDetails] = useState(() => Boolean(readStoreAuthToken()));
   const [savedCustomerDetails, setSavedCustomerDetails] = useState(() => readSavedCustomerDetails());
   const [customerAddress, setCustomerAddress] = useState('');
@@ -4722,6 +4749,7 @@ export default function StorefrontApp() {
   const storeAuthToken = readStoreAuthToken();
   const dgfyAuthToken = String(dgfyAuthTokenState || '').trim();
   const isDgfyCustomerSignedIn = Boolean(dgfyAuthToken || dgfySessionAccount?.id);
+  const canUseGuestCheckoutFlow = !isDgfyCustomerSignedIn && guestCheckoutUnlocked;
   const isStorefrontAccountAuthenticated = Boolean(storeAuthToken || dgfyAuthToken || dgfySessionAccount?.id);
   const isGuestStorefrontUser = !isStorefrontAccountAuthenticated;
   const trackingMode = isFnbMode ? 'fnb' : (isServicesMode ? 'services' : 'simple');
@@ -4865,11 +4893,26 @@ export default function StorefrontApp() {
       activeStatuses.has(String(order?.status || '').trim().toLowerCase())
     ));
   }, [accountPanel.orders]);
+  const accountTrackingDrawerOrders = useMemo(() => activeCustomerOrders.map((order) => ({
+    ...order,
+    tracking_pin: String(order.tracking_pin || order.reference || '').trim().toUpperCase(),
+    status_label: order.status_label || order.status,
+    store_name: order.store_name || order.business_name || order.tenant_name || 'DGFY store',
+    store_logo: order.store_logo || order.storefront_profile_image_url || '',
+    order_method: order.order_method || order.fulfillment_method || 'delivery',
+    item_count: order.item_count || (Array.isArray(order.lines) ? order.lines.length : 1),
+    total_amount: order.total_amount ?? order.total ?? order.amount ?? 0,
+    created_at: order.created_at || order.occurred_at || order.order_time,
+    updated_at: order.updated_at || order.occurred_at || order.order_time
+  })).filter((order) => order.tracking_pin), [activeCustomerOrders]);
   const activeCustomerOrderCount = activeCustomerOrders.length;
 
   const applySavedCustomerDetails = useCallback(() => {
     if (!savedCustomerDetails) return;
     setCustomerName(savedCustomerDetails.name || '');
+    const nameParts = splitCustomerName(savedCustomerDetails.name || '');
+    setCustomerFirstName(nameParts.firstName);
+    setCustomerLastName(nameParts.lastName);
     setCustomerPhone(savedCustomerDetails.phone || '');
     setCustomerEmail(savedCustomerDetails.email || '');
     toast.success('Saved details applied.');
@@ -4973,58 +5016,61 @@ export default function StorefrontApp() {
     }
   }, [dgfySessionAccount?.id, selectedStore?.slug]);
   const renderSavedDetailsCard = () => (
-    <div style={{ border: '1px solid #dbe5ee', borderRadius: 12, padding: '10px 12px', background: '#f8fafc', display: 'grid', gap: 10 }}>
-      {hasSavedCustomerDetails ? (
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ display: 'grid', gap: 2 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: '#0f172a' }}>Use saved details</div>
-            <div style={{ fontSize: 12, color: '#64748b' }}>{maskedSavedCustomerPreview || 'Saved customer profile'}</div>
-          </div>
-          <button
-            type="button"
-            onClick={applySavedCustomerDetails}
-            style={{ minHeight: 34, borderRadius: 10, border: '1px solid #1a4e8d', background: '#fff', color: '#1a4e8d', padding: '0 12px', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}
-          >
-            Apply
-          </button>
-        </div>
-      ) : (
-        <div style={{ fontSize: 12, color: '#64748b' }}>No saved details yet. Complete a successful order to reuse your customer details next time.</div>
-      )}
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#334155' }}>
-        <input
-          type="checkbox"
-          checked={rememberCustomerDetails}
-          onChange={(event) => setRememberCustomerDetails(event.target.checked)}
-          style={{ width: 16, height: 16 }}
-        />
-        <span>Remember my details for next orders</span>
-      </label>
-      <div style={{ fontSize: 11, color: '#64748b' }}>Saved details are used only to speed up your checkout.</div>
-    </div>
+    <SavedCustomerDetailsPanel
+      hasSavedCustomerDetails={hasSavedCustomerDetails}
+      maskedSavedCustomerPreview={maskedSavedCustomerPreview}
+      rememberCustomerDetails={rememberCustomerDetails}
+      onApplySavedCustomerDetails={applySavedCustomerDetails}
+      onRememberCustomerDetailsChange={setRememberCustomerDetails}
+    />
   );
-  const renderSignedInCheckoutCard = () => (
-    <div style={{ border: '1px solid #bfdbfe', borderRadius: 14, padding: '12px 14px', background: '#eff6ff', display: 'grid', gap: 10 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#1A4E8D', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 900, flexShrink: 0 }}>
-          {accountIdentityInitials}
-        </div>
-        <div style={{ display: 'grid', gap: 3, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 900, color: '#1e293b' }}>Signed in DGFY account</div>
-          <div style={{ fontSize: 16, fontWeight: 900, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{signedInCheckoutName || 'DGFY customer'}</div>
-          <div style={{ fontSize: 12, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {[signedInCheckoutPhone, signedInCheckoutEmail].filter(Boolean).join(' | ') || 'Account contact will be used for this checkout.'}
-          </div>
-        </div>
-      </div>
-      <div style={{ fontSize: 12, color: '#1e40af', lineHeight: 1.5 }}>
-        This order will be linked to your DGFY account. Guest name, email, and phone fields are skipped.
-      </div>
-    </div>
+  const renderSignedInCheckoutCard = ({
+    title = 'Signed in DGFY account',
+    subtitle = 'This order will be linked to your DGFY account.'
+  } = {}) => (
+    <CustomerIdentityCard
+      title={title}
+      subtitle={subtitle}
+      name={signedInCheckoutName || 'DGFY customer'}
+      phone={signedInCheckoutPhone}
+      email={signedInCheckoutEmail}
+      isMobileViewport={isMobileViewport}
+      bodyFont={servicesBodyFont}
+      displayFont={servicesDisplayFont}
+    />
+  );
+  const renderGuestIdentityFields = ({
+    title = 'Guest Details',
+    subtitle = 'These guest details will be used for this order.',
+    includeAddress = false,
+    addressLabel = 'Delivery Address',
+    addressPlaceholder = 'House no., street, barangay, landmark',
+    addressRequired = false
+  } = {}) => (
+    <GuestIdentityForm
+      title={title}
+      subtitle={subtitle}
+      includeAddress={includeAddress}
+      addressLabel={addressLabel}
+      addressPlaceholder={addressPlaceholder}
+      addressRequired={addressRequired}
+      firstName={customerFirstName}
+      lastName={customerLastName}
+      phone={customerPhone}
+      email={customerEmail}
+      address={customerAddress}
+      onFirstNameChange={setCustomerFirstName}
+      onLastNameChange={setCustomerLastName}
+      onPhoneChange={setCustomerPhone}
+      onEmailChange={setCustomerEmail}
+      onAddressChange={setCustomerAddress}
+      isMobileViewport={isMobileViewport}
+    />
   );
   const continueCheckoutAsGuest = () => {
     setCheckoutIdentityChoice('guest');
-    setFnbOrderStep(2);
+    setGuestCheckoutUnlocked(true);
+    setFnbOrderStep(3);
     setSimpleOrderStep(1);
   };
   const continueCheckoutAsAccount = () => {
@@ -5032,28 +5078,31 @@ export default function StorefrontApp() {
   };
   const renderCheckoutIdentityChooser = ({ mode = 'product' } = {}) => (
     <section style={{ border: '1px solid #dbe5ee', borderRadius: 18, background: '#fff', padding: isMobileViewport ? 16 : 22, display: 'grid', gap: 16, boxShadow: '0 12px 28px rgba(15,23,42,.06)' }}>
-      <div style={{ display: 'grid', gap: 6 }}>
-        <div style={{ fontSize: 12, fontWeight: 900, color: '#1A4E8D', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Checkout identity</div>
-        <div style={{ fontSize: isMobileViewport ? 22 : 28, fontWeight: 900, color: '#0f172a', lineHeight: 1.1 }}>
-          Continue with a DGFY account or checkout as guest
+      <div style={{ textAlign: 'center', display: 'grid', gap: 6 }}>
+        <div style={{ fontSize: isMobileViewport ? 28 : 34, fontWeight: 900, color: '#0f172a', lineHeight: 1.05 }}>
+          Continue to your order
         </div>
-        <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.55 }}>
-          Account checkout links {mode === 'menu' ? 'this menu order' : 'this order'} to your dashboard. Guest checkout keeps tracking on this storefront only.
+        <div style={{ fontSize: 14, color: '#64748b', lineHeight: 1.55 }}>
+          Create an account or continue as guest to continue this {mode === 'menu' ? 'menu order' : 'order'}.
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
-        <button type="button" onClick={continueCheckoutAsAccount} style={{ border: '1px solid #1A4E8D', borderRadius: 14, background: '#1A4E8D', color: '#fff', minHeight: 88, padding: '14px 16px', display: 'grid', gap: 6, textAlign: 'left', cursor: 'pointer' }}>
-          <span style={{ fontSize: 16, fontWeight: 900 }}>Create or sign in to DGFY</span>
-          <span style={{ fontSize: 12, lineHeight: 1.45, opacity: 0.92 }}>Use saved locations and see the order in My Account.</span>
-        </button>
-        <button type="button" onClick={continueCheckoutAsGuest} style={{ border: '1px solid #dbe5ee', borderRadius: 14, background: '#fff', color: '#0f172a', minHeight: 88, padding: '14px 16px', display: 'grid', gap: 6, textAlign: 'left', cursor: 'pointer' }}>
-          <span style={{ fontSize: 16, fontWeight: 900 }}>Continue as Guest</span>
-          <span style={{ fontSize: 12, lineHeight: 1.45, color: '#64748b' }}>Enter first and last name, contact, and track by PIN.</span>
-        </button>
-      </div>
-      <button type="button" onClick={goStoreCatalogPage} style={{ justifySelf: 'start', border: 'none', background: 'transparent', color: '#334155', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>
-        Back to catalog
+      <button type="button" onClick={continueCheckoutAsAccount} style={{ minHeight: 54, borderRadius: 12, border: 'none', background: '#1A4E8D', color: '#fff', padding: '0 18px', fontSize: 16, fontWeight: 800, cursor: 'pointer', boxShadow: '0 10px 24px rgba(26,78,141,.18)' }}>
+        Create DGFY Account
       </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>or</span>
+        <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+      </div>
+      <button type="button" onClick={continueCheckoutAsGuest} style={{ minHeight: 52, borderRadius: 12, border: '1px solid #1A4E8D', background: '#fff', color: '#1A4E8D', padding: '0 18px', fontSize: 16, fontWeight: 800, cursor: 'pointer' }}>
+        Continue as Guest
+      </button>
+      <div style={{ textAlign: 'center', fontSize: 13, color: '#64748b' }}>
+        Already have an account?{' '}
+        <button type="button" onClick={continueCheckoutAsAccount} style={{ border: 'none', background: 'transparent', color: '#1A4E8D', fontWeight: 800, padding: 0, cursor: 'pointer' }}>
+          Log in
+        </button>
+      </div>
     </section>
   );
 
@@ -5561,6 +5610,7 @@ export default function StorefrontApp() {
   useEffect(() => {
     if (isDgfyCustomerSignedIn) {
       setCheckoutIdentityChoice('account');
+      setGuestCheckoutUnlocked(false);
     }
   }, [isDgfyCustomerSignedIn]);
 
@@ -5579,15 +5629,25 @@ export default function StorefrontApp() {
     setCustomerName((previous) => String(previous || '').trim() ? previous : profileFromAccount.name);
     setCustomerPhone((previous) => String(previous || '').trim() ? previous : profileFromAccount.phone);
     setCustomerEmail((previous) => String(previous || '').trim() ? previous : profileFromAccount.email);
+    const nameParts = splitCustomerName(profileFromAccount.name);
+    setCustomerFirstName((previous) => String(previous || '').trim() ? previous : nameParts.firstName);
+    setCustomerLastName((previous) => String(previous || '').trim() ? previous : nameParts.lastName);
     setSavedCustomerDetails(profileFromAccount);
     writeSavedCustomerDetails(profileFromAccount);
   }, [accountPanel.me]);
 
   useEffect(() => {
-    if (isGuestTrackingDrawerOpen && (!isGuestStorefrontUser || isStandaloneTrackingPage || !selectedStore?.slug)) {
+    if (isDgfyCustomerSignedIn) return;
+    const mergedName = buildCustomerFullName(customerFirstName, customerLastName);
+    if (!mergedName) return;
+    setCustomerName((previous) => (previous === mergedName ? previous : mergedName));
+  }, [customerFirstName, customerLastName, isDgfyCustomerSignedIn]);
+
+  useEffect(() => {
+    if (isGuestTrackingDrawerOpen && (!(isGuestStorefrontUser || isDgfyCustomerSignedIn) || isStandaloneTrackingPage || !selectedStore?.slug)) {
       setIsGuestTrackingDrawerOpen(false);
     }
-  }, [isGuestStorefrontUser, isGuestTrackingDrawerOpen, isStandaloneTrackingPage, selectedStore?.slug]);
+  }, [isDgfyCustomerSignedIn, isGuestStorefrontUser, isGuestTrackingDrawerOpen, isStandaloneTrackingPage, selectedStore?.slug]);
 
   useEffect(() => {
     if (dgfyAuthToken || storeAuthToken || dgfySessionAccount?.id) return;
@@ -5813,8 +5873,8 @@ export default function StorefrontApp() {
     if (isDgfyCustomerSignedIn && checkoutIdentityChoice !== 'account') {
       setCheckoutIdentityChoice('account');
     }
-    setFnbOrderStep(checkoutResult ? 4 : (nextIdentityChoice ? 2 : 1));
-    setSimpleOrderStep(checkoutResult ? 4 : (nextIdentityChoice ? 1 : 0));
+    setFnbOrderStep(checkoutResult ? 4 : 3);
+    setSimpleOrderStep(checkoutResult ? 4 : 1);
     setCheckoutTab(resolvedInitialTab);
     setIsCheckoutOpen(false);
   };
@@ -5861,8 +5921,8 @@ export default function StorefrontApp() {
     if (isDgfyCustomerSignedIn && checkoutIdentityChoice !== 'account') {
       setCheckoutIdentityChoice('account');
     }
-    setFnbOrderStep(checkoutResult ? 4 : (nextIdentityChoice ? 2 : 1));
-    setSimpleOrderStep(checkoutResult ? 4 : (nextIdentityChoice ? 1 : 0));
+    setFnbOrderStep(checkoutResult ? 4 : 3);
+    setSimpleOrderStep(checkoutResult ? 4 : 1);
     setCheckoutTab(resolvedInitialTab);
     setIsCheckoutOpen(false);
   };
@@ -9309,7 +9369,7 @@ export default function StorefrontApp() {
     discoveryIntentSequenceRef.current = intentSequence;
     setHasDiscoveryExplorationStarted(true);
     setDiscoveryPinScope('tenant_primary');
-    setIsStoreListVisible(false);
+    setIsStoreListVisible(true);
     setIsMobileResultsCollapsed(false);
     setSelectedMapPin(null);
     lastImmediateDiscoveryRequestRef.current = { search: currentSearch, at: Date.now() };
@@ -9394,6 +9454,7 @@ export default function StorefrontApp() {
   const fnbHasPrimaryContact = String(customerPhone || '').trim().length > 0 || String(customerEmail || '').trim().length > 0;
   const fnbHasDeliveryAddress = !isDeliveryOrder || String(activePinnedDeliveryAddress || customerAddress || '').trim().length > 0;
   const fnbCustomerStepComplete = (hasSignedInCheckoutIdentity || (fnbHasCustomerName && fnbHasPrimaryContact)) && fnbHasDeliveryAddress;
+  const fnbFulfillmentStepComplete = fnbHasDeliveryAddress;
   const fnbOrderBrand = '#1A4E8D';
   const fnbOrderBrandDark = '#1A4586';
   const fnbOrderBrandSoft = '#AEE8F4';
@@ -10584,7 +10645,7 @@ export default function StorefrontApp() {
                   goDiscoveryAccountPage();
                   return;
                 }
-                openCanonicalDgfyAuth('customer');
+                openCustomerAuthDrawer();
               }}
               onBusinessClick={openBusinessRegistrationFlow}
             />
@@ -16869,84 +16930,34 @@ return (
                 {/* -- Content area (padded, max-width constrained) ------------------- */}
                 <div style={{ display: 'grid', gap: 18, maxWidth: 1240, margin: '0 auto', width: '100%', padding: isDesktopCheckout ? '20px 40px 40px' : '10px 16px 20px', boxSizing: 'border-box' }}>
 
-                <section style={{ background: '#fff', padding: isMobileViewport ? '4px 0 8px' : '4px 0 12px', display: 'grid', gap: 6 }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: fnbOrderBrand, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Order Journey</div>
-                  <div style={{ fontSize: isMobileViewport ? 24 : 30, fontWeight: 900, color: '#1e293b', lineHeight: 1.1, fontFamily: servicesDisplayFont }}>Complete Your Menu Order</div>
-                  <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>Share your details once, choose fulfillment, review the order, and submit payment to the store team.</div>
-                </section>
+                <CheckoutHeroHeader
+                  eyebrow="Order Journey"
+                  title="Complete Your Menu Order"
+                  description="Share your details once, choose fulfillment, review the order, and submit payment to the store team."
+                  isMobileViewport={isMobileViewport}
+                  accentColor={fnbOrderBrand}
+                  accentSoft="#EEF6FD"
+                  accentBorder="#AEE8F4"
+                  displayFont={servicesDisplayFont}
+                />
 
-                <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 0, borderBottom: '1px solid #e2e8f0', background: '#fff', borderRadius: '12px 12px 0 0', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-                  {[
-                    { realStep: 1, displayStep: 0, label: 'Account' },
-                    { realStep: 2, displayStep: 1, label: 'Fulfillment' },
-                    { realStep: 3, displayStep: 2, label: 'Customer' },
-                    { realStep: 4, displayStep: 3, label: 'Payment' }
-                  ].map((item) => {
-                    const isActive = fnbOrderStep === item.realStep;
-                    const done = fnbOrderStep > item.realStep;
-                    return (
-                      <button
-                        key={`fnb-order-step-${item.realStep}`}
-                        type="button"
-                        onClick={() => {
-                          if (item.realStep === 1 && !isDgfyCustomerSignedIn && !checkoutIdentityChoice) {
-                            setFnbOrderStep(1);
-                            return;
-                          }
-                          if (item.realStep === 2 && cart.length > 0) {
-                            setFnbOrderStep(2);
-                            return;
-                          }
-                          if (item.realStep === 3 && cart.length > 0) {
-                            setFnbOrderStep(3);
-                            return;
-                          }
-                          if (item.realStep === 4 && cart.length > 0 && fnbCustomerStepComplete) {
-                            setFnbOrderStep(4);
-                          }
-                        }}
-                        style={{
-                          border: 'none',
-                          borderBottom: isActive ? `3px solid ${fnbOrderBrand}` : '3px solid transparent',
-                          background: 'transparent',
-                          color: isActive ? fnbOrderBrand : '#64748b',
-                          padding: '12px 6px',
-                          fontSize: isMobileViewport ? 12 : 14,
-                          fontWeight: isActive ? 800 : 600,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 8,
-                          transition: 'all 200ms ease'
-                        }}
-                      >
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ width: 22, height: 22, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, background: isActive ? fnbOrderBrand : (done ? '#0f766e' : '#cbd5e1'), color: '#fff', transition: 'all 200ms ease' }}>
-                            {item.displayStep}
-                          </span>
-                          <span>{item.label}</span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {fnbOrderStep === 1 && (
-                  <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.5fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
-                    {renderCheckoutIdentityChooser({ mode: 'menu' })}
-                    <aside style={{ display: 'grid', gap: 14, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
-                      <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 18, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 14 }}>
-                        <div style={{ fontSize: 12, fontWeight: 800, color: fnbOrderBrand, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Summary</div>
-                        <div style={{ fontSize: 38, fontWeight: 900, color: '#1e293b', lineHeight: 1 }}>{money(totalsForDisplay.total_amount)}</div>
-                        <div style={{ display: 'grid', gap: 10, fontSize: 13, color: '#334155' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Items</span><strong>{cartCount} item{cartCount === 1 ? '' : 's'}</strong></div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>Status</span><strong>Choose checkout identity</strong></div>
-                        </div>
-                      </div>
-                    </aside>
-                  </div>
-                )}
+                <CheckoutStepProgressHeader
+                  steps={[
+                    { realStep: 3, displayStep: 1, label: isDgfyCustomerSignedIn ? 'Account' : 'Customer', allow: cart.length > 0 },
+                    { realStep: 2, displayStep: 2, label: 'Fulfillment', allow: cart.length > 0 && fnbCustomerStepComplete },
+                    { realStep: 4, displayStep: 3, label: 'Payment', allow: cart.length > 0 && fnbCustomerStepComplete && fnbFulfillmentStepComplete }
+                  ]}
+                  activeStep={fnbOrderStep}
+                  onStepClick={(item) => {
+                    if (!item.allow) return;
+                    setFnbOrderStep(item.realStep);
+                  }}
+                  variant="connected"
+                  isMobileViewport={isMobileViewport}
+                  accentColor={fnbOrderBrand}
+                  accentSoft="#EEF6FD"
+                  accentBorder="#AEE8F4"
+                />
 
                 {fnbOrderStep === 2 && (
                   <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.5fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
@@ -17343,7 +17354,7 @@ return (
                       )}
                       <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12, marginTop: 4 }}>
                         <button type="button" onClick={goStoreCatalogPage} style={{ minHeight: 50, borderRadius: 14, border: '1px solid #dbe5ee', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 15 }}><ArrowLeft size={17} strokeWidth={2.5} />Back to Menu</button>
-                        <button type="button" onClick={() => setFnbOrderStep(3)} style={{ minHeight: 50, borderRadius: 14, border: 'none', background: `linear-gradient(135deg, ${fnbOrderBrand} 0%, ${fnbOrderBrandDark} 100%)`, color: '#fff', fontWeight: 800, boxShadow: `0 14px 28px ${fnbOrderBrandShadowStrong}`, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 15 }}>Continue <ChevronRight size={17} strokeWidth={2.5} /></button>
+                        <button type="button" onClick={() => setFnbOrderStep(4)} disabled={!fnbFulfillmentStepComplete} style={{ minHeight: 50, borderRadius: 14, border: 'none', background: fnbFulfillmentStepComplete ? `linear-gradient(135deg, ${fnbOrderBrand} 0%, ${fnbOrderBrandDark} 100%)` : '#cbd5e1', color: '#fff', fontWeight: 800, boxShadow: fnbFulfillmentStepComplete ? `0 14px 28px ${fnbOrderBrandShadowStrong}` : 'none', cursor: fnbFulfillmentStepComplete ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 15 }}>Continue <ChevronRight size={17} strokeWidth={2.5} /></button>
                       </div>
                     </section>
                     <aside style={{ display: 'grid', gap: 14, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
@@ -17413,39 +17424,41 @@ return (
 
                 {fnbOrderStep === 3 && (
                   <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.5fr) minmax(300px, 380px)' : '1fr', gap: 14, alignItems: 'start' }}>
-                    <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
-                      <div style={{ fontSize: 18, fontWeight: 900, color: '#1e293b' }}>Customer Details</div>
-                      <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Provide one contact method: mobile number or email.</div>
-                      {renderSavedDetailsCard()}
-                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
-                        <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-                          Customer Name *
-                          <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Ex. Juan Dela Cruz" style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
-                        </label>
-                        <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-                          Contact Number *
-                          <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="09XX XXX XXXX" style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
-                        </label>
-                        <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
-                          Email (optional)
-                          <input value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} placeholder="name@email.com" style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff' }} />
-                        </label>
-                        <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569', gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
-                          Special Instructions (optional)
-                          <textarea value={fnbSpecialInstructions} onChange={(event) => setFnbSpecialInstructions(event.target.value)} placeholder="Ex. Less ice, no onions, gate color and unit number." rows={3} style={{ border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical' }} />
-                        </label>
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
-                        <button type="button" onClick={() => setFnbOrderStep(2)} style={{ minHeight: 46, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 800, cursor: 'pointer' }}>Back</button>
-                          <button type="button" onClick={() => setFnbOrderStep(4)} disabled={!fnbCustomerStepComplete} style={{ minHeight: 46, borderRadius: 12, border: 'none', background: fnbCustomerStepComplete ? `linear-gradient(180deg, ${fnbOrderBrand} 0%, ${fnbOrderBrandDark} 100%)` : '#cbd5e1', color: '#fff', fontWeight: 900, boxShadow: fnbCustomerStepComplete ? `0 8px 20px ${fnbOrderBrandShadow}` : 'none', cursor: fnbCustomerStepComplete ? 'pointer' : 'not-allowed' }}>Continue</button>
-                      </div>
-                      {!fnbCustomerStepComplete && (
-                          <div style={{ fontSize: 12, color: fnbOrderMutedBlueText }}>
-                          {isDeliveryOrder ? 'Complete required fields and pin your delivery location to continue.' : 'Complete required fields to continue.'}
+                    {isDgfyCustomerSignedIn || canUseGuestCheckoutFlow ? (
+                      <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
+                        <div style={{ fontSize: 18, fontWeight: 900, color: '#1e293b' }}>Step 1: Customer Details</div>
+                        <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>
+                          {isDgfyCustomerSignedIn
+                            ? 'Your account details are already linked. Only order-specific instructions remain editable here.'
+                            : 'Guest checkout uses the details you entered for this order only.'}
                         </div>
-                      )}
-                    </section>
+                        {!isDgfyCustomerSignedIn && renderSavedDetailsCard()}
+                        {isDgfyCustomerSignedIn
+                          ? renderSignedInCheckoutCard({
+                            title: 'Customer Account',
+                            subtitle: 'These account details will be used for this order.'
+                          })
+                          : renderGuestIdentityFields({
+                            title: 'Guest Details',
+                            subtitle: 'These guest details will be used for this order.'
+                          })}
+                        <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                          Special Instructions (optional)
+                          <textarea value={fnbSpecialInstructions} onChange={(event) => setFnbSpecialInstructions(event.target.value.slice(0, 250))} placeholder="Ex. Less ice, no onions, gate color and unit number." rows={3} style={{ minHeight: 96, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical' }} />
+                          <div style={{ justifySelf: 'end', fontSize: 12, color: '#94a3b8' }}>{Math.min(String(fnbSpecialInstructions || '').length, 250)}/250</div>
+                        </label>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
+                          <button type="button" onClick={goStoreCatalogPage} style={{ minHeight: 46, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 800, cursor: 'pointer' }}>Back</button>
+                          <button type="button" onClick={() => setFnbOrderStep(2)} disabled={!fnbCustomerStepComplete} style={{ minHeight: 46, borderRadius: 12, border: 'none', background: fnbCustomerStepComplete ? `linear-gradient(180deg, ${fnbOrderBrand} 0%, ${fnbOrderBrandDark} 100%)` : '#cbd5e1', color: '#fff', fontWeight: 900, boxShadow: fnbCustomerStepComplete ? `0 8px 20px ${fnbOrderBrandShadow}` : 'none', cursor: fnbCustomerStepComplete ? 'pointer' : 'not-allowed' }}>Continue</button>
+                        </div>
+                        {!fnbCustomerStepComplete && (
+                          <div style={{ fontSize: 12, color: fnbOrderMutedBlueText }}>
+                            Complete required fields to continue.
+                          </div>
+                        )}
+                      </section>
+                    ) : renderCheckoutIdentityChooser({ mode: 'menu' })}
                     <aside style={{ display: 'grid', gap: 14, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
                       <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 18, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 14 }}>
                         <div style={{ fontSize: 12, fontWeight: 800, color: fnbOrderBrand, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Order Summary</div>
@@ -17533,7 +17546,7 @@ return (
                       </div>
                       {quoteError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{quoteError}</p>}
                       {checkoutError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
-                      <button type="button" onClick={() => setFnbOrderStep(3)} style={{ justifySelf: 'start', minHeight: 40, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}>Back</button>
+                      <button type="button" onClick={() => setFnbOrderStep(2)} style={{ justifySelf: 'start', minHeight: 40, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', padding: '0 14px', fontWeight: 800, cursor: 'pointer' }}>Back</button>
                     </section>
                     <aside style={{ display: 'grid', gap: 14, position: isDesktopCheckout ? 'sticky' : 'static', top: 8 }}>
                       <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 18, background: '#ffffff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 14 }}>
@@ -19070,202 +19083,25 @@ return (
           accountAddressActionId={accountAddressActionId}
         />
       ) : null}
-      {isGuestTrackingDrawerOpen && isGuestStorefrontUser && !isStandaloneTrackingPage && (
-        <>
-          <button
-            type="button"
-            aria-label="Close tracking drawer"
-            onClick={() => setIsGuestTrackingDrawerOpen(false)}
-            style={{ position: 'fixed', inset: 0, zIndex: 2498, border: 'none', background: 'rgba(15,23,42,0.28)', cursor: 'pointer' }}
-          />
-          <aside
-            style={{
-              position: 'fixed',
-              top: 0,
-              right: 0,
-              zIndex: 2499,
-              width: isMobileViewport ? 'min(94vw, 430px)' : 430,
-              maxWidth: '100vw',
-              height: '100vh',
-              background: '#fff',
-              borderLeft: '1px solid #dbe5ee',
-              boxShadow: '-16px 0 36px rgba(15,23,42,0.18)',
-              padding: isMobileViewport ? '14px 12px 16px' : '16px 14px 18px',
-              display: 'grid',
-              gridTemplateRows: 'auto auto 1fr',
-              gap: 12,
-              overflow: 'hidden',
-              overscrollBehavior: 'contain'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-              <div>
-                <div style={{ fontSize: 17, fontWeight: 900, color: '#0f172a' }}>In Progress Orders</div>
-                <div style={{ marginTop: 2, fontSize: 12, color: '#64748b' }}>Active guest orders for this store only.</div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsGuestTrackingDrawerOpen(false)}
-                aria-label="Close tracking drawer"
-                style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: 0, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', position: 'sticky', top: 0, zIndex: 2, background: '#fff', paddingBottom: 2 }}>
-              <input
-                value={trackingPinInput}
-                onChange={(e) => setTrackingPinInput(e.target.value.toUpperCase())}
-                placeholder="SK-018DS8"
-                style={{ flex: 1, border: '1px solid #cbd5e1', borderRadius: 12, padding: '10px 11px', fontSize: 13 }}
-              />
-              <button
-                type="button"
-                onClick={handleTrack}
-                disabled={!selectedStore}
-                style={{ borderRadius: 12, border: '1px solid #334155', background: '#334155', color: '#fff', padding: '10px 14px', fontWeight: 700, cursor: selectedStore ? 'pointer' : 'not-allowed' }}
-              >
-                Track
-              </button>
-            </div>
-            <div style={{ minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', display: 'grid', gap: 8, alignContent: 'start', paddingRight: 2 }}>
-              {guestTrackedOrders.length === 0 && (
-                <div style={{ fontSize: 13, color: '#64748b', border: '1px solid #e2e8f0', borderRadius: 12, padding: '10px 12px', background: '#f8fafc' }}>
-                  No in-progress orders. Enter a tracking PIN to load one.
-                </div>
-              )}
-              {guestTrackedOrders.map((entry) => {
-                const entryPin = String(entry.tracking_pin || '').trim().toUpperCase();
-                const statusLabel = String(entry.status_label || entry.status || 'In progress').trim() || 'In progress';
-                const entryMethod = String(entry.order_method || 'delivery').trim().toLowerCase();
-                const isPickup = entryMethod === 'pickup';
-                const badgeText = isPickup ? 'Pickup' : 'Delivery';
-
-                const isExpanded = expandedGuestDrawerPin === entryPin;
-                const trackingSteps = getTrackingFlowForOrderMethod(entryMethod);
-                const activeStepIndex = Math.max(0, trackingSteps.findIndex((step) => step.id === entry.status));
-
-                return (
-                  <div
-                    key={`guest-track-drawer-${entryPin}`}
-                    style={{ border: '1px solid #dbe5ee', borderRadius: 12, background: '#fff', overflow: 'hidden' }}
-                  >
-                    {/* Card Header (Always Visible) */}
-                    <div
-                      onClick={() => setExpandedGuestDrawerPin(isExpanded ? null : entryPin)}
-                      style={{ padding: '14px', display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: 12, alignItems: 'center', cursor: 'pointer', background: isExpanded ? '#f8fafc' : '#fff' }}
-                    >
-                      <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                        {entry.store_logo || selectedStore?.storefront_profile_image_url ? (
-                           <img src={withAssetOrigin(entry.store_logo || selectedStore?.storefront_profile_image_url)} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        ) : (
-                           <span style={{ color: '#fff', fontSize: 10, fontWeight: 900 }}>LOGO</span>
-                        )}
-                      </div>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 14, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                           {entry.store_name || selectedStore?.tenant_name || 'Storefront'}
-                        </div>
-                        <div style={{ fontSize: 12, color: '#64748b' }}>#{entryPin}</div>
-                      </div>
-                      <div style={{ fontSize: 11, fontWeight: 800, color: '#1A4E8D', background: '#fff', border: '1px solid #AEE8F4', borderRadius: 999, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#1A4E8D' }} />
-                        {statusLabel}
-                      </div>
-                      <div style={{ color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: '50%', background: '#f1f5f9' }}>
-                        {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                      </div>
-                    </div>
-
-                    {/* Collapsible Body */}
-                    {isExpanded && (
-                      <div style={{ borderTop: '1px solid #e2e8f0', padding: '16px 14px 18px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-                          <div>
-                             <div style={{ fontSize: 11, color: '#64748b' }}>Total Amount</div>
-                             <div style={{ fontSize: 16, fontWeight: 900, color: '#0f172a' }}>{money(entry.total_amount || 0)}</div>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 800, color: '#0f172a' }}>
-                             <ShoppingBag size={14} color="#64748b" />
-                             {entry.item_count || 1} Items
-                          </div>
-                        </div>
-
-                        <div style={{ fontSize: 12, color: '#64748b', fontWeight: 700, marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid #f1f5f9' }}>
-                          <span style={{ color: '#0f172a', fontWeight: 900 }}>{badgeText}</span>
-                          {entry.branch_name && <span style={{ margin: '0 6px', color: '#1A4E8D' }}>&bull;</span>}
-                          {entry.branch_name && <span>{entry.branch_name}</span>}
-                        </div>
-
-                        {/* Vertical Timeline */}
-                        <div style={{ paddingLeft: 8, display: 'grid', gap: 0, marginBottom: 20 }}>
-                          {trackingSteps.map((step, idx) => {
-                             const isCompleted = idx < activeStepIndex;
-                             const isActive = idx === activeStepIndex || (entry.status === 'completed' && idx === trackingSteps.length - 1);
-                             const isFuture = !isCompleted && !isActive;
-                             const circleBg = isActive ? '#1A4E8D' : (isCompleted ? '#16a34a' : '#fff');
-                             const circleBorder = isActive ? '#1A4E8D' : (isCompleted ? '#16a34a' : '#94a3b8');
-                             const textColor = isFuture ? '#64748b' : '#0f172a';
-
-                             let stepTime = null;
-                             if (idx === 0 && entry.created_at) stepTime = formatTicketDate(entry.created_at);
-                             else if (isActive && entry.updated_at) stepTime = formatTicketDate(entry.updated_at);
-
-                             return (
-                               <div key={step.id} style={{ display: 'grid', gridTemplateColumns: '24px 1fr', gap: 12, position: 'relative', paddingBottom: idx === trackingSteps.length - 1 ? 0 : 20 }}>
-                                 {idx !== trackingSteps.length - 1 && (
-                                   <div style={{ position: 'absolute', left: 11, top: 24, bottom: -4, width: 2, background: isCompleted ? '#16a34a' : '#e2e8f0', zIndex: 0 }} />
-                                 )}
-                                 <div style={{ width: 24, height: 24, borderRadius: '50%', background: circleBg, border: `2px solid ${circleBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1, color: isActive ? '#fff' : (isCompleted ? '#fff' : '#64748b') }}>
-                                   {isPickup ? (
-                                     isCompleted ? <Check size={12} strokeWidth={4} /> :
-                                     idx === 0 ? <FileText size={10} strokeWidth={2.5} /> :
-                                     idx === 1 ? <Store size={10} strokeWidth={2.5} /> :
-                                     idx === 2 ? <ChefHat size={10} strokeWidth={2.5} /> :
-                                     <ShoppingBag size={10} strokeWidth={2.5} />
-                                   ) : (
-                                     isCompleted ? <Check size={12} strokeWidth={4} /> : (isActive ? <span style={{ fontSize: 10, fontWeight: 900 }}>&bull;</span> : <ShoppingBag size={10} />)
-                                   )}
-                                 </div>
-                                 <div style={{ display: 'grid', gap: 2, transform: 'translateY(-2px)' }}>
-                                   <div style={{ fontSize: 13, fontWeight: isActive ? 900 : 700, color: isActive ? '#1A4E8D' : textColor }}>{step.label}</div>
-                                   {stepTime && <div style={{ fontSize: 11, color: '#64748b' }}>{stepTime}</div>}
-                                 </div>
-                               </div>
-                             );
-                          })}
-                        </div>
-
-                        {/* Footer Details */}
-                        <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div>
-                            <div style={{ fontSize: 11, color: '#64748b' }}>Estimated Ready Time</div>
-                            <div style={{ fontSize: 11, color: '#64748b' }}>{entry.created_at ? new Date(entry.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Today'}</div>
-                          </div>
-                          <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>
-                            {entry.eta_minutes ? `${entry.eta_minutes} mins` : 'Pending'}
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#64748b', marginTop: 16, marginBottom: 16 }}>
-                          <Clock size={12} /> Last updated: {entry.updated_at ? formatTicketDate(entry.updated_at) : 'just now'}
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => openFullTrackingForPin(entryPin)}
-                          style={{ width: '100%', borderRadius: 10, border: '1px solid #1a4e8d', background: '#1a4e8d', color: '#fff', padding: '10px 12px', fontSize: 13, fontWeight: 900, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 2 }}
-                        >
-                          View Details <ChevronRight size={14} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </aside>
-        </>
+      {isGuestTrackingDrawerOpen && (isGuestStorefrontUser || isDgfyCustomerSignedIn) && !isStandaloneTrackingPage && (
+        <GuestTrackingDrawer
+          isOpen={isGuestTrackingDrawerOpen}
+          isMobileViewport={isMobileViewport}
+          trackingPinInput={trackingPinInput}
+          onTrackingPinInputChange={setTrackingPinInput}
+          onTrack={handleTrack}
+          selectedStore={selectedStore}
+          guestTrackedOrders={isDgfyCustomerSignedIn ? accountTrackingDrawerOrders : guestTrackedOrders}
+          expandedGuestDrawerPin={expandedGuestDrawerPin}
+          onExpandedGuestDrawerPinChange={setExpandedGuestDrawerPin}
+          onClose={() => setIsGuestTrackingDrawerOpen(false)}
+          openFullTrackingForPin={openFullTrackingForPin}
+          withAssetOrigin={withAssetOrigin}
+          money={money}
+          formatTicketDate={formatTicketDate}
+          getTrackingFlowForOrderMethod={getTrackingFlowForOrderMethod}
+          isAccountTracking={isDgfyCustomerSignedIn}
+        />
       )}
     </main >
   );
