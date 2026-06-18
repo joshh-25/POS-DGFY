@@ -6,6 +6,11 @@ const DGFY_CONVENIENCE_FEE_LABEL = 'DGFY convenience fee';
 const DGFY_ACRONYM = 'Discover Goods For You';
 const DGFY_RECEIPT_LOGO_SRC = './dgfy-logo.png';
 const RECEIPT_LINE_GRID_COLUMNS = 'minmax(0, 1fr) 3.75rem 1.5rem 3.75rem';
+const RECEIPT_LINE_GRID_COLUMNS_57MM = 'minmax(0, 1fr) 2.75rem 1.25rem 2.75rem';
+const RECEIPT_PAPER_WIDTHS = {
+    '80mm': '80mm',
+    '57mm': '57mm'
+};
 
 const parseTransactionMetadata = (value) => {
     if (!value) return {};
@@ -99,7 +104,7 @@ const resolveDocumentContext = ({ transaction, receiptContract, documentType }) 
     return documentType === 'fiscal_invoice' ? 'fiscal' : 'non_fiscal';
 };
 
-export default function ReceiptPrintView({ transaction, businessSettings = {}, receiptContract = null }) {
+export default function ReceiptPrintView({ transaction, businessSettings = {}, receiptContract = null, paperWidth = '80mm' }) {
     if (!transaction) return null;
 
     const printedAt = transaction.created_at
@@ -120,9 +125,17 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
     const restaurantServiceChargeAmount = Number(transaction.restaurant_service_charge_amount || 0);
     const businessName = String(businessSettings.pos_business_name || '').trim();
     const shouldShowBusinessName = businessName && businessName.toLowerCase() !== DGFY_BRAND_NAME.toLowerCase();
+    const resolvedPaperWidth = RECEIPT_PAPER_WIDTHS[paperWidth] || RECEIPT_PAPER_WIDTHS['80mm'];
+    const receiptLineGridColumns = resolvedPaperWidth === '57mm'
+        ? RECEIPT_LINE_GRID_COLUMNS_57MM
+        : RECEIPT_LINE_GRID_COLUMNS;
 
     return (
-        <div className="pos-thermal-receipt bg-white border border-slate-200 rounded-xl p-4 text-[13px] leading-[1.3] print:border-none print:rounded-none print:p-0 print:text-[11px] print:leading-[1.25]">
+        <div
+            className="pos-thermal-receipt mx-auto box-border bg-white border border-slate-200 rounded-xl p-4 text-[13px] leading-[1.3] print:border-none print:rounded-none print:p-0 print:text-[11px] print:leading-[1.25]"
+            data-paper-width={resolvedPaperWidth}
+            style={{ width: resolvedPaperWidth, maxWidth: '100%' }}
+        >
             <div className="text-center border-b border-dashed border-slate-300 pb-3 mb-3 print:pb-2 print:mb-2">
                 <img
                     src={DGFY_RECEIPT_LOGO_SRC}
@@ -170,7 +183,7 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                 {lines.length > 0 && (
                     <div
                         className="grid gap-1.5 border-b border-dashed border-slate-300 pb-1 text-[10px] font-semibold uppercase text-slate-500 print:gap-1 print:text-[8px]"
-                        style={{ gridTemplateColumns: RECEIPT_LINE_GRID_COLUMNS }}
+                        style={{ gridTemplateColumns: receiptLineGridColumns }}
                     >
                         <span>Item</span>
                         <span className="text-right">Unit Price</span>
@@ -191,7 +204,7 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                         >
                             <div
                                 className="grid gap-1.5 text-[13px] print:gap-1 print:text-[10px]"
-                                style={{ gridTemplateColumns: RECEIPT_LINE_GRID_COLUMNS }}
+                                style={{ gridTemplateColumns: receiptLineGridColumns }}
                             >
                                 <p className="min-w-0 truncate font-medium leading-snug text-slate-900">{itemNameParts.firstLine}</p>
                                 <p className="whitespace-nowrap text-right tabular-nums text-slate-700">{money(unitPrice)}</p>

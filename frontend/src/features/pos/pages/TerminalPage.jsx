@@ -313,6 +313,7 @@ export default function TerminalPage() {
     code: '',
     loading: false
   });
+  const [legacyDgfyLinkBannerDismissed, setLegacyDgfyLinkBannerDismissed] = useState(false);
 
   const [shiftState, setShiftState] = useState({
     loading: false,
@@ -1195,7 +1196,8 @@ export default function TerminalPage() {
   const requiresOpenShift = !locked && !shiftState.loading && !activeShiftId;
   const showLegacyDgfyLinkBanner = terminalUser
     && terminalUser.dgfy_link_status
-    && terminalUser.dgfy_link_status !== 'linked';
+    && terminalUser.dgfy_link_status !== 'linked'
+    && !legacyDgfyLinkBannerDismissed;
 
   const handleRequestLegacyLinkOtp = async () => {
     setLegacyLinkState((prev) => ({ ...prev, loading: true }));
@@ -2083,7 +2085,15 @@ export default function TerminalPage() {
           </div>
         )}
         {showLegacyDgfyLinkBanner && (
-          <div className="fixed left-4 top-4 z-[70] max-w-[min(92vw,460px)] rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-xs text-amber-950 shadow-lg shadow-amber-900/10">
+          <div className="fixed left-4 top-4 z-[70] max-w-[min(92vw,460px)] rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 pr-10 text-xs text-amber-950 shadow-lg shadow-amber-900/10">
+            <button
+              type="button"
+              aria-label="Dismiss DGFY account link reminder"
+              onClick={() => setLegacyDgfyLinkBannerDismissed(true)}
+              className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full border border-amber-300 bg-white text-sm font-extrabold leading-none text-amber-950 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1 focus:ring-offset-amber-50"
+            >
+              x
+            </button>
             <div className="font-extrabold">Create or link your DGFY account</div>
             <p className="mt-1 leading-5">
               Create or link your DGFY account to keep IMS/POS access after June 17, 2027.
