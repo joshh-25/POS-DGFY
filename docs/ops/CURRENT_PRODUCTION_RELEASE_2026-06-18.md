@@ -11,6 +11,8 @@ topic: current_production_release_state
 
 This document records the current production state using deploy evidence, live health output, and release-gate artifacts. Do not use source `HEAD` alone as live-production proof.
 
+Source-only documentation or test-hardening commits may exist after the deployed SHA. Treat production remote `HEAD`, `.deploy-state/last_deployed_commit`, the deploy summary, and live `/api/v1/health.services.observability.runtime_sha` as the current live contract until the next guarded production deploy updates all four proof points.
+
 ## Proof Snapshot
 
 Production proof refreshed on 2026-06-20 Asia/Manila from live VPS state:
@@ -77,7 +79,7 @@ On June 18, 2026, a controlled production data repair linked `DgfyAccountTenantM
 
 The Storefront/POS request consolidation, DGFY account notification/activity, batch findings remediation, delivery-map blank-space hardening, canonical tracking-drawer cleanup, and business-registration IMS handoff hotfix slices are now production-deployed in `13fbea257585187f75b0b3e8f87f391192d9ae97`. Read-only production checks confirmed the deployed runtime SHA, public Storefront/IMS/POS route reachability, frontend asset parity, Storefront live bundle inclusion for the delivery-map and tracking cleanup, and that the protected notification list and SSE endpoints reject unauthenticated requests cleanly.
 
-This production proof did not create or mutate a live customer order, register a live company, or place a live checkout delivery pin. The live POS-status-to-DGFY-activity propagation, production company-registration dashboard handoff, and normal/expanded mobile delivery-map checkout path are proven by focused local backend/frontend tests, rendered local checkout-map smoke at mobile widths, live asset inclusion, and deploy inclusion, but still require controlled production UAT before they can be called live-mutation or live-checkout proven. Notification delivery is in-app only for this slice; browser push, SMS, email, and closed-browser delivery remain out of scope. SSE fanout is in-process with polling fallback; Redis is healthy in production but Redis pub/sub fanout has not been implemented.
+This production proof did not create or mutate a live customer order, register a live company, or place a live checkout delivery pin. The live POS-status-to-DGFY-activity propagation, production company-registration dashboard handoff, and normal/expanded mobile delivery-map checkout path are proven by focused local backend/frontend tests, rendered local checkout-map smoke at mobile widths, live asset inclusion, and deploy inclusion, but still require controlled production UAT before they can be called live-mutation or live-checkout proven. The DGFY tenant-session regression tests also assert that the IMS `auth:login` event fires after cookie-backed tenant-session exchange and keep browser global stubs isolated between tests so failures cannot leak stale auth-event globals into later service coverage. Notification delivery is in-app only for this slice; browser push, SMS, email, and closed-browser delivery remain out of scope. SSE fanout is in-process with polling fallback; Redis is healthy in production but Redis pub/sub fanout has not been implemented.
 
 ## Remaining Release Caveats
 
