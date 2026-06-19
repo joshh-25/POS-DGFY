@@ -1,12 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { requestJson as requestStorefrontJson } from './services/requestJson.js';
 
 const API_BASE = '/api/v1/store/hospitality';
-const apiOrigin = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_ORIGIN || '').replace(/\/$/, '');
-const withApiOrigin = (url) => {
-  if (!url || typeof url !== 'string') return url;
-  if (!url.startsWith('/')) return url;
-  return apiOrigin ? `${apiOrigin}${url}` : url;
-};
 
 const todayDate = () => new Date().toISOString().slice(0, 10);
 
@@ -40,45 +35,19 @@ const parseList = (payload, key) => {
   return [];
 };
 
-const requestJson = async (path, {
+const requestJson = (path, {
   method = 'GET',
   body = null,
   selectedStore = null,
   selectedLocationId = null,
   authToken = ''
-} = {}) => {
-  const headers = {
-    Accept: 'application/json'
-  };
-  if (body) headers['Content-Type'] = 'application/json';
-  if (selectedStore?.slug) headers['x-store-slug'] = selectedStore.slug;
-  if (selectedStore?.store_slug) headers['x-store-slug'] = selectedStore.store_slug;
-  if (selectedStore?.tenant_slug) headers['x-tenant-slug'] = selectedStore.tenant_slug;
-  if (selectedStore?.tenant_id) headers['x-tenant-id'] = String(selectedStore.tenant_id);
-  if (selectedLocationId) headers['x-location-id'] = String(selectedLocationId);
-  if (authToken) headers.Authorization = `Bearer ${authToken}`;
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(String(method || 'GET').toUpperCase()) && typeof document !== 'undefined') {
-    const csrfToken = decodeURIComponent(String(document.cookie || '')
-      .split(';')
-      .map((entry) => entry.trim())
-      .find((entry) => entry.startsWith('sku_csrf_token='))
-      ?.slice('sku_csrf_token='.length) || '');
-    if (csrfToken) headers['x-csrf-token'] = csrfToken;
-  }
-
-  const response = await fetch(withApiOrigin(`${API_BASE}${path}`), {
-    method,
-    credentials: 'include',
-    headers,
-    body: body ? JSON.stringify(body) : null
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload?.success === false) {
-    const message = payload?.message || payload?.error || `Request failed with HTTP ${response.status}`;
-    throw new Error(message);
-  }
-  return payload?.data ?? payload;
-};
+} = {}) => requestStorefrontJson(`${API_BASE}${path}`, {
+  method,
+  body,
+  selectedStore,
+  selectedLocationId,
+  authToken
+});
 
 const Field = ({ label, children }) => (
   <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 800, color: '#475569' }}>

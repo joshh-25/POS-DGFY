@@ -8,8 +8,7 @@ import { PermissionProvider } from '../../../src/store/PermissionContext.jsx';
 import { WorkflowModeProvider } from '../../../src/features/settings/WorkflowModeContext.jsx';
 import { Toaster } from '@/components/ui/sonner';
 import { buildSkupervisorPath } from '../../../src/features/pos/utils/skupervisorHandoff.js';
-import { setBrowserSession } from '../../../src/services/browserSession.js';
-import { resolveApiBaseUrl } from '../../../src/utils/runtimeConfig.js';
+import { login as loginTenantSession } from '../../../src/services/authService.js';
 import '../../../src/index.css';
 
 function PosRouteNotFound() {
@@ -53,7 +52,6 @@ function SkupervisorSalesRedirect() {
 
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/';
 const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`;
-const runtimeApiBaseUrl = resolveApiBaseUrl(import.meta.env, typeof window !== 'undefined' ? window.location : undefined);
 const enableDevAutoLogin = import.meta.env.DEV && import.meta.env.VITE_POS_DEV_AUTO_LOGIN === 'true';
 const devAutoLoginCompanyToken = String(import.meta.env.VITE_POS_DEV_COMPANY_TOKEN || 'token-original').trim();
 const devAutoLoginEmail = String(import.meta.env.VITE_POS_DEV_EMAIL || 'admin@test.com').trim();
@@ -114,19 +112,11 @@ if (enableDevAutoLogin) {
     try {
       window.localStorage.setItem('pos_terminal_identity_v1', 'COUNTER-01');
 
-      const response = await fetch(`${runtimeApiBaseUrl}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-company-token': devAutoLoginCompanyToken
-        },
-        body: JSON.stringify({ email: devAutoLoginEmail, password: devAutoLoginPassword })
+      await loginTenantSession({
+        email: devAutoLoginEmail,
+        password: devAutoLoginPassword,
+        companyToken: devAutoLoginCompanyToken
       });
-      const body = await response.json().catch(() => null);
-      if (response.ok && body?.success && body?.data?.token) {
-        setBrowserSession({ token: body.data.token, companyToken: devAutoLoginCompanyToken });
-        window.dispatchEvent(new CustomEvent('auth:login'));
-      }
     } catch {
       // Local POS auto-login is best-effort only.
     } finally {

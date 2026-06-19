@@ -9,17 +9,17 @@ import { WorkflowModeProvider } from './features/settings/WorkflowModeContext.js
 import WorkflowModeRouteGate from './features/settings/components/WorkflowModeRouteGate.jsx'
 import { getPageNameFromPath } from '../utils.js'
 import { getAccessToken, refreshBrowserSession, setBrowserSession } from './services/browserSession.js'
+import { login as loginTenantSession } from './services/authService.js'
 import { shouldRefreshBrowserSessionForPath } from './services/publicRoutePolicy.js'
 import ErrorBoundary from './components/common/ErrorBoundary.jsx' // Fix 10.3
 import GlobalApiErrorListener from './components/common/GlobalApiErrorListener.jsx'
 import { Toaster } from '@/components/ui/sonner'
-import { getRuntimeConfig, resolveApiBaseUrl } from './utils/runtimeConfig.js'
+import { getRuntimeConfig } from './utils/runtimeConfig.js'
 import './index.css'
 
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/'
 const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`
 const runtimeConfig = getRuntimeConfig(import.meta.env, typeof window !== 'undefined' ? window.location : undefined)
-const runtimeApiBaseUrl = resolveApiBaseUrl(import.meta.env, typeof window !== 'undefined' ? window.location : undefined)
 const RootRouter = runtimeConfig.isDesktopShell ? HashRouter : BrowserRouter
 const devAutoLoginEnabled = String(import.meta.env.VITE_DEV_AUTO_LOGIN_ENABLED || '').trim().toLowerCase() === 'true'
 
@@ -318,26 +318,13 @@ if (shouldRunDevAutoLogin()) {
       const COMPANY_TOKEN = 'token-original';
       const TERMINAL_ID = 'COUNTER-01';
 
-      // Attempt to login and store tokens; backend will validate tenant context
-      const resp = await fetch(`${runtimeApiBaseUrl}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-company-token': COMPANY_TOKEN
-        },
-        body: JSON.stringify({ email: AUTO_EMAIL, password: AUTO_PASSWORD })
+      const session = await loginTenantSession({
+        email: AUTO_EMAIL,
+        password: AUTO_PASSWORD,
+        companyToken: COMPANY_TOKEN
       });
-
-      const body = await resp.json().catch(() => null);
-      if (resp.ok && body?.success && body?.data?.token) {
-        try {
-          setBrowserSession({ token: body.data.token, companyToken: COMPANY_TOKEN });
-          localStorage.setItem('pos_terminal_identity_v1', TERMINAL_ID);
-          // dispatch auth event so PermissionContext picks up new session
-          window.dispatchEvent(new CustomEvent('auth:login'))
-        } catch (e) {
-          // ignore storage errors
-        }
+      if (session?.token) {
+        localStorage.setItem('pos_terminal_identity_v1', TERMINAL_ID);
       }
     } catch (e) {
       // best-effort only; do not block app mount

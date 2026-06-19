@@ -34,7 +34,9 @@ describe('Hospitality storefront contract', () => {
     expect(panel).toContain("requestJson('/bookings'");
     expect(panel).toContain("requestJson('/bookings',");
     expect(panel).toContain("`/bookings/${encodeURIComponent(reference)}/claim`");
-    expect(panel).toContain('headers.Authorization = `Bearer ${authToken}`');
+    expect(panel).toContain("import { requestJson as requestStorefrontJson } from './services/requestJson.js'");
+    expect(panel).toContain('authToken');
+    expect(panel).not.toContain("entry.startsWith('sku_csrf_token=')");
     expect(panel).toContain('readStoreAuthToken');
     expect(panel).toContain('createIdempotencyKey');
   });
