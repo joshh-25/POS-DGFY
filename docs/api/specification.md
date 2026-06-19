@@ -5199,6 +5199,10 @@ Front-facing customer account endpoints live under `/api/v1/dgfy/customer`. Exce
 | `GET` | `/dgfy/customer/activities` | Return paginated normalized cross-store history with filters for `type`, `tenant_id`, `store_slug`, `status`, `payment_status`, date range, page, and limit |
 | `GET` | `/dgfy/customer/orders` | List account-linked order activities |
 | `GET` | `/dgfy/customer/bookings` | List account-linked service/hospitality booking activities |
+| `GET` | `/dgfy/customer/notifications` | List account-scoped customer notifications with optional unread filtering |
+| `PATCH` | `/dgfy/customer/notifications/:notification_id/read` | Mark one account-owned notification as read |
+| `PATCH` | `/dgfy/customer/notifications/read-all` | Mark all account-owned notifications as read |
+| `GET` | `/dgfy/customer/events` | Stream account-scoped live activity and notification events with Server-Sent Events |
 | `POST` | `/dgfy/customer/track` | Track an account-linked reference by `reference` or `tracking_pin` |
 | `POST` | `/dgfy/customer/orders/:reference/cancel` | Cancel an eligible account-linked order |
 | `POST` | `/dgfy/customer/orders/:reference/reorder` | Return reusable cart lines for a prior order; checkout revalidates current state |
@@ -5221,6 +5225,12 @@ Storefront checkout keeps account-saved, temporary checkout, recommended store o
 `PATCH /dgfy/customer/addresses/:address_id/default` is a transport alias for updating the address with `is_default=true`; it must remain registered before the generic `PATCH /dgfy/customer/addresses/:address_id` route. Storefront checkout and booking forms consume the default saved address for signed-in customers only when the visible customer address field is still empty.
 
 `GET /dgfy/customer/activities` is the canonical customer history endpoint. Activity `type` may be `order`, `service_booking`, `hospitality_booking`, `fnb_order`, `booking`, or `all`; `booking` expands to Services and Hospitality activity. Response cards include `reference`, `store`, `type`, `status`, `payment_status`, `occurred_at`, `total_amount`, `summary_lines`, `allowed_actions`, and `review_targets`.
+
+Dashboard, activities, and account reference tracking reads refresh account-owned order snapshots from the tenant POS transaction before returning data when the activity is already explicitly linked to the signed-in DGFY account. This read-time refresh must not adopt guest orders by email or phone matching.
+
+`GET /dgfy/customer/notifications` returns only notifications owned by the signed-in DGFY account. `unread_only=true` limits the result to unread rows, and `limit` bounds the returned rows. Notification rows include `notification_id`, `type`, `title`, `body`, `status`, `reference`, optional `tenant_id`, optional `activity_id`, `read_at`, and `created_at`; the response also includes `unread_count`. Order-status notification writes are idempotent by `event_key`. Read mutations publish account-scoped `notification.read` events, and newly created order-status notifications publish `notification.created`.
+
+`GET /dgfy/customer/events` is an authenticated SSE stream for the active DGFY account. It emits `connected`, periodic `heartbeat`, `activity.updated`, `notification.created`, and `notification.read` events. Stream events are account-scoped and do not expose other tenants or other DGFY accounts.
 
 `POST /dgfy/customer/reviews` accepts `activity_id`, `target_type`, optional `target_id`, `rating`, `comment`, and optional `anonymous`. Supported target types are `product`, `service`, `hospitality_booking`, `fnb_order`, and `fnb_item`; the activity snapshot must prove eligibility, and reviews remain pending until moderated. Public review reads require `tenant_id` plus `item_id` or explicit `target_type`/`target_id`, only return approved rows, and include summary fields such as average rating, total count, verified count, and rating distribution.
 

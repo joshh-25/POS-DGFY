@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: pos
-last_reviewed: 2026-06-17
+last_reviewed: 2026-06-19
 applies_to: pos, storefront, skupervisor
 topic: recent_pos_storefront_changes
 ---
@@ -18,6 +18,7 @@ This document only lists the important changes recently made to the POS, Storefr
 - Opening a shift requires an opening cash amount.
 - Closing a shift now uses a custom popup modal instead of the browser confirmation box.
 - After closing a shift, POS sale actions are blocked until a new shift is opened.
+- The forced Open Shift modal now gives cashiers a secondary `Lock Terminal` choice after shift close or when no active shift exists. `Open Shift` still submits the opening cash form; `Lock Terminal` ends the terminal session and returns the POS to the unlock flow.
 
 ## POS Lock
 
@@ -37,6 +38,7 @@ This document only lists the important changes recently made to the POS, Storefr
 - Receipt preview and print now support `80mm (3 1/8 inches)` paper width.
 - Receipt preview and print now support `57mm (2 1/4 inches)` paper width.
 - SKUpervisor receipt preview and print now use the same paper width selection.
+- The iMin receipt preview modal now scrolls internally so the paper selector and print action remain reachable on constrained screens.
 
 ## DGFY Account Popup
 
