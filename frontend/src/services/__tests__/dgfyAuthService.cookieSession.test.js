@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { apiGet, apiPost, setBrowserSessionMock, clearClientSessionMock } = vi.hoisted(() => ({
   apiGet: vi.fn(),
@@ -48,6 +48,10 @@ describe('dgfyAuthService cookie session rehydration', () => {
     clearClientSessionMock.mockReset();
     const service = await import('../dgfyAuthService.js');
     service.clearDgfySession();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('calls /dgfy/auth/me without a bearer header when only the HttpOnly cookie can identify the browser session', async () => {
@@ -163,7 +167,6 @@ describe('dgfyAuthService cookie session rehydration', () => {
     expect(dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({
       type: 'auth:login'
     }));
-    vi.unstubAllGlobals();
   });
 
   it('logs out DGFY cookie sessions when no bearer token is in memory', async () => {
