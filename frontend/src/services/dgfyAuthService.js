@@ -483,6 +483,12 @@ export const startDgfyTenantSession = async ({
     token: data?.token,
     companyToken: data?.company?.token || companyToken
   });
+  if (typeof window !== 'undefined') {
+    const event = typeof CustomEvent === 'function'
+      ? new CustomEvent('auth:login')
+      : new Event('auth:login');
+    window.dispatchEvent(event);
+  }
   return data;
 };
 

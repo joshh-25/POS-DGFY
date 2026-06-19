@@ -128,6 +128,13 @@ describe('dgfyAuthService cookie session rehydration', () => {
   });
 
   it('starts tenant sessions with cookie credentials when no DGFY bearer token is in memory', async () => {
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal('CustomEvent', class TestCustomEvent {
+      constructor(type) {
+        this.type = type;
+      }
+    });
+    vi.stubGlobal('window', { dispatchEvent });
     apiPost.mockResolvedValueOnce({
       data: {
         data: {
@@ -153,6 +160,10 @@ describe('dgfyAuthService cookie session rehydration', () => {
       token: 'tenant-token',
       companyToken: 'token-cookie-company'
     });
+    expect(dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'auth:login'
+    }));
+    vi.unstubAllGlobals();
   });
 
   it('logs out DGFY cookie sessions when no bearer token is in memory', async () => {
