@@ -39,6 +39,8 @@ const BUSINESS_REGISTRATION_ENTRY = '/register-company?source=dgfy&auth=login#bu
 const storefrontHomeUrl = resolveStorefrontHomeUrl();
 const dgfyPublicLogoUrl = '/dgfy-logo.png';
 const STOREFRONT_SAVED_DETAILS_STORAGE_KEY = 'dgfy_store_saved_customer_details_v1';
+const DGFY_STOREFRONT_HANDOFF_FAILED = 'DGFY_STOREFRONT_HANDOFF_FAILED';
+const DGFY_STOREFRONT_HANDOFF_FAILED_MESSAGE = 'We found your DGFY account session, but could not return it to the Storefront. Sign in again to continue securely.';
 const EMAIL_SUGGESTION_DOMAINS = ['gmail.com', 'yahoo.com', 'icloud.com'];
 const getRequestDgfySignupOtp = () => (
   Object.prototype.hasOwnProperty.call(dgfyAuthService, 'requestDgfySignupOtp')
@@ -112,10 +114,14 @@ const resolveHandoffNavigationTarget = async (target, token = '') => {
   if (!hasAbsoluteNavigationTarget(target)) return target;
   try {
     const handoff = await createDgfyHandoff(token || getStoredDgfyToken());
-    return appendDgfyHandoffToken(target, handoff?.handoff_token);
+    const handoffTarget = appendDgfyHandoffToken(target, handoff?.handoff_token);
+    if (handoffTarget && handoffTarget !== target) return handoffTarget;
   } catch {
-    return target;
+    // Fall through to the explicit error below.
   }
+  const error = new Error(DGFY_STOREFRONT_HANDOFF_FAILED_MESSAGE);
+  error.code = DGFY_STOREFRONT_HANDOFF_FAILED;
+  throw error;
 };
 
 const getEmailSuggestions = (value = '') => {
@@ -535,7 +541,14 @@ export default function DgfyAuthPage() {
         const finalTarget = await resolveHandoffNavigationTarget(target, session?.token || getStoredDgfyToken());
         if (!cancelled) navigateToTarget(navigate, finalTarget);
       })
-      .catch(() => { if (!cancelled) { clearDgfySession(); setSessionResolved(true); } });
+      .catch((requestError) => {
+        if (cancelled) return;
+        clearDgfySession();
+        if (requestError?.code === DGFY_STOREFRONT_HANDOFF_FAILED) {
+          setNotice(DGFY_STOREFRONT_HANDOFF_FAILED_MESSAGE);
+        }
+        setSessionResolved(true);
+      });
     return () => { cancelled = true; };
   }, [navigate, routeParams.intent, routeParams.returnTo]);
 
@@ -748,7 +761,11 @@ export default function DgfyAuthPage() {
       toast.success('Signed in successfully');
       await handleAuthSuccess(session); 
     }
-    catch (requestError) { toast.error(requestError.response?.data?.message || 'DGFY sign-in failed.'); }
+    catch (requestError) {
+      const message = requestError?.response?.data?.message || requestError?.message || 'DGFY sign-in failed.';
+      setError(message);
+      toast.error(message);
+    }
     finally { setIsLoading(false); }
   };
 

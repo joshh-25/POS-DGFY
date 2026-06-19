@@ -514,4 +514,44 @@ describe('DGFY auth and business registration routes', () => {
     expect(screen.queryByText('Done screen')).toBeNull();
     expect(dgfyAuthMock.fetchDgfyMe).not.toHaveBeenCalled();
   });
+
+  it('keeps the user on DGFY sign-in when an existing session cannot create a Storefront handoff token', async () => {
+    dgfyAuthMock.fetchDgfyMe.mockResolvedValue({
+      token: 'cookie-backed-session',
+      account: dgfyAccount
+    });
+    dgfyAuthMock.createDgfyHandoff.mockRejectedValue(new Error('handoff unavailable'));
+
+    renderRoutes(['/dgfy/auth?intent=customer&mode=sign-in&return_to=https%3A%2F%2Fdgfy.ph%2Fmap-dgfy%2Faccount']);
+
+    expect(await screen.findByText(/could not return it to the storefront/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^login$/i })).toBeTruthy();
+    expect(dgfyAuthMock.clearDgfySession).toHaveBeenCalled();
+  });
+
+  it('does not silently return to Storefront after login when handoff creation fails', async () => {
+    dgfyAuthMock.loginDgfyAccount.mockResolvedValue({
+      token: 'fresh-login-session',
+      account: dgfyAccount
+    });
+    dgfyAuthMock.createDgfyHandoff.mockRejectedValue(new Error('handoff unavailable'));
+
+    renderRoutes(['/dgfy/auth?intent=customer&mode=sign-in&return_to=https%3A%2F%2Fdgfy.ph%2Fmap-dgfy%2Faccount']);
+
+    await screen.findByRole('button', { name: /^login$/i });
+    fireEvent.change(screen.getByLabelText(/email address/i), {
+      target: { value: 'ada@example.test' }
+    });
+    fireEvent.change(screen.getByLabelText(/^password$/i), {
+      target: { value: 'correct-password' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^login$/i }));
+
+    expect(await screen.findByText(/could not return it to the storefront/i)).toBeTruthy();
+    expect(dgfyAuthMock.loginDgfyAccount).toHaveBeenCalledWith({
+      email: 'ada@example.test',
+      password: 'correct-password'
+    });
+    expect(dgfyAuthMock.createDgfyHandoff).toHaveBeenCalledWith('fresh-login-session');
+  });
 });
