@@ -10,6 +10,7 @@ const productDetailsSource = () => fs.readFileSync(path.join(appRoot, 'Component
 const accountPageSource = () => fs.readFileSync(path.join(appRoot, 'Components/storefront/pages/DgfyCustomerAccountPage.jsx'), 'utf8');
 const solutionsPageSource = () => fs.readFileSync(path.join(appRoot, 'Components/storefront/pages/SolutionsPage.jsx'), 'utf8');
 const businessRegistrationUrlSource = () => fs.readFileSync(path.join(appRoot, 'businessRegistrationUrl.js'), 'utf8');
+const guestTrackingDrawerSource = () => fs.readFileSync(path.join(appRoot, 'tracking/components/GuestTrackingDrawer.jsx'), 'utf8');
 
 describe('Food & Beverage storefront contract', () => {
   it('renders restaurant menu metadata and carries modifiers into checkout lines', () => {
@@ -61,10 +62,21 @@ describe('Food & Beverage storefront contract', () => {
 
     expect(source).toContain('const resolvedHeight = typeof height ===');
     expect(source).toContain('height: resolvedHeight');
+    expect(source).toContain('data-delivery-map-frame="true"');
+    expect(source).toContain('data-delivery-map-root="true"');
+    expect(source).toContain('data-delivery-map-controls="true"');
+    expect(source).toContain('ResizeObserver');
+    expect(source).toContain('window.visualViewport?.addEventListener?.(\'resize\'');
+    expect(source).toContain('scheduleMapResize(\'observer\')');
+    expect(source).toContain('scheduleMapResize(\'viewport\')');
+    expect(source).toContain("height={isMobileViewport ? 'clamp(230px, 34svh, 280px)' : 260}");
     expect(source).not.toContain("aspectRatio: '16 / 10'");
-    expect(source).toContain("height={isMobileViewport ? 'min(70vh, calc(100svh - 220px))' : 520}");
+    expect(source).toContain("height={isMobileViewport ? 'clamp(340px, min(70svh, calc(100svh - 220px)), 620px)' : 520}");
     expect(source).toContain('highlightColor={fnbOrderBrand}');
     expect(source).toContain('highlightGlow="rgba(26,78,141,0.16)"');
+    expect(source).toContain("maxWidth: isMobileViewport ? 'calc(100% - 68px)' : 'none'");
+    expect(source).toContain("pointerEvents: 'none'");
+    expect(source).toContain("pointerEvents: 'auto'");
   });
 
   it('builds business registration links through the configurable Storefront helper', () => {
@@ -78,6 +90,20 @@ describe('Food & Beverage storefront contract', () => {
     expect(helperSource).toContain('https://skupervisor.dgfy.ph/register-company');
     expect(source).not.toContain("new URL('https://skupervisor.dgfy.ph/register-company')");
     expect(solutionsSource).not.toContain("window.location.href = 'https://skupervisor.dgfy.ph/register-company'");
+  });
+
+  it('uses the side tracking drawer instead of the deprecated standalone tracking list card', () => {
+    const source = appSource();
+    const drawerSource = guestTrackingDrawerSource();
+
+    expect(source).toContain('const isStandaloneTrackingPage = Boolean(trackingResult)');
+    expect(source).toContain("routeWantsTrack && preferredPin ? 'track' : 'checkout'");
+    expect(source).toContain('setIsGuestTrackingDrawerOpen(true);');
+    expect(source).toContain('trackingError={trackingError}');
+    expect(source).not.toContain('In-progress orders are tracked automatically on this device.');
+    expect(source).not.toContain("key={`guest-track-order-${entry.tracking_pin}`}");
+    expect(drawerSource).toContain('Active orders linked to your DGFY account.');
+    expect(drawerSource).toContain('trackingError =');
   });
 
   it('supports guest-or-account checkout entry while preserving auth draft resume state', () => {

@@ -2345,11 +2345,44 @@ function DeliveryPinMap({
   highlightGlow = 'rgba(249,115,22,0.14)',
   overlayControls = null
 }) {
+  const frameRef = useRef(null);
   const ref = useRef(null);
   const mapRef = useRef(null);
   const markerRef = useRef(null);
   const [mapUnavailable, setMapUnavailable] = useState(false);
   const resolvedHeight = typeof height === 'number' ? `${height}px` : String(height || '260px');
+
+  const scheduleMapResize = useCallback((reason = 'layout') => {
+    const map = mapRef.current;
+    const frame = frameRef.current;
+    if (!map || !frame) return undefined;
+
+    const runResize = () => {
+      const rect = frame.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const canvas = map.getCanvas?.();
+      const canvasContainer = map.getCanvasContainer?.();
+      if (canvasContainer?.style) {
+        canvasContainer.style.width = '100%';
+        canvasContainer.style.height = '100%';
+      }
+      if (canvas?.style) {
+        canvas.style.zIndex = '0';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+      }
+      map.resize();
+    };
+
+    const rafId = window.requestAnimationFrame(runResize);
+    const earlyTimer = window.setTimeout(runResize, reason === 'visible' ? 60 : 40);
+    const settleTimer = window.setTimeout(runResize, 220);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.clearTimeout(earlyTimer);
+      window.clearTimeout(settleTimer);
+    };
+  }, []);
 
   useEffect(() => {
     if (!ref.current || mapRef.current) return undefined;
@@ -2367,15 +2400,23 @@ function DeliveryPinMap({
       setMapUnavailable(true);
       return undefined;
     }
-    map.getCanvas().style.zIndex = '0';
-    map.getCanvas().style.width = '100%';
-    map.getCanvas().style.height = '100%';
+    const canvasContainer = map.getCanvasContainer?.();
+    if (canvasContainer?.style) {
+      canvasContainer.style.width = '100%';
+      canvasContainer.style.height = '100%';
+    }
+    const canvas = map.getCanvas();
+    canvas.style.zIndex = '0';
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
     map.on('error', (e) => console.error('[DeliveryPinMap] MapLibre error', e));
     map.on('load', () => {
-      setTimeout(() => map.resize(), 0);
+      scheduleMapResize('load');
     });
     mapRef.current = map;
+    const cleanupInitialResize = scheduleMapResize('init');
     return () => {
+      cleanupInitialResize?.();
       if (markerRef.current) {
         markerRef.current.remove();
         markerRef.current = null;
@@ -2383,7 +2424,7 @@ function DeliveryPinMap({
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [scheduleMapResize]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -2443,19 +2484,40 @@ function DeliveryPinMap({
   }, [disabled, onPinChange]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return undefined;
-    const firstTimer = setTimeout(() => map.resize(), 40);
-    const secondTimer = setTimeout(() => map.resize(), 180);
-    return () => {
-      clearTimeout(firstTimer);
-      clearTimeout(secondTimer);
+    if (!mapRef.current || !frameRef.current) return undefined;
+    const cleanupTasks = [];
+    cleanupTasks.push(scheduleMapResize('visible'));
+
+    let resizeObserver = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        const cleanup = scheduleMapResize('observer');
+        if (cleanup) cleanupTasks.push(cleanup);
+      });
+      resizeObserver.observe(frameRef.current);
+    }
+
+    const handleViewportResize = () => {
+      const cleanup = scheduleMapResize('viewport');
+      if (cleanup) cleanupTasks.push(cleanup);
     };
-  }, [disabled, resolvedHeight]);
+    window.addEventListener('resize', handleViewportResize);
+    window.addEventListener('orientationchange', handleViewportResize);
+    window.visualViewport?.addEventListener?.('resize', handleViewportResize);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', handleViewportResize);
+      window.removeEventListener('orientationchange', handleViewportResize);
+      window.visualViewport?.removeEventListener?.('resize', handleViewportResize);
+      cleanupTasks.splice(0).forEach((cleanup) => cleanup?.());
+    };
+  }, [disabled, resolvedHeight, scheduleMapResize]);
 
   if (mapUnavailable) {
     return (
       <div
+        data-delivery-map-frame="fallback"
         style={{
           marginBottom: 10,
           width: '100%',
@@ -2477,6 +2539,8 @@ function DeliveryPinMap({
 
   return (
     <div
+      ref={frameRef}
+      data-delivery-map-frame="true"
       style={{
         position: 'relative',
         marginBottom: 10,
@@ -2493,10 +2557,32 @@ function DeliveryPinMap({
         transition: 'all 200ms ease'
       }}
     >
-      <div ref={ref} style={{ position: 'absolute', inset: 0, height: '100%', width: '100%' }} />
-      {overlayControls}
+      <div
+        ref={ref}
+        data-delivery-map-root="true"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          height: '100%',
+          width: '100%',
+          minHeight: 0
+        }}
+      />
+      {overlayControls && (
+        <div
+          data-delivery-map-controls="true"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            zIndex: 10
+          }}
+        >
+          {overlayControls}
+        </div>
+      )}
       {disabled && (
-        <div style={{ position: 'absolute', inset: 0, borderRadius: 10, background: 'rgba(255,255,255,.6)' }} />
+        <div style={{ position: 'absolute', inset: 0, borderRadius: 10, background: 'rgba(255,255,255,.6)', zIndex: 20 }} />
       )}
     </div>
   );
@@ -5907,7 +5993,7 @@ export default function StorefrontApp() {
     supporting: supportingSectionModel
   } = pageModel;
   const isFnbOrderSubpage = isFnbMode && (isOrderSubpage || isTrackSubpage);
-  const isStandaloneTrackingPage = isTrackSubpage || (isOrderSubpage && checkoutTab === 'track');
+  const isStandaloneTrackingPage = Boolean(trackingResult) && (isTrackSubpage || (isOrderSubpage && checkoutTab === 'track'));
   const storeAuthToken = readStoreAuthToken();
   const dgfyAuthToken = String(dgfyAuthTokenState || '').trim();
   const isDgfyCustomerSignedIn = Boolean(dgfyAuthToken || dgfySessionAccount?.id);
@@ -6732,8 +6818,8 @@ export default function StorefrontApp() {
     const persistedTrackingPin = readLastTrackingPinForStore(resolvedSlug);
     const routeTrackingPin = readTrackingPinFromQuery();
     const routeWantsTrack = routeSubpage === STORE_TRACK_SUBPAGE || currentPathSubpage === STORE_TRACK_SUBPAGE;
-    const preferredTab = pendingOrderInitialTab || (routeWantsTrack ? 'track' : 'checkout');
     const preferredPin = String(routeTrackingPin || persistedTrackedOrders[0]?.tracking_pin || persistedTrackingPin || '').trim().toUpperCase();
+    const preferredTab = pendingOrderInitialTab || (routeWantsTrack && preferredPin ? 'track' : 'checkout');
     if (!trackingPinInput && preferredPin) {
       setTrackingPinInput(preferredPin);
     }
@@ -10433,6 +10519,18 @@ export default function StorefrontApp() {
       window.history.replaceState({}, '', currentUrl.toString());
     }
   }, [isDgfyCustomerSignedIn]);
+  useEffect(() => {
+    const routeWantsTrack = routeSubpage === STORE_TRACK_SUBPAGE || currentPathSubpage === STORE_TRACK_SUBPAGE;
+    if (!routeWantsTrack || !isFnbMode || !canOpenTrackingDrawer || trackingResult) return;
+    if (isDgfyCustomerSignedIn) {
+      void handleLoadAccountPanel();
+    }
+    setIsCheckoutOpen(false);
+    setIsGuestTrackingDrawerOpen(true);
+    if (!selectedTrackingPin) {
+      setCheckoutTab('checkout');
+    }
+  }, [canOpenTrackingDrawer, currentPathSubpage, isDgfyCustomerSignedIn, isFnbMode, routeSubpage, selectedTrackingPin, trackingResult]);
   useEffect(() => {
     if (typeof window === 'undefined' || hasAppliedCheckoutAuthResume || !isDgfyCustomerSignedIn) return;
     const draft = readCheckoutAuthResumeDraft();
@@ -18993,92 +19091,104 @@ return (
                                       setCustomerPin(nextPin);
                                     }}
                                     disabled={false}
+                                    height={isMobileViewport ? 'clamp(230px, 34svh, 280px)' : 260}
                                     highlighted={deliveryLocationAction === 'map'}
                                     highlightColor={fnbOrderBrand}
                                     highlightGlow="rgba(26,78,141,0.16)"
+                                    overlayControls={(
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={handlePinMyLocation}
+                                          disabled={pinLocationLoading}
+                                          style={{
+                                            position: 'absolute',
+                                            top: 12,
+                                            left: 12,
+                                            maxWidth: isMobileViewport ? 'calc(100% - 68px)' : 'none',
+                                            minHeight: 38,
+                                            borderRadius: 999,
+                                            border: `1px solid ${deliveryLocationAction === 'current' ? fnbOrderBrand : '#dbe5ee'}`,
+                                            background: deliveryLocationAction === 'current' ? '#dbeafe' : '#ffffff',
+                                            color: deliveryLocationAction === 'current' ? fnbOrderBrandDark : '#1e293b',
+                                            padding: '0 12px',
+                                            fontSize: 12,
+                                            fontWeight: 700,
+                                            cursor: pinLocationLoading ? 'wait' : 'pointer',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: 8,
+                                            boxShadow: '0 8px 20px rgba(15,23,42,0.12)',
+                                            zIndex: 11,
+                                            fontFamily: servicesBodyFont,
+                                            pointerEvents: 'auto',
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis'
+                                          }}
+                                        >
+                                          <Navigation size={15} />
+                                          {pinLocationLoading ? 'Locating...' : 'Use Current Location'}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setDeliveryLocationAction('map');
+                                            setSelectedSavedLocationId('');
+                                          }}
+                                          style={{
+                                            position: 'absolute',
+                                            right: 12,
+                                            bottom: 12,
+                                            minHeight: 34,
+                                            borderRadius: 999,
+                                            border: `1px solid ${deliveryLocationAction === 'map' ? fnbOrderBrandBorder : '#dbe5ee'}`,
+                                            background: deliveryLocationAction === 'map' ? '#dbeafe' : 'rgba(255,255,255,0.96)',
+                                            color: deliveryLocationAction === 'map' ? fnbOrderBrandDark : '#334155',
+                                            padding: '0 10px',
+                                            fontSize: 12,
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: 6,
+                                            boxShadow: '0 8px 20px rgba(15,23,42,0.12)',
+                                            zIndex: 11,
+                                            fontFamily: servicesBodyFont,
+                                            pointerEvents: 'auto'
+                                          }}
+                                        >
+                                          <MapPin size={14} />
+                                          Drag to adjust pin
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setShowExpandedDeliveryMap(true)}
+                                          aria-label="Open large map"
+                                          title="Open large map"
+                                          style={{
+                                            position: 'absolute',
+                                            top: 12,
+                                            right: 12,
+                                            width: 36,
+                                            height: 36,
+                                            borderRadius: 10,
+                                            background: '#fff',
+                                            border: '1px solid #cbd5e1',
+                                            boxShadow: '0 4px 12px rgba(15,23,42,0.1)',
+                                            display: 'grid',
+                                            placeItems: 'center',
+                                            cursor: 'pointer',
+                                            color: '#334155',
+                                            zIndex: 12,
+                                            pointerEvents: 'auto'
+                                          }}
+                                        >
+                                          <Maximize size={18} />
+                                        </button>
+                                      </>
+                                    )}
                                   />
-                                  <button
-                                    type="button"
-                                    onClick={handlePinMyLocation}
-                                    disabled={pinLocationLoading}
-                                    style={{
-                                      position: 'absolute',
-                                      top: 12,
-                                      left: 12,
-                                      minHeight: 38,
-                                      borderRadius: 999,
-                                      border: `1px solid ${deliveryLocationAction === 'current' ? fnbOrderBrand : '#dbe5ee'}`,
-                                      background: deliveryLocationAction === 'current' ? '#dbeafe' : '#ffffff',
-                                      color: deliveryLocationAction === 'current' ? fnbOrderBrandDark : '#1e293b',
-                                      padding: '0 12px',
-                                      fontSize: 12,
-                                      fontWeight: 700,
-                                      cursor: pinLocationLoading ? 'wait' : 'pointer',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: 8,
-                                      boxShadow: '0 8px 20px rgba(15,23,42,0.12)',
-                                      zIndex: 11,
-                                      fontFamily: servicesBodyFont
-                                    }}
-                                  >
-                                    <Navigation size={15} />
-                                    {pinLocationLoading ? 'Locating...' : 'Use Current Location'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setDeliveryLocationAction('map');
-                                      setSelectedSavedLocationId('');
-                                    }}
-                                    style={{
-                                      position: 'absolute',
-                                      right: 12,
-                                      bottom: 12,
-                                      minHeight: 34,
-                                      borderRadius: 999,
-                                      border: `1px solid ${deliveryLocationAction === 'map' ? fnbOrderBrandBorder : '#dbe5ee'}`,
-                                      background: deliveryLocationAction === 'map' ? '#dbeafe' : 'rgba(255,255,255,0.96)',
-                                      color: deliveryLocationAction === 'map' ? fnbOrderBrandDark : '#334155',
-                                      padding: '0 10px',
-                                      fontSize: 12,
-                                      fontWeight: 700,
-                                      cursor: 'pointer',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: 6,
-                                      boxShadow: '0 8px 20px rgba(15,23,42,0.12)',
-                                      zIndex: 11,
-                                      fontFamily: servicesBodyFont
-                                    }}
-                                  >
-                                    <MapPin size={14} />
-                                    Drag to adjust pin
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowExpandedDeliveryMap(true)}
-                                    aria-label="Open large map"
-                                    title="Open large map"
-                                    style={{
-                                      position: 'absolute',
-                                      top: 12,
-                                      right: 12,
-                                      width: 36,
-                                      height: 36,
-                                      borderRadius: 10,
-                                      background: '#fff',
-                                      border: '1px solid #cbd5e1',
-                                      boxShadow: '0 4px 12px rgba(15,23,42,0.1)',
-                                      display: 'grid',
-                                      placeItems: 'center',
-                                      cursor: 'pointer',
-                                      color: '#334155',
-                                      zIndex: 12
-                                    }}
-                                  >
-                                    <Maximize size={18} />
-                                  </button>
                                 </div>
                                 <div
                                   style={{
@@ -19151,7 +19261,7 @@ return (
                                 setCustomerPin(nextPin);
                               }}
                               disabled={false}
-                              height={isMobileViewport ? 'min(70vh, calc(100svh - 220px))' : 520}
+                              height={isMobileViewport ? 'clamp(340px, min(70svh, calc(100svh - 220px)), 620px)' : 520}
                               highlighted
                               highlightColor={fnbOrderBrand}
                               highlightGlow="rgba(26,78,141,0.16)"
@@ -19179,7 +19289,12 @@ return (
                                       gap: 8,
                                       boxShadow: '0 8px 20px rgba(15,23,42,0.12)',
                                       zIndex: 11,
-                                      fontFamily: servicesBodyFont
+                                      fontFamily: servicesBodyFont,
+                                      pointerEvents: 'auto',
+                                      maxWidth: isMobileViewport ? 'calc(100% - 24px)' : 'none',
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis'
                                     }}
                                   >
                                     <Navigation size={15} />
@@ -19209,7 +19324,8 @@ return (
                                       gap: 6,
                                       boxShadow: '0 8px 20px rgba(15,23,42,0.12)',
                                       zIndex: 11,
-                                      fontFamily: servicesBodyFont
+                                      fontFamily: servicesBodyFont,
+                                      pointerEvents: 'auto'
                                     }}
                                   >
                                     <MapPin size={14} />
@@ -21038,53 +21154,7 @@ return (
                     <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Loading Order Details...</div>
                     <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>Fetching real-time status for {selectedTrackingPin}</div>
                   </div>
-                ) : (
-                  <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 16, background: '#fff', boxShadow: '0 8px 24px rgba(15,23,42,.04)', maxWidth: 560, margin: '0 auto' }}>
-                    <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 22 }}>Track Your Order</h3>
-                    <p style={{ marginTop: 0, color: '#64748b', fontSize: 13 }}>In-progress orders are tracked automatically on this device.</p>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <input value={trackingPinInput} onChange={(e) => setTrackingPinInput(e.target.value.toUpperCase())} placeholder="SK-XXXXXX" style={{ flex: 1, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px' }} />
-                      <button type="button" onClick={handleTrack} disabled={!selectedStore} style={{ borderRadius: 12, border: '1px solid #334155', background: '#334155', color: '#fff', padding: '11px 16px', fontWeight: 700 }}>Track</button>
-                    </div>
-                    <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
-                      <div style={{ fontSize: 12, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>In Progress Orders</div>
-                      {guestTrackedOrders.length === 0 ? (
-                        <div style={{ fontSize: 13, color: '#64748b', border: '1px solid #e2e8f0', borderRadius: 12, padding: '10px 12px', background: '#f8fafc' }}>
-                          No in-progress orders yet. Enter a tracking PIN to start tracking.
-                        </div>
-                      ) : (
-                        <div style={{ display: 'grid', gap: 8 }}>
-                          {guestTrackedOrders.map((entry) => {
-                            const isSelected = String(selectedTrackingPin || '').trim().toUpperCase() === String(entry.tracking_pin || '').trim().toUpperCase();
-                            return (
-                              <button
-                                key={`guest-track-order-${entry.tracking_pin}`}
-                                type="button"
-                                onClick={() => {
-                                  const nextPin = String(entry.tracking_pin || '').trim().toUpperCase();
-                                  setSelectedTrackingPin(nextPin);
-                                  setTrackingPinInput(nextPin);
-                                  setTrackingResult(null);
-                                  setTrackingError('');
-                                }}
-                                style={{ border: `1px solid ${isSelected ? '#1a4e8d' : '#e2e8f0'}`, borderRadius: 12, background: isSelected ? '#eff6ff' : '#fff', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', cursor: 'pointer', textAlign: 'left' }}
-                              >
-                                <div style={{ display: 'grid', gap: 3 }}>
-                                  <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>{entry.tracking_pin}</div>
-                                  <div style={{ fontSize: 12, color: '#64748b' }}>{entry.status_label || entry.status || 'In progress'}</div>
-                                </div>
-                                <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', textTransform: 'capitalize' }}>
-                                  {entry.order_method || 'delivery'}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                    {trackingError && <p style={{ color: '#b91c1c', marginTop: 10 }}>{trackingError}</p>}
-                  </div>
-                )}
+                ) : null}
               </div>
             )}
 
@@ -21198,6 +21268,7 @@ return (
           onTrack={handleTrack}
           selectedStore={selectedStore}
           guestTrackedOrders={trackingDrawerOrders}
+          trackingError={trackingError}
           expandedGuestDrawerPin={expandedGuestDrawerPin}
           onExpandedGuestDrawerPinChange={setExpandedGuestDrawerPin}
           onClose={() => setIsGuestTrackingDrawerOpen(false)}

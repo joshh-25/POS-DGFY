@@ -142,6 +142,7 @@ export function GuestTrackingDrawer({
   trackingPinInput,
   onTrackingPinInputChange,
   onTrack,
+  trackingError = '',
   selectedStore,
   guestTrackedOrders,
   expandedGuestDrawerPin,
@@ -215,6 +216,11 @@ export function GuestTrackingDrawer({
           >
             Track
           </button>
+          {trackingError ? (
+            <div style={{ gridColumn: '1 / -1', color: '#b91c1c', fontSize: 12, lineHeight: 1.4, fontWeight: 600 }}>
+              {trackingError}
+            </div>
+          ) : null}
         </div>
         <div style={{ minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', display: 'grid', gap: 8, alignContent: 'start', paddingRight: 2 }}>
           {guestTrackedOrders.length === 0 ? (
