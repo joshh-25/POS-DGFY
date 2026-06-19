@@ -1333,7 +1333,7 @@ const STOREFRONT_SAVED_DETAILS_STORAGE_KEY = 'dgfy_store_saved_customer_details_
 const STOREFRONT_CHECKOUT_AUTH_RESUME_KEY = 'dgfy_store_checkout_auth_resume_v1';
 const STOREFRONT_LAST_TRACKING_PIN_KEY_PREFIX = 'dgfy_store_last_tracking_pin_v1';
 const STOREFRONT_TRACKED_ORDERS_KEY_PREFIX = 'dgfy_store_tracked_orders_v1';
-const TERMINAL_TRACKING_STATUSES = new Set(['completed', 'cancelled', 'rejected']);
+const TERMINAL_TRACKING_STATUSES = new Set(['completed', 'delivered', 'picked_up', 'cancelled', 'rejected']);
 const DGFY_ACCOUNT_ORDER_ACTIVITY_TYPES = new Set(['order', 'pos_order', 'fnb_order']);
 const DGFY_ACCOUNT_BOOKING_ACTIVITY_TYPES = new Set(['service_booking', 'hospitality_booking']);
 const EMPTY_ACCOUNT_PANEL = Object.freeze({
@@ -1344,6 +1344,8 @@ const EMPTY_ACCOUNT_PANEL = Object.freeze({
   activities: [],
   orders: [],
   bookings: [],
+  notifications: [],
+  unreadNotificationCount: 0,
   addresses: [],
   loyalty: null
 });
@@ -1601,6 +1603,37 @@ const deriveAccountActivityCollections = ({ dashboardData = null, activitiesData
     orders: activities.filter((entry) => DGFY_ACCOUNT_ORDER_ACTIVITY_TYPES.has(String(entry?.type || '').trim().toLowerCase())),
     bookings: activities.filter((entry) => DGFY_ACCOUNT_BOOKING_ACTIVITY_TYPES.has(String(entry?.type || '').trim().toLowerCase()))
   };
+};
+
+const mergeAccountActivityList = (list = [], activity = null) => {
+  if (!activity?.reference && !activity?.activity_id) return Array.isArray(list) ? list : [];
+  const nextActivity = { ...activity };
+  const existing = Array.isArray(list) ? list : [];
+  const matchKey = String(nextActivity.activity_id || nextActivity.reference || '').trim().toUpperCase();
+  const withoutCurrent = existing.filter((entry) => {
+    const entryKey = String(entry?.activity_id || entry?.reference || '').trim().toUpperCase();
+    return entryKey !== matchKey;
+  });
+  return [nextActivity, ...withoutCurrent].sort((a, b) => (
+    new Date(b?.occurred_at || b?.updated_at || b?.created_at || 0).getTime()
+    - new Date(a?.occurred_at || a?.updated_at || a?.created_at || 0).getTime()
+  ));
+};
+
+const mergeAccountPanelActivity = (panel = EMPTY_ACCOUNT_PANEL, activity = null) => {
+  const activities = mergeAccountActivityList(panel.activities, activity);
+  const type = String(activity?.type || activity?.activity_type || '').trim().toLowerCase();
+  const nextPanel = {
+    ...panel,
+    activities
+  };
+  if (DGFY_ACCOUNT_ORDER_ACTIVITY_TYPES.has(type)) {
+    nextPanel.orders = mergeAccountActivityList(panel.orders, activity);
+  }
+  if (DGFY_ACCOUNT_BOOKING_ACTIVITY_TYPES.has(type)) {
+    nextPanel.bookings = mergeAccountActivityList(panel.bookings, activity);
+  }
+  return nextPanel;
 };
 
 const resolveStorefrontRouteSlug = (activity = {}, selectedStore = null) => {
@@ -6031,6 +6064,27 @@ export default function StorefrontApp() {
         .filter(Boolean)
     )
   ), [activeCustomerOrders, selectedStore]);
+  const mergeLiveAccountActivity = useCallback((activity) => {
+    if (!activity || typeof activity !== 'object') return;
+    const normalizedReference = String(activity.reference || '').trim().toUpperCase();
+    setAccountPanel((previous) => mergeAccountPanelActivity(previous, activity));
+    setTrackedCustomerActivity((previous) => {
+      const previousReference = String(previous?.reference || '').trim().toUpperCase();
+      return normalizedReference && previousReference === normalizedReference
+        ? { ...previous, ...activity }
+        : previous;
+    });
+    setTrackingResult((previous) => {
+      const previousPin = String(previous?.tracking_pin || previous?.order?.tracking_pin || '').trim().toUpperCase();
+      if (!normalizedReference || previousPin !== normalizedReference) return previous;
+      return {
+        ...previous,
+        status: activity.status || previous?.status,
+        status_label: activity.status_label || activity.status || previous?.status_label,
+        updated_at: activity.updated_at || activity.occurred_at || previous?.updated_at
+      };
+    });
+  }, []);
   const trackingDrawerOrders = isDgfyCustomerSignedIn ? accountTrackedOrders : guestTrackedOrders;
   const canOpenTrackingDrawer = (isDgfyCustomerSignedIn || isGuestStorefrontUser) && !isStandaloneTrackingPage;
 
@@ -6758,6 +6812,93 @@ export default function StorefrontApp() {
     isDgfyCustomerSignedIn,
     isGuestTrackingDrawerOpen,
     isStandaloneAccountPage
+  ]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof EventSource === 'undefined' || !isDgfyCustomerSignedIn) return undefined;
+    const shouldStreamAccountEvents = isAccountDrawerOpen
+      || isStandaloneAccountPage
+      || isGuestTrackingDrawerOpen
+      || activeCustomerOrderCount > 0;
+    if (!shouldStreamAccountEvents) return undefined;
+
+    let closed = false;
+    const source = new EventSource(withApiOrigin('/api/v1/dgfy/customer/events'), { withCredentials: true });
+    source.addEventListener('activity.updated', (event) => {
+      try {
+        const payload = JSON.parse(event.data || '{}');
+        mergeLiveAccountActivity(payload.activity);
+      } catch {
+        // Ignore malformed stream messages and let polling correct the state.
+      }
+    });
+    source.addEventListener('notification.created', (event) => {
+      try {
+        const payload = JSON.parse(event.data || '{}');
+        const notification = payload.notification;
+        if (!notification?.notification_id) return;
+        setAccountPanel((previous) => {
+          const existing = Array.isArray(previous.notifications) ? previous.notifications : [];
+          if (existing.some((entry) => entry?.notification_id === notification.notification_id)) return previous;
+          return {
+            ...previous,
+            notifications: [notification, ...existing].slice(0, 50),
+            unreadNotificationCount: Number(previous.unreadNotificationCount || 0) + (notification.read_at ? 0 : 1)
+          };
+        });
+      } catch {
+        // Polling remains the source of repair for malformed stream messages.
+      }
+    });
+    source.addEventListener('notification.read', (event) => {
+      try {
+        const payload = JSON.parse(event.data || '{}');
+        setAccountPanel((previous) => {
+          const readAt = payload.read_at || payload.notification?.read_at || new Date().toISOString();
+          if (payload.all) {
+            return {
+              ...previous,
+              notifications: (Array.isArray(previous.notifications) ? previous.notifications : []).map((entry) => ({
+                ...entry,
+                read_at: entry.read_at || readAt
+              })),
+              unreadNotificationCount: 0
+            };
+          }
+          const notificationId = payload.notification?.notification_id;
+          if (!notificationId) return previous;
+          let unreadDelta = 0;
+          const notifications = (Array.isArray(previous.notifications) ? previous.notifications : []).map((entry) => {
+            if (entry?.notification_id !== notificationId) return entry;
+            if (!entry.read_at) unreadDelta = 1;
+            return { ...entry, read_at: readAt };
+          });
+          return {
+            ...previous,
+            notifications,
+            unreadNotificationCount: Math.max(0, Number(previous.unreadNotificationCount || 0) - unreadDelta)
+          };
+        });
+      } catch {
+        // Polling remains the source of repair for malformed stream messages.
+      }
+    });
+    source.onerror = () => {
+      if (!closed && accountPanelRefreshInFlightRef.current === false) {
+        void handleLoadAccountPanel();
+      }
+    };
+    return () => {
+      closed = true;
+      source.close();
+    };
+  }, [
+    activeCustomerOrderCount,
+    isAccountDrawerOpen,
+    isDgfyCustomerSignedIn,
+    isGuestTrackingDrawerOpen,
+    isStandaloneAccountPage,
+    mergeLiveAccountActivity
   ]);
 
   useEffect(() => {
@@ -10014,19 +10155,21 @@ export default function StorefrontApp() {
     }
     setAccountPanel((prev) => ({ ...prev, loading: true, error: '' }));
     const loadDgfyAccountPanel = async (authToken = '') => {
-      const [meData, dashboardData, activitiesData, loyaltyData, companiesData] = await Promise.all([
+      const [meData, dashboardData, activitiesData, loyaltyData, companiesData, notificationsData] = await Promise.all([
         requestJson('/api/v1/dgfy/auth/me', { authToken, cache: 'no-store' }),
         requestJson('/api/v1/dgfy/customer/dashboard', { authToken, cache: 'no-store' }),
         requestJson('/api/v1/dgfy/customer/activities?limit=100', { authToken, cache: 'no-store' }).catch(() => ({ activities: [] })),
         requestJson('/api/v1/dgfy/customer/loyalty', { authToken, cache: 'no-store' }).catch(() => null),
-        requestJson('/api/v1/dgfy/account/companies', { authToken, cache: 'no-store' }).catch(() => ({ companies: [] }))
+        requestJson('/api/v1/dgfy/account/companies', { authToken, cache: 'no-store' }).catch(() => ({ companies: [] })),
+        requestJson('/api/v1/dgfy/customer/notifications?limit=50', { authToken, cache: 'no-store' }).catch(() => ({ notifications: [], unread_count: 0 }))
       ]);
       return {
         meData,
         dashboardData,
         activitiesData,
         loyaltyData,
-        companiesData
+        companiesData,
+        notificationsData
       };
     };
     try {
@@ -10044,7 +10187,7 @@ export default function StorefrontApp() {
             throw error;
           }
         }
-        const { meData, dashboardData, activitiesData, loyaltyData, companiesData } = panelData;
+        const { meData, dashboardData, activitiesData, loyaltyData, companiesData, notificationsData } = panelData;
         const activityCollections = deriveAccountActivityCollections({ dashboardData, activitiesData });
         setDgfySessionAccount(meData?.account || dashboardData?.account || meData || dgfySessionAccount || null);
         if (meData?.account || dashboardData?.account || meData) {
@@ -10059,6 +10202,8 @@ export default function StorefrontApp() {
           activities: activityCollections.activities,
           orders: activityCollections.orders,
           bookings: activityCollections.bookings,
+          notifications: Array.isArray(notificationsData?.notifications) ? notificationsData.notifications : [],
+          unreadNotificationCount: Number(notificationsData?.unread_count || 0),
           addresses: Array.isArray(dashboardData?.addresses) ? dashboardData.addresses : [],
           loyalty: loyaltyData?.loyalty || dashboardData?.loyalty || null,
           businessCompanies: Array.isArray(companiesData?.companies) ? companiesData.companies : [],
@@ -10084,6 +10229,8 @@ export default function StorefrontApp() {
         activities: [],
         orders: Array.isArray(ordersData?.orders) ? ordersData.orders : [],
         bookings: Array.isArray(bookingsData?.bookings) ? bookingsData.bookings : [],
+        notifications: [],
+        unreadNotificationCount: 0,
         addresses: [],
         loyalty: null,
         businessCompanies: [],
@@ -10144,6 +10291,55 @@ export default function StorefrontApp() {
       setCustomerTrackLoadingReference('');
     }
   }, [dgfySessionAccount?.id, goStoreTrackPage, routeSlug, selectedStore]);
+
+  const handleMarkNotificationRead = useCallback(async (notification) => {
+    const notificationId = notification?.notification_id;
+    if (!notificationId) return;
+    setAccountPanel((previous) => {
+      let unreadDelta = 0;
+      const notifications = (Array.isArray(previous.notifications) ? previous.notifications : []).map((entry) => {
+        if (entry?.notification_id !== notificationId) return entry;
+        if (!entry.read_at) unreadDelta = 1;
+        return { ...entry, read_at: entry.read_at || new Date().toISOString() };
+      });
+      return {
+        ...previous,
+        notifications,
+        unreadNotificationCount: Math.max(0, Number(previous.unreadNotificationCount || 0) - unreadDelta)
+      };
+    });
+    try {
+      await requestJson(`/api/v1/dgfy/customer/notifications/${encodeURIComponent(notificationId)}/read`, {
+        method: 'PATCH',
+        authToken: readDgfyAuthToken(),
+        cache: 'no-store'
+      });
+    } catch {
+      void handleLoadAccountPanel();
+    }
+  }, []);
+
+  const handleMarkAllNotificationsRead = useCallback(async () => {
+    const readAt = new Date().toISOString();
+    setAccountPanel((previous) => ({
+      ...previous,
+      notifications: (Array.isArray(previous.notifications) ? previous.notifications : []).map((entry) => ({
+        ...entry,
+        read_at: entry.read_at || readAt
+      })),
+      unreadNotificationCount: 0
+    }));
+    try {
+      await requestJson('/api/v1/dgfy/customer/notifications/read-all', {
+        method: 'PATCH',
+        authToken: readDgfyAuthToken(),
+        cache: 'no-store'
+      });
+    } catch {
+      void handleLoadAccountPanel();
+    }
+  }, []);
+
   const handleSaveAccountAddress = useCallback(async (draft = {}, existingAddress = null) => {
     const token = readDgfyAuthToken();
     const hasDgfySession = Boolean(token || dgfySessionAccount?.id);
@@ -11491,6 +11687,8 @@ export default function StorefrontApp() {
         onClose={closeStandaloneAccountPage}
         onRefresh={handleLoadAccountPanel}
         onTrackReference={handleTrackCustomerReference}
+        onMarkNotificationRead={handleMarkNotificationRead}
+        onMarkAllNotificationsRead={handleMarkAllNotificationsRead}
         onSignOut={handleStorefrontSignOut}
         onHelp={() => toast.info('Help center is not connected yet.')}
         onRegisterBusiness={openBusinessRegistrationFlow}
@@ -20934,6 +21132,8 @@ return (
           onClose={closeAccountDrawer}
           onRefresh={handleLoadAccountPanel}
           onTrackReference={handleTrackCustomerReference}
+          onMarkNotificationRead={handleMarkNotificationRead}
+          onMarkAllNotificationsRead={handleMarkAllNotificationsRead}
           onSignOut={handleStorefrontSignOut}
           onHelp={() => toast.info('Help center is not connected yet.')}
           onRegisterBusiness={openBusinessRegistrationFlow}

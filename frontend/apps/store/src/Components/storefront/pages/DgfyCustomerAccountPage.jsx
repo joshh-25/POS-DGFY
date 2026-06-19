@@ -82,6 +82,8 @@ export function DgfyCustomerAccountPage({
   onClose,
   onRefresh,
   onTrackReference,
+  onMarkNotificationRead,
+  onMarkAllNotificationsRead,
   onSignOut,
   onHelp,
   onRegisterBusiness,
@@ -113,6 +115,8 @@ export function DgfyCustomerAccountPage({
   const allOrders = Array.isArray(accountPanel?.orders) ? accountPanel.orders : [];
   const allBookings = Array.isArray(accountPanel?.bookings) ? accountPanel.bookings : [];
   const allAddresses = Array.isArray(accountPanel?.addresses) ? accountPanel.addresses : [];
+  const notifications = Array.isArray(accountPanel?.notifications) ? accountPanel.notifications : [];
+  const unreadNotificationCount = Math.max(0, Number(accountPanel?.unreadNotificationCount || 0));
   const defaultAddress = allAddresses.find(a => a.is_default) || allAddresses[0];
   const accountContactParts = String(accountIdentityContact || '').split(' | ').map((value) => String(value || '').trim());
   const overviewPhone = String(accountPanel?.me?.phone || accountContactParts[0] || '').trim();
@@ -129,10 +133,21 @@ export function DgfyCustomerAccountPage({
   const [activeNav, setActiveNav] = useState('overview');
   const [activeActivityTab, setActiveActivityTab] = useState('active_orders');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
   const [businessStepUpAction, setBusinessStepUpAction] = useState(null);
   const [businessEmailOtpCode, setBusinessEmailOtpCode] = useState('');
   const [businessActionLoading, setBusinessActionLoading] = useState(false);
   const [businessActionError, setBusinessActionError] = useState('');
+
+  const openNotification = (notification) => {
+    if (notification?.notification_id && typeof onMarkNotificationRead === 'function') {
+      onMarkNotificationRead(notification);
+    }
+    if (notification?.reference && typeof onTrackReference === 'function') {
+      onTrackReference({ reference: notification.reference, status: notification.status });
+      setIsNotificationPanelOpen(false);
+    }
+  };
   const [addressDraft, setAddressDraft] = useState({ label: 'Home', address_line: '', latitude: null, longitude: null, is_default: false });
   const [editingAddressId, setEditingAddressId] = useState(null);
   const [editingAddressDraft, setEditingAddressDraft] = useState({ label: '', address_line: '', latitude: null, longitude: null, is_default: false });
@@ -877,13 +892,62 @@ export function DgfyCustomerAccountPage({
             </button>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <button style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, position: 'relative' }}>
+            <button
+              type="button"
+              aria-label="Notifications"
+              onClick={() => setIsNotificationPanelOpen((current) => !current)}
+              style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
+            >
               <Bell size={20} color={THEME.text} />
-              <div style={{ position: 'absolute', top: -4, right: -4, width: 14, height: 14, background: THEME.orange, color: '#FFF', borderRadius: '50%', fontSize: 9, fontWeight: 700, display: 'grid', placeItems: 'center', border: '2px solid #FFF' }}>
-                3
-              </div>
+              {unreadNotificationCount > 0 && (
+                <div style={{ position: 'absolute', top: -4, right: -4, minWidth: 14, height: 14, padding: '0 3px', background: THEME.orange, color: '#FFF', borderRadius: 999, fontSize: 9, fontWeight: 700, display: 'grid', placeItems: 'center', border: '2px solid #FFF', boxSizing: 'border-box' }}>
+                  {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                </div>
+              )}
             </button>
+            {isNotificationPanelOpen && (
+              <div style={{ position: 'absolute', top: 44, right: isMobileViewport ? -72 : 92, width: isMobileViewport ? 'min(320px, calc(100vw - 24px))' : 360, maxHeight: 420, overflow: 'hidden', border: `1px solid ${THEME.border}`, borderRadius: 8, background: THEME.surface, boxShadow: '0 18px 40px rgba(15,23,42,.16)', zIndex: 60 }}>
+                <div style={{ padding: '14px 16px', borderBottom: `1px solid ${THEME.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: THEME.text }}>Notifications</div>
+                  {unreadNotificationCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => typeof onMarkAllNotificationsRead === 'function' && onMarkAllNotificationsRead()}
+                      style={{ border: 'none', background: 'transparent', color: THEME.primary, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                </div>
+                <div style={{ maxHeight: 352, overflowY: 'auto' }}>
+                  {notifications.length === 0 ? (
+                    <div style={{ padding: '28px 16px', textAlign: 'center', color: THEME.muted, fontSize: 14, fontWeight: 600 }}>
+                      No notifications
+                    </div>
+                  ) : notifications.map((notification) => {
+                    const isUnread = !notification.read_at;
+                    return (
+                      <button
+                        key={notification.notification_id || `${notification.reference}-${notification.created_at}`}
+                        type="button"
+                        onClick={() => openNotification(notification)}
+                        style={{ width: '100%', border: 'none', borderBottom: `1px solid ${THEME.border}`, background: isUnread ? '#F8FBFF' : THEME.surface, padding: '12px 16px', textAlign: 'left', cursor: 'pointer', display: 'grid', gap: 4 }}
+                      >
+                        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: THEME.text }}>{notification.title || 'Order updated'}</span>
+                          {isUnread && <span style={{ width: 8, height: 8, borderRadius: '50%', background: THEME.primary, flex: '0 0 auto' }} />}
+                        </span>
+                        <span style={{ fontSize: 13, color: THEME.muted, lineHeight: 1.35 }}>{notification.body || prettyStatus(notification.status)}</span>
+                        {notification.reference && (
+                          <span style={{ fontSize: 12, color: THEME.primary, fontWeight: 700 }}>{notification.reference} - Track Order</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div style={{ width: 36, height: 36, borderRadius: '50%', background: THEME.infoBg, color: THEME.primary, display: 'grid', placeItems: 'center', fontSize: 14, fontWeight: 700 }}>
               {accountIdentityInitials}
             </div>

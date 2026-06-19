@@ -111,4 +111,42 @@ describe('DGFY customer account dashboard', () => {
     expect(onTrackReference).toHaveBeenCalledTimes(1);
     expect(onTrackReference.mock.calls[0][0]).toMatchObject({ reference: 'SK-M3SGQA' });
   });
+
+  it('opens notifications, marks single entries read, and marks all entries read', () => {
+    const onTrackReference = vi.fn();
+    const onMarkNotificationRead = vi.fn();
+    const onMarkAllNotificationsRead = vi.fn();
+    renderDashboard({
+      onTrackReference,
+      onMarkNotificationRead,
+      onMarkAllNotificationsRead,
+      accountPanel: {
+        ...accountPanel,
+        notifications: [
+          {
+            notification_id: 77,
+            title: 'Order confirmed',
+            body: 'Space Bar confirmed your order.',
+            reference: 'SK-M3SGQA',
+            status: 'confirmed',
+            read_at: null
+          }
+        ],
+        unreadNotificationCount: 1
+      }
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }));
+
+    expect(screen.getByText('Order confirmed')).toBeTruthy();
+    expect(screen.getByText('Mark all read')).toBeTruthy();
+
+    fireEvent.click(screen.getByText('SK-M3SGQA - Track Order'));
+    expect(onMarkNotificationRead).toHaveBeenCalledWith(expect.objectContaining({ notification_id: 77 }));
+    expect(onTrackReference).toHaveBeenCalledWith(expect.objectContaining({ reference: 'SK-M3SGQA' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }));
+    fireEvent.click(screen.getByText('Mark all read'));
+    expect(onMarkAllNotificationsRead).toHaveBeenCalledTimes(1);
+  });
 });
