@@ -109,6 +109,7 @@ import DgfyAccountAdminAuditLogFactory from './Landlord/DgfyAccountAdminAuditLog
 import DgfyAccountBusinessAuditLogFactory from './Landlord/DgfyAccountBusinessAuditLog.js';
 import DgfyLegalAcknowledgementFactory from './Landlord/DgfyLegalAcknowledgement.js';
 import DgfyCustomerActivityFactory from './Landlord/DgfyCustomerActivity.js';
+import DgfyCustomerNotificationFactory from './Landlord/DgfyCustomerNotification.js';
 import DgfyCustomerAddressFactory from './Landlord/DgfyCustomerAddress.js';
 import DgfyCustomerBackfillRunFactory from './Landlord/DgfyCustomerBackfillRun.js';
 import DgfyCustomerReviewFactory from './Landlord/DgfyCustomerReview.js';
@@ -141,6 +142,7 @@ const DgfyAccountAdminAuditLog = DgfyAccountAdminAuditLogFactory(sequelize);
 const DgfyAccountBusinessAuditLog = DgfyAccountBusinessAuditLogFactory(sequelize);
 const DgfyLegalAcknowledgement = DgfyLegalAcknowledgementFactory(sequelize);
 const DgfyCustomerActivity = DgfyCustomerActivityFactory(sequelize);
+const DgfyCustomerNotification = DgfyCustomerNotificationFactory(sequelize);
 const DgfyCustomerAddress = DgfyCustomerAddressFactory(sequelize);
 const DgfyCustomerBackfillRun = DgfyCustomerBackfillRunFactory(sequelize);
 const DgfyCustomerReview = DgfyCustomerReviewFactory(sequelize);
@@ -709,6 +711,7 @@ const db = {
   DgfyAccountBusinessAuditLog,
   DgfyLegalAcknowledgement,
   DgfyCustomerActivity,
+  DgfyCustomerNotification,
   DgfyCustomerAddress,
   DgfyCustomerBackfillRun,
   DgfyCustomerReview,
@@ -844,6 +847,7 @@ export {
   DgfyAccountBusinessAuditLog,
   DgfyLegalAcknowledgement,
   DgfyCustomerActivity,
+  DgfyCustomerNotification,
   DgfyCustomerAddress,
   DgfyCustomerBackfillRun,
   DgfyCustomerReview,

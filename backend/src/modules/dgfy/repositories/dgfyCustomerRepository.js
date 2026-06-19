@@ -5,6 +5,7 @@ import {
     DgfyCustomerActivity,
     DgfyCustomerAddress,
     DgfyCustomerBackfillRun,
+    DgfyCustomerNotification,
     DgfyCustomerReview,
     DgfyLoyaltyTransaction,
     DgfyReviewInvite,
@@ -117,7 +118,7 @@ export const dgfyCustomerRepository = {
         const activityType = String(payload.activity_type || 'order').trim() || 'order';
         if (!reference || !tenantId) return null;
 
-        const [activity] = await DgfyCustomerActivity.findOrCreate({
+        const [activity, created] = await DgfyCustomerActivity.findOrCreate({
             where: {
                 tenant_id: tenantId,
                 activity_type: activityType,
@@ -145,6 +146,7 @@ export const dgfyCustomerRepository = {
             }
             : (activity.display_snapshot ?? null);
 
+        const previousStatus = activity.status || null;
         await activity.update({
             dgfy_account_id: payload.dgfy_account_id ?? activity.dgfy_account_id ?? null,
             store_customer_id: payload.store_customer_id ?? activity.store_customer_id ?? null,
@@ -161,7 +163,13 @@ export const dgfyCustomerRepository = {
             occurred_at: payload.occurred_at || activity.occurred_at || new Date()
         });
 
-        return toPlain(await activity.reload());
+        const reloaded = toPlain(await activity.reload());
+        return {
+            ...reloaded,
+            _created: Boolean(created),
+            _previous_status: previousStatus,
+            _status_changed: created || String(previousStatus || '') !== String(reloaded?.status || '')
+        };
     },
 
     async listActivitiesForAccount(dgfyAccountId, {
@@ -232,6 +240,75 @@ export const dgfyCustomerRepository = {
         return DgfyCustomerActivity.findOne({
             where: { reference: String(reference || '').trim().toUpperCase() }
         }).then(toPlain);
+    },
+
+    async createNotificationIfMissing(payload = {}) {
+        const dgfyAccountId = String(payload.dgfy_account_id || '').trim();
+        if (!dgfyAccountId) return null;
+        const eventKey = payload.event_key ? String(payload.event_key).trim() : null;
+        if (eventKey) {
+            const [row, created] = await DgfyCustomerNotification.findOrCreate({
+                where: { event_key: eventKey },
+                defaults: {
+                    ...payload,
+                    dgfy_account_id: dgfyAccountId,
+                    event_key: eventKey
+                }
+            });
+            return { notification: toPlain(row), created };
+        }
+        const row = await DgfyCustomerNotification.create({
+            ...payload,
+            dgfy_account_id: dgfyAccountId
+        });
+        return { notification: toPlain(row), created: true };
+    },
+
+    async listNotificationsForAccount(dgfyAccountId, { limit = 50, unreadOnly = false } = {}) {
+        const safeLimit = Math.max(1, Math.min(Number.parseInt(limit, 10) || 50, 100));
+        const where = { dgfy_account_id: dgfyAccountId };
+        if (unreadOnly) where.read_at = null;
+        const rows = await DgfyCustomerNotification.findAll({
+            where,
+            order: [['created_at', 'DESC'], ['notification_id', 'DESC']],
+            limit: safeLimit
+        });
+        const unreadCount = await DgfyCustomerNotification.count({
+            where: {
+                dgfy_account_id: dgfyAccountId,
+                read_at: null
+            }
+        });
+        return {
+            rows: rows.map(toPlain),
+            unread_count: Number(unreadCount || 0)
+        };
+    },
+
+    async markNotificationRead({ dgfyAccountId, notificationId } = {}) {
+        const row = await DgfyCustomerNotification.findOne({
+            where: {
+                dgfy_account_id: dgfyAccountId,
+                notification_id: Number.parseInt(notificationId, 10)
+            }
+        });
+        if (!row) return null;
+        if (!row.read_at) await row.update({ read_at: new Date() });
+        return toPlain(await row.reload());
+    },
+
+    async markAllNotificationsRead(dgfyAccountId) {
+        const readAt = new Date();
+        await DgfyCustomerNotification.update(
+            { read_at: readAt },
+            {
+                where: {
+                    dgfy_account_id: dgfyAccountId,
+                    read_at: null
+                }
+            }
+        );
+        return { read_at: readAt.toISOString() };
     },
 
     async listActivitiesByLookup(lookup, limit = 10) {

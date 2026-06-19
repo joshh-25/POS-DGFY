@@ -51,14 +51,18 @@ import {
     listDgfyCustomerAddresses,
     listDgfyCustomerActivities,
     listDgfyCustomerBookings,
+    listDgfyCustomerNotifications,
     listDgfyCustomerOrders,
     listPublicDgfyCustomerReviews,
     moderateDgfyCustomerReview,
     reorderDgfyCustomerOrder,
     requestDgfyTrackingRecovery,
     setDefaultDgfyCustomerAddress,
+    markAllDgfyCustomerNotificationsRead,
+    markDgfyCustomerNotificationRead,
     submitDgfyGuestReviewInvite,
     submitDgfyCustomerReview,
+    streamDgfyCustomerEvents,
     trackDgfyCustomerReference,
     updateDgfyCustomerAddress,
     validateDgfyReviewInvite,
@@ -107,6 +111,10 @@ router.get('/customer/dashboard', authenticateDgfyAccount, getDgfyCustomerDashbo
 router.get('/customer/activities', authenticateDgfyAccount, listDgfyCustomerActivities);
 router.get('/customer/orders', authenticateDgfyAccount, listDgfyCustomerOrders);
 router.get('/customer/bookings', authenticateDgfyAccount, listDgfyCustomerBookings);
+router.get('/customer/notifications', authenticateDgfyAccount, listDgfyCustomerNotifications);
+router.patch('/customer/notifications/read-all', authenticateDgfyAccount, markAllDgfyCustomerNotificationsRead);
+router.patch('/customer/notifications/:notification_id/read', authenticateDgfyAccount, markDgfyCustomerNotificationRead);
+router.get('/customer/events', authenticateDgfyAccount, streamDgfyCustomerEvents);
 router.post('/customer/track', authenticateDgfyAccount, trackDgfyCustomerReference);
 router.post('/customer/orders/:reference/cancel', authenticateDgfyAccount, cancelDgfyCustomerOrder);
 router.post('/customer/orders/:reference/reorder', authenticateDgfyAccount, reorderDgfyCustomerOrder);

@@ -40,7 +40,10 @@ import {
     buildDgfyHistoricalBackfillUseCase,
     buildListDgfyCustomerReviewsForModerationUseCase,
     buildListDgfyCustomerActivitiesUseCase,
+    buildListDgfyCustomerNotificationsUseCase,
     buildListPublicDgfyCustomerReviewsUseCase,
+    buildMarkAllDgfyCustomerNotificationsReadUseCase,
+    buildMarkDgfyCustomerNotificationReadUseCase,
     buildModerateDgfyCustomerReviewUseCase,
     buildManageDgfyCustomerAddressesUseCases,
     buildReorderDgfyCustomerOrderUseCase,
@@ -217,6 +220,9 @@ export const getDgfyCustomerDashboardUseCase = buildGetDgfyCustomerDashboardUseC
 export const listDgfyCustomerActivitiesUseCase = buildListDgfyCustomerActivitiesUseCase();
 export const listDgfyCustomerOrdersUseCase = (args = {}) => listDgfyCustomerActivitiesUseCase({ ...args, type: 'order' });
 export const listDgfyCustomerBookingsUseCase = (args = {}) => listDgfyCustomerActivitiesUseCase({ ...args, type: 'booking' });
+export const listDgfyCustomerNotificationsUseCase = buildListDgfyCustomerNotificationsUseCase();
+export const markDgfyCustomerNotificationReadUseCase = buildMarkDgfyCustomerNotificationReadUseCase();
+export const markAllDgfyCustomerNotificationsReadUseCase = buildMarkAllDgfyCustomerNotificationsReadUseCase();
 export const trackDgfyCustomerReferenceUseCase = buildTrackDgfyCustomerReferenceUseCase();
 export const cancelDgfyCustomerOrderUseCase = buildCancelDgfyCustomerOrderUseCase();
 export const reorderDgfyCustomerOrderUseCase = buildReorderDgfyCustomerOrderUseCase();

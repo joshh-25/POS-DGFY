@@ -43,4 +43,82 @@ describe('customerActivityRecorder', () => {
             reference: 'SK-NEW001'
         }));
     });
+
+    it('creates an account-owned status notification when an account order status changes', async () => {
+        jest.spyOn(dgfyCustomerRepository, 'findTenantById').mockResolvedValue({
+            id: 'tenant-1',
+            company_token: 'space-bar',
+            name: 'Space Bar'
+        });
+        jest.spyOn(dgfyCustomerRepository, 'upsertActivity').mockResolvedValue({
+            activity_id: 42,
+            dgfy_account_id: '0b98265e-550a-42b2-b6ce-111111111111',
+            tenant_id: 'tenant-1',
+            reference: 'SK-NEW002',
+            status: 'out_for_delivery',
+            total_amount: 275,
+            _status_changed: true
+        });
+        const notificationSpy = jest.spyOn(dgfyCustomerRepository, 'createNotificationIfMissing').mockResolvedValue({
+            created: true,
+            notification: {
+                notification_id: 7,
+                reference: 'SK-NEW002',
+                status: 'out_for_delivery'
+            }
+        });
+
+        await recordDgfyOrderActivity({
+            tenantId: 'tenant-1',
+            order: {
+                tracking_pin: 'SK-NEW002',
+                customer_email: 'kate@example.com',
+                total_amount: 275,
+                fulfillment_status: 'out_for_delivery'
+            },
+            storeCustomer: {
+                customer_id: 100,
+                dgfy_account_id: '0b98265e-550a-42b2-b6ce-111111111111',
+                email: 'kate@example.com'
+            }
+        });
+
+        expect(notificationSpy).toHaveBeenCalledWith(expect.objectContaining({
+            dgfy_account_id: '0b98265e-550a-42b2-b6ce-111111111111',
+            reference: 'SK-NEW002',
+            status: 'out_for_delivery',
+            type: 'order_status'
+        }));
+    });
+
+    it('does not create account notifications for guest orders', async () => {
+        jest.spyOn(dgfyCustomerRepository, 'findTenantById').mockResolvedValue({
+            id: 'tenant-1',
+            company_token: 'space-bar',
+            name: 'Space Bar'
+        });
+        jest.spyOn(dgfyCustomerRepository, 'upsertActivity').mockResolvedValue({
+            activity_id: 43,
+            dgfy_account_id: null,
+            reference: 'SK-NEW003',
+            status: 'confirmed',
+            _status_changed: true
+        });
+        const notificationSpy = jest.spyOn(dgfyCustomerRepository, 'createNotificationIfMissing').mockResolvedValue(null);
+
+        await recordDgfyOrderActivity({
+            tenantId: 'tenant-1',
+            order: {
+                tracking_pin: 'SK-NEW003',
+                customer_email: 'guest@example.com',
+                fulfillment_status: 'confirmed'
+            },
+            storeCustomer: {
+                customer_id: 101,
+                email: 'guest@example.com'
+            }
+        });
+
+        expect(notificationSpy).not.toHaveBeenCalled();
+    });
 });
