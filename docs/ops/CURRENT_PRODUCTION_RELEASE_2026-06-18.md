@@ -2,24 +2,24 @@
 status: reference
 authority_level: reference
 owner: operations
-last_reviewed: 2026-06-19
+last_reviewed: 2026-06-20
 applies_to: production_release, dgfy_company_access, dgfy_customer_account, storefront, pos, observability
 topic: current_production_release_state
 ---
 
-# Current Production Release State - 2026-06-19
+# Current Production Release State - 2026-06-20
 
 This document records the current production state using deploy evidence, live health output, and release-gate artifacts. Do not use source `HEAD` alone as live-production proof.
 
 ## Proof Snapshot
 
-Production proof refreshed on 2026-06-19 Asia/Manila from live VPS state:
+Production proof refreshed on 2026-06-20 Asia/Manila from live VPS state:
 
-- Production remote `HEAD`: `b8132a1931c993ddfae064a1fb8c97188d120720`
-- Production `.deploy-state/last_deployed_commit`: `b8132a1931c993ddfae064a1fb8c97188d120720`
-- Latest production deploy summary path: `/var/www/skupervisor/logs/deploy/deploy_20260619_131507.summary.txt`
-- Deploy summary `deployed_head`, `remote_head`, and `expected_commit`: `b8132a1931c993ddfae064a1fb8c97188d120720`
-- Live production `/api/v1/health` reports `services.observability.runtime_sha=b8132a1931c993ddfae064a1fb8c97188d120720` with source `deploy_state:last_deployed_commit`.
+- Production remote `HEAD`: `13fbea257585187f75b0b3e8f87f391192d9ae97`
+- Production `.deploy-state/last_deployed_commit`: `13fbea257585187f75b0b3e8f87f391192d9ae97`
+- Latest production deploy summary path: `/var/www/skupervisor/logs/deploy/deploy_20260620_045435.summary.txt`
+- Deploy summary `deployed_head`, `remote_head`, and `expected_commit`: `13fbea257585187f75b0b3e8f87f391192d9ae97`
+- Live production `/api/v1/health` reports `services.observability.runtime_sha=13fbea257585187f75b0b3e8f87f391192d9ae97` with source `deploy_state:last_deployed_commit`.
 - Live production `/api/v1/health` reports database, Redis, runtime schema, schema indexes, billing telemetry, and observability as healthy. Tenant pool capacity is a warning at 20 active tenants out of 20 capacity.
 - Frontend asset parity status in the deploy summary: `pass`
 - `migrations_changed=0`
@@ -30,17 +30,17 @@ Production proof refreshed on 2026-06-19 Asia/Manila from live VPS state:
 
 No-staging release verdict for the current deployed SHA:
 
-- Artifact: `.tmp/release-gates/b8132a1931c993ddfae064a1fb8c97188d120720/release_verdict.json`
+- Artifact: `.tmp/release-gates/13fbea257585187f75b0b3e8f87f391192d9ae97/release_verdict.json`
 - Verdict: `bypassed`
 - Failed gates: `1`
-- Failed gate: stale QA deploy-summary SHA parity before production promotion (`deployed_head=207aa434b4627020cbd286f5e6b5baaf8cebe57a`; `target_sha=b8132a1931c993ddfae064a1fb8c97188d120720`)
+- Failed gate: stale QA deploy-summary SHA parity before production promotion (`deployed_head=b8132a1931c993ddfae064a1fb8c97188d120720`; `target_sha=13fbea257585187f75b0b3e8f87f391192d9ae97`)
 - Passing gates include deploy source contract, docs lint, architecture guardrails, merge-adoption required check, QA smoke, rollback drill, restore drill, and observability report evidence.
-- Emergency bypass reason: stale QA deployed-head evidence before production promotion; source contract, docs, architecture, QA smoke, rollback, restore, focused DGFY auth/session tests, Storefront production build, and local rendered Storefront smoke passed for the exact target SHA.
-- Post-deploy proof closes the runtime parity risk for this deployed SHA: production deploy summary, remote head, expected commit, live `/api/v1/health.services.observability.runtime_sha`, and frontend asset parity all match `b8132a1931c993ddfae064a1fb8c97188d120720`.
+- Emergency bypass reason: the pre-deploy QA deploy summary still pointed at the prior production SHA; source contract, docs, architecture, QA smoke, rollback, restore, focused DGFY registration/session tests, backend tenant-session transport test, SKUpervisor and Storefront production builds, compliance, and whitespace checks passed for the exact target SHA.
+- Post-deploy proof closes the runtime parity risk for this deployed SHA: production deploy summary, remote head, expected commit, live `/api/v1/health.services.observability.runtime_sha`, and frontend asset parity all match `13fbea257585187f75b0b3e8f87f391192d9ae97`.
 
 Observability evidence:
 
-- Artifact: `.tmp/release-gates/b8132a1931c993ddfae064a1fb8c97188d120720/observability_evidence.json`
+- Artifact: `.tmp/release-gates/13fbea257585187f75b0b3e8f87f391192d9ae97/observability_evidence.json`
 - Verdict: `pass` in report mode
 - `trace_context.round_trip`: pass
 - `health.runtime_sha.present`: pass
@@ -66,6 +66,7 @@ The current production runtime includes the branch and PR adoption chain from th
 - DGFY account-owned activity and notification flow: dashboard, activity-list, and account tracking reads refresh already-linked POS order snapshots; online POS status updates upsert account-owned activity, create account-scoped in-app notifications, and publish authenticated SSE events without adopting guest orders by email or phone.
 - Storefront account notifications: routed account pages load real unread notification counts, render the bell notification panel, mark notifications read, and listen to `/api/v1/dgfy/customer/events` while account or tracking surfaces are visible with polling fallback.
 - Batch findings remediation: active company registration performs cookie-backed IMS tenant-session handoff before dashboard redirect with manual-login fallback copy, explicit customer sign-out suppresses immediate cookie-backed account restoration until a new login/signup or handoff, mobile checkout delivery maps use concrete normal/expanded heights with DGFY-branded controls and MapLibre resize after visibility changes, and the standalone mobile tracking list card has been removed in favor of the side tracking drawer as the canonical in-progress tracker.
+- Business-registration IMS handoff hotfix: DGFY tenant-session exchange now emits the same IMS `auth:login` client event as normal tenant login after storing the returned tenant token and company token. This keeps IMS auth/permission listeners in sync before the dashboard renders, reducing the risk of a successful tenant-session exchange still appearing to bounce back to manual login.
 - Delivery map blank-space hardening: `DeliveryPinMap` now uses a deterministic frame/root/canvas layout, `ResizeObserver`, `visualViewport` resize handling, stable mobile height clamps, and rendered QA selectors. The live Storefront bundle contains the map selectors, resize observer path, normal/expanded height clamps, side-tracker copy, and no longer contains the removed standalone tracking-list copy.
 
 ## Production Data Repair Notes
@@ -74,7 +75,7 @@ On June 18, 2026, a controlled production data repair linked `DgfyAccountTenantM
 
 ## Recently Production-Deployed With Deferred Live Mutation Proof
 
-The Storefront/POS request consolidation, DGFY account notification/activity, batch findings remediation, delivery-map blank-space hardening, and canonical tracking-drawer cleanup slices are now production-deployed in `b8132a1931c993ddfae064a1fb8c97188d120720`. Read-only production checks confirmed the deployed runtime SHA, public Storefront/IMS/POS route reachability, Storefront live bundle inclusion for the delivery-map and tracking cleanup, and that the protected notification list and SSE endpoints reject unauthenticated requests cleanly.
+The Storefront/POS request consolidation, DGFY account notification/activity, batch findings remediation, delivery-map blank-space hardening, canonical tracking-drawer cleanup, and business-registration IMS handoff hotfix slices are now production-deployed in `13fbea257585187f75b0b3e8f87f391192d9ae97`. Read-only production checks confirmed the deployed runtime SHA, public Storefront/IMS/POS route reachability, frontend asset parity, Storefront live bundle inclusion for the delivery-map and tracking cleanup, and that the protected notification list and SSE endpoints reject unauthenticated requests cleanly.
 
 This production proof did not create or mutate a live customer order, register a live company, or place a live checkout delivery pin. The live POS-status-to-DGFY-activity propagation, production company-registration dashboard handoff, and normal/expanded mobile delivery-map checkout path are proven by focused local backend/frontend tests, rendered local checkout-map smoke at mobile widths, live asset inclusion, and deploy inclusion, but still require controlled production UAT before they can be called live-mutation or live-checkout proven. Notification delivery is in-app only for this slice; browser push, SMS, email, and closed-browser delivery remain out of scope. SSE fanout is in-process with polling fallback; Redis is healthy in production but Redis pub/sub fanout has not been implemented.
 
