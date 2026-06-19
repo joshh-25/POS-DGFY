@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-06-17
+last_reviewed: 2026-06-19
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -55,7 +55,7 @@ Legacy link completion is hardened as a repairable landlord transaction after OT
     7.  Keeps approval retryable if provisioning fails before activation.
 - Approval email delivery is non-blocking after successful provisioning. If SMTP fails, the active registration response still succeeds with `email_sent=false`, and the founder can continue from the in-app confirmation page.
 - Tenant-session handoff uses the signed-in DGFY account and returned tenant identity immediately after active provisioning; the tenant master-admin row is seeded from the DGFY account during provisioning. The registration response does not return tenant auth tokens.
-- If the automatic tenant-session handoff fails after activation, the tenant remains active and the UI routes the founder to manual sign-in with DGFY email and company token prefilled.
+- If the automatic tenant-session handoff fails after activation, the tenant remains active and the company-created confirmation stays visible. The UI explains that automatic SKUpervisor session creation failed and offers the manual sign-in path with DGFY email and company token prefilled; the IMS login page is a fallback, not the normal post-registration destination.
 - Tenant schema provisioning is mode-wide. The backend clones tenant-local models from the canonical model registry into each new tenant database while excluding landlord-only models, so Services, F&B, and future modes must add tenant-local tables through the same model graph.
 - Provisioning failure cleanup is retry-safe for approval paths. If schema sync, seed data, storefront bootstrap, or email-adjacent setup fails before activation, the isolated database is dropped and the landlord tenant row is restored to a valid `pending` status instead of an out-of-enum temporary state. Future mode work must preserve this behavior.
 - After first login, the tenant master admin sees the soft-reminder onboarding flow from ADR 0013: optional storefront profile/cover photos, a primary storefront location pin, and mode-aware bulk starter item creation. Onboarding completion is independent from platform approval and does not hard-block IMS/POS access.
@@ -237,7 +237,7 @@ Email ownership checks are required before login identity is created or changed:
 
 OTP rows live in the landlord `email_otps` table. Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 10), lock after `EMAIL_OTP_MAX_ATTEMPTS` (default 5), and are consumed through a conditional update so concurrent accepts cannot reuse the same code. Production enables enforcement by default; `EMAIL_OTP_ENFORCEMENT_ENABLED=false` is the rollback switch. OTP request routes are throttled with `RATE_LIMIT_EMAIL_OTP_WINDOW_MS` and `RATE_LIMIT_EMAIL_OTP_MAX_REQUESTS`. OTP requests fail closed when configured email delivery cannot actually send the code; manual invitation links do not bypass email ownership verification.
 
-DGFY account sessions are landlord-scoped and separate from tenant-local SKUpervisor JWTs. `/api/v1/dgfy/auth/handoff` issues a short-lived handoff token for redirected account flows; `/api/v1/dgfy/auth/handoff/exchange` converts it back into a normal DGFY JWT. Public DGFY auth and `/register-company` routes must not trigger tenant-session `/auth/refresh-token` recovery; an expired DGFY handoff must remain a DGFY sign-in recovery path, not a SKUpervisor tenant-session failure. `/api/v1/dgfy/auth/logout` blacklists only the DGFY account token.
+DGFY account sessions are landlord-scoped and separate from tenant-local SKUpervisor JWTs. `/api/v1/dgfy/auth/handoff` issues a short-lived handoff token for redirected account flows; `/api/v1/dgfy/auth/handoff/exchange` converts it back into a normal DGFY JWT. Public DGFY auth and `/register-company` routes must not trigger tenant-session `/auth/refresh-token` recovery; an expired DGFY handoff must remain a DGFY sign-in recovery path, not a SKUpervisor tenant-session failure. `/api/v1/dgfy/auth/logout` blacklists only the DGFY account token. Frontend explicit sign-out additionally clears browser-readable DGFY/customer state and records a session-scoped suppression marker so cookie-backed `/dgfy/auth/me` rehydration does not immediately restore the account the user just signed out from.
 
 Phone completion rollout is staged rather than globally forced while historical accounts are still unresolved:
 - `PHONE_COMPLETION_ENFORCEMENT_MODE=observe` is the non-test default. Users see the remediation banner and admins see missing-phone rows, but normal authenticated work is not blocked yet.
