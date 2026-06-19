@@ -4,6 +4,7 @@ import { clearClientSession } from './sessionCleanup.js';
 
 let dgfyToken = '';
 let dgfyAccount = null;
+const DGFY_EXPLICIT_SIGN_OUT_KEY = 'dgfy_customer_explicit_sign_out';
 
 const dgfyRequestConfig = (token = getStoredDgfyToken()) => {
   const normalizedToken = String(token || '').trim();
@@ -107,11 +108,39 @@ export const storeDgfySession = ({ token, account }) => {
     dgfyToken = String(token || '').trim();
   }
   if (account) dgfyAccount = account;
+  clearDgfyExplicitSignOut();
 };
 
 export const clearDgfySession = () => {
   dgfyToken = '';
   dgfyAccount = null;
+};
+
+export const markDgfyExplicitSignOut = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(DGFY_EXPLICIT_SIGN_OUT_KEY, String(Date.now()));
+  } catch {
+    // Session storage can be unavailable in hardened/private browser modes.
+  }
+};
+
+export const clearDgfyExplicitSignOut = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.removeItem(DGFY_EXPLICIT_SIGN_OUT_KEY);
+  } catch {
+    // Session storage cleanup is best-effort.
+  }
+};
+
+export const hasDgfyExplicitSignOut = () => {
+  if (typeof window === 'undefined') return false;
+  try {
+    return Boolean(window.sessionStorage.getItem(DGFY_EXPLICIT_SIGN_OUT_KEY));
+  } catch {
+    return false;
+  }
 };
 
 export const registerDgfyAccount = async (payload) => {
@@ -187,6 +216,7 @@ export const completeDgfyPasswordReset = async (payload) => {
 };
 
 export const logoutDgfyAccount = async (token = getStoredDgfyToken()) => {
+  markDgfyExplicitSignOut();
   try {
     await api.post('/dgfy/auth/logout', {}, dgfyRequestConfig(token));
   } finally {

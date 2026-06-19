@@ -19,6 +19,7 @@ const dgfyAuthMock = vi.hoisted(() => ({
   fetchDgfyMe: vi.fn(),
   getStoredDgfyAccount: vi.fn(() => null),
   getStoredDgfyToken: vi.fn(() => ''),
+  hasDgfyExplicitSignOut: vi.fn(() => false),
   loginDgfyAccount: vi.fn(),
   logoutDgfyAccount: vi.fn(),
   registerDgfyAccount: vi.fn(),
@@ -123,6 +124,8 @@ describe('DGFY auth and business registration routes', () => {
     dgfyAuthMock.getStoredDgfyAccount.mockReturnValue(null);
     dgfyAuthMock.getStoredDgfyToken.mockReset();
     dgfyAuthMock.getStoredDgfyToken.mockReturnValue('');
+    dgfyAuthMock.hasDgfyExplicitSignOut.mockReset();
+    dgfyAuthMock.hasDgfyExplicitSignOut.mockReturnValue(false);
     dgfyAuthMock.loginDgfyAccount.mockReset();
     dgfyAuthMock.logoutDgfyAccount.mockReset();
     dgfyAuthMock.registerDgfyAccount.mockReset();
@@ -400,13 +403,60 @@ describe('DGFY auth and business registration routes', () => {
       accepted_company_terms: true,
       company_terms_version: 'dgfy-company-terms-2026-06-08',
       marketplace_terms_version: 'dgfy-marketplace-provider-2026-06-08'
-    }, {
-      headers: { Authorization: 'Bearer dgfy-token' }
-    }));
+    }, expect.objectContaining({
+      headers: { Authorization: 'Bearer dgfy-token' },
+      skipTenantAuthHeaders: true,
+      withCredentials: true
+    })));
     await waitFor(() => expect(dgfyAuthMock.startDgfyTenantSession).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
       companyToken: 'token-autofoods-12345678'
     }, 'dgfy-token'));
+    expect(await screen.findByText('Dashboard screen')).toBeTruthy();
+  });
+
+  it('uses cookie-backed DGFY auth for company registration and tenant-session handoff when no bearer token is in memory', async () => {
+    dgfyAuthMock.fetchDgfyMe.mockResolvedValueOnce({
+      account: dgfyAccount
+    });
+    dgfyAuthMock.getStoredDgfyToken.mockReturnValue('');
+    dgfyAuthMock.dgfyAuthHeader.mockReturnValue({});
+    dgfyAuthMock.startDgfyTenantSession.mockResolvedValue({
+      token: 'ims-token',
+      company: { token: 'token-cookiefoods-12345678' }
+    });
+    apiMock.post.mockResolvedValueOnce({
+      data: {
+        success: true,
+        message: 'Company registered and activated successfully. You can sign in now.',
+        data: {
+          id: 'tenant-2',
+          name: 'Cookie Foods',
+          status: 'active',
+          company_token: 'token-cookiefoods-12345678',
+          workflow_mode: 'food_manufacturing'
+        }
+      }
+    });
+
+    renderRoutes(['/register-company#business-registration']);
+
+    expect(await screen.findByText(/DGFY account connected/i)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Cookie Foods' } });
+    fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
+    fireEvent.click(screen.getByRole('button', { name: /create company/i }));
+
+    await waitFor(() => expect(apiMock.post).toHaveBeenCalledWith('/admin/tenants/register', expect.objectContaining({
+      name: 'Cookie Foods'
+    }), expect.objectContaining({
+      headers: {},
+      skipTenantAuthHeaders: true,
+      withCredentials: true
+    })));
+    await waitFor(() => expect(dgfyAuthMock.startDgfyTenantSession).toHaveBeenCalledWith({
+      tenantId: 'tenant-2',
+      companyToken: 'token-cookiefoods-12345678'
+    }, ''));
     expect(await screen.findByText('Dashboard screen')).toBeTruthy();
   });
 
@@ -445,6 +495,23 @@ describe('DGFY auth and business registration routes', () => {
     }, 'dgfy-token'));
     expect(await screen.findByText('Company Created')).toBeTruthy();
     expect(screen.getByText(/company registered and activated successfully/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /opening skupervisor/i })).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText(/unable to start a skupervisor session/i)).toBeTruthy();
+      expect(screen.getByRole('button', { name: /proceed to skupervisor/i })).toBeTruthy();
+    }, { timeout: 3000 });
+  });
+
+  it('shows the sign-in form instead of auto-restoring a cookie session after explicit sign-out', async () => {
+    dgfyAuthMock.hasDgfyExplicitSignOut.mockReturnValue(true);
+    dgfyAuthMock.fetchDgfyMe.mockResolvedValue({
+      token: 'dgfy-token',
+      account: dgfyAccount
+    });
+
+    renderRoutes(['/dgfy/auth?intent=customer&mode=sign-in&return_to=%2Fmap-dgfy%2Faccount']);
+
+    expect(await screen.findByRole('button', { name: /^login$/i })).toBeTruthy();
+    expect(screen.queryByText('Done screen')).toBeNull();
+    expect(dgfyAuthMock.fetchDgfyMe).not.toHaveBeenCalled();
   });
 });

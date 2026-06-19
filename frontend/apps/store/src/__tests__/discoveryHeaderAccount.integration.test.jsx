@@ -283,6 +283,33 @@ describe('discovery header customer account actions', () => {
     expect(window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__).toBe('');
   }, 10000);
 
+  it('does not rehydrate the previous DGFY account after explicit sign-out', async () => {
+    window.sessionStorage.setItem('dgfy_customer_explicit_sign_out', String(Date.now()));
+    dgfyMeResponse = makeJsonResponse({
+      account: {
+        id: 'acct-old',
+        first_name: 'Old',
+        last_name: 'Customer',
+        email: 'old@example.com'
+      }
+    });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /log in \/ sign up/i })).toBeTruthy();
+    });
+
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/v1/dgfy/auth/me'))).toBe(false);
+
+    await user.click(screen.getByRole('button', { name: /log in \/ sign up/i }));
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/dgfy/auth');
+      expect(window.location.search).toContain('intent=customer');
+      expect(window.location.search).toContain('mode=sign-in');
+    });
+  }, 10000);
+
   it('does not let a stale stored DGFY token block cookie-backed rehydration', async () => {
     window.sessionStorage.setItem('dgfy_customer_account_token', 'stale-dgfy-token');
     dgfyMeResponse = makeJsonResponse({

@@ -7,6 +7,7 @@ import {
   fetchDgfyLegalTerms,
   fetchDgfyMe,
   getStoredDgfyToken,
+  hasDgfyExplicitSignOut,
   loginDgfyAccount,
   registerDgfyAccount,
   requestDgfyEmailVerification,
@@ -523,6 +524,10 @@ export default function DgfyAuthPage() {
 
   useEffect(() => {
     let cancelled = false;
+    if (hasDgfyExplicitSignOut()) {
+      setSessionResolved(true);
+      return () => { cancelled = true; };
+    }
     fetchDgfyMe(getStoredDgfyToken())
       .then(async (session) => {
         if (cancelled) return;

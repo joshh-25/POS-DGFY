@@ -142,6 +142,9 @@ import {
 import {
   clearDgfyAuthToken,
   clearStoreAuthToken,
+  clearDgfyExplicitSignOut,
+  hasDgfyExplicitSignOut,
+  markDgfyExplicitSignOut,
   readDgfyAuthToken,
   readStoreAuthToken,
   writeStoreAuthToken
@@ -2346,6 +2349,7 @@ function DeliveryPinMap({
   const mapRef = useRef(null);
   const markerRef = useRef(null);
   const [mapUnavailable, setMapUnavailable] = useState(false);
+  const resolvedHeight = typeof height === 'number' ? `${height}px` : String(height || '260px');
 
   useEffect(() => {
     if (!ref.current || mapRef.current) return undefined;
@@ -2364,7 +2368,12 @@ function DeliveryPinMap({
       return undefined;
     }
     map.getCanvas().style.zIndex = '0';
+    map.getCanvas().style.width = '100%';
+    map.getCanvas().style.height = '100%';
     map.on('error', (e) => console.error('[DeliveryPinMap] MapLibre error', e));
+    map.on('load', () => {
+      setTimeout(() => map.resize(), 0);
+    });
     mapRef.current = map;
     return () => {
       if (markerRef.current) {
@@ -2436,9 +2445,13 @@ function DeliveryPinMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return undefined;
-    const timer = setTimeout(() => map.resize(), 120);
-    return () => clearTimeout(timer);
-  }, [disabled]);
+    const firstTimer = setTimeout(() => map.resize(), 40);
+    const secondTimer = setTimeout(() => map.resize(), 180);
+    return () => {
+      clearTimeout(firstTimer);
+      clearTimeout(secondTimer);
+    };
+  }, [disabled, resolvedHeight]);
 
   if (mapUnavailable) {
     return (
@@ -2446,7 +2459,8 @@ function DeliveryPinMap({
         style={{
           marginBottom: 10,
           width: '100%',
-          minHeight: height,
+          height: resolvedHeight,
+          minHeight: resolvedHeight,
           border: `2px solid ${highlighted ? highlightColor : '#cbd5e1'}`,
           borderRadius: 16,
           background: '#f8fafc',
@@ -2468,8 +2482,8 @@ function DeliveryPinMap({
         marginBottom: 10,
         width: '100%',
         maxWidth: '100%',
-        aspectRatio: '16 / 10',
-        minHeight: height,
+        height: resolvedHeight,
+        minHeight: resolvedHeight,
         overflow: 'hidden',
         border: `1.5px solid ${highlighted ? highlightColor : '#dbe5ee'}`,
         borderRadius: 18,
@@ -2479,7 +2493,7 @@ function DeliveryPinMap({
         transition: 'all 200ms ease'
       }}
     >
-      <div ref={ref} style={{ height: '100%', width: '100%' }} />
+      <div ref={ref} style={{ position: 'absolute', inset: 0, height: '100%', width: '100%' }} />
       {overlayControls}
       {disabled && (
         <div style={{ position: 'absolute', inset: 0, borderRadius: 10, background: 'rgba(255,255,255,.6)' }} />
@@ -5801,6 +5815,7 @@ export default function StorefrontApp() {
               }
             });
             consumedHandoff = handoffPayload?.status !== 'invalid';
+            if (consumedHandoff) clearDgfyExplicitSignOut();
             clearDgfyAuthToken();
             setDgfyAuthTokenState('');
           } catch {
@@ -5812,6 +5827,12 @@ export default function StorefrontApp() {
       }
 
       const legacyToken = readDgfyAuthToken();
+      if (!consumedHandoff && !legacyToken && hasDgfyExplicitSignOut()) {
+        clearDgfyAuthToken();
+        setDgfyAuthTokenState('');
+        setDgfySessionAccount(null);
+        return;
+      }
       try {
         const payload = await requestJson('/api/v1/dgfy/auth/me', { cache: 'no-store' });
         if (cancelled) return;
@@ -10460,6 +10481,7 @@ export default function StorefrontApp() {
   ]);
   const handleStorefrontSignOut = useCallback(async () => {
     const dgfyToken = readDgfyAuthToken();
+    markDgfyExplicitSignOut();
     try {
       await requestJson('/api/v1/dgfy/auth/logout', { method: 'POST', authToken: dgfyToken, cache: 'no-store' });
     } catch {
@@ -10473,6 +10495,7 @@ export default function StorefrontApp() {
     setCustomerTrackLoadingReference('');
     setCustomerTrackError('');
     setIsAccountDrawerOpen(false);
+    clearCheckoutAuthResumeDraft();
     if (typeof window !== 'undefined') {
       const currentUrl = new URL(window.location.href);
       const normalizedPath = String(currentUrl.pathname || '').replace(/\/+$/, '') || '/';
@@ -19128,8 +19151,10 @@ return (
                                 setCustomerPin(nextPin);
                               }}
                               disabled={false}
-                              height={isMobileViewport ? 360 : 520}
+                              height={isMobileViewport ? 'min(70vh, calc(100svh - 220px))' : 520}
                               highlighted
+                              highlightColor={fnbOrderBrand}
+                              highlightGlow="rgba(26,78,141,0.16)"
                               overlayControls={(
                                 <>
                                   <button

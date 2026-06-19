@@ -56,6 +56,17 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain('selectedSavedLocationId');
   });
 
+  it('keeps mobile delivery maps on a concrete height with DGFY-branded expanded state', () => {
+    const source = appSource();
+
+    expect(source).toContain('const resolvedHeight = typeof height ===');
+    expect(source).toContain('height: resolvedHeight');
+    expect(source).not.toContain("aspectRatio: '16 / 10'");
+    expect(source).toContain("height={isMobileViewport ? 'min(70vh, calc(100svh - 220px))' : 520}");
+    expect(source).toContain('highlightColor={fnbOrderBrand}');
+    expect(source).toContain('highlightGlow="rgba(26,78,141,0.16)"');
+  });
+
   it('builds business registration links through the configurable Storefront helper', () => {
     const source = appSource();
     const solutionsSource = solutionsPageSource();

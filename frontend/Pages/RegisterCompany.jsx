@@ -325,7 +325,7 @@ export default function RegisterCompany() {
     const startTenantSessionWithRetry = useCallback(async (tenantData = {}, token = dgfyToken) => {
         const tenantId = String(tenantData?.id || '').trim();
         const companyToken = String(tenantData?.company_token || '').trim();
-        if (!tenantId || !companyToken || !token) {
+        if (!tenantId || !companyToken) {
             throw new Error('Company session handoff is missing the required tenant identity.');
         }
 
@@ -498,7 +498,8 @@ export default function RegisterCompany() {
         setError('');
         setSuccess(null);
 
-        if (!dgfyToken || !dgfyAccount) {
+        const activeDgfyToken = dgfyToken || getStoredDgfyToken();
+        if (!dgfyAccount) {
             setError('Sign in with your DGFY account before registering a business.');
             return;
         }
@@ -520,6 +521,8 @@ export default function RegisterCompany() {
                 company_terms_version: companyLegalSnapshot.company_terms_version,
                 marketplace_terms_version: companyLegalSnapshot.marketplace_terms_version
             }, {
+                withCredentials: true,
+                skipTenantAuthHeaders: true,
                 headers: dgfyAuthHeader()
             });
 
@@ -533,22 +536,13 @@ export default function RegisterCompany() {
             };
             setSuccess(registrationSuccess);
             setCompanyForm((current) => ({ ...current, acceptedCompanyTerms: false }));
-            if (registrationSuccess.data?.company_token && registrationSuccess.data?.status === 'active' && dgfyToken) {
+            if (registrationSuccess.data?.company_token && registrationSuccess.data?.status === 'active') {
                 try {
-                    await startTenantSessionWithRetry(registrationSuccess.data, dgfyToken);
+                    await startTenantSessionWithRetry(registrationSuccess.data, activeDgfyToken);
                     navigate('/', { replace: true });
                     return;
                 } catch (sessionError) {
-                    setNotice(sessionError.response?.data?.message || 'Company created. Sign in to SKUpervisor to continue.');
-                    navigate('/login', {
-                        state: {
-                            registration: {
-                                email: dgfyAccount?.email,
-                                companyToken: registrationSuccess.data.company_token,
-                                companyName: registrationSuccess.data.name
-                            }
-                        }
-                    });
+                    setNotice(sessionError.response?.data?.message || 'Company created. Use the button below to sign in to SKUpervisor with this company prefilled.');
                     return;
                 }
             }
@@ -575,14 +569,15 @@ export default function RegisterCompany() {
         setError('');
         setNotice('');
 
-        if (!success?.data?.company_token || success?.data?.status !== 'active' || !dgfyToken) {
+        const activeDgfyToken = dgfyToken || getStoredDgfyToken();
+        if (!success?.data?.company_token || success?.data?.status !== 'active') {
             goToManualSkupervisorLogin();
             return;
         }
 
         setIsLoading(true);
         try {
-            await startTenantSessionWithRetry(success.data, dgfyToken);
+            await startTenantSessionWithRetry(success.data, activeDgfyToken);
             navigate('/', { replace: true });
         } catch (sessionError) {
             setNotice(sessionError.response?.data?.message || 'Company created. Sign in to SKUpervisor to continue.');
