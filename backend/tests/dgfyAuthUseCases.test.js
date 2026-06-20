@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import jwt from 'jsonwebtoken';
 import {
     buildAcceptDgfyInvitationUseCase,
     buildChangeDgfyPasswordUseCase,
@@ -18,7 +19,8 @@ import {
     buildTransferDgfyCompanyOwnershipUseCase,
     buildUpdateDgfyProfileUseCase,
     buildVerifyDgfyEmailUseCase,
-    buildRegisterDgfyAccountUseCase
+    buildRegisterDgfyAccountUseCase,
+    generateDgfyToken
 } from '../src/modules/dgfy/usecases/dgfyAuthUseCases.js';
 import { DGFY_LEGAL_TERM_VERSIONS } from '../src/modules/shared/utils/dgfyLegalTerms.js';
 
@@ -42,6 +44,30 @@ const createAccount = (overrides = {}) => ({
 describe('dgfyAuthUseCases', () => {
     beforeEach(() => {
         process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_jwt_secret_for_ci_only_32_chars!';
+    });
+
+    it('mints unique normal DGFY session tokens for immediate re-login after logout', () => {
+        const account = createAccount();
+
+        const firstToken = generateDgfyToken(account);
+        const secondToken = generateDgfyToken(account);
+        const firstDecoded = jwt.decode(firstToken);
+        const secondDecoded = jwt.decode(secondToken);
+
+        expect(secondToken).not.toBe(firstToken);
+        expect(firstDecoded).toMatchObject({
+            token_scope: 'dgfy',
+            dgfy_account_id: account.id,
+            email: account.email
+        });
+        expect(secondDecoded).toMatchObject({
+            token_scope: 'dgfy',
+            dgfy_account_id: account.id,
+            email: account.email
+        });
+        expect(firstDecoded.jti).toEqual(expect.any(String));
+        expect(secondDecoded.jti).toEqual(expect.any(String));
+        expect(secondDecoded.jti).not.toBe(firstDecoded.jti);
     });
 
     it('creates a global DGFY account with username seeded from first name', async () => {

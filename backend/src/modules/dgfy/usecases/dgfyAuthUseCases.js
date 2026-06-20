@@ -221,6 +221,7 @@ export const sanitizeDgfyAccount = (account) => {
 
 export const generateDgfyToken = (account) => jwt.sign({
     token_scope: 'dgfy',
+    jti: randomUUID(),
     dgfy_account_id: account.id,
     email: account.email,
     username: account.username
