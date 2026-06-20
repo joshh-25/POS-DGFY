@@ -71,7 +71,7 @@ Inventory Display is presentation-only. It never changes the backend inventory a
 2. Onboarding
 - The current first-login wizard no longer captures Customer Access Mode or Inventory Display choices.
 - The `primary_location` step captures whether the tenant wants a public/searchable storefront and whether that storefront has a published map pin. Public visibility is opt-in. Hidden tenants can continue onboarding without a public pin; visible tenants must save a real active primary storefront location unless `store_has_no_location=true`.
-- The shared IMS MapLibre pin picker used by onboarding and Settings reverse-geocodes click, drag, and browser-geolocation selections into the editable address field when a lookup succeeds. Coordinates remain the source of truth for pin placement and are still saved when reverse geocoding is unavailable or returns no usable address.
+- The shared IMS MapLibre pin picker used by onboarding and Settings reverse-geocodes click, drag, and browser-geolocation selections into the editable address field when a lookup succeeds. Coordinates remain the source of truth for pin placement and are still saved when reverse geocoding is unavailable or returns no usable address. Iloilo City, Philippines is the default camera view when no saved pin exists, not an implicit saved merchant pin. IMS merchant-store pins must be finite Philippines coordinates; missing values, `0,0`, and out-of-Philippines browser geolocation results are rejected before tenant-location saves.
 - Legacy tenants may still have `business_classification` or `classification_snapshot` payloads; those records are backward-compatible context only.
 - New tenants use the Settings > Storefront controls for Customer Access Mode and Inventory Display, with default `catalog` and `availability` behavior.
 - Onboarding remains a soft reminder and does not block IMS/POS access.
@@ -283,6 +283,12 @@ Validated on 2026-06-06 for Storefront map/search viewport and result stability:
 - Storefront build and architecture gates passed with `npm --prefix frontend run build:store` and `npm run check:architecture`. Rendered local route health passed, but automated browser text-entry and screenshot capture were blocked by the current Browser tooling in this session, so live production visual smoke remains required after deployment.
 
 Operational readiness rating after this Storefront map/search remediation: **8.6/10** locally validated. Remaining risk is production-data/browser confirmation for item/store searches, exact-coordinate cluster card behavior, and desktop/mobile screenshot evidence after deploy.
+
+Validated on 2026-06-20 for IMS merchant-store map pin reliability:
+- The shared IMS `MapPinPicker` now treats Iloilo City as camera-only default state, treats `0,0` as no selected merchant pin, and lets `Adjust Pin` create the first draggable draft marker at the current map center.
+- Settings and onboarding parse coordinate fields explicitly so empty strings do not become `0`; both block missing, `0,0`, and out-of-Philippines coordinates before tenant-location writes.
+- Browser geolocation results outside the Philippines are rejected without moving the current map view or overwriting the current pin; first-party reverse geocoding remains best-effort address autofill only.
+- Targeted frontend suites passed from `frontend/`: `npm exec vitest run src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx src/features/onboarding/__tests__/OnboardingSetupModal.behavior.test.jsx src/pages/__tests__/Settings.deepLinking.integration.test.jsx --pool=threads` (49 tests).
 
 Validated on 2026-06-06 for Storefront public visibility opt-in:
 - Tenant provisioning now forces newly provisioned tenants to `store_is_visible=false` before discovery bootstrap and no longer creates a default primary pin from environment fallback coordinates.

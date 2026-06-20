@@ -2956,7 +2956,7 @@ Manage tenant-private storefront/POS/service location pins from IMS Settings.
 
 **Auth**: Private (`system:edit_settings`)
 
-IMS location clients should submit the merchant-editable address with the normal location payload. The shared map pin picker may autofill that address from reverse geocoding after click, drag, or geolocation selection, but backend persistence treats the submitted address text and the submitted latitude/longitude as separate fields; reverse-geocode failure must not prevent saving valid coordinates.
+IMS location clients should submit the merchant-editable address with the normal location payload. The shared map pin picker may autofill that address from reverse geocoding after click, drag, or geolocation selection, but backend persistence treats the submitted address text and the submitted latitude/longitude as separate fields; reverse-geocode failure must not prevent saving valid coordinates. IMS clients must not coerce empty coordinate fields to `0`; missing values, `0,0`, and coordinates outside the Philippines are invalid merchant storefront pins and must be blocked before tenant-location create/update calls.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -5913,7 +5913,7 @@ OTP email sends use `sendEmailOtpCode()` and explicitly set the sender display n
 - Login and current-user bootstrap payloads expose onboarding metadata for tenant master admins.
 - Non-master users do not own onboarding lifecycle and may receive `onboarding: null`.
 - The active wizard has three steps: `brand_assets`, `primary_location`, and `bulk_items`.
-- The `primary_location` wizard step uses the shared IMS MapLibre pin picker. The same picker is used by Settings > Storefront location editing. It uses the shared Storefront MapLibre basemap style for visible street context; click, drag, browser geolocation, or manual coordinate edits update the same latitude/longitude fields submitted to the tenant-location API. The picker opens over Iloilo City, Philippines when no saved pin exists. Click, drag, and geolocation selections may ask the first-party reverse-geocode endpoint for an address label to prefill the editable address field; reverse-geocode failure must not block coordinate saving.
+- The `primary_location` wizard step uses the shared IMS MapLibre pin picker. The same picker is used by Settings > Storefront location editing. It uses the shared Storefront MapLibre basemap style for visible street context; click, drag, browser geolocation, or manual coordinate edits update the same latitude/longitude fields submitted to the tenant-location API. The picker opens over Iloilo City, Philippines when no saved pin exists, but that is camera state only and must not be saved as an implicit merchant pin. Missing coordinates, `0,0`, and browser geolocation results outside the Philippines are invalid for merchant-store pins. Click, drag, and geolocation selections may ask the first-party reverse-geocode endpoint for an address label to prefill the editable address field; reverse-geocode failure must not block coordinate saving.
 - The `primary_location` step also accepts `payload.business_hours` and persists it to the shared `storefront_hours` setting. The schedule uses `mode="weekly"`, `timezone` such as `Asia/Manila`, and `weekly.{sun..sat}` entries with `enabled`, `open`, and `close` in `HH:mm` format.
 - Stored legacy `classification_snapshot` data may remain in older `tenant_onboarding_progress` records, but the current wizard does not create or require business classification output.
 

@@ -98,3 +98,14 @@ Runtime hardening:
 2. The picker reuses the Storefront MapLibre positron basemap style and existing `/openfreemap` development/preview proxy path, opening over Iloilo City, Philippines when no saved pin exists.
 3. Click, marker drag, and browser-geolocation selections still emit latitude/longitude through the tenant-location form contract.
 4. Address autofill remains first-party through `/api/v1/geo/reverse-geocode`; the IMS picker must not call browser-side Nominatim directly.
+
+## Addendum (2026-06-20): IMS Merchant Pin Reliability Guard
+
+The shared IMS picker and its onboarding/Settings form consumers now distinguish the default camera view from a saved merchant-store pin.
+
+Runtime hardening:
+1. Iloilo City, Philippines remains the initial camera center when no saved pin exists, but it is not persisted unless the merchant explicitly pins or enters usable coordinates.
+2. Missing coordinate fields, `0,0`, and out-of-Philippines browser geolocation results are rejected before onboarding or Settings tenant-location saves.
+3. `Adjust Pin` creates a first draggable draft marker at the current map center when no usable pin exists, so the merchant can place and drag the pin without relying on a pre-existing marker.
+4. `Reset View` returns the camera to Iloilo City and clears invalid `0,0` selected state.
+5. Reverse geocoding remains first-party and best-effort; lookup failure does not discard valid Philippines coordinates.
