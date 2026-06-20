@@ -3,28 +3,18 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { cn } from '../../lib/utils.js';
 import { Button } from '@/components/ui/button';
+import {
+  DEFAULT_CENTER,
+  TILING_SERVER,
+  applyMapLibreCanvasSizing,
+  safeResizeMap,
+  tileTransformRequest
+} from './mapLibreShared.js';
 
-const MAP_STYLE = {
-  version: 8,
-  name: 'DGFY MapLibre Location Picker',
-  sources: {},
-  layers: [
-    {
-      id: 'dgfy-location-picker-background',
-      type: 'background',
-      paint: {
-        'background-color': '#e8f4f2'
-      }
-    }
-  ]
-};
-
-const DEFAULT_CENTER = { latitude: 10.7202, longitude: 122.5621 };
-const DEFAULT_ZOOM = 12;
+const DEFAULT_ZOOM = 13;
 const PIN_ZOOM = 16;
 const MIN_ZOOM = 4;
 const MAX_ZOOM = 18;
-const GRID_SOURCE = 'location-reference-grid';
 const RADIUS_SOURCE = 'delivery-radius';
 const MAP_READY_TIMEOUT_MS = 1500;
 
@@ -89,22 +79,6 @@ const reverseGeocodeMapPin = async ({ latitude, longitude }, { signal } = {}) =>
   return String(payload?.data?.address_line || '').trim() || null;
 };
 
-const canResizeMapContainer = (container) => {
-  if (!container || container.isConnected === false) return false;
-  const rect = container.getBoundingClientRect?.();
-  if (!rect) return true;
-  return rect.width > 0 && rect.height > 0;
-};
-
-const safeResizeMap = (map, container) => {
-  if (!map || !canResizeMapContainer(container)) return;
-  try {
-    map.resize();
-  } catch {
-    // MapLibre can throw while a modal is closing or a hidden panel is being reflowed.
-  }
-};
-
 function createCirclePolygon(centerLng, centerLat, radiusMeters, steps = 64) {
   if (!(radiusMeters > 0)) return null;
   const R = 6371000;
@@ -116,38 +90,6 @@ function createCirclePolygon(centerLng, centerLat, radiusMeters, steps = 64) {
     coords.push([centerLng + dLng, centerLat + dLat]);
   }
   return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [coords] } };
-}
-
-function createReferenceGrid(centerLng, centerLat, spanDegrees = 0.42, stepDegrees = 0.07) {
-  const features = [];
-  const minLng = centerLng - spanDegrees;
-  const maxLng = centerLng + spanDegrees;
-  const minLat = centerLat - spanDegrees;
-  const maxLat = centerLat + spanDegrees;
-
-  for (let lng = minLng; lng <= maxLng + 0.000001; lng += stepDegrees) {
-    features.push({
-      type: 'Feature',
-      properties: { axis: 'longitude' },
-      geometry: {
-        type: 'LineString',
-        coordinates: [[lng, minLat], [lng, maxLat]]
-      }
-    });
-  }
-
-  for (let lat = minLat; lat <= maxLat + 0.000001; lat += stepDegrees) {
-    features.push({
-      type: 'Feature',
-      properties: { axis: 'latitude' },
-      geometry: {
-        type: 'LineString',
-        coordinates: [[minLng, lat], [maxLng, lat]]
-      }
-    });
-  }
-
-  return { type: 'FeatureCollection', features };
 }
 
 export default function MapPinPicker({
@@ -260,24 +202,6 @@ export default function MapPinPicker({
     const ensureRadiusLayers = () => {
       if (isCancelled || !map || radiusLayerReadyRef.current) return;
       try {
-        if (!map.getSource(GRID_SOURCE)) {
-          map.addSource(GRID_SOURCE, {
-            type: 'geojson',
-            data: createReferenceGrid(DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude)
-          });
-        }
-        if (!map.getLayer?.(`${GRID_SOURCE}-line`)) {
-          map.addLayer({
-            id: `${GRID_SOURCE}-line`,
-            type: 'line',
-            source: GRID_SOURCE,
-            paint: {
-              'line-color': '#8fbdb6',
-              'line-opacity': 0.28,
-              'line-width': 1
-            }
-          });
-        }
         if (!map.getSource(RADIUS_SOURCE)) {
           map.addSource(RADIUS_SOURCE, {
             type: 'geojson',
@@ -310,7 +234,8 @@ export default function MapPinPicker({
     try {
       map = new maplibregl.Map({
         container: containerRef.current,
-        style: MAP_STYLE,
+        style: TILING_SERVER,
+        transformRequest: tileTransformRequest,
         center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
         zoom: DEFAULT_ZOOM,
         minZoom: MIN_ZOOM,
@@ -319,6 +244,7 @@ export default function MapPinPicker({
         bearing: 0,
         pitch: 0
       });
+      applyMapLibreCanvasSizing(map);
       map.dragRotate.disable();
       map.touchZoomRotate.disableRotation();
     } catch {

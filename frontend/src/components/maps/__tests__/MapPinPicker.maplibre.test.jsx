@@ -80,6 +80,10 @@ const maplibreMocks = vi.hoisted(() => {
       return this.canvas;
     }
 
+    getCanvasContainer() {
+      return { style: {} };
+    }
+
     getBounds() {
       return {
         contains: vi.fn(() => true)
@@ -188,7 +192,7 @@ describe('MapPinPicker MapLibre behavior', () => {
     delete globalThis.ResizeObserver;
   });
 
-  it('initializes MapLibre as a flat draggable location picker', async () => {
+  it('initializes MapLibre with the Storefront basemap over Iloilo City', async () => {
     render(<MapPinPicker latitude="" longitude="" deliveryRadiusKm={5} onChange={vi.fn()} />);
 
     await waitFor(() => expect(maplibreMocks.Map).toHaveBeenCalled());
@@ -201,19 +205,8 @@ describe('MapPinPicker MapLibre behavior', () => {
     }));
     expect(maplibreMocks.Map.mock.calls[0][0]).not.toHaveProperty('maxBounds');
     expect(maplibreMocks.Map.mock.calls[0][0].center).toEqual([122.5621, 10.7202]);
-    const style = maplibreMocks.Map.mock.calls[0][0].style;
-    expect(style).toEqual(expect.objectContaining({
-      version: 8,
-      name: 'DGFY MapLibre Location Picker',
-      sources: {},
-      layers: expect.arrayContaining([
-        expect.objectContaining({
-          id: 'dgfy-location-picker-background',
-          type: 'background'
-        })
-      ])
-    }));
-    expect(maplibreMocks.Map.mock.calls[0][0]).not.toHaveProperty('transformRequest');
+    expect(maplibreMocks.Map.mock.calls[0][0].style).toMatch(/openfreemap\/styles\/positron|tiles\.openfreemap\.org\/styles\/positron/);
+    expect(maplibreMocks.Map.mock.calls[0][0]).toHaveProperty('transformRequest');
     expect(maplibreMocks.maps[0].dragRotate.disable).toHaveBeenCalled();
     expect(maplibreMocks.maps[0].touchZoomRotate.disableRotation).toHaveBeenCalled();
     expect(await screen.findByLabelText(/Map location picker/i)).toBeTruthy();
@@ -264,6 +257,32 @@ describe('MapPinPicker MapLibre behavior', () => {
       longitude: 120.9842456
     });
     expect(maplibreMocks.Marker).toHaveBeenCalledWith(expect.objectContaining({ anchor: 'bottom' }));
+  });
+
+  it('writes coordinates and address from marker drag', async () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<MapPinPicker latitude="" longitude="" deliveryRadiusKm={5} onChange={onChange} />);
+
+    await waitFor(() => expect(maplibreMocks.maps[0]).toBeTruthy());
+    rerender(<MapPinPicker latitude={10.7202} longitude={122.5621} deliveryRadiusKm={5} onChange={onChange} />);
+    await waitFor(() => expect(maplibreMocks.markers[0]).toBeTruthy());
+
+    act(() => {
+      maplibreMocks.markers[0].setLngLat([122.599488, 10.720263]);
+      maplibreMocks.markers[0].handlers.dragend();
+    });
+
+    expect(onChange).toHaveBeenCalledWith({
+      latitude: 10.720263,
+      longitude: 122.599488
+    });
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalledWith({
+        latitude: 10.720263,
+        longitude: 122.599488,
+        address_line: 'Iloilo City, Iloilo, Philippines'
+      });
+    });
   });
 
   it('keeps coordinate pinning when reverse address lookup fails', async () => {

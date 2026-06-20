@@ -42,13 +42,27 @@ export default defineConfig({
         target: apiProxyTarget,
         changeOrigin: true,
         secure: false
+      },
+      '/openfreemap': {
+        target: 'https://tiles.openfreemap.org',
+        changeOrigin: true,
+        rewrite: (proxyPath) => proxyPath.replace(/^\/openfreemap/, ''),
+        secure: false
       }
     }
   },
   preview: {
     host: true,
     port: 5173,
-    allowedHosts
+    allowedHosts,
+    proxy: {
+      '/openfreemap': {
+        target: 'https://tiles.openfreemap.org',
+        changeOrigin: true,
+        rewrite: (proxyPath) => proxyPath.replace(/^\/openfreemap/, ''),
+        secure: false
+      }
+    }
   },
   build: {
     outDir: path.resolve(__dirname, '../../../dist-apps/skupervisor'),

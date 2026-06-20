@@ -88,3 +88,13 @@ Runtime hardening:
 1. The shared IMS picker now uses an internal MapLibre style with no external tile-provider URL.
 2. Click, drag, and browser-geolocation selections continue to emit latitude/longitude through the existing location form contract.
 3. Address autofill goes through the first-party reverse-geocode endpoint, which returns a local address label without browser-side third-party geocoding requests. Coordinates remain authoritative and saving valid coordinates must not be blocked by address-label availability.
+
+## Addendum (2026-06-20): Shared IMS Picker Basemap Restoration
+
+The internal-style-only IMS picker is superseded after production operators could not visually confirm street context while pinning a location.
+
+Runtime hardening:
+1. Onboarding and Settings continue to use the shared IMS `MapPinPicker`.
+2. The picker reuses the Storefront MapLibre positron basemap style and existing `/openfreemap` development/preview proxy path, opening over Iloilo City, Philippines when no saved pin exists.
+3. Click, marker drag, and browser-geolocation selections still emit latitude/longitude through the tenant-location form contract.
+4. Address autofill remains first-party through `/api/v1/geo/reverse-geocode`; the IMS picker must not call browser-side Nominatim directly.

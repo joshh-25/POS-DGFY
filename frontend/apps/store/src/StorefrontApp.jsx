@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import dgfyHeaderLogo from '../../../public/dgfy-logo.png';
 import dgfySymbolLogo from '../../../public/dgfy-symbologo.png';
 import dgfyBusinessOwnerPhoto from '../../../public/man.png';
+import { DEFAULT_CENTER, TILING_SERVER, tileTransformRequest } from '../../../src/components/maps/mapLibreShared.js';
 import { formatStorefrontBusinessHoursDisplay } from '../../../src/features/settings/storefrontBusinessHours.js';
 import {
   ArrowLeft,
@@ -204,7 +205,6 @@ checkoutResult.payments.filter
 cart_line_id
 */
 
-const DEFAULT_CENTER = { latitude: 10.7202, longitude: 122.5621 };
 const FNB_RECOMMENDED_LOCATION = Object.freeze({
   id: 'recommended-main-branch',
   label: 'Mandurriao, Iloilo City',
@@ -213,21 +213,6 @@ const FNB_RECOMMENDED_LOCATION = Object.freeze({
   longitude: DEFAULT_CENTER.longitude,
   recommended: true
 });
-const TILE_BASE = import.meta.env.VITE_TILE_BASE || 'https://tiles.openfreemap.org';
-
-const TILING_SERVER = import.meta.env.DEV
-  ? '/openfreemap/styles/positron'
-  : `${TILE_BASE}/styles/positron`;
-
-const tileTransformRequest = import.meta.env.DEV
-  ? (url) => {
-    if (url.startsWith(TILE_BASE)) {
-      return { url: url.replace(TILE_BASE, `${window.location.origin}/openfreemap`) };
-    }
-    return { url };
-  }
-  : undefined;
-
 const ORDER_METHOD_OPTIONS = [
   { value: 'delivery', label: 'Delivery' },
   { value: 'pickup', label: 'Pickup' },
