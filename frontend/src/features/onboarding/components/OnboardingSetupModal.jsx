@@ -35,6 +35,10 @@ import {
 } from '../../hospitality/api/hospitalityApi.js';
 import WizardStepNavigator from '../../../components/common/WizardStepNavigator.jsx';
 import SelectedItemImageCarousel from '../../../../Components/items/SelectedItemImageCarousel.jsx';
+import {
+  getMerchantPinValidationError,
+  parseMapCoordinate
+} from '../../../components/maps/mapLibreShared.js';
 
 const WIZARD_STEPS = Object.freeze(['brand_assets', 'primary_location', 'bulk_items']);
 const HOSPITALITY_WIZARD_STEPS = Object.freeze(['brand_assets', 'primary_location', 'hospitality_rooms']);
@@ -447,11 +451,13 @@ export default function OnboardingSetupModal({
   };
 
   const handleSaveLocation = async () => {
+    const parsedLatitude = parseMapCoordinate(locationForm.latitude);
+    const parsedLongitude = parseMapCoordinate(locationForm.longitude);
     const payload = {
       name: String(locationForm.name || '').trim(),
       address_line: String(locationForm.address_line || '').trim(),
-      latitude: Number(locationForm.latitude),
-      longitude: Number(locationForm.longitude),
+      latitude: parsedLatitude,
+      longitude: parsedLongitude,
       delivery_radius_km: Number(locationForm.delivery_radius_km || 5),
       is_active: true,
       is_open: true,
@@ -459,8 +465,16 @@ export default function OnboardingSetupModal({
     };
 
     const shouldPublishMapPin = publicStorefrontVisible === true && storeHasNoLocation !== true;
-    if (shouldPublishMapPin && (!payload.name || !payload.address_line || !Number.isFinite(payload.latitude) || !Number.isFinite(payload.longitude))) {
-      toast.error('Location name, address, latitude, and longitude are required.');
+    if (shouldPublishMapPin && (!payload.name || !payload.address_line)) {
+      toast.error('Location name and address are required.');
+      return;
+    }
+    const coordinateError = getMerchantPinValidationError({
+      latitude: payload.latitude,
+      longitude: payload.longitude
+    });
+    if (shouldPublishMapPin && coordinateError) {
+      toast.error(coordinateError);
       return;
     }
 
@@ -506,15 +520,28 @@ export default function OnboardingSetupModal({
   };
 
   const handleLocationPinChange = ({ latitude, longitude, address_line }) => {
-    const formatCoordinate = (value) => {
-      const numeric = Number(value);
-      return Number.isFinite(numeric) ? numeric.toFixed(6) : String(value || '');
-    };
     const nextAddress = String(address_line || '').trim();
+    const parsedLatitude = parseMapCoordinate(latitude);
+    const parsedLongitude = parseMapCoordinate(longitude);
+
+    if (latitude === '' && longitude === '') {
+      setLocationForm((prev) => ({
+        ...prev,
+        latitude: '',
+        longitude: '',
+        ...(nextAddress ? { address_line: nextAddress } : {})
+      }));
+      return;
+    }
+
+    if (getMerchantPinValidationError({ latitude: parsedLatitude, longitude: parsedLongitude })) {
+      return;
+    }
+
     setLocationForm((prev) => ({
       ...prev,
-      latitude: formatCoordinate(latitude),
-      longitude: formatCoordinate(longitude),
+      latitude: parsedLatitude.toFixed(6),
+      longitude: parsedLongitude.toFixed(6),
       ...(nextAddress ? { address_line: nextAddress } : {})
     }));
   };

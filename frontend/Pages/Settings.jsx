@@ -43,6 +43,11 @@ import * as settingsService from '../src/services/settingsService.js';
 import * as paymentService from '../src/services/paymentService.js';
 import * as tenantLocationService from '../src/services/tenantLocationService.js';
 import {
+  getMerchantPinValidationError,
+  getUsableMerchantPin,
+  parseMapCoordinate
+} from '../src/components/maps/mapLibreShared.js';
+import {
   fetchESalesReports,
   fetchFiscalLedgerIntegrity,
   fetchFiscalTerminalRegistrations,
@@ -387,8 +392,8 @@ const formatValidationErrorDescription = (apiErrors) => {
 const createDefaultLocationForm = () => ({
   name: '',
   address_line: '',
-  latitude: '10.7202',
-  longitude: '122.5621',
+  latitude: '',
+  longitude: '',
   location_version: '',
   delivery_radius_km: '5',
   current_wait_time_minutes: '15',
@@ -1360,21 +1365,42 @@ export default function Settings() {
 
   const handleLocationPinChange = ({ latitude, longitude, address_line }) => {
     const nextAddress = String(address_line || '').trim();
+    const parsedLatitude = parseMapCoordinate(latitude);
+    const parsedLongitude = parseMapCoordinate(longitude);
+
+    if (latitude === '' && longitude === '') {
+      setLocationForm((prev) => ({
+        ...prev,
+        latitude: '',
+        longitude: '',
+        ...(nextAddress ? { address_line: nextAddress } : {})
+      }));
+      return;
+    }
+
+    if (getMerchantPinValidationError({ latitude: parsedLatitude, longitude: parsedLongitude })) {
+      return;
+    }
+
     setLocationForm((prev) => ({
       ...prev,
-      latitude: latitude == null ? '' : String(latitude),
-      longitude: longitude == null ? '' : String(longitude),
+      latitude: parsedLatitude.toFixed(6),
+      longitude: parsedLongitude.toFixed(6),
       ...(nextAddress ? { address_line: nextAddress } : {})
     }));
   };
 
   const handleEditLocation = (location) => {
+    const usablePin = getUsableMerchantPin({
+      latitude: location?.latitude,
+      longitude: location?.longitude
+    });
     setEditingLocationId(location?.location_id || null);
     setLocationForm({
       name: String(location?.name || ''),
       address_line: String(location?.address_line || ''),
-      latitude: location?.latitude == null ? '' : String(location.latitude),
-      longitude: location?.longitude == null ? '' : String(location.longitude),
+      latitude: usablePin ? String(usablePin.latitude) : '',
+      longitude: usablePin ? String(usablePin.longitude) : '',
       location_version: String(location?.updated_at || ''),
       delivery_radius_km: location?.delivery_radius_km == null ? '5' : String(location.delivery_radius_km),
       current_wait_time_minutes: location?.current_wait_time_minutes == null ? '15' : String(location.current_wait_time_minutes),
@@ -1389,11 +1415,13 @@ export default function Settings() {
   };
 
   const handleSaveLocation = async () => {
+    const parsedLatitude = parseMapCoordinate(locationForm.latitude);
+    const parsedLongitude = parseMapCoordinate(locationForm.longitude);
     const payload = {
       name: String(locationForm.name || '').trim(),
       address_line: String(locationForm.address_line || '').trim(),
-      latitude: Number(locationForm.latitude),
-      longitude: Number(locationForm.longitude),
+      latitude: parsedLatitude,
+      longitude: parsedLongitude,
       delivery_radius_km: Number(locationForm.delivery_radius_km || 0),
       current_wait_time_minutes: Number(locationForm.current_wait_time_minutes || 0),
       is_open: locationForm.is_open === true,
@@ -1413,8 +1441,12 @@ export default function Settings() {
       return;
     }
 
-    if (!Number.isFinite(payload.latitude) || !Number.isFinite(payload.longitude)) {
-      toast.error('Please pin the location on the map.');
+    const coordinateError = getMerchantPinValidationError({
+      latitude: payload.latitude,
+      longitude: payload.longitude
+    });
+    if (coordinateError) {
+      toast.error(coordinateError);
       return;
     }
 

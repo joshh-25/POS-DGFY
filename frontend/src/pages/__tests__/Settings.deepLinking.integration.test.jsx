@@ -350,6 +350,48 @@ describe('Settings deep-linking and action wiring', () => {
     expect(await screen.findByText(/will not publish until an active primary storefront pin is saved/i)).toBeTruthy();
   });
 
+  it('blocks Settings location creation until a usable Philippines map pin exists', async () => {
+    const user = userEvent.setup();
+
+    renderSettings('/settings?tab=storefront');
+    await screen.findByText('MapPicker');
+    await user.clear(screen.getByPlaceholderText('Main Branch'));
+    await user.type(screen.getByPlaceholderText('Main Branch'), 'Unpinned Branch');
+    await user.clear(screen.getByPlaceholderText('Street, City, Province'));
+    await user.type(screen.getByPlaceholderText('Street, City, Province'), 'Unpinned Road');
+
+    await user.click(screen.getByRole('button', { name: /Add Location/i }));
+
+    expect(mocks.toastMock.error).toHaveBeenCalledWith('Please pin the location on the map.');
+    expect(mocks.tenantLocationServiceMock.createTenantLocation).not.toHaveBeenCalled();
+  });
+
+  it('blocks Settings edits of legacy 0,0 locations until the map pin is replaced', async () => {
+    const user = userEvent.setup();
+    mocks.tenantLocationServiceMock.listTenantLocationsWithMeta.mockResolvedValueOnce({
+      rows: [
+        {
+          location_id: 99,
+          name: 'Legacy Zero Pin',
+          address_line: 'Legacy Road',
+          latitude: 0,
+          longitude: 0,
+          is_active: true,
+          is_primary_storefront: true
+        }
+      ],
+      meta: {}
+    });
+
+    renderSettings('/settings?tab=storefront');
+    await screen.findByText('Legacy Zero Pin');
+    await user.click(screen.getByRole('button', { name: /Edit/i }));
+    await user.click(screen.getByRole('button', { name: /Update Location/i }));
+
+    expect(mocks.toastMock.error).toHaveBeenCalledWith('Please pin the location on the map.');
+    expect(mocks.tenantLocationServiceMock.updateTenantLocation).not.toHaveBeenCalled();
+  });
+
   it('persists reversible no-location storefront setup and restores map pin editing', async () => {
     const user = userEvent.setup();
     mocks.settingsServiceMock.getAllSettings.mockResolvedValueOnce({
@@ -396,6 +438,8 @@ describe('Settings deep-linking and action wiring', () => {
     expect(mocks.tenantLocationServiceMock.createTenantLocation.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({
       name: 'Restored Branch',
       address_line: 'Restored Road',
+      latitude: 10.720263,
+      longitude: 122.599488,
       is_primary_storefront: true
     }));
   });
@@ -498,7 +542,9 @@ describe('Settings deep-linking and action wiring', () => {
     expect(await screen.findByLabelText(/Terminal location 1/i)).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: /Storefront/i }));
+    await user.click(await screen.findByRole('button', { name: 'MapPicker' }));
     await user.type(screen.getByPlaceholderText('Main Branch'), 'HQ Branch');
+    await user.clear(screen.getByPlaceholderText('Street, City, Province'));
     await user.type(screen.getByPlaceholderText('Street, City, Province'), 'Iloilo City');
     await user.click(screen.getByRole('button', { name: /Add Location/i }));
     await waitFor(() => {

@@ -451,6 +451,30 @@ describe('OnboardingSetupModal behavior', () => {
     });
   });
 
+  it('blocks searchable storefront save when the merchant pin is missing or 0,0', async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
+    await screen.findByText(/2\) Main Storefront Location/i);
+    await user.click(screen.getByLabelText(/Make storefront searchable to customers/i));
+    await user.clear(screen.getByLabelText(/Location name/i));
+    await user.type(screen.getByLabelText(/Location name/i), 'Main Branch');
+    await user.type(screen.getByLabelText(/Address/i), '123 Main Street');
+
+    await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
+    expect(mocks.toastMock.error).toHaveBeenCalledWith('Please pin the location on the map.');
+    expect(mocks.tenantLocationServiceMock.createTenantLocation).not.toHaveBeenCalled();
+
+    mocks.toastMock.error.mockClear();
+    await user.type(screen.getByLabelText(/Latitude/i), '0');
+    await user.type(screen.getByLabelText(/Longitude/i), '0');
+    await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
+
+    expect(mocks.toastMock.error).toHaveBeenCalledWith('Please pin the location on the map.');
+    expect(mocks.tenantLocationServiceMock.createTenantLocation).not.toHaveBeenCalled();
+  });
+
   it('saves a searchable no-location storefront without creating a map pin', async () => {
     const user = userEvent.setup();
     renderModal();
