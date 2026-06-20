@@ -173,10 +173,9 @@ describe('MapPinPicker MapLibre behavior', () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({
-        address: {
-          road: 'Villa Road',
-          city: 'Iloilo City',
-          state: 'Western Visayas'
+        data: {
+          address_line: 'Iloilo City, Iloilo, Philippines',
+          provider: 'dgfy-local'
         }
       })
     });
@@ -201,15 +200,18 @@ describe('MapPinPicker MapLibre behavior', () => {
       trackResize: false
     }));
     expect(maplibreMocks.Map.mock.calls[0][0]).not.toHaveProperty('maxBounds');
+    expect(maplibreMocks.Map.mock.calls[0][0].center).toEqual([122.5621, 10.7202]);
     const style = maplibreMocks.Map.mock.calls[0][0].style;
     expect(style).toEqual(expect.objectContaining({
       version: 8,
-      sources: expect.objectContaining({
-        osm: expect.objectContaining({
-          type: 'raster',
-          tiles: expect.arrayContaining([expect.stringContaining('/osm/{z}/{x}/{y}.png')])
+      name: 'DGFY MapLibre Location Picker',
+      sources: {},
+      layers: expect.arrayContaining([
+        expect.objectContaining({
+          id: 'dgfy-location-picker-background',
+          type: 'background'
         })
-      })
+      ])
     }));
     expect(maplibreMocks.Map.mock.calls[0][0]).not.toHaveProperty('transformRequest');
     expect(maplibreMocks.maps[0].dragRotate.disable).toHaveBeenCalled();
@@ -238,7 +240,7 @@ describe('MapPinPicker MapLibre behavior', () => {
       expect(onChange).toHaveBeenCalledWith({
         latitude: 14.5995123,
         longitude: 120.9842456,
-        address_line: 'Villa Road, Iloilo City, Western Visayas'
+        address_line: 'Iloilo City, Iloilo, Philippines'
       });
     });
     expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -298,7 +300,7 @@ describe('MapPinPicker MapLibre behavior', () => {
     });
 
     expect(screen.queryByText(/Map failed to load/i)).toBeNull();
-    expect(screen.getByText(/Some map tiles could not load/i)).toBeTruthy();
+    expect(screen.getByText(/Map interaction is still available/i)).toBeTruthy();
     expect(screen.getByLabelText(/Map location picker/i)).toBeTruthy();
     expect(screen.getByText(/Pinned: 10.720200, 122.562100/i)).toBeTruthy();
   });

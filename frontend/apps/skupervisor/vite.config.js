@@ -42,11 +42,6 @@ export default defineConfig({
         target: apiProxyTarget,
         changeOrigin: true,
         secure: false
-      },
-      '/osm': {
-        target: 'https://tile.openstreetmap.org',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/osm/, '')
       }
     }
   },

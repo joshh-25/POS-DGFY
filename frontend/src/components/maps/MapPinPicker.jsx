@@ -4,25 +4,17 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { cn } from '../../lib/utils.js';
 import { Button } from '@/components/ui/button';
 
-const OSM_RASTER_TILE_URL = import.meta.env.DEV
-  ? '/osm/{z}/{x}/{y}.png'
-  : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-
 const MAP_STYLE = {
   version: 8,
-  sources: {
-    osm: {
-      type: 'raster',
-      tiles: [OSM_RASTER_TILE_URL],
-      tileSize: 256,
-      attribution: '(c) OpenStreetMap contributors'
-    }
-  },
+  name: 'DGFY MapLibre Location Picker',
+  sources: {},
   layers: [
     {
-      id: 'osm-raster',
-      type: 'raster',
-      source: 'osm'
+      id: 'dgfy-location-picker-background',
+      type: 'background',
+      paint: {
+        'background-color': '#e8f4f2'
+      }
     }
   ]
 };
@@ -32,6 +24,7 @@ const DEFAULT_ZOOM = 12;
 const PIN_ZOOM = 16;
 const MIN_ZOOM = 4;
 const MAX_ZOOM = 18;
+const GRID_SOURCE = 'location-reference-grid';
 const RADIUS_SOURCE = 'delivery-radius';
 const MAP_READY_TIMEOUT_MS = 1500;
 
@@ -76,22 +69,6 @@ const parseCoordinate = (value) => {
 
 const toFixedCoordinate = (value) => Number(value.toFixed(8));
 
-const formatReverseGeocodedAddress = (payload) => {
-  const address = payload?.address || {};
-  const parts = [
-    address.road || address.pedestrian || address.footway || address.neighbourhood || address.suburb,
-    address.village || address.town || address.city || address.municipality,
-    address.state || address.province || address.region,
-    address.postcode
-  ].map((part) => String(part || '').trim()).filter(Boolean);
-
-  const formatted = parts.length > 0
-    ? parts.join(', ')
-    : String(payload?.display_name || '').trim();
-
-  return formatted || null;
-};
-
 const reverseGeocodeMapPin = async ({ latitude, longitude }, { signal } = {}) => {
   if (typeof fetch !== 'function') return null;
   const lat = parseCoordinate(latitude);
@@ -109,7 +86,7 @@ const reverseGeocodeMapPin = async ({ latitude, longitude }, { signal } = {}) =>
   });
   if (!response.ok) return null;
   const payload = await response.json();
-  return String(payload?.data?.address_line || '').trim() || formatReverseGeocodedAddress(payload?.data || payload);
+  return String(payload?.data?.address_line || '').trim() || null;
 };
 
 const canResizeMapContainer = (container) => {
@@ -139,6 +116,38 @@ function createCirclePolygon(centerLng, centerLat, radiusMeters, steps = 64) {
     coords.push([centerLng + dLng, centerLat + dLat]);
   }
   return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [coords] } };
+}
+
+function createReferenceGrid(centerLng, centerLat, spanDegrees = 0.42, stepDegrees = 0.07) {
+  const features = [];
+  const minLng = centerLng - spanDegrees;
+  const maxLng = centerLng + spanDegrees;
+  const minLat = centerLat - spanDegrees;
+  const maxLat = centerLat + spanDegrees;
+
+  for (let lng = minLng; lng <= maxLng + 0.000001; lng += stepDegrees) {
+    features.push({
+      type: 'Feature',
+      properties: { axis: 'longitude' },
+      geometry: {
+        type: 'LineString',
+        coordinates: [[lng, minLat], [lng, maxLat]]
+      }
+    });
+  }
+
+  for (let lat = minLat; lat <= maxLat + 0.000001; lat += stepDegrees) {
+    features.push({
+      type: 'Feature',
+      properties: { axis: 'latitude' },
+      geometry: {
+        type: 'LineString',
+        coordinates: [[minLng, lat], [maxLng, lat]]
+      }
+    });
+  }
+
+  return { type: 'FeatureCollection', features };
 }
 
 export default function MapPinPicker({
@@ -251,6 +260,24 @@ export default function MapPinPicker({
     const ensureRadiusLayers = () => {
       if (isCancelled || !map || radiusLayerReadyRef.current) return;
       try {
+        if (!map.getSource(GRID_SOURCE)) {
+          map.addSource(GRID_SOURCE, {
+            type: 'geojson',
+            data: createReferenceGrid(DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude)
+          });
+        }
+        if (!map.getLayer?.(`${GRID_SOURCE}-line`)) {
+          map.addLayer({
+            id: `${GRID_SOURCE}-line`,
+            type: 'line',
+            source: GRID_SOURCE,
+            paint: {
+              'line-color': '#8fbdb6',
+              'line-opacity': 0.28,
+              'line-width': 1
+            }
+          });
+        }
         if (!map.getSource(RADIUS_SOURCE)) {
           map.addSource(RADIUS_SOURCE, {
             type: 'geojson',
@@ -317,9 +344,21 @@ export default function MapPinPicker({
       // Camera movement handled by the selectedPosition effect via jumpTo
     });
 
+    map.on('mousemove', () => {
+      if (!isPinDragModeRef.current) {
+        map.getCanvas().style.cursor = 'crosshair';
+      }
+    });
+
+    map.on('mouseleave', () => {
+      if (!isPinDragModeRef.current) {
+        map.getCanvas().style.cursor = '';
+      }
+    });
+
     map.on('error', () => {
       if (!loadErrorRef.current && !isCancelled) {
-        const message = 'Some map tiles could not load. You can still place the pin or edit coordinates manually.';
+        const message = 'Map interaction is still available. You can place the pin or edit coordinates manually.';
         loadErrorRef.current = message;
         setLoadError(message);
       }

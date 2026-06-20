@@ -24,23 +24,55 @@ export const buildGeoSearchUseCase = ({ geoSearchRepository }) => {
     };
 };
 
-const formatReverseGeocodedAddress = (payload = {}) => {
-    const address = payload?.address || {};
-    const parts = [
-        address.road || address.pedestrian || address.footway || address.neighbourhood || address.suburb,
-        address.village || address.town || address.city || address.municipality,
-        address.state || address.province || address.region,
-        address.postcode
-    ].map((part) => String(part || '').trim()).filter(Boolean);
+const LOCAL_REVERSE_GEOCODE_PLACES = [
+    {
+        name: 'Iloilo City',
+        region: 'Iloilo',
+        country: 'Philippines',
+        latitude: 10.7202,
+        longitude: 122.5621,
+        radiusKm: 35
+    },
+    {
+        name: 'Manila',
+        region: 'Metro Manila',
+        country: 'Philippines',
+        latitude: 14.5995,
+        longitude: 120.9842,
+        radiusKm: 35
+    }
+];
 
-    const formatted = parts.length > 0
-        ? parts.join(', ')
-        : String(payload?.display_name || '').trim();
+const toRadians = (value) => value * Math.PI / 180;
 
-    return formatted || null;
+const distanceKm = (first, second) => {
+    const earthRadiusKm = 6371;
+    const dLat = toRadians(second.latitude - first.latitude);
+    const dLon = toRadians(second.longitude - first.longitude);
+    const lat1 = toRadians(first.latitude);
+    const lat2 = toRadians(second.latitude);
+    const a = Math.sin(dLat / 2) ** 2
+        + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+    return 2 * earthRadiusKm * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-export const buildReverseGeocodeUseCase = ({ fetchImpl = globalThis.fetch } = {}) => {
+const resolveLocalAddressLine = ({ latitude, longitude }) => {
+    const position = { latitude, longitude };
+    const nearest = LOCAL_REVERSE_GEOCODE_PLACES
+        .map((place) => ({ ...place, distance_km: distanceKm(position, place) }))
+        .sort((a, b) => a.distance_km - b.distance_km)[0];
+
+    if (!nearest) return `Pinned location (${latitude.toFixed(6)}, ${longitude.toFixed(6)})`;
+
+    const prefix = nearest.distance_km <= nearest.radiusKm
+        ? nearest.name
+        : `Near ${nearest.name}`;
+    return [prefix, nearest.region, nearest.country]
+        .filter(Boolean)
+        .join(', ');
+};
+
+export const buildReverseGeocodeUseCase = () => {
     return async ({ latitude, longitude }) => {
         const lat = Number(latitude);
         const lon = Number(longitude);
@@ -51,60 +83,11 @@ export const buildReverseGeocodeUseCase = ({ fetchImpl = globalThis.fetch } = {}
                 { statusCode: 422 }
             ));
         }
-        if (typeof fetchImpl !== 'function') {
-            return fail(new DomainError(
-                DomainErrorCode.SERVICE_UNAVAILABLE,
-                'Reverse geocoding is unavailable in this runtime.',
-                { statusCode: 503 }
-            ));
-        }
-
-        try {
-            const params = new URLSearchParams({
-                lat: String(lat),
-                lon: String(lon),
-                format: 'jsonv2',
-                addressdetails: '1'
-            });
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 5000);
-            let response;
-            try {
-                response = await fetchImpl(`https://nominatim.openstreetmap.org/reverse?${params.toString()}`, {
-                    headers: {
-                        Accept: 'application/json',
-                        'User-Agent': 'DGFY-SKU-Inventory-Manager/1.0 (https://dgfy.ph)'
-                    },
-                    signal: controller.signal
-                });
-            } finally {
-                clearTimeout(timeout);
-            }
-
-            if (!response?.ok) {
-                return fail(new DomainError(
-                    DomainErrorCode.SERVICE_UNAVAILABLE,
-                    'Reverse geocoding provider did not return a usable address.',
-                    { statusCode: 502 }
-                ));
-            }
-
-            const providerPayload = await response.json();
-            const addressLine = formatReverseGeocodedAddress(providerPayload);
-            return ok({
-                address_line: addressLine,
-                provider: 'nominatim',
-                latitude: lat,
-                longitude: lon
-            });
-        } catch (error) {
-            return fail(new DomainError(
-                DomainErrorCode.SERVICE_UNAVAILABLE,
-                error?.name === 'AbortError'
-                    ? 'Reverse geocoding provider timed out.'
-                    : 'Reverse geocoding provider is unavailable.',
-                { statusCode: error?.name === 'AbortError' ? 504 : 502 }
-            ));
-        }
+        return ok({
+            address_line: resolveLocalAddressLine({ latitude: lat, longitude: lon }),
+            provider: 'dgfy-local',
+            latitude: lat,
+            longitude: lon
+        });
     };
 };

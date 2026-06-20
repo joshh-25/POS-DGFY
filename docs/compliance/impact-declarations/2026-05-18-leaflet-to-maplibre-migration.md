@@ -74,3 +74,17 @@ Runtime hardening:
 1. `trackResize: false` is set on the shared picker MapLibre instance so MapLibre does not fire its own resize handler while onboarding modals or Settings panels are closing.
 2. The component-owned `ResizeObserver` keeps guarded resize behavior and catches late MapLibre cleanup failures during unmount.
 3. Storefront discovery maps continue to use their existing OpenFreeMap vector style contract; this addendum only changes the shared IMS picker.
+
+## Addendum (2026-06-20): Shared IMS Picker Provider Removal
+
+The 2026-06-05 OSM raster fallback is superseded for the shared IMS `MapPinPicker`.
+
+Reason:
+1. The IMS picker contract is MapLibre interaction first: merchants need a stable click/drag/geolocation pinning surface, not a third-party basemap dependency.
+2. Browser-side or server-side Nominatim/OpenStreetMap dependencies are not part of the approved IMS picker provider contract.
+3. The picker must open over Iloilo City, Philippines when no saved pin exists.
+
+Runtime hardening:
+1. The shared IMS picker now uses an internal MapLibre style with no external tile-provider URL.
+2. Click, drag, and browser-geolocation selections continue to emit latitude/longitude through the existing location form contract.
+3. Address autofill goes through the first-party reverse-geocode endpoint, which returns a local address label without browser-side third-party geocoding requests. Coordinates remain authoritative and saving valid coordinates must not be blocked by address-label availability.
