@@ -69,7 +69,7 @@ vi.mock('../../components/maps/MapPinPicker.jsx', () => ({
   default: ({ onChange }) => (
     <button
       type="button"
-      onClick={() => onChange?.({ latitude: 10.720263, longitude: 122.599488, address_line: 'Villa Road, Iloilo City' })}
+      onClick={() => onChange?.({ latitude: 10.720263, longitude: 122.599488, address_line: 'Iloilo City, Iloilo, Philippines' })}
     >
       MapPicker
     </button>
@@ -381,7 +381,7 @@ describe('Settings deep-linking and action wiring', () => {
     expect(await screen.findByText('MapPicker')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'MapPicker' }));
     await waitFor(() => {
-      expect(screen.getByPlaceholderText('Street, City, Province').value).toBe('Villa Road, Iloilo City');
+      expect(screen.getByPlaceholderText('Street, City, Province').value).toBe('Iloilo City, Iloilo, Philippines');
     });
     await user.clear(screen.getByPlaceholderText('Main Branch'));
     await user.type(screen.getByPlaceholderText('Main Branch'), 'Restored Branch');
