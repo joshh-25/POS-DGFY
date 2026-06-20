@@ -88,7 +88,8 @@ export const buildDgfyAuthUrl = ({
   intent = 'customer',
   mode = 'sign-in',
   returnTo = '',
-  reason = ''
+  reason = '',
+  email = ''
 } = {}) => {
   const target = new URL(normalizeDgfyAuthBaseUrl());
   target.pathname = '/dgfy/auth';
@@ -98,6 +99,7 @@ export const buildDgfyAuthUrl = ({
   target.searchParams.set('mode', String(mode || '').trim() === 'create-account' ? 'create-account' : 'sign-in');
   if (returnTo) target.searchParams.set('return_to', String(returnTo).trim());
   if (reason) target.searchParams.set('reason', String(reason).trim());
+  if (email) target.searchParams.set('email', String(email).trim());
   return target.toString();
 };
 

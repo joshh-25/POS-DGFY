@@ -1,6 +1,7 @@
 const STOREFRONT_AUTH_TOKEN_KEYS = ['dgfy_store_customer_token', 'store_customer_token', 'store_token'];
 const DGFY_CUSTOMER_AUTH_TOKEN_KEYS = ['dgfy_customer_account_token', 'dgfy_account_token'];
 const DGFY_EXPLICIT_SIGN_OUT_KEY = 'dgfy_customer_explicit_sign_out';
+const DGFY_LAST_SIGNED_OUT_EMAIL_KEY = 'dgfy_customer_last_signed_out_email';
 
 const readSessionToken = (key) => {
   try {
@@ -78,6 +79,29 @@ export const clearDgfyAuthToken = () => {
   clearTokenKeys(window.localStorage, DGFY_CUSTOMER_AUTH_TOKEN_KEYS);
 };
 
+export const rememberDgfySignedOutEmail = (email = '') => {
+  if (typeof window === 'undefined') return;
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  try {
+    if (normalizedEmail) {
+      window.sessionStorage.setItem(DGFY_LAST_SIGNED_OUT_EMAIL_KEY, normalizedEmail);
+    } else {
+      window.sessionStorage.removeItem(DGFY_LAST_SIGNED_OUT_EMAIL_KEY);
+    }
+  } catch {
+    // Session storage can be unavailable in hardened/private browser modes.
+  }
+};
+
+export const readDgfySignedOutEmail = () => {
+  if (typeof window === 'undefined') return '';
+  try {
+    return String(window.sessionStorage.getItem(DGFY_LAST_SIGNED_OUT_EMAIL_KEY) || '').trim();
+  } catch {
+    return '';
+  }
+};
+
 export const markDgfyExplicitSignOut = () => {
   if (typeof window === 'undefined') return;
   try {
@@ -91,6 +115,7 @@ export const clearDgfyExplicitSignOut = () => {
   if (typeof window === 'undefined') return;
   try {
     window.sessionStorage.removeItem(DGFY_EXPLICIT_SIGN_OUT_KEY);
+    window.sessionStorage.removeItem(DGFY_LAST_SIGNED_OUT_EMAIL_KEY);
   } catch {
     // Session storage cleanup is best-effort.
   }

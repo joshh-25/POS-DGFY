@@ -39,6 +39,29 @@ const hasCompanyLegalVersions = (snapshot = {}) => Boolean(
 );
 const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
+const getStatusCode = (error) => Number(error?.response?.status || error?.status || 0);
+
+const getRetryAfterSeconds = (error) => {
+    const retryAfterSeconds = Number(error?.response?.data?.retryAfterSeconds || error?.retryAfterSeconds || 0);
+    if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) return Math.ceil(retryAfterSeconds);
+
+    const retryAfterHeader = error?.response?.headers?.['retry-after'] || error?.response?.headers?.get?.('retry-after');
+    const retryAfter = Number(retryAfterHeader || 0);
+    return Number.isFinite(retryAfter) && retryAfter > 0 ? Math.ceil(retryAfter) : 0;
+};
+
+const getTenantSessionFallbackMessage = (error) => {
+    if (getStatusCode(error) !== 429) {
+        return error?.response?.data?.message || 'Company created. Use the button below to sign in to SKUpervisor with this company prefilled.';
+    }
+
+    const retryAfterSeconds = getRetryAfterSeconds(error);
+    const retryCopy = retryAfterSeconds > 0
+        ? ` Please wait about ${Math.max(1, Math.ceil(retryAfterSeconds / 60))} minute${Math.ceil(retryAfterSeconds / 60) === 1 ? '' : 's'} before trying the automatic handoff again.`
+        : ' Please wait before trying the automatic handoff again.';
+    return `Company created. Business session opening is temporarily rate-limited.${retryCopy} You can still use the button below to continue through SKUpervisor login.`;
+};
+
 const PasswordInput = ({
     id,
     value,
@@ -338,6 +361,7 @@ export default function RegisterCompany() {
                 }, token);
             } catch (error) {
                 lastError = error;
+                if (getStatusCode(error) === 429) break;
                 if (attempt === 2) break;
                 await wait(350 * (attempt + 1));
             }
@@ -542,7 +566,7 @@ export default function RegisterCompany() {
                     navigate('/', { replace: true });
                     return;
                 } catch (sessionError) {
-                    setNotice(sessionError.response?.data?.message || 'Company created. Use the button below to sign in to SKUpervisor with this company prefilled.');
+                    setNotice(getTenantSessionFallbackMessage(sessionError));
                     return;
                 }
             }
@@ -580,7 +604,7 @@ export default function RegisterCompany() {
             await startTenantSessionWithRetry(success.data, activeDgfyToken);
             navigate('/', { replace: true });
         } catch (sessionError) {
-            setNotice(sessionError.response?.data?.message || 'Company created. Sign in to SKUpervisor to continue.');
+            setNotice(getTenantSessionFallbackMessage(sessionError));
             goToManualSkupervisorLogin();
         } finally {
             setIsLoading(false);

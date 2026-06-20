@@ -146,7 +146,9 @@ import {
   hasDgfyExplicitSignOut,
   markDgfyExplicitSignOut,
   readDgfyAuthToken,
+  readDgfySignedOutEmail,
   readStoreAuthToken,
+  rememberDgfySignedOutEmail,
   writeStoreAuthToken
 } from './auth/storefrontSessionStorage.js';
 import { requestJson } from './services/requestJson.js';
@@ -9060,15 +9062,22 @@ export default function StorefrontApp() {
     servicePaymentTiming,
     simpleOrderStep
   ]);
-  const openCanonicalDgfyAuth = useCallback((intent = 'customer', mode = 'sign-in') => {
+  const openCanonicalDgfyAuth = useCallback((intent = 'customer', mode = 'sign-in', options = {}) => {
     if (typeof window === 'undefined') return;
     const normalizedIntent = String(intent || '').trim() === 'register-business' ? 'register-business' : 'customer';
+    const normalizedMode = String(mode || '').trim() === 'create-account' ? 'create-account' : 'sign-in';
+    const signedOutEmail = readDgfySignedOutEmail();
+    const explicitSignedOutLogin = normalizedIntent === 'customer'
+      && normalizedMode === 'sign-in'
+      && hasDgfyExplicitSignOut();
     window.location.href = buildDgfyAuthUrl({
       intent: normalizedIntent,
-      mode: String(mode || '').trim() === 'create-account' ? 'create-account' : 'sign-in',
+      mode: normalizedMode,
       returnTo: normalizedIntent === 'customer'
         ? buildStorefrontAccountReturnUrl()
-        : '/register-company#business-registration'
+        : '/register-company#business-registration',
+      reason: options.reason || (explicitSignedOutLogin ? 'signed-out' : ''),
+      email: options.email || (explicitSignedOutLogin ? signedOutEmail : '')
     });
   }, [buildStorefrontAccountReturnUrl]);
   const openCheckoutAuthFlow = useCallback((mode = 'create-account', resumeTarget = {}) => {
@@ -10579,6 +10588,8 @@ export default function StorefrontApp() {
   ]);
   const handleStorefrontSignOut = useCallback(async () => {
     const dgfyToken = readDgfyAuthToken();
+    const signedOutEmail = String(accountPanel.me?.email || dgfySessionAccount?.email || '').trim();
+    rememberDgfySignedOutEmail(signedOutEmail);
     markDgfyExplicitSignOut();
     try {
       await requestJson('/api/v1/dgfy/auth/logout', { method: 'POST', authToken: dgfyToken, cache: 'no-store' });

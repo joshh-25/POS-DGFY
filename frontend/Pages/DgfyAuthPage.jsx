@@ -486,6 +486,16 @@ export default function DgfyAuthPage() {
   useEffect(() => { setMode(normalizeDgfyMode(routeParams.mode)); }, [routeParams.mode]);
 
   useEffect(() => {
+    const routeEmail = String(routeParams.email || '').trim();
+    if (!routeEmail) return;
+    setLoginForm((current) => ({
+      ...current,
+      email: current.email || routeEmail,
+      password: ''
+    }));
+  }, [routeParams.email]);
+
+  useEffect(() => {
     const stateNotice = String(location.state?.notice || '').trim();
     if (!stateNotice) return;
     setNotice(stateNotice);
@@ -530,7 +540,7 @@ export default function DgfyAuthPage() {
 
   useEffect(() => {
     let cancelled = false;
-    if (hasDgfyExplicitSignOut()) {
+    if (routeParams.reason === 'signed-out' || hasDgfyExplicitSignOut()) {
       setSessionResolved(true);
       return () => { cancelled = true; };
     }
@@ -550,7 +560,7 @@ export default function DgfyAuthPage() {
         setSessionResolved(true);
       });
     return () => { cancelled = true; };
-  }, [navigate, routeParams.intent, routeParams.returnTo]);
+  }, [navigate, routeParams.intent, routeParams.reason, routeParams.returnTo]);
 
   const accountLegalSnapshot = getFlowSnapshot(legalTerms, 'account_registration');
   const accountLegalDocuments = getFlowDocuments(legalTerms, 'account_registration');
@@ -938,7 +948,7 @@ export default function DgfyAuthPage() {
 
               <form onSubmit={handleLogin} className="flex flex-col gap-4">
                 <FieldGroup id="dgfyLoginEmail" label="Email Address">
-                  <Input id="dgfyLoginEmail" type="email" placeholder="name@company.com" value={loginForm.email}
+                  <Input id="dgfyLoginEmail" name="email" type="email" autoComplete="email" placeholder="name@company.com" value={loginForm.email}
                     onChange={(e) => setLoginForm((c) => ({ ...c, email: e.target.value }))}
                     required disabled={isLoading} className={inputClass} />
                 </FieldGroup>
@@ -954,7 +964,7 @@ export default function DgfyAuthPage() {
                       Forgot password?
                     </Link>
                   </div>
-                  <DgfyPasswordInput id="dgfyLoginPassword" autoComplete="current-password" placeholder="••••••••"
+                  <DgfyPasswordInput id="dgfyLoginPassword" name="password" autoComplete="current-password" placeholder="••••••••"
                     value={loginForm.password} onChange={(e) => setLoginForm((c) => ({ ...c, password: e.target.value }))} disabled={isLoading} />
                 </div>
 

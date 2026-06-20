@@ -501,6 +501,48 @@ describe('DGFY auth and business registration routes', () => {
     }, { timeout: 3000 });
   });
 
+  it('does not retry tenant-session handoff when business session opening is rate-limited', async () => {
+    dgfyAuthMock.fetchDgfyMe.mockResolvedValueOnce({
+      token: 'dgfy-token',
+      account: dgfyAccount
+    });
+    dgfyAuthMock.startDgfyTenantSession.mockRejectedValue({
+      response: {
+        status: 429,
+        data: {
+          message: 'Too many business session attempts. Please wait before opening this company again.',
+          retryAfterSeconds: 180
+        }
+      }
+    });
+    apiMock.post.mockResolvedValueOnce({
+      data: {
+        success: true,
+        message: 'Company registered and activated successfully. You can sign in now.',
+        data: {
+          id: 'tenant-429',
+          name: 'Retry Foods',
+          status: 'active',
+          company_token: 'token-retryfoods-12345678',
+          workflow_mode: 'food_manufacturing'
+        }
+      }
+    });
+
+    renderRoutes(['/register-company#business-registration']);
+
+    expect(await screen.findByText(/DGFY account connected/i)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Retry Foods' } });
+    fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
+    fireEvent.click(screen.getByRole('button', { name: /create company/i }));
+
+    await waitFor(() => expect(dgfyAuthMock.startDgfyTenantSession).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('Company Created')).toBeTruthy();
+    expect(screen.getByText(/business session opening is temporarily rate-limited/i)).toBeTruthy();
+    expect(screen.getByText(/about 3 minutes/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /proceed to skupervisor/i })).toBeTruthy();
+  });
+
   it('shows the sign-in form instead of auto-restoring a cookie session after explicit sign-out', async () => {
     dgfyAuthMock.hasDgfyExplicitSignOut.mockReturnValue(true);
     dgfyAuthMock.fetchDgfyMe.mockResolvedValue({
@@ -508,9 +550,11 @@ describe('DGFY auth and business registration routes', () => {
       account: dgfyAccount
     });
 
-    renderRoutes(['/dgfy/auth?intent=customer&mode=sign-in&return_to=%2Fmap-dgfy%2Faccount']);
+    renderRoutes(['/dgfy/auth?intent=customer&mode=sign-in&reason=signed-out&return_to=%2Fmap-dgfy%2Faccount&email=old%40example.test']);
 
     expect(await screen.findByRole('button', { name: /^login$/i })).toBeTruthy();
+    expect(screen.getByLabelText(/email address/i).value).toBe('old@example.test');
+    expect(screen.getByLabelText(/^password$/i).value).toBe('');
     expect(screen.queryByText('Done screen')).toBeNull();
     expect(dgfyAuthMock.fetchDgfyMe).not.toHaveBeenCalled();
   });

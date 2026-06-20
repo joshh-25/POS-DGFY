@@ -285,6 +285,7 @@ describe('discovery header customer account actions', () => {
 
   it('does not rehydrate the previous DGFY account after explicit sign-out', async () => {
     window.sessionStorage.setItem('dgfy_customer_explicit_sign_out', String(Date.now()));
+    window.sessionStorage.setItem('dgfy_customer_last_signed_out_email', 'old@example.com');
     dgfyMeResponse = makeJsonResponse({
       account: {
         id: 'acct-old',
@@ -307,6 +308,8 @@ describe('discovery header customer account actions', () => {
       expect(window.location.pathname).toBe('/dgfy/auth');
       expect(window.location.search).toContain('intent=customer');
       expect(window.location.search).toContain('mode=sign-in');
+      expect(window.location.search).toContain('reason=signed-out');
+      expect(window.location.search).toContain('email=old%40example.com');
     });
   }, 10000);
 
