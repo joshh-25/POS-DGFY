@@ -7,6 +7,10 @@ import {
   DEFAULT_CENTER,
   TILING_SERVER,
   applyMapLibreCanvasSizing,
+  getMerchantPinValidationError,
+  getUsableMerchantPin,
+  isCoordinateInPhilippines,
+  parseMapCoordinate,
   safeResizeMap,
   tileTransformRequest
 } from './mapLibreShared.js';
@@ -52,17 +56,12 @@ const makePinElement = (highlighted = false) => {
   return el;
 };
 
-const parseCoordinate = (value) => {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : null;
-};
-
 const toFixedCoordinate = (value) => Number(value.toFixed(8));
 
 const reverseGeocodeMapPin = async ({ latitude, longitude }, { signal } = {}) => {
   if (typeof fetch !== 'function') return null;
-  const lat = parseCoordinate(latitude);
-  const lng = parseCoordinate(longitude);
+  const lat = parseMapCoordinate(latitude);
+  const lng = parseMapCoordinate(longitude);
   if (lat == null || lng == null) return null;
 
   const params = new URLSearchParams({
@@ -115,12 +114,18 @@ export default function MapPinPicker({
   const [isMapReady, setIsMapReady] = useState(false);
   const [isPinDragMode, setIsPinDragMode] = useState(false);
 
-  const selectedPosition = useMemo(() => {
-    const lat = parseCoordinate(latitude);
-    const lng = parseCoordinate(longitude);
+  const rawPosition = useMemo(() => {
+    const lat = parseMapCoordinate(latitude);
+    const lng = parseMapCoordinate(longitude);
     if (lat == null || lng == null) return null;
     return { latitude: lat, longitude: lng };
   }, [latitude, longitude]);
+
+  const selectedPosition = useMemo(() => {
+    return getUsableMerchantPin({ latitude, longitude });
+  }, [latitude, longitude]);
+
+  const hasInvalidCoordinateInput = Boolean(rawPosition && !selectedPosition);
 
   const radiusMeters = useMemo(() => {
     const parsed = Number(deliveryRadiusKm);
@@ -132,10 +137,22 @@ export default function MapPinPicker({
   useEffect(() => { isPinDragModeRef.current = isPinDragMode; }, [isPinDragMode]);
 
   const emitPinChange = (pin) => {
-    onChangeRef.current?.(pin);
-    const lat = parseCoordinate(pin?.latitude);
-    const lng = parseCoordinate(pin?.longitude);
-    if (lat == null || lng == null) return;
+    const lat = parseMapCoordinate(pin?.latitude);
+    const lng = parseMapCoordinate(pin?.longitude);
+    const validationError = getMerchantPinValidationError({ latitude: lat, longitude: lng });
+    if (validationError) {
+      setLoadError(validationError);
+      return false;
+    }
+
+    const normalizedPin = {
+      ...pin,
+      latitude: lat,
+      longitude: lng
+    };
+    setLoadError('');
+    loadErrorRef.current = '';
+    onChangeRef.current?.(normalizedPin);
 
     reverseGeocodeAbortRef.current?.abort?.();
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -147,16 +164,24 @@ export default function MapPinPicker({
       .then((addressLine) => {
         if (!addressLine || reverseGeocodeSequenceRef.current !== sequence) return;
         onChangeRef.current?.({
-          ...pin,
+          ...normalizedPin,
           address_line: addressLine
         });
       })
       .catch(() => {
         // Address autofill is best-effort; coordinates remain the source of truth.
       });
+    return true;
+  };
+
+  const clearInvalidPin = () => {
+    if (!hasInvalidCoordinateInput) return;
+    onChangeRef.current?.({ latitude: '', longitude: '' });
+    setIsPinDragMode(false);
   };
 
   const resetViewport = () => {
+    clearInvalidPin();
     mapRef.current?.flyTo({
       center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
       zoom: DEFAULT_ZOOM
@@ -173,8 +198,14 @@ export default function MapPinPicker({
       (position) => {
         const nextLatitude = toFixedCoordinate(position.coords.latitude);
         const nextLongitude = toFixedCoordinate(position.coords.longitude);
-        emitPinChange({ latitude: nextLatitude, longitude: nextLongitude });
-        mapRef.current?.flyTo({ center: [nextLongitude, nextLatitude], zoom: PIN_ZOOM });
+        if (!isCoordinateInPhilippines({ latitude: nextLatitude, longitude: nextLongitude })) {
+          setLoadError('Your browser reported a location outside the Philippines. Please click the map or enter the storefront coordinates manually.');
+          setIsLocating(false);
+          return;
+        }
+        if (emitPinChange({ latitude: nextLatitude, longitude: nextLongitude })) {
+          mapRef.current?.flyTo({ center: [nextLongitude, nextLatitude], zoom: PIN_ZOOM });
+        }
         setIsLocating(false);
       },
       () => {
@@ -183,6 +214,26 @@ export default function MapPinPicker({
       },
       { enableHighAccuracy: true, timeout: 8000 }
     );
+  };
+
+  const getDraftPinFromMapCenter = () => {
+    const center = mapRef.current?.getCenter?.();
+    const draft = center && Number.isFinite(Number(center.lat)) && Number.isFinite(Number(center.lng))
+      ? { latitude: toFixedCoordinate(Number(center.lat)), longitude: toFixedCoordinate(Number(center.lng)) }
+      : DEFAULT_CENTER;
+    return getUsableMerchantPin(draft) || DEFAULT_CENTER;
+  };
+
+  const handleAdjustPinClick = () => {
+    if (!selectedPosition) {
+      const draftPin = getDraftPinFromMapCenter();
+      if (emitPinChange(draftPin)) {
+        mapRef.current?.jumpTo?.({ center: [draftPin.longitude, draftPin.latitude], zoom: PIN_ZOOM });
+        setIsPinDragMode(true);
+      }
+      return;
+    }
+    setIsPinDragMode((prev) => !prev);
   };
 
   // Map initialisation
@@ -347,17 +398,23 @@ export default function MapPinPicker({
         markerRef.current.remove();
         markerRef.current = null;
       }
+      setIsPinDragMode(false);
       return;
     }
 
     const { latitude: lat, longitude: lng } = selectedPosition;
 
     if (!markerRef.current) {
+      const shouldDrag = isPinDragModeRef.current;
       const marker = new maplibregl.Marker({
-        element: makePinElement(false),
+        element: makePinElement(shouldDrag),
         anchor: 'bottom',
-        draggable: false
+        draggable: shouldDrag
       }).setLngLat([lng, lat]).addTo(map);
+      const element = marker.getElement();
+      if (element) {
+        element.style.cursor = shouldDrag ? 'grab' : 'pointer';
+      }
 
       marker.on('dragstart', () => {
         map.getCanvas().style.cursor = 'grabbing';
@@ -457,8 +514,7 @@ export default function MapPinPicker({
             'border-slate-300 text-slate-800 hover:bg-slate-100',
             isPinDragMode && 'border-teal-400 bg-teal-50 text-teal-800 hover:bg-teal-100'
           )}
-          onClick={() => setIsPinDragMode((prev) => !prev)}
-          disabled={!selectedPosition}
+          onClick={handleAdjustPinClick}
         >
           {isPinDragMode ? 'Stop Moving Pin' : 'Adjust Pin'}
         </Button>

@@ -1,6 +1,12 @@
 const DEFAULT_TILE_BASE = 'https://tiles.openfreemap.org';
 
 export const DEFAULT_CENTER = Object.freeze({ latitude: 10.7202, longitude: 122.5621 });
+export const PHILIPPINES_BOUNDS = Object.freeze({
+  minLatitude: 4.2,
+  maxLatitude: 21.5,
+  minLongitude: 116,
+  maxLongitude: 127
+});
 
 export const TILE_BASE = import.meta.env.VITE_TILE_BASE || DEFAULT_TILE_BASE;
 
@@ -48,4 +54,43 @@ export const safeResizeMap = (map, container) => {
   } catch {
     // MapLibre can throw while a modal is closing or a hidden panel is being reflowed.
   }
+};
+
+export const parseMapCoordinate = (value) => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  const numeric = Number(raw);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+export const isZeroCoordinatePair = (latitude, longitude) => (
+  Math.abs(Number(latitude)) < 0.000001 && Math.abs(Number(longitude)) < 0.000001
+);
+
+export const isCoordinateInPhilippines = ({ latitude, longitude }) => {
+  const lat = parseMapCoordinate(latitude);
+  const lng = parseMapCoordinate(longitude);
+  if (lat == null || lng == null) return false;
+  return lat >= PHILIPPINES_BOUNDS.minLatitude
+    && lat <= PHILIPPINES_BOUNDS.maxLatitude
+    && lng >= PHILIPPINES_BOUNDS.minLongitude
+    && lng <= PHILIPPINES_BOUNDS.maxLongitude;
+};
+
+export const getMerchantPinValidationError = ({ latitude, longitude } = {}) => {
+  const lat = parseMapCoordinate(latitude);
+  const lng = parseMapCoordinate(longitude);
+  if (lat == null || lng == null) return 'Please pin the location on the map.';
+  if (isZeroCoordinatePair(lat, lng)) return 'Please pin the location on the map.';
+  if (!isCoordinateInPhilippines({ latitude: lat, longitude: lng })) {
+    return 'Storefront pins must be located in the Philippines.';
+  }
+  return '';
+};
+
+export const getUsableMerchantPin = ({ latitude, longitude } = {}) => {
+  const lat = parseMapCoordinate(latitude);
+  const lng = parseMapCoordinate(longitude);
+  if (getMerchantPinValidationError({ latitude: lat, longitude: lng })) return null;
+  return { latitude: lat, longitude: lng };
 };

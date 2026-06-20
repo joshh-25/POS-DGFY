@@ -18,15 +18,19 @@ const maplibreMocks = vi.hoisted(() => {
       this.sources = new Map();
       this.layers = [];
       this.zoom = options.zoom || 12;
+      this.center = options.center || [0, 0];
       this.dragRotate = { disable: vi.fn() };
       this.touchZoomRotate = { disableRotation: vi.fn() };
       this.flyTo = vi.fn((nextOptions = {}) => {
+        if (Array.isArray(nextOptions.center)) this.center = nextOptions.center;
         if (Number.isFinite(nextOptions.zoom)) this.zoom = nextOptions.zoom;
       });
       this.easeTo = vi.fn((nextOptions = {}) => {
+        if (Array.isArray(nextOptions.center)) this.center = nextOptions.center;
         if (Number.isFinite(nextOptions.zoom)) this.zoom = nextOptions.zoom;
       });
       this.jumpTo = vi.fn((nextOptions = {}) => {
+        if (Array.isArray(nextOptions.center)) this.center = nextOptions.center;
         if (Number.isFinite(nextOptions.zoom)) this.zoom = nextOptions.zoom;
       });
       this.fitBounds = vi.fn();
@@ -53,6 +57,10 @@ const maplibreMocks = vi.hoisted(() => {
 
     getZoom() {
       return this.zoom;
+    }
+
+    getCenter() {
+      return { lng: this.center[0], lat: this.center[1] };
     }
 
     getSource(sourceId) {
@@ -210,6 +218,57 @@ describe('MapPinPicker MapLibre behavior', () => {
     expect(maplibreMocks.maps[0].dragRotate.disable).toHaveBeenCalled();
     expect(maplibreMocks.maps[0].touchZoomRotate.disableRotation).toHaveBeenCalled();
     expect(await screen.findByLabelText(/Map location picker/i)).toBeTruthy();
+    expect(screen.getByText(/No pin selected yet\./i)).toBeTruthy();
+    expect(maplibreMocks.Marker).not.toHaveBeenCalled();
+  });
+
+  it('treats legacy 0,0 coordinates as no selected merchant pin', async () => {
+    render(<MapPinPicker latitude={0} longitude={0} deliveryRadiusKm={5} onChange={vi.fn()} />);
+
+    await waitFor(() => expect(maplibreMocks.maps[0]).toBeTruthy());
+
+    expect(screen.getByText(/No pin selected yet\./i)).toBeTruthy();
+    expect(maplibreMocks.Marker).not.toHaveBeenCalled();
+    expect(maplibreMocks.maps[0].jumpTo).not.toHaveBeenCalledWith(expect.objectContaining({
+      center: [0, 0]
+    }));
+  });
+
+  it('creates the first draggable marker from Adjust Pin at the Iloilo camera center', async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    const { rerender } = render(<MapPinPicker latitude="" longitude="" deliveryRadiusKm={5} onChange={onChange} />);
+
+    await waitFor(() => expect(maplibreMocks.maps[0]).toBeTruthy());
+    await user.click(screen.getByRole('button', { name: /Adjust Pin/i }));
+
+    expect(onChange).toHaveBeenCalledWith({
+      latitude: 10.7202,
+      longitude: 122.5621
+    });
+    expect(maplibreMocks.maps[0].jumpTo).toHaveBeenCalledWith({
+      center: [122.5621, 10.7202],
+      zoom: 16
+    });
+
+    rerender(<MapPinPicker latitude={10.7202} longitude={122.5621} deliveryRadiusKm={5} onChange={onChange} />);
+    await waitFor(() => expect(maplibreMocks.markers[0]?.options.draggable).toBe(true));
+    expect(screen.getByRole('button', { name: /Stop Moving Pin/i })).toBeTruthy();
+  });
+
+  it('clears invalid 0,0 input when Reset View returns to Iloilo', async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<MapPinPicker latitude={0} longitude={0} deliveryRadiusKm={5} onChange={onChange} />);
+
+    await waitFor(() => expect(maplibreMocks.maps[0]).toBeTruthy());
+    await user.click(screen.getByRole('button', { name: /Reset View/i }));
+
+    expect(onChange).toHaveBeenCalledWith({ latitude: '', longitude: '' });
+    expect(maplibreMocks.maps[0].flyTo).toHaveBeenCalledWith({
+      center: [122.5621, 10.7202],
+      zoom: 13
+    });
   });
 
   it('writes coordinates from map click and geolocation into the field contract', async () => {
@@ -283,6 +342,32 @@ describe('MapPinPicker MapLibre behavior', () => {
         address_line: 'Iloilo City, Iloilo, Philippines'
       });
     });
+  });
+
+  it('rejects browser geolocation outside the Philippines without moving the pin', async () => {
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: vi.fn((success) => success({
+          coords: {
+            latitude: 35.2271,
+            longitude: -80.8431
+          }
+        }))
+      }
+    });
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<MapPinPicker latitude="" longitude="" deliveryRadiusKm={5} onChange={onChange} />);
+
+    await waitFor(() => expect(maplibreMocks.maps[0]).toBeTruthy());
+    await user.click(screen.getByRole('button', { name: /Pin Current Location/i }));
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(maplibreMocks.maps[0].flyTo).not.toHaveBeenCalledWith(expect.objectContaining({
+      center: [-80.8431, 35.2271]
+    }));
+    expect(screen.getByText(/reported a location outside the Philippines/i)).toBeTruthy();
   });
 
   it('keeps coordinate pinning when reverse address lookup fails', async () => {
