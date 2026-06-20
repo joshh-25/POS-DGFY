@@ -4,22 +4,28 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { cn } from '../../lib/utils.js';
 import { Button } from '@/components/ui/button';
 
-const TILE_BASE = import.meta.env.VITE_TILE_BASE || 'https://tiles.openfreemap.org';
+const OSM_RASTER_TILE_URL = import.meta.env.DEV
+  ? '/osm/{z}/{x}/{y}.png'
+  : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
-const TILING_SERVER = import.meta.env.DEV
-  ? '/openfreemap/styles/positron'
-  : `${TILE_BASE}/styles/positron`;
-
-// In dev the Vite proxy rewrites /openfreemap → tiles.openfreemap.org.
-// In production tile sub-resources are fetched directly from the CDN.
-const tileTransformRequest = import.meta.env.DEV
-  ? (url) => {
-    if (url.startsWith(TILE_BASE)) {
-      return { url: url.replace(TILE_BASE, `${window.location.origin}/openfreemap`) };
+const MAP_STYLE = {
+  version: 8,
+  sources: {
+    osm: {
+      type: 'raster',
+      tiles: [OSM_RASTER_TILE_URL],
+      tileSize: 256,
+      attribution: '(c) OpenStreetMap contributors'
     }
-    return { url };
-  }
-  : undefined;
+  },
+  layers: [
+    {
+      id: 'osm-raster',
+      type: 'raster',
+      source: 'osm'
+    }
+  ]
+};
 
 const DEFAULT_CENTER = { latitude: 10.7202, longitude: 122.5621 };
 const DEFAULT_ZOOM = 12;
@@ -94,16 +100,16 @@ const reverseGeocodeMapPin = async ({ latitude, longitude }, { signal } = {}) =>
 
   const params = new URLSearchParams({
     lat: String(lat),
-    lon: String(lng),
-    format: 'jsonv2',
-    addressdetails: '1'
+    lon: String(lng)
   });
-  const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${params.toString()}`, {
+  const response = await fetch(`/api/v1/geo/reverse-geocode?${params.toString()}`, {
     headers: { Accept: 'application/json' },
+    credentials: 'include',
     signal
   });
   if (!response.ok) return null;
-  return formatReverseGeocodedAddress(await response.json());
+  const payload = await response.json();
+  return String(payload?.data?.address_line || '').trim() || formatReverseGeocodedAddress(payload?.data || payload);
 };
 
 const canResizeMapContainer = (container) => {
@@ -277,15 +283,14 @@ export default function MapPinPicker({
     try {
       map = new maplibregl.Map({
         container: containerRef.current,
-        style: TILING_SERVER,
+        style: MAP_STYLE,
         center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
         zoom: DEFAULT_ZOOM,
         minZoom: MIN_ZOOM,
         maxZoom: MAX_ZOOM,
         trackResize: false,
         bearing: 0,
-        pitch: 0,
-        transformRequest: tileTransformRequest
+        pitch: 0
       });
       map.dragRotate.disable();
       map.touchZoomRotate.disableRotation();

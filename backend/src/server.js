@@ -644,8 +644,10 @@ app.use('/uploads', express.static(join(__dirname, '..', 'uploads'), {
 
 // Tenant Resolution & Context Middleware (Must be before API routes)
 import dgfyRoutes from './routes/dgfy.js';
+import geoSearchRoutes from './routes/geoSearch.js';
 app.use(csrfProtection);
 app.use('/api/v1/dgfy', dgfyRoutes);
+app.use('/api/v1/geo', geoSearchRoutes);
 
 app.use(tenantHandler);
 
@@ -675,7 +677,6 @@ import salesRoutes from './routes/sales.js';
 import tenantLocationRoutes from './routes/tenantLocations.js';
 import storeRoutes from './routes/store.js';
 import storefrontDiscoveryRoutes from './routes/storefrontDiscovery.js';
-import geoSearchRoutes from './routes/geoSearch.js';
 import adminAuthRoutes from './routes/adminAuth.js';
 import adminTenantRoutes from './routes/adminTenants.js';
 import complianceRoutes from './routes/compliance.js';

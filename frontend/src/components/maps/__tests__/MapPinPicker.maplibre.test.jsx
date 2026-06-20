@@ -201,10 +201,17 @@ describe('MapPinPicker MapLibre behavior', () => {
       trackResize: false
     }));
     expect(maplibreMocks.Map.mock.calls[0][0]).not.toHaveProperty('maxBounds');
-    // Style is now a vector tile URL pointing to OpenFreeMap positron (not a raster style object).
-    expect(typeof maplibreMocks.Map.mock.calls[0][0].style).toBe('string');
-    expect(maplibreMocks.Map.mock.calls[0][0].style).toContain('openfreemap');
-    expect(maplibreMocks.Map.mock.calls[0][0].style).toContain('positron');
+    const style = maplibreMocks.Map.mock.calls[0][0].style;
+    expect(style).toEqual(expect.objectContaining({
+      version: 8,
+      sources: expect.objectContaining({
+        osm: expect.objectContaining({
+          type: 'raster',
+          tiles: expect.arrayContaining([expect.stringContaining('/osm/{z}/{x}/{y}.png')])
+        })
+      })
+    }));
+    expect(maplibreMocks.Map.mock.calls[0][0]).not.toHaveProperty('transformRequest');
     expect(maplibreMocks.maps[0].dragRotate.disable).toHaveBeenCalled();
     expect(maplibreMocks.maps[0].touchZoomRotate.disableRotation).toHaveBeenCalled();
     expect(await screen.findByLabelText(/Map location picker/i)).toBeTruthy();
@@ -234,6 +241,15 @@ describe('MapPinPicker MapLibre behavior', () => {
         address_line: 'Villa Road, Iloilo City, Western Visayas'
       });
     });
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/v1/geo/reverse-geocode?'),
+      expect.objectContaining({
+        credentials: 'include',
+        headers: { Accept: 'application/json' }
+      })
+    );
+    expect(globalThis.fetch.mock.calls[0][0]).toContain('lat=14.5995123');
+    expect(globalThis.fetch.mock.calls[0][0]).toContain('lon=120.9842456');
 
     rerender(<MapPinPicker latitude={14.5995123} longitude={120.9842456} deliveryRadiusKm={5} onChange={onChange} />);
     await user.click(screen.getByRole('button', { name: /Adjust Pin/i }));

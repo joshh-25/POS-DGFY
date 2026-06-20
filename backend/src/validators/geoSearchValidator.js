@@ -13,6 +13,11 @@ const geoSearchQuerySchema = Joi.object({
     limit: Joi.number().integer().min(1).max(50).default(20)
 });
 
+const reverseGeocodeQuerySchema = Joi.object({
+    lat: Joi.number().min(-90).max(90).required(),
+    lon: Joi.number().min(-180).max(180).required()
+});
+
 const inventoryPushSchema = Joi.object({
     // location_id is optional; NULL means "all locations for this tenant"
     location_id: Joi.number().integer().positive().allow(null).optional(),
@@ -54,4 +59,5 @@ const validateSchema = (schema, source, target) => (req, res, next) => {
 };
 
 export const validateGeoSearchQuery = validateSchema(geoSearchQuerySchema, 'query', 'validatedQuery');
+export const validateReverseGeocodeQuery = validateSchema(reverseGeocodeQuerySchema, 'query', 'validatedQuery');
 export const validateInventoryPush = validateSchema(inventoryPushSchema, 'body', 'validatedBody');
