@@ -1,5 +1,5 @@
 import express from 'express';
-import { authLimiter } from '../middleware/rateLimiter.js';
+import { authLimiter, dgfyTenantSessionLimiter } from '../middleware/rateLimiter.js';
 import { authenticate, authenticateAdmin, checkPermission } from '../middleware/auth.js';
 import { authenticateDgfyAccount, authenticateDgfyAccountOrTenantMembership } from '../middleware/dgfyAuth.js';
 import { PERMISSIONS } from '../config/permissions.js';
@@ -84,7 +84,7 @@ router.post('/auth/password/change', authenticateDgfyAccount, changeDgfyPassword
 router.post('/auth/email-verification/request', authLimiter, authenticateDgfyAccount, requestDgfyEmailVerification);
 router.post('/auth/email-verification/verify', authLimiter, authenticateDgfyAccount, verifyDgfyEmail);
 router.post('/auth/handoff', authenticateDgfyAccount, createDgfyHandoff);
-router.post('/auth/tenant-session', authLimiter, authenticateDgfyAccount, startDgfyTenantSession);
+router.post('/auth/tenant-session', authenticateDgfyAccount, dgfyTenantSessionLimiter, startDgfyTenantSession);
 router.get('/account/companies', authenticateDgfyAccountOrTenantMembership, listDgfyAccountCompanies);
 router.post('/account/business-step-up/request', authLimiter, authenticateDgfyAccountOrTenantMembership, requestDgfyBusinessStepUp);
 router.post('/account/companies/:tenant_id/switch', authLimiter, authenticateDgfyAccountOrTenantMembership, switchDgfyCompany);

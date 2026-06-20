@@ -7,6 +7,11 @@ const routeSource = fs.readFileSync(
 );
 
 describe('DGFY admin account route contracts', () => {
+  it('authenticates DGFY tenant-session requests before applying the business-session limiter', () => {
+    expect(routeSource).toContain("router.post('/auth/tenant-session', authenticateDgfyAccount, dgfyTenantSessionLimiter, startDgfyTenantSession)");
+    expect(routeSource).not.toContain("router.post('/auth/tenant-session', authLimiter, authenticateDgfyAccount, startDgfyTenantSession)");
+  });
+
   it('registers all platform-admin account routes behind authenticateAdmin', () => {
     expect(routeSource).toContain("router.get('/admin/accounts', authenticateAdmin, listAdminDgfyAccounts)");
     expect(routeSource).toContain("router.get('/admin/accounts/:account_id', authenticateAdmin, getAdminDgfyAccount)");

@@ -30,6 +30,8 @@ const onboardingEventsWindowMs = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVEN
 const onboardingEventsMaxRequests = parseInt(process.env.RATE_LIMIT_ONBOARDING_EVENTS_MAX_REQUESTS) || (isDevelopment ? 180 : 60);
 const posWindowMs = parseInt(process.env.RATE_LIMIT_POS_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
 const posMaxRequests = parseInt(process.env.RATE_LIMIT_POS_MAX_REQUESTS) || (isDevelopment ? 3000 : 1500);
+const dgfyTenantSessionWindowMs = parseInt(process.env.RATE_LIMIT_DGFY_TENANT_SESSION_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
+const dgfyTenantSessionMaxRequests = parseInt(process.env.RATE_LIMIT_DGFY_TENANT_SESSION_MAX_REQUESTS) || (isDevelopment ? 50 : 10);
 const tenantRegistrationWindowMs = parseInt(process.env.RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS) || 60 * 60 * 1000; // 1 hour
 const tenantRegistrationMaxRequests = parseInt(process.env.RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS) || (isDevelopment ? 50 : 5);
 const geoSearchWindowMs = parseInt(process.env.RATE_LIMIT_GEO_SEARCH_WINDOW_MS) || 60 * 1000; // 1 minute
@@ -59,6 +61,7 @@ const rateLimitCounters = {
   onboarding_events: 0,
   ai: 0,
   pos: 0,
+  dgfy_tenant_session: 0,
   registration: 0,
   geo_search: 0,
   inventory_push: 0,
@@ -180,6 +183,7 @@ const getScopeFromRequest = (req, fallbackScope) => {
   if (path.includes('/email-otp/request')) return 'email_otp';
   if (path.includes('/auth/register')) return 'auth_register';
   if (path.includes('/auth/lookup')) return 'auth_lookup';
+  if (path.includes('/dgfy/auth/tenant-session')) return 'dgfy_tenant_session';
   if (path.includes('/store/auth/')) return 'store_auth';
   if (path.includes('/store/track/') || path.includes('/store/orders/')) return 'store_tracking';
   if (path.includes('/storefront/discovery')) return 'storefront_discovery';
@@ -740,6 +744,41 @@ export const tenantRegistrationLimiter = rateLimit({
       'ip'
     );
     logRateLimitEvent(req, 'registration', response.retryAfterSeconds, 'ip');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
+// DGFY-to-IMS tenant-session handoff limiter. Auth has already run before this
+// limiter, so key by account and tenant instead of the generic auth unknown-email bucket.
+export const dgfyTenantSessionLimiter = rateLimit({
+  windowMs: dgfyTenantSessionWindowMs,
+  max: dgfyTenantSessionMaxRequests,
+  message: createRateLimitError('Too many business session attempts. Please wait before opening this company again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('dgfy_tenant_session'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const accountId = String(req.dgfyAccount?.id || 'unknown-account').trim();
+    const tenantId = String(req.body?.tenant_id || req.body?.tenantId || 'unknown-tenant').trim();
+    return `dgfy_tenant_session:${ip}:${accountId || 'unknown-account'}:${tenantId || 'unknown-tenant'}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many business session attempts. Please wait before opening this company again.',
+      'dgfy_tenant_session',
+      'ip_account_tenant'
+    );
+    logRateLimitEvent(req, 'dgfy_tenant_session', response.retryAfterSeconds, 'ip_account_tenant');
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },
