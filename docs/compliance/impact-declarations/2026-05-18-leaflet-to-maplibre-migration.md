@@ -109,3 +109,12 @@ Runtime hardening:
 3. `Adjust Pin` creates a first draggable draft marker at the current map center when no usable pin exists, so the merchant can place and drag the pin without relying on a pre-existing marker.
 4. `Reset View` returns the camera to Iloilo City and clears invalid `0,0` selected state.
 5. Reverse geocoding remains first-party and best-effort; lookup failure does not discard valid Philippines coordinates.
+
+## Addendum (2026-06-21): Draft Marker Ownership Hotfix
+
+The shared IMS picker now owns an immediate local draft pin after map click, browser-geolocation success, or `Adjust Pin`, then reconciles with parent latitude/longitude props. This prevents the moving-pin control state from appearing without a visible marker while preserving the parent form as the submitted coordinate source of truth.
+
+Runtime hardening:
+1. `Stop Moving Pin` must only render when the picker has a usable marker position.
+2. Onboarding must not expose interactive map pin controls while searchable storefront visibility is off, because hidden storefront saves intentionally do not require a map pin.
+3. Browser geolocation failure messages distinguish permission denial, unavailable position, timeout, unsupported browser, and out-of-Philippines coordinates.
