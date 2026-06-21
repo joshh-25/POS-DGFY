@@ -602,6 +602,8 @@ export default function Settings() {
   const [deleteLocationCandidate, setDeleteLocationCandidate] = useState(null);
   const [deleteLocationErrors, setDeleteLocationErrors] = useState([]);
   const [locationForm, setLocationForm] = useState(createDefaultLocationForm());
+  const [locationAddressManuallyEdited, setLocationAddressManuallyEdited] = useState(false);
+  const [locationAddressSuggestion, setLocationAddressSuggestion] = useState('');
   const [storefrontAssets, setStorefrontAssets] = useState({
     cover: '',
     profile: ''
@@ -856,6 +858,8 @@ export default function Settings() {
   const resetLocationForm = () => {
     setEditingLocationId(null);
     setLocationForm(createDefaultLocationForm());
+    setLocationAddressManuallyEdited(false);
+    setLocationAddressSuggestion('');
   };
 
   // Fetch current user and system settings on mount
@@ -1351,6 +1355,10 @@ export default function Settings() {
   };
 
   const handleLocationFormChange = (key, value) => {
+    if (key === 'address_line') {
+      setLocationAddressManuallyEdited(true);
+      setLocationAddressSuggestion('');
+    }
     setLocationForm((prev) => {
       if (key === 'is_active' && value === false) {
         return {
@@ -1372,9 +1380,9 @@ export default function Settings() {
       setLocationForm((prev) => ({
         ...prev,
         latitude: '',
-        longitude: '',
-        ...(nextAddress ? { address_line: nextAddress } : {})
+        longitude: ''
       }));
+      if (nextAddress) setLocationAddressSuggestion(nextAddress);
       return;
     }
 
@@ -1382,12 +1390,28 @@ export default function Settings() {
       return;
     }
 
-    setLocationForm((prev) => ({
-      ...prev,
-      latitude: parsedLatitude.toFixed(6),
-      longitude: parsedLongitude.toFixed(6),
-      ...(nextAddress ? { address_line: nextAddress } : {})
-    }));
+    setLocationForm((prev) => {
+      const canAutofillAddress = nextAddress
+        && (!locationAddressManuallyEdited || !String(prev.address_line || '').trim());
+      if (nextAddress && !canAutofillAddress) {
+        setLocationAddressSuggestion(nextAddress);
+      } else if (nextAddress) {
+        setLocationAddressSuggestion('');
+      }
+      return {
+        ...prev,
+        latitude: parsedLatitude.toFixed(6),
+        longitude: parsedLongitude.toFixed(6),
+        ...(canAutofillAddress ? { address_line: nextAddress } : {})
+      };
+    });
+  };
+
+  const applySuggestedLocationAddress = () => {
+    if (!locationAddressSuggestion) return;
+    setLocationForm((prev) => ({ ...prev, address_line: locationAddressSuggestion }));
+    setLocationAddressManuallyEdited(true);
+    setLocationAddressSuggestion('');
   };
 
   const handleEditLocation = (location) => {
@@ -1412,6 +1436,8 @@ export default function Settings() {
       supports_pickup: location?.supports_pickup !== false,
       supports_dine_in: location?.supports_dine_in !== false
     });
+    setLocationAddressManuallyEdited(Boolean(String(location?.address_line || '').trim()));
+    setLocationAddressSuggestion('');
   };
 
   const handleSaveLocation = async () => {
@@ -2758,6 +2784,14 @@ export default function Settings() {
                     onChange={(e) => handleLocationFormChange('address_line', e.target.value)}
                     placeholder="Street, City, Province"
                   />
+                  {locationAddressSuggestion ? (
+                    <div className="flex flex-wrap items-center gap-2 rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-900">
+                      <span>Suggested address: {locationAddressSuggestion}</span>
+                      <Button type="button" size="sm" variant="outline" onClick={applySuggestedLocationAddress}>
+                        Apply
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label>Map Pin (MapLibre)</Label>

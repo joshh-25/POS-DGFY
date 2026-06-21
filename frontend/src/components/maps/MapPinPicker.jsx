@@ -35,6 +35,15 @@ const getGeolocationErrorMessage = (error) => {
   return 'Unable to get your current location. Please place the storefront pin on the map.';
 };
 
+const getAccuracyMessage = (accuracyMeters) => {
+  const accuracy = Number(accuracyMeters);
+  if (!Number.isFinite(accuracy) || accuracy <= 0) return '';
+  const rounded = Math.round(accuracy);
+  if (rounded <= 50) return `High accuracy: within about ${rounded} m.`;
+  if (rounded <= 150) return `Approximate location: within about ${rounded} m. Adjust the pin if needed.`;
+  return `Low accuracy: within about ${rounded} m. Drag the pin to confirm the storefront location.`;
+};
+
 const buildPinSvg = ({ highlighted = false } = {}) => {
   const gradientTop = highlighted ? '#5eead4' : '#14b8a6';
   const gradientBottom = highlighted ? '#0f766e' : '#115e59';
@@ -87,7 +96,14 @@ const reverseGeocodeMapPin = async ({ latitude, longitude }, { signal } = {}) =>
   });
   if (!response.ok) return null;
   const payload = await response.json();
-  return String(payload?.data?.address_line || '').trim() || null;
+  const addressLine = String(payload?.data?.address_line || '').trim();
+  if (!addressLine) return null;
+  return {
+    address_line: addressLine,
+    address_precision: String(payload?.data?.precision || '').trim() || undefined,
+    address_provider: String(payload?.data?.provider || '').trim() || undefined,
+    address_distance_meters: payload?.data?.distance_meters
+  };
 };
 
 function createCirclePolygon(centerLng, centerLat, radiusMeters, steps = 64) {
@@ -108,6 +124,7 @@ export default function MapPinPicker({
   longitude,
   deliveryRadiusKm,
   onChange,
+  defaultAdjustMode = false,
   className
 }) {
   const containerRef = useRef(null);
@@ -124,8 +141,9 @@ export default function MapPinPicker({
   const [loadError, setLoadError] = useState('');
   const [isLocating, setIsLocating] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
-  const [isPinDragMode, setIsPinDragMode] = useState(false);
+  const [isPinDragMode, setIsPinDragMode] = useState(defaultAdjustMode === true);
   const [draftPin, setDraftPin] = useState(null);
+  const [accuracyMessage, setAccuracyMessage] = useState('');
 
   const rawPosition = useMemo(() => {
     const lat = parseMapCoordinate(latitude);
@@ -155,6 +173,11 @@ export default function MapPinPicker({
       setDraftPin(null);
     }
   }, [selectedPosition]);
+  useEffect(() => {
+    if (defaultAdjustMode === true && !selectedPosition) {
+      setIsPinDragMode(true);
+    }
+  }, [defaultAdjustMode, selectedPosition]);
 
   const emitPinChange = (pin) => {
     const lat = parseMapCoordinate(pin?.latitude);
@@ -182,11 +205,11 @@ export default function MapPinPicker({
     reverseGeocodeSequenceRef.current = sequence;
 
     reverseGeocodeMapPin({ latitude: lat, longitude: lng }, { signal: controller?.signal })
-      .then((addressLine) => {
-        if (!addressLine || reverseGeocodeSequenceRef.current !== sequence) return;
+      .then((addressPayload) => {
+        if (!addressPayload?.address_line || reverseGeocodeSequenceRef.current !== sequence) return;
         onChangeRef.current?.({
           ...normalizedPin,
-          address_line: addressLine
+          ...addressPayload
         });
       })
       .catch(() => {
@@ -211,6 +234,10 @@ export default function MapPinPicker({
   };
 
   const centerToCurrentLocation = () => {
+    if (!isPinDragModeRef.current) {
+      setLoadError('Press Adjust Pin before changing the storefront location.');
+      return;
+    }
     if (!navigator?.geolocation) {
       setLoadError('Geolocation is not available in this browser.');
       return;
@@ -220,18 +247,21 @@ export default function MapPinPicker({
       (position) => {
         const nextLatitude = toFixedCoordinate(position.coords.latitude);
         const nextLongitude = toFixedCoordinate(position.coords.longitude);
+        const nextAccuracyMessage = getAccuracyMessage(position.coords.accuracy);
         if (!isCoordinateInPhilippines({ latitude: nextLatitude, longitude: nextLongitude })) {
           setLoadError('Your browser reported a location outside the Philippines. Please click the map or enter the storefront coordinates manually.');
           setIsLocating(false);
           return;
         }
         if (emitPinChange({ latitude: nextLatitude, longitude: nextLongitude })) {
+          setAccuracyMessage(nextAccuracyMessage);
           mapRef.current?.flyTo({ center: [nextLongitude, nextLatitude], zoom: PIN_ZOOM });
         }
         setIsLocating(false);
       },
       (error) => {
         setLoadError(getGeolocationErrorMessage(error));
+        setAccuracyMessage('');
         setIsLocating(false);
       },
       { enableHighAccuracy: true, timeout: 8000 }
@@ -247,15 +277,24 @@ export default function MapPinPicker({
   };
 
   const handleAdjustPinClick = () => {
+    if (!isPinDragMode) {
+      if (!effectivePosition) {
+        const draftPin = getDraftPinFromMapCenter();
+        if (emitPinChange(draftPin)) {
+          mapRef.current?.jumpTo?.({ center: [draftPin.longitude, draftPin.latitude], zoom: PIN_ZOOM });
+        }
+      }
+      setIsPinDragMode(true);
+      return;
+    }
     if (!effectivePosition) {
       const draftPin = getDraftPinFromMapCenter();
       if (emitPinChange(draftPin)) {
         mapRef.current?.jumpTo?.({ center: [draftPin.longitude, draftPin.latitude], zoom: PIN_ZOOM });
-        setIsPinDragMode(true);
       }
       return;
     }
-    setIsPinDragMode((prev) => !prev);
+    setIsPinDragMode(false);
   };
 
   // Map initialisation
@@ -337,22 +376,24 @@ export default function MapPinPicker({
     });
 
     map.on('click', (event) => {
+      if (!isPinDragModeRef.current) return;
       const lat = toFixedCoordinate(event.lngLat.lat);
       const lng = toFixedCoordinate(event.lngLat.lng);
+      setAccuracyMessage('');
       emitPinChange({ latitude: lat, longitude: lng });
       // Camera movement handled by the selectedPosition effect via jumpTo
     });
 
     map.on('mousemove', () => {
-      if (!isPinDragModeRef.current) {
+      if (isPinDragModeRef.current) {
         map.getCanvas().style.cursor = 'crosshair';
+      } else {
+        map.getCanvas().style.cursor = '';
       }
     });
 
     map.on('mouseleave', () => {
-      if (!isPinDragModeRef.current) {
-        map.getCanvas().style.cursor = '';
-      }
+      map.getCanvas().style.cursor = '';
     });
 
     map.on('error', () => {
@@ -420,7 +461,9 @@ export default function MapPinPicker({
         markerRef.current.remove();
         markerRef.current = null;
       }
-      setIsPinDragMode(false);
+      if (defaultAdjustMode !== true) {
+        setIsPinDragMode(false);
+      }
       return;
     }
 
@@ -460,6 +503,7 @@ export default function MapPinPicker({
           latitude: toFixedCoordinate(pos.lat),
           longitude: toFixedCoordinate(pos.lng)
         });
+        setAccuracyMessage('');
       });
 
       markerRef.current = marker;
@@ -469,7 +513,7 @@ export default function MapPinPicker({
 
     const currentZoom = map.getZoom();
     map.jumpTo({ center: [lng, lat], zoom: currentZoom < PIN_ZOOM ? PIN_ZOOM : currentZoom });
-  }, [effectivePosition]);
+  }, [effectivePosition, defaultAdjustMode]);
 
   // Delivery radius circle
   useEffect(() => {
@@ -524,7 +568,7 @@ export default function MapPinPicker({
           size="sm"
           className="border-teal-300 text-teal-900 hover:bg-teal-100"
           onClick={centerToCurrentLocation}
-          disabled={isLocating}
+          disabled={isLocating || !isPinDragMode}
         >
           {isLocating ? 'Locating...' : 'Pin Current Location'}
         </Button>
@@ -534,11 +578,11 @@ export default function MapPinPicker({
           size="sm"
           className={cn(
             'border-slate-300 text-slate-800 hover:bg-slate-100',
-            activePinDragMode && 'border-teal-400 bg-teal-50 text-teal-800 hover:bg-teal-100'
+            isPinDragMode && 'border-teal-400 bg-teal-50 text-teal-800 hover:bg-teal-100'
           )}
           onClick={handleAdjustPinClick}
         >
-          {activePinDragMode ? 'Stop Moving Pin' : 'Adjust Pin'}
+          {isPinDragMode ? 'Stop Moving Pin' : 'Adjust Pin'}
         </Button>
       </div>
       <div className="relative h-72 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-sm">
@@ -558,9 +602,14 @@ export default function MapPinPicker({
         <p className="text-xs text-red-600">{loadError}</p>
       ) : (
         <p className="text-xs text-slate-500">
-          Pan the map to explore. Click to place a pin. Use `Adjust Pin` if you want to drag the marker precisely.
+          {isPinDragMode
+            ? 'Adjust mode is active. Click the map, drag the marker, or use current location to set the storefront pin.'
+            : 'Location is locked. Press `Adjust Pin` before changing the storefront pin.'}
         </p>
       )}
+      {accuracyMessage ? (
+        <p className="text-xs text-slate-600">{accuracyMessage}</p>
+      ) : null}
       {effectivePosition && radiusMeters > 0 ? (
         <p className="text-xs text-teal-700">
           Delivery coverage preview: {(radiusMeters / 1000).toFixed(2)} km radius
