@@ -28,7 +28,7 @@ This declaration covers the no-location Storefront contract, F&B onboarding item
 - Tenant onboarding accepts F&B `ingredient` starter rows and legacy raw-material labels at the onboarding boundary.
 - Settings and onboarding expose `This Store Has No Location` as a reversible public Storefront setting.
 - Storefront discovery, profile, public locations, map pins, directions, and audit behavior now respect no-location stores.
-- Storefront business hours use the weekly apply/grid scheduler while preserving the existing one-interval-per-day payload.
+- Storefront business hours use the weekly apply/grid scheduler while preserving legacy one-window payload compatibility and supporting multiple intervals per day.
 - ADR/API/testing/feature docs were updated to align public visibility, no-location, and audit semantics.
 
 ## Compliance Preconditions
@@ -37,7 +37,7 @@ This declaration covers the no-location Storefront contract, F&B onboarding item
 3. Catalog, contact, quote, checkout, stock, payment, branch, business-hours, and compliance gates remain governed by existing backend runtime policy.
 4. Preserved tenant locations stay editable in IMS and are not exposed publicly while no-location is true.
 5. Public no-location profiles must not expose coordinates, map embeds, directions buttons, or map-pin feeds.
-6. The business-hours scheduler serializes the same `storefront_hours` setting contract and keeps the existing 24-hour convention.
+6. The business-hours scheduler serializes the same `storefront_hours` setting contract, keeps the existing 24-hour convention, and may include multiple ordered `intervals[]` entries per enabled day.
 
 ## Verification Evidence
 - `npm run check:architecture`
@@ -50,4 +50,3 @@ This declaration covers the no-location Storefront contract, F&B onboarding item
 - `npm --prefix frontend run build:skupervisor`
 - `npm --prefix frontend run build:store`
 - `git diff --check`
-

@@ -36,9 +36,13 @@ This declaration covers structured Storefront business hours that display on pub
 
 1. Existing legacy free-text `storefront_hours` values remain display-compatible.
 2. Malformed or unparsable legacy hours must not unexpectedly block checkout.
-3. Valid weekly schedules must fail closed for immediate/scheduled checkout and service booking schedules outside configured hours.
-4. Settings and onboarding must write the same `storefront_hours` contract.
+3. Valid weekly schedules must fail closed for immediate/scheduled checkout and service booking schedules outside all configured intervals.
+4. Settings and onboarding must write the same `storefront_hours` contract, including compatibility `open`/`close` fields and `intervals[]` for each weekly day.
 5. Storefront discovery sync must publish a customer-readable hours label and safe open/closed status, not raw internal schedule JSON.
+
+## Addendum (2026-06-21): Multi-Interval Daily Hours
+
+Settings and onboarding now support multiple ordered intervals per day, such as `06:00-12:00` and `13:00-20:00`. Legacy structured `{ enabled, open, close }` values normalize to a single interval. The public Storefront display groups matching multi-interval day schedules into compact labels, and checkout/service booking gates evaluate every interval while preserving the existing `00:00-00:00` 24-hour convention.
 
 ## Verification Evidence
 
