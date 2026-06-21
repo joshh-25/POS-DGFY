@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const frontendRoot = process.cwd();
 const posServiceWorkerPath = path.resolve(frontendRoot, 'apps/pos/public/sw.js');
+const skupervisorServiceWorkerPath = path.resolve(frontendRoot, 'apps/skupervisor/public/sw.js');
 const storeServiceWorkerPath = path.resolve(frontendRoot, 'apps/store/public/sw.js');
 const posMainPath = path.resolve(frontendRoot, 'apps/pos/src/main.jsx');
 
@@ -13,6 +14,17 @@ describe('service worker caching contracts', () => {
   it('keeps POS service worker runtime caching bounded and API-safe', () => {
     const source = readSource(posServiceWorkerPath);
     expect(source).toContain("const BYPASS_PATH_PREFIXES = ['/api/', '/uploads/'];");
+    expect(source).toContain('const STATIC_CACHEABLE_DESTINATIONS = new Set');
+    expect(source).toContain('const MAX_RUNTIME_CACHE_ENTRIES = 120;');
+    expect(source).toContain('if (!shouldHandleRuntimeRequest(event.request, requestUrl)) return;');
+    expect(source).toContain("if (request.mode === 'navigate')");
+    expect(source).toContain("event.respondWith(staleWhileRevalidateRuntime(event.request));");
+    expect(source).toContain('cacheControl.includes(\'no-store\')');
+  });
+
+  it('keeps SKUpervisor service worker from caching map proxy resources', () => {
+    const source = readSource(skupervisorServiceWorkerPath);
+    expect(source).toContain("const BYPASS_PATH_PREFIXES = ['/api/', '/uploads/', '/openfreemap'];");
     expect(source).toContain('const STATIC_CACHEABLE_DESTINATIONS = new Set');
     expect(source).toContain('const MAX_RUNTIME_CACHE_ENTRIES = 120;');
     expect(source).toContain('if (!shouldHandleRuntimeRequest(event.request, requestUrl)) return;');

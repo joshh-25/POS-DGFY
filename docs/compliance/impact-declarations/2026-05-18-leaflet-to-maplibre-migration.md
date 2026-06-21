@@ -123,3 +123,12 @@ Runtime hardening:
 6. Browser geolocation uses high-accuracy mode when available, displays the reported accuracy radius, and does not claim guaranteed device precision.
 7. Address suggestions remain first-party through `/api/v1/geo/reverse-geocode`, now returning `provider="dgfy-ph-local"`, precision metadata, PSGC provenance, and optional PSGC code fields for bundled local matches. The endpoint must not call browser-side Nominatim or return vague `Near ...` labels.
 8. Reverse-geocode suggestions may fill an empty address field but must not overwrite merchant-edited address text unless the merchant applies the suggestion.
+
+## Addendum (2026-06-21): Same-Origin Basemap Proxy Hardening
+
+The shared MapLibre helper now uses the same-origin `/openfreemap/styles/positron` style URL by default across development and production builds. MapLibre subresource requests that originate from `https://tiles.openfreemap.org` are rewritten through the current app origin's `/openfreemap` proxy path, covering style-referenced TileJSON, vector PBF tiles, sprites, glyphs, and natural-earth raster resources.
+
+Runtime hardening:
+1. Production IMS and Storefront map surfaces no longer rely on direct browser access to `tiles.openfreemap.org` unless an operator explicitly sets `VITE_TILE_BASE` for a managed tile origin.
+2. The SKUpervisor service worker bypasses `/openfreemap` requests so map resources are fetched through the network/proxy path instead of runtime shell caching.
+3. Rendered QA for map releases must prove visible roads/labels over Iloilo City from the actual app origin, not only marker/attribution rendering in an isolated component harness.
