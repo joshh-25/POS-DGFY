@@ -1,5 +1,9 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
+import {
+    PH_LOCAL_ADDRESS_DATASET,
+    PH_LOCAL_ADDRESS_PROVIDER
+} from '../data/phLocalAddressDataset.js';
 
 export const buildGeoSearchUseCase = ({ geoSearchRepository }) => {
     return async ({ query, latitude, longitude, radius, stockFilter, page, limit }) => {
@@ -24,25 +28,6 @@ export const buildGeoSearchUseCase = ({ geoSearchRepository }) => {
     };
 };
 
-const LOCAL_REVERSE_GEOCODE_PLACES = [
-    {
-        name: 'Iloilo City',
-        region: 'Iloilo',
-        country: 'Philippines',
-        latitude: 10.7202,
-        longitude: 122.5621,
-        radiusKm: 35
-    },
-    {
-        name: 'Manila',
-        region: 'Metro Manila',
-        country: 'Philippines',
-        latitude: 14.5995,
-        longitude: 120.9842,
-        radiusKm: 35
-    }
-];
-
 const toRadians = (value) => value * Math.PI / 180;
 
 const distanceKm = (first, second) => {
@@ -56,20 +41,28 @@ const distanceKm = (first, second) => {
     return 2 * earthRadiusKm * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-const resolveLocalAddressLine = ({ latitude, longitude }) => {
+const coordinateFallback = ({ latitude, longitude }) => ({
+    address_line: `Pinned location (${latitude.toFixed(6)}, ${longitude.toFixed(6)})`,
+    provider: PH_LOCAL_ADDRESS_PROVIDER,
+    precision: 'coordinate_only'
+});
+
+const resolveLocalAddress = ({ latitude, longitude }) => {
     const position = { latitude, longitude };
-    const nearest = LOCAL_REVERSE_GEOCODE_PLACES
+    const nearest = PH_LOCAL_ADDRESS_DATASET
         .map((place) => ({ ...place, distance_km: distanceKm(position, place) }))
         .sort((a, b) => a.distance_km - b.distance_km)[0];
 
-    if (!nearest) return `Pinned location (${latitude.toFixed(6)}, ${longitude.toFixed(6)})`;
+    if (!nearest || nearest.distance_km > nearest.maxDistanceKm) {
+        return coordinateFallback({ latitude, longitude });
+    }
 
-    const prefix = nearest.distance_km <= nearest.radiusKm
-        ? nearest.name
-        : `Near ${nearest.name}`;
-    return [prefix, nearest.region, nearest.country]
-        .filter(Boolean)
-        .join(', ');
+    return {
+        address_line: nearest.label,
+        provider: PH_LOCAL_ADDRESS_PROVIDER,
+        precision: nearest.precision,
+        distance_meters: Math.round(nearest.distance_km * 1000)
+    };
 };
 
 export const buildReverseGeocodeUseCase = () => {
@@ -84,8 +77,7 @@ export const buildReverseGeocodeUseCase = () => {
             ));
         }
         return ok({
-            address_line: resolveLocalAddressLine({ latitude: lat, longitude: lon }),
-            provider: 'dgfy-local',
+            ...resolveLocalAddress({ latitude: lat, longitude: lon }),
             latitude: lat,
             longitude: lon
         });
