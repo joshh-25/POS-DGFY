@@ -22,6 +22,18 @@ const MAX_ZOOM = 18;
 const RADIUS_SOURCE = 'delivery-radius';
 const MAP_READY_TIMEOUT_MS = 1500;
 
+const getGeolocationErrorMessage = (error) => {
+  if (error?.code === 1) {
+    return 'Location permission was denied. Please allow location access or place the storefront pin on the map.';
+  }
+  if (error?.code === 2) {
+    return 'Your browser could not determine your current location. Please place the storefront pin on the map.';
+  }
+  if (error?.code === 3) {
+    return 'Current location lookup timed out. Please try again or place the storefront pin on the map.';
+  }
+  return 'Unable to get your current location. Please place the storefront pin on the map.';
+};
 
 const buildPinSvg = ({ highlighted = false } = {}) => {
   const gradientTop = highlighted ? '#5eead4' : '#14b8a6';
@@ -113,6 +125,7 @@ export default function MapPinPicker({
   const [isLocating, setIsLocating] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
   const [isPinDragMode, setIsPinDragMode] = useState(false);
+  const [draftPin, setDraftPin] = useState(null);
 
   const rawPosition = useMemo(() => {
     const lat = parseMapCoordinate(latitude);
@@ -125,6 +138,8 @@ export default function MapPinPicker({
     return getUsableMerchantPin({ latitude, longitude });
   }, [latitude, longitude]);
 
+  const effectivePosition = selectedPosition || draftPin;
+  const activePinDragMode = Boolean(isPinDragMode && effectivePosition);
   const hasInvalidCoordinateInput = Boolean(rawPosition && !selectedPosition);
 
   const radiusMeters = useMemo(() => {
@@ -135,6 +150,11 @@ export default function MapPinPicker({
 
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   useEffect(() => { isPinDragModeRef.current = isPinDragMode; }, [isPinDragMode]);
+  useEffect(() => {
+    if (selectedPosition) {
+      setDraftPin(null);
+    }
+  }, [selectedPosition]);
 
   const emitPinChange = (pin) => {
     const lat = parseMapCoordinate(pin?.latitude);
@@ -150,6 +170,7 @@ export default function MapPinPicker({
       latitude: lat,
       longitude: lng
     };
+    setDraftPin({ latitude: lat, longitude: lng });
     setLoadError('');
     loadErrorRef.current = '';
     onChangeRef.current?.(normalizedPin);
@@ -177,6 +198,7 @@ export default function MapPinPicker({
   const clearInvalidPin = () => {
     if (!hasInvalidCoordinateInput) return;
     onChangeRef.current?.({ latitude: '', longitude: '' });
+    setDraftPin(null);
     setIsPinDragMode(false);
   };
 
@@ -208,8 +230,8 @@ export default function MapPinPicker({
         }
         setIsLocating(false);
       },
-      () => {
-        setLoadError('Unable to get your current location. Please allow location access.');
+      (error) => {
+        setLoadError(getGeolocationErrorMessage(error));
         setIsLocating(false);
       },
       { enableHighAccuracy: true, timeout: 8000 }
@@ -225,7 +247,7 @@ export default function MapPinPicker({
   };
 
   const handleAdjustPinClick = () => {
-    if (!selectedPosition) {
+    if (!effectivePosition) {
       const draftPin = getDraftPinFromMapCenter();
       if (emitPinChange(draftPin)) {
         mapRef.current?.jumpTo?.({ center: [draftPin.longitude, draftPin.latitude], zoom: PIN_ZOOM });
@@ -379,21 +401,21 @@ export default function MapPinPicker({
     const map = mapRef.current;
     if (!marker || !map) return;
 
-    marker.setDraggable(isPinDragMode);
+    marker.setDraggable(activePinDragMode);
     const el = marker.getElement();
     if (el) {
-      el.innerHTML = buildPinSvg({ highlighted: isPinDragMode });
-      el.style.cursor = isPinDragMode ? 'grab' : 'pointer';
+      el.innerHTML = buildPinSvg({ highlighted: activePinDragMode });
+      el.style.cursor = activePinDragMode ? 'grab' : 'pointer';
     }
-    map.getCanvas().style.cursor = isPinDragMode ? 'grab' : '';
-  }, [isPinDragMode, selectedPosition]);
+    map.getCanvas().style.cursor = activePinDragMode ? 'grab' : '';
+  }, [activePinDragMode, effectivePosition]);
 
   // Marker position
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    if (!selectedPosition) {
+    if (!effectivePosition) {
       if (markerRef.current) {
         markerRef.current.remove();
         markerRef.current = null;
@@ -402,10 +424,10 @@ export default function MapPinPicker({
       return;
     }
 
-    const { latitude: lat, longitude: lng } = selectedPosition;
+    const { latitude: lat, longitude: lng } = effectivePosition;
 
     if (!markerRef.current) {
-      const shouldDrag = isPinDragModeRef.current;
+      const shouldDrag = Boolean(isPinDragModeRef.current && effectivePosition);
       const marker = new maplibregl.Marker({
         element: makePinElement(shouldDrag),
         anchor: 'bottom',
@@ -447,16 +469,16 @@ export default function MapPinPicker({
 
     const currentZoom = map.getZoom();
     map.jumpTo({ center: [lng, lat], zoom: currentZoom < PIN_ZOOM ? PIN_ZOOM : currentZoom });
-  }, [selectedPosition]);
+  }, [effectivePosition]);
 
   // Delivery radius circle
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    const hasRadius = selectedPosition && radiusMeters > 0;
+    const hasRadius = effectivePosition && radiusMeters > 0;
     const circle = hasRadius
-      ? createCirclePolygon(selectedPosition.longitude, selectedPosition.latitude, radiusMeters)
+      ? createCirclePolygon(effectivePosition.longitude, effectivePosition.latitude, radiusMeters)
       : null;
     const circleData = circle
       ? { type: 'FeatureCollection', features: [circle] }
@@ -472,7 +494,7 @@ export default function MapPinPicker({
     if (circle) {
       // Fit the viewport to include the full circle if it isn't already visible
       const R = 6371000;
-      const { latitude: lat, longitude: lng } = selectedPosition;
+      const { latitude: lat, longitude: lng } = effectivePosition;
       const dLat = (radiusMeters / R) * (180 / Math.PI);
       const dLng = dLat / Math.cos(lat * Math.PI / 180);
       const sw = [lng - dLng, lat - dLat];
@@ -482,7 +504,7 @@ export default function MapPinPicker({
         map.fitBounds([sw, ne], { padding: 24 });
       }
     }
-  }, [selectedPosition, radiusMeters]);
+  }, [effectivePosition, radiusMeters]);
 
   return (
     <div className={cn('space-y-2', className)}>
@@ -512,11 +534,11 @@ export default function MapPinPicker({
           size="sm"
           className={cn(
             'border-slate-300 text-slate-800 hover:bg-slate-100',
-            isPinDragMode && 'border-teal-400 bg-teal-50 text-teal-800 hover:bg-teal-100'
+            activePinDragMode && 'border-teal-400 bg-teal-50 text-teal-800 hover:bg-teal-100'
           )}
           onClick={handleAdjustPinClick}
         >
-          {isPinDragMode ? 'Stop Moving Pin' : 'Adjust Pin'}
+          {activePinDragMode ? 'Stop Moving Pin' : 'Adjust Pin'}
         </Button>
       </div>
       <div className="relative h-72 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-sm">
@@ -539,14 +561,14 @@ export default function MapPinPicker({
           Pan the map to explore. Click to place a pin. Use `Adjust Pin` if you want to drag the marker precisely.
         </p>
       )}
-      {selectedPosition && radiusMeters > 0 ? (
+      {effectivePosition && radiusMeters > 0 ? (
         <p className="text-xs text-teal-700">
           Delivery coverage preview: {(radiusMeters / 1000).toFixed(2)} km radius
         </p>
       ) : null}
       <p className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
-        {selectedPosition
-          ? `Pinned: ${selectedPosition.latitude.toFixed(6)}, ${selectedPosition.longitude.toFixed(6)}`
+        {effectivePosition
+          ? `Pinned: ${effectivePosition.latitude.toFixed(6)}, ${effectivePosition.longitude.toFixed(6)}`
           : 'No pin selected yet.'}
       </p>
     </div>

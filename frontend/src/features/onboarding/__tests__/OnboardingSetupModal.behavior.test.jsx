@@ -435,6 +435,8 @@ describe('OnboardingSetupModal behavior', () => {
     await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
     await screen.findByText(/2\) Main Storefront Location/i);
     expect(screen.getByLabelText(/Make storefront searchable to customers/i).checked).toBe(false);
+    expect(screen.queryByRole('button', { name: /Mock MapLibre Pin/i })).toBeNull();
+    expect(screen.getByText(/Turn on searchable storefront visibility to place a public storefront map pin/i)).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
 
@@ -449,6 +451,22 @@ describe('OnboardingSetupModal behavior', () => {
       });
       expect(screen.getByText(/3\) Menu Item/i)).toBeTruthy();
     });
+  });
+
+  it('enables the map pin callback only after searchable storefront is turned on', async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
+    await screen.findByText(/2\) Main Storefront Location/i);
+    expect(screen.queryByRole('button', { name: /Mock MapLibre Pin/i })).toBeNull();
+
+    await user.click(screen.getByLabelText(/Make storefront searchable to customers/i));
+    await user.click(await screen.findByRole('button', { name: /Mock MapLibre Pin/i }));
+
+    expect(screen.getByLabelText(/Latitude/i).value).toBe('14.599512');
+    expect(screen.getByLabelText(/Longitude/i).value).toBe('120.984246');
+    expect(screen.getByLabelText(/Address/i).value).toBe('Mock Pin Road, Manila');
   });
 
   it('blocks searchable storefront save when the merchant pin is missing or 0,0', async () => {

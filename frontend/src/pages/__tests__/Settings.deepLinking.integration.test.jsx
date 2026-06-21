@@ -66,14 +66,21 @@ vi.mock('../../../Components/users/UserManagementModal.jsx', () => ({
 }));
 
 vi.mock('../../components/maps/MapPinPicker.jsx', () => ({
-  default: ({ onChange }) => (
-    <button
-      type="button"
-      onClick={() => onChange?.({ latitude: 10.720263, longitude: 122.599488, address_line: 'Iloilo City, Iloilo, Philippines' })}
-    >
-      MapPicker
-    </button>
-  )
+  default: ({ onChange }) => {
+    const emitIloiloPin = () => onChange?.({
+      latitude: 10.720263,
+      longitude: 122.599488,
+      address_line: 'Iloilo City, Iloilo, Philippines'
+    });
+    return (
+      <div>
+        <button type="button" onClick={emitIloiloPin}>MapPicker</button>
+        <button type="button" onClick={emitIloiloPin}>Adjust Pin</button>
+        <button type="button" onClick={emitIloiloPin}>Pin Current Location</button>
+        <p>Mock geolocation failure: current pin retained.</p>
+      </div>
+    );
+  }
 }));
 
 vi.mock('../../features/compliance/components/ComplianceProgramPanel.jsx', () => ({
@@ -390,6 +397,49 @@ describe('Settings deep-linking and action wiring', () => {
 
     expect(mocks.toastMock.error).toHaveBeenCalledWith('Please pin the location on the map.');
     expect(mocks.tenantLocationServiceMock.updateTenantLocation).not.toHaveBeenCalled();
+  });
+
+  it('wires Settings Adjust Pin into the location coordinate fields', async () => {
+    const user = userEvent.setup();
+
+    renderSettings('/settings?tab=storefront');
+    await screen.findByText('MapPicker');
+    await user.clear(screen.getByPlaceholderText('Main Branch'));
+    await user.type(screen.getByPlaceholderText('Main Branch'), 'Adjusted Branch');
+    await user.click(screen.getByRole('button', { name: /Adjust Pin/i }));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Street, City, Province').value).toBe('Iloilo City, Iloilo, Philippines');
+    });
+    await user.click(screen.getByRole('button', { name: /Add Location/i }));
+
+    await waitFor(() => expect(mocks.tenantLocationServiceMock.createTenantLocation).toHaveBeenCalled());
+    expect(mocks.tenantLocationServiceMock.createTenantLocation.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({
+      name: 'Adjusted Branch',
+      latitude: 10.720263,
+      longitude: 122.599488
+    }));
+  });
+
+  it('wires Settings current-location pinning into the location coordinate fields', async () => {
+    const user = userEvent.setup();
+
+    renderSettings('/settings?tab=storefront');
+    await screen.findByText('MapPicker');
+    await user.clear(screen.getByPlaceholderText('Main Branch'));
+    await user.type(screen.getByPlaceholderText('Main Branch'), 'Current Location Branch');
+    await user.click(screen.getByRole('button', { name: /Pin Current Location/i }));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Street, City, Province').value).toBe('Iloilo City, Iloilo, Philippines');
+    });
+    await user.click(screen.getByRole('button', { name: /Add Location/i }));
+
+    await waitFor(() => expect(mocks.tenantLocationServiceMock.createTenantLocation).toHaveBeenCalled());
+    expect(mocks.tenantLocationServiceMock.createTenantLocation.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({
+      name: 'Current Location Branch',
+      latitude: 10.720263,
+      longitude: 122.599488
+    }));
+    expect(screen.getByText(/Mock geolocation failure: current pin retained/i)).toBeTruthy();
   });
 
   it('persists reversible no-location storefront setup and restores map pin editing', async () => {

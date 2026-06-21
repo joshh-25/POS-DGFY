@@ -234,10 +234,10 @@ describe('MapPinPicker MapLibre behavior', () => {
     }));
   });
 
-  it('creates the first draggable marker from Adjust Pin at the Iloilo camera center', async () => {
+  it('creates the first draggable marker from Adjust Pin at the Iloilo camera center without waiting for parent rerender', async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
-    const { rerender } = render(<MapPinPicker latitude="" longitude="" deliveryRadiusKm={5} onChange={onChange} />);
+    render(<MapPinPicker latitude="" longitude="" deliveryRadiusKm={5} onChange={onChange} />);
 
     await waitFor(() => expect(maplibreMocks.maps[0]).toBeTruthy());
     await user.click(screen.getByRole('button', { name: /Adjust Pin/i }));
@@ -251,9 +251,26 @@ describe('MapPinPicker MapLibre behavior', () => {
       zoom: 16
     });
 
-    rerender(<MapPinPicker latitude={10.7202} longitude={122.5621} deliveryRadiusKm={5} onChange={onChange} />);
     await waitFor(() => expect(maplibreMocks.markers[0]?.options.draggable).toBe(true));
     expect(screen.getByRole('button', { name: /Stop Moving Pin/i })).toBeTruthy();
+    expect(screen.queryByText(/No pin selected yet\./i)).toBeNull();
+    expect(screen.getByText(/Pinned: 10\.720200, 122\.562100/i)).toBeTruthy();
+  });
+
+  it('toggles drag mode off without removing the selected marker', async () => {
+    const user = userEvent.setup();
+    render(<MapPinPicker latitude="" longitude="" deliveryRadiusKm={5} onChange={vi.fn()} />);
+
+    await waitFor(() => expect(maplibreMocks.maps[0]).toBeTruthy());
+    await user.click(screen.getByRole('button', { name: /Adjust Pin/i }));
+    await waitFor(() => expect(maplibreMocks.markers[0]?.options.draggable).toBe(true));
+
+    await user.click(screen.getByRole('button', { name: /Stop Moving Pin/i }));
+
+    expect(maplibreMocks.markers[0].options.draggable).toBe(false);
+    expect(screen.getByRole('button', { name: /Adjust Pin/i })).toBeTruthy();
+    expect(screen.getByText(/Pinned: 10\.720200, 122\.562100/i)).toBeTruthy();
+    expect(screen.queryByText(/No pin selected yet\./i)).toBeNull();
   });
 
   it('clears invalid 0,0 input when Reset View returns to Iloilo', async () => {
@@ -315,6 +332,7 @@ describe('MapPinPicker MapLibre behavior', () => {
       latitude: 14.5995123,
       longitude: 120.9842456
     });
+    await waitFor(() => expect(screen.getByText(/Pinned: 14\.599512, 120\.984246/i)).toBeTruthy());
     expect(maplibreMocks.Marker).toHaveBeenCalledWith(expect.objectContaining({ anchor: 'bottom' }));
   });
 
@@ -368,6 +386,41 @@ describe('MapPinPicker MapLibre behavior', () => {
       center: [-80.8431, 35.2271]
     }));
     expect(screen.getByText(/reported a location outside the Philippines/i)).toBeTruthy();
+  });
+
+  it.each([
+    [1, /Location permission was denied/i],
+    [2, /could not determine your current location/i],
+    [3, /lookup timed out/i],
+    [0, /Unable to get your current location/i]
+  ])('shows a specific geolocation error for code %s', async (code, expectedMessage) => {
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: vi.fn((success, error) => error({ code }))
+      }
+    });
+    const user = userEvent.setup();
+    render(<MapPinPicker latitude="" longitude="" deliveryRadiusKm={5} onChange={vi.fn()} />);
+
+    await waitFor(() => expect(maplibreMocks.maps[0]).toBeTruthy());
+    await user.click(screen.getByRole('button', { name: /Pin Current Location/i }));
+
+    expect(screen.getByText(expectedMessage)).toBeTruthy();
+    expect(screen.getByText(/No pin selected yet\./i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Stop Moving Pin/i })).toBeNull();
+  });
+
+  it('shows an unsupported-browser message when geolocation is unavailable', async () => {
+    delete navigator.geolocation;
+    const user = userEvent.setup();
+    render(<MapPinPicker latitude="" longitude="" deliveryRadiusKm={5} onChange={vi.fn()} />);
+
+    await waitFor(() => expect(maplibreMocks.maps[0]).toBeTruthy());
+    await user.click(screen.getByRole('button', { name: /Pin Current Location/i }));
+
+    expect(screen.getByText(/Geolocation is not available in this browser/i)).toBeTruthy();
+    expect(screen.getByText(/No pin selected yet\./i)).toBeTruthy();
   });
 
   it('keeps coordinate pinning when reverse address lookup fails', async () => {
