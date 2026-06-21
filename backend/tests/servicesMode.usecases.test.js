@@ -86,6 +86,34 @@ const storefrontClosedMondaySettings = () => [
     }
 ];
 
+const storefrontSplitMondaySettings = () => [
+    ...registeredTransactionSettings(),
+    {
+        setting_key: 'storefront_hours',
+        setting_value: JSON.stringify({
+            mode: 'weekly',
+            timezone: 'Asia/Manila',
+            weekly: {
+                sun: { enabled: false, open: '09:00', close: '18:00' },
+                mon: {
+                    enabled: true,
+                    open: '06:00',
+                    close: '12:00',
+                    intervals: [
+                        { open: '06:00', close: '12:00' },
+                        { open: '13:00', close: '20:00' }
+                    ]
+                },
+                tue: { enabled: true, open: '09:00', close: '18:00' },
+                wed: { enabled: true, open: '09:00', close: '18:00' },
+                thu: { enabled: true, open: '09:00', close: '18:00' },
+                fri: { enabled: true, open: '09:00', close: '18:00' },
+                sat: { enabled: true, open: '09:00', close: '18:00' }
+            }
+        })
+    }
+];
+
 describe('Services Mode use cases', () => {
     const originalCustomerAccessFlag = process.env.CUSTOMER_ACCESS_MODES_ENABLED;
 
@@ -777,6 +805,66 @@ describe('Services Mode use cases', () => {
                 service_item_id: 10,
                 start_at: '2026-06-01T10:00:00+08:00',
                 idempotency_key: 'svc-hold-hours-1'
+            },
+            source: 'storefront'
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.details.reason_code).toBe('OUTSIDE_STOREFRONT_BUSINESS_HOURS');
+        expect(repository.findServiceItemById).not.toHaveBeenCalled();
+        expect(tx.rollback).toHaveBeenCalled();
+    });
+
+    it('allows storefront service booking holds inside either split interval before service validation', async () => {
+        const morningTx = transaction();
+        const afternoonTx = transaction();
+        const repository = {
+            beginTransaction: jest.fn()
+                .mockResolvedValueOnce(morningTx)
+                .mockResolvedValueOnce(afternoonTx),
+            getSettingsByKeys: jest.fn(async () => storefrontSplitMondaySettings()),
+            findHoldsByIdempotencyKey: jest.fn(async () => []),
+            findServiceItemById: jest.fn(async () => null)
+        };
+        const useCase = buildCreateServiceBookingHoldUseCase({ serviceRepository: repository });
+
+        const morning = await useCase({
+            payload: {
+                service_item_id: 10,
+                start_at: '2026-06-01T07:30:00+08:00',
+                idempotency_key: 'svc-hold-hours-split-morning'
+            },
+            source: 'storefront'
+        });
+        const afternoon = await useCase({
+            payload: {
+                service_item_id: 10,
+                start_at: '2026-06-01T13:30:00+08:00',
+                idempotency_key: 'svc-hold-hours-split-afternoon'
+            },
+            source: 'storefront'
+        });
+
+        expect(morning.error?.details?.reason_code).not.toBe('OUTSIDE_STOREFRONT_BUSINESS_HOURS');
+        expect(afternoon.error?.details?.reason_code).not.toBe('OUTSIDE_STOREFRONT_BUSINESS_HOURS');
+        expect(repository.findServiceItemById).toHaveBeenCalledTimes(2);
+    });
+
+    it('blocks storefront service booking holds during the closed gap between split intervals', async () => {
+        const tx = transaction();
+        const repository = {
+            beginTransaction: jest.fn(async () => tx),
+            getSettingsByKeys: jest.fn(async () => storefrontSplitMondaySettings()),
+            findHoldsByIdempotencyKey: jest.fn(async () => []),
+            findServiceItemById: jest.fn()
+        };
+        const useCase = buildCreateServiceBookingHoldUseCase({ serviceRepository: repository });
+
+        const result = await useCase({
+            payload: {
+                service_item_id: 10,
+                start_at: '2026-06-01T12:30:00+08:00',
+                idempotency_key: 'svc-hold-hours-split-gap'
             },
             source: 'storefront'
         });

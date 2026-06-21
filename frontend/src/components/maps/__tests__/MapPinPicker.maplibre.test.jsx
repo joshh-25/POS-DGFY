@@ -361,13 +361,15 @@ describe('MapPinPicker MapLibre behavior', () => {
     expect(maplibreMocks.Marker).toHaveBeenCalledWith(expect.objectContaining({ anchor: 'bottom' }));
   });
 
-  it('writes coordinates and address from marker drag', async () => {
+  it('writes coordinates and address from marker drag while adjust mode is active', async () => {
     const onChange = vi.fn();
+    const user = userEvent.setup();
     const { rerender } = render(<MapPinPicker latitude="" longitude="" deliveryRadiusKm={5} onChange={onChange} />);
 
     await waitFor(() => expect(maplibreMocks.maps[0]).toBeTruthy());
     rerender(<MapPinPicker latitude={10.7202} longitude={122.5621} deliveryRadiusKm={5} onChange={onChange} />);
     await waitFor(() => expect(maplibreMocks.markers[0]).toBeTruthy());
+    await user.click(screen.getByRole('button', { name: /Adjust Pin/i }));
 
     act(() => {
       maplibreMocks.markers[0].setLngLat([122.599488, 10.720263]);
@@ -388,6 +390,85 @@ describe('MapPinPicker MapLibre behavior', () => {
         address_distance_meters: 25
       });
     });
+  });
+
+  it('does not emit marker drag changes after Stop Moving Pin locks the marker', async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<MapPinPicker latitude={10.7202} longitude={122.5621} deliveryRadiusKm={5} onChange={onChange} />);
+
+    await waitFor(() => expect(maplibreMocks.markers[0]).toBeTruthy());
+    await user.click(screen.getByRole('button', { name: /Adjust Pin/i }));
+    await user.click(screen.getByRole('button', { name: /Stop Moving Pin/i }));
+    onChange.mockClear();
+
+    act(() => {
+      maplibreMocks.markers[0].setLngLat([122.599488, 10.720263]);
+      maplibreMocks.markers[0].handlers.dragend();
+    });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(maplibreMocks.markers[0].lngLat).toEqual({ lng: 122.5621, lat: 10.7202 });
+  });
+
+  it('ignores stale reverse-geocode responses from older pin selections', async () => {
+    let resolveFirst;
+    let resolveSecond;
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<MapPinPicker latitude="" longitude="" deliveryRadiusKm={5} onChange={onChange} />);
+
+    await waitFor(() => expect(maplibreMocks.maps[0]).toBeTruthy());
+    await user.click(screen.getByRole('button', { name: /Adjust Pin/i }));
+    onChange.mockClear();
+    globalThis.fetch = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveFirst = () => resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            data: {
+              address_line: 'Older address',
+              provider: 'dgfy-ph-local',
+              precision: 'city'
+            }
+          })
+        });
+      }))
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveSecond = () => resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            data: {
+              address_line: 'Newer address',
+              provider: 'dgfy-ph-local',
+              precision: 'barangay',
+              distance_meters: 12
+            }
+          })
+        });
+      }));
+
+    act(() => {
+      maplibreMocks.maps[0].handlers.click({ lngLat: { lng: 122.5962, lat: 10.7294 } });
+      maplibreMocks.maps[0].handlers.click({ lngLat: { lng: 122.5798, lat: 10.7316 } });
+    });
+
+    act(() => resolveSecond());
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+        latitude: 10.7316,
+        longitude: 122.5798,
+        address_line: 'Newer address',
+        address_precision: 'barangay'
+      }));
+    });
+
+    act(() => resolveFirst());
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(2));
+    expect(onChange).not.toHaveBeenCalledWith(expect.objectContaining({
+      address_line: 'Older address'
+    }));
   });
 
   it('rejects browser geolocation outside the Philippines without moving the pin', async () => {

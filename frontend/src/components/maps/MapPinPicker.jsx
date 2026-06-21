@@ -144,6 +144,7 @@ export default function MapPinPicker({
   const [isPinDragMode, setIsPinDragMode] = useState(defaultAdjustMode === true);
   const [draftPin, setDraftPin] = useState(null);
   const [accuracyMessage, setAccuracyMessage] = useState('');
+  const effectivePositionRef = useRef(null);
 
   const rawPosition = useMemo(() => {
     const lat = parseMapCoordinate(latitude);
@@ -168,6 +169,7 @@ export default function MapPinPicker({
 
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   useEffect(() => { isPinDragModeRef.current = isPinDragMode; }, [isPinDragMode]);
+  useEffect(() => { effectivePositionRef.current = effectivePosition; }, [effectivePosition]);
   useEffect(() => {
     if (selectedPosition) {
       setDraftPin(null);
@@ -498,6 +500,11 @@ export default function MapPinPicker({
         if (el) {
           el.innerHTML = buildPinSvg({ highlighted: dragging });
           el.style.cursor = dragging ? 'grab' : 'pointer';
+        }
+        if (!dragging) {
+          const current = effectivePositionRef.current;
+          if (current) marker.setLngLat([current.longitude, current.latitude]);
+          return;
         }
         emitPinChange({
           latitude: toFixedCoordinate(pos.lat),
