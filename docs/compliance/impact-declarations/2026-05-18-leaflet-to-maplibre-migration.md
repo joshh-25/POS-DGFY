@@ -121,5 +121,5 @@ Runtime hardening:
 4. Settings opens the picker locked; click, marker drag, and browser-geolocation overwrite are disabled until `Adjust Pin`.
 5. Onboarding may open in adjust mode only when searchable storefront visibility is enabled and no valid saved pin exists, allowing first pin placement without saving Iloilo City as an implicit default.
 6. Browser geolocation uses high-accuracy mode when available, displays the reported accuracy radius, and does not claim guaranteed device precision.
-7. Address suggestions remain first-party through `/api/v1/geo/reverse-geocode`, now returning `provider="dgfy-ph-local"` and precision metadata. The endpoint must not call browser-side Nominatim or return vague `Near ...` labels.
+7. Address suggestions remain first-party through `/api/v1/geo/reverse-geocode`, now returning `provider="dgfy-ph-local"`, precision metadata, PSGC provenance, and optional PSGC code fields for bundled local matches. The endpoint must not call browser-side Nominatim or return vague `Near ...` labels.
 8. Reverse-geocode suggestions may fill an empty address field but must not overwrite merchant-edited address text unless the merchant applies the suggestion.
