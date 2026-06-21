@@ -1,11 +1,16 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
   STOREFRONT_BUSINESS_DAY_OPTIONS,
+  addStorefrontBusinessHoursInterval,
   applyStorefrontBusinessHoursRange,
   createDefaultStorefrontBusinessHours,
   formatStorefrontBusinessHoursDisplay,
+  getStorefrontBusinessHoursDayIssues,
   isStorefrontBusinessHoursAlwaysOpen,
+  moveStorefrontBusinessHoursInterval,
   normalizeStorefrontBusinessHours,
+  removeStorefrontBusinessHoursInterval,
+  updateStorefrontBusinessHoursInterval,
   setStorefrontBusinessHoursOpenAllDay
 } from './storefrontBusinessHours.js';
 
@@ -26,21 +31,26 @@ const timeToMinutes = (value) => {
   return Math.max(0, Math.min(1440, (hour * 60) + minute));
 };
 
-const getBlockStyle = (dayHours = {}) => {
+const getBlockStyles = (dayHours = {}) => {
   if (!dayHours.enabled) return null;
-  if (dayHours.open === dayHours.close) {
-    return { left: '0%', width: '100%' };
-  }
-  const openMinutes = timeToMinutes(dayHours.open);
-  const closeMinutes = timeToMinutes(dayHours.close);
-  if (openMinutes == null || closeMinutes == null) return null;
-  const start = Math.min(openMinutes, closeMinutes);
-  const end = Math.max(openMinutes, closeMinutes);
-  const width = Math.max(4, ((end - start) / 1440) * 100);
-  return {
-    left: `${(start / 1440) * 100}%`,
-    width: `${width}%`
-  };
+  const intervals = Array.isArray(dayHours.intervals) ? dayHours.intervals : [];
+  const blocks = intervals.flatMap((interval) => {
+    if (interval.open === interval.close) {
+      return [{ left: '0%', width: '100%', title: 'Open 24 hours' }];
+    }
+    const openMinutes = timeToMinutes(interval.open);
+    const closeMinutes = timeToMinutes(interval.close);
+    if (openMinutes == null || closeMinutes == null) return [];
+    const ranges = closeMinutes > openMinutes
+      ? [[openMinutes, closeMinutes]]
+      : [[openMinutes, 1440], [0, closeMinutes]];
+    return ranges.map(([start, end]) => ({
+      left: `${(start / 1440) * 100}%`,
+      width: `${Math.max(4, ((end - start) / 1440) * 100)}%`,
+      title: `${interval.open}-${interval.close}`
+    }));
+  });
+  return blocks.length > 0 ? blocks : null;
 };
 
 export default function StorefrontBusinessHoursScheduler({
@@ -85,16 +95,37 @@ export default function StorefrontBusinessHoursScheduler({
   };
 
   const handleGridDayPatch = (dayKey, patch) => {
+    const currentDay = hours.weekly[dayKey];
+    const intervals = currentDay.intervals || [{ open: currentDay.open, close: currentDay.close }];
     emit({
       ...hours,
       weekly: {
         ...hours.weekly,
         [dayKey]: {
-          ...hours.weekly[dayKey],
-          ...patch
+          ...currentDay,
+          ...patch,
+          intervals,
+          open: intervals[0]?.open || '09:00',
+          close: intervals[0]?.close || '18:00'
         }
       }
     });
+  };
+
+  const handleIntervalPatch = (dayKey, index, patch) => {
+    emit(updateStorefrontBusinessHoursInterval(hours, dayKey, index, patch));
+  };
+
+  const handleAddInterval = (dayKey) => {
+    emit(addStorefrontBusinessHoursInterval(hours, dayKey));
+  };
+
+  const handleRemoveInterval = (dayKey, index) => {
+    emit(removeStorefrontBusinessHoursInterval(hours, dayKey, index));
+  };
+
+  const handleMoveInterval = (dayKey, index, direction) => {
+    emit(moveStorefrontBusinessHoursInterval(hours, dayKey, index, direction));
   };
 
   return (
@@ -194,44 +225,99 @@ export default function StorefrontBusinessHoursScheduler({
       <div className="grid gap-2" aria-label="Weekly business hours grid">
         {STOREFRONT_BUSINESS_DAY_OPTIONS.map((day) => {
           const dayHours = hours.weekly[day.key];
-          const blockStyle = getBlockStyle(dayHours);
+          const blockStyles = getBlockStyles(dayHours);
+          const dayIssues = getStorefrontBusinessHoursDayIssues(dayHours);
           return (
-            <div key={`business-grid-${day.key}`} className="grid grid-cols-1 items-center gap-2 rounded-md border border-slate-200 bg-white px-2 py-2 sm:grid-cols-[48px_minmax(120px,1fr)_96px_96px_auto]">
+            <div key={`business-grid-${day.key}`} className="grid grid-cols-1 items-start gap-2 rounded-md border border-slate-200 bg-white px-2 py-2 sm:grid-cols-[48px_minmax(120px,1fr)_minmax(220px,1.4fr)_auto]">
               <span className="text-xs font-semibold text-slate-700">{day.label}</span>
               <div className="relative h-8 overflow-hidden rounded-md border border-slate-200 bg-slate-50" aria-label={`${day.label} schedule block`}>
                 <div className="absolute inset-y-0 left-1/2 border-l border-slate-200" />
-                {blockStyle ? (
-                  <div
-                    className="absolute top-1 bottom-1 rounded bg-sky-600"
-                    style={blockStyle}
-                    title={dayHours.open === dayHours.close ? 'Open 24 hours' : `${dayHours.open}-${dayHours.close}`}
-                  />
+                {blockStyles ? (
+                  blockStyles.map((blockStyle, index) => (
+                    <div
+                      key={`${day.key}-block-${index}`}
+                      className="absolute top-1 bottom-1 rounded bg-sky-600"
+                      style={{ left: blockStyle.left, width: blockStyle.width }}
+                      title={blockStyle.title}
+                    />
+                  ))
                 ) : (
                   <div className="flex h-full items-center justify-center text-[11px] font-semibold text-slate-400">Closed</div>
                 )}
               </div>
-              <input
-                type="time"
-                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-100 disabled:text-slate-400"
-                value={dayHours.open}
-                disabled={disabled || !dayHours.enabled}
-                onChange={(event) => handleGridDayPatch(day.key, { open: event.target.value })}
-              />
-              <input
-                type="time"
-                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-100 disabled:text-slate-400"
-                value={dayHours.close}
-                disabled={disabled || !dayHours.enabled}
-                onChange={(event) => handleGridDayPatch(day.key, { close: event.target.value })}
-              />
-              <input
-                type="checkbox"
-                className="h-4 w-4"
-                checked={dayHours.enabled}
-                disabled={disabled}
-                onChange={(event) => handleGridDayPatch(day.key, { enabled: event.target.checked })}
-                aria-label={`${day.label} open`}
-              />
+              <div className="min-w-0 space-y-2">
+                {(dayHours.intervals || []).map((interval, index) => (
+                  <div key={`${day.key}-interval-${index}`} className="grid grid-cols-[1fr_1fr_auto_auto_auto] items-center gap-1">
+                    <input
+                      type="time"
+                      className="min-w-0 rounded-md border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+                      value={interval.open}
+                      disabled={disabled || !dayHours.enabled}
+                      aria-label={`${day.label} interval ${index + 1} open time`}
+                      onChange={(event) => handleIntervalPatch(day.key, index, { open: event.target.value })}
+                    />
+                    <input
+                      type="time"
+                      className="min-w-0 rounded-md border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+                      value={interval.close}
+                      disabled={disabled || !dayHours.enabled}
+                      aria-label={`${day.label} interval ${index + 1} close time`}
+                      onChange={(event) => handleIntervalPatch(day.key, index, { close: event.target.value })}
+                    />
+                    <button
+                      type="button"
+                      className="rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40"
+                      disabled={disabled || !dayHours.enabled || index === 0}
+                      onClick={() => handleMoveInterval(day.key, index, 'up')}
+                      aria-label={`Move ${day.label} interval ${index + 1} up`}
+                    >
+                      Up
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40"
+                      disabled={disabled || !dayHours.enabled || index === dayHours.intervals.length - 1}
+                      onClick={() => handleMoveInterval(day.key, index, 'down')}
+                      aria-label={`Move ${day.label} interval ${index + 1} down`}
+                    >
+                      Down
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-red-700 disabled:opacity-40"
+                      disabled={disabled || !dayHours.enabled || dayHours.intervals.length <= 1}
+                      onClick={() => handleRemoveInterval(day.key, index)}
+                      aria-label={`Remove ${day.label} interval ${index + 1}`}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+                    disabled={disabled || !dayHours.enabled}
+                    onClick={() => handleAddInterval(day.key)}
+                  >
+                    Add interval
+                  </button>
+                  {dayIssues.length > 0 ? (
+                    <span className="text-[11px] font-medium text-red-600">{dayIssues[0]}</span>
+                  ) : null}
+                </div>
+              </div>
+              <label className="flex items-center justify-end gap-2 text-xs font-semibold text-slate-700">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={dayHours.enabled}
+                  disabled={disabled}
+                  onChange={(event) => handleGridDayPatch(day.key, { enabled: event.target.checked })}
+                  aria-label={`${day.label} open`}
+                />
+                Open
+              </label>
             </div>
           );
         })}

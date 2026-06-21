@@ -189,6 +189,15 @@ const storefrontPromoSchema = Joi.object({
   validity_text: Joi.string().trim().max(120).allow('', null).optional(),
   active: Joi.boolean().default(false)
 }).optional();
+const businessHoursIntervalSchema = Joi.object({
+  open: Joi.string().trim().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).required().messages({
+    'string.pattern.base': 'Business hours opening time must use HH:mm format'
+  }),
+  close: Joi.string().trim().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).required().messages({
+    'string.pattern.base': 'Business hours closing time must use HH:mm format'
+  })
+});
+
 const businessHoursDaySchema = Joi.object({
   enabled: Joi.boolean().required(),
   open: Joi.string().trim().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).required().messages({
@@ -196,7 +205,30 @@ const businessHoursDaySchema = Joi.object({
   }),
   close: Joi.string().trim().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).required().messages({
     'string.pattern.base': 'Business hours closing time must use HH:mm format'
-  })
+  }),
+  intervals: Joi.array().items(businessHoursIntervalSchema).min(1).max(6).optional()
+}).custom((value, helpers) => {
+  if (!value?.enabled || !Array.isArray(value.intervals)) return value;
+  const ranges = value.intervals
+    .flatMap((interval) => {
+      const [openHour, openMinute] = String(interval.open).split(':').map(Number);
+      const [closeHour, closeMinute] = String(interval.close).split(':').map(Number);
+      const open = (openHour * 60) + openMinute;
+      const close = (closeHour * 60) + closeMinute;
+      if (open === close) return [[0, 1440]];
+      return close > open ? [[open, close]] : [[open, 1440], [0, close]];
+    })
+    .sort((first, second) => first[0] - second[0]);
+  for (let index = 1; index < ranges.length; index += 1) {
+    if (ranges[index][0] < ranges[index - 1][1]) {
+      return helpers.error('any.invalid', {
+        message: 'Business hours intervals cannot overlap'
+      });
+    }
+  }
+  return value;
+}).messages({
+  'any.invalid': '{{#message}}'
 });
 const storefrontBusinessHoursSchema = Joi.alternatives().try(
   Joi.string().trim().max(120).allow(''),
