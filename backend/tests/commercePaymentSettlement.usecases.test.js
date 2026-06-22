@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import { buildGetCommerceSettlementReportUseCase } from '../src/modules/commercePayments/usecases/commercePaymentAdminUseCases.js';
 import { buildGetPayMongoSandboxCertificationUseCase } from '../src/modules/commercePayments/usecases/paymongoSandboxCertificationUseCase.js';
+import { requireCommerceQrphConfig } from '../src/config/commercePaymentsFeature.js';
 
 const TENANT_ID = '550e8400-e29b-41d4-a716-446655440000';
 
@@ -91,10 +92,27 @@ describe('paymongo sandbox certification checks', () => {
     expect(result.data.certification.certified).toBe(true);
     expect(result.data.certification.checks).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: 'webhook_signature_verification', passed: true }),
+      expect.objectContaining({ key: 'platform_split_capability_confirmation', passed: false, severity: 'warning' }),
+      expect.objectContaining({ key: 'api_generated_child_merchant_ids', passed: true }),
       expect.objectContaining({ key: 'manual_child_merchant_verification_required', passed: false, severity: 'warning' }),
       expect.objectContaining({ key: 'child_account_webhook_registration_required', passed: false, severity: 'warning' }),
       expect.objectContaining({ key: 'tenant_readiness_evidence', passed: true }),
       expect.objectContaining({ key: 'tenant_wallet_evidence', passed: true })
     ]));
+  });
+
+  it('blocks live QR Ph config until PayMongo platform split capability is confirmed', async () => {
+    process.env.COMMERCE_PAYMONGO_SPLIT_ENABLED = 'true';
+    process.env.PAYMONGO_MODE = 'live';
+    process.env.PAYMONGO_LIVE_SECRET_KEY = 'sk_live';
+    process.env.PAYMONGO_LIVE_WEBHOOK_SECRET = 'whsec_live';
+    process.env.PAYMONGO_DGFY_MERCHANT_ID = 'org_parent';
+    delete process.env.PAYMONGO_PLATFORM_SPLIT_CONFIRMED;
+    delete process.env.PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED;
+
+    expect(requireCommerceQrphConfig()).toContain('PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED');
+
+    process.env.PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED = 'true';
+    expect(requireCommerceQrphConfig()).not.toContain('PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED');
   });
 });

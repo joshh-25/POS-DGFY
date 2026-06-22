@@ -1,6 +1,10 @@
 import crypto from 'crypto';
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
+import {
+  isPayMongoLiveMode,
+  isPayMongoPlatformSplitConfirmed
+} from '../../../config/commercePaymentsFeature.js';
 
 const REQUIRED_CONFIG_KEYS = [
   'PAYMONGO_TEST_SECRET_KEY',
@@ -20,6 +24,8 @@ const buildCheck = ({ key, label, passed, severity = 'error', details = null }) 
 
 export const buildGetPayMongoSandboxCertificationUseCase = ({ paymongoService, commercePaymentRepository = null }) => async () => {
   try {
+    const liveMode = isPayMongoLiveMode();
+    const platformSplitConfirmed = isPayMongoPlatformSplitConfirmed();
     const checks = REQUIRED_CONFIG_KEYS.map((key) => buildCheck({
       key,
       label: `${key} configured`,
@@ -72,6 +78,23 @@ export const buildGetPayMongoSandboxCertificationUseCase = ({ paymongoService, c
           }]
         }
       }
+    }));
+
+    checks.push(buildCheck({
+      key: 'platform_split_capability_confirmation',
+      label: 'PayMongo parent account split-payment capability is externally confirmed',
+      passed: platformSplitConfirmed,
+      severity: liveMode ? 'error' : 'warning',
+      details: platformSplitConfirmed
+        ? 'Operator has explicitly confirmed PayMongo platform split capability in environment configuration.'
+        : 'PayMongo support has not yet confirmed parent merchant ID and split_payment marketplace capability. Sandbox/internal readiness may continue, but live customer use remains blocked.'
+    }));
+
+    checks.push(buildCheck({
+      key: 'api_generated_child_merchant_ids',
+      label: 'Tenant merchant IDs are generated/stored through PayMongo child account APIs, not typed as production readiness evidence',
+      passed: true,
+      details: 'The app can create tenant child merchants and store returned provider_merchant_id values, but activation, wallet, QR Ph, split, and payout readiness remain provider-evidence gated.'
     }));
 
     checks.push(buildCheck({
@@ -130,6 +153,7 @@ export const buildGetPayMongoSandboxCertificationUseCase = ({ paymongoService, c
         certified: failedErrors.length === 0,
         checks,
         next_required_external_evidence: [
+          'Obtain PayMongo confirmation for parent merchant ID and split_payment marketplace capability before any live customer rollout.',
           'Create sandbox QR Ph payment session with a real tenant child merchant ID.',
           'Pay the QR Ph sandbox transaction or replay PayMongo-provided payment.paid payload.',
           'Submit proportional and split_refund sandbox refunds and store provider payload samples.',
