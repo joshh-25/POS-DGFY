@@ -31,21 +31,45 @@ function addCheck(checks, name, ok, detail) {
   console.log(`[${status}] ${name} :: ${detail}`);
 }
 
-function main() {
-  const gateEnabled = process.env.DEPLOY_ENFORCE_NO_STAGING_GATE === '1';
+function isPlaceholderQaToken(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+  if (/^<.*>$/.test(normalized)) {
+    return true;
+  }
+  return [
+    'changeme',
+    'change-me',
+    'dummy',
+    'example',
+    'placeholder',
+    'qa_company_token',
+    'token',
+    'token-original',
+    'todo',
+  ].includes(normalized);
+}
+
+function runPreflight(env = process.env, options = {}) {
+  const gateEnabled = env.DEPLOY_ENFORCE_NO_STAGING_GATE === '1';
   if (!gateEnabled) {
     console.log(
       '[PASS] no_staging_gate.preflight_skipped :: DEPLOY_ENFORCE_NO_STAGING_GATE is not 1'
     );
-    return;
+    return { skipped: true, checks: [] };
   }
 
-  const targetSha = (process.env.RELEASE_TARGET_SHA || runCapture('git', ['rev-parse', 'HEAD'])).toLowerCase();
-  const qaBaseUrl = (process.env.QA_BASE_URL || '').trim();
-  const qaSshHost = (process.env.QA_SSH_HOST || '').trim();
+  const targetSha = (env.RELEASE_TARGET_SHA || runCapture('git', ['rev-parse', 'HEAD'])).toLowerCase();
+  const qaBaseUrl = (env.QA_BASE_URL || '').trim();
+  const qaCompanyToken = (env.QA_COMPANY_TOKEN || '').trim();
+  const qaSshHost = (env.QA_SSH_HOST || '').trim();
+  const qaSshPort = (env.QA_SSH_PORT || '').trim();
   const qaSummaryFile =
-    (process.env.QA_DEPLOY_SUMMARY_FILE || '').trim() ||
+    (env.QA_DEPLOY_SUMMARY_FILE || '').trim() ||
     path.join('.tmp', 'release-gates', targetSha, 'qa_deploy_summary.txt');
+  const skipRuntimeCommands = options.skipRuntimeCommands === true;
 
   const checks = [];
   addCheck(checks, 'release.target_sha', Boolean(targetSha), `target_sha=${targetSha || '<missing>'}`);
@@ -57,19 +81,39 @@ function main() {
   );
   addCheck(
     checks,
+    'qa.company_token.configured',
+    !isPlaceholderQaToken(qaCompanyToken),
+    !isPlaceholderQaToken(qaCompanyToken)
+      ? 'QA_COMPANY_TOKEN configured'
+      : 'Missing or placeholder QA_COMPANY_TOKEN'
+  );
+  addCheck(
+    checks,
     'qa.ssh_host.configured',
     qaSshHost.length > 0,
     qaSshHost.length > 0 ? qaSshHost : 'Missing QA_SSH_HOST'
   );
-  addCheck(checks, 'runtime.ssh.command', commandExists('ssh'), commandExists('ssh') ? 'ssh available' : 'ssh not found');
+  if (qaSshPort.length > 0) {
+    addCheck(
+      checks,
+      'qa.ssh_port.valid',
+      /^[0-9]+$/.test(qaSshPort),
+      /^[0-9]+$/.test(qaSshPort) ? `QA_SSH_PORT=${qaSshPort}` : `Invalid QA_SSH_PORT=${qaSshPort}`
+    );
+  }
 
-  const hasPowerShell = commandExists('powershell') || commandExists('pwsh');
-  addCheck(
-    checks,
-    'runtime.powershell.command',
-    hasPowerShell,
-    hasPowerShell ? 'powershell/pwsh available' : 'powershell/pwsh not found'
-  );
+  if (!skipRuntimeCommands) {
+    const hasSsh = commandExists('ssh');
+    addCheck(checks, 'runtime.ssh.command', hasSsh, hasSsh ? 'ssh available' : 'ssh not found');
+
+    const hasPowerShell = commandExists('powershell') || commandExists('pwsh');
+    addCheck(
+      checks,
+      'runtime.powershell.command',
+      hasPowerShell,
+      hasPowerShell ? 'powershell/pwsh available' : 'powershell/pwsh not found'
+    );
+  }
 
   if (fs.existsSync(qaSummaryFile)) {
     addCheck(checks, 'qa.deploy.summary.source', true, `found local evidence at ${qaSummaryFile}`);
@@ -91,6 +135,14 @@ function main() {
 
   const failed = checks.filter((check) => !check.ok);
   if (failed.length > 0) {
+    return { ok: false, checks, failed };
+  }
+  return { ok: true, checks, failed: [] };
+}
+
+function main() {
+  const result = runPreflight();
+  if (result.ok === false) {
     console.error(
       '\nNo-staging gate preflight failed. Configure missing QA inputs before deploy-remote push.'
     );
@@ -98,4 +150,11 @@ function main() {
   }
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  isPlaceholderQaToken,
+  runPreflight,
+};

@@ -47,14 +47,18 @@ if [[ "$STORE_BASE_PATH" != /* ]]; then
 fi
 STORE_BASE_PATH="${STORE_BASE_PATH%/}/"
 
+strip_cr() {
+    printf '%s' "$1" | tr -d '\r'
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --branch)
-            BRANCH_OVERRIDE="${2:-}"
+            BRANCH_OVERRIDE="$(strip_cr "${2:-}")"
             shift 2
             ;;
         --expect-commit)
-            EXPECTED_COMMIT="${2:-}"
+            EXPECTED_COMMIT="$(strip_cr "${2:-}")"
             shift 2
             ;;
         --skip-db-backup)
@@ -110,6 +114,11 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+if [[ -n "$EXPECTED_COMMIT" && ! "$EXPECTED_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]; then
+    echo "Invalid --expect-commit value after CRLF normalization: '$EXPECTED_COMMIT'"
+    exit 1
+fi
 
 mkdir -p "$DEPLOY_LOG_DIR" "$DEPLOY_STATE_DIR"
 RUN_TS="$(date +'%Y%m%d_%H%M%S')"

@@ -228,7 +228,8 @@ fi
 # Step 4: Push to GitHub
 # ------------------------------------------
 echo -e "\n${YELLOW}Pushing to GitHub ($TARGET_BRANCH)...${NC}"
-git push origin "$TARGET_BRANCH"
+git push origin HEAD:"$TARGET_BRANCH"
+git fetch origin "$TARGET_BRANCH"
 echo -e "${GREEN}Push successful.${NC}"
 
 SOURCE_CONTRACT_REPORT_PUSHED_EFFECTIVE="$(host_path ".tmp/release-gates/${LOCAL_COMMIT}/deploy_source_contract.pushed.json")"
