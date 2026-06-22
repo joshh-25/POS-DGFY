@@ -75,15 +75,18 @@ The current production runtime includes the branch and PR adoption chain from th
 - Storefront discovery map pin stability restore: discovery pins, count clusters, halos, and customer location render through MapLibre GeoJSON sources and style layers; DOM `Popup` remains only for normal store preview cards. Count-cluster clicks scope the right-side Discover Nearby/View Results panel instead of opening an on-map list widget. Fixed marker CSS keeps the `38px` by `48px` bottom-center anchor box and filter/shadow-only glow so zooming cannot move pins away from stored IMS coordinates.
 - Storefront current-location map control restore: the discovery map exposes a visible `Use current location on map` control, requests browser geolocation only after customer action, submits the existing Near Me discovery request with `pin_scope=nearest_matching_branch`, updates the control to `My location`, and renders the customer location dot through the existing MapLibre user-location layer below storefront pins.
 
-## Source-Current Release Pipeline Remediation
+## Source-Current Post-Deploy Changes
 
-The current source tree adds a guarded QA promotion helper for routine production deploys, but this code is source-current and not part of the `eed35468` production runtime until a later production deploy includes it.
+The current source tree is ahead of the `eed35468` production runtime. These changes are source-current only until a later guarded production deploy includes them; do not describe them as production-live from this document alone.
 
 - `scripts/deploy-remote.sh` now defaults wrapper-triggered tenant index headroom to report mode (`DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0`) while redundant index cleanup remains a tracked operational concern.
 - The wrapper can run `npm run deploy:qa:target` before the no-staging production gate when `DEPLOY_PROMOTE_QA_BEFORE_PROD` is not `off` or `0`.
 - `scripts/deploy-qa-target.ps1` refuses automatic QA promotion when `QA_SSH_HOST` and `QA_APP_DIR` match the production host/app directory, preventing the current production-as-QA evidence configuration from mutating production before the production gate.
 - QA deploy-summary evidence is fetched fresh before each no-staging gate run. `qa.deploy.summary.sha_match` remains hard-blocking, and emergency bypass remains incident-only.
 - Current `.env.qa.local` still points at production (`QA_SSH_HOST=192.53.116.33`, `QA_APP_DIR=/var/www/skupervisor`), so automatic QA promotion correctly refuses until a distinct QA target is configured or `DEPLOY_PROMOTE_QA_BEFORE_PROD=off` is set.
+- PayMongo live QR Ph split checkout now fails closed in source unless `PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED=true` or `PAYMONGO_PLATFORM_SPLIT_CONFIRMED=true` is explicitly set after external PayMongo parent merchant and split-capability confirmation.
+- POS/auth lookup throttling is source-tuned to use normalized-email buckets with `RATE_LIMIT_LOOKUP_WINDOW_MS` and `RATE_LIMIT_LOOKUP_MAX_REQUESTS` knobs so shared networks do not cross-throttle different cashier emails.
+- Documentation-only corrections after these source changes clarify current production evidence and do not change runtime behavior.
 
 ## Production Data Repair Notes
 
