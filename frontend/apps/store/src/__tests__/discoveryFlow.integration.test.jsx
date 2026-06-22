@@ -289,6 +289,11 @@ describe('storefront discovery integration flow', () => {
 
   afterEach(() => {
     cleanup();
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      writable: true,
+      value: 1024
+    });
     window.localStorage.clear();
     window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
     document.body.querySelectorAll('.store-marker-preview-card').forEach((node) => node.remove());
@@ -1887,6 +1892,76 @@ describe('storefront discovery integration flow', () => {
     const mapApi = getMapApis()[0];
     expect(mapApi.getLayer('dgfy-discovery-user-location')).toBeTruthy();
     expect(mapApi.getLayer('dgfy-discovery-pin-symbols')).toBeTruthy();
+  });
+
+  it('exposes a mobile map control that shares current location and renders the user dot', async () => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      writable: true,
+      value: 390
+    });
+    window.dispatchEvent(new Event('resize'));
+    const user = userEvent.setup();
+    const getCurrentPosition = vi.fn((success) => {
+      success({ coords: { latitude: 10.701, longitude: 122.501 } });
+    });
+    Object.defineProperty(window.navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition }
+    });
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        const parsed = new URL(normalized, 'http://localhost');
+        return makeJsonResponse({
+          stores: [
+            {
+              tenant_id: 'tenant-1',
+              tenant_name: 'Alpha Foods',
+              slug: 'alpha',
+              storefront_open: true,
+              address_line: 'Iloilo City',
+              latitude: 10.72,
+              longitude: 122.56,
+              catalog_count: 2
+            }
+          ],
+          pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: parsed.searchParams.get('pin_scope') || 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/locations')) {
+        return makeJsonResponse({
+          primary_location_id: 11,
+          locations: [
+            { location_id: 11, name: 'Main Branch', address_line: 'Alpha Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true }
+          ]
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getAllByText('Alpha Foods').length).toBeGreaterThan(0));
+    await user.click(screen.getByRole('button', { name: 'Use current location on map' }));
+
+    await waitFor(() => {
+      const params = getLastDiscoveryParams(fetchMock);
+      expect(params.get('latitude')).toBe('10.701');
+      expect(params.get('longitude')).toBe('122.501');
+      expect(params.get('pin_scope')).toBe('nearest_matching_branch');
+    });
+    await waitFor(() => expect(getDiscoveryUserFeatures()).toHaveLength(1));
+    expect(getDiscoveryUserFeatures()[0].geometry.coordinates).toEqual([122.501, 10.701]);
+    expect(screen.getByRole('button', { name: 'Use current location on map' }).textContent).toContain('My location');
   });
 
   it('Near Me failure falls back to discovery without coordinates', async () => {

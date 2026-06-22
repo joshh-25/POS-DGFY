@@ -7867,6 +7867,7 @@ export default function StorefrontApp() {
   const searchedDiscoveryMapPins = hasDiscoverySearch && filteredDiscoveryStores.length > 0
     ? discoveryMapPins
     : persistentDiscoveryMapPins;
+  const isDiscoveryLocationShared = discoveryCoords?.latitude != null && discoveryCoords?.longitude != null;
   const highlightedDiscoveryMarkerKeys = useMemo(() => {
     if (hasDiscoverySearch) {
       return (Array.isArray(searchedDiscoveryMapPins) ? searchedDiscoveryMapPins : [])
@@ -7903,6 +7904,52 @@ export default function StorefrontApp() {
       .join('|');
     return `discovery-results-map:${searchKey}:${filteredDiscoveryStores.length}:${pinKey}`;
   }, [searchedDiscoveryMapPins, filteredDiscoveryStores.length, search]);
+  const renderDiscoveryCurrentLocationButton = ({
+    compact = false,
+    floating = false,
+    label = isDiscoveryLocationShared ? 'My location' : 'Use location'
+  } = {}) => (
+    <button
+      type="button"
+      onClick={handleNearMe}
+      title="Use current location on map"
+      aria-label="Use current location on map"
+      data-discovery-current-location="true"
+      style={{
+        border: '1px solid rgba(148,163,184,0.32)',
+        background: isDiscoveryLocationShared ? '#eff6ff' : 'rgba(255,255,255,.96)',
+        color: '#0f172a',
+        boxShadow: floating ? '0 8px 20px rgba(15,23,42,.18)' : '0 4px 10px rgba(15,23,42,.16)',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: compact ? 4 : 7,
+        minHeight: compact ? 36 : 40,
+        borderRadius: compact ? 999 : 12,
+        padding: compact ? '0 11px' : '0 13px',
+        fontSize: compact ? 11 : 12,
+        fontWeight: 800,
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+        lineHeight: 1
+      }}
+    >
+      <Navigation size={compact ? 14 : 16} fill={isDiscoveryLocationShared ? '#1a4e8d' : 'none'} />
+      <span>{label}</span>
+      {isDiscoveryLocationShared && (
+        <span
+          aria-hidden="true"
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: 999,
+            background: '#1a4e8d',
+            boxShadow: '0 0 0 3px rgba(26,78,141,.14)'
+          }}
+        />
+      )}
+    </button>
+  );
   const discoverySummary = useMemo(() => {
     const totalStores = filteredDiscoveryStores.length;
     const openStores = filteredDiscoveryStores.filter((store) => store.storefront_open).length;
@@ -11575,6 +11622,23 @@ export default function StorefrontApp() {
                   {loadingStores ? 'Loading map...' : storesError || 'No storefront pins available right now.'}
 		            </div>
               )}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: isDiscoveryMobileViewport ? 12 : 16,
+                  left: isDiscoveryMobileViewport ? 12 : 16,
+                  zIndex: 42,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8
+                }}
+              >
+                {renderDiscoveryCurrentLocationButton({
+                  compact: isDiscoveryMobileViewport,
+                  floating: true,
+                  label: isDiscoveryLocationShared ? 'My location' : 'Use location'
+                })}
+              </div>
               {isDiscoveryMobileViewport && (
                 <button
                   type="button"
@@ -12562,26 +12626,6 @@ export default function StorefrontApp() {
 	                                Store Label
 	                              </div>
 	                            </div>
-	                            <button
-	                              type="button"
-	                              onClick={handleNearMe}
-	                              style={{
-	                                minWidth: 72,
-	                                borderRadius: 12,
-	                                background: 'rgba(255,255,255,.95)',
-	                                color: '#0f172a',
-	                                border: '1px solid rgba(148,163,184,.28)',
-	                                display: 'grid',
-	                                placeItems: 'center',
-	                                gap: 2,
-	                                padding: '6px 8px',
-	                                cursor: 'pointer',
-	                                boxShadow: '0 4px 10px rgba(15,23,42,.16)'
-	                              }}
-	                            >
-	                              <Navigation size={15} fill="#0f172a" />
-	                              <span style={{ fontSize: 9, fontWeight: 700, color: '#334155', lineHeight: 1.1 }}>Current Location</span>
-	                            </button>
 	                          </div>
 	                        ) : (
                           [
@@ -12638,29 +12682,11 @@ export default function StorefrontApp() {
                             <span style={{ fontSize: 7, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#64748b', lineHeight: 1 }}>Store</span>
                             <span style={{ fontSize: 8, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>Location</span>
                           </button>
-                          <button
-                            type="button"
-                            onClick={handleNearMe}
-                            style={{
-                              width: 84,
-                              minHeight: 80,
-                              borderRadius: 16,
-                              border: '1px solid rgba(148,163,184,0.28)',
-                              background: 'rgba(255,255,255,.96)',
-                              boxShadow: '0 6px 18px rgba(15,23,42,.16)',
-                              display: 'grid',
-                              placeItems: 'center',
-                              gap: 4,
-                              padding: '8px 6px',
-                              color: '#0f172a',
-                              cursor: 'pointer'
-                            }}
-                            aria-label="Current location"
-                          >
-                            <Navigation size={16} fill="#0f172a" />
-                            <span style={{ fontSize: 7, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#64748b', lineHeight: 1 }}>Current</span>
-                            <span style={{ fontSize: 8, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>Location</span>
-                          </button>
+                          {renderDiscoveryCurrentLocationButton({
+                            compact: false,
+                            floating: true,
+                            label: isDiscoveryLocationShared ? 'My location' : 'Current location'
+                          })}
                           <button
                             type="button"
                             aria-label="Map information"
