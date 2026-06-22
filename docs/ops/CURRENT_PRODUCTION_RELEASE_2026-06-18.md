@@ -2,12 +2,12 @@
 status: reference
 authority_level: reference
 owner: operations
-last_reviewed: 2026-06-20
+last_reviewed: 2026-06-22
 applies_to: production_release, dgfy_company_access, dgfy_customer_account, storefront, pos, observability
 topic: current_production_release_state
 ---
 
-# Current Production Release State - 2026-06-20
+# Current Production Release State - 2026-06-22
 
 This document records the current production state using deploy evidence, live health output, and release-gate artifacts. Do not use source `HEAD` alone as live-production proof.
 
@@ -15,38 +15,38 @@ Source-only documentation or test-hardening commits may exist after the deployed
 
 ## Proof Snapshot
 
-Production proof refreshed on 2026-06-20 Asia/Manila from live VPS state:
+Production proof refreshed on 2026-06-22 Asia/Manila from live VPS state:
 
-- Production remote `HEAD`: `dfa0da7d8cc1e6cc485618371dc2bb40c3942609`
-- Production `.deploy-state/last_deployed_commit`: `dfa0da7d8cc1e6cc485618371dc2bb40c3942609`
-- Latest production deploy summary path: `/var/www/skupervisor/logs/deploy/deploy_20260620_134320.summary.txt`
-- Deploy summary `deployed_head`, `remote_head`, and `expected_commit`: `dfa0da7d8cc1e6cc485618371dc2bb40c3942609`
-- Live production `/api/v1/health` reports `services.observability.runtime_sha=dfa0da7d8cc1e6cc485618371dc2bb40c3942609` with source `deploy_state:last_deployed_commit`.
+- Production remote `HEAD`: `9c03af78bfe2847031cfa383896b9b92e08ef6f7`
+- Production `.deploy-state/last_deployed_commit`: `9c03af78bfe2847031cfa383896b9b92e08ef6f7`
+- Latest production deploy summary path: `/var/www/skupervisor/logs/deploy/deploy_20260622_090059.summary.txt`
+- Deploy summary `deployed_head` and `remote_head`: `9c03af78bfe2847031cfa383896b9b92e08ef6f7`
+- Deploy summary `expected_commit`: `none`, because the final manual SSH deploy intentionally omitted `--expect-commit` after PowerShell CRLF corrupted remote arguments in earlier attempts. Post-deploy proof below is the current runtime SHA authority for this deploy.
+- Live production `/api/v1/health` reports `services.observability.runtime_sha=9c03af78bfe2847031cfa383896b9b92e08ef6f7` with source `deploy_state:last_deployed_commit`.
 - Live production `/api/v1/health` reports database, Redis, runtime schema, schema indexes, billing telemetry, and observability as healthy. Tenant pool capacity is a warning at 20 active tenants out of 20 capacity.
 - Frontend asset parity status in the deploy summary: `pass`
 - `migrations_changed=0`
-- `total_changed_files=0` for the successful deploy rerun, because the target commit had already been fast-forwarded on the production server during the first guarded deploy attempt.
+- `total_changed_files=0` for the successful deploy rerun, because the target commit was already present on the production server before the final PM2/build reload.
 - `tenant_schema_sync_require_zero=1`; the summary records tenant schema sync report output and tenant index headroom report output with `tenant_index_headroom_strict=0`.
 
 ## Release Gate Evidence
 
 No-staging release verdict for the current deployed SHA:
 
-- Artifact: `.tmp/release-gates/dfa0da7d8cc1e6cc485618371dc2bb40c3942609/release_verdict.json`
+- Artifact: `.tmp/release-gates/9c03af78bfe2847031cfa383896b9b92e08ef6f7/release_verdict.json`
 - Verdict: `bypassed`
-- Failed gates: `1`
-- Failed gate: stale QA deploy-summary SHA parity before production promotion (`deployed_head=91ecbd32e7f6819683fad10151c06b7dc5b544de`; `target_sha=dfa0da7d8cc1e6cc485618371dc2bb40c3942609`)
-- Passing gates include deploy source contract, docs lint, architecture guardrails, merge-adoption required check, QA smoke, rollback drill, restore drill, and observability report evidence.
-- Emergency bypass reason: the pre-deploy QA deploy summary still pointed at the prior production SHA; source contract, docs, architecture, QA smoke, rollback, restore, focused DGFY registration/session tests, backend tenant-session transport test, SKUpervisor and Storefront production builds, compliance, and whitespace checks passed for the exact target SHA.
-- Post-deploy proof closes the runtime parity risk for this deployed SHA: production deploy summary, remote head, expected commit, live `/api/v1/health.services.observability.runtime_sha`, and frontend asset parity all match `dfa0da7d8cc1e6cc485618371dc2bb40c3942609`.
+- Failed gates: multiple QA evidence/configuration gates, including invalid or missing `QA_COMPANY_TOKEN`, rollback drill, restore drill, missing QA deploy summary, and stale pre-deploy live runtime SHA evidence.
+- Passing local/release gates for the exact target SHA included focused backend geo/business-hours tests, focused frontend MapPinPicker/onboarding/Settings/business-hours/service-worker tests, SKUpervisor and Storefront builds, docs lint, architecture guardrails, compliance, whitespace, route-level rendered QA on the real SKUpervisor runtime, deploy source contract, and merge-adoption required check.
+- Emergency bypass reason: the owner explicitly authorized emergency production deployment after the map/hours hotfix passed local gates and real route-level rendered QA, while the no-staging QA evidence inputs remained non-standardized and blocked the wrapper. This is current release-process debt and must not be treated as a clean no-bypass release.
+- Post-deploy proof closes the runtime inclusion risk for this deployed SHA: production deploy summary, remote head, `.deploy-state/last_deployed_commit`, live `/api/v1/health.services.observability.runtime_sha`, live PH-local reverse geocode, deployed source checks, deployed bundle checks, and frontend asset parity all match or contain the `9c03af78bfe2847031cfa383896b9b92e08ef6f7` hotfix.
 
 Observability evidence:
 
-- Artifact: `.tmp/release-gates/dfa0da7d8cc1e6cc485618371dc2bb40c3942609/observability_evidence.json`
+- Artifact: `.tmp/release-gates/9c03af78bfe2847031cfa383896b9b92e08ef6f7/observability_evidence.json`
 - Verdict: `pass` in report mode
 - `trace_context.round_trip`: pass
 - `health.runtime_sha.present`: pass
-- `health.runtime_sha.matches_target`: pass after the guarded production deploy; the pre-deploy no-staging report still recorded stale runtime proof and was covered by the documented emergency bypass metadata.
+- `health.runtime_sha.matches_target`: pass after the emergency production deploy; the pre-deploy no-staging report still recorded stale runtime proof and was covered by the documented emergency bypass metadata.
 - `qa.deploy.summary.sha_match.reviewed`: pass, because the mismatch was recorded with explicit emergency bypass metadata
 - Metrics reachability is warning-only because `METRICS_ENABLED` is not true for that gate run.
 
@@ -72,6 +72,8 @@ The current production runtime includes the branch and PR adoption chain from th
 - Business-registration provisioning hotfix: tenant provisioning now resolves the seeded tenant-local admin user id even when the production database driver does not expose `insertId` on raw insert metadata, so founder DGFY memberships are linked to the tenant user required by `/api/v1/dgfy/auth/tenant-session`.
 - DGFY session-token hardening: normal DGFY JWTs include a unique `jti`, preventing immediate logout-then-login flows from reissuing the same token string that was just blacklisted.
 - Delivery map blank-space hardening: `DeliveryPinMap` now uses a deterministic frame/root/canvas layout, `ResizeObserver`, `visualViewport` resize handling, stable mobile height clamps, and rendered QA selectors. The live Storefront bundle contains the map selectors, resize observer path, normal/expanded height clamps, side-tracker copy, and no longer contains the removed standalone tracking-list copy.
+- IMS storefront location map hotfix: onboarding and Settings use the shared `MapPinPicker` with explicit locked/adjust modes, `0,0` and out-of-Philippines merchant pins rejected, Iloilo City as camera-only default, same-origin `/openfreemap` MapLibre resources by default, SKUpervisor service-worker bypass for `/openfreemap`, browser geolocation accuracy messaging, and PH-local reverse geocode metadata through first-party `/api/v1/geo/reverse-geocode`.
+- Storefront business-hours hotfix: onboarding, Settings, public Storefront display, and order/service-hour gates normalize multi-interval weekly schedules, preserve legacy one-window schedules, validate overlapping intervals, and render split schedules compactly on desktop and mobile.
 
 ## Production Data Repair Notes
 
@@ -95,6 +97,8 @@ These items are still not closed by the current production proof:
 4. Tenant pool capacity is at the configured limit and should be handled as an operational capacity task, not as a failed deploy.
 5. Controlled production order UAT is still needed to prove live customer order status changes create account notifications and update the open tracking/dashboard surfaces in production.
 6. Tenant index headroom currently runs non-strict in deploy because the report has redundant-index warnings with `critical=0`; keep this as operational database cleanup rather than a release-blocking failure until an accepted-risk decision changes the gate.
+7. The June 22 map/hours hotfix deploy used emergency bypass because QA environment/evidence inputs were not standardized. Before the next routine release, fix the CRLF-safe deploy invocation path, linked-worktree push behavior, QA token/env-file contract, and rollback/restore drill setup so the no-staging gate can pass without emergency metadata.
+8. Production route-level authenticated rendered QA for onboarding and Settings was not rerun after deploy with production credentials. Local seeded route-level QA and deployed bundle/source/live API checks prove inclusion; a controlled production browser pass remains recommended before treating the UX as human-production-proven.
 
 ## References
 
