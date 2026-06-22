@@ -130,11 +130,12 @@ describe('Rate limiter behavior', () => {
 
     expect(sameEmail.body).toEqual(expect.objectContaining({
       success: false,
-      message: 'Too many email lookup attempts. For security reasons, please try again in 15 minutes.',
+      message: 'Too many email lookup attempts. For security reasons, please try again in 1 minute.',
       limitScope: 'auth_lookup',
       limitKeyType: 'ip_email',
       retryAfterSeconds: expect.any(Number),
     }));
+    expect(Number(sameEmail.headers['retry-after'])).toBeLessThanOrEqual(60);
 
     await request(app)
       .post('/api/v1/auth/lookup')

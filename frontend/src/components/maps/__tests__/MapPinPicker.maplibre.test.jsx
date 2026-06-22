@@ -216,7 +216,7 @@ describe('MapPinPicker MapLibre behavior', () => {
     }));
     expect(maplibreMocks.Map.mock.calls[0][0]).not.toHaveProperty('maxBounds');
     expect(maplibreMocks.Map.mock.calls[0][0].center).toEqual([122.5621, 10.7202]);
-    expect(maplibreMocks.Map.mock.calls[0][0].style).toMatch(/openfreemap\/styles\/positron|tiles\.openfreemap\.org\/styles\/positron/);
+    expect(maplibreMocks.Map.mock.calls[0][0].style).toBe('/openfreemap/styles/positron');
     expect(maplibreMocks.Map.mock.calls[0][0]).toHaveProperty('transformRequest');
     expect(maplibreMocks.maps[0].dragRotate.disable).toHaveBeenCalled();
     expect(maplibreMocks.maps[0].touchZoomRotate.disableRotation).toHaveBeenCalled();

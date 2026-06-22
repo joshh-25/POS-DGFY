@@ -12,7 +12,7 @@ const maxRequests = isDevelopment
   : Math.max(parsedGeneralMax || 100, minProdGeneralMax);
 const authWindowMs = parseInt(process.env.RATE_LIMIT_AUTH_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
 const authMaxRequests = parseInt(process.env.RATE_LIMIT_AUTH_MAX_REQUESTS) || (isDevelopment ? 50 : 5); // 50 in dev, 5 in prod
-const lookupWindowMs = parseInt(process.env.RATE_LIMIT_LOOKUP_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
+const lookupWindowMs = parseInt(process.env.RATE_LIMIT_LOOKUP_WINDOW_MS) || 5 * 60 * 1000; // 5 minutes default
 const lookupMaxRequests = parseInt(process.env.RATE_LIMIT_LOOKUP_MAX_REQUESTS) || (isDevelopment ? 50 : 5);
 const emailOtpWindowMs = parseInt(process.env.RATE_LIMIT_EMAIL_OTP_WINDOW_MS) || 10 * 60 * 1000; // 10 minutes
 const emailOtpMaxRequests = parseInt(process.env.RATE_LIMIT_EMAIL_OTP_MAX_REQUESTS) || (isDevelopment ? 12 : 3);
@@ -47,6 +47,13 @@ const createRateLimitError = (message, metadata = {}) => ({
   ...metadata,
   timestamp: new Date().toISOString(),
 });
+
+const formatWindowMinutes = (durationMs) => {
+  const minutes = Math.max(1, Math.ceil(Number(durationMs || 0) / (60 * 1000)));
+  return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+};
+
+const lookupRateLimitMessage = `Too many email lookup attempts. For security reasons, please try again in ${formatWindowMinutes(lookupWindowMs)}.`;
 
 const rateLimitCounters = {
   total: 0,
@@ -696,7 +703,7 @@ export const onboardingEventsLimiter = rateLimit({
 export const lookupLimiter = rateLimit({
   windowMs: lookupWindowMs,
   max: lookupMaxRequests,
-  message: createRateLimitError('Too many email lookup attempts. For security reasons, please try again in 15 minutes.'),
+  message: createRateLimitError(lookupRateLimitMessage),
   standardHeaders: true,
   legacyHeaders: false,
   validate: { trustProxy: false },
@@ -710,7 +717,7 @@ export const lookupLimiter = rateLimit({
     const response = buildRateLimitResponse(
       req,
       options,
-      'Too many email lookup attempts. For security reasons, please try again in 15 minutes.',
+      lookupRateLimitMessage,
       'auth_lookup',
       'ip_email'
     );
