@@ -87,8 +87,31 @@ Current behavior note:
    - `QA_ROLLBACK_DRILL_APPLY=0|1` (default simulation)
    - `QA_RESTORE_DRILL_APPLY=0|1` (default simulation)
 
+For the current production-host-as-QA evidence path, keep `.env.qa.local` and `.env.qa.secrets.local` complete before release work starts:
+1. `.env.qa.local` owns non-secret host inputs such as `QA_BASE_URL`, `QA_SSH_HOST`, `QA_SSH_PORT`, `QA_SSH_USER`, `QA_APP_DIR`, and any local `QA_DEPLOY_SUMMARY_FILE` override.
+2. `.env.qa.secrets.local` owns `QA_COMPANY_TOKEN`, `QA_AUTH_JWT` when used, and any credential-like values.
+3. `QA_COMPANY_TOKEN` must be a real active tenant token for the same environment named by `QA_BASE_URL`; placeholders such as `token-original` are release blockers, not warnings.
+4. Rollback and restore drill connectivity must pass before code freeze. Missing SSH port, stale host alias, or broken drill credentials are hard gate setup failures.
+5. If a release uses a clean linked worktree, the push step must push the release worktree `HEAD` to the deployment branch explicitly or prove `origin/master` already equals the release SHA. Do not rely on a different checked-out local `master` worktree.
+
 ## Windows OpenSSH Compatibility
 The QA rollback and restore drill scripts suppress warning-only SSH stderr where supported. Some Windows OpenSSH versions reject `WarnWeakCrypto=no`; the scripts now probe support before adding that option, then always keep `LogLevel=ERROR`. If a drill still fails, inspect the generated JSON artifact before treating warning text as a real rollback/restore failure.
+
+## Windows Line-Ending And Manual SSH Safety
+Windows shells must not pipe generated multi-line deploy scripts or here-strings directly into remote `bash` when the command includes SHA or branch arguments. CRLF can become part of arguments such as `--expect-commit <sha>\r` or `--branch master\r`, causing false expected-SHA mismatches or invalid refspecs.
+
+Preferred paths:
+1. Use Git Bash for the local wrapper:
+   ```powershell
+   & "C:\Program Files\Git\bin\bash.exe" scripts/deploy-remote.sh --yes
+   ```
+2. If a manual remote command is unavoidable, pass one remote command argument through SSH instead of piping stdin:
+   ```powershell
+   ssh.exe <host> "cd /var/www/skupervisor && git fetch origin master && EXPECTED_COMMIT=$(git rev-parse origin/master) && bash scripts/deploy.sh --branch master --expect-commit $EXPECTED_COMMIT"
+   ```
+3. If a script file must be transferred, write it with LF line endings and run `sed -i 's/\r$//' <script>` on the server before execution.
+
+Do not use emergency bypass solely to work around line-ending corruption. Fix the invocation path, rerun the gate, and keep `--expect-commit` enabled for routine releases.
 
 Recommended local secret source:
 1. Keep non-secret defaults in `.env.qa.local`.

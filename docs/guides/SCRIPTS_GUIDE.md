@@ -121,8 +121,10 @@ Notes:
 - Operates on local `master` branch by design.
 - Meant to run locally, not on the production server.
 - Requires working SSH auth to production. Prefer key-based auth over password prompts.
+- When using a clean linked release worktree while another worktree has local `master` checked out, confirm `origin/master` already equals the intended release SHA or push the release worktree explicitly with `git push origin HEAD:master` before running this script. Do not let a stale local `master` from another worktree define the deploy target.
 - Auto-loads `.env.qa.local` and `.env.qa.secrets.local` (if present) before preflight/gate execution.
 - QA env loading tolerates CRLF line endings, UTF-8 BOM, and values containing `=`; malformed env keys are skipped with a warning.
+- Manual Windows SSH fallbacks must not pipe PowerShell here-strings into remote `bash` when SHA or branch arguments are present. Use Git Bash or pass one remote command argument through `ssh.exe` so CRLF cannot corrupt `--expect-commit` or `--branch`.
 - Enforces no-staging release hard gate by default after push and before production SSH deploy (`DEPLOY_ENFORCE_NO_STAGING_GATE=1`).
 - Runs no-staging preflight before push (`npm run gate:release:no-staging:preflight`) when gate enforcement is enabled.
 - Auto-fetches QA deploy summary evidence (`npm run evidence:qa:deploy-summary`) if local summary file is missing before hard gate execution.
@@ -186,7 +188,9 @@ Behavior:
 - Fails fast before push/deploy when no-staging hard gate is enabled but required inputs are missing.
 - Validates:
   - `QA_BASE_URL`
+  - `QA_COMPANY_TOKEN` must be present and must not be a placeholder value
   - `QA_SSH_HOST`
+  - `QA_SSH_PORT` when the QA/prod evidence host does not use port `22`
   - `ssh` command availability
   - `powershell`/`pwsh` availability (used by QA gate wrapper scripts)
 - QA deploy summary source availability (local file or SSH-fetch path)
@@ -702,4 +706,5 @@ RELEASE_TARGET_SHA=<sha> npm run evidence:qa:deploy-summary
 
 Required environment:
 1. `QA_SSH_HOST`
-2. Optional: `QA_SSH_PORT`, `QA_SSH_USER`, `QA_DEPLOY_SUMMARY_REMOTE`, `QA_DEPLOY_SUMMARY_FILE`
+2. `QA_SSH_PORT` when the evidence host does not use port `22`
+3. Optional: `QA_SSH_USER`, `QA_DEPLOY_SUMMARY_REMOTE`, `QA_DEPLOY_SUMMARY_FILE`

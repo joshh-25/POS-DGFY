@@ -277,6 +277,8 @@ On Windows, use Git Bash explicitly:
 & "C:\Program Files\Git\bin\bash.exe" scripts/deploy-remote.sh --yes
 ```
 
+Do not pipe a PowerShell here-string or generated multi-line script into remote `bash` for manual deploy recovery when SHA or branch arguments are present. CRLF can become part of `--expect-commit` or `--branch` and create false SHA mismatches or invalid refspecs. If the wrapper cannot be used, pass one remote command argument through `ssh.exe` and compute the expected commit on the server after `git fetch`.
+
 The wrapper:
 
 1. Refuses dirty local worktrees.
@@ -351,10 +353,14 @@ Stop and ask the owner before proceeding when:
 1. `qa.deploy.summary.sha_match` fails.
 2. The local or server worktree is dirty.
 3. The deploy target SHA differs from `origin/master`.
-4. The SSH tunnel works but MySQL login fails.
-5. PM2 shows a repeated restart loop.
-6. `/api/v1/health` is healthy but runtime SHA is missing or mismatched.
-7. The deploy requires an emergency bypass.
+4. A linked release worktree is being used and local `master` in another worktree does not match the intended release SHA.
+5. `QA_COMPANY_TOKEN` is missing, a placeholder, or belongs to a different environment than `QA_BASE_URL`.
+6. QA rollback or restore drill setup fails.
+7. A manual SSH deploy shows a visually correct SHA/branch but fails due to likely CRLF argument corruption.
+8. The SSH tunnel works but MySQL login fails.
+9. PM2 shows a repeated restart loop.
+10. `/api/v1/health` is healthy but runtime SHA is missing or mismatched.
+11. The deploy requires an emergency bypass.
 
 Emergency bypass requires explicit owner approval and these values:
 
