@@ -31,6 +31,15 @@ function addCheck(checks, name, ok, detail) {
   console.log(`[${status}] ${name} :: ${detail}`);
 }
 
+function isQaPromotionEnabled(value) {
+  const normalized = String(value || 'auto').trim().toLowerCase();
+  return normalized !== 'off' && normalized !== '0';
+}
+
+function normalizeRemotePath(value) {
+  return String(value || '').trim().replace(/\/+$/, '');
+}
+
 function isPlaceholderQaToken(value) {
   const normalized = String(value || '').trim().toLowerCase();
   if (!normalized) {
@@ -66,6 +75,11 @@ function runPreflight(env = process.env, options = {}) {
   const qaCompanyToken = (env.QA_COMPANY_TOKEN || '').trim();
   const qaSshHost = (env.QA_SSH_HOST || '').trim();
   const qaSshPort = (env.QA_SSH_PORT || '').trim();
+  const qaAppDir = (env.QA_APP_DIR || '/var/www/skupervisor').trim();
+  const qaPromotionMode = (env.DEPLOY_PROMOTE_QA_BEFORE_PROD || 'auto').trim();
+  const prodRemoteHost = (env.DEPLOY_PROD_REMOTE_HOST || '').trim();
+  const prodRemoteDir = (env.DEPLOY_PROD_REMOTE_DIR || '').trim();
+  const qaPromotionEnabled = isQaPromotionEnabled(qaPromotionMode);
   const qaSummaryFile =
     (env.QA_DEPLOY_SUMMARY_FILE || '').trim() ||
     path.join('.tmp', 'release-gates', targetSha, 'qa_deploy_summary.txt');
@@ -73,6 +87,12 @@ function runPreflight(env = process.env, options = {}) {
 
   const checks = [];
   addCheck(checks, 'release.target_sha', Boolean(targetSha), `target_sha=${targetSha || '<missing>'}`);
+  addCheck(
+    checks,
+    'qa.promotion.mode',
+    true,
+    `DEPLOY_PROMOTE_QA_BEFORE_PROD=${qaPromotionMode || 'auto'}`
+  );
   addCheck(
     checks,
     'qa.base_url.configured',
@@ -99,6 +119,25 @@ function runPreflight(env = process.env, options = {}) {
       'qa.ssh_port.valid',
       /^[0-9]+$/.test(qaSshPort),
       /^[0-9]+$/.test(qaSshPort) ? `QA_SSH_PORT=${qaSshPort}` : `Invalid QA_SSH_PORT=${qaSshPort}`
+    );
+  }
+  if (qaPromotionEnabled && prodRemoteHost.length > 0 && prodRemoteDir.length > 0) {
+    const sameHost = qaSshHost.toLowerCase() === prodRemoteHost.toLowerCase();
+    const sameDir = normalizeRemotePath(qaAppDir) === normalizeRemotePath(prodRemoteDir);
+    addCheck(
+      checks,
+      'qa.promotion.target_distinct_from_production',
+      !(sameHost && sameDir),
+      sameHost && sameDir
+        ? 'Configured QA target is production; set a distinct QA host/app dir or DEPLOY_PROMOTE_QA_BEFORE_PROD=off'
+        : `QA target ${qaSshHost || '<missing>'}:${normalizeRemotePath(qaAppDir)} is distinct from production`
+    );
+  } else if (qaPromotionEnabled) {
+    addCheck(
+      checks,
+      'qa.promotion.target_distinct_from_production',
+      true,
+      'production target not supplied to preflight; deploy wrapper supplies DEPLOY_PROD_REMOTE_HOST and DEPLOY_PROD_REMOTE_DIR'
     );
   }
 
@@ -155,6 +194,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  isQaPromotionEnabled,
   isPlaceholderQaToken,
   runPreflight,
 };

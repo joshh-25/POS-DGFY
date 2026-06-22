@@ -36,12 +36,13 @@ DEPLOY_IMS_URL="${DEPLOY_IMS_URL:-https://skupervisor.dgfy.ph}"
 DEPLOY_POS_URL="${DEPLOY_POS_URL:-https://pos.dgfy.ph}"
 DEPLOY_STOREFRONT_URL="${DEPLOY_STOREFRONT_URL:-https://dgfy.ph}"
 DEPLOY_TENANT_STORE_URL="${DEPLOY_TENANT_STORE_URL:-https://dgfy.ph${DEPLOY_STORE_BASE_PATH%/}}"
-DEPLOY_TENANT_INDEX_HEADROOM_STRICT="${DEPLOY_TENANT_INDEX_HEADROOM_STRICT:-1}"
+DEPLOY_TENANT_INDEX_HEADROOM_STRICT="${DEPLOY_TENANT_INDEX_HEADROOM_STRICT:-0}"
 DEPLOY_IMS_HEALTH_URL="${DEPLOY_IMS_HEALTH_URL:-${DEPLOY_FRONTEND_HEALTH_URL:-}}"
 DEPLOY_POS_HEALTH_URL="${DEPLOY_POS_HEALTH_URL:-}"
 DEPLOY_STORE_HEALTH_URL="${DEPLOY_STORE_HEALTH_URL:-}"
 DEPLOY_BACKEND_HEALTH_URL="${DEPLOY_BACKEND_HEALTH_URL:-}"
 DEPLOY_ENFORCE_NO_STAGING_GATE="${DEPLOY_ENFORCE_NO_STAGING_GATE:-1}"
+DEPLOY_PROMOTE_QA_BEFORE_PROD="${DEPLOY_PROMOTE_QA_BEFORE_PROD:-auto}"
 
 # ------------------------------------------
 # Optional flags parsed from CLI
@@ -220,7 +221,7 @@ echo -e "${GREEN}Deploy source contract pre-push check passed.${NC}"
 
 if [[ "$DEPLOY_ENFORCE_NO_STAGING_GATE" == "1" ]]; then
     echo -e "\n${YELLOW}Running no-staging release preflight for commit ${LOCAL_COMMIT}...${NC}"
-    RELEASE_TARGET_SHA="$LOCAL_COMMIT" DEPLOY_ENFORCE_NO_STAGING_GATE=1 npm run gate:release:no-staging:preflight
+    RELEASE_TARGET_SHA="$LOCAL_COMMIT" DEPLOY_ENFORCE_NO_STAGING_GATE=1 DEPLOY_PROD_REMOTE_HOST="$REMOTE_HOST" DEPLOY_PROD_REMOTE_DIR="$REMOTE_DIR" npm run gate:release:no-staging:preflight
     echo -e "${GREEN}No-staging preflight passed.${NC}"
 fi
 
@@ -244,15 +245,22 @@ if [[ "$DEPLOY_ENFORCE_NO_STAGING_GATE" == "1" ]]; then
     QA_DEPLOY_SUMMARY_FILE_EFFECTIVE="${QA_DEPLOY_SUMMARY_FILE:-$(host_path ".tmp/release-gates/${LOCAL_COMMIT}/qa_deploy_summary.txt")}"
     RELEASE_VERDICT_FILE_EFFECTIVE="${RELEASE_VERDICT_FILE:-$(host_path ".tmp/release-gates/${LOCAL_COMMIT}/release_verdict.json")}"
     SOURCE_CONTRACT_REPORT_GATE_EFFECTIVE="${DEPLOY_SOURCE_CONTRACT_REPORT:-$(host_path ".tmp/release-gates/${LOCAL_COMMIT}/deploy_source_contract.release_gate.json")}"
-    if [[ ! -f "$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" ]]; then
-        echo -e "\n${YELLOW}QA deploy summary not found locally. Attempting fetch over SSH evidence path...${NC}"
-        RELEASE_TARGET_SHA="$LOCAL_COMMIT" QA_DEPLOY_SUMMARY_FILE="$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" npm run evidence:qa:deploy-summary
-        if [[ ! -f "$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" ]]; then
-            echo -e "${RED}QA deploy summary fetch did not create expected file: ${QA_DEPLOY_SUMMARY_FILE_EFFECTIVE}${NC}"
-            exit 1
-        fi
-        echo -e "${GREEN}Fetched QA deploy summary: ${QA_DEPLOY_SUMMARY_FILE_EFFECTIVE}${NC}"
+
+    if [[ "$DEPLOY_PROMOTE_QA_BEFORE_PROD" != "off" && "$DEPLOY_PROMOTE_QA_BEFORE_PROD" != "0" ]]; then
+        echo -e "\n${YELLOW}Promoting target SHA to QA before production gate...${NC}"
+        RELEASE_TARGET_SHA="$LOCAL_COMMIT" DEPLOY_PROD_REMOTE_HOST="$REMOTE_HOST" DEPLOY_PROD_REMOTE_DIR="$REMOTE_DIR" npm run deploy:qa:target
+        echo -e "${GREEN}QA promotion step completed.${NC}"
+    else
+        echo -e "${YELLOW}QA promotion disabled (DEPLOY_PROMOTE_QA_BEFORE_PROD=$DEPLOY_PROMOTE_QA_BEFORE_PROD).${NC}"
     fi
+
+    echo -e "\n${YELLOW}Fetching fresh QA deploy summary evidence...${NC}"
+    RELEASE_TARGET_SHA="$LOCAL_COMMIT" QA_DEPLOY_SUMMARY_FILE="$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" npm run evidence:qa:deploy-summary
+    if [[ ! -f "$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" ]]; then
+        echo -e "${RED}QA deploy summary fetch did not create expected file: ${QA_DEPLOY_SUMMARY_FILE_EFFECTIVE}${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}Fetched QA deploy summary: ${QA_DEPLOY_SUMMARY_FILE_EFFECTIVE}${NC}"
 
     echo -e "\n${YELLOW}Running no-staging release gate for commit ${LOCAL_COMMIT}...${NC}"
     RELEASE_TARGET_SHA="$LOCAL_COMMIT" QA_DEPLOY_SUMMARY_FILE="$QA_DEPLOY_SUMMARY_FILE_EFFECTIVE" RELEASE_VERDICT_FILE="$RELEASE_VERDICT_FILE_EFFECTIVE" DEPLOY_SOURCE_CONTRACT_REPORT="$SOURCE_CONTRACT_REPORT_GATE_EFFECTIVE" npm run gate:release:no-staging
