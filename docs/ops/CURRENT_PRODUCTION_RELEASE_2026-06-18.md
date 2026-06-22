@@ -17,11 +17,11 @@ Source-only documentation or test-hardening commits may exist after the deployed
 
 Production proof refreshed on 2026-06-22 Asia/Manila from live VPS state:
 
-- Production remote `HEAD`: `32c0c5ebd036ab1ffa928647b7cb2ebd65361c52`
-- Production `.deploy-state/last_deployed_commit`: `32c0c5ebd036ab1ffa928647b7cb2ebd65361c52`
-- Latest production deploy summary path: `/var/www/skupervisor/logs/deploy/deploy_20260622_100750.summary.txt`
-- Deploy summary `deployed_head`, `remote_head`, and `expected_commit`: `32c0c5ebd036ab1ffa928647b7cb2ebd65361c52`
-- Live production `/api/v1/health` reports `services.observability.runtime_sha=32c0c5ebd036ab1ffa928647b7cb2ebd65361c52` with source `deploy_state:last_deployed_commit`.
+- Production remote `HEAD`: `744aa83e652a2847e362b12a8c55e0b18344cc5c`
+- Production `.deploy-state/last_deployed_commit`: `744aa83e652a2847e362b12a8c55e0b18344cc5c`
+- Latest production deploy summary path: `/var/www/skupervisor/logs/deploy/deploy_20260622_095434.summary.txt`
+- Deploy summary `deployed_head`, `remote_head`, and `expected_commit`: `744aa83e652a2847e362b12a8c55e0b18344cc5c`
+- Live production `/api/v1/health` reports `services.observability.runtime_sha=744aa83e652a2847e362b12a8c55e0b18344cc5c` with source `deploy_state:last_deployed_commit`.
 - Live production `/api/v1/health` reports database, Redis, runtime schema, schema indexes, billing telemetry, and observability as healthy. Tenant pool capacity is a warning at 20 active tenants out of 20 capacity.
 - Frontend asset parity status in the deploy summary: `pass`
 - `migrations_changed=0`
@@ -32,25 +32,25 @@ Production proof refreshed on 2026-06-22 Asia/Manila from live VPS state:
 
 No-staging release verdict for the current deployed SHA:
 
-- Artifact: `.tmp/release-gates/32c0c5ebd036ab1ffa928647b7cb2ebd65361c52/release_verdict.json`
+- Artifact: `.tmp/release-gates/744aa83e652a2847e362b12a8c55e0b18344cc5c/release_verdict.json`
 - Verdict: `bypassed`
-- Passing local/release gates for the exact target SHA included deploy-contract tests, Git Bash syntax checks for the deploy scripts, docs lint, architecture guardrails, compliance, whitespace checks, hardened no-staging preflight with real QA env files, QA smoke, rollback drill, restore drill, and source-contract checks.
-- Emergency bypass reason: the owner explicitly authorized emergency production deployment after the hardening gates passed because the only release blocker was pre-deploy SHA parity evidence for a target SHA that was not live yet. This is an auditable no-staging bypass for pre-deploy parity only; post-deploy parity is clean.
-- Post-deploy proof closes the runtime inclusion risk for this deployed SHA: production deploy summary, remote head, `.deploy-state/last_deployed_commit`, live `/api/v1/health.services.observability.runtime_sha`, live PH-local reverse geocode, deployed source checks, deployed bundle checks, frontend asset parity, and matching `expected_commit` all match or contain the `32c0c5ebd036ab1ffa928647b7cb2ebd65361c52` release.
+- Passing local/release gates for the exact target SHA included focused Storefront map layer, DOM, marker preview, marker CSS, and `StoresMap` source-contract tests, Storefront production build, docs lint, architecture guardrails, whitespace checks, deploy source-contract checks, rollback drill, restore drill, observability evidence, and merge-adoption checks.
+- Emergency bypass reason: the owner explicitly authorized emergency production deployment after the Storefront map hardening gates passed because the no-staging verdict still had stale QA deploy-summary SHA evidence and the final QA smoke hit a login rate-limit after an earlier same-target QA smoke pass. This is an auditable no-staging bypass; post-deploy parity is clean.
+- Post-deploy proof closes the runtime inclusion risk for this deployed SHA: production deploy summary, remote head, `.deploy-state/last_deployed_commit`, live `/api/v1/health.services.observability.runtime_sha`, `https://dgfy.ph/map-dgfy` route smoke, Storefront discovery reconciliation `healthy` with `failed=0`, deployed source checks, deployed bundle checks, frontend asset parity, and matching `expected_commit` all match or contain the `744aa83e652a2847e362b12a8c55e0b18344cc5c` release.
 
 Observability evidence:
 
-- Artifact: `.tmp/release-gates/32c0c5ebd036ab1ffa928647b7cb2ebd65361c52/observability_evidence.json`
+- Artifact: `.tmp/release-gates/744aa83e652a2847e362b12a8c55e0b18344cc5c/observability_evidence.json`
 - Verdict: `pass` in report mode
 - `trace_context.round_trip`: pass
 - `health.runtime_sha.present`: pass
 - `health.runtime_sha.matches_target`: pass after the emergency production deploy; the pre-deploy no-staging report still recorded stale runtime proof and was covered by the documented emergency bypass metadata.
-- `qa.deploy.summary.sha_match.reviewed`: pass, because the pre-deploy mismatch was recorded with explicit emergency bypass metadata and the post-deploy summary now matches the target SHA
+- `qa.deploy.summary.sha_match.reviewed`: pass, because the stale QA deploy-summary mismatch was recorded with explicit emergency bypass metadata and the post-deploy summary now matches the target SHA.
 - Metrics reachability is warning-only because `METRICS_ENABLED` is not true for that gate run.
 
 ## Production-Live Scope
 
-The current production runtime includes the branch and PR adoption chain from the earlier proven production SHA through `b8132a19`:
+The current production runtime includes the branch and PR adoption chain from the earlier proven production SHA through `744aa83e`:
 
 - DGFY company access hardening: explicit DGFY membership model, DGFY-only invitations, company switching, ownership transfer hardening, legacy-link grace behavior, and DGFY POS unlock.
 - DGFY customer and Storefront flow: handoff-token return flow, guest/account checkout chooser, saved address behavior, tracking drawer, updated account dashboard, no customer-visible `company_token`, and no silent same-email guest adoption into signed-in account history.
@@ -72,6 +72,7 @@ The current production runtime includes the branch and PR adoption chain from th
 - Delivery map blank-space hardening: `DeliveryPinMap` now uses a deterministic frame/root/canvas layout, `ResizeObserver`, `visualViewport` resize handling, stable mobile height clamps, and rendered QA selectors. The live Storefront bundle contains the map selectors, resize observer path, normal/expanded height clamps, side-tracker copy, and no longer contains the removed standalone tracking-list copy.
 - IMS storefront location map hotfix: onboarding and Settings use the shared `MapPinPicker` with explicit locked/adjust modes, `0,0` and out-of-Philippines merchant pins rejected, Iloilo City as camera-only default, same-origin `/openfreemap` MapLibre resources by default, SKUpervisor service-worker bypass for `/openfreemap`, browser geolocation accuracy messaging, and PH-local reverse geocode metadata through first-party `/api/v1/geo/reverse-geocode`.
 - Storefront business-hours hotfix: onboarding, Settings, public Storefront display, and order/service-hour gates normalize multi-interval weekly schedules, preserve legacy one-window schedules, validate overlapping intervals, and render split schedules compactly on desktop and mobile.
+- Storefront discovery map pin stability restore: discovery pins, count clusters, halos, and customer location render through MapLibre GeoJSON sources and style layers; DOM `Popup` remains only for normal store preview cards. Count-cluster clicks scope the right-side Discover Nearby/View Results panel instead of opening an on-map list widget. Fixed marker CSS keeps the `38px` by `48px` bottom-center anchor box and filter/shadow-only glow so zooming cannot move pins away from stored IMS coordinates.
 
 ## Production Data Repair Notes
 
@@ -95,8 +96,9 @@ These items are still not closed by the current production proof:
 4. Tenant pool capacity is at the configured limit and should be handled as an operational capacity task, not as a failed deploy.
 5. Controlled production order UAT is still needed to prove live customer order status changes create account notifications and update the open tracking/dashboard surfaces in production.
 6. Tenant index headroom currently runs non-strict in deploy because the report has redundant-index warnings with `critical=0`; keep this as operational database cleanup rather than a release-blocking failure until an accepted-risk decision changes the gate.
-7. The June 22 map/hours/tooling deploy still used emergency bypass for pre-deploy SHA parity because the target SHA was not live yet. The same release hardened CRLF-safe deploy invocation, linked-worktree pushes, QA token/env-file validation, and deploy-contract tests; the next routine release should run the no-staging gate without bypass unless a new unrelated blocker appears.
+7. The June 22 Storefront map restore deploy still used emergency bypass because QA deploy-summary SHA evidence was stale and the final QA smoke hit a login rate-limit after an earlier same-target QA smoke pass. The next routine release should run the no-staging gate without bypass unless a new unrelated blocker appears.
 8. Production route-level authenticated rendered QA for onboarding and Settings was not rerun after deploy with production credentials. Local seeded route-level QA and deployed bundle/source/live API checks prove inclusion; a controlled production browser pass remains recommended before treating the UX as human-production-proven.
+9. Storefront map source/layer tests, local rendered `/map-dgfy` desktop/mobile smoke, production route smoke, and Storefront discovery reconciliation prove inclusion of the pin-stability restore. Browser QA against production-seeded real storefront pins remains useful before calling zoom/hover spacing human-production-proven.
 
 ## References
 
