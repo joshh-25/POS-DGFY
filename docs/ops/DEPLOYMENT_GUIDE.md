@@ -169,11 +169,13 @@ bash scripts/deploy-remote.sh
 Behavior:
 1. Pushes target commit.
 2. Runs no-staging preflight (`npm run gate:release:no-staging:preflight`) before push when `DEPLOY_ENFORCE_NO_STAGING_GATE=1`.
-3. Auto-fetches QA deploy summary evidence (`npm run evidence:qa:deploy-summary`) when local summary file is missing.
-4. Runs no-staging hard gate (`npm run gate:release:no-staging`) for pushed SHA.
-5. Runs the merge-adoption proof gate when `MERGE_ADOPTION_MANIFEST` is set.
-6. Proceeds to production SSH deploy only when gate verdict is pass/bypassed and QA deploy evidence matches the exact target SHA.
-7. Auto-loads `.env.qa.local` and `.env.qa.secrets.local` if present.
+3. Promotes the pushed target SHA to QA first when `DEPLOY_PROMOTE_QA_BEFORE_PROD` is not `off` or `0`.
+4. Refuses QA promotion when the configured QA SSH host and app dir match the production SSH host and app dir.
+5. Fetches fresh QA deploy summary evidence (`npm run evidence:qa:deploy-summary`) every run before the gate.
+6. Runs no-staging hard gate (`npm run gate:release:no-staging`) for pushed SHA.
+7. Runs the merge-adoption proof gate when `MERGE_ADOPTION_MANIFEST` is set.
+8. Proceeds to production SSH deploy only when gate verdict is pass/bypassed and QA deploy evidence matches the exact target SHA.
+9. Auto-loads `.env.qa.local` and `.env.qa.secrets.local` if present.
 
 No-staging preflight checks:
 1. `QA_BASE_URL` configured (for QA smoke contract).
@@ -182,6 +184,13 @@ No-staging preflight checks:
 4. Local runtime has `ssh` and `powershell`/`pwsh`.
 5. QA deploy summary can be sourced (existing local file or SSH fetch path).
 6. Rollback and restore drill SSH connectivity is valid for the configured `QA_SSH_HOST`, `QA_SSH_PORT`, `QA_SSH_USER`, and `QA_APP_DIR`.
+7. QA promotion mode is reported. When production host/app-dir values are supplied, enabled QA promotion fails if QA points at production.
+
+QA promotion controls:
+1. `DEPLOY_PROMOTE_QA_BEFORE_PROD=auto` is the default wrapper mode.
+2. `DEPLOY_PROMOTE_QA_BEFORE_PROD=off` or `0` disables automatic QA promotion and only fetches existing QA evidence.
+3. `QA_DEPLOY_DRY_RUN=1 npm run deploy:qa:target` validates configuration and remote command construction without SSH mutation.
+4. A production-as-QA evidence configuration cannot create pre-production parity. Configure a distinct QA checkout or disable promotion intentionally.
 
 ### QA Gate Input Hygiene (Recommended)
 Before running `gate:release:no-staging` or `deploy-remote.sh`:
@@ -198,6 +207,7 @@ powershell -ExecutionPolicy Bypass -File scripts/fetch-qa-deploy-summary.ps1
 Exact QA parity requirement:
 1. `qa_deploy_summary.txt` must show `deployed_head=<RELEASE_TARGET_SHA>`.
 2. A stale QA summary is a hard release failure; refresh QA to the target SHA, fetch a fresh summary, and rerun the gate.
+3. Emergency bypass is incident-only and must not be used as the routine stale-QA path.
 
 Linked worktree warning:
 1. `scripts/deploy-remote.sh` historically pushes `master`. When using a clean linked release worktree while another worktree has local `master` checked out, prove `origin/master` already equals the release SHA or push the release worktree explicitly with `git push origin HEAD:master` before running the wrapper.
@@ -294,8 +304,10 @@ Storefront map/search release proof:
 Tenant schema/index risk controls:
 - `DEPLOY_TENANT_SCHEMA_SYNC_MODE=report|alter` (default: `report`)
 - `DEPLOY_TENANT_SYNC_REQUIRE_ZERO=0|1` (default: `1`; set `0` only for controlled exception windows)
-- `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0|1` (default: `1`; set `0` only for controlled exception windows)
-  - `scripts/deploy-remote.sh` forwards this override to the production-side `scripts/deploy.sh`; the June 16, 2026 DGFY company-switching deploy used `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0` because redundant-index warnings remained a tracked cleanup concern while tenant schema sync, health, PM2 reload, public endpoints, and asset parity passed.
+- `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0|1`
+  - `scripts/deploy.sh` defaults to strict mode when run directly on the server.
+  - `scripts/deploy-remote.sh` defaults to `0` and forwards report mode to production until redundant index cleanup is complete. Set `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=1` for a strict wrapper release.
+  - The June 16, 2026 DGFY company-switching deploy used `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0` because redundant-index warnings remained a tracked cleanup concern while tenant schema sync, health, PM2 reload, public endpoints, and asset parity passed.
 
 Deterministic install retry controls:
 - `DEPLOY_NPM_CI_RETRIES=<n>` (default: `3`)

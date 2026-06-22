@@ -29,6 +29,18 @@ powershell -ExecutionPolicy Bypass -Command ". .\scripts\load-qa-env.ps1 -EnvFil
 DEPLOY_ENFORCE_NO_STAGING_GATE=1
 ```
 
+Routine releases should create QA parity before this hard gate. The wrapper can promote the pushed target SHA to QA before production only when QA is configured as a distinct host or app directory:
+```bash
+DEPLOY_PROMOTE_QA_BEFORE_PROD=auto
+```
+
+If `.env.qa.local` points at the production host and production app directory, automatic QA promotion fails before the production gate. Set a real QA host/app dir, or explicitly disable the promotion step with:
+```bash
+DEPLOY_PROMOTE_QA_BEFORE_PROD=off
+```
+
+Production-as-QA evidence mode can fetch and validate existing deploy-summary evidence, but it cannot create pre-production parity and must not mutate production as a "QA" step.
+
 Before push, `scripts/deploy-remote.sh` now runs a prerequisite preflight:
 ```bash
 npm run gate:release:no-staging:preflight
@@ -67,8 +79,9 @@ Required files:
 Current behavior note:
 1. `qa_deploy_summary.txt` must prove that QA deployed the exact `RELEASE_TARGET_SHA`.
 2. A missing or mismatched `deployed_head` is a hard gate failure.
-3. Emergency override remains available only through the explicit bypass metadata contract below.
-4. `npm run gate:release:observability` records traceability evidence and stale-QA review context. It starts in report mode and should be switched to enforce mode after one successful production release includes the artifact.
+3. `scripts/deploy-remote.sh` fetches fresh QA deploy-summary evidence every run before invoking the hard gate.
+4. Emergency override remains available only through the explicit bypass metadata contract below and remains incident-only.
+5. `npm run gate:release:observability` records traceability evidence and stale-QA review context. It starts in report mode and should be switched to enforce mode after one successful production release includes the artifact.
 
 ## QA Configuration Inputs
 1. QA smoke:
@@ -93,6 +106,16 @@ For the current production-host-as-QA evidence path, keep `.env.qa.local` and `.
 3. `QA_COMPANY_TOKEN` must be a real active tenant token for the same environment named by `QA_BASE_URL`; placeholders such as `token-original` are release blockers, not warnings.
 4. Rollback and restore drill connectivity must pass before code freeze. Missing SSH port, stale host alias, or broken drill credentials are hard gate setup failures.
 5. If a release uses a clean linked worktree, the push step must push the release worktree `HEAD` to the deployment branch explicitly or prove `origin/master` already equals the release SHA. Do not rely on a different checked-out local `master` worktree.
+
+QA promotion inputs:
+1. `DEPLOY_PROMOTE_QA_BEFORE_PROD=auto|off|0` controls whether `scripts/deploy-remote.sh` tries to deploy QA before the production gate. Default: `auto`.
+2. `QA_DEPLOY_BRANCH` selects the QA branch to fetch/deploy. Default: `master`.
+3. `QA_APP_DIR` must identify the QA checkout. If it equals the production app dir on the same host, promotion refuses to run.
+4. `QA_DEPLOY_DRY_RUN=1 npm run deploy:qa:target` validates the target and remote command without SSH mutation.
+
+Tenant index headroom:
+1. `scripts/deploy-remote.sh` forwards `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0` by default while redundant index cleanup remains an accepted report-mode deploy concern.
+2. Set `DEPLOY_TENANT_INDEX_HEADROOM_STRICT=1` to restore strict headroom enforcement for a release.
 
 ## Windows OpenSSH Compatibility
 The QA rollback and restore drill scripts suppress warning-only SSH stderr where supported. Some Windows OpenSSH versions reject `WarnWeakCrypto=no`; the scripts now probe support before adding that option, then always keep `LogLevel=ERROR`. If a drill still fails, inspect the generated JSON artifact before treating warning text as a real rollback/restore failure.

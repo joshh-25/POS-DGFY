@@ -1,7 +1,7 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-06-08
+last_reviewed: 2026-06-22
 related_adr: docs/architecture/adr/0027-paymongo-commerce-qrph-platform-split-settlement.md
 declaration_id: 2026-05-19-paymongo-qrph-commerce-payments
 classification: regulatory
@@ -65,6 +65,8 @@ This declaration covers adding PayMongo QR Ph Storefront commerce payment sessio
 22. Non-proportional PayMongo split-refund source values must equal the requested refund amount before the app calls the provider API.
 23. Company and marketplace terms must disclose DGFY's platform role, the customer-paid 1% platform fee, DGFY's no-custody boundary, and tenant/company responsibility for PayMongo/provider fees.
 24. Automated child-account creation must not enable QR Ph/split/charge readiness without PayMongo activation and wallet evidence.
+25. API-generated tenant child merchant IDs must not be treated as the DGFY parent/platform merchant ID.
+26. Live customer QR Ph split checkout must remain blocked until PayMongo confirms the parent merchant ID and live `split_payment.transfer_to` plus fixed `split_payment.recipients[].merchant_id` capability; this confirmation is represented by `PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED=true` or `PAYMONGO_PLATFORM_SPLIT_CONFIRMED=true`.
 
 ## Verification Evidence
 
@@ -81,6 +83,7 @@ This declaration covers adding PayMongo QR Ph Storefront commerce payment sessio
 - Public ngrok webhook route probe returns `401 Invalid PayMongo webhook signature` for unsigned payloads, proving reachability without accepting forged events.
 - Signed fake-session webhook probe returns `200` with `handled=false` and `reason=session_not_found`, proving the configured sandbox webhook secret is accepted without creating orders.
 - This implementation pass does not include fresh production endpoint or PayMongo dashboard proof; production deployment and signed/unsigned live webhook probes are still required before live canary testing.
+- PayMongo support has not yet confirmed self-service platform onboarding, the DGFY parent merchant ID, or live marketplace split-payment capability; production customer use remains externally blocked until that evidence exists.
 - `npm --prefix backend test -- --runTestsByPath tests/commercePaymentRefunds.usecases.test.js tests/commercePaymentValidator.test.js tests/commercePaymentSettlement.usecases.test.js tests/commercePaymentReadiness.usecases.test.js tests/paymongoWebhookSignature.test.js`
 
 ## No Architecture Exception Required

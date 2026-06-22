@@ -62,7 +62,8 @@ Evidence semantics:
 1. Service-level tests prove PayMongo webhook verification rejects missing secrets, missing signatures, invalid signatures, stale timestamps, and mode-mismatched signatures.
 2. Use-case tests prove invalid PayMongo signatures are rejected before webhook-log creation or payment/subscription mutation.
 3. Replay tests prove already processed PayMongo events return an idempotent response without repeating payment mutation.
-4. These gates do not prove live PayMongo delivery, provider dashboard configuration, child-account webhook registration, or settlement correctness.
+4. These gates do not prove live PayMongo delivery, provider dashboard configuration, child-account webhook registration, parent/platform merchant identity, split-payment marketplace capability, or settlement correctness.
+5. Live QR Ph split checkout must stay disabled unless PayMongo externally confirms the DGFY parent merchant ID plus live split-payment capability and production sets `PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED=true` or `PAYMONGO_PLATFORM_SPLIT_CONFIRMED=true`.
 
 ## Production Env Security Gates
 

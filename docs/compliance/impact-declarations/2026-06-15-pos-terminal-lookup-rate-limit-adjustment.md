@@ -30,7 +30,7 @@ The endpoint remains unauthenticated and still requires rate limiting because it
 
 1. Standalone POS terminal unlock still resolves tenant context with `/auth/lookup` before `/auth/login`.
 2. The lookup limiter now scopes repeated attempts by client IP plus normalized email, so one cashier email does not consume the shared network bucket for another cashier email.
-3. Lookup limits can be tuned with `RATE_LIMIT_LOOKUP_WINDOW_MS` and `RATE_LIMIT_LOOKUP_MAX_REQUESTS`.
+3. Lookup limits default to a 5-minute retry window and can be tuned with `RATE_LIMIT_LOOKUP_WINDOW_MS` and `RATE_LIMIT_LOOKUP_MAX_REQUESTS`.
 4. POS unlock `429` messages can include retry timing from `retryAfterSeconds` or `Retry-After`.
 5. POS must still fail closed on lookup `429` and must not fall back to stale browser tenant context.
 

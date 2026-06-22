@@ -17,11 +17,11 @@ Source-only documentation or test-hardening commits may exist after the deployed
 
 Production proof refreshed on 2026-06-22 Asia/Manila from live VPS state:
 
-- Production remote `HEAD`: `744aa83e652a2847e362b12a8c55e0b18344cc5c`
-- Production `.deploy-state/last_deployed_commit`: `744aa83e652a2847e362b12a8c55e0b18344cc5c`
-- Latest production deploy summary path: `/var/www/skupervisor/logs/deploy/deploy_20260622_095434.summary.txt`
-- Deploy summary `deployed_head`, `remote_head`, and `expected_commit`: `744aa83e652a2847e362b12a8c55e0b18344cc5c`
-- Live production `/api/v1/health` reports `services.observability.runtime_sha=744aa83e652a2847e362b12a8c55e0b18344cc5c` with source `deploy_state:last_deployed_commit`.
+- Production remote `HEAD`: `eed354686109418e8766be97e05bbc90aa8ef55b`
+- Production `.deploy-state/last_deployed_commit`: `eed354686109418e8766be97e05bbc90aa8ef55b`
+- Latest production deploy summary path: `/var/www/skupervisor/logs/deploy/deploy_20260622_165404.summary.txt`
+- Deploy summary `deployed_head`, `remote_head`, and `expected_commit`: `eed354686109418e8766be97e05bbc90aa8ef55b`
+- Live production `/api/v1/health` reports `services.observability.runtime_sha=eed354686109418e8766be97e05bbc90aa8ef55b` with source `deploy_state:last_deployed_commit`.
 - Live production `/api/v1/health` reports database, Redis, runtime schema, schema indexes, billing telemetry, and observability as healthy. Tenant pool capacity is a warning at 20 active tenants out of 20 capacity.
 - Frontend asset parity status in the deploy summary: `pass`
 - `migrations_changed=0`
@@ -32,15 +32,15 @@ Production proof refreshed on 2026-06-22 Asia/Manila from live VPS state:
 
 No-staging release verdict for the current deployed SHA:
 
-- Artifact: `.tmp/release-gates/744aa83e652a2847e362b12a8c55e0b18344cc5c/release_verdict.json`
+- Artifact: `.tmp/release-gates/eed354686109418e8766be97e05bbc90aa8ef55b/release_verdict.json`
 - Verdict: `bypassed`
-- Passing local/release gates for the exact target SHA included focused Storefront map layer, DOM, marker preview, marker CSS, and `StoresMap` source-contract tests, Storefront production build, docs lint, architecture guardrails, whitespace checks, deploy source-contract checks, rollback drill, restore drill, observability evidence, and merge-adoption checks.
-- Emergency bypass reason: the owner explicitly authorized emergency production deployment after the Storefront map hardening gates passed because the no-staging verdict still had stale QA deploy-summary SHA evidence and the final QA smoke hit a login rate-limit after an earlier same-target QA smoke pass. This is an auditable no-staging bypass; post-deploy parity is clean.
-- Post-deploy proof closes the runtime inclusion risk for this deployed SHA: production deploy summary, remote head, `.deploy-state/last_deployed_commit`, live `/api/v1/health.services.observability.runtime_sha`, `https://dgfy.ph/map-dgfy` route smoke, Storefront discovery reconciliation `healthy` with `failed=0`, deployed source checks, deployed bundle checks, frontend asset parity, and matching `expected_commit` all match or contain the `744aa83e652a2847e362b12a8c55e0b18344cc5c` release.
+- Passing local/release gates for the exact target SHA included focused Storefront current-location control coverage, Storefront map layer tests, Storefront production build, docs lint, architecture guardrails, whitespace checks, deploy source-contract checks, QA multi-location smoke, rollback drill, restore drill, observability evidence, and merge-adoption checks.
+- Emergency bypass reason: the owner explicitly authorized emergency production deployment after the Storefront current-location map control restore passed focused gates because the no-staging verdict still had stale QA deploy-summary SHA evidence. This is an auditable no-staging bypass; post-deploy parity is clean.
+- Post-deploy proof closes the runtime inclusion risk for this deployed SHA: production deploy summary, remote head, `.deploy-state/last_deployed_commit`, live `/api/v1/health.services.observability.runtime_sha`, `https://dgfy.ph/map-dgfy` route smoke, deployed source checks, deployed bundle checks, frontend asset parity, and matching `expected_commit` all match or contain the `eed354686109418e8766be97e05bbc90aa8ef55b` release.
 
 Observability evidence:
 
-- Artifact: `.tmp/release-gates/744aa83e652a2847e362b12a8c55e0b18344cc5c/observability_evidence.json`
+- Artifact: `.tmp/release-gates/eed354686109418e8766be97e05bbc90aa8ef55b/observability_evidence.json`
 - Verdict: `pass` in report mode
 - `trace_context.round_trip`: pass
 - `health.runtime_sha.present`: pass
@@ -50,7 +50,7 @@ Observability evidence:
 
 ## Production-Live Scope
 
-The current production runtime includes the branch and PR adoption chain from the earlier proven production SHA through `744aa83e`:
+The current production runtime includes the branch and PR adoption chain from the earlier proven production SHA through `eed35468`:
 
 - DGFY company access hardening: explicit DGFY membership model, DGFY-only invitations, company switching, ownership transfer hardening, legacy-link grace behavior, and DGFY POS unlock.
 - DGFY customer and Storefront flow: handoff-token return flow, guest/account checkout chooser, saved address behavior, tracking drawer, updated account dashboard, no customer-visible `company_token`, and no silent same-email guest adoption into signed-in account history.
@@ -73,6 +73,17 @@ The current production runtime includes the branch and PR adoption chain from th
 - IMS storefront location map hotfix: onboarding and Settings use the shared `MapPinPicker` with explicit locked/adjust modes, `0,0` and out-of-Philippines merchant pins rejected, Iloilo City as camera-only default, same-origin `/openfreemap` MapLibre resources by default, SKUpervisor service-worker bypass for `/openfreemap`, browser geolocation accuracy messaging, and PH-local reverse geocode metadata through first-party `/api/v1/geo/reverse-geocode`.
 - Storefront business-hours hotfix: onboarding, Settings, public Storefront display, and order/service-hour gates normalize multi-interval weekly schedules, preserve legacy one-window schedules, validate overlapping intervals, and render split schedules compactly on desktop and mobile.
 - Storefront discovery map pin stability restore: discovery pins, count clusters, halos, and customer location render through MapLibre GeoJSON sources and style layers; DOM `Popup` remains only for normal store preview cards. Count-cluster clicks scope the right-side Discover Nearby/View Results panel instead of opening an on-map list widget. Fixed marker CSS keeps the `38px` by `48px` bottom-center anchor box and filter/shadow-only glow so zooming cannot move pins away from stored IMS coordinates.
+- Storefront current-location map control restore: the discovery map exposes a visible `Use current location on map` control, requests browser geolocation only after customer action, submits the existing Near Me discovery request with `pin_scope=nearest_matching_branch`, updates the control to `My location`, and renders the customer location dot through the existing MapLibre user-location layer below storefront pins.
+
+## Source-Current Release Pipeline Remediation
+
+The current source tree adds a guarded QA promotion helper for routine production deploys, but this code is source-current and not part of the `eed35468` production runtime until a later production deploy includes it.
+
+- `scripts/deploy-remote.sh` now defaults wrapper-triggered tenant index headroom to report mode (`DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0`) while redundant index cleanup remains a tracked operational concern.
+- The wrapper can run `npm run deploy:qa:target` before the no-staging production gate when `DEPLOY_PROMOTE_QA_BEFORE_PROD` is not `off` or `0`.
+- `scripts/deploy-qa-target.ps1` refuses automatic QA promotion when `QA_SSH_HOST` and `QA_APP_DIR` match the production host/app directory, preventing the current production-as-QA evidence configuration from mutating production before the production gate.
+- QA deploy-summary evidence is fetched fresh before each no-staging gate run. `qa.deploy.summary.sha_match` remains hard-blocking, and emergency bypass remains incident-only.
+- Current `.env.qa.local` still points at production (`QA_SSH_HOST=192.53.116.33`, `QA_APP_DIR=/var/www/skupervisor`), so automatic QA promotion correctly refuses until a distinct QA target is configured or `DEPLOY_PROMOTE_QA_BEFORE_PROD=off` is set.
 
 ## Production Data Repair Notes
 
@@ -96,7 +107,7 @@ These items are still not closed by the current production proof:
 4. Tenant pool capacity is at the configured limit and should be handled as an operational capacity task, not as a failed deploy.
 5. Controlled production order UAT is still needed to prove live customer order status changes create account notifications and update the open tracking/dashboard surfaces in production.
 6. Tenant index headroom currently runs non-strict in deploy because the report has redundant-index warnings with `critical=0`; keep this as operational database cleanup rather than a release-blocking failure until an accepted-risk decision changes the gate.
-7. The June 22 Storefront map restore deploy still used emergency bypass because QA deploy-summary SHA evidence was stale and the final QA smoke hit a login rate-limit after an earlier same-target QA smoke pass. The next routine release should run the no-staging gate without bypass unless a new unrelated blocker appears.
+7. The June 22 Storefront current-location deploy still used emergency bypass because QA deploy-summary SHA evidence was stale. The source tree now contains a guarded QA-promotion path intended to make future routine releases no-bypass once a distinct QA target is configured.
 8. Production route-level authenticated rendered QA for onboarding and Settings was not rerun after deploy with production credentials. Local seeded route-level QA and deployed bundle/source/live API checks prove inclusion; a controlled production browser pass remains recommended before treating the UX as human-production-proven.
 9. Storefront map source/layer tests, local rendered `/map-dgfy` desktop/mobile smoke, production route smoke, and Storefront discovery reconciliation prove inclusion of the pin-stability restore. Browser QA against production-seeded real storefront pins remains useful before calling zoom/hover spacing human-production-proven.
 

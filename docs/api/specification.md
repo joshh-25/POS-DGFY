@@ -3557,6 +3557,8 @@ https://skupervisor.surebizcorp.com/api/v1/commerce-payments/paymongo/webhook
 
 The production server must use `PAYMONGO_MODE=live` and `PAYMONGO_LIVE_WEBHOOK_SECRET`. If an unsigned probe returns `404`, the backend route is not deployed there yet and live PayMongo delivery will fail.
 
+Live split checkout also requires explicit external PayMongo platform evidence. API-created tenant child merchant IDs are tenant readiness inputs only; they are not the DGFY parent/platform merchant ID used as the fixed 1% split recipient. When `COMMERCE_PAYMONGO_SPLIT_ENABLED=true` and `PAYMONGO_MODE=live`, production configuration is incomplete until PayMongo confirms the parent merchant ID plus live `split_payment.transfer_to` and fixed-recipient capability, and the operator sets `PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED=true` or `PAYMONGO_PLATFORM_SPLIT_CONFIRMED=true`.
+
 **Auth**: Admin JWT (`/admin/login`)
 **Base Path**: `/api/v1/commerce-payments/admin`
 **Caching Contract**: `Cache-Control: no-store, no-cache, max-age=0, must-revalidate`
@@ -3566,7 +3568,7 @@ The production server must use `PAYMONGO_MODE=live` and `PAYMONGO_LIVE_WEBHOOK_S
 | `GET` | `/payment-sessions` | List PayMongo commerce payment sessions. Supports `tenant_id`, `status`, `target_type`, `limit`, and `offset`. |
 | `GET` | `/payment-sessions/:payment_session_id` | Inspect a payment session, provider IDs, order linkage, refundable balance, and refund attempts. |
 | `GET` | `/settlement-report` | Summarize/export QR Ph gross, fixed DGFY 1%, estimated tenant gross, refund exposure, provider IDs, and variance. Supports the same filter shape as payment-session listing. |
-| `GET` | `/certification/paymongo-sandbox` | Return app-verifiable PayMongo sandbox readiness checks and the remaining external evidence required before live money movement. |
+| `GET` | `/certification/paymongo-sandbox` | Return app-verifiable PayMongo sandbox readiness checks, parent split-capability confirmation status, and the remaining external evidence required before live money movement. |
 | `POST` | `/payment-sessions/:payment_session_id/retry-finalization` | Retry local order finalization for paid unresolved sessions without creating duplicate orders. |
 | `POST` | `/payment-sessions/:payment_session_id/refunds` | Submit a PayMongo refund for a paid/finalized session. |
 | `GET` | `/tenant-payment-accounts` | List tenant PayMongo child merchant readiness records. Supports `tenant_id`. |

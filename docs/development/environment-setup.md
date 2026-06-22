@@ -369,6 +369,7 @@ taskkill /PID <PID> /F  # Windows
 
 **Auth Lookup returns 429 (Rate limit exceeded):**
 - `POST /api/v1/auth/lookup` is intentionally rate-limited.
+- The default retry window is 5 minutes; tune it with `RATE_LIMIT_LOOKUP_WINDOW_MS` when a different operator wait time is required.
 - Avoid rapid repeated lookup calls in smoke scripts.
 - Prefer `GET /api/v1/auth/validate-token/:token` for non-rate-limited tenant token smoke checks.
 
