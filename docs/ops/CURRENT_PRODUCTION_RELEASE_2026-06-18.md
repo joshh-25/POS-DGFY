@@ -17,12 +17,11 @@ Source-only documentation or test-hardening commits may exist after the deployed
 
 Production proof refreshed on 2026-06-22 Asia/Manila from live VPS state:
 
-- Production remote `HEAD`: `9c03af78bfe2847031cfa383896b9b92e08ef6f7`
-- Production `.deploy-state/last_deployed_commit`: `9c03af78bfe2847031cfa383896b9b92e08ef6f7`
-- Latest production deploy summary path: `/var/www/skupervisor/logs/deploy/deploy_20260622_090059.summary.txt`
-- Deploy summary `deployed_head` and `remote_head`: `9c03af78bfe2847031cfa383896b9b92e08ef6f7`
-- Deploy summary `expected_commit`: `none`, because the final manual SSH deploy intentionally omitted `--expect-commit` after PowerShell CRLF corrupted remote arguments in earlier attempts. Post-deploy proof below is the current runtime SHA authority for this deploy.
-- Live production `/api/v1/health` reports `services.observability.runtime_sha=9c03af78bfe2847031cfa383896b9b92e08ef6f7` with source `deploy_state:last_deployed_commit`.
+- Production remote `HEAD`: `32c0c5ebd036ab1ffa928647b7cb2ebd65361c52`
+- Production `.deploy-state/last_deployed_commit`: `32c0c5ebd036ab1ffa928647b7cb2ebd65361c52`
+- Latest production deploy summary path: `/var/www/skupervisor/logs/deploy/deploy_20260622_100750.summary.txt`
+- Deploy summary `deployed_head`, `remote_head`, and `expected_commit`: `32c0c5ebd036ab1ffa928647b7cb2ebd65361c52`
+- Live production `/api/v1/health` reports `services.observability.runtime_sha=32c0c5ebd036ab1ffa928647b7cb2ebd65361c52` with source `deploy_state:last_deployed_commit`.
 - Live production `/api/v1/health` reports database, Redis, runtime schema, schema indexes, billing telemetry, and observability as healthy. Tenant pool capacity is a warning at 20 active tenants out of 20 capacity.
 - Frontend asset parity status in the deploy summary: `pass`
 - `migrations_changed=0`
@@ -33,21 +32,20 @@ Production proof refreshed on 2026-06-22 Asia/Manila from live VPS state:
 
 No-staging release verdict for the current deployed SHA:
 
-- Artifact: `.tmp/release-gates/9c03af78bfe2847031cfa383896b9b92e08ef6f7/release_verdict.json`
+- Artifact: `.tmp/release-gates/32c0c5ebd036ab1ffa928647b7cb2ebd65361c52/release_verdict.json`
 - Verdict: `bypassed`
-- Failed gates: multiple QA evidence/configuration gates, including invalid or missing `QA_COMPANY_TOKEN`, rollback drill, restore drill, missing QA deploy summary, and stale pre-deploy live runtime SHA evidence.
-- Passing local/release gates for the exact target SHA included focused backend geo/business-hours tests, focused frontend MapPinPicker/onboarding/Settings/business-hours/service-worker tests, SKUpervisor and Storefront builds, docs lint, architecture guardrails, compliance, whitespace, route-level rendered QA on the real SKUpervisor runtime, deploy source contract, and merge-adoption required check.
-- Emergency bypass reason: the owner explicitly authorized emergency production deployment after the map/hours hotfix passed local gates and real route-level rendered QA, while the no-staging QA evidence inputs remained non-standardized and blocked the wrapper. This is current release-process debt and must not be treated as a clean no-bypass release.
-- Post-deploy proof closes the runtime inclusion risk for this deployed SHA: production deploy summary, remote head, `.deploy-state/last_deployed_commit`, live `/api/v1/health.services.observability.runtime_sha`, live PH-local reverse geocode, deployed source checks, deployed bundle checks, and frontend asset parity all match or contain the `9c03af78bfe2847031cfa383896b9b92e08ef6f7` hotfix.
+- Passing local/release gates for the exact target SHA included deploy-contract tests, Git Bash syntax checks for the deploy scripts, docs lint, architecture guardrails, compliance, whitespace checks, hardened no-staging preflight with real QA env files, QA smoke, rollback drill, restore drill, and source-contract checks.
+- Emergency bypass reason: the owner explicitly authorized emergency production deployment after the hardening gates passed because the only release blocker was pre-deploy SHA parity evidence for a target SHA that was not live yet. This is an auditable no-staging bypass for pre-deploy parity only; post-deploy parity is clean.
+- Post-deploy proof closes the runtime inclusion risk for this deployed SHA: production deploy summary, remote head, `.deploy-state/last_deployed_commit`, live `/api/v1/health.services.observability.runtime_sha`, live PH-local reverse geocode, deployed source checks, deployed bundle checks, frontend asset parity, and matching `expected_commit` all match or contain the `32c0c5ebd036ab1ffa928647b7cb2ebd65361c52` release.
 
 Observability evidence:
 
-- Artifact: `.tmp/release-gates/9c03af78bfe2847031cfa383896b9b92e08ef6f7/observability_evidence.json`
+- Artifact: `.tmp/release-gates/32c0c5ebd036ab1ffa928647b7cb2ebd65361c52/observability_evidence.json`
 - Verdict: `pass` in report mode
 - `trace_context.round_trip`: pass
 - `health.runtime_sha.present`: pass
 - `health.runtime_sha.matches_target`: pass after the emergency production deploy; the pre-deploy no-staging report still recorded stale runtime proof and was covered by the documented emergency bypass metadata.
-- `qa.deploy.summary.sha_match.reviewed`: pass, because the mismatch was recorded with explicit emergency bypass metadata
+- `qa.deploy.summary.sha_match.reviewed`: pass, because the pre-deploy mismatch was recorded with explicit emergency bypass metadata and the post-deploy summary now matches the target SHA
 - Metrics reachability is warning-only because `METRICS_ENABLED` is not true for that gate run.
 
 ## Production-Live Scope
@@ -97,7 +95,7 @@ These items are still not closed by the current production proof:
 4. Tenant pool capacity is at the configured limit and should be handled as an operational capacity task, not as a failed deploy.
 5. Controlled production order UAT is still needed to prove live customer order status changes create account notifications and update the open tracking/dashboard surfaces in production.
 6. Tenant index headroom currently runs non-strict in deploy because the report has redundant-index warnings with `critical=0`; keep this as operational database cleanup rather than a release-blocking failure until an accepted-risk decision changes the gate.
-7. The June 22 map/hours hotfix deploy used emergency bypass because QA environment/evidence inputs were not standardized. Before the next routine release, fix the CRLF-safe deploy invocation path, linked-worktree push behavior, QA token/env-file contract, and rollback/restore drill setup so the no-staging gate can pass without emergency metadata.
+7. The June 22 map/hours/tooling deploy still used emergency bypass for pre-deploy SHA parity because the target SHA was not live yet. The same release hardened CRLF-safe deploy invocation, linked-worktree pushes, QA token/env-file validation, and deploy-contract tests; the next routine release should run the no-staging gate without bypass unless a new unrelated blocker appears.
 8. Production route-level authenticated rendered QA for onboarding and Settings was not rerun after deploy with production credentials. Local seeded route-level QA and deployed bundle/source/live API checks prove inclusion; a controlled production browser pass remains recommended before treating the UX as human-production-proven.
 
 ## References
