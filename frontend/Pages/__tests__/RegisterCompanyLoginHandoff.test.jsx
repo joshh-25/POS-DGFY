@@ -22,6 +22,7 @@ const dgfyAuthMock = vi.hoisted(() => ({
   hasDgfyExplicitSignOut: vi.fn(() => false),
   loginDgfyAccount: vi.fn(),
   logoutDgfyAccount: vi.fn(),
+  preflightDgfyAccountRegistration: vi.fn(),
   registerDgfyAccount: vi.fn(),
   requestDgfyEmailVerification: vi.fn(),
   requestDgfyPasswordReset: vi.fn(),
@@ -128,6 +129,8 @@ describe('DGFY auth and business registration routes', () => {
     dgfyAuthMock.hasDgfyExplicitSignOut.mockReturnValue(false);
     dgfyAuthMock.loginDgfyAccount.mockReset();
     dgfyAuthMock.logoutDgfyAccount.mockReset();
+    dgfyAuthMock.preflightDgfyAccountRegistration.mockReset();
+    dgfyAuthMock.preflightDgfyAccountRegistration.mockResolvedValue({ available: true });
     dgfyAuthMock.registerDgfyAccount.mockReset();
     dgfyAuthMock.requestDgfyEmailVerification.mockReset();
     dgfyAuthMock.verifyDgfyEmail.mockReset();

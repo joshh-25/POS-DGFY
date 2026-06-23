@@ -19,6 +19,7 @@ import {
     buildTransferDgfyCompanyOwnershipUseCase,
     buildUpdateDgfyProfileUseCase,
     buildVerifyDgfyEmailUseCase,
+    buildPreflightDgfyAccountRegistrationUseCase,
     buildRegisterDgfyAccountUseCase,
     generateDgfyToken
 } from '../src/modules/dgfy/usecases/dgfyAuthUseCases.js';
@@ -44,6 +45,99 @@ const createAccount = (overrides = {}) => ({
 describe('dgfyAuthUseCases', () => {
     beforeEach(() => {
         process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_jwt_secret_for_ci_only_32_chars!';
+    });
+
+    describe('preflight DGFY account registration', () => {
+        it('returns available when email and phone are unused', async () => {
+            const repository = {
+                findByEmail: jest.fn().mockResolvedValue(null),
+                findByPhone: jest.fn().mockResolvedValue(null)
+            };
+            const useCase = buildPreflightDgfyAccountRegistrationUseCase({ repository });
+
+            const result = await useCase({
+                body: {
+                    email: 'ADA@EXAMPLE.TEST',
+                    phone: '+63 912 345 6789'
+                }
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.data.payload).toMatchObject({
+                success: true,
+                data: { available: true },
+                message: 'DGFY registration credentials are available.'
+            });
+            expect(repository.findByEmail).toHaveBeenCalledWith('ada@example.test');
+            expect(repository.findByPhone).toHaveBeenCalledWith('+63 912 345 6789');
+        });
+
+        it('rejects duplicate email before checking phone', async () => {
+            const repository = {
+                findByEmail: jest.fn().mockResolvedValue(createAccount()),
+                findByPhone: jest.fn()
+            };
+            const useCase = buildPreflightDgfyAccountRegistrationUseCase({ repository });
+
+            const result = await useCase({
+                body: {
+                    email: 'ada@example.test',
+                    phone: '+63 912 345 6789'
+                }
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error.statusCode).toBe(409);
+            expect(result.error.message).toBe('A DGFY account already exists with this email.');
+            expect(result.error.details).toEqual({
+                error_code: 'DGFY_ACCOUNT_ALREADY_EXISTS',
+                field: 'email'
+            });
+            expect(repository.findByPhone).not.toHaveBeenCalled();
+        });
+
+        it('rejects duplicate phone when email is unused', async () => {
+            const repository = {
+                findByEmail: jest.fn().mockResolvedValue(null),
+                findByPhone: jest.fn().mockResolvedValue(createAccount({ id: 'dgfy-phone' }))
+            };
+            const useCase = buildPreflightDgfyAccountRegistrationUseCase({ repository });
+
+            const result = await useCase({
+                body: {
+                    email: 'new@example.test',
+                    phone: '+63 912 345 6789'
+                }
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error.statusCode).toBe(409);
+            expect(result.error.message).toBe('A DGFY account already exists with this phone number.');
+            expect(result.error.details).toEqual({
+                error_code: 'DGFY_ACCOUNT_ALREADY_EXISTS',
+                field: 'phone'
+            });
+        });
+
+        it('rejects invalid credentials without repository lookups', async () => {
+            const repository = {
+                findByEmail: jest.fn(),
+                findByPhone: jest.fn()
+            };
+            const useCase = buildPreflightDgfyAccountRegistrationUseCase({ repository });
+
+            const result = await useCase({
+                body: {
+                    email: 'not-an-email',
+                    phone: '+63 912 345 6789'
+                }
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error.statusCode).toBe(400);
+            expect(repository.findByEmail).not.toHaveBeenCalled();
+            expect(repository.findByPhone).not.toHaveBeenCalled();
+        });
     });
 
     it('mints unique normal DGFY session tokens for immediate re-login after logout', () => {

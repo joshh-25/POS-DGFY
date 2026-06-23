@@ -31,6 +31,7 @@ describe('csrfProtection', () => {
     '/api/v1/auth/lookup',
     '/api/v1/admin/login',
     '/api/v1/dgfy/auth/login',
+    '/api/v1/dgfy/auth/register/preflight',
     '/api/v1/dgfy/auth/handoff/exchange',
     '/api/v1/store/auth/login'
   ])('allows %s to replace a stale browser session without CSRF', (path) => {

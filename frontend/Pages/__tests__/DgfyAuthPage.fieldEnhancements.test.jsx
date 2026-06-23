@@ -10,6 +10,7 @@ const dgfyAuthMock = vi.hoisted(() => ({
   fetchDgfyMe: vi.fn(),
   getStoredDgfyToken: vi.fn(() => ''),
   loginDgfyAccount: vi.fn(),
+  preflightDgfyAccountRegistration: vi.fn(),
   registerDgfyAccount: vi.fn(),
   requestDgfySignupOtp: vi.fn(),
 }));
@@ -64,6 +65,8 @@ describe('DgfyAuthPage create-account field enhancements', () => {
     dgfyAuthMock.getStoredDgfyToken.mockReset();
     dgfyAuthMock.getStoredDgfyToken.mockReturnValue('');
     dgfyAuthMock.loginDgfyAccount.mockReset();
+    dgfyAuthMock.preflightDgfyAccountRegistration.mockReset();
+    dgfyAuthMock.preflightDgfyAccountRegistration.mockResolvedValue({ available: true });
     dgfyAuthMock.registerDgfyAccount.mockReset();
     dgfyAuthMock.requestDgfySignupOtp.mockReset();
     dgfyAuthMock.requestDgfySignupOtp.mockResolvedValue({});
@@ -101,7 +104,7 @@ describe('DgfyAuthPage create-account field enhancements', () => {
     expect(screen.queryByRole('option', { name: /johndoe@gmail.com/i })).toBeNull();
   });
 
-  it('formats PH mobile input while typing and requests signup otp first', async () => {
+  it('formats PH mobile input while typing, preflights registration, then requests signup otp', async () => {
     renderCreateAccount();
 
     fireEvent.change(await screen.findByLabelText('Last Name'), { target: { value: 'Lovelace' } });
@@ -120,8 +123,66 @@ describe('DgfyAuthPage create-account field enhancements', () => {
     fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 
     expect(await screen.findByRole('heading', { name: /check your email/i })).toBeTruthy();
+    await waitFor(() => expect(dgfyAuthMock.preflightDgfyAccountRegistration).toHaveBeenCalledWith({
+      email: 'ada@example.test',
+      phone: '+639171234567'
+    }));
     await waitFor(() => expect(dgfyAuthMock.requestDgfySignupOtp).toHaveBeenCalledWith('ada@example.test'));
+    expect(dgfyAuthMock.preflightDgfyAccountRegistration.mock.invocationCallOrder[0])
+      .toBeLessThan(dgfyAuthMock.requestDgfySignupOtp.mock.invocationCallOrder[0]);
     expect(dgfyAuthMock.registerDgfyAccount).not.toHaveBeenCalled();
+  });
+
+  it('keeps duplicate emails on create-account and does not request signup otp', async () => {
+    dgfyAuthMock.preflightDgfyAccountRegistration.mockRejectedValue({
+      response: {
+        data: {
+          message: 'A DGFY account already exists with this email.',
+          error_code: 'DGFY_ACCOUNT_ALREADY_EXISTS',
+          details: { field: 'email' }
+        }
+      }
+    });
+    renderCreateAccount();
+
+    fireEvent.change(await screen.findByLabelText('Last Name'), { target: { value: 'Lovelace' } });
+    fireEvent.change(screen.getByLabelText('First Name'), { target: { value: 'Ada' } });
+    fireEvent.change(screen.getByLabelText('Email Address'), { target: { value: 'ada@example.test' } });
+    fireEvent.change(screen.getByLabelText('Mobile Number'), { target: { value: '0917-123-4567' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
+    fireEvent.change(screen.getByLabelText('Confirm Password'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Account Terms/i));
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+    expect(await screen.findByText('A DGFY account already exists with this email. Log in instead or reset your password.')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: /check your email/i })).toBeNull();
+    expect(dgfyAuthMock.requestDgfySignupOtp).not.toHaveBeenCalled();
+  });
+
+  it('keeps duplicate phones on create-account and does not request signup otp', async () => {
+    dgfyAuthMock.preflightDgfyAccountRegistration.mockRejectedValue({
+      response: {
+        data: {
+          message: 'A DGFY account already exists with this phone number.',
+          error_code: 'DGFY_ACCOUNT_ALREADY_EXISTS',
+          details: { field: 'phone' }
+        }
+      }
+    });
+    renderCreateAccount();
+
+    fireEvent.change(await screen.findByLabelText('Last Name'), { target: { value: 'Lovelace' } });
+    fireEvent.change(screen.getByLabelText('First Name'), { target: { value: 'Ada' } });
+    fireEvent.change(screen.getByLabelText('Email Address'), { target: { value: 'ada@example.test' } });
+    fireEvent.change(screen.getByLabelText('Mobile Number'), { target: { value: '0917-123-4567' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
+    fireEvent.change(screen.getByLabelText('Confirm Password'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Account Terms/i));
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+    expect(await screen.findByText('A DGFY account already exists with this phone number. Use a different mobile number or contact support.')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: /check your email/i })).toBeNull();
+    expect(dgfyAuthMock.requestDgfySignupOtp).not.toHaveBeenCalled();
   });
 
   it('shows the PH validation message for invalid mobile numbers', async () => {

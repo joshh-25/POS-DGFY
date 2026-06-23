@@ -9,6 +9,7 @@ import {
   getStoredDgfyToken,
   hasDgfyExplicitSignOut,
   loginDgfyAccount,
+  preflightDgfyAccountRegistration,
   registerDgfyAccount,
   requestDgfyEmailVerification,
   verifyDgfyEmail,
@@ -79,6 +80,12 @@ const extractRequestErrorDetails = (requestError) => ({
   message: String(
     requestError?.response?.data?.message
     || requestError?.message
+    || ''
+  ).trim(),
+  field: String(
+    requestError?.response?.data?.details?.field
+    || requestError?.response?.data?.field
+    || requestError?.details?.field
     || ''
   ).trim()
 });
@@ -609,6 +616,30 @@ export default function DgfyAuthPage() {
     if (authForm.password !== authForm.confirmPassword) { toast.error('Passwords do not match.'); return; }
     if (!authForm.acceptedTerms) { toast.error('Accept the DGFY account terms before creating an account.'); return; }
     if (accountLegalTermsUnavailable) { toast.error(accountLegalDisabledReason || 'Current DGFY terms must load before creating an account.'); return; }
+    const normalizedPhoneNumber = `${DGFY_PHONE_COUNTRIES[0].dialCode}${normalizedPhoneDigits}`;
+    setIsLoading(true);
+    try {
+      if (typeof preflightDgfyAccountRegistration === 'function') {
+        await preflightDgfyAccountRegistration({
+          email: authForm.email.trim(),
+          phone: normalizedPhoneNumber
+        });
+      }
+    } catch (requestError) {
+      const { field, message } = extractRequestErrorDetails(requestError);
+      const normalizedField = String(field || '').toLowerCase();
+      const fieldMessage = normalizedField === 'phone'
+        ? 'A DGFY account already exists with this phone number. Use a different mobile number or contact support.'
+        : 'A DGFY account already exists with this email. Log in instead or reset your password.';
+      if (normalizedField === 'phone') {
+        setPhoneError(fieldMessage);
+      } else {
+        setEmailError(fieldMessage);
+      }
+      toast.error(message || fieldMessage);
+      setIsLoading(false);
+      return;
+    }
     setVerificationState({
       requestStatus: 'sending',
       guidance: 'Requesting your 6-digit verification code now. We will move you straight into email verification.',
@@ -618,13 +649,11 @@ export default function DgfyAuthPage() {
     setLegacyVerificationToken('');
     setResendCooldown(0);
     setMode('verify-email');
-    setIsLoading(true);
     try {
       const requestSignupOtp = getRequestDgfySignupOtp();
       if (!SHOULD_USE_LEGACY_TEST_VERIFICATION_FLOW && typeof requestSignupOtp === 'function') {
         await requestSignupOtp(authForm.email.trim());
       } else {
-        const normalizedPhoneNumber = `${DGFY_PHONE_COUNTRIES[0].dialCode}${normalizedPhoneDigits}`;
         const session = await registerDgfyAccount({
           first_name: authForm.firstName,
           middle_name: authForm.middleName,

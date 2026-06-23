@@ -150,6 +150,11 @@ export const registerDgfyAccount = async (payload) => {
   return data;
 };
 
+export const preflightDgfyAccountRegistration = async (payload) => {
+  const response = await api.post('/dgfy/auth/register/preflight', payload, dgfyRequestConfig(''));
+  return response.data.data;
+};
+
 export const requestDgfyRegistrationEmailVerification = async (email) => {
   const response = await api.post('/auth/email-otp/request', {
     purpose: 'dgfy_account_verification',

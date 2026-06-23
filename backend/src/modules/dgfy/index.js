@@ -21,6 +21,7 @@ import {
     buildGetDgfyMeUseCase,
     buildLoginDgfyAccountUseCase,
     buildRejectDgfyInvitationUseCase,
+    buildPreflightDgfyAccountRegistrationUseCase,
     buildRequestDgfyBusinessStepUpUseCase,
     buildRequestDgfyPasswordResetUseCase,
     buildRequestDgfyEmailVerificationUseCase,
@@ -66,6 +67,10 @@ export const registerDgfyAccountUseCase = buildRegisterDgfyAccountUseCase({
     emailOtpPurposes: {
         DGFY_ACCOUNT_VERIFICATION: 'dgfy_account_verification'
     }
+});
+
+export const preflightDgfyAccountRegistrationUseCase = buildPreflightDgfyAccountRegistrationUseCase({
+    repository: dgfyAccountRepository
 });
 
 export const getDgfyLegalTermsUseCase = buildGetDgfyLegalTermsUseCase();

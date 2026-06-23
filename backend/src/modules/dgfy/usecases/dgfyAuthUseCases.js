@@ -23,6 +23,9 @@ const DEFAULT_EMAIL_OTP_PURPOSES = Object.freeze({
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const normalizeName = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+const DGFY_ACCOUNT_ALREADY_EXISTS_DETAILS = Object.freeze({
+    error_code: 'DGFY_ACCOUNT_ALREADY_EXISTS'
+});
 const buildLegalPersistenceError = () => new DomainError(
     DomainErrorCode.INTERNAL_ERROR,
     'DGFY legal acknowledgement persistence is unavailable.',
@@ -30,6 +33,20 @@ const buildLegalPersistenceError = () => new DomainError(
         statusCode: 500,
         details: {
             error_code: 'LEGAL_ACKNOWLEDGEMENT_PERSISTENCE_UNAVAILABLE'
+        }
+    }
+);
+
+const buildDgfyAccountConflictError = (field) => new DomainError(
+    DomainErrorCode.CONFLICT,
+    field === 'phone'
+        ? 'A DGFY account already exists with this phone number.'
+        : 'A DGFY account already exists with this email.',
+    {
+        statusCode: 409,
+        details: {
+            ...DGFY_ACCOUNT_ALREADY_EXISTS_DETAILS,
+            field
         }
     }
 );
@@ -234,6 +251,49 @@ export const generateDgfyHandoffToken = (account, jti) => jwt.sign({
     email: account.email
 }, process.env.JWT_SECRET, { expiresIn: HANDOFF_JWT_EXPIRY });
 
+export const buildPreflightDgfyAccountRegistrationUseCase = ({
+    repository
+}) => async ({ body }) => {
+    const email = normalizeEmail(body?.email);
+    const phone = normalizePhoneNumber(body?.phone);
+
+    if (!email || !phone) {
+        return fail(new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'Email and phone are required.',
+            { statusCode: 400 }
+        ));
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Enter a valid email address.', { statusCode: 400 }));
+    }
+
+    if (!isValidPhoneNumber(phone)) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Phone must be a valid phone number.', { statusCode: 400 }));
+    }
+
+    const existingByEmail = await repository.findByEmail(email);
+    if (existingByEmail) {
+        return fail(buildDgfyAccountConflictError('email'));
+    }
+
+    const existingByPhone = await repository.findByPhone(phone);
+    if (existingByPhone) {
+        return fail(buildDgfyAccountConflictError('phone'));
+    }
+
+    return ok({
+        payload: {
+            success: true,
+            data: {
+                available: true
+            },
+            message: 'DGFY registration credentials are available.'
+        }
+    });
+};
+
 export const buildRegisterDgfyAccountUseCase = ({
     repository,
     hashPassword,
@@ -289,12 +349,12 @@ export const buildRegisterDgfyAccountUseCase = ({
 
     const existingByEmail = await repository.findByEmail(email);
     if (existingByEmail) {
-        return fail(new DomainError(DomainErrorCode.CONFLICT, 'A DGFY account already exists with this email.', { statusCode: 409 }));
+        return fail(buildDgfyAccountConflictError('email'));
     }
 
     const existingByPhone = await repository.findByPhone(phone);
     if (existingByPhone) {
-        return fail(new DomainError(DomainErrorCode.CONFLICT, 'A DGFY account already exists with this phone number.', { statusCode: 409 }));
+        return fail(buildDgfyAccountConflictError('phone'));
     }
 
     if (typeof verifyEmailOtp !== 'function') {

@@ -23,6 +23,7 @@ import {
     requestDgfyLegacyLinkEmailOtp,
     requestDgfyPasswordReset,
     requestDgfyEmailVerification,
+    preflightDgfyAccountRegistration,
     searchDgfyBusinessAccounts,
     startDgfyPosSession,
     startDgfyTenantSession,
@@ -72,6 +73,7 @@ import {
 const router = express.Router();
 
 router.get('/legal-terms/current', getDgfyLegalTerms);
+router.post('/auth/register/preflight', authLimiter, preflightDgfyAccountRegistration);
 router.post('/auth/register', authLimiter, registerDgfyAccount);
 router.post('/auth/login', authLimiter, loginDgfyAccount);
 router.post('/auth/password-reset/request', authLimiter, requestDgfyPasswordReset);
