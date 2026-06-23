@@ -18,7 +18,7 @@ const settingsPagePath = path.resolve(__dirname, '../../../../Pages/Settings.jsx
 const compliancePanelPath = path.resolve(__dirname, '../../compliance/components/ComplianceProgramPanel.jsx');
 const compliancePolicyEnginePath = path.resolve(__dirname, '../../../../../backend/src/modules/compliance/policy/compliancePolicyEngine.js');
 const posCheckoutTerminalPath = path.resolve(__dirname, '../../pos/components/POSCheckoutTerminal.jsx');
-const terminalPageLayoutPath = path.resolve(__dirname, '../../pos/components/TerminalPageLayout.jsx');
+const terminalPageLayoutPath = path.resolve(__dirname, '../../../../apps/pos/src/components/TerminalPageLayout.jsx');
 const SETTINGS_TARGET_PATTERN = /\/settings\?tab=[a-z]+[^\s'"`)]*/g;
 
 describe('settings deep-link contract', () => {

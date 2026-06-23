@@ -168,8 +168,78 @@ body {
 }
 
 .dgfy-pos-shell {
-  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
-    'Helvetica Neue', Arial, sans-serif;
+  --pos-shell-bg: radial-gradient(circle at top, rgba(251, 191, 36, 0.16), transparent 28%),
+    linear-gradient(180deg, #fff7ed 0%, #fffbeb 28%, #f8fafc 100%);
+  --pos-shell-panel: rgba(255, 255, 255, 0.9);
+  --pos-shell-panel-strong: #ffffff;
+  --pos-shell-border: rgba(180, 83, 9, 0.16);
+  --pos-shell-text: #1f2937;
+  --pos-shell-muted: #6b7280;
+  --pos-shell-accent: #c2410c;
+  --pos-shell-accent-strong: #9a3412;
+  --pos-shell-accent-soft: #ffedd5;
+  --pos-shell-sidebar: linear-gradient(180deg, #1c1917 0%, #292524 48%, #111827 100%);
+  --pos-shell-sidebar-border: rgba(251, 191, 36, 0.18);
+  --pos-shell-sidebar-text: #fef7ed;
+  --pos-shell-sidebar-muted: rgba(254, 243, 199, 0.72);
+  --pos-shell-sidebar-card: rgba(255, 255, 255, 0.05);
+  --pos-shell-shadow: 0 24px 48px rgba(15, 23, 42, 0.12);
+  background: var(--pos-shell-bg);
+  color: var(--pos-shell-text);
+  font-family: 'Segoe UI Variable Display', 'Bahnschrift', 'Poppins', 'Segoe UI', sans-serif;
+}
+
+.dgfy-pos-panel {
+  background: var(--pos-shell-panel);
+  border-color: var(--pos-shell-border);
+  box-shadow: var(--pos-shell-shadow);
+}
+
+.dgfy-pos-panel-strong {
+  background: var(--pos-shell-panel-strong);
+  border-color: var(--pos-shell-border);
+  box-shadow: var(--pos-shell-shadow);
+}
+
+.dgfy-pos-terminal-badge {
+  border: 1px solid rgba(194, 65, 12, 0.16);
+  background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+  color: var(--pos-shell-accent-strong);
+}
+
+.dgfy-pos-dot {
+  display: inline-flex;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 9999px;
+  background: #f59e0b;
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.12);
+}
+
+.dgfy-pos-dot--online {
+  background: #16a34a;
+  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.12);
+}
+
+.dgfy-pos-dot--offline {
+  background: #dc2626;
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.12);
+}
+
+.dgfy-pos-shell .text-pos-muted {
+  color: var(--pos-shell-muted);
+}
+
+.dgfy-pos-shell .text-pos-accent {
+  color: var(--pos-shell-accent);
+}
+
+.dgfy-pos-shell .bg-pos-accent {
+  background: var(--pos-shell-accent);
+}
+
+.dgfy-pos-shell .border-pos {
+  border-color: var(--pos-shell-border);
 }
 
 .wizard-core-typography {

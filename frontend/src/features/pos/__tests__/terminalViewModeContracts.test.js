@@ -7,22 +7,24 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const terminalPagePath = path.resolve(__dirname, '../pages/TerminalPage.jsx');
-const terminalWorkspaceSidebarPath = path.resolve(__dirname, '../components/TerminalWorkspaceSidebar.jsx');
+const terminalWorkspaceSidebarPath = path.resolve(__dirname, '../../../apps/pos/src/components/TerminalWorkspaceSidebar.jsx');
 const terminalSidebarPanelPath = path.resolve(__dirname, '../components/TerminalSidebarPanel.jsx');
 const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
+const posReportsAnalyticsWorkspacePath = path.resolve(__dirname, '../components/PosReportsAnalyticsWorkspace.jsx');
 const posCheckoutTerminalPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
 const skupervisorCheckoutTerminalPath = path.resolve(__dirname, '../components/SkupervisorPOSCheckoutTerminal.jsx');
 const receiptPrintViewPath = path.resolve(__dirname, '../components/ReceiptPrintView.jsx');
 const posBarcodeScannerPath = path.resolve(__dirname, '../components/POSBarcodeScanner.jsx');
 const posHistoryPanelPath = path.resolve(__dirname, '../components/POSTransactionHistoryPanel.jsx');
-const terminalPageLayoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
-const terminalLockDrawerPath = path.resolve(__dirname, '../components/TerminalLockDrawer.jsx');
+const terminalPageLayoutPath = path.resolve(__dirname, '../../../apps/pos/src/components/TerminalPageLayout.jsx');
+const terminalLockDrawerPath = path.resolve(__dirname, '../../../apps/pos/src/components/TerminalLockDrawer.jsx');
 
 describe('POS terminal view-mode contracts', () => {
   let terminalPageContent = '';
   let terminalWorkspaceSidebarContent = '';
   let terminalSidebarPanelContent = '';
   let terminalOperationsWorkspaceContent = '';
+  let posReportsAnalyticsWorkspaceContent = '';
   let posCheckoutTerminalContent = '';
   let skupervisorCheckoutTerminalContent = '';
   let receiptPrintViewContent = '';
@@ -36,6 +38,7 @@ describe('POS terminal view-mode contracts', () => {
     terminalWorkspaceSidebarContent = fs.readFileSync(terminalWorkspaceSidebarPath, 'utf8');
     terminalSidebarPanelContent = fs.readFileSync(terminalSidebarPanelPath, 'utf8');
     terminalOperationsWorkspaceContent = fs.readFileSync(terminalOperationsWorkspacePath, 'utf8');
+    posReportsAnalyticsWorkspaceContent = fs.readFileSync(posReportsAnalyticsWorkspacePath, 'utf8');
     posCheckoutTerminalContent = fs.readFileSync(posCheckoutTerminalPath, 'utf8');
     skupervisorCheckoutTerminalContent = fs.readFileSync(skupervisorCheckoutTerminalPath, 'utf8');
     receiptPrintViewContent = fs.readFileSync(receiptPrintViewPath, 'utf8');
@@ -153,9 +156,8 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsWorkspaceContent).toContain("title: 'Location Scope'");
     expect(terminalOperationsWorkspaceContent).toContain("title: 'Shift Controls'");
     expect(terminalOperationsWorkspaceContent).toContain("title: 'Cash Drawer Event'");
-    expect(terminalOperationsWorkspaceContent).toContain("title: 'Close Shift'");
-    expect(terminalOperationsWorkspaceContent).toContain("title: 'Report'");
-    expect(terminalOperationsWorkspaceContent).toContain("title: 'Sales Today'");
+    expect(terminalOperationsWorkspaceContent).toContain("close_shift:");
+    expect(terminalOperationsWorkspaceContent).toContain("title: 'Reports & Analytics'");
     expect(terminalOperationsWorkspaceContent).toContain("title: 'Terminal Setup Context'");
     expect(terminalOperationsWorkspaceContent).toContain("case 'reports'");
     expect(terminalOperationsWorkspaceContent).toContain("case 'incoming_queue'");
@@ -165,15 +167,12 @@ describe('POS terminal view-mode contracts', () => {
   it('adds report navigation with horizontal report tabs', () => {
     expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-reports"');
     expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode('reports')}");
-    expect(terminalOperationsWorkspaceContent).toContain('Daily Total Reports');
-    expect(terminalOperationsWorkspaceContent).toContain('Amount Charged');
-    expect(terminalOperationsWorkspaceContent).toContain('Discount Amount');
-    expect(terminalOperationsWorkspaceContent).toContain('Net Profit');
-    expect(terminalOperationsWorkspaceContent).toContain('Popular Item');
-    expect(terminalOperationsWorkspaceContent).toContain('Transaction');
-    expect(terminalOperationsWorkspaceContent).toContain("setSlideDirection(nextTabIndex > activeTabIndex ? 'forward' : 'backward')");
-    expect(terminalOperationsWorkspaceContent).toContain('data-slide-direction={slideDirection}');
-    expect(terminalOperationsWorkspaceContent).toContain('transition-transform duration-300 ease-out');
+    expect(terminalOperationsWorkspaceContent).toContain('Reports & Analytics');
+    expect(posReportsAnalyticsWorkspaceContent).toContain('Daily Report');
+    expect(posReportsAnalyticsWorkspaceContent).toContain('Monthly Report');
+    expect(posReportsAnalyticsWorkspaceContent).toContain('Yearly Report');
+    expect(posReportsAnalyticsWorkspaceContent).toContain('Sales Comparison');
+    expect(posReportsAnalyticsWorkspaceContent).toContain('POS Profit/Loss');
   });
 
   it('keeps receipt preview empty-state branch with history fallback action', () => {
@@ -200,6 +199,20 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain("onClick={() => handlePrintReceipt(lastReceipt, 'history_modal')}");
     expect(posCheckoutTerminalContent).toContain("{receiptPrinting ? 'Printing...' : 'Print'}");
     expect(posCheckoutTerminalContent).not.toContain('<X className="h-5 w-5" />\n                                </button>\n                            </div>\n                        </div>\n                        <div className="pos-receipt-print-content');
+  });
+
+  it('opens checkout confirmation and then receipt preview after a successful sale', () => {
+    expect(posCheckoutTerminalContent).toContain('setCheckoutConfirmModalOpen(true);');
+    expect(posCheckoutTerminalContent).toMatch(
+      /setCheckoutConfirmModalOpen\(false\);\s+setReceiptPreviewModalOpen\(true\);\s+if \(typeof onCheckoutCompleted/
+    );
+  });
+
+  it('opens receipt history details instead of printing from the View Receipt action', () => {
+    expect(posHistoryPanelContent).toContain('openHistoryDetail(row);');
+    expect(posHistoryPanelContent).not.toMatch(
+      /if \(typeof printHistoryReceipt === 'function'\)[\s\S]*?openHistoryDetail\(row\.pos_transaction_id\)/
+    );
   });
 
   it('renders receipt item lines with unit price, quantity, and total columns', () => {
@@ -261,10 +274,10 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain('CHECKOUT_QUEUE_OPERATION = \'checkout\'');
     expect(posCheckoutTerminalContent).toContain('enqueueTerminalOperationIntent');
     expect(posCheckoutTerminalContent).toContain('TERMINAL_QUEUE_STATUS.FAILED_MANUAL_RESOLUTION_REQUIRED');
-    expect(terminalPageContent).toContain("operation === 'checkout'");
-    expect(terminalPageLayoutContent).toContain('queueReplayManagedExternally');
+    expect(terminalPageContent).toContain(".filter((candidate) => String(candidate?.operation || '').trim() !== 'checkout')");
     expect(terminalOperationsWorkspaceContent).toContain("checkout: 'Checkout'");
-    expect(posCheckoutTerminalContent).toContain('Replay queued checkouts');
+    expect(posHistoryPanelContent).toContain('Sync Pending Transactions');
+    expect(posCheckoutTerminalContent).toContain('pending transaction');
     expect(posCheckoutTerminalContent).toContain('idempotency_key');
   });
 
