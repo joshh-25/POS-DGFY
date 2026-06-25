@@ -251,7 +251,13 @@ export default function OnboardingSetupModal({
   workflowMode = DEFAULT_WORKFLOW_MODE,
   onRefreshUser
 }) {
-  const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
+  const [activeWorkflowMode, setActiveWorkflowMode] = useState(() => normalizeWorkflowMode(workflowMode));
+
+  useEffect(() => {
+    setActiveWorkflowMode(normalizeWorkflowMode(workflowMode));
+  }, [workflowMode]);
+
+  const normalizedWorkflowMode = normalizeWorkflowMode(activeWorkflowMode);
   const isHospitalityMode = isHospitalityWorkflowMode(normalizedWorkflowMode);
   const wizardSteps = isHospitalityMode ? HOSPITALITY_WIZARD_STEPS : WIZARD_STEPS;
   const presetOptions = useMemo(() => resolveOnboardingPresetOptions(normalizedWorkflowMode), [normalizedWorkflowMode]);
@@ -337,6 +343,9 @@ export default function OnboardingSetupModal({
         getAllSettings({ force: true }).catch(() => null)
       ])
         .then(([locations, settings]) => {
+          if (settings?.ops_workflow_mode) {
+            setActiveWorkflowMode(normalizeWorkflowMode(settings.ops_workflow_mode.value));
+          }
           if (settings?.store_is_visible) {
             setPublicStorefrontVisible(settings.store_is_visible.value === true);
           }

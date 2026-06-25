@@ -1,4 +1,4 @@
-import { itemRepository } from './repositories/itemRepository.js';
+import { itemRepository, resolveCachedWorkflowMode } from './repositories/itemRepository.js';
 import { buildGetItemsUseCase } from './usecases/getItemsUseCase.js';
 import { buildGetItemByIdUseCase } from './usecases/getItemByIdUseCase.js';
 import { buildCreateItemUseCase } from './usecases/createItemUseCase.js';
@@ -39,25 +39,14 @@ import {
 } from './usecases/barcodeUseCases.js';
 import { storefrontCatalogImageStorage } from './repositories/storefrontCatalogImageStorage.js';
 import { resolveMovementLocation } from '../../services/locationInventoryService.js';
-import { getAllSettingsUseCase } from '../settings/index.js';
-import { unwrapApplicationResultOrThrow } from '../shared/contracts/applicationResultHelpers.js';
-import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '../shared/constants/workflowModes.js';
 
-const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
-
-const resolveCurrentWorkflowMode = async () => {
-  const settings = unwrapApplicationResultOrThrow(
-    await getAllSettingsUseCase(),
-    'Failed to retrieve settings'
-  );
-  return normalizeWorkflowMode(settings?.[WORKFLOW_MODE_SETTING_KEY]?.value ?? DEFAULT_WORKFLOW_MODE);
-};
 
 export const getItemsUseCase = buildGetItemsUseCase({ itemRepository });
 export const getItemByIdUseCase = buildGetItemByIdUseCase({ itemRepository });
-export const createItemUseCase = buildCreateItemUseCase({ itemRepository, resolveWorkflowMode: resolveCurrentWorkflowMode });
-export const updateItemUseCase = buildUpdateItemUseCase({ itemRepository, resolveWorkflowMode: resolveCurrentWorkflowMode });
-export const finalizeItemUseCase = buildFinalizeItemUseCase({ itemRepository, resolveWorkflowMode: resolveCurrentWorkflowMode });
+export const createItemUseCase = buildCreateItemUseCase({ itemRepository, resolveWorkflowMode: resolveCachedWorkflowMode });
+export const updateItemUseCase = buildUpdateItemUseCase({ itemRepository, resolveWorkflowMode: resolveCachedWorkflowMode });
+export const finalizeItemUseCase = buildFinalizeItemUseCase({ itemRepository, resolveWorkflowMode: resolveCachedWorkflowMode });
+
 export const deleteItemUseCase = buildDeleteItemUseCase({ itemRepository });
 export const getItemStockHistoryUseCase = buildGetItemStockHistoryUseCase({ itemRepository });
 export const getItemBatchesUseCase = buildGetItemBatchesUseCase({ itemRepository });
