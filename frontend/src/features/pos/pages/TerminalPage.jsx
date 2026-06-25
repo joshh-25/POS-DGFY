@@ -1444,9 +1444,41 @@ export default function TerminalPage() {
     }
   };
 
+  const resolveTenantIdForTerminalUnlock = useCallback(async () => {
+    const selectedTenantId = String(formData.dgfyTenantId || '').trim();
+    if (selectedTenantId) return selectedTenantId;
+
+    const currentCompanyToken = String(getCompanyToken() || '').trim();
+    const dgfyToken = String(getStoredDgfyToken() || '').trim();
+    if (!dgfyToken) return '';
+
+    const companiesResult = await listDgfyAccountCompanies(dgfyToken);
+    const acceptedCompanies = [
+      ...(Array.isArray(companiesResult?.owned_companies) ? companiesResult.owned_companies : []),
+      ...(Array.isArray(companiesResult?.invited_companies) ? companiesResult.invited_companies : [])
+    ].filter((company) => company?.can_switch);
+
+    const matchedCompany = acceptedCompanies.find((company) => String(company?.company_token || '').trim() === currentCompanyToken)
+      || (acceptedCompanies.length === 1 ? acceptedCompanies[0] : null);
+    const recoveredTenantId = String(matchedCompany?.tenant_id || '').trim();
+
+    setDgfyPosState((prev) => ({
+      ...prev,
+      authenticated: true,
+      companies: acceptedCompanies,
+      loadingCompanies: false
+    }));
+
+    if (recoveredTenantId) {
+      setFormData((prev) => ({ ...prev, dgfyTenantId: recoveredTenantId }));
+    }
+
+    return recoveredTenantId;
+  }, [formData.dgfyTenantId]);
+
   const handleTerminalUnlockSubmit = async (event) => {
     event.preventDefault();
-    const selectedTenantId = String(formData.dgfyTenantId || '').trim();
+    const selectedTenantId = await resolveTenantIdForTerminalUnlock();
     const selectedTerminalId = sanitizeTerminalId(terminalUnlockForm.terminalId || resolveSelectedLoginTerminalId());
     const terminalPassword = String(terminalUnlockForm.terminalPassword || '');
     const rawOpeningFloat = String(terminalUnlockForm.openingFloatAmount ?? '').trim();
@@ -1454,7 +1486,6 @@ export default function TerminalPage() {
 
     if (!selectedTenantId) {
       toast.error('Select the company before unlocking the terminal.');
-      setTerminalUnlockModalOpen(false);
       return;
     }
     if (!validateSelectedTerminalForUnlock(selectedTerminalId)) return;
