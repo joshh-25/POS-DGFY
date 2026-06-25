@@ -2,15 +2,6 @@
 
 This guide documents operational scripts used in this repository.
 
-## Namecheap Shared Hosting Helpers
-
-GitHub Actions deploys for Namecheap shared hosting are documented in `docs/ops/NAMECHEAP_SHARED_CICD.md`.
-
-- `scripts/deploy/namecheap-shared/upload-artifacts.js`: uploads selected backend/frontend zips and rendered PHP helper scripts to the FTP deploy control directory. It prefers FTPS and falls back to FTP.
-- `scripts/deploy/namecheap-shared/tools/render-templates.py`: injects `DEPLOY_TOKEN` and target directory variables into remote helper templates.
-- `scripts/cicd/bootstrap-and-deploy.ps1`: configures GitHub secrets/variables from `.cicd/production.deploy.config.json` and dispatches `.github/workflows/deploy-namecheap-shared.yml`.
-- `npm run test:deploy:namecheap`: validates local path selection and missing-secret behavior for the FTP upload helper.
-
 ## DGFY Customer Activity Backfill
 
 Historical DGFY customer activity backfill is an operator command, not a public API. It populates landlord-scoped DGFY customer activity from tenant POS orders, F&B checks linked through POS transactions, Services bookings, and Hospitality reservations.

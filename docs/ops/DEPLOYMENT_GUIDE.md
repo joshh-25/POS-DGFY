@@ -11,9 +11,6 @@ Use this guide for:
 Hosting profile reference:
 - `docs/ops/HOSTING_PROFILES.md`
 
-Namecheap shared hosting GitHub Actions lane:
-- `docs/ops/NAMECHEAP_SHARED_CICD.md`
-
 No-staging release policy reference:
 - `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
 
@@ -68,8 +65,6 @@ Merge-adoption release proof reference:
     - `0`: skip reconciliation only for a controlled incident/rollback window; run `npm run reconcile:storefront-discovery -- --dry-run --json` and then the write reconciliation as soon as the blocker is cleared.
 
 ## Standard Deployment (Simplified)
-For Namecheap shared hosting, use the artifact-based GitHub Actions lane in `docs/ops/NAMECHEAP_SHARED_CICD.md`. That lane deploys with FTP plus cPanel Node.js App, uses `backend/app.js` as the startup shim, restarts through Passenger `tmp/restart.txt`, and blocks backend deploys when migrations changed.
-
 Before deploying to a new host type, validate the selected profile:
 
 ```bash

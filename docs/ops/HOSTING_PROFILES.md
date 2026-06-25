@@ -23,11 +23,6 @@ Authoritative planning inputs:
 - `docs/architecture/adr/0004-architecture-compliance-automation.md`
 - `docs/architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md`
 
-Supporting operations context:
-- Namecheap Node.js apps are managed through cPanel Setup Node.js App: <https://www.namecheap.com/support/knowledgebase/article.aspx/10047/2182/how-to-work-with-nodejs-app/>
-- Namecheap shared plans run under LVE resource limits: <https://www.namecheap.com/support/knowledgebase/article.aspx/1127/103/a-handy-guide-to-resource-limits-or-what-is-lve/>
-- Namecheap shared GitHub Actions artifact deployment is documented in `docs/ops/NAMECHEAP_SHARED_CICD.md`.
-
 ## Profiles
 `shared` is the degraded shared-hosting profile. It assumes one constrained Node process, no Redis, local AI export temp files, fail-open token blacklist checks, in-process rate limits, and single-instance scheduler locks.
 
@@ -53,7 +48,6 @@ The Admin Portal exposes the same runtime view at `Admin > Hosting`. Use that sc
 - copyable non-secret diagnostics
 
 ## Shared Deployment
-For Namecheap shared hosting, the supported automated lane is `.github/workflows/deploy-namecheap-shared.yml`. It uploads CI-built artifacts and token-protected PHP helper scripts over FTP, extracts the artifacts server-side, and restarts the Node.js app by touching `backend/tmp/restart.txt`.
 
 1. Copy `backend/.env.shared.example` to `backend/.env` on the shared host.
 2. Copy `frontend/.env.shared.example` to the frontend build environment.

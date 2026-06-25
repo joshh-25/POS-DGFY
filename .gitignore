@@ -14,8 +14,6 @@ frontend/dist/
 # Environment variables
 .env
 .env.local
-.cicd/*.local.json
-.cicd/production.deploy.config.json
 .env.qa.local
 .env.qa.secrets.local
 .env.prod.local
