@@ -39,6 +39,48 @@ describe('settings validator single-setting payload', () => {
     expect(res.json).toHaveBeenCalled();
   });
 
+  it('accepts structured storefront_hours with a long generated display for repository normalization', () => {
+    const longDisplay = Array.from({ length: 8 }, (_, index) => `Segment ${index + 1} 6:00 AM - 10:00 AM`).join('; ');
+    const day = {
+      enabled: true,
+      open: '06:00',
+      close: '22:00',
+      intervals: [
+        { open: '06:00', close: '10:00' },
+        { open: '11:00', close: '15:00' },
+        { open: '16:00', close: '22:00' }
+      ]
+    };
+    const req = {
+      params: { key: 'storefront_hours' },
+      body: {
+        value: {
+          mode: 'weekly',
+          timezone: 'Asia/Manila',
+          weekly: {
+            sun: day,
+            mon: day,
+            tue: day,
+            wed: day,
+            thu: day,
+            fri: day,
+            sat: day
+          },
+          display: longDisplay
+        }
+      }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    validateUpdateSingleSetting(req, res, next);
+
+    expect(longDisplay.length).toBeGreaterThan(120);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(req.validatedData.value.display).toBe(longDisplay);
+  });
+
   it('rejects unsupported method keys when updating pos_order_method_fees via single-setting route', () => {
     const req = {
       params: { key: 'pos_order_method_fees' },

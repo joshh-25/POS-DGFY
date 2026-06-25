@@ -98,6 +98,11 @@ const isGlobalDgfyAccountOtpRequest = (req, path) => (
     && String(req.body?.purpose || '').trim() === 'dgfy_account_verification'
 );
 
+const isDgfyTenantMembershipBridgeRequest = (req, path) => (
+    /^\/api\/v1\/dgfy\/account\b/i.test(path)
+    && String(req.headers?.['x-dgfy-auth-mode'] || '').trim().toLowerCase() === 'tenant_membership'
+);
+
 export const invalidateTenantLookupCache = ({ companyToken = null, tenantId = null } = {}) => {
     if (companyToken) {
         tenantCache.delete(String(companyToken));
@@ -127,6 +132,12 @@ export const tenantHandler = async (req, res, next) => {
         // Header (x-company-token) -> Store slug (x-store-slug for public store routes) -> Subdomain (Future) -> Auth User (Future)
         let companyToken = req.headers['x-company-token'];
         if (!companyToken && isStrictAuthRoute) {
+            companyToken = getTenantContextToken(req);
+            if (companyToken) {
+                req.headers['x-company-token'] = companyToken;
+            }
+        }
+        if (!companyToken && isDgfyTenantMembershipBridgeRequest(req, path)) {
             companyToken = getTenantContextToken(req);
             if (companyToken) {
                 req.headers['x-company-token'] = companyToken;

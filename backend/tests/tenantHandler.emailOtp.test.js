@@ -177,4 +177,37 @@ describe('tenantHandler email OTP invitation routing', () => {
     expect(next).toHaveBeenCalled();
     expect(res.status).not.toHaveBeenCalled();
   });
+
+  it('recovers DGFY tenant-membership bridge tenant context from the tenant context cookie', async () => {
+    findTenantByToken.mockResolvedValueOnce({
+      id: 'tenant-bridge',
+      name: 'Bridge Cafe',
+      status: 'active',
+      plan: 'premium'
+    });
+    const req = {
+      path: '/api/v1/dgfy/account/companies',
+      headers: {
+        'x-dgfy-auth-mode': 'tenant_membership',
+        cookie: 'sku_tenant_context=tenant-token-bridge'
+      },
+      body: {}
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn()
+    };
+    const next = jest.fn();
+
+    await tenantHandler(req, res, next);
+
+    expect(req.headers['x-company-token']).toBe('tenant-token-bridge');
+    expect(findTenantByToken).toHaveBeenCalledWith('tenant-token-bridge');
+    expect(dbRun).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant-bridge',
+      tenantToken: 'tenant-token-bridge'
+    }), next);
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
 });

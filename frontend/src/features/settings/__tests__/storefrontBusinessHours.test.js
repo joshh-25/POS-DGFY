@@ -7,6 +7,7 @@ import {
   getStorefrontBusinessHoursDayIssues,
   isStorefrontBusinessHoursAlwaysOpen,
   normalizeStorefrontBusinessHours,
+  serializeStorefrontBusinessHours,
   updateStorefrontBusinessHoursInterval,
   setStorefrontBusinessHoursOpenAllDay
 } from '../storefrontBusinessHours.js';
@@ -74,5 +75,27 @@ describe('storefront business hours helpers', () => {
 
     const overlapping = updateStorefrontBusinessHoursInterval(hours, 'mon', 1, { open: '11:00', close: '20:00' });
     expect(getStorefrontBusinessHoursDayIssues(overlapping.weekly.mon)).toEqual(['Time intervals cannot overlap.']);
+  });
+
+  it('serializes generated display text within the settings validator limit', () => {
+    const hours = createDefaultStorefrontBusinessHours();
+    const dayKeys = Object.keys(hours.weekly);
+    dayKeys.forEach((dayKey, index) => {
+      hours.weekly[dayKey] = {
+        enabled: true,
+        open: '06:00',
+        close: '23:00',
+        intervals: [
+          { open: '06:00', close: '10:00' },
+          { open: '11:00', close: '15:00' },
+          { open: '16:00', close: `${20 + (index % 3)}:30` }
+        ]
+      };
+    });
+
+    const serialized = serializeStorefrontBusinessHours(hours);
+
+    expect(formatStorefrontBusinessHoursDisplay(hours).length).toBeGreaterThan(120);
+    expect(serialized.display.length).toBeLessThanOrEqual(120);
   });
 });

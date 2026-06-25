@@ -9,6 +9,7 @@ export const STOREFRONT_BUSINESS_DAY_OPTIONS = Object.freeze([
 ]);
 
 const DEFAULT_TIMEZONE = 'Asia/Manila';
+export const STOREFRONT_BUSINESS_HOURS_DISPLAY_MAX_LENGTH = 120;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const normalizeTime = (value, fallback) => {
@@ -364,6 +365,6 @@ export const serializeStorefrontBusinessHours = (hours) => {
   const normalized = normalizeStorefrontBusinessHours(hours);
   return {
     ...normalized,
-    display: formatStorefrontBusinessHoursDisplay(normalized)
+    display: formatStorefrontBusinessHoursDisplay(normalized).slice(0, STOREFRONT_BUSINESS_HOURS_DISPLAY_MAX_LENGTH)
   };
 };

@@ -244,7 +244,7 @@ const storefrontBusinessHoursSchema = Joi.alternatives().try(
       fri: businessHoursDaySchema.required(),
       sat: businessHoursDaySchema.required()
     }).required(),
-    display: Joi.string().trim().max(120).allow('').optional()
+    display: Joi.string().trim().max(1000).allow('').optional()
   })
 );
 const storefrontCategoriesSchema = Joi.array().items(Joi.string().trim().min(1).max(60)).max(12).optional();
