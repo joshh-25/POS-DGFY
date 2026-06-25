@@ -3,7 +3,8 @@ import crypto from 'crypto';
 
 const mockItemModel = {
   findAll: jest.fn(),
-  bulkCreate: jest.fn()
+  bulkCreate: jest.fn(),
+  update: jest.fn()
 };
 
 const mockTransaction = {
@@ -47,6 +48,11 @@ describe('csvImportService workflow-mode template enforcement', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockDbStore.get.mockImplementation((name) => {
+      if (name === 'Item') return mockItemModel;
+      if (name === 'sequelize') return mockSequelize;
+      throw new Error(`Unexpected model lookup: ${name}`);
+    });
     mockItemModel.findAll.mockResolvedValue([]);
     mockItemModel.bulkCreate.mockImplementation(async (items) => (
       items.map((item, index) => ({
@@ -219,6 +225,174 @@ describe('csvImportService workflow-mode template enforcement', () => {
         validate: true
       })
     );
+  });
+
+  it('bulk imports flat F&B menu, ingredient, beverage, and packaging rows without product service timeouts', async () => {
+    mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('fnb'));
+
+    const result = await confirmImport([
+      {
+        rowNumber: 1,
+        sku_code: 'MENU-001',
+        data: {
+          sku_code: 'MENU-001',
+          name: 'Chicken Rice Bowl',
+          category: 'product',
+          product_type: 'finished_goods',
+          mode_item_preset: 'menu_item',
+          vat_type: 'vatable',
+          max_capacity: 100,
+          unit_of_measure: 'serving',
+          default_sale_price: 149,
+          template_workflow_mode: 'fnb'
+        }
+      },
+      {
+        rowNumber: 2,
+        sku_code: 'ING-001',
+        data: {
+          sku_code: 'ING-001',
+          name: 'Chicken Breast',
+          category: 'raw_material',
+          mode_item_preset: 'ingredient',
+          vat_type: 'vatable',
+          max_capacity: 100,
+          unit_of_measure: 'kg',
+          template_workflow_mode: 'fnb'
+        }
+      },
+      {
+        rowNumber: 3,
+        sku_code: 'BEV-001',
+        data: {
+          sku_code: 'BEV-001',
+          name: 'Bottled Juice',
+          category: 'product',
+          product_type: 'finished_goods',
+          mode_item_preset: 'packaged_beverage',
+          vat_type: 'vatable',
+          max_capacity: 100,
+          unit_of_measure: 'bottle',
+          default_sale_price: 80,
+          template_workflow_mode: 'fnb'
+        }
+      },
+      {
+        rowNumber: 4,
+        sku_code: 'PKG-001',
+        data: {
+          sku_code: 'PKG-001',
+          name: 'Takeout Box',
+          category: 'packaging',
+          mode_item_preset: 'packaging_supply',
+          vat_type: 'vatable',
+          max_capacity: 100,
+          unit_of_measure: 'pcs',
+          template_workflow_mode: 'fnb'
+        }
+      }
+    ], 'test-user');
+
+    expect(result.success).toBe(true);
+    expect(result.results.failed).toEqual([]);
+    expect(result.results.created).toHaveLength(4);
+    expect(mockItemModel.bulkCreate).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ sku_code: 'MENU-001', mode_item_preset: 'menu_item', category: 'product' }),
+        expect.objectContaining({ sku_code: 'ING-001', mode_item_preset: 'ingredient', category: 'raw_material' }),
+        expect.objectContaining({ sku_code: 'BEV-001', mode_item_preset: 'packaged_beverage', category: 'product' }),
+        expect.objectContaining({ sku_code: 'PKG-001', mode_item_preset: 'packaging_supply', category: 'packaging' })
+      ]),
+      expect.objectContaining({ validate: true })
+    );
+  });
+
+  it('reports clear row errors when an F&B import database operation times out', async () => {
+    mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('fnb'));
+    mockItemModel.bulkCreate.mockRejectedValueOnce(new Error('Operation timeout while acquiring connection'));
+
+    const result = await confirmImport([
+      {
+        rowNumber: 1,
+        sku_code: 'MENU-TIMEOUT',
+        data: {
+          sku_code: 'MENU-TIMEOUT',
+          name: 'Timeout Bowl',
+          category: 'product',
+          product_type: 'finished_goods',
+          mode_item_preset: 'menu_item',
+          vat_type: 'vatable',
+          max_capacity: 100,
+          unit_of_measure: 'serving',
+          default_sale_price: 149,
+          template_workflow_mode: 'fnb'
+        }
+      }
+    ], 'test-user');
+
+    expect(result.success).toBe(true);
+    expect(result.results.created).toEqual([]);
+    expect(result.results.failed).toEqual([
+      expect.objectContaining({
+        rowNumber: 1,
+        sku_code: 'MENU-TIMEOUT',
+        errors: [expect.stringMatching(/database operation timed out/i)]
+      })
+    ]);
+  });
+
+  it('counts created rows accurately when barcode alias sync fails after item create', async () => {
+    mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('fnb'));
+    const mockItemBarcode = {
+      findAll: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue(null),
+      count: jest.fn().mockResolvedValue(0),
+      create: jest.fn().mockRejectedValue(new Error('Operation timeout while writing barcode alias'))
+    };
+    mockDbStore.get.mockImplementation((name) => {
+      if (name === 'Item') return mockItemModel;
+      if (name === 'sequelize') return mockSequelize;
+      if (name === 'ItemBarcode') return mockItemBarcode;
+      throw new Error(`Unexpected model lookup: ${name}`);
+    });
+
+    const result = await confirmImport([
+      {
+        rowNumber: 1,
+        sku_code: 'MENU-WARN',
+        barcode_aliases: [
+          {
+            code: '1234567890123',
+            normalized_code: '1234567890123',
+            source: 'manual',
+            scope: 'pos',
+            packaging_level: 'each',
+            quantity_multiplier: 1
+          }
+        ],
+        data: {
+          sku_code: 'MENU-WARN',
+          name: 'Warning Bowl',
+          category: 'product',
+          product_type: 'finished_goods',
+          mode_item_preset: 'menu_item',
+          vat_type: 'vatable',
+          max_capacity: 100,
+          unit_of_measure: 'serving',
+          default_sale_price: 149,
+          template_workflow_mode: 'fnb'
+        }
+      }
+    ], 'test-user');
+
+    expect(result.success).toBe(true);
+    expect(result.createdCount).toBe(1);
+    expect(result.failedCount).toBe(0);
+    expect(result.results.failed).toEqual([]);
+    expect(result.results.created[0]).toEqual(expect.objectContaining({
+      sku_code: 'MENU-WARN',
+      warnings: [expect.stringMatching(/barcode import failed after item create/i)]
+    }));
   });
 
   it('blocks preview when signed markers are present but signature is invalid', async () => {

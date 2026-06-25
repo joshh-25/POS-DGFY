@@ -19,8 +19,14 @@ export const getCompanyInfoUseCase = buildGetCompanyInfoUseCase({
 
 export const getAllSettingsUseCase = buildGetAllSettingsUseCase({ settingsRepository });
 export const getSettingByKeyUseCase = buildGetSettingByKeyUseCase({ settingsRepository });
-export const updateSettingsUseCase = buildUpdateSettingsUseCase({ settingsRepository });
-export const updateSettingByKeyUseCase = buildUpdateSettingByKeyUseCase({ settingsRepository });
+export const updateSettingsUseCase = buildUpdateSettingsUseCase({
+    settingsRepository,
+    storefrontAssetStorage
+});
+export const updateSettingByKeyUseCase = buildUpdateSettingByKeyUseCase({
+    settingsRepository,
+    storefrontAssetStorage
+});
 export const resetSettingsToDefaultUseCase = buildResetSettingsToDefaultUseCase({ settingsRepository });
 export const applyThresholdSettingsUseCase = buildApplyThresholdSettingsUseCase({ settingsRepository });
 export const uploadStorefrontAssetUseCase = buildUploadStorefrontAssetUseCase({

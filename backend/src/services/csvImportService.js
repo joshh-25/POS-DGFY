@@ -43,6 +43,21 @@ const BARCODE_TEMPLATE_HEADERS = Object.freeze([
     'barcode_quantity_multiplier',
     'barcode_aliases'
 ]);
+const PRODUCT_RELATED_IMPORT_KEYS = Object.freeze([
+    'allergens',
+    'may_contain_allergens',
+    'nutritional_info',
+    'physical_properties',
+    'shelf_life',
+    'packaging_info',
+    'packaging_specs',
+    'quality_control',
+    'compliance_info',
+    'product_composition',
+    'labor_cost',
+    'overhead_cost'
+]);
+const PRODUCT_RELATED_IMPORT_KEY_SET = new Set(PRODUCT_RELATED_IMPORT_KEYS);
 
 /**
  * Parse CSV content and transform rows to item format
@@ -408,6 +423,44 @@ const normalizeImportDataForTaxonomy = (itemData, validationResult) => {
         fifo_enabled: false,
         location_id: null
     };
+};
+
+const hasRelatedProductImportData = (itemData = {}) => (
+    Object.keys(itemData || {}).some((key) => {
+        if (!PRODUCT_RELATED_IMPORT_KEY_SET.has(key)) return false;
+        const value = itemData[key];
+        if (Array.isArray(value)) return value.length > 0;
+        if (value && typeof value === 'object') return Object.keys(value).length > 0;
+        return value !== undefined && value !== null && value !== '';
+    })
+);
+
+const buildBarcodeImportWarning = (operation, error) => (
+    `Barcode import failed after ${operation}: ${formatCsvImportError(error)}`
+);
+
+const isFlatFnbProductImportRow = (row, tenantWorkflowMode = DEFAULT_WORKFLOW_MODE) => (
+    row?.data?.category === 'product'
+    && (
+        normalizeWorkflowMode(row?.data?.template_workflow_mode) === 'fnb'
+        || normalizeWorkflowMode(tenantWorkflowMode) === 'fnb'
+    )
+    && ['menu_item', 'packaged_beverage'].includes(String(row?.data?.mode_item_preset || '').trim().toLowerCase())
+    && !hasRelatedProductImportData(row.data)
+);
+
+const formatCsvImportError = (error) => {
+    const rawMessage = String(error?.message || error || 'Unknown error');
+    const lowerMessage = rawMessage.toLowerCase();
+    const isTimeout = lowerMessage.includes('timeout')
+        || lowerMessage.includes('lock wait')
+        || lowerMessage.includes('deadlock')
+        || lowerMessage.includes('etimedout')
+        || lowerMessage.includes('econnreset');
+    if (isTimeout) {
+        return `Database operation timed out while importing this row: ${rawMessage}`;
+    }
+    return rawMessage;
 };
 
 /**
@@ -973,9 +1026,10 @@ export const confirmImport = async (rows, userId) => {
         }
     }
 
-    // Separate by category type
-    const simpleItems = validRows.filter(r => r.data.category !== 'product');
-    const productItems = validRows.filter(r => r.data.category === 'product');
+    // Separate by import path. Flat F&B menu/beverage rows use the same validated bulk path
+    // as other core item rows; rich product rows still go through itemService for related data.
+    const simpleItems = validRows.filter(r => r.data.category !== 'product' || isFlatFnbProductImportRow(r, tenantWorkflowMode));
+    const productItems = validRows.filter(r => r.data.category === 'product' && !isFlatFnbProductImportRow(r, tenantWorkflowMode));
 
     // === BATCH 1: Process simple items (raw_material, packaging, supplies) ===
     // These can use bulkCreate for much better performance
@@ -1016,10 +1070,12 @@ export const confirmImport = async (rows, userId) => {
                                 userId
                             });
                         } catch (barcodeError) {
-                            results.failed.push({
+                            results.created.push({
                                 rowNumber: sourceRow.rowNumber,
-                                sku_code: sourceRow.sku_code,
-                                errors: [`Barcode import failed after item create: ${barcodeError.message}`]
+                                item_id: item.item_id,
+                                sku_code: item.sku_code,
+                                name: item.name,
+                                warnings: [buildBarcodeImportWarning('item create', barcodeError)]
                             });
                             continue;
                         }
@@ -1037,7 +1093,7 @@ export const confirmImport = async (rows, userId) => {
                         results.failed.push({
                             rowNumber: r.rowNumber,
                             sku_code: r.sku_code,
-                            errors: [`Batch insert failed: ${err.message}`]
+                            errors: [`Batch insert failed: ${formatCsvImportError(err)}`]
                         });
                     });
                 }
@@ -1064,7 +1120,7 @@ export const confirmImport = async (rows, userId) => {
                         return { success: true, row };
                     } catch (err) {
                         await transaction.rollback();
-                        return { success: false, row, error: err.message };
+                        return { success: false, row, error: formatCsvImportError(err) };
                     }
                 });
 
@@ -1078,10 +1134,12 @@ export const confirmImport = async (rows, userId) => {
                                 userId
                             });
                         } catch (barcodeError) {
-                            results.failed.push({
+                            results.updated.push({
                                 rowNumber: result.value.row.rowNumber,
+                                item_id: result.value.row.existingItemId,
                                 sku_code: result.value.row.sku_code,
-                                errors: [`Barcode import failed after item update: ${barcodeError.message}`]
+                                name: result.value.row.data.name,
+                                warnings: [buildBarcodeImportWarning('item update', barcodeError)]
                             });
                             continue;
                         }
@@ -1093,7 +1151,7 @@ export const confirmImport = async (rows, userId) => {
                         });
                     } else {
                         const row = result.status === 'fulfilled' ? result.value.row : null;
-                        const errorMsg = result.status === 'fulfilled' ? result.value.error : result.reason?.message;
+                        const errorMsg = result.status === 'fulfilled' ? result.value.error : formatCsvImportError(result.reason);
                         if (row) {
                             results.failed.push({
                                 rowNumber: row.rowNumber,
@@ -1136,7 +1194,7 @@ export const confirmImport = async (rows, userId) => {
                         };
                     }
                 } catch (err) {
-                    return { success: false, row, error: err.message };
+                    return { success: false, row, error: formatCsvImportError(err) };
                 }
             });
 
@@ -1152,10 +1210,12 @@ export const confirmImport = async (rows, userId) => {
                                 userId
                             });
                         } catch (barcodeError) {
-                            results.failed.push({
+                            results.created.push({
                                 rowNumber: row.rowNumber,
-                                sku_code: row.sku_code,
-                                errors: [`Barcode import failed after product create: ${barcodeError.message}`]
+                                item_id: item.item_id,
+                                sku_code: item.sku_code,
+                                name: item.name,
+                                warnings: [buildBarcodeImportWarning('product create', barcodeError)]
                             });
                             continue;
                         }
@@ -1173,10 +1233,12 @@ export const confirmImport = async (rows, userId) => {
                                 userId
                             });
                         } catch (barcodeError) {
-                            results.failed.push({
+                            results.updated.push({
                                 rowNumber: row.rowNumber,
+                                item_id: row.existingItemId,
                                 sku_code: row.sku_code,
-                                errors: [`Barcode import failed after product update: ${barcodeError.message}`]
+                                name: row.data.name,
+                                warnings: [buildBarcodeImportWarning('product update', barcodeError)]
                             });
                             continue;
                         }
@@ -1189,7 +1251,7 @@ export const confirmImport = async (rows, userId) => {
                     }
                 } else {
                     const row = result.status === 'fulfilled' ? result.value.row : null;
-                    const errorMsg = result.status === 'fulfilled' ? result.value.error : result.reason?.message;
+                    const errorMsg = result.status === 'fulfilled' ? result.value.error : formatCsvImportError(result.reason);
                     if (row) {
                         results.failed.push({
                             rowNumber: row.rowNumber,

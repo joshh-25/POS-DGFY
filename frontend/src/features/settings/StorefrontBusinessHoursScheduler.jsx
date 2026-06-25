@@ -63,7 +63,6 @@ export default function StorefrontBusinessHoursScheduler({
   const [openTime, setOpenTime] = useState('09:00');
   const [closeTime, setCloseTime] = useState('17:00');
   const [selectedDays, setSelectedDays] = useState(['mon', 'tue', 'wed', 'thu', 'fri']);
-  const [dragState, setDragState] = useState(null);
   const previousNonAlwaysOpenRef = useRef(null);
   const alwaysOpen = isStorefrontBusinessHoursAlwaysOpen(hours);
   const allDaysSelected = selectedDays.length === STOREFRONT_BUSINESS_DAY_OPTIONS.length;
@@ -192,31 +191,17 @@ export default function StorefrontBusinessHoursScheduler({
           {STOREFRONT_BUSINESS_DAY_OPTIONS.map((day) => {
             const checked = selectedDays.includes(day.key);
             return (
-              <label
+              <button
+                type="button"
                 key={`business-day-select-${day.key}`}
                 className={`select-none rounded-md border px-2 py-1.5 text-xs font-semibold ${checked ? 'border-slate-900 bg-white text-slate-900' : 'border-slate-200 bg-white text-slate-500'}`}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  if (disabled) return;
-                  const nextChecked = !checked;
-                  setDragState({ checked: nextChecked });
-                  setDaySelected(day.key, nextChecked);
-                }}
-                onMouseEnter={() => {
-                  if (!dragState || disabled) return;
-                  setDaySelected(day.key, dragState.checked);
-                }}
-                onMouseUp={() => setDragState(null)}
+                disabled={disabled}
+                aria-pressed={checked}
+                aria-label={`Select ${day.label} for bulk business hours`}
+                onClick={() => setDaySelected(day.key, !checked)}
               >
-                <input
-                  type="checkbox"
-                  className="sr-only"
-                  checked={checked}
-                  disabled={disabled}
-                  onChange={(event) => setDaySelected(day.key, event.target.checked)}
-                />
                 {day.label}
-              </label>
+              </button>
             );
           })}
         </div>

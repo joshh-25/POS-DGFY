@@ -25,6 +25,10 @@ import {
     isPlatformControlledPosSoftwareKey,
     isTenantReviewedPosReceiptKey
 } from './posReceiptMetadataApprovalPolicy.js';
+import {
+    cleanupOmittedStorefrontGalleryAssets,
+    snapshotStorefrontGalleryCleanup
+} from './storefrontGalleryAssetCleanup.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
@@ -143,7 +147,7 @@ const extractTenantReviewedPosReceiptChanges = async ({ settingsRepository, sett
     return { settingsData: nextSettingsData, pendingReviewKeys };
 };
 
-export const buildUpdateSettingsUseCase = ({ settingsRepository }) => {
+export const buildUpdateSettingsUseCase = ({ settingsRepository, storefrontAssetStorage = null }) => {
     return async ({ settingsData, actorUser = null }) => {
         if (!settingsData || typeof settingsData !== 'object' || Array.isArray(settingsData)) {
             return fail(new DomainError(
@@ -225,7 +229,16 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository }) => {
                 });
             }
 
+            const omittedStorefrontGalleryPaths = await snapshotStorefrontGalleryCleanup({
+                settingsRepository,
+                settingsData
+            });
+
             const result = await settingsRepository.updateSettings(settingsData);
+            await cleanupOmittedStorefrontGalleryAssets({
+                omittedPaths: omittedStorefrontGalleryPaths,
+                storefrontAssetStorage
+            });
             return ok({
                 ...result,
                 pending_review_keys: posMetadataReview.pendingReviewKeys

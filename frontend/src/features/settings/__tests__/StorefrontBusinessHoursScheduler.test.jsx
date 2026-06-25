@@ -63,6 +63,46 @@ describe('StorefrontBusinessHoursScheduler', () => {
     expect(screen.getByLabelText(/Mon schedule block/i)).toBeTruthy();
   });
 
+  it('targets a specific selected day for bulk edits', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<ControlledScheduler onChange={onChange} />);
+
+    for (const day of ['Mon', 'Tue', 'Thu', 'Fri']) {
+      await user.click(screen.getByRole('button', { name: new RegExp(`Select ${day} for bulk business hours`, 'i') }));
+    }
+    fireEvent.change(screen.getByLabelText(/^Open time$/i), { target: { value: '11:00' } });
+    fireEvent.change(screen.getByLabelText(/^Close time$/i), { target: { value: '22:00' } });
+    await user.click(screen.getByRole('button', { name: /Apply/i }));
+
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      weekly: expect.objectContaining({
+        wed: { enabled: true, open: '11:00', close: '22:00', intervals: [{ open: '11:00', close: '22:00' }] },
+        mon: { enabled: true, open: '09:00', close: '18:00', intervals: [{ open: '09:00', close: '18:00' }] },
+        sat: { enabled: true, open: '09:00', close: '18:00', intervals: [{ open: '09:00', close: '18:00' }] }
+      })
+    }));
+  });
+
+  it('applies bulk edits to all days only when All days is selected', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<ControlledScheduler onChange={onChange} />);
+
+    await user.click(screen.getByLabelText(/All days/i));
+    fireEvent.change(screen.getByLabelText(/^Open time$/i), { target: { value: '08:00' } });
+    fireEvent.change(screen.getByLabelText(/^Close time$/i), { target: { value: '19:00' } });
+    await user.click(screen.getByRole('button', { name: /Apply/i }));
+
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      weekly: expect.objectContaining({
+        sun: { enabled: true, open: '08:00', close: '19:00', intervals: [{ open: '08:00', close: '19:00' }] },
+        mon: { enabled: true, open: '08:00', close: '19:00', intervals: [{ open: '08:00', close: '19:00' }] },
+        sat: { enabled: true, open: '08:00', close: '19:00', intervals: [{ open: '08:00', close: '19:00' }] }
+      })
+    }));
+  });
+
   it('adds and edits a second interval without overflowing the weekly row controls', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

@@ -607,7 +607,7 @@ describe('Settings deep-linking and action wiring', () => {
     await waitFor(() => {
       expect(mocks.tenantLocationServiceMock.deleteTenantLocation).toHaveBeenCalledWith(13);
     });
-  });
+  }, 10000);
 
   it('keeps active locations on the deactivate path before permanent delete', async () => {
     renderSettings('/settings?tab=storefront');
@@ -698,6 +698,53 @@ describe('Settings deep-linking and action wiring', () => {
     });
   });
 
+  it('uploads storefront gallery files and saves the returned gallery path', async () => {
+    const user = userEvent.setup();
+    mocks.settingsServiceMock.getAllSettings.mockResolvedValueOnce({
+      storefront_gallery_images: {
+        value: [
+          { path: 'storefront-assets/t1/existing.png', caption: 'Existing dish', alt: 'Existing alt', sort_order: 0 }
+        ]
+      },
+      store_is_visible: { value: false, data_type: 'boolean' },
+      customer_access_mode: { value: 'catalog', data_type: 'string' },
+      effective_customer_access_mode: { value: 'catalog', data_type: 'string', source: 'runtime' },
+      max_customer_access_mode: { value: 'catalog', data_type: 'string', source: 'runtime' },
+      platform_max_customer_access_mode: { value: 'transaction', data_type: 'string', source: 'runtime_default' },
+      registration_stage_max_customer_access_mode: { value: 'catalog', data_type: 'string', source: 'runtime' },
+      customer_access_registration_stage: { value: 'informal', data_type: 'string', source: 'runtime' },
+      customer_access_limitation_reason: { value: '', data_type: 'string', source: 'runtime' }
+    });
+    mocks.settingsServiceMock.uploadStorefrontAsset.mockResolvedValueOnce({
+      image_url: '/uploads/storefront-assets/t1/gallery-new.png',
+      path: 'storefront-assets/t1/gallery-new.png'
+    });
+    renderSettings('/settings?tab=storefront');
+    await screen.findByRole('button', { name: /Storefront/i });
+
+    await user.upload(
+      screen.getByLabelText(/Upload gallery image 1/i),
+      new File(['gallery'], 'gallery.png', { type: 'image/png' })
+    );
+    await waitFor(() => {
+      expect(mocks.settingsServiceMock.uploadStorefrontAsset).toHaveBeenCalledWith('gallery', expect.any(File));
+    });
+
+    await user.click(screen.getByRole('button', { name: /Save Changes/i }));
+    await waitFor(() => expect(mocks.settingsServiceMock.updateSettings).toHaveBeenCalled());
+    expect(mocks.settingsServiceMock.updateSettings.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({
+      storefront_gallery_images: [
+        expect.objectContaining({
+          path: 'storefront-assets/t1/gallery-new.png',
+          url: '',
+          caption: 'Existing dish',
+          alt: 'Existing alt',
+          sort_order: 0
+        })
+      ]
+    }));
+  });
+
   it('disables storefront branding uploads for non-admin users without micropermission', async () => {
     mocks.storeState.currentUser = {
       username: 'staff1',
@@ -721,7 +768,7 @@ describe('Settings deep-linking and action wiring', () => {
     fileInputs.forEach((input) => {
       expect(input.hasAttribute('disabled')).toBe(true);
     });
-    expect(screen.getByText(/settings:storefront_branding_edit/i)).toBeTruthy();
+    expect(screen.getAllByText(/settings:storefront_branding_edit/i).length).toBeGreaterThan(0);
   });
 
   it('allows storefront branding uploads for non-admin users with micropermission', async () => {

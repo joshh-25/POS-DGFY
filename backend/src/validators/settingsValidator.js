@@ -8,7 +8,7 @@ import {
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'online'];
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const TERMINAL_REGISTRY_MODES = ['warn', 'enforce'];
-const STOREFRONT_ASSET_TYPES = new Set(['cover', 'profile']);
+const STOREFRONT_ASSET_TYPES = new Set(['cover', 'profile', 'gallery']);
 const PLATFORM_CONTROLLED_POS_SOFTWARE_KEYS = new Set([
   'pos_software_name',
   'pos_software_version',
@@ -248,7 +248,10 @@ const storefrontBusinessHoursSchema = Joi.alternatives().try(
   })
 );
 const storefrontCategoriesSchema = Joi.array().items(Joi.string().trim().min(1).max(60)).max(12).optional();
-const storefrontGalleryUrlSchema = Joi.string().trim().max(500).uri({ scheme: ['http', 'https'] }).allow('', null).optional();
+const storefrontGalleryUrlSchema = Joi.alternatives().try(
+  Joi.string().trim().max(500).uri({ scheme: ['http', 'https'] }),
+  storefrontAssetUrlSchema
+).allow('', null).optional();
 const storefrontGalleryPathSchema = Joi.string().trim().max(500).pattern(/^$|^storefront-assets\/[A-Za-z0-9/_\-.]+$/).allow(null).optional().messages({
   'string.pattern.base': 'Storefront gallery path must be empty or a storefront-assets relative path'
 });
@@ -588,7 +591,7 @@ export const validateStorefrontAssetTypeParam = (req, res, next) => {
       message: 'Validation failed',
       errors: [{
         field: 'asset_type',
-        message: 'asset_type must be one of: cover, profile'
+        message: 'asset_type must be one of: cover, profile, gallery'
       }],
       timestamp: new Date().toISOString()
     });

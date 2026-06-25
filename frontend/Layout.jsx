@@ -341,7 +341,13 @@ export default function Layout({ children, currentPageName }) {
   const [capabilityNotice, setCapabilityNotice] = useState(null);
   const { can, userRole, loading } = usePermission();
   const { setCurrentUser: setGlobalCurrentUser } = useStore();
-  const { workflowMode, modeChangeNotice, dismissModeChangeNotice } = useWorkflowMode();
+  const {
+    workflowMode,
+    loading: workflowModeLoading,
+    resolved: workflowModeResolved = true,
+    modeChangeNotice,
+    dismissModeChangeNotice
+  } = useWorkflowMode();
   const [onboardingModalOpen, setOnboardingModalOpen] = useState(false);
   const [onboardingDismissedThisSession, setOnboardingDismissedThisSession] = useState(false);
   const onboardingReminderTrackedRef = useRef(false);
@@ -408,7 +414,10 @@ export default function Layout({ children, currentPageName }) {
   const onboarding = currentUser?.onboarding || null;
   const onboardingState = String(onboarding?.tenant_onboarding_state || 'not_started').trim().toLowerCase();
   const shouldShowOnboardingReminder = Boolean(
-    currentUser?.is_master_admin === true && onboardingState !== 'completed'
+    currentUser?.is_master_admin === true
+    && onboardingState !== 'completed'
+    && workflowModeLoading === false
+    && workflowModeResolved === true
   );
   const shouldShowPhoneReminder = Boolean(
     currentUser && !String(currentUser.phone_number || '').trim()

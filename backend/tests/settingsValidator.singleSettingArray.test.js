@@ -79,6 +79,32 @@ describe('settings validator single-setting payload', () => {
     expect(Array.isArray(req.validatedData.value)).toBe(true);
   });
 
+  it('accepts storefront_gallery_images with uploaded backend-local image URLs', () => {
+    const req = {
+      params: { key: 'storefront_gallery_images' },
+      body: {
+        value: [
+          {
+            url: '/uploads/storefront-assets/t1/gallery-uploaded.png',
+            path: 'storefront-assets/t1/gallery-uploaded.png',
+            caption: 'Uploaded dish'
+          }
+        ]
+      }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    validateUpdateSingleSetting(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(req.validatedData.value[0]).toEqual(expect.objectContaining({
+      url: '/uploads/storefront-assets/t1/gallery-uploaded.png',
+      path: 'storefront-assets/t1/gallery-uploaded.png'
+    }));
+  });
+
   it('rejects storefront_gallery_images entries that have neither url nor path', () => {
     const req = {
       params: { key: 'storefront_gallery_images' },
@@ -98,7 +124,7 @@ describe('settings validator single-setting payload', () => {
     expect(res.json).toHaveBeenCalled();
   });
 
-  it('rejects storefront_gallery_images entries with non-http(s) url values', () => {
+  it('rejects storefront_gallery_images entries with unsafe url values', () => {
     const req = {
       params: { key: 'storefront_gallery_images' },
       body: {

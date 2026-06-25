@@ -327,6 +327,9 @@ describe('OnboardingSetupModal behavior', () => {
       }
     });
 
+    expect(screen.getByText(/Mode: Food & Beverage\./i)).toBeTruthy();
+    expect(screen.queryByText(/Mode: Food Manufacturing\./i)).toBeNull();
+
     await user.click(screen.getByRole('button', { name: /Step 3: Menu Item/i }));
 
     const itemType = screen.getByLabelText(/Item type/i);

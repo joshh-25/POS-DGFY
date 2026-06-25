@@ -185,6 +185,41 @@ describe('settingsHandlers transport contracts', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  it('uploadStorefrontAsset passes gallery asset uploads through transport', async () => {
+    mockUploadStorefrontAssetUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        asset_type: 'gallery',
+        image_url: '/uploads/storefront-assets/tenant-a/gallery-1.png',
+        path: 'storefront-assets/tenant-a/gallery-1.png'
+      }
+    });
+    const req = {
+      params: { asset_type: 'gallery' },
+      file: { originalname: 'gallery.png', mimetype: 'image/png', path: 'uploads/temp/gallery.png' },
+      requestId: 'req-gallery-upload',
+      headers: { 'x-company-token': 'token-a' },
+      tenant: null
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await uploadStorefrontAsset(req, res, next);
+
+    expect(mockUploadStorefrontAssetUseCase).toHaveBeenCalledWith(expect.objectContaining({
+      assetType: 'gallery'
+    }));
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      data: expect.objectContaining({
+        asset_type: 'gallery',
+        path: 'storefront-assets/tenant-a/gallery-1.png'
+      })
+    }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
   it('runs discovery sync after successful bulk settings update', async () => {
     mockUpdateSettingsUseCase.mockResolvedValue({
       success: true,

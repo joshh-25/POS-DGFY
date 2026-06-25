@@ -41,6 +41,31 @@ describe('normalizeStorefrontPageModel', () => {
     expect(model.sections.supporting.hasGallery).toBe(true);
   });
 
+  it('preserves external, backend-local, and path-only storefront gallery images', () => {
+    const model = normalizeStorefrontPageModel({
+      selectedStore: {
+        workflow_mode: 'fnb',
+        storefront_gallery_images: [
+          { url: 'https://cdn.example.com/external.jpg', caption: 'External' },
+          { url: '/uploads/storefront-assets/t1/local-url.png', caption: 'Local URL' },
+          { path: 'storefront-assets/t1/path-only.png', caption: 'Path only' }
+        ]
+      },
+      catalog: []
+    });
+
+    expect(model.supporting.galleryImages).toEqual([
+      expect.objectContaining({ url: 'https://cdn.example.com/external.jpg' }),
+      expect.objectContaining({ url: '/uploads/storefront-assets/t1/local-url.png' }),
+      expect.objectContaining({ url: 'storefront-assets/t1/path-only.png' })
+    ]);
+    expect(model.hero.galleryPreview).toEqual([
+      'https://cdn.example.com/external.jpg',
+      '/uploads/storefront-assets/t1/local-url.png',
+      'storefront-assets/t1/path-only.png'
+    ]);
+  });
+
   it('collapses optional sections when storefront data is missing', () => {
     const model = normalizeStorefrontPageModel({
       selectedStore: {

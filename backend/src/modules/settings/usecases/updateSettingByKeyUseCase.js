@@ -25,6 +25,10 @@ import {
     isPlatformControlledPosSoftwareKey,
     isTenantReviewedPosReceiptKey
 } from './posReceiptMetadataApprovalPolicy.js';
+import {
+    cleanupOmittedStorefrontGalleryAssets,
+    snapshotStorefrontGalleryCleanup
+} from './storefrontGalleryAssetCleanup.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
@@ -43,7 +47,7 @@ const getTenantComplianceSnapshot = () => {
     };
 };
 
-export const buildUpdateSettingByKeyUseCase = ({ settingsRepository }) => {
+export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontAssetStorage = null }) => {
     return async ({ key, value, actorUser = null }) => {
         if (!key || typeof key !== 'string') {
             return fail(new DomainError(
@@ -193,7 +197,16 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository }) => {
                 await settingsRepository.updateSettingByKey(POS_TERMINAL_REGISTRY_KEY, strictBindingRegistryPatch);
             }
 
+            const omittedStorefrontGalleryPaths = await snapshotStorefrontGalleryCleanup({
+                settingsRepository,
+                settingsData: { [key]: normalizedValue }
+            });
+
             const updatedSetting = await settingsRepository.updateSettingByKey(key, normalizedValue);
+            await cleanupOmittedStorefrontGalleryAssets({
+                omittedPaths: omittedStorefrontGalleryPaths,
+                storefrontAssetStorage
+            });
             return ok(updatedSetting);
         } catch (error) {
             return fail(mapSettingsUseCaseError(error, 'Failed to update setting'));
