@@ -81,7 +81,7 @@ Evidence semantics:
 
 ## DGFY Company Access And Legacy Invitation Gates
 
-DGFY company-access evidence is mandatory for company registration handoff, user-management invitation, Settings, AI user-management, company switching, ownership transfer, legacy linking, and POS unlock changes.
+DGFY company-access evidence is mandatory for company registration handoff, platform-admin assisted provisioning, user-management invitation, Settings, AI user-management, company switching, ownership transfer, legacy linking, and POS unlock changes.
 
 Required commands:
 1. `npm --prefix backend test -- --runTestsByPath tests/settingsCompanyInfo.usecase.test.js tests/settingsHandlers.companyInfo.test.js tests/userManagementToolRegistry.test.js tests/aiTools.test.js tests/emailTemplates.invitation.test.js`
@@ -89,18 +89,22 @@ Required commands:
 3. `npm --prefix backend test -- --runTestsByPath tests/dgfyAuthUseCases.test.js tests/dgfyLegacyLinkService.test.js tests/dgfyTenantSession.transport.test.js tests/auth.test.js`
 4. `npm --prefix frontend test -- --run Pages/__tests__/AcceptInvite.test.jsx Components/users/__tests__/UserManagementModal.rbacContract.test.js`
 5. `npm --prefix frontend test -- --run src/features/pos/__tests__/TerminalLockDrawer.dgfy.test.jsx Components/users/__tests__/UserInvitationModal.dgfy.test.jsx src/services/__tests__/dgfyAuthService.cookieSession.test.js --testTimeout 20000`
-6. `npm run smoke:dgfy-access-ui` after local IMS, POS, and Storefront dev or preview servers are running.
-7. `DGFY_ACCESS_STRICT_NETWORK=true npm run smoke:dgfy-access-ui` for seeded local-stack or staging proof; local HTTPS-enforced backend smoke may also set `DGFY_ACCESS_FORWARDED_PROTO=https`.
-8. `npm --prefix frontend run build:skupervisor`, `npm --prefix frontend run build:store`, and `npm --prefix frontend run build:pos`.
+6. For platform-admin assisted provisioning: `npm --prefix backend test -- --runTestsByPath tests/dgfyAdminAccountUseCases.test.js tests/adminAssistedProvisioningUseCase.test.js tests/dgfyAdminAccountRoutes.contract.test.js tests/adminAssistedProvisioningRoutes.contract.test.js tests/tenantAdminAuditLogActions.contract.test.js`
+7. For the Tenant Manager and DGFY Accounts admin panels: `npm --prefix frontend test -- --run src/services/__tests__/adminService.adminOperations.contract.test.js src/pages/__tests__/DgfyAccountManager.integration.test.jsx src/pages/__tests__/TenantManager.capabilities.integration.test.jsx`
+8. `npm run smoke:dgfy-access-ui` after local IMS, POS, and Storefront dev or preview servers are running.
+9. `DGFY_ACCESS_STRICT_NETWORK=true npm run smoke:dgfy-access-ui` for seeded local-stack or staging proof; local HTTPS-enforced backend smoke may also set `DGFY_ACCESS_FORWARDED_PROTO=https`.
+10. `npm --prefix frontend run build:skupervisor`, `npm --prefix frontend run build:store`, and `npm --prefix frontend run build:pos`.
 
 Evidence semantics:
 1. Settings company-info tests prove the API no longer returns `registration_link`.
 2. AI tests prove the retired `get_company_join_link` tool cannot generate company-token registration URLs.
 3. Email-template and user-management tests prove new DGFY invitations do not expose manual links or `company_token`; the old `/accept-invite?token=...` route is compatibility-only and must remain non-mutating for new business onboarding.
 4. Backend DGFY tests prove account search safe fields, DGFY-only invitation creation, accept/reject, leave, ownership transfer, legacy grace, POS session authorization, owner-transfer demotion, and no normal email-fallback tenant-session authentication.
-5. Frontend invitation/POS/service tests prove the IMS invite modal selects registered DGFY accounts, DGFY auth service errors stay scoped away from generic tenant global toasts, development auto-login is opt-in and excluded from DGFY/POS lock entrypoints, and the POS drawer exposes DGFY sign-in, company, terminal, and legacy-grace states.
-6. The rendered smoke writes structured JSON under `.tmp/rendered-qa/dgfy-access/` plus desktop/mobile screenshots. Default mode is frontend-only and records API failures as diagnostics; strict mode fails on 5xx network responses for full-stack evidence.
-7. These gates do not prove all historically issued links have expired or that POS hardware bridges are device-proven after DGFY unlock. Seeded UAT must still cover receipt printing, cash drawer, iMin warnings, shift state, terminal policy denial, and offline queue replay.
+5. Platform-admin assisted provisioning tests prove public OTP rules remain unchanged, admin-created DGFY accounts use temporary-password state, ownerless tenants cannot issue DGFY/POS sessions, combined provisioning creates explicit accepted membership, force assignment targets an active account id, and audit snapshots exclude secrets.
+6. Frontend invitation/POS/service tests prove the IMS invite modal selects registered DGFY accounts, DGFY auth service errors stay scoped away from generic tenant global toasts, development auto-login is opt-in and excluded from DGFY/POS lock entrypoints, and the POS drawer exposes DGFY sign-in, company, terminal, and legacy-grace states.
+7. Admin frontend tests prove Tenant Manager separates Company-only from DGFY+Company provisioning, reason fields are required, DGFY Accounts creation shows temporary-password state, and owner/company/account submit boundaries do not trigger adjacent actions.
+8. The rendered smoke writes structured JSON under `.tmp/rendered-qa/dgfy-access/` plus desktop/mobile screenshots. Default mode is frontend-only and records API failures as diagnostics; strict mode fails on 5xx network responses for full-stack evidence.
+9. These gates do not prove all historically issued links have expired, that POS hardware bridges are device-proven after DGFY unlock, or that every admin-created merchant has accepted current legal terms. Seeded UAT must still cover legal acknowledgement before owner-authorized self-service, receipt printing, cash drawer, iMin warnings, shift state, terminal policy denial, and offline queue replay.
 
 ## Frontend Contract Gates
 
@@ -385,7 +389,7 @@ git diff --check
 
 ## Tenant Registration Auto-Accept Smoke
 
-Use these checks when changing company registration, tenant provisioning, auth login handoff, public registration rate limits, or `TENANT_REGISTRATION_APPROVAL_MODE`.
+Use these checks when changing public company registration, tenant provisioning, auth login handoff, public registration rate limits, admin-assisted tenant provisioning, or `TENANT_REGISTRATION_APPROVAL_MODE`.
 
 Targeted backend suites:
 ```bash
@@ -395,6 +399,11 @@ npm --prefix backend test -- --runTestsByPath tests/registerCompanyRequestUseCas
 Tenant provisioning/model graph suites:
 ```bash
 npm --prefix backend test -- --runTestsByPath tests/tenantModelFactory.contract.test.js tests/tenantProvisioning.test.js
+```
+
+Platform-admin assisted provisioning suites:
+```bash
+npm --prefix backend test -- --runTestsByPath tests/adminAssistedProvisioningUseCase.test.js tests/adminAssistedProvisioningRoutes.contract.test.js
 ```
 
 Fresh-schema proof:

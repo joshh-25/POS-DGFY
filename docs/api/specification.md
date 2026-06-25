@@ -5140,6 +5140,7 @@ Platform-admin DGFY account endpoints live under `/api/v1/dgfy/admin/accounts` a
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/dgfy/admin/accounts` | List all DGFY accounts with filters for status, email verification, company membership, search, page, and limit |
+| `POST` | `/dgfy/admin/accounts` | Create an admin-provisioned active DGFY account with a temporary password and audit reason |
 | `GET` | `/dgfy/admin/accounts/:account_id` | Return one DGFY account with tenant memberships and recent admin audit rows |
 | `PATCH` | `/dgfy/admin/accounts/:account_id/profile` | Update first name, optional middle name, last name, and phone |
 | `POST` | `/dgfy/admin/accounts/:account_id/suspend` | Suspend a DGFY account and require a reason |
@@ -5213,6 +5214,22 @@ List query parameters:
   "phone": "+639123456789"
 }
 ```
+
+**Create Admin-Provisioned Account Request**
+
+```json
+{
+  "first_name": "Maria",
+  "middle_name": "",
+  "last_name": "Santos",
+  "email": "maria@example.com",
+  "phone": "+639123456789",
+  "temporary_password": "optional-admin-supplied-password",
+  "reason": "White glove onboarding"
+}
+```
+
+This endpoint does not consume public OTP. It creates an active account with `provisioning_status="admin_provisioned"`, `temporary_password_active=true`, `email_verification_source="platform_admin_provisioned"`, and `phone_verified_at=null`. The temporary password is returned only in the create response and is excluded from audit snapshots.
 
 Email changes are rejected from this endpoint. DGFY email changes remain deferred until a dedicated verified email-change or approved admin override design exists. Phone changes clear `phone_verified_at`; phone verification remains deferred and must not be presented as verified identity.
 
@@ -5333,6 +5350,22 @@ Submit a public company registration request.
 - Founder contact and credentials: public company registration no longer accepts `adminEmail`, `adminPhone`, or `adminPassword`; the server derives them from the authenticated DGFY account.
 - Founder account source: public company registration requires a signed-in active DGFY account. The backend derives founder email, phone, username seed, and password hash from that account and does not require a separate DGFY email-code step or `email_verified_at` gate before tenant creation.
 - Legal acknowledgement: public company registration requires the current company terms and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current` before tenant creation. The backend fails closed before tenant creation if legal acknowledgement persistence is unavailable. After confirming there is a signed-in active DGFY account, the landlord tenant row, pending-founder membership when applicable, and acknowledgement evidence are written in one landlord transaction. The acknowledgement states that DGFY is an e-marketplace/platform service provider, the seller owns the product, sets the price, fulfills the order, remains seller of record, payment is processed by a licensed payment partner, and DGFY deducts disclosed fees before remitting the seller's net settlement. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
+
+### Platform Admin Assisted Provisioning Endpoints
+
+These endpoints require the platform admin JWT/cookie accepted by `authenticateAdmin`. They are privileged onboarding paths and do not change the public `/admin/tenants/register` OTP/DGFY-account requirement.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/admin/tenants/admin-provision` | Create and immediately provision an ownerless platform-admin company |
+| `POST` | `/admin/tenants/admin-provision-with-account` | Create a DGFY account and company together, then link accepted founder membership |
+| `POST` | `/admin/tenants/:id/owner` | Assign or force-assign an existing active DGFY account as company owner |
+
+Company-only provisioning accepts company name, workflow mode, admin email, admin phone, temporary password, and reason. It creates a tenant with `provisioning_source="platform_admin"` and `ownership_status="unassigned"`, provisions the tenant database immediately, and returns the temporary password once. Ownerless companies cannot issue DGFY tenant sessions, POS sessions, or switcher access until an owner is assigned.
+
+Combined provisioning accepts a DGFY account payload plus company payload and reason. It creates an admin-provisioned DGFY account, provisions the tenant database, creates the tenant-local master admin profile, and writes an accepted membership with explicit owner linkage.
+
+Owner assignment accepts `dgfy_account_id`, `reason`, and optional `force` (default `true`). The target must be an existing active DGFY account. The backend must not infer ownership from raw email or phone values.
 
 **Response (201, explicit manual mode)**
 ```json

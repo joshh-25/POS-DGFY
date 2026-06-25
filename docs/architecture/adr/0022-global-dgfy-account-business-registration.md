@@ -44,6 +44,8 @@ Introduce a landlord-scoped DGFY account identity.
 25. Platform-admin DGFY account delete is a deidentify action, not a physical row purge. It requires a reason and current-email confirmation, sets `deleted_at`, deactivates the account, clears verification/login timestamps, overwrites password hash with an inert placeholder, and replaces email, phone, username, and display names with non-user placeholders so the original credentials can register again.
 26. Delete/deidentify must preserve legal acknowledgements, tenant memberships, customer activity, reviews, loyalty, order/history records, and admin audit evidence. Deleted accounts are excluded from normal credential lookup and default platform-admin lists; the `deleted` status filter may show redacted deleted identities for support audit.
 27. Every platform-admin DGFY account mutation writes a landlord-scoped `dgfy_account_admin_audit_logs` record with safe before/after snapshots, actor username, reason when applicable, request metadata, and no secrets such as password hashes, tokens, or OTPs.
+28. Platform admin may create admin-provisioned DGFY accounts for merchant onboarding without public OTP. These accounts are active and may use a temporary password for platform-led DGFY, IMS, and POS setup, but they must be marked `provisioning_status='admin_provisioned'`, `temporary_password_active=true`, and `email_verification_source='platform_admin_provisioned'`. Phone remains unverified. Temporary passwords are returned only in the creation response and must never be written to audit snapshots.
+29. Admin-provisioned accounts are a privileged platform-admin path only. Public DGFY registration still requires `dgfy_account_verification` OTP and legal acknowledgement before account creation. Admin provisioning evidence is not a substitute for merchant-facing legal acknowledgement; merchant terms acceptance remains distinct and must be captured before owner-authorized self-service or sensitive business actions depend on it.
 
 ## Consequences
 
@@ -58,6 +60,7 @@ Introduce a landlord-scoped DGFY account identity.
 9. Registration acknowledgement hardening improves evidence capture but does not itself implement PayMongo Platform/sub-merchant split settlement. Payment-provider onboarding, payout routing, withholding, and settlement reports remain separate governed payment work.
 10. Platform support can suspend compromised or abusive global DGFY identities without deleting legal and transaction evidence. Reactivation remains explicit and reason-audited.
 11. Platform support can release a DGFY account's credentials for re-registration without erasing legal, customer, tenant, or admin audit records by using the delete/deidentify action.
+12. Platform support can create temporary-password DGFY accounts for assisted onboarding, but the account state must remain visibly admin-provisioned until the merchant changes the temporary password and completes any required merchant-facing acknowledgements.
 
 ## Hardening Contract For This Flow
 
@@ -88,4 +91,5 @@ Implementations must prove:
 8. Rendered route QA for `/register-company`, including Reset interaction and mobile/desktop visual checks.
 9. Root frontend build plus SKUpervisor build; Storefront/POS builds when shared surfaces are touched.
 10. Platform-admin DGFY account lifecycle tests proving list/detail, profile validation, duplicate/invalid phone rejection, email-edit rejection, suspend/reactivate reason enforcement, delete/deidentify confirmation and credential release, audit persistence, and suspended/deleted-account login/auth rejection.
-11. Rendered admin-route QA for `/admin/dgfy-accounts`, including nonblank content, console health, filters, detail drawer, and one profile or lifecycle interaction.
+11. Platform-admin DGFY account creation tests proving no public OTP is consumed, duplicate email/phone conflicts fail safely, temporary-password state is visible, password change clears `temporary_password_active`, and audit snapshots contain no secrets.
+12. Rendered admin-route QA for `/admin/dgfy-accounts`, including nonblank content, console health, filters, detail drawer, create-account panel, and one profile or lifecycle interaction.

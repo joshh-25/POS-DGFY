@@ -35,6 +35,17 @@ The SKU Inventory Manager uses a **Multi-Tenant Architecture** with **Database I
 - **Email Mapping**: Manual pending registrations create the founder email-to-tenant mapping at registration time so lookup can show pending status. Auto-provisioned registrations leave mapping creation to the provisioning path so the mapping is written only after tenant activation succeeds.
 - **Abuse Control**: Public company registration is IP rate-limited (`RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS=5` per `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS=3600000` by default in production). Keep this strict because default accepted registrations create tenant databases.
 
+### Platform Admin Assisted Provisioning
+
+Platform admin can create companies and DGFY accounts for merchant onboarding without using the public self-service OTP flow. This is a privileged admin path only:
+
+- **DGFY account only**: creates an active DGFY account with `provisioning_status=admin_provisioned`, `temporary_password_active=true`, `email_verification_source=platform_admin_provisioned`, and a one-time temporary password returned only in the response. Phone remains unverified.
+- **Company only**: creates and immediately provisions the tenant database with `provisioning_source=platform_admin` and `ownership_status=unassigned`. The tenant can be configured by platform staff, but no DGFY tenant session, POS unlock, company switch, or owner action is available until a DGFY owner is assigned.
+- **DGFY + company**: creates the account, tenant, tenant-local master-admin authorization profile, explicit accepted membership, and `owner_dgfy_account_id` in the platform-admin flow.
+- **Owner handover**: platform admin may force-assign ownership to an existing active DGFY account id. Handover must create/update explicit `DgfyAccountTenantMembership` state and audit the reason; tenant settings must not edit DGFY account email or password.
+
+Public registration remains unchanged: public DGFY signup requires OTP and public company registration requires an authenticated DGFY account.
+
 ### Legacy Direct Tenant Login Grace
 
 Direct tenant-local IMS/POS login remains only as a migration grace path for accepted existing users who do not yet have an accepted DGFY membership. The default grace deadline is June 17, 2027 through `LEGACY_TENANT_LOGIN_GRACE_END=2027-06-17` and `LEGACY_TENANT_LOGIN_GRACE_ENABLED=true`. Login, current-user, and Manage Users responses expose `dgfy_link_status`, `legacy_grace_expires_at`, `dgfy_membership_id`, `dgfy_account_id`, `can_legacy_login`, and `legacy_login_block_reason` so IMS/POS can show direct DGFY-linking reminders, admins can report unlinked accounts, and owner-transfer UI can target accepted linked members.
