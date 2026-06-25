@@ -46,7 +46,7 @@ describe('TerminalPage session contract', () => {
   it('falls back to governed legacy POS unlock when DGFY account login rejects tenant-local credentials', () => {
     expect(terminalPageSource).toContain('performLegacyTerminalUnlock({ email, password, selectedTerminalId })');
     expect(terminalPageSource).toContain("Number(error?.response?.status || 0) === 401");
-    expect(terminalPageSource).toContain('Legacy POS access used. Link this account to DGFY before June 17, 2027.');
+    expect(terminalPageSource).not.toContain('Legacy POS access used. Link this account to DGFY before June 17, 2027.');
     expect(terminalPageSource).toContain('loginWithCredentials(');
     expect(terminalPageSource).toContain('lookupCompanyToken(email, currentCompanyToken)');
   });

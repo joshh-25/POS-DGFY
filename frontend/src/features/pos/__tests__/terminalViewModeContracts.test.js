@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const terminalPagePath = path.resolve(__dirname, '../pages/TerminalPage.jsx');
-const terminalWorkspaceSidebarPath = path.resolve(__dirname, '../../../apps/pos/src/components/TerminalWorkspaceSidebar.jsx');
+const terminalWorkspaceSidebarPath = path.resolve(__dirname, '../components/TerminalWorkspaceSidebar.jsx');
 const terminalSidebarPanelPath = path.resolve(__dirname, '../components/TerminalSidebarPanel.jsx');
 const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 const posReportsAnalyticsWorkspacePath = path.resolve(__dirname, '../components/PosReportsAnalyticsWorkspace.jsx');
@@ -16,8 +16,8 @@ const skupervisorCheckoutTerminalPath = path.resolve(__dirname, '../components/S
 const receiptPrintViewPath = path.resolve(__dirname, '../components/ReceiptPrintView.jsx');
 const posBarcodeScannerPath = path.resolve(__dirname, '../components/POSBarcodeScanner.jsx');
 const posHistoryPanelPath = path.resolve(__dirname, '../components/POSTransactionHistoryPanel.jsx');
-const terminalPageLayoutPath = path.resolve(__dirname, '../../../apps/pos/src/components/TerminalPageLayout.jsx');
-const terminalLockDrawerPath = path.resolve(__dirname, '../../../apps/pos/src/components/TerminalLockDrawer.jsx');
+const terminalPageLayoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
+const terminalLockDrawerPath = path.resolve(__dirname, '../components/TerminalLockDrawer.jsx');
 
 describe('POS terminal view-mode contracts', () => {
   let terminalPageContent = '';

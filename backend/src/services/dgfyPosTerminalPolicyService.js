@@ -3,6 +3,7 @@ import dbStore from '../utils/dbStore.js';
 import tenantConnector from '../utils/TenantConnector.js';
 import { getTenantModels } from '../utils/tenantModelFactory.js';
 import { DomainError, DomainErrorCode } from '../modules/shared/contracts/domainErrors.js';
+import bcrypt from 'bcryptjs';
 
 const TERMINAL_ID_PATTERN = /^[A-Z0-9][A-Z0-9_-]{1,39}$/;
 
@@ -35,7 +36,11 @@ const parseJsonSetting = (setting) => {
   }
 };
 
-export const validateDgfyPosTerminalPolicy = async ({ tenantId, terminalId } = {}) => {
+export const validateDgfyPosTerminalPolicy = async ({
+  tenantId,
+  terminalId,
+  terminalPassword = ''
+} = {}) => {
   const resolvedTenantId = String(tenantId || '').trim();
   const normalizedTerminalId = sanitizeTerminalId(terminalId);
   if (!resolvedTenantId) {
@@ -77,7 +82,8 @@ export const validateDgfyPosTerminalPolicy = async ({ tenantId, terminalId } = {
         terminal_id: sanitizeTerminalId(entry?.terminal_id),
         label: String(entry?.label || '').trim(),
         location_id: parsePositiveInt(entry?.location_id),
-        is_active: entry?.is_active !== false
+        is_active: entry?.is_active !== false,
+        terminal_password_hash: String(entry?.terminal_password_hash || '').trim()
       }))
       .filter((entry) => entry.terminal_id && entry.is_active);
     const mode = String(lookup.get('pos_terminal_registry_mode')?.setting_value || 'warn').trim().toLowerCase() === 'enforce'
@@ -95,14 +101,16 @@ export const validateDgfyPosTerminalPolicy = async ({ tenantId, terminalId } = {
       warning: null
     };
 
-    if (mode === 'enforce' && registry.length === 0) {
+    const passwordSubmitted = String(terminalPassword || '').trim().length > 0;
+
+    if ((mode === 'enforce' || passwordSubmitted) && registry.length === 0) {
       throw new DomainError(
         DomainErrorCode.VALIDATION_FAILED,
         'Terminal registry enforcement is active, but no active terminal entries are configured.',
         { statusCode: 422, details: { terminal_identity_policy: { ...context, reason_code: 'REGISTRY_REQUIRED' } } }
       );
     }
-    if (mode === 'enforce' && !registryEntry) {
+    if ((mode === 'enforce' || passwordSubmitted) && !registryEntry) {
       throw new DomainError(
         DomainErrorCode.VALIDATION_FAILED,
         `terminal_id "${normalizedTerminalId}" is not an active registry terminal.`,
@@ -115,6 +123,23 @@ export const validateDgfyPosTerminalPolicy = async ({ tenantId, terminalId } = {
         'Terminal location binding is enforced, but the selected terminal has no home location.',
         { statusCode: 422, details: { terminal_identity_policy: { ...context, reason_code: 'TERMINAL_LOCATION_REQUIRED' } } }
       );
+    }
+    if (registryEntry && !registryEntry.terminal_password_hash) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'This terminal has no terminal password configured in POS Setup.',
+        { statusCode: 422, details: { terminal_identity_policy: { ...context, reason_code: 'TERMINAL_PASSWORD_NOT_CONFIGURED' } } }
+      );
+    }
+    if (registryEntry && registryEntry.terminal_password_hash) {
+      const passwordMatches = await bcrypt.compare(String(terminalPassword || ''), registryEntry.terminal_password_hash);
+      if (!passwordMatches) {
+        throw new DomainError(
+          DomainErrorCode.AUTHENTICATION_FAILED,
+          'Terminal password is incorrect.',
+          { statusCode: 401, details: { terminal_identity_policy: { ...context, reason_code: 'TERMINAL_PASSWORD_INVALID' } } }
+        );
+      }
     }
     if (mode === 'warn' && registry.length > 0 && !registryEntry) {
       return {

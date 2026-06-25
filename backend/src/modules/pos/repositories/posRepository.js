@@ -525,6 +525,741 @@ const buildTransactionInclude = () => ([
     }
 ]);
 
+const REPORT_PAYMENT_GROUP_LABELS = Object.freeze({
+    cash: 'Cash',
+    gcash: 'GCash',
+    maya: 'Online',
+    card: 'Card',
+    bank_transfer: 'Online',
+    qrph: 'Online'
+});
+
+const REPORT_SOURCE_LABELS = Object.freeze({
+    in_store: 'In-Store',
+    online_store: 'Online Store',
+    delivery: 'Delivery',
+    pickup: 'Pickup'
+});
+
+const REFUND_PAYMENT_STATUSES = new Set(['refund_pending', 'partial_refunded', 'refunded']);
+
+const sumBy = (rows = [], selector = () => 0) => round4((Array.isArray(rows) ? rows : []).reduce((sum, row) => (
+    sum + Number(selector(row) || 0)
+), 0));
+
+const uniqueCountBy = (rows = [], selector = () => null) => {
+    const values = new Set();
+    (Array.isArray(rows) ? rows : []).forEach((row) => {
+        const value = selector(row);
+        if (value !== null && value !== undefined && value !== '') {
+            values.add(String(value));
+        }
+    });
+    return values.size;
+};
+
+const getManilaDateParts = (value = new Date()) => {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Manila',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    });
+    const parts = formatter.formatToParts(value);
+    const year = parts.find((part) => part.type === 'year')?.value || '1970';
+    const month = parts.find((part) => part.type === 'month')?.value || '01';
+    const day = parts.find((part) => part.type === 'day')?.value || '01';
+    return { year, month, day, date: `${year}-${month}-${day}` };
+};
+
+const addDays = (value, days) => {
+    const next = new Date(value.getTime());
+    next.setUTCDate(next.getUTCDate() + days);
+    return next;
+};
+
+const addMonthsUtc = (value, months) => {
+    const next = new Date(Date.UTC(
+        value.getUTCFullYear(),
+        value.getUTCMonth(),
+        1,
+        0, 0, 0, 0
+    ));
+    next.setUTCMonth(next.getUTCMonth() + months);
+    return next;
+};
+
+const addYearsUtc = (value, years) => {
+    const next = new Date(Date.UTC(
+        value.getUTCFullYear() + years,
+        value.getUTCMonth(),
+        value.getUTCDate(),
+        0, 0, 0, 0
+    ));
+    return next;
+};
+
+const startOfWeekMondayUtc = (value) => {
+    const next = new Date(Date.UTC(
+        value.getUTCFullYear(),
+        value.getUTCMonth(),
+        value.getUTCDate(),
+        0, 0, 0, 0
+    ));
+    const day = next.getUTCDay();
+    const delta = day === 0 ? -6 : 1 - day;
+    next.setUTCDate(next.getUTCDate() + delta);
+    return next;
+};
+
+const getDefaultReportRange = (granularity = 'daily') => {
+    const { year, month, day } = getManilaDateParts(new Date());
+    const currentUtc = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 0, 0, 0, 0));
+
+    switch (granularity) {
+        case 'weekly': {
+            const start = startOfWeekMondayUtc(currentUtc);
+            return { dateFrom: start.toISOString().slice(0, 10), dateTo: addDays(start, 6).toISOString().slice(0, 10) };
+        }
+        case 'monthly': {
+            const start = new Date(Date.UTC(Number(year), Number(month) - 1, 1, 0, 0, 0, 0));
+            const end = addDays(addMonthsUtc(start, 1), -1);
+            return { dateFrom: start.toISOString().slice(0, 10), dateTo: end.toISOString().slice(0, 10) };
+        }
+        case 'yearly': {
+            const start = new Date(Date.UTC(Number(year), 0, 1, 0, 0, 0, 0));
+            const end = new Date(Date.UTC(Number(year), 11, 31, 0, 0, 0, 0));
+            return { dateFrom: start.toISOString().slice(0, 10), dateTo: end.toISOString().slice(0, 10) };
+        }
+        case 'daily':
+        default:
+            return { dateFrom: `${year}-${month}-${day}`, dateTo: `${year}-${month}-${day}` };
+    }
+};
+
+const resolveReportDateRange = (filters = {}) => {
+    const granularity = String(filters?.granularity || 'daily').trim().toLowerCase() || 'daily';
+    const defaults = getDefaultReportRange(granularity);
+    const dateFrom = normalizeBusinessDateValue(filters?.date_from || defaults.dateFrom) || defaults.dateFrom;
+    const dateTo = normalizeBusinessDateValue(filters?.date_to || defaults.dateTo) || dateFrom;
+    const startAt = toDateStart(dateFrom);
+    const endAtExclusive = addDays(toDateEnd(dateTo), 1);
+    return {
+        granularity,
+        dateFrom,
+        dateTo,
+        startAt,
+        endAtExclusive
+    };
+};
+
+const buildPosReportWhere = (filters = {}, { startAt, endAtExclusive } = {}) => {
+    const baseWhere = {
+        created_at: {
+            [Op.gte]: startAt,
+            [Op.lt]: endAtExclusive
+        }
+    };
+    const cashierId = Number.parseInt(filters.cashier_id, 10);
+    if (Number.isInteger(cashierId) && cashierId > 0) {
+        baseWhere.cashier_id = cashierId;
+    }
+    const locationId = Number.parseInt(filters.location_id, 10);
+    if (Number.isInteger(locationId) && locationId > 0) {
+        baseWhere.location_id = locationId;
+    }
+    const terminalId = String(filters.terminal_id || '').trim();
+    if (terminalId) {
+        baseWhere.terminal_id = terminalId;
+    }
+    if (filters.payment_type) {
+        baseWhere.payment_type = filters.payment_type;
+    }
+
+    const where = buildFinanciallyRecognizedSalesWhere(baseWhere);
+    const source = String(filters.source || '').trim().toLowerCase();
+    if (source === 'in_store') {
+        where[Op.and] = [...(Array.isArray(where[Op.and]) ? where[Op.and] : []), {
+            [Op.or]: [{ order_source: 'in_store' }, { order_source: null }]
+        }];
+    } else if (source === 'online_store') {
+        where[Op.and] = [...(Array.isArray(where[Op.and]) ? where[Op.and] : []), {
+            order_source: 'online_store'
+        }];
+    } else if (source === 'delivery') {
+        where[Op.and] = [...(Array.isArray(where[Op.and]) ? where[Op.and] : []), {
+            order_method: 'delivery'
+        }];
+    } else if (source === 'pickup') {
+        where[Op.and] = [...(Array.isArray(where[Op.and]) ? where[Op.and] : []), {
+            order_method: 'pickup'
+        }];
+    }
+    return where;
+};
+
+const toManilaDateKey = (value) => {
+    if (!value) return '';
+    return getManilaDateParts(new Date(value)).date;
+};
+
+const toMonthKey = (value) => {
+    const dateKey = toManilaDateKey(value);
+    return dateKey ? dateKey.slice(0, 7) : '';
+};
+
+const toYearKey = (value) => {
+    const dateKey = toManilaDateKey(value);
+    return dateKey ? dateKey.slice(0, 4) : '';
+};
+
+const toWeekKey = (value) => {
+    const dateKey = toManilaDateKey(value);
+    if (!dateKey) return '';
+    const start = startOfWeekMondayUtc(new Date(`${dateKey}T00:00:00.000Z`));
+    return start.toISOString().slice(0, 10);
+};
+
+const toDisplayPaymentGroup = (paymentType) => REPORT_PAYMENT_GROUP_LABELS[String(paymentType || '').trim().toLowerCase()] || 'Online';
+
+const resolveReportSourceLabel = (transaction = {}) => {
+    const orderMethod = String(transaction?.order_method || '').trim().toLowerCase();
+    if (orderMethod === 'delivery') return REPORT_SOURCE_LABELS.delivery;
+    if (orderMethod === 'pickup') return REPORT_SOURCE_LABELS.pickup;
+    const orderSource = String(transaction?.order_source || '').trim().toLowerCase();
+    if (orderSource === 'online_store') return REPORT_SOURCE_LABELS.online_store;
+    return REPORT_SOURCE_LABELS.in_store;
+};
+
+const buildReportInclude = () => ([
+    {
+        model: dbStore.get('PosTransactionLine'),
+        as: 'lines',
+        include: [{
+            model: dbStore.get('Item'),
+            as: 'item',
+            attributes: ['item_id', 'name', 'sku_code', 'category', 'cost_per_unit', 'default_sale_price', 'unit_of_measure']
+        }]
+    },
+    {
+        model: dbStore.get('User'),
+        as: 'cashier',
+        attributes: ['user_id', 'username']
+    },
+    {
+        model: dbStore.get('PosTerminalShift'),
+        as: 'shift',
+        attributes: ['pos_terminal_shift_id', 'business_date', 'terminal_id', 'location_id', 'status']
+    }
+]);
+
+const buildComparisonRange = ({ dateFrom, dateTo }) => {
+    const currentStart = toDateStart(dateFrom);
+    const currentEnd = toDateEnd(dateTo);
+    const spanDays = Math.max(1, Math.round((currentEnd.getTime() - currentStart.getTime()) / (24 * 60 * 60 * 1000)) + 1);
+    const previousEnd = addDays(currentStart, -1);
+    const previousStart = addDays(previousEnd, -(spanDays - 1));
+    return {
+        current: {
+            dateFrom,
+            dateTo
+        },
+        previous: {
+            dateFrom: previousStart.toISOString().slice(0, 10),
+            dateTo: previousEnd.toISOString().slice(0, 10)
+        }
+    };
+};
+
+const buildFixedComparisonPeriods = ({ dateTo }) => {
+    const endDate = normalizeBusinessDateValue(dateTo) || getManilaDateParts(new Date()).date;
+    const today = new Date(`${endDate}T00:00:00.000Z`);
+    const yesterday = addDays(today, -1);
+    const weekStart = startOfWeekMondayUtc(today);
+    const lastWeekStart = addDays(weekStart, -7);
+    const monthStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1, 0, 0, 0, 0));
+    const lastMonthStart = addMonthsUtc(monthStart, -1);
+    const lastMonthEnd = addDays(monthStart, -1);
+    const yearStart = new Date(Date.UTC(today.getUTCFullYear(), 0, 1, 0, 0, 0, 0));
+    const lastYearStart = new Date(Date.UTC(today.getUTCFullYear() - 1, 0, 1, 0, 0, 0, 0));
+    const lastYearEnd = new Date(Date.UTC(today.getUTCFullYear() - 1, 11, 31, 0, 0, 0, 0));
+
+    return [
+        {
+            key: 'today_vs_yesterday',
+            label: 'Today vs Yesterday',
+            current: { dateFrom: endDate, dateTo: endDate },
+            previous: {
+                dateFrom: yesterday.toISOString().slice(0, 10),
+                dateTo: yesterday.toISOString().slice(0, 10)
+            }
+        },
+        {
+            key: 'this_week_vs_last_week',
+            label: 'This Week vs Last Week',
+            current: {
+                dateFrom: weekStart.toISOString().slice(0, 10),
+                dateTo: endDate
+            },
+            previous: {
+                dateFrom: lastWeekStart.toISOString().slice(0, 10),
+                dateTo: addDays(weekStart, -1).toISOString().slice(0, 10)
+            }
+        },
+        {
+            key: 'this_month_vs_last_month',
+            label: 'This Month vs Last Month',
+            current: {
+                dateFrom: monthStart.toISOString().slice(0, 10),
+                dateTo: endDate
+            },
+            previous: {
+                dateFrom: lastMonthStart.toISOString().slice(0, 10),
+                dateTo: lastMonthEnd.toISOString().slice(0, 10)
+            }
+        },
+        {
+            key: 'this_year_vs_last_year',
+            label: 'This Year vs Last Year',
+            current: {
+                dateFrom: yearStart.toISOString().slice(0, 10),
+                dateTo: endDate
+            },
+            previous: {
+                dateFrom: lastYearStart.toISOString().slice(0, 10),
+                dateTo: lastYearEnd.toISOString().slice(0, 10)
+            }
+        }
+    ];
+};
+
+const buildPeriodComparisonMetrics = (current = {}, previous = {}) => {
+    const currentSales = Number(current.net_sales || 0);
+    const previousSales = Number(previous.net_sales || 0);
+    const currentProfit = Number(current.pos_profit_loss || 0);
+    const previousProfit = Number(previous.pos_profit_loss || 0);
+
+    const salesDelta = round4(currentSales - previousSales);
+    const profitDelta = round4(currentProfit - previousProfit);
+
+    return {
+        current,
+        previous,
+        sales_delta: salesDelta,
+        profit_delta: profitDelta,
+        sales_delta_percentage: previousSales > 0 ? round4((salesDelta / previousSales) * 100) : (currentSales > 0 ? 100 : 0),
+        profit_delta_percentage: previousProfit !== 0 ? round4((profitDelta / previousProfit) * 100) : (currentProfit > 0 ? 100 : 0)
+    };
+};
+
+const buildEmptyReportSummary = () => ({
+    gross_sales: 0,
+    net_sales: 0,
+    cogs: 0,
+    pos_profit_loss: 0,
+    profit_margin: 0,
+    total_transactions: 0,
+    total_items_sold: 0,
+    discounts: 0,
+    refunds_voids: 0,
+    vat: 0,
+    service_fees: 0,
+    is_loss: false
+});
+
+const serializeReportSummary = (lineRows = []) => {
+    const grossSales = sumBy(lineRows, (row) => row.gross_sales);
+    const netSales = sumBy(lineRows, (row) => row.net_sales);
+    const cogs = sumBy(lineRows, (row) => row.cogs);
+    const posProfitLoss = round4(netSales - cogs);
+    return {
+        gross_sales: grossSales,
+        net_sales: netSales,
+        cogs,
+        pos_profit_loss: posProfitLoss,
+        profit_margin: netSales > 0 ? round4((posProfitLoss / netSales) * 100) : 0,
+        total_transactions: uniqueCountBy(lineRows, (row) => row.transaction_id),
+        total_items_sold: sumBy(lineRows, (row) => row.quantity),
+        discounts: sumBy(lineRows, (row) => row.discount_amount),
+        refunds_voids: sumBy(lineRows, (row) => row.refund_amount),
+        vat: sumBy(lineRows, (row) => row.vat_amount),
+        service_fees: sumBy(lineRows, (row) => row.service_fee_amount),
+        is_loss: posProfitLoss < 0
+    };
+};
+
+const groupRowsBy = (rows = [], keySelector = () => '') => {
+    const groups = new Map();
+    (Array.isArray(rows) ? rows : []).forEach((row) => {
+        const key = keySelector(row);
+        if (!key) return;
+        if (!groups.has(key)) {
+            groups.set(key, []);
+        }
+        groups.get(key).push(row);
+    });
+    return groups;
+};
+
+const buildTimeSeries = (rows = [], granularity = 'daily') => {
+    const keySelector = granularity === 'yearly'
+        ? (row) => toYearKey(row.created_at)
+        : granularity === 'monthly'
+            ? (row) => toMonthKey(row.created_at)
+            : granularity === 'weekly'
+                ? (row) => toWeekKey(row.created_at)
+                : (row) => toManilaDateKey(row.created_at);
+    const groups = groupRowsBy(rows, keySelector);
+    return Array.from(groups.entries())
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entries]) => {
+            const summary = serializeReportSummary(entries);
+            return {
+                period: key,
+                label: key,
+                ...summary
+            };
+        });
+};
+
+const buildPaymentBreakdown = (rows = []) => {
+    const groups = groupRowsBy(rows, (row) => toDisplayPaymentGroup(row.payment_type));
+    return Array.from(groups.entries()).map(([label, entries]) => ({
+        payment_method: label,
+        total_transactions: uniqueCountBy(entries, (row) => row.transaction_id),
+        gross_sales: sumBy(entries, (row) => row.gross_sales),
+        net_sales: sumBy(entries, (row) => row.net_sales),
+        pos_profit_loss: sumBy(entries, (row) => row.net_sales) - sumBy(entries, (row) => row.cogs)
+    }));
+};
+
+const buildOrderMethodBreakdown = (rows = []) => {
+    const groups = groupRowsBy(rows, (row) => String(row.order_method || 'dine_in').trim().toLowerCase() || 'dine_in');
+    return Array.from(groups.entries()).map(([orderMethod, entries]) => ({
+        order_method: orderMethod,
+        total_transactions: uniqueCountBy(entries, (row) => row.transaction_id),
+        gross_sales: sumBy(entries, (row) => row.gross_sales),
+        net_sales: sumBy(entries, (row) => row.net_sales),
+        pos_profit_loss: sumBy(entries, (row) => row.net_sales) - sumBy(entries, (row) => row.cogs)
+    })).sort((left, right) => Number(right.net_sales || 0) - Number(left.net_sales || 0));
+};
+
+const buildCashierSummary = (rows = []) => {
+    const groups = groupRowsBy(rows, (row) => String(row.cashier_id || row.accepted_by || 'unassigned'));
+    return Array.from(groups.entries()).map(([cashierId, entries]) => ({
+        cashier_id: cashierId === 'unassigned' ? null : Number(cashierId),
+        cashier_name: entries[0]?.cashier_name || entries[0]?.accepted_by_name || 'Unassigned',
+        shift_ids: Array.from(new Set(entries.map((entry) => entry.shift_id).filter(Boolean))),
+        summary: serializeReportSummary(entries)
+    })).sort((left, right) => Number(right.summary.net_sales || 0) - Number(left.summary.net_sales || 0));
+};
+
+const buildShiftSummary = (rows = []) => {
+    const groups = groupRowsBy(rows, (row) => String(row.shift_id || 'no_shift'));
+    return Array.from(groups.entries()).map(([shiftKey, entries]) => ({
+        shift_id: shiftKey === 'no_shift' ? null : Number(shiftKey),
+        terminal_id: entries[0]?.terminal_id || null,
+        business_date: entries[0]?.shift_business_date || null,
+        summary: serializeReportSummary(entries)
+    })).sort((left, right) => Number(right.summary.net_sales || 0) - Number(left.summary.net_sales || 0));
+};
+
+const buildTopItems = (rows = [], limit = 10) => {
+    const groups = groupRowsBy(rows, (row) => String(row.item_id || ''));
+    return Array.from(groups.entries())
+        .map(([itemId, entries]) => ({
+            item_id: Number(itemId),
+            item_name: entries[0]?.item_name || `Item #${itemId}`,
+            sku_code: entries[0]?.sku_code || null,
+            category: entries[0]?.category || null,
+            quantity: sumBy(entries, (row) => row.quantity),
+            gross_sales: sumBy(entries, (row) => row.gross_sales),
+            net_sales: sumBy(entries, (row) => row.net_sales),
+            cogs: sumBy(entries, (row) => row.cogs),
+            pos_profit_loss: round4(sumBy(entries, (row) => row.net_sales) - sumBy(entries, (row) => row.cogs))
+        }))
+        .sort((left, right) => Number(right.net_sales || 0) - Number(left.net_sales || 0))
+        .slice(0, limit);
+};
+
+const buildFilterOptions = (transactions = [], lineRows = []) => {
+    const cashierMap = new Map();
+    transactions.forEach((transaction) => {
+        const userId = toPositiveInt(transaction?.cashier?.user_id || transaction?.cashier_id);
+        if (!userId) return;
+        cashierMap.set(userId, {
+            cashier_id: userId,
+            cashier_name: transaction?.cashier?.username || `Cashier #${userId}`
+        });
+    });
+    const categories = Array.from(new Set(lineRows.map((row) => String(row.category || '').trim()).filter(Boolean))).sort();
+    return {
+        cashiers: Array.from(cashierMap.values()).sort((left, right) => left.cashier_name.localeCompare(right.cashier_name)),
+        categories,
+        payment_methods: ['cash', 'gcash', 'maya', 'card', 'bank_transfer'],
+        sources: Object.entries(REPORT_SOURCE_LABELS).map(([value, label]) => ({ value, label }))
+    };
+};
+
+const normalizeReportLineRows = (transactions = [], filters = {}) => {
+    const normalizedCategory = String(filters.category || '').trim().toLowerCase();
+    const rows = [];
+
+    (Array.isArray(transactions) ? transactions : []).forEach((transaction) => {
+        const isVoidedOrRefunded = transaction?.status === 'voided' || REFUND_PAYMENT_STATUSES.has(String(transaction?.payment_status || '').trim().toLowerCase());
+        const subtotalAmount = Number(transaction?.subtotal_amount || 0);
+        const totalServiceFeeAmount = Number(transaction?.service_fee_amount || 0) + Number(transaction?.restaurant_service_charge_amount || 0);
+        const vatAmount = Number(transaction?.vat_amount || 0);
+        const discountAmount = Number(transaction?.discount_amount || 0);
+        const sourceLabel = resolveReportSourceLabel(transaction);
+
+        (Array.isArray(transaction?.lines) ? transaction.lines : []).forEach((line) => {
+            const item = line?.item || {};
+            const category = String(item?.category || '').trim().toLowerCase();
+            if (normalizedCategory && category !== normalizedCategory) {
+                return;
+            }
+
+            const quantity = Number(line?.quantity || 0);
+            const grossSales = round4(line?.line_subtotal || 0);
+            const share = subtotalAmount > 0 ? grossSales / subtotalAmount : 0;
+            const lineDiscount = round4(discountAmount * share);
+            const lineRefund = isVoidedOrRefunded ? grossSales : 0;
+            const lineNetSales = round4(Math.max(0, grossSales - lineDiscount - lineRefund));
+            const lineCostPerUnit = line?.cost_snapshot != null ? Number(line.cost_snapshot || 0) : Number(item?.cost_per_unit || 0);
+            const cogs = round4(quantity * lineCostPerUnit);
+
+            rows.push({
+                transaction_id: transaction?.pos_transaction_id,
+                created_at: transaction?.created_at,
+                cashier_id: transaction?.cashier?.user_id || transaction?.cashier_id || null,
+                cashier_name: transaction?.cashier?.username || null,
+                accepted_by: transaction?.accepted_by || null,
+                accepted_by_name: transaction?.acceptedByUser?.username || null,
+                shift_id: transaction?.shift_id || transaction?.shift?.pos_terminal_shift_id || null,
+                shift_business_date: transaction?.shift?.business_date || null,
+                terminal_id: transaction?.terminal_id || transaction?.shift?.terminal_id || null,
+                location_id: transaction?.location_id || transaction?.shift?.location_id || null,
+                payment_type: transaction?.payment_type || 'cash',
+                source_label: sourceLabel,
+                order_source: transaction?.order_source || 'in_store',
+                order_method: transaction?.order_method || 'dine_in',
+                item_id: line?.item_id,
+                item_name: item?.name || `Item #${line?.item_id}`,
+                sku_code: item?.sku_code || null,
+                category: item?.category || null,
+                quantity,
+                gross_sales: grossSales,
+                net_sales: lineNetSales,
+                discount_amount: lineDiscount,
+                refund_amount: lineRefund,
+                vat_amount: isVoidedOrRefunded ? 0 : round4(vatAmount * share),
+                service_fee_amount: isVoidedOrRefunded ? 0 : round4(totalServiceFeeAmount * share),
+                cogs,
+                pos_profit_loss: round4(lineNetSales - cogs)
+            });
+        });
+    });
+
+    return rows;
+};
+
+const buildReportPayloadFromTransactions = (transactions = [], filters = {}) => {
+    const normalizedLines = normalizeReportLineRows(transactions, filters);
+    const summary = serializeReportSummary(normalizedLines);
+    const dailySeries = buildTimeSeries(normalizedLines, 'daily');
+    const monthlySeries = buildTimeSeries(normalizedLines, 'monthly');
+    const yearlySeries = buildTimeSeries(normalizedLines, 'yearly');
+    const weeklySeries = buildTimeSeries(normalizedLines, 'weekly');
+    const topItems = buildTopItems(normalizedLines, 10);
+    const monthlyTopItems = buildTopItems(normalizedLines, 10);
+    const yearlyTopItems = buildTopItems(normalizedLines, 12);
+
+    const currentYear = yearlySeries[yearlySeries.length - 1]?.period || getManilaDateParts(new Date()).year;
+    const currentYearMonthlyBreakdown = monthlySeries.filter((entry) => entry.period.startsWith(currentYear));
+    const previousYear = String(Number(currentYear) - 1);
+    const currentYearSummary = serializeReportSummary(normalizedLines.filter((row) => toYearKey(row.created_at) === currentYear));
+    const previousYearSummary = serializeReportSummary(normalizedLines.filter((row) => toYearKey(row.created_at) === previousYear));
+
+    const flexibleComparisonRange = buildComparisonRange(resolveReportDateRange(filters));
+    const flexibleCurrent = serializeReportSummary(
+        normalizedLines.filter((row) => {
+            const key = toManilaDateKey(row.created_at);
+            return key >= flexibleComparisonRange.current.dateFrom && key <= flexibleComparisonRange.current.dateTo;
+        })
+    );
+    const flexiblePrevious = serializeReportSummary(
+        normalizedLines.filter((row) => {
+            const key = toManilaDateKey(row.created_at);
+            return key >= flexibleComparisonRange.previous.dateFrom && key <= flexibleComparisonRange.previous.dateTo;
+        })
+    );
+
+    const comparisons = buildFixedComparisonPeriods(resolveReportDateRange(filters)).map((period) => {
+        const current = serializeReportSummary(normalizedLines.filter((row) => {
+            const key = toManilaDateKey(row.created_at);
+            return key >= period.current.dateFrom && key <= period.current.dateTo;
+        }));
+        const previous = serializeReportSummary(normalizedLines.filter((row) => {
+            const key = toManilaDateKey(row.created_at);
+            return key >= period.previous.dateFrom && key <= period.previous.dateTo;
+        }));
+        return {
+            key: period.key,
+            label: period.label,
+            ...buildPeriodComparisonMetrics(current, previous)
+        };
+    });
+
+    return {
+        applied_filters: {
+            ...resolveReportDateRange(filters),
+            cashier_id: toPositiveInt(filters.cashier_id),
+            location_id: toPositiveInt(filters.location_id),
+            terminal_id: String(filters.terminal_id || '').trim() || null,
+            payment_type: String(filters.payment_type || '').trim() || null,
+            source: String(filters.source || '').trim() || null,
+            category: String(filters.category || '').trim() || null
+        },
+        filter_options: buildFilterOptions(transactions, normalizedLines),
+        summary_cards: {
+            total_sales: summary.net_sales,
+            total_transactions: summary.total_transactions,
+            gross_sales: summary.gross_sales,
+            net_sales: summary.net_sales,
+            pos_profit_loss: summary.pos_profit_loss
+        },
+        daily_report: {
+            summary,
+            payment_breakdown: buildPaymentBreakdown(normalizedLines),
+            order_method_breakdown: buildOrderMethodBreakdown(normalizedLines),
+            cashier_summary: buildCashierSummary(normalizedLines),
+            shift_summary: buildShiftSummary(normalizedLines),
+            top_items: topItems,
+            trend: dailySeries
+        },
+        monthly_report: {
+            summary,
+            sales_trend: monthlySeries,
+            top_items: monthlyTopItems
+        },
+        yearly_report: {
+            summary,
+            yearly_series: yearlySeries,
+            monthly_breakdown: currentYearMonthlyBreakdown,
+            year_over_year: {
+                current_year: currentYear,
+                previous_year: previousYear,
+                current: currentYearSummary,
+                previous: previousYearSummary,
+                sales_delta: round4(currentYearSummary.net_sales - previousYearSummary.net_sales),
+                profit_delta: round4(currentYearSummary.pos_profit_loss - previousYearSummary.pos_profit_loss)
+            },
+            top_items: yearlyTopItems
+        },
+        sales_comparison: {
+            flexible_range: buildPeriodComparisonMetrics(flexibleCurrent, flexiblePrevious),
+            fixed_periods: comparisons,
+            weekly_trend: weeklySeries,
+            monthly_trend: monthlySeries
+        },
+        profit_loss: {
+            ...summary,
+            label: 'POS Profit/Loss'
+        }
+    };
+};
+
+const buildReportExportRows = (section = 'daily', payload = {}, currencySymbol = 'PHP') => {
+    const normalizedSection = String(section || 'daily').trim().toLowerCase();
+    const rows = [];
+    const pushSummaryRows = (summary = {}) => {
+        rows.push(['Metric', 'Value']);
+        rows.push(['Gross Sales', round4(summary.gross_sales || 0)]);
+        rows.push(['Net Sales', round4(summary.net_sales || 0)]);
+        rows.push(['COGS', round4(summary.cogs || 0)]);
+        rows.push(['POS Profit/Loss', round4(summary.pos_profit_loss || 0)]);
+        rows.push(['Profit Margin %', round4(summary.profit_margin || 0)]);
+        rows.push(['Transactions', Number.parseInt(summary.total_transactions || 0, 10) || 0]);
+        rows.push(['Discounts', round4(summary.discounts || 0)]);
+        rows.push(['Refunds/Voids', round4(summary.refunds_voids || 0)]);
+        rows.push(['VAT', round4(summary.vat || 0)]);
+        rows.push(['Service Fees', round4(summary.service_fees || 0)]);
+    };
+
+    if (normalizedSection === 'monthly') {
+        rows.push(['Monthly Report']);
+        rows.push([]);
+        pushSummaryRows(payload?.monthly_report?.summary || {});
+        rows.push([]);
+        rows.push(['Period', 'Gross Sales', 'Net Sales', 'COGS', 'POS Profit/Loss']);
+        (payload?.monthly_report?.sales_trend || []).forEach((entry) => {
+            rows.push([entry.period, round4(entry.gross_sales), round4(entry.net_sales), round4(entry.cogs), round4(entry.pos_profit_loss)]);
+        });
+        return rows;
+    }
+
+    if (normalizedSection === 'yearly') {
+        rows.push(['Yearly Report']);
+        rows.push([]);
+        pushSummaryRows(payload?.yearly_report?.summary || {});
+        rows.push([]);
+        rows.push(['Period', 'Gross Sales', 'Net Sales', 'COGS', 'POS Profit/Loss']);
+        (payload?.yearly_report?.monthly_breakdown || []).forEach((entry) => {
+            rows.push([entry.period, round4(entry.gross_sales), round4(entry.net_sales), round4(entry.cogs), round4(entry.pos_profit_loss)]);
+        });
+        return rows;
+    }
+
+    if (normalizedSection === 'comparison') {
+        rows.push(['Sales Comparison']);
+        rows.push([]);
+        rows.push(['Comparison', 'Current Net Sales', 'Previous Net Sales', 'Sales Delta %', 'Current POS Profit/Loss', 'Previous POS Profit/Loss', 'Profit Delta %']);
+        (payload?.sales_comparison?.fixed_periods || []).forEach((entry) => {
+            rows.push([
+                entry.label,
+                round4(entry.current?.net_sales),
+                round4(entry.previous?.net_sales),
+                round4(entry.sales_delta_percentage),
+                round4(entry.current?.pos_profit_loss),
+                round4(entry.previous?.pos_profit_loss),
+                round4(entry.profit_delta_percentage)
+            ]);
+        });
+        return rows;
+    }
+
+    if (normalizedSection === 'profit_loss') {
+        rows.push(['POS Profit/Loss']);
+        rows.push([]);
+        pushSummaryRows(payload?.profit_loss || {});
+        return rows;
+    }
+
+    rows.push(['Daily Report']);
+    rows.push([]);
+    pushSummaryRows(payload?.daily_report?.summary || {});
+    rows.push([]);
+    rows.push(['Payment Method', 'Transactions', 'Net Sales', 'POS Profit/Loss']);
+    (payload?.daily_report?.payment_breakdown || []).forEach((entry) => {
+        rows.push([entry.payment_method, entry.total_transactions, round4(entry.net_sales), round4(entry.pos_profit_loss)]);
+    });
+    rows.push([]);
+    rows.push(['Top Item', 'SKU', 'Category', 'Qty', 'Net Sales', 'COGS', 'POS Profit/Loss']);
+    (payload?.daily_report?.top_items || []).forEach((entry) => {
+        rows.push([
+            entry.item_name,
+            entry.sku_code || '',
+            entry.category || '',
+            round4(entry.quantity),
+            round4(entry.net_sales),
+            round4(entry.cogs),
+            round4(entry.pos_profit_loss)
+        ]);
+    });
+    return rows;
+};
+
 export const posRepository = {
     async getItemById(itemId, options = {}) {
         const Item = dbStore.get('Item');
@@ -1268,6 +2003,75 @@ export const posRepository = {
                 total: count,
                 totalPages: Math.ceil(count / limit)
             }
+        };
+    },
+
+    async listReportTransactions(filters = {}, options = {}) {
+        const PosTransaction = dbStore.get('PosTransaction');
+        const { startAt, endAtExclusive } = resolveReportDateRange(filters);
+        const where = buildPosReportWhere(filters, { startAt, endAtExclusive });
+        const rows = await PosTransaction.findAll({
+            where,
+            include: buildReportInclude(),
+            order: [['created_at', 'ASC']],
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
+    async getReportsOverview(filters = {}, options = {}) {
+        const transactions = await this.listReportTransactions(filters, options);
+        return buildReportPayloadFromTransactions(transactions, filters);
+    },
+
+    async getReportsTopItems(filters = {}, options = {}) {
+        const payload = await this.getReportsOverview(filters, options);
+        return {
+            applied_filters: payload.applied_filters,
+            filter_options: payload.filter_options,
+            top_items: {
+                daily: payload.daily_report?.top_items || [],
+                monthly: payload.monthly_report?.top_items || [],
+                yearly: payload.yearly_report?.top_items || []
+            }
+        };
+    },
+
+    async getReportsComparison(filters = {}, options = {}) {
+        const payload = await this.getReportsOverview(filters, options);
+        return {
+            applied_filters: payload.applied_filters,
+            filter_options: payload.filter_options,
+            summary_cards: payload.summary_cards,
+            sales_comparison: payload.sales_comparison
+        };
+    },
+
+    async getReportsProfitLoss(filters = {}, options = {}) {
+        const payload = await this.getReportsOverview(filters, options);
+        return {
+            applied_filters: payload.applied_filters,
+            filter_options: payload.filter_options,
+            summary_cards: payload.summary_cards,
+            profit_loss: payload.profit_loss
+        };
+    },
+
+    async exportReports(filters = {}, options = {}) {
+        const payload = await this.getReportsOverview(filters, options);
+        const section = String(filters.section || 'daily').trim().toLowerCase() || 'daily';
+        const rows = buildReportExportRows(section, payload);
+        const content = rows
+            .map((row) => row.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
+            .join('\n');
+        const dateSuffix = payload?.applied_filters?.dateFrom && payload?.applied_filters?.dateTo
+            ? `${payload.applied_filters.dateFrom}_to_${payload.applied_filters.dateTo}`
+            : getManilaDateParts(new Date()).date;
+
+        return {
+            filename: `pos-${section}-report-${dateSuffix}.csv`,
+            content_type: 'text/csv; charset=utf-8',
+            content
         };
     },
 

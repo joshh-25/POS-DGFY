@@ -106,7 +106,14 @@ const posTerminalRegistryEntrySchema = Joi.object({
   location_id: Joi.number().integer().positive().allow(null).optional(),
   label: Joi.string().trim().max(80).allow('', null).optional(),
   is_active: Joi.boolean().default(true),
-  is_default: Joi.boolean().default(false)
+  is_default: Joi.boolean().default(false),
+  terminal_password: Joi.string().trim().min(4).max(64).allow('', null).optional().messages({
+    'string.min': 'Terminal password must be at least 4 characters',
+    'string.max': 'Terminal password must be 64 characters or less'
+  }),
+  clear_terminal_password: Joi.boolean().default(false),
+  terminal_password_hash: Joi.string().trim().max(255).allow('', null).optional(),
+  has_password: Joi.boolean().optional()
 });
 
 const posTerminalRegistrySchema = Joi.array()
@@ -118,6 +125,7 @@ const posTerminalRegistrySchema = Joi.array()
     }
 
     const seenIds = new Set();
+    const activeLocationIds = new Set();
     let defaultCount = 0;
     let activeCount = 0;
 
@@ -135,6 +143,15 @@ const posTerminalRegistrySchema = Joi.array()
       const isActive = entry?.is_active !== false;
       if (isActive) {
         activeCount += 1;
+        const locationId = Number.isInteger(Number(entry?.location_id)) ? Number(entry.location_id) : null;
+        if (locationId) {
+          if (activeLocationIds.has(locationId)) {
+            return helpers.error('any.invalid', {
+              message: `Only one active terminal is allowed for location ${locationId}`
+            });
+          }
+          activeLocationIds.add(locationId);
+        }
       }
       if (entry?.is_default === true) {
         defaultCount += 1;

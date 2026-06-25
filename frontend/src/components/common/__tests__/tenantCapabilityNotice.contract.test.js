@@ -17,7 +17,7 @@ describe('tenant capability notice shell contract', () => {
   });
 
   it('keeps POS terminal layout subscribed to POS capability block events', () => {
-    const terminalLayout = read('apps/pos/src/components/TerminalPageLayout.jsx');
+    const terminalLayout = read('src/features/pos/components/TerminalPageLayout.jsx');
     expect(terminalLayout).toContain("window.addEventListener('tenant:capability-blocked'");
     expect(terminalLayout).toContain("detail.capability !== 'tenant_pos_enabled'");
     expect(terminalLayout).toContain('<TenantCapabilityNotice');

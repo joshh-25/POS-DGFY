@@ -4,20 +4,6 @@ let accessToken = '';
 let companyToken = '';
 let refreshInFlight = null;
 
-const readRuntimeCompanyToken = () => {
-  if (typeof window === 'undefined') return '';
-  const runtime = window.__DGFY_POS_RUNTIME__;
-  return String(runtime?.companyToken || '').trim();
-};
-
-const resolveCompanyToken = () => {
-  const resolved = companyToken || readRuntimeCompanyToken();
-  if (resolved && resolved !== companyToken) {
-    companyToken = resolved;
-  }
-  return companyToken;
-};
-
 const resolveApiBaseUrl = () => {
   const configured = (import.meta.env.VITE_API_URL || '').trim();
   if (!configured) return '/api/v1';
@@ -63,13 +49,12 @@ export const clearBrowserSession = () => {
 };
 
 export const getAccessToken = () => accessToken;
-export const getCompanyToken = () => resolveCompanyToken();
+export const getCompanyToken = () => companyToken;
 
 export const getAuthHeaders = ({ includeCsrf = false } = {}) => {
   const headers = {};
-  const resolvedCompanyToken = resolveCompanyToken();
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  if (resolvedCompanyToken) headers['x-company-token'] = resolvedCompanyToken;
+  if (companyToken) headers['x-company-token'] = companyToken;
   const csrfToken = includeCsrf ? getCsrfToken() : '';
   if (csrfToken) headers['x-csrf-token'] = csrfToken;
   return headers;

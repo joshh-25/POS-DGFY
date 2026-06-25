@@ -336,7 +336,14 @@ export const provisionTenant = async (options) => {
                     replacements: [founderUsername, email, phoneNumber, passwordHash, adminDefaultPermissions]
                 }
             );
-            const adminUserId = adminInsertResult?.insertId || adminInsertMetadata?.insertId || null;
+            const insertedAdminUserId = adminInsertResult?.insertId || adminInsertMetadata?.insertId || null;
+            const [[seededAdminUser] = []] = await tenantSequelize.query(
+                'SELECT user_id FROM users WHERE email = ? ORDER BY user_id ASC LIMIT 1',
+                {
+                    replacements: [email]
+                }
+            );
+            const adminUserId = insertedAdminUserId || seededAdminUser?.user_id || null;
 
             const seededWorkflowMode = await seedWorkflowModeSetting(tenantSequelize, normalizedWorkflowMode);
             logger.info('[Provisioning] Workflow mode setting seeded', {

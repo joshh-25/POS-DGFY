@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CalendarDays, ChevronDown, Globe, ListFilter, RotateCcw, Search, Store, UserRound } from 'lucide-react';
+import { CalendarDays, ChevronDown, Globe, ListFilter, RefreshCcw, RotateCcw, Search, Store, UserRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -72,10 +72,14 @@ export default function POSTransactionHistoryPanel({
     historyRows,
     historyDetailLoading,
     openHistoryDetail,
-    printHistoryReceipt,
     loadHistory,
     historyPage,
-    historyPagination
+    historyPagination,
+    pendingSyncCount = 0,
+    pendingSyncBlockedCount = 0,
+    syncPendingTransactions = () => {},
+    syncingPendingTransactions = false,
+    syncDisabled = false
 }) {
     const [expandedRowId, setExpandedRowId] = useState(null);
     const [isTabletViewport, setIsTabletViewport] = useState(false);
@@ -123,6 +127,23 @@ export default function POSTransactionHistoryPanel({
                             />
                         </IconInput>
                     </div>
+                    <div className="flex w-full flex-col gap-2 xl:w-auto xl:min-w-[18rem] xl:items-end">
+                        <Button
+                            type="button"
+                            onClick={syncPendingTransactions}
+                            disabled={syncDisabled || syncingPendingTransactions || pendingSyncCount <= 0}
+                            className="h-11 rounded-xl bg-[#1A4E8D] px-5 text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 hover:bg-[#143F73] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            <RefreshCcw className="mr-2 h-4 w-4" />
+                            {syncingPendingTransactions ? 'Syncing...' : 'Sync Pending Transactions'}
+                        </Button>
+                        <p className="text-right text-[12px] font-medium text-[#64748B]">
+                            {pendingSyncCount > 0
+                                ? `${pendingSyncCount} offline transaction${pendingSyncCount === 1 ? '' : 's'} waiting to sync`
+                                : 'All offline transactions are synced'}
+                            {pendingSyncBlockedCount > 0 ? ` • ${pendingSyncBlockedCount} need retry` : ''}
+                        </p>
+                    </div>
                 </div>
 
                 <div className="px-3 lg:px-4">
@@ -130,6 +151,7 @@ export default function POSTransactionHistoryPanel({
                         <SelectField label="Status" value={historyStatus} onChange={(event) => setHistoryStatus(event.target.value)}>
                             <option value="all">All Status</option>
                             <option value="completed">Completed</option>
+                            <option value="pending_sync">Pending Sync</option>
                             <option value="voided">Voided</option>
                         </SelectField>
 
@@ -298,27 +320,15 @@ export default function POSTransactionHistoryPanel({
                                                             className="flex h-12 w-[4.75rem] flex-col items-center justify-center gap-0.5 px-2 text-center text-[11px] font-extrabold leading-none"
                                                             onClick={(event) => {
                                                                 event.stopPropagation();
-                                                                if (isOfflinePending) return;
-                                                                if (typeof printHistoryReceipt === 'function') {
-                                                                    printHistoryReceipt(row.pos_transaction_id);
-                                                                } else {
-                                                                    openHistoryDetail(row.pos_transaction_id);
-                                                                }
+                                                                openHistoryDetail(row);
                                                             }}
-                                                            disabled={historyDetailLoading || isOfflinePending}
+                                                            disabled={historyDetailLoading}
                                                             aria-label={`View receipt for ${row.invoice_number || row.pos_transaction_id}`}
                                                         >
-                                                            {isOfflinePending ? (
-                                                                <>
-                                                                    <span>Pending</span>
-                                                                    <span>Sync</span>
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <span>View</span>
-                                                                    <span>Receipt</span>
-                                                                </>
-                                                            )}
+                                                            <>
+                                                                <span>View</span>
+                                                                <span>Receipt</span>
+                                                            </>
                                                         </Button>
                                                         {isTabletViewport && (
                                                             <Button

@@ -10,8 +10,6 @@ const TILING_SERVER = import.meta.env.DEV
   ? '/openfreemap/styles/positron'
   : `${TILE_BASE}/styles/positron`;
 
-// In dev the Vite proxy rewrites /openfreemap → tiles.openfreemap.org.
-// In production tile sub-resources are fetched directly from the CDN.
 const tileTransformRequest = import.meta.env.DEV
   ? (url) => {
     if (url.startsWith(TILE_BASE)) {
@@ -64,6 +62,8 @@ const makePinElement = (highlighted = false) => {
 };
 
 const parseCoordinate = (value) => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
 };

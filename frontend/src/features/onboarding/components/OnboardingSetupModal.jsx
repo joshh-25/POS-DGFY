@@ -885,16 +885,21 @@ export default function OnboardingSetupModal({
                   Address
                   <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" value={locationForm.address_line} onChange={(event) => setLocationForm((prev) => ({ ...prev, address_line: event.target.value }))} disabled={locationFieldsDisabled} />
                 </label>
-                {storeHasNoLocation !== true && (
+                {storeHasNoLocation !== true && publicStorefrontVisible === true && (
                   <div className="sm:col-span-2">
                     <Suspense fallback={<div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs font-semibold text-slate-500">Loading map picker...</div>}>
                       <MapPinPicker
                         latitude={locationForm.latitude}
                         longitude={locationForm.longitude}
                         deliveryRadiusKm={locationForm.delivery_radius_km}
-                        onChange={publicStorefrontVisible ? handleLocationPinChange : undefined}
+                        onChange={handleLocationPinChange}
                       />
                     </Suspense>
+                  </div>
+                )}
+                {storeHasNoLocation !== true && publicStorefrontVisible !== true && (
+                  <div className="sm:col-span-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    Turn on searchable storefront before placing the public map pin.
                   </div>
                 )}
                 <label className="text-xs text-slate-700">

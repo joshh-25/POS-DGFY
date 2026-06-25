@@ -4,6 +4,8 @@ const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'appointment'
 const ORDER_METHOD_FILTERS = [...ORDER_METHODS, 'online'];
 const ORDER_SOURCES = ['in_store', 'online_store'];
 const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer'];
+const REPORT_GRANULARITIES = ['daily', 'weekly', 'monthly', 'yearly'];
+const REPORT_SOURCE_FILTERS = ['in_store', 'online_store', 'delivery', 'pickup'];
 const PAYMENT_HANDOFF_MODES = ['external', 'internal'];
 const DOCUMENT_CONTEXTS = ['fiscal', 'non_fiscal', 'training_test'];
 const DISCOUNT_MODES = ['none', 'preset', 'percentage', 'amount'];
@@ -163,6 +165,12 @@ const posCatalogQuerySchema = Joi.object({
     location_id: Joi.number().integer().positive().optional()
 });
 
+const mobilePosCatalogBootstrapQuerySchema = Joi.object({
+    search: Joi.string().allow('', null).default(''),
+    limit: Joi.number().integer().min(1).max(500).default(100),
+    location_id: Joi.number().integer().positive().optional()
+});
+
 const posScanSchema = Joi.object({
     code: Joi.string().trim().max(512).required(),
     location_id: Joi.number().integer().positive().allow(null).optional(),
@@ -215,6 +223,23 @@ const terminalDashboardTodayQuerySchema = Joi.object({
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
     location_id: Joi.number().integer().positive().optional(),
     business_date: Joi.date().iso().optional()
+});
+
+const posReportsQuerySchema = Joi.object({
+    date_from: Joi.date().iso().optional(),
+    date_to: Joi.date().iso().min(Joi.ref('date_from')).optional(),
+    granularity: Joi.string().valid(...REPORT_GRANULARITIES).default('daily'),
+    cashier_id: Joi.number().integer().positive().optional(),
+    location_id: Joi.number().integer().positive().optional(),
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
+    payment_type: Joi.string().valid(...PAYMENT_TYPES).optional(),
+    source: Joi.string().valid(...REPORT_SOURCE_FILTERS).optional(),
+    category: Joi.string().trim().max(120).allow('', null).optional()
+});
+
+const posReportsExportQuerySchema = posReportsQuerySchema.keys({
+    section: Joi.string().valid('daily', 'monthly', 'yearly', 'comparison', 'profit_loss').default('daily'),
+    format: Joi.string().valid('csv').default('csv')
 });
 
 const incomingOnlineOrdersQuerySchema = Joi.object({
@@ -317,6 +342,51 @@ const fiscalTerminalRegistrationSchema = Joi.object({
     evidence_ref: Joi.string().trim().max(255).allow('', null).optional()
 });
 
+const mobilePosCheckoutSyncEntrySchema = Joi.object({
+    local_transaction_id: Joi.string().trim().max(120).required(),
+    payload: Joi.object().required().unknown(true)
+});
+
+const mobilePosCheckoutSyncSchema = Joi.object({
+    device_id: Joi.string().trim().max(120).required(),
+    client_sync_run_id: Joi.string().trim().max(120).allow('', null).optional(),
+    timezone: Joi.string().trim().max(80).allow('', null).optional(),
+    entries: Joi.array().items(mobilePosCheckoutSyncEntrySchema).required()
+});
+
+const mobilePosShiftSyncEntrySchema = Joi.object({
+    local_operation_id: Joi.string().trim().max(120).required(),
+    operation_type: Joi.string().valid('shift_open', 'switch_location', 'cash_event', 'shift_close').required(),
+    shift_id: Joi.number().integer().positive().allow(null).optional(),
+    payload: Joi.object().required().unknown(true)
+});
+
+const mobilePosShiftSyncSchema = Joi.object({
+    device_id: Joi.string().trim().max(120).required(),
+    client_sync_run_id: Joi.string().trim().max(120).allow('', null).optional(),
+    timezone: Joi.string().trim().max(80).allow('', null).optional(),
+    entries: Joi.array().items(mobilePosShiftSyncEntrySchema).required()
+});
+
+const mobilePosHardwareEventSyncEntrySchema = Joi.object({
+    local_event_id: Joi.string().trim().max(120).required(),
+    event_type: Joi.string().trim().max(120).required(),
+    payload: Joi.object().unknown(true).default({})
+});
+
+const mobilePosHardwareEventSyncSchema = Joi.object({
+    device_id: Joi.string().trim().max(120).required(),
+    client_sync_run_id: Joi.string().trim().max(120).allow('', null).optional(),
+    timezone: Joi.string().trim().max(80).allow('', null).optional(),
+    entries: Joi.array().items(mobilePosHardwareEventSyncEntrySchema).required()
+});
+
+const mobilePosCheckpointAckSchema = Joi.object({
+    checkpoint_token: Joi.string().trim().min(8).max(512).required(),
+    consumed_slot: Joi.boolean().optional(),
+    last_successful_sync_at: Joi.date().iso().allow(null).optional()
+});
+
 const buildValidationErrorResponse = (error) => ({
     success: false,
     data: null,
@@ -345,6 +415,7 @@ const validateSchema = (schema, source, target) => (req, res, next) => {
 export const validatePosCheckout = validateSchema(checkoutPosSchema, 'body', 'validatedData');
 export const validatePosTransactionsQuery = validateSchema(listTransactionsQuerySchema, 'query', 'validatedQuery');
 export const validatePosCatalogQuery = validateSchema(posCatalogQuerySchema, 'query', 'validatedQuery');
+export const validateMobilePosCatalogBootstrapQuery = validateSchema(mobilePosCatalogBootstrapQuerySchema, 'query', 'validatedQuery');
 export const validatePosScan = validateSchema(posScanSchema, 'body', 'validatedData');
 export const validatePosCatalogOverridesQuery = validateSchema(posCatalogOverridesQuerySchema, 'query', 'validatedQuery');
 export const validatePosTransactionIdParam = validateSchema(posTransactionIdParamSchema, 'params', 'validatedParams');
@@ -356,6 +427,8 @@ export const validateXReadingQuery = validateSchema(xReadingQuerySchema, 'query'
 export const validateGovernedResetBody = validateSchema(governedResetSchema, 'body', 'validatedData');
 export const validateTerminalCurrentShiftQuery = validateSchema(terminalCurrentShiftQuerySchema, 'query', 'validatedQuery');
 export const validateTerminalDashboardTodayQuery = validateSchema(terminalDashboardTodayQuerySchema, 'query', 'validatedQuery');
+export const validatePosReportsQuery = validateSchema(posReportsQuerySchema, 'query', 'validatedQuery');
+export const validatePosReportsExportQuery = validateSchema(posReportsExportQuerySchema, 'query', 'validatedQuery');
 export const validateIncomingOnlineOrdersQuery = validateSchema(incomingOnlineOrdersQuerySchema, 'query', 'validatedQuery');
 export const validateShiftIdParam = validateSchema(shiftIdParamSchema, 'params', 'validatedParams');
 export const validateOpenTerminalShift = validateSchema(openTerminalShiftSchema, 'body', 'validatedData');
@@ -370,3 +443,7 @@ export const validateVoidPosTransaction = validateSchema(voidPosTransactionSchem
 export const validateGenerateESalesReport = validateSchema(esalesGenerateSchema, 'body', 'validatedData');
 export const validateUpdateESalesReportStatus = validateSchema(esalesStatusSchema, 'body', 'validatedData');
 export const validateFiscalTerminalRegistration = validateSchema(fiscalTerminalRegistrationSchema, 'body', 'validatedData');
+export const validateMobilePosCheckoutSync = validateSchema(mobilePosCheckoutSyncSchema, 'body', 'validatedData');
+export const validateMobilePosShiftSync = validateSchema(mobilePosShiftSyncSchema, 'body', 'validatedData');
+export const validateMobilePosHardwareEventSync = validateSchema(mobilePosHardwareEventSyncSchema, 'body', 'validatedData');
+export const validateMobilePosCheckpointAck = validateSchema(mobilePosCheckpointAckSchema, 'body', 'validatedData');

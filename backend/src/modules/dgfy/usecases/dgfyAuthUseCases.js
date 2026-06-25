@@ -1316,6 +1316,7 @@ export const buildStartDgfyPosSessionUseCase = ({
 }) => async ({ account, tenantId, body = {}, metadata = {} }) => {
     const resolvedTenantId = String(tenantId || body?.tenant_id || body?.tenantId || '').trim();
     const terminalId = String(body?.terminal_id || body?.terminalId || '').trim().toUpperCase();
+    const terminalPassword = String(body?.terminal_password || body?.terminalPassword || '');
     if (!resolvedTenantId) {
         return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Company id is required for POS unlock.', { statusCode: 400 }));
     }
@@ -1350,7 +1351,11 @@ export const buildStartDgfyPosSessionUseCase = ({
             throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'This DGFY account does not have POS access for the selected company.', { statusCode: 403 });
         }
         const terminalPolicy = typeof validateTerminalPolicy === 'function'
-            ? await validateTerminalPolicy({ tenantId: resolvedTenantId, terminalId })
+            ? await validateTerminalPolicy({
+                tenantId: resolvedTenantId,
+                terminalId,
+                terminalPassword
+            })
             : { terminal_id: terminalId, reason_code: 'NOT_VALIDATED' };
         await repository?.createBusinessAuditLog?.(buildBusinessAuditPayload({
             account,

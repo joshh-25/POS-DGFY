@@ -11,6 +11,7 @@ const allowedHosts = true;
 
 export default defineConfig({
   root: __dirname,
+  cacheDir: path.resolve(frontendRoot, 'node_modules/.vite/skupervisor'),
   plugins: [react()],
   resolve: {
     dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom'],
@@ -42,6 +43,16 @@ export default defineConfig({
         target: apiProxyTarget,
         changeOrigin: true,
         secure: false
+      },
+      '/openfreemap': {
+        target: 'https://tiles.openfreemap.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/openfreemap/, '')
+      },
+      '/osm': {
+        target: 'https://tile.openstreetmap.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/osm/, '')
       }
     }
   },

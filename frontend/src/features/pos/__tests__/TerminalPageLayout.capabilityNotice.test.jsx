@@ -3,23 +3,24 @@ import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import TerminalPageLayout from '../components/TerminalPageLayout.jsx';
 
-vi.mock('../components/POSCheckoutTerminal', () => ({
+vi.mock('../components/POSCheckoutTerminal.jsx', () => ({
   default: () => <div>POSCheckoutTerminal</div>
 }));
 
-vi.mock('../components/TerminalLockDrawer', () => ({
+vi.mock('../components/TerminalLockDrawer.jsx', () => ({
   default: () => null
 }));
 
-vi.mock('../components/TerminalWorkspaceSidebar', () => ({
+vi.mock('../components/TerminalWorkspaceSidebar.jsx', () => ({
   default: () => <div>TerminalWorkspaceSidebar</div>
 }));
 
-vi.mock('../components/TerminalOperationsWorkspace', () => ({
+vi.mock('../components/TerminalOperationsWorkspace.jsx', () => ({
   default: () => <div>TerminalOperationsWorkspace</div>
 }));
+
+const { default: TerminalPageLayout } = await import('../components/TerminalPageLayout.jsx');
 
 const baseProps = {
   locked: false,

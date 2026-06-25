@@ -19,6 +19,8 @@ import {
     validateGovernedResetBody,
     validateTerminalCurrentShiftQuery,
     validateTerminalDashboardTodayQuery,
+    validatePosReportsQuery,
+    validatePosReportsExportQuery,
     validateIncomingOnlineOrdersQuery,
     validateShiftIdParam,
     validateOpenTerminalShift,
@@ -58,6 +60,11 @@ router.post('/terminal/shifts/:id/switch-location', checkPermission(PERMISSIONS.
 router.post('/terminal/shifts/:id/cash-events', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), validateShiftIdParam, validateCashDrawerEvent, posController.recordCashDrawerEvent);
 router.post('/terminal/shifts/:id/close', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), validateShiftIdParam, validateCloseTerminalShift, posController.closeTerminalShift);
 router.get('/terminal/dashboard/today', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateTerminalDashboardTodayQuery, posController.getTerminalTodayDashboard);
+router.get('/reports/overview', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosReportsQuery, posController.getReportsOverview);
+router.get('/reports/top-items', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosReportsQuery, posController.getReportsTopItems);
+router.get('/reports/comparison', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosReportsQuery, posController.getReportsComparison);
+router.get('/reports/profit-loss', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosReportsQuery, posController.getReportsProfitLoss);
+router.get('/reports/export', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosReportsExportQuery, posController.exportReports);
 router.get('/device/status', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.getDeviceStatus);
 router.post('/device/print-receipt', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), validatePosDeviceReceiptPrint, posController.printReceipt);
 router.post('/device/open-drawer', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), validatePosDeviceDrawerOpen, posController.openDeviceDrawer);

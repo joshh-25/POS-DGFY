@@ -7,6 +7,11 @@ import {
     buildScanPosBarcodeUseCase,
     buildCheckoutPosUseCase,
     buildListPosTransactionsUseCase,
+    buildGetPosReportsOverviewUseCase,
+    buildGetPosReportsTopItemsUseCase,
+    buildGetPosReportsComparisonUseCase,
+    buildGetPosReportsProfitLossUseCase,
+    buildExportPosReportsUseCase,
     buildGetPosTransactionByIdUseCase,
     buildRecordFiscalPrintEventUseCase,
     buildVoidPosTransactionUseCase,
@@ -40,6 +45,15 @@ import {
     buildPrintPosReceiptUseCase,
     buildOpenPosDrawerUseCase
 } from './usecases/posDeviceUseCases.js';
+import {
+    buildGetMobilePosCatalogBootstrapUseCase,
+    buildGetMobilePosSettingsBootstrapUseCase,
+    buildGetMobilePosDevicePolicyUseCase,
+    buildSyncMobilePosCheckoutsUseCase,
+    buildSyncMobilePosShiftsUseCase,
+    buildSyncMobilePosHardwareEventsUseCase,
+    buildAcknowledgeMobilePosCheckpointUseCase
+} from './usecases/mobilePosUseCases.js';
 
 const stockMovementService = { createStockMovement };
 
@@ -47,6 +61,11 @@ export const listPosCatalogUseCase = buildListPosCatalogUseCase({ posRepository 
 export const scanPosBarcodeUseCase = buildScanPosBarcodeUseCase({ posRepository });
 export const checkoutPosUseCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
 export const listPosTransactionsUseCase = buildListPosTransactionsUseCase({ posRepository });
+export const getPosReportsOverviewUseCase = buildGetPosReportsOverviewUseCase({ posRepository });
+export const getPosReportsTopItemsUseCase = buildGetPosReportsTopItemsUseCase({ posRepository });
+export const getPosReportsComparisonUseCase = buildGetPosReportsComparisonUseCase({ posRepository });
+export const getPosReportsProfitLossUseCase = buildGetPosReportsProfitLossUseCase({ posRepository });
+export const exportPosReportsUseCase = buildExportPosReportsUseCase({ posRepository });
 export const getPosTransactionByIdUseCase = buildGetPosTransactionByIdUseCase({ posRepository });
 export const recordFiscalPrintEventUseCase = buildRecordFiscalPrintEventUseCase({ posRepository });
 export const voidPosTransactionUseCase = buildVoidPosTransactionUseCase({ posRepository, stockMovementService });
@@ -98,3 +117,21 @@ export const openPosDrawerUseCase = buildOpenPosDrawerUseCase({
     posRepository,
     deviceBridgeService: posDeviceBridgeService
 });
+export const getMobilePosCatalogBootstrapUseCase = buildGetMobilePosCatalogBootstrapUseCase({
+    listPosCatalogUseCase
+});
+export const getMobilePosSettingsBootstrapUseCase = buildGetMobilePosSettingsBootstrapUseCase();
+export const getMobilePosDevicePolicyUseCase = buildGetMobilePosDevicePolicyUseCase({
+    posRepository
+});
+export const syncMobilePosCheckoutsUseCase = buildSyncMobilePosCheckoutsUseCase({
+    checkoutPosUseCase
+});
+export const syncMobilePosShiftsUseCase = buildSyncMobilePosShiftsUseCase({
+    openTerminalShiftUseCase,
+    switchTerminalShiftLocationUseCase,
+    recordCashDrawerEventUseCase,
+    closeTerminalShiftUseCase
+});
+export const syncMobilePosHardwareEventsUseCase = buildSyncMobilePosHardwareEventsUseCase();
+export const acknowledgeMobilePosCheckpointUseCase = buildAcknowledgeMobilePosCheckpointUseCase();

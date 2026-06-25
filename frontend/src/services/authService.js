@@ -1,6 +1,6 @@
 import api from './api.js';
-import { getAccessToken, refreshBrowserSession, setBrowserSession } from './browserSession.js';
 import { clearClientSession } from './sessionCleanup.js';
+import { getAccessToken, refreshBrowserSession, setBrowserSession } from './browserSession.js';
 
 export const register = async (userData, companyToken) => {
   // Pass company token in header for the registration request (to route to correct DB)
@@ -12,9 +12,7 @@ export const register = async (userData, companyToken) => {
 
   const response = await api.post('/auth/register', userData, config);
 
-  if (companyToken) {
-    setBrowserSession({ companyToken });
-  }
+  setBrowserSession({ companyToken });
 
   return response.data.data;
 };
@@ -36,7 +34,7 @@ export const requestEmailOtp = async ({ purpose, email, invitationToken, company
   return response.data.data;
 };
 
-export const login = async (credentials, requestConfig = {}) => {
+export const login = async (credentials) => {
   const resolvedCompanyToken = String(
     credentials?.companyToken || ''
   ).trim();
@@ -48,9 +46,7 @@ export const login = async (credentials, requestConfig = {}) => {
   const config = {
     headers: {
       'x-company-token': resolvedCompanyToken
-    },
-    skipAuthRefresh: true,
-    ...requestConfig
+    }
   };
 
   const response = await api.post('/auth/login', {
@@ -59,13 +55,7 @@ export const login = async (credentials, requestConfig = {}) => {
   }, config);
 
   const { token } = response.data.data;
-  setBrowserSession({
-    token,
-    companyToken: resolvedCompanyToken
-  });
-  if (resolvedCompanyToken) {
-    setBrowserSession({ companyToken: resolvedCompanyToken });
-  }
+  setBrowserSession({ token, companyToken: resolvedCompanyToken });
 
   // Dispatch custom event to notify PermissionContext to reload
   window.dispatchEvent(new CustomEvent('auth:login'));
@@ -97,7 +87,7 @@ export const refreshToken = async () => {
   return refreshBrowserSession();
 };
 
-export const getCurrentUser = async (requestConfig = {}) => {
+export const getCurrentUser = async () => {
   let token = getAccessToken();
   if (!token) {
     token = await refreshBrowserSession().catch(() => '');
@@ -105,7 +95,7 @@ export const getCurrentUser = async (requestConfig = {}) => {
   if (!token) return null;
 
   try {
-    const response = await api.get('/users/me', requestConfig);
+    const response = await api.get('/users/me');
     return response.data.data;
   } catch (error) {
     if (error.response?.status === 401) {

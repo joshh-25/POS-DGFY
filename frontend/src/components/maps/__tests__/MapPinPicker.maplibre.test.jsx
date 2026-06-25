@@ -201,13 +201,15 @@ describe('MapPinPicker MapLibre behavior', () => {
       trackResize: false
     }));
     expect(maplibreMocks.Map.mock.calls[0][0]).not.toHaveProperty('maxBounds');
-    // Style is now a vector tile URL pointing to OpenFreeMap positron (not a raster style object).
     expect(typeof maplibreMocks.Map.mock.calls[0][0].style).toBe('string');
-    expect(maplibreMocks.Map.mock.calls[0][0].style).toContain('openfreemap');
-    expect(maplibreMocks.Map.mock.calls[0][0].style).toContain('positron');
+    expect(maplibreMocks.Map.mock.calls[0][0].style).toContain('/openfreemap/styles/positron');
+    expect(maplibreMocks.Map.mock.calls[0][0].transformRequest).toEqual(expect.any(Function));
     expect(maplibreMocks.maps[0].dragRotate.disable).toHaveBeenCalled();
     expect(maplibreMocks.maps[0].touchZoomRotate.disableRotation).toHaveBeenCalled();
     expect(await screen.findByLabelText(/Map location picker/i)).toBeTruthy();
+    expect(screen.getByText(/No pin selected yet\./i)).toBeTruthy();
+    expect(screen.queryByText(/Pinned: 0\.000000, 0\.000000/i)).toBeNull();
+    expect(screen.getByRole('button', { name: /Adjust Pin/i }).disabled).toBe(true);
   });
 
   it('writes coordinates from map click and geolocation into the field contract', async () => {

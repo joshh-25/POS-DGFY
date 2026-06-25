@@ -435,6 +435,8 @@ describe('OnboardingSetupModal behavior', () => {
     await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
     await screen.findByText(/2\) Main Storefront Location/i);
     expect(screen.getByLabelText(/Make storefront searchable to customers/i).checked).toBe(false);
+    expect(screen.queryByRole('button', { name: /Mock MapLibre Pin/i })).toBeNull();
+    expect(screen.getByText(/Turn on searchable storefront before placing the public map pin/i)).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
 

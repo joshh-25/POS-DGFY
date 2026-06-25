@@ -43,7 +43,8 @@ import LegalDocument from '../LegalDocument.jsx';
 import RegisterCompany from '../RegisterCompany.jsx';
 import {
   appendDgfyHandoffToken,
-  normalizeDgfyReturnTarget
+  normalizeDgfyReturnTarget,
+  resolveStorefrontAccountUrl
 } from '../../src/features/dgfyRouteHelpers.js';
 
 const dgfyAccount = {
@@ -144,6 +145,10 @@ describe('DGFY auth and business registration routes', () => {
     );
 
     expect(target).toBe('https://dgfy.ph/map-dgfy/account?dgfy_account=1&handoff_token=handoff-token-1');
+  });
+
+  it('uses the configured Storefront development port for the default account return target', () => {
+    expect(resolveStorefrontAccountUrl()).toBe('http://localhost:5175/map-dgfy/account');
   });
 
   it('rejects malicious absolute and protocol-relative DGFY return targets', () => {
@@ -401,7 +406,8 @@ describe('DGFY auth and business registration routes', () => {
       company_terms_version: 'dgfy-company-terms-2026-06-08',
       marketplace_terms_version: 'dgfy-marketplace-provider-2026-06-08'
     }, {
-      headers: { Authorization: 'Bearer dgfy-token' }
+      headers: { Authorization: 'Bearer dgfy-token' },
+      timeout: 120000
     }));
     await waitFor(() => expect(dgfyAuthMock.startDgfyTenantSession).toHaveBeenCalledWith({
       tenantId: 'tenant-1',

@@ -8,6 +8,7 @@ import { resolveChangedSettingKeys } from '../src/modules/settings/usecases/sett
 import { assertPublicStorefrontHandleAvailable } from '../src/modules/settings/usecases/publicStorefrontHandlePolicy.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
 import dbStore from '../src/utils/dbStore.js';
+import bcrypt from 'bcryptjs';
 
 describe('settings use-cases application result contract', () => {
   it('getAllSettings returns success envelope', async () => {
@@ -673,5 +674,109 @@ describe('settings use-cases application result contract', () => {
     expect(result.success).toBe(true);
     expect(updateSettingByKey).toHaveBeenCalledTimes(1);
     expect(updateSettingByKey).toHaveBeenCalledWith('pos_terminal_location_binding_enforced', true);
+  });
+
+  it('updateSettings hashes new terminal passwords before saving terminal registry', async () => {
+    const updateSettings = jest.fn().mockResolvedValue({ updated: 1 });
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: {
+        updateSettings,
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          pos_terminal_registry: {
+            value: [{ terminal_id: 'COUNTER-01', terminal_password_hash: '' }]
+          }
+        })
+      }
+    });
+
+    const result = await useCase({
+      settingsData: {
+        pos_terminal_registry: [
+          {
+            terminal_id: 'COUNTER-01',
+            is_active: true,
+            is_default: true,
+            location_id: 1,
+            terminal_password: '4321'
+          }
+        ]
+      },
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(true);
+    const savedRegistry = updateSettings.mock.calls[0][0].pos_terminal_registry;
+    expect(savedRegistry[0].terminal_password_hash).toEqual(expect.any(String));
+    expect(savedRegistry[0].terminal_password_hash).not.toBe('4321');
+    await expect(bcrypt.compare('4321', savedRegistry[0].terminal_password_hash)).resolves.toBe(true);
+    expect(savedRegistry[0]).not.toHaveProperty('terminal_password');
+  });
+
+  it('updateSettings keeps the existing terminal password hash when the password field is left blank', async () => {
+    const existingHash = await bcrypt.hash('1234', 10);
+    const updateSettings = jest.fn().mockResolvedValue({ updated: 1 });
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: {
+        updateSettings,
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          pos_terminal_registry: {
+            value: [{ terminal_id: 'COUNTER-01', terminal_password_hash: existingHash }]
+          }
+        })
+      }
+    });
+
+    const result = await useCase({
+      settingsData: {
+        pos_terminal_registry: [
+          {
+            terminal_id: 'COUNTER-01',
+            is_active: true,
+            is_default: true,
+            location_id: 1,
+            terminal_password: ''
+          }
+        ]
+      },
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(true);
+    const savedRegistry = updateSettings.mock.calls[0][0].pos_terminal_registry;
+    expect(savedRegistry[0].terminal_password_hash).toBe(existingHash);
+  });
+
+  it('updateSettings clears the existing terminal password hash when explicitly requested', async () => {
+    const existingHash = await bcrypt.hash('1234', 10);
+    const updateSettings = jest.fn().mockResolvedValue({ updated: 1 });
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: {
+        updateSettings,
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          pos_terminal_registry: {
+            value: [{ terminal_id: 'COUNTER-01', terminal_password_hash: existingHash }]
+          }
+        })
+      }
+    });
+
+    const result = await useCase({
+      settingsData: {
+        pos_terminal_registry: [
+          {
+            terminal_id: 'COUNTER-01',
+            is_active: true,
+            is_default: true,
+            location_id: 1,
+            clear_terminal_password: true
+          }
+        ]
+      },
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(true);
+    const savedRegistry = updateSettings.mock.calls[0][0].pos_terminal_registry;
+    expect(savedRegistry[0].terminal_password_hash).toBe('');
   });
 });

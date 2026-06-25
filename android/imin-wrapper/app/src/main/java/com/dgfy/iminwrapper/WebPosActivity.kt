@@ -2,6 +2,7 @@ package com.dgfy.iminwrapper
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.AlertDialog
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -35,6 +36,7 @@ class WebPosActivity : AppCompatActivity() {
     private var webPosReadyReceived = false
     private var logoAnimating = false
     private var lastLoadedUrl: String? = null
+    private var activeMessageDialog: AlertDialog? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -67,9 +69,15 @@ class WebPosActivity : AppCompatActivity() {
         }
 
         webView.addJavascriptInterface(
-            IminBridge(drawerController) {
-                runOnUiThread { handleWebPosReady() }
-            },
+            IminBridge(
+                drawerController = drawerController,
+                onWebPosReady = {
+                    runOnUiThread { handleWebPosReady() }
+                },
+                onShowMessage = { title, message ->
+                    runOnUiThread { showNativeMessage(title, message) }
+                }
+            ),
             "iMinBridge"
         )
         webView.webChromeClient = object : WebChromeClient() {
@@ -143,6 +151,8 @@ class WebPosActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        activeMessageDialog?.dismiss()
+        activeMessageDialog = null
         drawerController.release()
         super.onDestroy()
     }
@@ -197,6 +207,17 @@ class WebPosActivity : AppCompatActivity() {
     private fun hideStatusOverlay() {
         stopLogoAnimation()
         statusOverlay.visibility = View.GONE
+    }
+
+    private fun showNativeMessage(title: String, message: String) {
+        if (isFinishing || isDestroyed) return
+        activeMessageDialog?.dismiss()
+        activeMessageDialog = AlertDialog.Builder(this)
+            .setTitle(title.ifBlank { "iMin message" })
+            .setMessage(message.ifBlank { "No details provided." })
+            .setPositiveButton("OK", null)
+            .create()
+        activeMessageDialog?.show()
     }
 
     private fun startLogoAnimation() {

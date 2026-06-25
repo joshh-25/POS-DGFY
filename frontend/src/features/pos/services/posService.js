@@ -157,6 +157,38 @@ export const fetchTerminalTodayDashboard = async (params = {}, requestConfig = {
     return response.data?.data;
 };
 
+export const fetchPosReportsOverview = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/reports/overview', { params, ...requestConfig });
+    return response.data?.data;
+};
+
+export const fetchPosReportsTopItems = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/reports/top-items', { params, ...requestConfig });
+    return response.data?.data;
+};
+
+export const fetchPosReportsComparison = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/reports/comparison', { params, ...requestConfig });
+    return response.data?.data;
+};
+
+export const fetchPosReportsProfitLoss = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/reports/profit-loss', { params, ...requestConfig });
+    return response.data?.data;
+};
+
+export const exportPosReportCsv = async (params = {}) => {
+    const response = await api.get('/pos/reports/export', {
+        params,
+        responseType: 'blob'
+    });
+    return {
+        blob: response.data,
+        filename: String(response.headers?.['content-disposition'] || '')
+            .match(/filename="?([^"]+)"?$/i)?.[1] || 'pos-report.csv'
+    };
+};
+
 export const fetchIncomingOnlineOrders = async (params = {}, requestConfig = {}) => {
     const response = await api.get('/pos/incoming-orders', {
         params,
@@ -272,6 +304,11 @@ export default {
     recordCashDrawerEvent,
     closeTerminalShift,
     fetchTerminalTodayDashboard,
+    fetchPosReportsOverview,
+    fetchPosReportsTopItems,
+    fetchPosReportsComparison,
+    fetchPosReportsProfitLoss,
+    exportPosReportCsv,
     fetchIncomingOnlineOrders,
     updateOnlineOrderStatus,
     fetchFiscalTerminalRegistrations,

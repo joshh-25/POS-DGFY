@@ -168,21 +168,20 @@ body {
 }
 
 .dgfy-pos-shell {
-  --pos-shell-bg: radial-gradient(circle at top, rgba(251, 191, 36, 0.16), transparent 28%),
-    linear-gradient(180deg, #fff7ed 0%, #fffbeb 28%, #f8fafc 100%);
+  --pos-shell-bg: linear-gradient(180deg, #f8fbff 0%, #f7fafc 42%, #eef4ff 100%);
   --pos-shell-panel: rgba(255, 255, 255, 0.9);
   --pos-shell-panel-strong: #ffffff;
-  --pos-shell-border: rgba(180, 83, 9, 0.16);
+  --pos-shell-border: rgba(148, 163, 184, 0.22);
   --pos-shell-text: #1f2937;
   --pos-shell-muted: #6b7280;
-  --pos-shell-accent: #c2410c;
-  --pos-shell-accent-strong: #9a3412;
-  --pos-shell-accent-soft: #ffedd5;
-  --pos-shell-sidebar: linear-gradient(180deg, #1c1917 0%, #292524 48%, #111827 100%);
-  --pos-shell-sidebar-border: rgba(251, 191, 36, 0.18);
-  --pos-shell-sidebar-text: #fef7ed;
-  --pos-shell-sidebar-muted: rgba(254, 243, 199, 0.72);
-  --pos-shell-sidebar-card: rgba(255, 255, 255, 0.05);
+  --pos-shell-accent: #1A4E8D;
+  --pos-shell-accent-strong: #143F73;
+  --pos-shell-accent-soft: #e8f0fb;
+  --pos-shell-sidebar: #ffffff;
+  --pos-shell-sidebar-border: rgba(226, 232, 240, 1);
+  --pos-shell-sidebar-text: #0f172a;
+  --pos-shell-sidebar-muted: #64748b;
+  --pos-shell-sidebar-card: #f8fafc;
   --pos-shell-shadow: 0 24px 48px rgba(15, 23, 42, 0.12);
   background: var(--pos-shell-bg);
   color: var(--pos-shell-text);
@@ -202,8 +201,8 @@ body {
 }
 
 .dgfy-pos-terminal-badge {
-  border: 1px solid rgba(194, 65, 12, 0.16);
-  background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+  border: 1px solid rgba(26, 78, 141, 0.14);
+  background: linear-gradient(135deg, #f8fbff 0%, #e8f0fb 100%);
   color: var(--pos-shell-accent-strong);
 }
 

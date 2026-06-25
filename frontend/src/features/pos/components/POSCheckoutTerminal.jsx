@@ -15,6 +15,14 @@ import {
     X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import {
@@ -71,6 +79,10 @@ const POS_ITEM_IMAGE_MAP = [
 ];
 const POS_FORM_INPUT_CLASS = 'mt-1 focus-visible:border-blue-400 focus-visible:ring-blue-500';
 const POS_FORM_SELECT_CLASS = 'focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2';
+const RECEIPT_PAPER_OPTIONS = [
+    { value: '80mm', label: '80mm (3 1/8 in)' },
+    { value: '57mm', label: '57mm (2 1/4 in)' }
+];
 
 const money = (value) => Number(value || 0).toFixed(2);
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
@@ -213,6 +225,20 @@ const buildOfflineCheckoutHistoryRow = ({
     if (!intentId) return null;
     const queuedTimestamp = String(queuedAt || new Date().toISOString()).trim() || new Date().toISOString();
     const invoiceSuffix = intentId.slice(-6).toUpperCase();
+    const lines = Array.isArray(payload?.offline_line_items_snapshot)
+        ? payload.offline_line_items_snapshot.map((line, index) => ({
+            line_id: line?.line_id || line?.line_key || `offline-line-${index + 1}`,
+            item_id: Number(line?.item_id || 0) || undefined,
+            quantity: Number(line?.quantity || 0),
+            sale_price: Number(line?.sale_price || 0),
+            line_subtotal: round4(Number(line?.quantity || 0) * Number(line?.sale_price || 0)),
+            item: {
+                name: String(line?.item_name || `Item #${line?.item_id || index + 1}`)
+            },
+            fnb_modifiers_snapshot: Array.isArray(line?.fnb_modifiers_snapshot) ? line.fnb_modifiers_snapshot : [],
+            fnb_special_instructions: line?.special_instructions || ''
+        }))
+        : [];
     return {
         pos_transaction_id: `${OFFLINE_HISTORY_ROW_PREFIX}${intentId}`,
         offline_intent_id: intentId,
@@ -235,6 +261,7 @@ const buildOfflineCheckoutHistoryRow = ({
         vat_amount: Number(vatBreakdown?.vatAmount || 0),
         vat_exempt_sales: Number(vatBreakdown?.vatExemptSales || 0),
         zero_rated_sales: Number(vatBreakdown?.zeroRatedSales || 0),
+        lines,
         cashier: {
             username: 'Offline cashier'
         }
@@ -289,7 +316,13 @@ const rowMatchesHistoryFilters = (row, filters) => {
     }
 
     const statusFilter = String(filters?.historyStatus || 'all').trim();
+    if (statusFilter === 'pending_sync') {
+        return row?.offline_sync_state === 'pending_sync';
+    }
     if (statusFilter === 'voided') {
+        return false;
+    }
+    if (statusFilter === 'completed' && row?.offline_sync_state === 'pending_sync') {
         return false;
     }
 
@@ -432,7 +465,6 @@ export default function POSCheckoutTerminal({
     isMsmeMode = false,
     sidebarCollapsed = false,
     canViewHistory = true,
-    queueReplayManagedExternally = false,
     selectedLocationId = null,
     activeShiftId = null,
     terminalId = '',
@@ -498,6 +530,7 @@ export default function POSCheckoutTerminal({
     const [deviceStatus, setDeviceStatus] = useState(null);
     const [deviceStatusLoading, setDeviceStatusLoading] = useState(false);
     const [receiptPrinting, setReceiptPrinting] = useState(false);
+    const [receiptPaperWidth, setReceiptPaperWidth] = useState('80mm');
     const [drawerOpening, setDrawerOpening] = useState(false);
     const [imagePreview, setImagePreview] = useState(null);
     const [receiptPreviewModalOpen, setReceiptPreviewModalOpen] = useState(false);
@@ -727,6 +760,7 @@ export default function POSCheckoutTerminal({
     }, [historyPage, historyPagination, historyRows.length, offlineHistoryRows.length]);
     const detectedPrinterCount = Number(deviceStatus?.bridge?.printersDetected || 0);
     const isPrinterAvailable = detectedPrinterCount > 0;
+    const lastReceiptPendingSync = lastReceipt?.offline_sync_state === 'pending_sync';
 
     const setCurrentViewMode = useCallback((nextMode) => {
         if (!isViewModeControlled) {
@@ -858,7 +892,12 @@ export default function POSCheckoutTerminal({
     const replayQueuedCheckouts = useCallback(async ({ toastIfEmpty = false } = {}) => {
         if (sessionLocked) return;
         if (checkoutBlockedReason) return;
-        if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            if (toastIfEmpty) {
+                toast.error('Reconnect to the internet before syncing pending transactions.');
+            }
+            return;
+        }
 
         const candidates = (await getReplayCandidateEntries({ limit: CHECKOUT_REPLAY_BATCH_SIZE }))
             .filter((entry) => isCheckoutQueueEntry(entry));
@@ -945,7 +984,7 @@ export default function POSCheckoutTerminal({
 
         if (failedManualCount > 0) {
             toast.error(
-                `${failedManualCount} queued checkout${failedManualCount === 1 ? '' : 's'} require manual resolution in Sync Queue.`
+                `${failedManualCount} pending transaction${failedManualCount === 1 ? '' : 's'} could not sync. Try again from History.`
             );
         }
     }, [
@@ -1033,7 +1072,7 @@ export default function POSCheckoutTerminal({
         }
     }, [sessionLocked]);
 
-    const openHistoryDetail = async (posTransactionId, { switchToReceipt = false, openModal = true } = {}) => {
+    const openHistoryDetail = async (historyRowOrId, { switchToReceipt = false, openModal = true } = {}) => {
         setHistoryDetailLoading(true);
         setLastReceipt(null);
         setLastReceiptContract(null);
@@ -1046,6 +1085,13 @@ export default function POSCheckoutTerminal({
         }
 
         try {
+            const historyRow = historyRowOrId && typeof historyRowOrId === 'object' ? historyRowOrId : null;
+            const posTransactionId = historyRow?.pos_transaction_id ?? historyRowOrId;
+            if (historyRow?.offline_sync_state === 'pending_sync') {
+                setLastReceipt(historyRow);
+                setLastReceiptContract(inferReceiptContract(historyRow));
+                return;
+            }
             const detail = await fetchPosTransactionById(posTransactionId);
             setLastReceipt(detail || null);
             setLastReceiptContract(inferReceiptContract(detail));
@@ -1159,23 +1205,6 @@ export default function POSCheckoutTerminal({
             active = false;
         };
     }, [syncQueuedCheckoutsState]);
-
-    useEffect(() => {
-        if (sessionLocked || queueReplayManagedExternally) return undefined;
-
-        const handleOnline = () => {
-            replayQueuedCheckouts().catch(() => {});
-        };
-
-        if (typeof navigator !== 'undefined' && navigator.onLine !== false) {
-            replayQueuedCheckouts().catch(() => {});
-        }
-
-        window.addEventListener('online', handleOnline);
-        return () => {
-            window.removeEventListener('online', handleOnline);
-        };
-    }, [queueReplayManagedExternally, replayQueuedCheckouts, sessionLocked]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return undefined;
@@ -1733,6 +1762,16 @@ export default function POSCheckoutTerminal({
                 scan_metadata: line.scan_metadata || undefined
             }))
         };
+        payload.offline_line_items_snapshot = cart.map((line) => ({
+            line_id: line.line_key,
+            line_key: line.line_key,
+            item_id: line.item_id,
+            item_name: line.item_name,
+            quantity: Number(line.quantity),
+            sale_price: Number(line.sale_price),
+            special_instructions: line.special_instructions || '',
+            fnb_modifiers_snapshot: resolveModifierSnapshot(line, line.line_modifiers || [])
+        }));
         payload.offline_discount_snapshot = selectedDiscount
             ? {
                 name: selectedDiscount.name,
@@ -1809,6 +1848,7 @@ export default function POSCheckoutTerminal({
             setManualDiscountAmountInput('');
             setCustomerPaymentAmountInput('');
             setCheckoutConfirmModalOpen(false);
+            setReceiptPreviewModalOpen(true);
             if (typeof onCheckoutCompleted === 'function') {
                 onCheckoutCompleted(data?.transaction || null);
             }
@@ -2017,44 +2057,9 @@ export default function POSCheckoutTerminal({
         );
     };
 
-    const renderQueuedCheckoutsNotice = (className = '') => {
-        if (queuedCheckouts.length === 0 && !replayingQueuedCheckouts) return null;
-
-        return (
-            <div className={`rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 shadow-sm ${className}`}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-semibold text-amber-900">
-                        Queued checkouts: {queuedCheckoutPendingCount}
-                        {queuedCheckoutBlockedCount > 0 ? ` / ${queuedCheckoutBlockedCount} manual-resolution` : ''}
-                    </p>
-                    <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={
-                            queueReplayManagedExternally
-                            || replayingQueuedCheckouts
-                            || (typeof navigator !== 'undefined' && navigator.onLine === false)
-                        }
-                        onClick={() => replayQueuedCheckouts({ toastIfEmpty: true })}
-                    >
-                        {queueReplayManagedExternally
-                            ? 'Replay in Sync Queue'
-                            : (replayingQueuedCheckouts ? 'Replaying...' : 'Replay queued checkouts')}
-                    </Button>
-                </div>
-                <p className="text-xs text-amber-800">
-                    Offline queue keeps durable replay status and retry safety.
-                </p>
-            </div>
-        );
-    };
-
     return (
         <div className={modalOnly ? 'hidden' : shellClassName} aria-hidden={modalOnly ? 'true' : undefined}>
             <section className={currentViewMode === 'checkout' ? 'contents' : 'rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-5'}>
-            {currentViewMode !== 'checkout' && renderQueuedCheckoutsNotice('mb-5')}
-
             {currentViewMode === 'history' && (
                 <Suspense fallback={<section className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading POS sales history...</section>}>
                     <POSTransactionHistoryPanel
@@ -2078,10 +2083,14 @@ export default function POSCheckoutTerminal({
                         historyRows={visibleHistoryRows}
                         historyDetailLoading={historyDetailLoading}
                         openHistoryDetail={openHistoryDetail}
-                        printHistoryReceipt={printHistoryReceipt}
                         loadHistory={loadHistory}
                         historyPage={historyPage}
                         historyPagination={visibleHistoryPagination}
+                        pendingSyncCount={queuedCheckoutPendingCount}
+                        pendingSyncBlockedCount={queuedCheckoutBlockedCount}
+                        syncPendingTransactions={() => replayQueuedCheckouts({ toastIfEmpty: true })}
+                        syncingPendingTransactions={replayingQueuedCheckouts}
+                        syncDisabled={sessionLocked || Boolean(checkoutBlockedReason) || (typeof navigator !== 'undefined' && navigator.onLine === false)}
                     />
                 </Suspense>
             )}
@@ -2090,7 +2099,6 @@ export default function POSCheckoutTerminal({
                 <div className={checkoutGridClassName}>
             <section ref={catalogSectionRef} className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-6 ${checkoutPaneClassName} ${tabletAlignedPaneClassName} ${catalogPaneHeightClassName} flex min-h-0 flex-col`}>
                     {isTabletViewport && renderViewModeControls()}
-                    {renderQueuedCheckoutsNotice('mb-5')}
                     <div ref={catalogViewportRef} className={catalogViewportClassName} role="region" aria-label="POS catalog contents">
                 <div className={`${isTabletViewport ? 'mb-3 gap-2.5' : 'mb-5 gap-4'} flex min-w-0 flex-col ${IS_DGFY_POS_SURFACE ? 'xl:flex-row xl:items-start' : 'lg:flex-row lg:items-start'}`}>
                     <div className={`${isTabletViewport ? 'flex-col items-stretch sm:flex-col' : 'flex-wrap items-center sm:flex-nowrap'} flex min-w-0 flex-1 gap-3`}>
@@ -2793,7 +2801,7 @@ export default function POSCheckoutTerminal({
                         type="button"
                         variant="outline"
                         onClick={() => handlePrintReceipt(lastReceipt, 'last_receipt_panel')}
-                        disabled={posActionsBlocked || !lastReceipt || receiptPrinting}
+                        disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync}
                         className="flex h-10 w-full min-w-0 items-center justify-center gap-2 rounded-lg border px-2 text-center text-[12px] font-extrabold leading-tight sm:text-[13px]"
                     >
                         <Printer size={18} />
@@ -2835,6 +2843,18 @@ export default function POSCheckoutTerminal({
                             <p className="text-sm text-slate-600">Review the selected receipt.</p>
                         </div>
                         <div className="flex items-center gap-2">
+                            <label className="flex items-center gap-2 text-xs font-extrabold text-slate-700">
+                                Paper
+                                <select
+                                    value={receiptPaperWidth}
+                                    onChange={(event) => setReceiptPaperWidth(event.target.value)}
+                                    className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-900 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                                >
+                                    {RECEIPT_PAPER_OPTIONS.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </select>
+                            </label>
                             {normalizedTerminalId && (
                                 <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
                                     {terminalIdentityLabel}
@@ -2865,7 +2885,7 @@ export default function POSCheckoutTerminal({
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handlePrintReceipt(lastReceipt, 'receipt_preview')}
-                                disabled={posActionsBlocked || !lastReceipt || receiptPrinting}
+                                disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync}
                             >
                                 {receiptPrinting ? 'Printing...' : 'Send to Printer'}
                             </Button>
@@ -2890,6 +2910,7 @@ export default function POSCheckoutTerminal({
                                     transaction={lastReceipt}
                                     businessSettings={receiptSettings}
                                     receiptContract={lastReceiptContract}
+                                    paperWidth={receiptPaperWidth}
                                 />
                             </Suspense>
                         </div>
@@ -2913,28 +2934,17 @@ export default function POSCheckoutTerminal({
             )}
             </section>
 
-            {checkoutConfirmModalOpen && createPortal((
-                <div
-                    className="pos-checkout-confirm-shell fixed inset-0 z-[9998] flex items-start justify-center overflow-hidden bg-slate-950/55 px-3 py-4 sm:items-center sm:px-4"
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="pos-checkout-confirm-modal-title"
-                    onClick={() => {
-                        if (!checkoutLoading) setCheckoutConfirmModalOpen(false);
-                    }}
-                >
-                    <div
-                        className="pos-checkout-confirm-dialog flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/25"
-                        onClick={(event) => event.stopPropagation()}
-                    >
-                        <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
+            <Dialog open={checkoutConfirmModalOpen} onOpenChange={setCheckoutConfirmModalOpen}>
+                <DialogContent className="pos-checkout-confirm-dialog flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 sm:w-full">
+                    <DialogHeader className="border-b border-slate-200 px-4 py-3">
+                        <div className="flex items-start justify-between gap-3">
                             <div>
-                                <h2 id="pos-checkout-confirm-modal-title" className="text-[17px] font-black text-[#0F172A]">
+                                <DialogTitle id="pos-checkout-confirm-modal-title" className="text-[17px] font-black text-[#0F172A]">
                                     Confirm Checkout
-                                </h2>
-                                <p className="mt-1 text-[12px] font-medium text-[#475569]">
+                                </DialogTitle>
+                                <DialogDescription className="mt-1 text-[12px] font-medium text-[#475569]">
                                     Review the items and enter the customer payment before finalizing this sale.
-                                </p>
+                                </DialogDescription>
                             </div>
                             <button
                                 type="button"
@@ -2946,124 +2956,121 @@ export default function POSCheckoutTerminal({
                                 <X className="h-5 w-5" />
                             </button>
                         </div>
+                    </DialogHeader>
 
-                        <div className="pos-modal-scroll-content min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
-                            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px]">
-                                <div className="flex justify-between gap-2">
-                                    <span className="font-semibold text-[#334155]">Total Due</span>
-                                    <span className="font-black text-[#1A4E8D]">PHP {money(cartTotal)}</span>
-                                </div>
-                                <div className="mt-2 flex justify-between gap-2">
-                                    <span className="font-semibold text-[#334155]">Payment Type</span>
-                                    <span className="font-bold capitalize text-[#0F172A]">{paymentType.replace('_', ' ')}</span>
-                                </div>
+                    <div className="pos-modal-scroll-content min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px]">
+                            <div className="flex justify-between gap-2">
+                                <span className="font-semibold text-[#334155]">Total Due</span>
+                                <span className="font-black text-[#1A4E8D]">PHP {money(cartTotal)}</span>
                             </div>
+                            <div className="mt-2 flex justify-between gap-2">
+                                <span className="font-semibold text-[#334155]">Payment Type</span>
+                                <span className="font-bold capitalize text-[#0F172A]">{paymentType.replace('_', ' ')}</span>
+                            </div>
+                        </div>
 
-                            <div className="rounded-lg border border-slate-200 bg-white p-3">
-                                <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
-                                    <div>
-                                        <p className="text-[11px] font-bold uppercase tracking-wide text-[#64748B]">Items</p>
-                                        <p className="mt-1 text-[12px] font-medium text-[#475569]">
-                                            {cart.length} item{cart.length === 1 ? '' : 's'} in this sale
-                                        </p>
-                                    </div>
-                                    <span className="text-[12px] font-black text-[#0F172A]">PHP {money(cartTotal)}</span>
+                        <div className="rounded-lg border border-slate-200 bg-white p-3">
+                            <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
+                                <div>
+                                    <p className="text-[11px] font-bold uppercase tracking-wide text-[#64748B]">Items</p>
+                                    <p className="mt-1 text-[12px] font-medium text-[#475569]">
+                                        {cart.length} item{cart.length === 1 ? '' : 's'} in this sale
+                                    </p>
                                 </div>
-                                <div className="mt-3 space-y-2">
-                                    {cart.map((line) => {
-                                        const lineTotal = round4(Number(line.quantity || 0) * Number(line.sale_price || 0));
-                                        return (
-                                            <div key={getLineKey(line)} className="flex items-start justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                                                <div className="min-w-0">
-                                                    <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{line.item_name}</p>
-                                                    <p className="mt-0.5 text-[11px] font-medium text-[#64748B]">
-                                                        {formatQuantity(line.quantity)} x PHP {money(line.sale_price)}
-                                                    </p>
-                                                </div>
-                                                <span className="shrink-0 text-[13px] font-black text-[#1A4E8D]">PHP {money(lineTotal)}</span>
+                                <span className="text-[12px] font-black text-[#0F172A]">PHP {money(cartTotal)}</span>
+                            </div>
+                            <div className="mt-3 space-y-2">
+                                {cart.map((line) => {
+                                    const lineTotal = round4(Number(line.quantity || 0) * Number(line.sale_price || 0));
+                                    return (
+                                        <div key={getLineKey(line)} className="flex items-start justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                                            <div className="min-w-0">
+                                                <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{line.item_name}</p>
+                                                <p className="mt-0.5 text-[11px] font-medium text-[#64748B]">
+                                                    {formatQuantity(line.quantity)} x PHP {money(line.sale_price)}
+                                                </p>
                                             </div>
-                                        );
-                                    })}
-                                </div>
+                                            <span className="shrink-0 text-[13px] font-black text-[#1A4E8D]">PHP {money(lineTotal)}</span>
+                                        </div>
+                                    );
+                                })}
                             </div>
-
-                            <label className="block text-[11px] font-bold uppercase tracking-wide text-[#64748B]">
-                                {customerPaymentFieldLabel}
-                                <Input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={customerPaymentAmountInput}
-                                    onChange={(event) => setCustomerPaymentAmountInput(event.target.value)}
-                                    placeholder="0.00"
-                                    className="mt-2 h-11 rounded-lg border border-slate-200 bg-white px-3 text-[15px] font-extrabold text-[#0F172A] focus-visible:border-[#1A4E8D] focus-visible:ring-2 focus-visible:ring-blue-100"
-                                    autoFocus
-                                />
-                            </label>
-
-                            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px]">
-                                <div className="flex justify-between gap-2">
-                                    <span className="text-[#334155]">{isCashPayment ? 'Change' : 'Excess Payment'}</span>
-                                    <span className="font-bold text-emerald-700">PHP {money(customerPaymentChange)}</span>
-                                </div>
-                                <div className="mt-2 flex justify-between gap-2">
-                                    <span className="text-[#334155]">Remaining Balance</span>
-                                    <span className={`font-bold ${customerPaymentShortfall > 0 ? 'text-rose-700' : 'text-[#0F172A]'}`}>
-                                        PHP {money(customerPaymentShortfall)}
-                                    </span>
-                                </div>
-                            </div>
-
-                            {!isCustomerPaymentSufficient && (
-                                <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
-                                    {customerPaymentFieldLabel} must be at least PHP {money(cartTotal)}.
-                                </p>
-                            )}
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2 border-t border-slate-200 px-4 py-3">
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => setCheckoutConfirmModalOpen(false)}
-                                disabled={checkoutLoading}
-                                className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
-                            >
-                                Cancel
-                            </Button>
-                            <Button
-                                type="button"
-                                onClick={handleCheckout}
-                                disabled={posActionsBlocked || checkoutLoading || cart.length === 0 || !isCustomerPaymentSufficient}
-                                className="h-10 rounded-lg bg-[#1A4E8D] px-3 text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 transition hover:bg-[#143F73] disabled:cursor-not-allowed disabled:bg-[#1A4E8D] disabled:opacity-60"
-                            >
-                                {checkoutLoading ? 'Processing...' : 'Confirm'}
-                            </Button>
+                        <label className="block text-[11px] font-bold uppercase tracking-wide text-[#64748B]">
+                            {customerPaymentFieldLabel}
+                            <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={customerPaymentAmountInput}
+                                onChange={(event) => setCustomerPaymentAmountInput(event.target.value)}
+                                placeholder="0.00"
+                                className="mt-2 h-11 rounded-lg border border-slate-200 bg-white px-3 text-[15px] font-extrabold text-[#0F172A] focus-visible:border-[#1A4E8D] focus-visible:ring-2 focus-visible:ring-blue-100"
+                                autoFocus
+                            />
+                        </label>
+
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px]">
+                            <div className="flex justify-between gap-2">
+                                <span className="text-[#334155]">{isCashPayment ? 'Change' : 'Excess Payment'}</span>
+                                <span className="font-bold text-emerald-700">PHP {money(customerPaymentChange)}</span>
+                            </div>
+                            <div className="mt-2 flex justify-between gap-2">
+                                <span className="text-[#334155]">Remaining Balance</span>
+                                <span className={`font-bold ${customerPaymentShortfall > 0 ? 'text-rose-700' : 'text-[#0F172A]'}`}>
+                                    PHP {money(customerPaymentShortfall)}
+                                </span>
+                            </div>
                         </div>
+
+                        {!isCustomerPaymentSufficient && (
+                            <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                                {customerPaymentFieldLabel} must be at least PHP {money(cartTotal)}.
+                            </p>
+                        )}
                     </div>
-                </div>
-            ), document.body)}
 
-            {receiptPreviewModalOpen && createPortal((
-                <div
-                    className="pos-receipt-print-shell fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 px-3 py-3 print:block print:bg-white print:p-0 sm:px-4 sm:py-6"
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="pos-history-receipt-modal-title"
-                    onClick={closeReceiptPreviewModal}
-                >
-                    <div
-                        className="pos-receipt-print-dialog flex h-[calc(100dvh-1.5rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/25 print:h-auto print:max-h-none print:max-w-none print:rounded-none print:border-none print:shadow-none sm:h-[calc(100dvh-3rem)]"
-                        onClick={(event) => event.stopPropagation()}
-                    >
-                        <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 print:hidden">
+                    <DialogFooter className="grid grid-cols-2 gap-2 border-t border-slate-200 px-4 py-3">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setCheckoutConfirmModalOpen(false)}
+                            disabled={checkoutLoading}
+                            className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={handleCheckout}
+                            disabled={posActionsBlocked || checkoutLoading || cart.length === 0 || !isCustomerPaymentSufficient}
+                            className="h-10 rounded-lg bg-[#1A4E8D] px-3 text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 transition hover:bg-[#143F73] disabled:cursor-not-allowed disabled:bg-[#1A4E8D] disabled:opacity-60"
+                        >
+                            {checkoutLoading ? 'Processing...' : 'Confirm'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={receiptPreviewModalOpen} onOpenChange={(open) => {
+                if (!open) {
+                    closeReceiptPreviewModal();
+                }
+            }}>
+                <DialogContent className="pos-receipt-print-dialog flex h-[calc(100dvh-1.5rem)] w-[calc(100vw-1.5rem)] max-w-3xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 sm:h-[calc(100dvh-3rem)] sm:w-full print:h-auto print:max-h-none print:max-w-none print:rounded-none print:border-none print:shadow-none">
+                    <DialogHeader className="border-b border-slate-200 px-4 py-3 print:hidden">
+                        <div className="flex items-start justify-between gap-3">
                             <div>
-                                <h2 id="pos-history-receipt-modal-title" className="text-lg font-black text-[#0F172A]">
+                                <DialogTitle id="pos-history-receipt-modal-title" className="text-lg font-black text-[#0F172A]">
                                     Receipt Preview
-                                </h2>
-                                <p className="mt-1 text-sm text-[#64748B]">
-                                    Review the selected receipt from history.
-                                </p>
+                                </DialogTitle>
+                                <DialogDescription className="mt-1 text-sm text-[#64748B]">
+                                    {lastReceiptPendingSync
+                                        ? 'Review the offline receipt. Sync the transaction before printing.'
+                                        : 'Review the selected receipt from history.'}
+                                </DialogDescription>
                             </div>
                             <div className="flex items-center gap-2">
                                 <Button
@@ -3076,46 +3083,58 @@ export default function POSCheckoutTerminal({
                                 </Button>
                             </div>
                         </div>
-                        <div className="pos-receipt-print-content min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 print:overflow-visible print:p-0">
-                            {lastReceipt ? (
-                                <div className="space-y-3 print:space-y-0">
-                                    <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Loading receipt preview...</div>}>
-                                        <div className="pos-receipt-print-paper">
-                                            <ReceiptPrintView
-                                                transaction={lastReceipt}
-                                                businessSettings={receiptSettings}
-                                                receiptContract={lastReceiptContract}
-                                            />
-                                        </div>
-                                    </Suspense>
-                                </div>
-                            ) : historyDetailLoading ? (
-                                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-600">
-                                    Loading receipt details...
-                                </div>
-                            ) : (
-                                <div className="rounded-xl border border-dashed border-rose-300 bg-rose-50 p-6 text-center text-sm font-semibold text-rose-700">
-                                    Failed to load receipt details. Please try again.
-                                </div>
-                            )}
-                        </div>
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-4 py-3 print:hidden">
-                            <div />
-                            <div className="flex flex-wrap items-center justify-end gap-2">
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={posActionsBlocked || !lastReceipt || receiptPrinting}
-                                    onClick={() => handlePrintReceipt(lastReceipt, 'history_modal')}
-                                >
-                                    {receiptPrinting ? 'Printing...' : 'Print'}
-                                </Button>
+                    </DialogHeader>
+                    <div className="pos-receipt-print-content min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 print:overflow-visible print:p-0">
+                        {lastReceipt ? (
+                            <div className="space-y-3 print:space-y-0">
+                                <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Loading receipt preview...</div>}>
+                                    <div className="pos-receipt-print-paper">
+                                        <ReceiptPrintView
+                                            transaction={lastReceipt}
+                                            businessSettings={receiptSettings}
+                                            receiptContract={lastReceiptContract}
+                                            paperWidth={receiptPaperWidth}
+                                        />
+                                    </div>
+                                </Suspense>
                             </div>
-                        </div>
+                        ) : historyDetailLoading ? (
+                            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-600">
+                                Loading receipt details...
+                            </div>
+                        ) : (
+                            <div className="rounded-xl border border-dashed border-rose-300 bg-rose-50 p-6 text-center text-sm font-semibold text-rose-700">
+                                Failed to load receipt details. Please try again.
+                            </div>
+                        )}
                     </div>
-                </div>
-            ), document.body)}
+                    <DialogFooter className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-4 py-3 print:hidden">
+                        <label className="flex items-center gap-2 text-xs font-extrabold text-slate-700">
+                            Paper
+                            <select
+                                value={receiptPaperWidth}
+                                onChange={(event) => setReceiptPaperWidth(event.target.value)}
+                                className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-900 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                            >
+                                {RECEIPT_PAPER_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                            </select>
+                        </label>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync}
+                                onClick={() => handlePrintReceipt(lastReceipt, 'history_modal')}
+                            >
+                                {receiptPrinting ? 'Printing...' : 'Print'}
+                            </Button>
+                        </div>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {setupSnapshotModalOpen && createPortal((
                 <div

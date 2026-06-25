@@ -65,6 +65,7 @@ const parsePositiveInt = (value, fallback) => {
   const parsed = parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
+const httpRequestTimeoutMs = parsePositiveInt(process.env.HTTP_REQUEST_TIMEOUT_MS, 120000);
 
 const schemaIndexAuditEnabled = process.env.SCHEMA_INDEX_AUDIT_ENABLED !== undefined
   ? process.env.SCHEMA_INDEX_AUDIT_ENABLED === 'true'
@@ -668,6 +669,7 @@ import analyticsRoutes from './routes/analytics.js';
 import feedbackRoutes from './routes/feedback.js';
 import aiRoutes from './routes/ai.js';
 import posRoutes from './routes/pos.js';
+import mobilePosRoutes from './routes/mobilePos.js';
 import servicesRoutes from './routes/services.js';
 import fnbRoutes from './routes/fnb.js';
 import hospitalityRoutes, { hospitalityStorefrontRoutes } from './routes/hospitality.js';
@@ -698,6 +700,7 @@ app.use('/api/v1/alerts', alertRoutes);
 app.use('/api/v1/receive-tokens', receiveTokenRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/pos', posRoutes);
+app.use('/api/v1/mobile-pos', mobilePosRoutes);
 app.use('/api/v1/services', servicesRoutes);
 app.use('/api/v1/fnb', fnbRoutes);
 app.use('/api/v1/hospitality', hospitalityRoutes);
@@ -820,8 +823,9 @@ const startServer = async () => {
       tenantConnector.startPeriodicCleanup();
     });
 
-    // Kill requests that hang longer than 30 seconds (prevents connection pool exhaustion)
-    server.setTimeout(30000);
+    // Tenant provisioning can legitimately exceed 30 seconds while schemas are created and seeded.
+    // Keep the ceiling finite so genuinely stalled requests still release their resources.
+    server.setTimeout(httpRequestTimeoutMs);
 
     // Graceful shutdown
     const gracefulShutdown = async (signal) => {

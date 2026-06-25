@@ -1,12 +1,12 @@
 import api from './api.js';
 
-export const listTenantLocations = async (params = {}, requestConfig = {}) => {
-  const response = await api.get('/tenant-locations', { params, ...requestConfig });
+export const listTenantLocations = async (params = {}) => {
+  const response = await api.get('/tenant-locations', { params });
   return response.data?.data || [];
 };
 
-export const listTenantLocationsWithMeta = async (params = {}, requestConfig = {}) => {
-  const response = await api.get('/tenant-locations', { params, ...requestConfig });
+export const listTenantLocationsWithMeta = async (params = {}) => {
+  const response = await api.get('/tenant-locations', { params });
   return {
     rows: response.data?.data || [],
     meta: response.data?.meta || {}

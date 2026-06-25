@@ -129,6 +129,7 @@ describe('registerCompanyRequestUseCase approval mode', () => {
         expect(deps.dgfyAccountRepository.upsertFounderMembership).toHaveBeenCalledWith(expect.objectContaining({
             dgfyAccountId: dgfyAccount.id,
             tenantId: '12345678-aaaa-bbbb-cccc-123456789abc',
+            tenantUserId: 1,
             role: 'admin'
         }));
         expect(deps.dgfyAccountRepository.recordLegalAcknowledgement).toHaveBeenCalledWith(expect.objectContaining({

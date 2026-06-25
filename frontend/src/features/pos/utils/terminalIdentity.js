@@ -33,7 +33,10 @@ export const normalizeTerminalRegistry = (rawRegistry) => {
       label: String(entry?.label || '').trim(),
       location_id: Number.isInteger(Number(entry?.location_id)) ? Number(entry?.location_id) : null,
       is_active: isActive,
-      is_default: isActive && entry?.is_default === true
+      is_default: isActive && entry?.is_default === true,
+      has_password: entry?.has_password === true,
+      terminal_password: String(entry?.terminal_password || ''),
+      clear_terminal_password: entry?.clear_terminal_password === true
     });
   });
 

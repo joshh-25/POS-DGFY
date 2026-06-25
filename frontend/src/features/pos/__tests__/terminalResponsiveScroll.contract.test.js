@@ -6,7 +6,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const terminalLayoutPath = path.resolve(__dirname, '../../../apps/pos/src/components/TerminalPageLayout.jsx');
+const terminalLayoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
 const posCheckoutPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
 
 describe('POS terminal responsive scroll contracts', () => {

@@ -25,6 +25,7 @@ import {
     isPlatformControlledPosSoftwareKey,
     isTenantReviewedPosReceiptKey
 } from './posReceiptMetadataApprovalPolicy.js';
+import { hashTerminalRegistrySecrets } from './posTerminalRegistrySecrets.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
@@ -192,6 +193,16 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository }) => {
 
             if (requestedStrictBinding) {
                 await assertStrictBindingReadiness({ settingsRepository });
+            }
+
+            if (Object.prototype.hasOwnProperty.call(settingsData, POS_TERMINAL_REGISTRY_KEY)) {
+                const currentRegistrySetting = typeof settingsRepository?.getSettingsByKeys === 'function'
+                    ? await settingsRepository.getSettingsByKeys([POS_TERMINAL_REGISTRY_KEY])
+                    : {};
+                settingsData[POS_TERMINAL_REGISTRY_KEY] = await hashTerminalRegistrySecrets({
+                    incomingEntries: settingsData[POS_TERMINAL_REGISTRY_KEY],
+                    currentEntries: currentRegistrySetting?.[POS_TERMINAL_REGISTRY_KEY]?.value || []
+                });
             }
 
             const tenant = getTenantComplianceSnapshot();

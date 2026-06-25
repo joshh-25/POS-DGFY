@@ -52,6 +52,10 @@ const POS_ITEM_IMAGE_MAP = [
 ];
 const POS_FORM_INPUT_CLASS = 'mt-1 focus-visible:border-blue-400 focus-visible:ring-blue-500';
 const POS_FORM_SELECT_CLASS = 'focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2';
+const RECEIPT_PAPER_OPTIONS = [
+    { value: '80mm', label: '80mm (3 1/8 in)' },
+    { value: '57mm', label: '57mm (2 1/4 in)' }
+];
 
 const money = (value) => Number(value || 0).toFixed(2);
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
@@ -372,6 +376,7 @@ export default function POSCheckoutTerminal({
     const [deviceStatus, setDeviceStatus] = useState(null);
     const [deviceStatusLoading, setDeviceStatusLoading] = useState(false);
     const [receiptPrinting, setReceiptPrinting] = useState(false);
+    const [receiptPaperWidth, setReceiptPaperWidth] = useState('80mm');
     const [drawerOpening, setDrawerOpening] = useState(false);
     const [imagePreview, setImagePreview] = useState(null);
     const catalogScrollRef = useRef(null);
@@ -2381,6 +2386,18 @@ export default function POSCheckoutTerminal({
                             <p className="text-sm text-slate-600">Review the selected receipt.</p>
                         </div>
                         <div className="flex items-center gap-2">
+                            <label className="flex items-center gap-2 text-xs font-extrabold text-slate-700">
+                                Paper
+                                <select
+                                    value={receiptPaperWidth}
+                                    onChange={(event) => setReceiptPaperWidth(event.target.value)}
+                                    className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-900 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                                >
+                                    {RECEIPT_PAPER_OPTIONS.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </select>
+                            </label>
                             {normalizedTerminalId && (
                                 <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
                                     {terminalIdentityLabel}
@@ -2442,6 +2459,7 @@ export default function POSCheckoutTerminal({
                                     transaction={lastReceipt}
                                     businessSettings={receiptSettings}
                                     receiptContract={lastReceiptContract}
+                                    paperWidth={receiptPaperWidth}
                                 />
                             </Suspense>
                         </div>

@@ -2,8 +2,8 @@ import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } fr
 import { toast } from 'sonner';
 import {
   closeTerminalShift,
-  createPosCheckout,
   fetchIncomingOnlineOrders,
+  fetchPosCatalog,
   fetchCurrentTerminalShift,
   fetchTerminalTodayDashboard,
   openPosDeviceDrawer,
@@ -22,6 +22,7 @@ import {
   startDgfyLegacyRegistrationHandoff,
   startDgfyPosSession
 } from '@/services/dgfyAuthService.js';
+import { trackOnboardingEvent } from '@/services/onboardingService.js';
 import { getAllSettings } from '@/services/settingsService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
 import { getComplianceProfile } from '@/services/complianceService.js';
@@ -77,7 +78,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog';
-import { POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
+import { emitPosHardwareMessage, POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 
 const DEFAULT_CURRENCY = 'PHP';
@@ -91,17 +92,17 @@ const DESKTOP_TERMINAL_BREAKPOINT_PX = IS_DGFY_POS_SURFACE ? 1024 : 1280;
 const CHECKOUT_VIEW_MODES = ['checkout', 'history', 'receipt'];
 const OPERATIONS_VIEW_MODES = [
   'incoming_queue',
-  'location_scope',
+  'settings_profile',
+  'settings_pos',
+  'settings_storefront',
   'shift_controls',
   'cash_drawer',
   'close_shift',
   'reports',
   'items',
-  'sales_today',
-  'terminal_setup',
-  'sync_queue'
+  'terminal_setup'
 ];
-const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift', 'items', 'sync_queue'];
+const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift', 'items', 'settings_profile', 'settings_pos', 'settings_storefront'];
 const TERMINAL_SECTION_IDS = {
   checkoutWorkspace: 'pos-checkout-workspace',
   terminalSetup: 'pos-section-terminal-setup',
@@ -111,9 +112,7 @@ const TERMINAL_SECTION_IDS = {
   locationScope: 'pos-section-location-scope',
   incomingOrders: 'pos-section-incoming-orders',
   reports: 'pos-section-reports',
-  items: 'pos-section-items',
-  salesToday: 'pos-section-sales-today',
-  syncQueue: 'pos-section-sync-queue'
+  items: 'pos-section-items'
 };
 const RETRYABLE_TERMINAL_OPERATION_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 const DEFAULT_COMPLIANCE_ACTION_TARGET = '/settings?tab=compliance';
@@ -273,9 +272,11 @@ export default function TerminalPage() {
   const [loadingUser, setLoadingUser] = useState(false);
   const [terminalUser, setTerminalUser] = useState(null);
   const [onboardingSetupOpen, setOnboardingSetupOpen] = useState(false);
+  const [onboardingDismissedThisSession, setOnboardingDismissedThisSession] = useState(false);
   const [closeShiftConfirmOpen, setCloseShiftConfirmOpen] = useState(false);
   const [hardwareMessage, setHardwareMessage] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const onboardingReminderTrackedRef = useRef(false);
   const [activeTerminalId, setActiveTerminalId] = useState(() => readInitialTerminalId());
   const [terminalRegistry, setTerminalRegistry] = useState([]);
   const [terminalRegistryMode, setTerminalRegistryMode] = useState('warn');
@@ -302,6 +303,14 @@ export default function TerminalPage() {
     dgfyTenantId: '',
     terminalId: readInitialTerminalId()
   });
+  const [terminalUnlockRequired, setTerminalUnlockRequired] = useState(false);
+  const [terminalUnlockModalOpen, setTerminalUnlockModalOpen] = useState(false);
+  const [terminalUnlockForm, setTerminalUnlockForm] = useState({
+    terminalId: readInitialTerminalId(),
+    terminalPassword: '',
+    openingFloatAmount: '',
+    openingNote: ''
+  });
   const [dgfyPosState, setDgfyPosState] = useState({
     authenticated: false,
     account: null,
@@ -313,6 +322,7 @@ export default function TerminalPage() {
     code: '',
     loading: false
   });
+  const [legacyDgfyLinkBannerDismissed, setLegacyDgfyLinkBannerDismissed] = useState(false);
 
   const [shiftState, setShiftState] = useState({
     loading: false,
@@ -380,6 +390,12 @@ export default function TerminalPage() {
   });
   const [replayingQueuedTerminalOperations, setReplayingQueuedTerminalOperations] = useState(false);
   const [posViewMode, setPosViewMode] = useState('checkout');
+  const [itemsStockFilterPreset, setItemsStockFilterPreset] = useState('');
+  const [stockAlertSummary, setStockAlertSummary] = useState({
+    open: false,
+    almostOutOfStock: [],
+    outOfStock: []
+  });
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
   const workspacePaneRef = useRef(null);
@@ -396,7 +412,7 @@ export default function TerminalPage() {
   const activeOperationsViewModes = useMemo(() => {
     const baseModes = isMsmeMode ? MSME_OPERATIONS_VIEW_MODES : OPERATIONS_VIEW_MODES;
     if (modePosDefaults.show_online_queue !== false) return baseModes;
-    return baseModes.filter((mode) => !['incoming_queue', 'location_scope'].includes(mode));
+    return baseModes.filter((mode) => mode !== 'incoming_queue');
   }, [isMsmeMode, modePosDefaults.show_online_queue]);
   const activeViewModes = useMemo(
     () => [...CHECKOUT_VIEW_MODES, ...activeOperationsViewModes],
@@ -437,11 +453,33 @@ export default function TerminalPage() {
   const canSwitchPosLocation = hasPermission('pos:switch_location');
   const canAdjustCashDrawer = hasPermission('pos:cash_drawer_adjust');
   const canCloseDay = hasPermission('pos:close_day');
+  const canCreateItems = hasPermission('items:create');
+  const canEditItems = hasPermission('items:edit');
+  const canDeleteItems = hasPermission('items:delete');
   const onboardingState = String(terminalUser?.onboarding?.tenant_onboarding_state || 'not_started').trim().toLowerCase();
   const onboardingProgress = terminalUser?.onboarding?.tenant_onboarding_progress?.checklist_snapshot || null;
   const showOnboardingReminder = !locked && terminalUser?.is_master_admin === true && onboardingState !== 'completed';
   const onboardingCompletedCount = Number(onboardingProgress?.completed_required_count || 0);
   const onboardingRequiredTotal = Number(onboardingProgress?.required_total || 0);
+
+  useEffect(() => {
+    if (!showOnboardingReminder) {
+      onboardingReminderTrackedRef.current = false;
+      setOnboardingDismissedThisSession(false);
+      return;
+    }
+
+    if (!onboardingReminderTrackedRef.current) {
+      onboardingReminderTrackedRef.current = true;
+      trackOnboardingEvent({
+        eventKey: 'reminder_shown',
+        metadata: { surface: 'pos_terminal' }
+      }).catch(() => {});
+    }
+
+    if (onboardingDismissedThisSession) return;
+    setOnboardingSetupOpen(true);
+  }, [onboardingDismissedThisSession, showOnboardingReminder]);
 
   const refreshTerminalOperationQueue = useCallback(async ({ keepResolved = true } = {}) => {
     const entries = await listTerminalOperationQueueEntries({
@@ -809,11 +847,12 @@ export default function TerminalPage() {
     if (locked || replayingQueueRef.current) return;
     if (!force && !isOnline) return;
 
-    const candidates = await getReplayCandidateEntries({ limit: TERMINAL_OPERATION_REPLAY_BATCH_SIZE });
+    const candidates = (await getReplayCandidateEntries({ limit: TERMINAL_OPERATION_REPLAY_BATCH_SIZE }))
+      .filter((candidate) => String(candidate?.operation || '').trim() !== 'checkout');
     if (!Array.isArray(candidates) || candidates.length === 0) {
       await refreshTerminalOperationQueue();
       if (toastIfEmpty) {
-        toast.message('No queued terminal operations to replay.');
+        toast.message('No pending operational sync tasks to replay.');
       }
       return;
     }
@@ -871,9 +910,6 @@ export default function TerminalPage() {
             }
             await updateOnlineOrderStatus(transactionId, payload);
             shouldRefreshIncoming = true;
-          } else if (operation === 'checkout') {
-            await createPosCheckout(payload);
-            shouldRefreshOperational = true;
           } else {
             throw new Error(`Unsupported queued operation '${operation}'.`);
           }
@@ -1105,6 +1141,11 @@ export default function TerminalPage() {
         ? prev
         : { ...prev, terminalId: activeTerminalId }
     ));
+    setTerminalUnlockForm((prev) => (
+      prev.terminalId === activeTerminalId
+        ? prev
+        : { ...prev, terminalId: activeTerminalId }
+    ));
   }, [activeTerminalId]);
 
   useEffect(() => {
@@ -1118,6 +1159,11 @@ export default function TerminalPage() {
 
     setActiveTerminalId(preferredTerminalId);
     setFormData((prev) => (
+      prev.terminalId === preferredTerminalId
+        ? prev
+        : { ...prev, terminalId: preferredTerminalId }
+    ));
+    setTerminalUnlockForm((prev) => (
       prev.terminalId === preferredTerminalId
         ? prev
         : { ...prev, terminalId: preferredTerminalId }
@@ -1195,7 +1241,8 @@ export default function TerminalPage() {
   const requiresOpenShift = !locked && !shiftState.loading && !activeShiftId;
   const showLegacyDgfyLinkBanner = terminalUser
     && terminalUser.dgfy_link_status
-    && terminalUser.dgfy_link_status !== 'linked';
+    && terminalUser.dgfy_link_status !== 'linked'
+    && !legacyDgfyLinkBannerDismissed;
 
   const handleRequestLegacyLinkOtp = async () => {
     setLegacyLinkState((prev) => ({ ...prev, loading: true }));
@@ -1271,7 +1318,41 @@ export default function TerminalPage() {
     return true;
   };
 
-  const completeTerminalUnlock = async (selectedTerminalId) => {
+  const notifyStockAlertsAfterUnlock = useCallback(async () => {
+    try {
+      const data = await fetchPosCatalog({ limit: 200 });
+      const catalogItems = Array.isArray(data) ? data : [];
+      const summary = catalogItems.reduce((accumulator, item) => {
+        const stockQuantity = Number(item?.current_stock || 0);
+        const threshold = Number(item?.min_threshold);
+        const lowStockThreshold = Number.isFinite(threshold) && threshold > 0 ? threshold : 5;
+        const itemLabel = String(item?.name || item?.sku_code || `Item #${item?.item_id || ''}`).trim();
+
+        if (stockQuantity <= 0) {
+          accumulator.outOfStock.push(itemLabel);
+        } else if (stockQuantity <= lowStockThreshold) {
+          accumulator.almostOutOfStock.push(itemLabel);
+        }
+
+        return accumulator;
+      }, { almostOutOfStock: [], outOfStock: [] });
+
+      if (summary.almostOutOfStock.length === 0 && summary.outOfStock.length === 0) {
+        setStockAlertSummary({ open: false, almostOutOfStock: [], outOfStock: [] });
+        return;
+      }
+
+      setStockAlertSummary({
+        open: true,
+        almostOutOfStock: summary.almostOutOfStock,
+        outOfStock: summary.outOfStock
+      });
+    } catch {
+      // Inventory alert load failures must not block terminal unlock.
+    }
+  }, []);
+
+  const completeTerminalUnlock = async (selectedTerminalId, { operatingLocationIdOverride = null } = {}) => {
     if (typeof window !== 'undefined') {
       if (selectedTerminalId) {
         window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, selectedTerminalId);
@@ -1281,6 +1362,9 @@ export default function TerminalPage() {
     }
     setStoredTerminalLock(false);
     setActiveTerminalId(selectedTerminalId);
+    if (Number.isInteger(Number(operatingLocationIdOverride)) && Number(operatingLocationIdOverride) > 0) {
+      setOperatingLocationId(Number(operatingLocationIdOverride));
+    }
     await hydrateUser({ suppressGlobalErrors: true });
     await Promise.all([
       hydrateTerminalMeta({ suppressGlobalErrors: true }),
@@ -1292,16 +1376,21 @@ export default function TerminalPage() {
       refreshComplianceGate({ suppressGlobalErrors: true })
     ]);
     setFormData((prev) => ({ ...prev, password: '', terminalId: selectedTerminalId }));
-    toast.success(selectedTerminalId ? `Terminal unlocked (${selectedTerminalId}).` : 'Terminal unlocked.');
+    setTerminalUnlockRequired(false);
+    setTerminalUnlockForm({
+      terminalId: selectedTerminalId,
+      terminalPassword: '',
+      openingFloatAmount: '',
+      openingNote: ''
+    });
+    setTerminalUnlockModalOpen(false);
+    await notifyStockAlertsAfterUnlock();
   };
 
   const handleDgfyPosLogin = async (event) => {
     event.preventDefault();
     const email = String(formData.email || '').trim();
     const password = String(formData.password || '');
-    const selectedTerminalId = resolveSelectedLoginTerminalId();
-
-    if (!validateSelectedTerminalForUnlock(selectedTerminalId)) return;
 
     setSubmitting(true);
     try {
@@ -1316,8 +1405,11 @@ export default function TerminalPage() {
         setDgfyPosState((prev) => ({
           ...prev,
           authenticated: true,
-          account: loginResult?.account || null
+          account: loginResult?.account || null,
+          companies: []
         }));
+      } else {
+        token = getStoredDgfyToken();
       }
 
       setDgfyPosState((prev) => ({ ...prev, loadingCompanies: true }));
@@ -1335,27 +1427,80 @@ export default function TerminalPage() {
         loadingCompanies: false
       }));
       if (!selectedTenantId) {
-        toast.message('Select the company to unlock for this terminal.');
+        toast.message(acceptedCompanies.length > 0 ? 'Select the company to continue.' : 'No accessible company was returned for this account.');
         return;
       }
-      await startDgfyPosSession({
-        tenantId: selectedTenantId,
-        terminalId: selectedTerminalId
-      }, token);
-      await completeTerminalUnlock(selectedTerminalId);
       setFormData((prev) => ({ ...prev, dgfyTenantId: selectedTenantId }));
+      setTerminalUnlockForm((prev) => ({
+        ...prev,
+        terminalId: resolveSelectedLoginTerminalId()
+      }));
+      setTerminalUnlockModalOpen(true);
     } catch (error) {
       setDgfyPosState((prev) => ({ ...prev, loadingCompanies: false }));
-      if (!dgfyPosState.authenticated && Number(error?.response?.status || 0) === 401) {
-        try {
-          await performLegacyTerminalUnlock({ email, password, selectedTerminalId });
-          toast.message('Legacy POS access used. Link this account to DGFY before June 17, 2027.');
-          return;
-        } catch (legacyError) {
-          toast.error(resolveTerminalLoginErrorMessage(legacyError));
-          return;
-        }
+      toast.error(resolveTerminalLoginErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleTerminalUnlockSubmit = async (event) => {
+    event.preventDefault();
+    const selectedTenantId = String(formData.dgfyTenantId || '').trim();
+    const selectedTerminalId = sanitizeTerminalId(terminalUnlockForm.terminalId || resolveSelectedLoginTerminalId());
+    const terminalPassword = String(terminalUnlockForm.terminalPassword || '');
+    const rawOpeningFloat = String(terminalUnlockForm.openingFloatAmount ?? '').trim();
+    const openingFloatAmount = Number(rawOpeningFloat);
+
+    if (!selectedTenantId) {
+      toast.error('Select the company before unlocking the terminal.');
+      setTerminalUnlockModalOpen(false);
+      return;
+    }
+    if (!validateSelectedTerminalForUnlock(selectedTerminalId)) return;
+    if (!terminalPassword.trim()) {
+      toast.error('Terminal password is required.');
+      return;
+    }
+    if (rawOpeningFloat === '') {
+      toast.error('Opening cash amount is required.');
+      return;
+    }
+    if (!Number.isFinite(openingFloatAmount) || openingFloatAmount < 0) {
+      toast.error('Opening float must be a non-negative number.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const session = await startDgfyPosSession({
+        tenantId: selectedTenantId,
+        terminalId: selectedTerminalId,
+        terminalPassword
+      });
+      const registryLocationId = Number(session?.pos?.terminal_identity_policy?.registry_entry?.location_id || 0);
+      const resolvedLocationId = Number.isInteger(registryLocationId) && registryLocationId > 0
+        ? registryLocationId
+        : Number(operatingLocationId || 0);
+
+      if (!Number.isInteger(resolvedLocationId) || resolvedLocationId <= 0) {
+        toast.error('This terminal has no assigned store location. Set the location in POS Setup > Terminal Registry.');
+        return;
       }
+
+      await openTerminalShift({
+        terminal_id: selectedTerminalId,
+        location_id: resolvedLocationId,
+        opening_float_amount: openingFloatAmount,
+        opening_note: String(terminalUnlockForm.openingNote || '').trim() || undefined,
+        idempotency_key: createIdempotencyKey('pos-shift-open')
+      });
+
+      await completeTerminalUnlock(selectedTerminalId, {
+        operatingLocationIdOverride: resolvedLocationId
+      });
+      toast.success('POS unlocked and shift opened successfully.');
+    } catch (error) {
       toast.error(resolveTerminalLoginErrorMessage(error));
     } finally {
       setSubmitting(false);
@@ -1440,11 +1585,33 @@ export default function TerminalPage() {
     setPosViewMode('checkout');
     setMobileNavOpen(false);
     setTerminalUser(null);
+    setTerminalUnlockRequired(false);
+    setTerminalUnlockModalOpen(false);
+    setStockAlertSummary({ open: false, almostOutOfStock: [], outOfStock: [] });
   };
+
+  const dismissStockAlertSummary = useCallback(() => {
+    setStockAlertSummary((current) => ({ ...current, open: false }));
+  }, []);
+
+  const handleViewStockAlertItems = useCallback(() => {
+    setStockAlertSummary((current) => ({ ...current, open: false }));
+    setItemsStockFilterPreset('out_of_stock');
+    setPosViewMode('items');
+  }, []);
+
+  const handleItemsStockFilterPresetApplied = useCallback(() => {
+    setItemsStockFilterPreset('');
+  }, []);
 
   const handleOpenShift = async () => {
     if (complianceBlockerDetails) {
       toast.error(`${complianceBlockerDetails.title}. ${complianceBlockerDetails.message}`);
+      return;
+    }
+    if (terminalUnlockRequired) {
+      setTerminalUnlockModalOpen(true);
+      toast.error('Unlock the terminal before opening a new shift.');
       return;
     }
     if (!canTransactPos) {
@@ -1703,7 +1870,7 @@ export default function TerminalPage() {
     setShiftActionLoading((prev) => ({ ...prev, close: true }));
     try {
       await closeTerminalShift(activeShiftId, payload);
-      toast.success('Shift closed successfully. Please open a new shift to continue.');
+      toast.success('Shift closed successfully. Unlock the terminal to start the next shift.');
       setCloseShiftConfirmOpen(false);
       setCloseShiftForm({ closingCashAmount: '', closingNote: '' });
       setShiftState({
@@ -1711,6 +1878,16 @@ export default function TerminalPage() {
         shift: null,
         cashSummary: null
       });
+      setTerminalUnlockRequired(true);
+      setTerminalUnlockForm({
+        terminalId: sanitizeTerminalId(activeTerminalId) || resolveSelectedLoginTerminalId(),
+        terminalPassword: '',
+        openingFloatAmount: '',
+        openingNote: ''
+      });
+      setTerminalUnlockModalOpen(true);
+      setMobileNavOpen(false);
+      setPosViewMode('checkout');
       await refreshOperationalContext();
     } catch (error) {
       if (isRetryableTerminalOperationError(error)) {
@@ -1915,7 +2092,6 @@ export default function TerminalPage() {
     const handleOnline = async () => {
       setIsOnline(true);
       await refreshTerminalOperationQueue();
-      await replayQueuedTerminalOperations({ force: true });
     };
     const handleOffline = () => setIsOnline(false);
     const handleServiceWorkerMessage = async (event) => {
@@ -1945,40 +2121,13 @@ export default function TerminalPage() {
   }, [locked, refreshTerminalOperationQueue]);
 
   useEffect(() => {
-    if (!isOnline || locked || Number(queueSummary.pending || 0) === 0) return;
-    replayQueuedTerminalOperations();
-  }, [isOnline, locked, queueSummary.pending, replayQueuedTerminalOperations]);
-
-  useEffect(() => {
-    if (!isOnline || locked || replayingQueuedTerminalOperations) return undefined;
-    const nextRetryAtMs = queuedTerminalOperations
-      .filter((entry) => String(entry?.status || '') === TERMINAL_QUEUE_STATUS.QUEUED)
-      .map((entry) => new Date(entry?.next_retry_at || 0).getTime())
-      .filter((retryAt) => Number.isFinite(retryAt) && retryAt > Date.now())
-      .sort((left, right) => left - right)[0];
-    if (!Number.isFinite(nextRetryAtMs) || nextRetryAtMs <= 0) return undefined;
-
-    const waitMs = Math.max(300, nextRetryAtMs - Date.now());
-    const timer = window.setTimeout(() => {
-      replayQueuedTerminalOperations();
-    }, waitMs);
-    return () => window.clearTimeout(timer);
-  }, [
-    isOnline,
-    locked,
-    queuedTerminalOperations,
-    replayingQueuedTerminalOperations,
-    replayQueuedTerminalOperations
-  ]);
-
-  useEffect(() => {
     if (posViewMode === 'history' && !canViewPos) {
       setPosViewMode('checkout');
     }
   }, [canViewPos, posViewMode]);
 
   useEffect(() => {
-    if (!canViewPos && ['incoming_queue', 'location_scope'].includes(posViewMode)) {
+    if (!canViewPos && ['incoming_queue'].includes(posViewMode)) {
       setPosViewMode('checkout');
     }
   }, [canViewPos, posViewMode]);
@@ -1992,7 +2141,7 @@ export default function TerminalPage() {
   const effectiveSidebarCollapsed = isDesktopWide ? sidebarCollapsed : false;
   const isCheckoutWorkspaceMode = CHECKOUT_VIEW_MODES.includes(posViewMode);
   const isOperationsWorkspaceMode = activeOperationsViewModes.includes(posViewMode);
-  const shiftOpeningModalOpen = !drawerOpen && requiresOpenShift && canViewPos;
+  const shiftOpeningModalOpen = !drawerOpen && !terminalUnlockModalOpen && !terminalUnlockRequired && requiresOpenShift && canViewPos;
   const openingCashAmountText = String(openShiftForm.openingFloatAmount ?? '').trim();
   const openingCashAmountNumber = Number(openingCashAmountText);
   const canSubmitOpenShift = (
@@ -2013,6 +2162,122 @@ export default function TerminalPage() {
   return (
     <Suspense fallback={<div className="min-h-screen bg-slate-100 p-6 text-sm text-slate-500">Loading terminal workspace...</div>}>
       <>
+        <Dialog open={terminalUnlockModalOpen} onOpenChange={(open) => {
+          if (submitting) return;
+          if (open === false && terminalUnlockRequired) {
+            toast.message('Unlock the terminal to continue.');
+            return;
+          }
+          setTerminalUnlockModalOpen(open);
+        }}>
+          <DialogContent className="max-w-md border border-slate-200 p-0 shadow-2xl">
+            <form onSubmit={handleTerminalUnlockSubmit}>
+              <DialogHeader className="border-b border-slate-100 px-5 py-4">
+                <DialogTitle className="text-lg font-extrabold text-[#0F172A]">Unlock Terminal</DialogTitle>
+                <DialogDescription className="text-sm text-slate-600">
+                  Choose the registered POS terminal, enter its password, and start the shift.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 px-5 py-5">
+                <div className="grid gap-2">
+                  <Label htmlFor="terminal-unlock-terminal-id" className="text-xs font-extrabold text-[#0F172A]">
+                    Terminal ID
+                  </Label>
+                  {activeTerminalRegistry.length > 0 ? (
+                    <select
+                      id="terminal-unlock-terminal-id"
+                      value={terminalUnlockForm.terminalId || ''}
+                      onChange={(event) => setTerminalUnlockForm((prev) => ({ ...prev, terminalId: event.target.value }))}
+                      className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none focus:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+                      disabled={submitting}
+                      required
+                    >
+                      <option value="">Select registered terminal</option>
+                      {activeTerminalRegistry.map((entry) => (
+                        <option key={entry.terminal_id} value={entry.terminal_id}>
+                          {entry.label ? `${entry.label} (${entry.terminal_id})` : entry.terminal_id}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <>
+                      <Input
+                        id="terminal-unlock-terminal-id"
+                        value={terminalUnlockForm.terminalId || ''}
+                        onChange={(event) => setTerminalUnlockForm((prev) => ({ ...prev, terminalId: event.target.value }))}
+                        placeholder="COUNTER-01"
+                        list="terminal-unlock-terminal-options"
+                        autoComplete="off"
+                        className="h-11 rounded-lg border-slate-200 px-3 text-[13px] font-semibold uppercase tracking-wide text-[#0F172A]"
+                        disabled={submitting}
+                        required
+                      />
+                      <datalist id="terminal-unlock-terminal-options">
+                        {terminalIdOptions.map((terminalId) => (
+                          <option key={terminalId} value={terminalId} />
+                        ))}
+                      </datalist>
+                    </>
+                  )}
+                  <p className="text-[11px] text-[#64748B]">
+                    Enter the registered terminal ID from POS Setup. Example: `COUNTER-01`.
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="terminal-unlock-password" className="text-xs font-extrabold text-[#0F172A]">
+                    Terminal Password
+                  </Label>
+                  <Input
+                    id="terminal-unlock-password"
+                    type="password"
+                    value={terminalUnlockForm.terminalPassword}
+                    onChange={(event) => setTerminalUnlockForm((prev) => ({ ...prev, terminalPassword: event.target.value }))}
+                    placeholder="Enter terminal password"
+                    disabled={submitting}
+                    required
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="terminal-unlock-opening-cash" className="text-xs font-extrabold text-[#0F172A]">
+                    Opening Cash
+                  </Label>
+                  <Input
+                    id="terminal-unlock-opening-cash"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={terminalUnlockForm.openingFloatAmount}
+                    onChange={(event) => setTerminalUnlockForm((prev) => ({ ...prev, openingFloatAmount: event.target.value }))}
+                    placeholder="0.00"
+                    disabled={submitting}
+                    required
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="terminal-unlock-opening-note" className="text-xs font-extrabold text-[#0F172A]">
+                    Opening Note
+                  </Label>
+                  <Input
+                    id="terminal-unlock-opening-note"
+                    value={terminalUnlockForm.openingNote}
+                    onChange={(event) => setTerminalUnlockForm((prev) => ({ ...prev, openingNote: event.target.value }))}
+                    placeholder="Optional"
+                    disabled={submitting}
+                  />
+                </div>
+              </div>
+              <DialogFooter className="border-t border-slate-100 px-5 py-4">
+                <Button
+                  type="submit"
+                  className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
+                  disabled={submitting}
+                >
+                  {submitting ? 'Unlocking...' : 'Unlock POS'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
         <Dialog open={shiftOpeningModalOpen} onOpenChange={handleShiftOpeningModalOpenChange}>
           <DialogContent className="max-w-md border border-slate-200 p-0 shadow-2xl">
             <form onSubmit={handleShiftOpeningModalSubmit}>
@@ -2076,14 +2341,25 @@ export default function TerminalPage() {
             <button
               type="button"
               className="ml-1 font-extrabold underline underline-offset-2"
-              onClick={() => setOnboardingSetupOpen(true)}
+              onClick={() => {
+                setOnboardingDismissedThisSession(false);
+                setOnboardingSetupOpen(true);
+              }}
             >
-              Continue in Settings.
+              Continue POS setup.
             </button>
           </div>
         )}
         {showLegacyDgfyLinkBanner && (
-          <div className="fixed left-4 top-4 z-[70] max-w-[min(92vw,460px)] rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-xs text-amber-950 shadow-lg shadow-amber-900/10">
+          <div className="fixed left-4 top-4 z-[70] max-w-[min(92vw,460px)] rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 pr-10 text-xs text-amber-950 shadow-lg shadow-amber-900/10">
+            <button
+              type="button"
+              aria-label="Dismiss DGFY account link reminder"
+              onClick={() => setLegacyDgfyLinkBannerDismissed(true)}
+              className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full border border-amber-300 bg-white text-sm font-extrabold leading-none text-amber-950 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1 focus:ring-offset-amber-50"
+            >
+              x
+            </button>
             <div className="font-extrabold">Create or link your DGFY account</div>
             <p className="mt-1 leading-5">
               Create or link your DGFY account to keep IMS/POS access after June 17, 2027.
@@ -2128,7 +2404,14 @@ export default function TerminalPage() {
         )}
         <OnboardingSetupModal
           open={onboardingSetupOpen}
-          onClose={() => setOnboardingSetupOpen(false)}
+          onClose={() => {
+            setOnboardingSetupOpen(false);
+            setOnboardingDismissedThisSession(true);
+            trackOnboardingEvent({
+              eventKey: 'reminder_dismissed',
+              metadata: { surface: 'pos_terminal' }
+            }).catch(() => {});
+          }}
           onboarding={terminalUser?.onboarding || null}
           currentUser={terminalUser}
           workflowMode={workflowMode}
@@ -2170,6 +2453,57 @@ export default function TerminalPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <Dialog
+          open={stockAlertSummary.open}
+          onOpenChange={(open) => {
+            if (!open) dismissStockAlertSummary();
+          }}
+        >
+          <DialogContent className="border border-slate-200 bg-white shadow-2xl sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-black text-slate-950">Stock Alert</DialogTitle>
+              <DialogDescription className="text-sm leading-6 text-slate-600">
+                POS inventory needs attention before the next selling session.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-3">
+              {stockAlertSummary.outOfStock.length > 0 ? (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
+                  <p className="text-sm font-extrabold text-rose-700">
+                    {stockAlertSummary.outOfStock.length} item{stockAlertSummary.outOfStock.length === 1 ? '' : 's'} out of stock
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-rose-700">
+                    {stockAlertSummary.outOfStock.slice(0, 4).join(', ')}
+                    {stockAlertSummary.outOfStock.length > 4 ? ` and ${stockAlertSummary.outOfStock.length - 4} more.` : ''}
+                  </p>
+                </div>
+              ) : null}
+              {stockAlertSummary.almostOutOfStock.length > 0 ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                  <p className="text-sm font-extrabold text-amber-800">
+                    {stockAlertSummary.almostOutOfStock.length} item{stockAlertSummary.almostOutOfStock.length === 1 ? '' : 's'} almost out of stock
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-amber-800">
+                    {stockAlertSummary.almostOutOfStock.slice(0, 4).join(', ')}
+                    {stockAlertSummary.almostOutOfStock.length > 4 ? ` and ${stockAlertSummary.almostOutOfStock.length - 4} more.` : ''}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button type="button" variant="outline" onClick={dismissStockAlertSummary}>
+                Dismiss
+              </Button>
+              <Button
+                type="button"
+                onClick={handleViewStockAlertItems}
+                className="bg-[#1A4E8D] font-bold text-white hover:bg-[#143F73]"
+              >
+                View Items
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <TerminalPageLayout
           locked={locked}
           isOnline={isOnline}
@@ -2183,6 +2517,11 @@ export default function TerminalPage() {
           setMobileNavOpen={setMobileNavOpen}
           isDesktopWide={isDesktopWide}
           canViewPos={canViewPos}
+          canCreateItems={canCreateItems}
+          canEditItems={canEditItems}
+          canDeleteItems={canDeleteItems}
+          itemsStockFilterPreset={itemsStockFilterPreset}
+          onItemsStockFilterPresetApplied={handleItemsStockFilterPresetApplied}
           canAdjustCashDrawer={canAdjustCashDrawer}
           canCloseDay={canCloseDay}
           terminalUser={terminalUser}
@@ -2231,6 +2570,8 @@ export default function TerminalPage() {
           activeShiftId={activeShiftId}
           checkoutBlockedReason={checkoutBlockedReason}
           complianceBlockerDetails={complianceBlockerDetails}
+          refreshTerminalUser={hydrateUser}
+          refreshTerminalMeta={hydrateTerminalMeta}
           queuedTerminalOperationCount={queueSummary.pending}
           queuedTerminalBlockedCount={queueSummary.blocked}
           queuedTerminalOperations={filteredQueueEntries}
@@ -2256,6 +2597,7 @@ export default function TerminalPage() {
           catalogSearchPrefill={catalogSearchPrefill}
           onCatalogSearchHydrated={handleCatalogSearchHydrated}
           drawerOpen={drawerOpen}
+          terminalUnlockModalOpen={terminalUnlockModalOpen}
           formData={formData}
           setFormData={setFormData}
           dgfyPosState={dgfyPosState}

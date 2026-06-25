@@ -1606,3 +1606,4 @@ export function FnbProductDetailsPage({
     </section>
   );
 }
+

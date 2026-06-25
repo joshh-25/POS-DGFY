@@ -38,6 +38,7 @@ const hasCompanyLegalVersions = (snapshot = {}) => Boolean(
     && snapshot.marketplace_terms_version
 );
 const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+const COMPANY_REGISTRATION_TIMEOUT_MS = 120000;
 
 const PasswordInput = ({
     id,
@@ -520,7 +521,8 @@ export default function RegisterCompany() {
                 company_terms_version: companyLegalSnapshot.company_terms_version,
                 marketplace_terms_version: companyLegalSnapshot.marketplace_terms_version
             }, {
-                headers: dgfyAuthHeader()
+                headers: dgfyAuthHeader(),
+                timeout: COMPANY_REGISTRATION_TIMEOUT_MS
             });
 
             if (!response.data?.success) {

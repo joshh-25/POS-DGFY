@@ -1,6 +1,8 @@
 const POS_SURFACE = String(import.meta.env?.VITE_APP_SURFACE || '').trim().toLowerCase();
 const POS_HARDWARE_MESSAGE_EVENT = 'pos:hardware-message';
 
+export const POS_HARDWARE_MESSAGE_MODAL_ENABLED = true;
+
 const toSafeText = (value, fallback = '') => {
   const text = String(value ?? fallback).trim();
   return text || fallback;
@@ -13,6 +15,25 @@ const normalizeDetails = (details) => {
 };
 
 export const POS_HARDWARE_MESSAGE_EVENT_NAME = POS_HARDWARE_MESSAGE_EVENT;
+
+const shouldOpenNativeIminMessage = (payload) => {
+  if (!payload) return false;
+  return ['warning', 'error'].includes(String(payload.tone || '').trim().toLowerCase());
+};
+
+const showNativeIminMessage = (payload, windowObj) => {
+  if (!windowObj) return false;
+  const bridge = windowObj.iMinBridge;
+  if (!bridge || typeof bridge.showMessage !== 'function') return false;
+  if (!shouldOpenNativeIminMessage(payload)) return false;
+
+  try {
+    bridge.showMessage(payload.title, payload.message);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 export const emitPosHardwareMessage = (
   {
@@ -39,6 +60,11 @@ export const emitPosHardwareMessage = (
     timestamp: new Date().toISOString()
   };
 
-  windowObj.dispatchEvent(new CustomEvent(POS_HARDWARE_MESSAGE_EVENT, { detail: payload }));
+  const nativeShown = showNativeIminMessage(payload, windowObj);
+
+  if (POS_HARDWARE_MESSAGE_MODAL_ENABLED && !nativeShown) {
+    windowObj.dispatchEvent(new CustomEvent(POS_HARDWARE_MESSAGE_EVENT, { detail: payload }));
+  }
+
   return payload;
 };

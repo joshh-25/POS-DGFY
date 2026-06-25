@@ -13,7 +13,7 @@ describe('settings validator terminal registry payload', () => {
     const req = {
       body: {
         pos_terminal_registry: [
-          { terminal_id: 'COUNTER-01', label: 'Front Counter', is_active: true, is_default: true },
+          { terminal_id: 'COUNTER-01', label: 'Front Counter', is_active: true, is_default: true, location_id: 1, terminal_password: '4321' },
           { terminal_id: 'KIOSK-01', label: 'Self Service Kiosk', is_active: true, is_default: false }
         ]
       }
@@ -26,8 +26,26 @@ describe('settings validator terminal registry payload', () => {
     expect(next).toHaveBeenCalledTimes(1);
     expect(res.status).not.toHaveBeenCalled();
     expect(req.validatedData.pos_terminal_registry).toEqual(expect.arrayContaining([
-      expect.objectContaining({ terminal_id: 'COUNTER-01', is_default: true })
+      expect.objectContaining({ terminal_id: 'COUNTER-01', is_default: true, terminal_password: '4321' })
     ]));
+  });
+
+  it('rejects multiple active terminals assigned to the same location', () => {
+    const req = {
+      body: {
+        pos_terminal_registry: [
+          { terminal_id: 'COUNTER-01', is_active: true, is_default: true, location_id: 7 },
+          { terminal_id: 'COUNTER-02', is_active: true, is_default: false, location_id: 7 }
+        ]
+      }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    validateUpdateSettings(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(422);
   });
 
   it('rejects duplicate terminal identifiers', () => {

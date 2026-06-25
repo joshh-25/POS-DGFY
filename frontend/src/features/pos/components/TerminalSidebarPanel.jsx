@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Banknote, ChevronLeft, ChevronRight, Clock3, LogIn, LogOut, UserCircle2 } from 'lucide-react';
+import { Banknote, ChevronLeft, ChevronRight, LogIn, LogOut, UserCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,19 +21,15 @@ const WORKSPACE_VIEW_CONFIG = {
   },
   shift_controls: {
     title: 'Shift Controls',
-    description: 'Open shifts, inspect cash expectations, and keep cashier operations active.'
+    description: 'Open shifts, inspect cash expectations, manage shift location, and keep cashier operations active.'
   },
   cash_drawer: {
     title: 'Cash Drawer Event',
     description: 'Record cash in/out adjustments with clear reasons and amounts.'
   },
   close_shift: {
-    title: 'Close Shift',
-    description: 'Finalize active shift balances and record closing notes.'
-  },
-  sales_today: {
-    title: 'Sales Today',
-    description: 'Track net totals, payment types, and order-method performance.'
+    title: 'Shift Controls',
+    description: 'Open shifts, inspect cash expectations, manage shift location, and keep cashier operations active.'
   },
   terminal_setup: {
     title: 'Terminal Setup Context',
@@ -122,13 +118,11 @@ export default function TerminalSidebarPanel({
 }) {
   const isWorkspaceMode = Boolean(workspaceView);
   const workspaceConfig = WORKSPACE_VIEW_CONFIG[workspaceView] || null;
-  const paymentBreakdown = todayDashboard?.salesSummary?.payment_breakdown || [];
-  const orderMethodBreakdown = todayDashboard?.salesSummary?.order_method_breakdown || [];
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
   const incomingOrdersAccessState = String(incomingOrdersState?.accessState || '').trim() || 'idle';
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
-  const hiddenSectionsInMsme = new Set(['incoming_queue', 'location_scope', 'cash_drawer', 'sales_today', 'terminal_setup']);
+  const hiddenSectionsInMsme = new Set(['incoming_queue', 'location_scope', 'cash_drawer', 'terminal_setup']);
   const [switchReason, setSwitchReason] = useState('');
   const canSubmitOpenShift = isValidOpeningCashAmount(openShiftForm.openingFloatAmount);
 
@@ -137,7 +131,6 @@ export default function TerminalSidebarPanel({
     return !isWorkspaceMode || workspaceView === key;
   };
   const showCashDrawerCard = showSection('cash_drawer') && (isWorkspaceMode || (shiftState.shift && canAdjustCashDrawer));
-  const showCloseShiftCard = showSection('close_shift') && (isWorkspaceMode || (shiftState.shift && canCloseDay));
 
   if (isCollapsed && !isWorkspaceMode) {
     return (
@@ -272,7 +265,7 @@ export default function TerminalSidebarPanel({
           <p className="text-xs font-extrabold uppercase tracking-wide text-[#334155]">
             {shiftState.shift ? 'Shift Open' : 'Shift Closed'}
           </p>
-          <Label className="text-xs">Operating Location</Label>
+          <Label className="text-xs">Shift Location</Label>
           <select
             className="w-full rounded-md border border-slate-200 px-2 py-2 text-sm"
             value={operatingLocationId || ''}
@@ -288,7 +281,7 @@ export default function TerminalSidebarPanel({
             ))}
           </select>
           <p className="text-[11px] text-slate-500">
-            Catalog and checkout follow this location scope.
+            Current location used by catalog, checkout, and dashboard.
           </p>
           {shiftState.loading ? (
             <p className="text-xs text-slate-500">Loading shift context...</p>
@@ -329,11 +322,30 @@ export default function TerminalSidebarPanel({
                 </span>
               </div>
               {canSwitchPosLocation && (
-                <div className="mt-2 space-y-1.5">
+                <div className="mt-3 space-y-1.5 border-t border-slate-200 pt-3">
+                  <p className="text-xs font-extrabold uppercase tracking-wide text-[#334155]">Change Active Shift Location</p>
+                  <p className="text-[11px] text-slate-500">
+                    Reassign the active shift to another location with a reason.
+                  </p>
+                  <Label className="text-xs">New Shift Location</Label>
+                  <select
+                    className="w-full rounded-md border border-slate-200 px-2 py-2 text-sm"
+                    value={operatingLocationId || ''}
+                    onChange={(event) => {
+                      const nextValue = event.target.value ? Number(event.target.value) : null;
+                      setOperatingLocationId(nextValue);
+                    }}
+                  >
+                    {locations.map((location) => (
+                      <option key={`sidebar-switch-location-${location.location_id}`} value={location.location_id}>
+                        {location.name}
+                      </option>
+                    ))}
+                  </select>
                   <Input
                     value={switchReason}
                     onChange={(event) => setSwitchReason(event.target.value)}
-                    placeholder="Reason for location switch"
+                    placeholder="Reason for shift location change"
                   />
                   <Button
                     type="button"
@@ -352,13 +364,13 @@ export default function TerminalSidebarPanel({
                       });
                     }}
                   >
-                    {shiftActionLoading.switchLocation ? 'Switching...' : 'Switch Shift Location'}
+                    {shiftActionLoading.switchLocation ? 'Switching...' : 'Change Shift Location'}
                   </Button>
                 </div>
               )}
               {!canSwitchPosLocation && (
                 <p className="mt-2 text-[11px] text-slate-500">
-                  You do not have permission to switch shift location.
+                  You do not have permission to change the active shift location.
                 </p>
               )}
             </div>
@@ -393,6 +405,38 @@ export default function TerminalSidebarPanel({
                 <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>
               )}
             </div>
+          )}
+        </div>
+      )}
+
+      {showSection('shift_controls') && shiftState?.shift && (
+        <div className="space-y-3 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm shadow-slate-200/70">
+          <p className="text-xs font-extrabold uppercase tracking-wide text-[#334155]">Close Shift</p>
+          {!canCloseDay ? (
+            <p className="text-[11px] text-slate-500">
+              You need close-day permission to close shifts.
+            </p>
+          ) : (
+            <>
+              <Label className="text-xs">Closing Cash ({terminalMeta.pettyCashSymbol})</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={closeShiftForm.closingCashAmount}
+                onChange={(event) => setCloseShiftForm((prev) => ({ ...prev, closingCashAmount: event.target.value }))}
+                placeholder={money(shiftState.cashSummary?.expected_cash_amount || 0)}
+              />
+              <Label className="text-xs">Closing Note (Optional)</Label>
+              <Input
+                value={closeShiftForm.closingNote}
+                onChange={(event) => setCloseShiftForm((prev) => ({ ...prev, closingNote: event.target.value }))}
+                placeholder="End-of-shift note"
+              />
+              <Button type="button" variant="outline" onClick={handleCloseShift} disabled={shiftActionLoading.close || locked}>
+                {shiftActionLoading.close ? 'Closing Shift...' : 'Close Shift'}
+              </Button>
+            </>
           )}
         </div>
       )}
@@ -436,40 +480,6 @@ export default function TerminalSidebarPanel({
               />
               <Button type="button" variant="outline" onClick={handleRecordCashEvent} disabled={shiftActionLoading.cashEvent || locked}>
                 {shiftActionLoading.cashEvent ? 'Saving Event...' : 'Record Cash Event'}
-              </Button>
-            </>
-          )}
-        </div>
-      )}
-
-      {showCloseShiftCard && (
-        <div id={sectionIds.closeShift} className="space-y-3 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm shadow-slate-200/70">
-          <p className="text-xs font-extrabold uppercase tracking-wide text-[#334155]">Close Shift</p>
-          {(!shiftState.shift || !canCloseDay) ? (
-            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
-              {!shiftState.shift
-                ? 'No active shift to close.'
-                : 'You need close-day permission to close shifts.'}
-            </p>
-          ) : (
-            <>
-              <Label className="text-xs">Closing Cash ({terminalMeta.pettyCashSymbol})</Label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={closeShiftForm.closingCashAmount}
-                onChange={(event) => setCloseShiftForm((prev) => ({ ...prev, closingCashAmount: event.target.value }))}
-                placeholder={money(shiftState.cashSummary?.expected_cash_amount || 0)}
-              />
-              <Label className="text-xs">Closing Note (Optional)</Label>
-              <Input
-                value={closeShiftForm.closingNote}
-                onChange={(event) => setCloseShiftForm((prev) => ({ ...prev, closingNote: event.target.value }))}
-                placeholder="End-of-shift note"
-              />
-              <Button type="button" variant="outline" onClick={handleCloseShift} disabled={shiftActionLoading.close || locked}>
-                {shiftActionLoading.close ? 'Closing Shift...' : 'Close Shift'}
               </Button>
             </>
           )}
@@ -620,83 +630,6 @@ export default function TerminalSidebarPanel({
                 );
               })}
             </div>
-          )}
-        </div>
-      )}
-
-      {showSection('sales_today') && (
-        <div id={sectionIds.salesToday} className="space-y-3 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm shadow-slate-200/70">
-          <div className="flex items-center gap-2">
-            <Clock3 className="w-4 h-4 text-slate-500" />
-            <p className="text-xs font-extrabold uppercase tracking-wide text-[#334155]">Sales For Today</p>
-          </div>
-          {todayDashboard.loading ? (
-            <p className="text-xs text-slate-500">Refreshing today summary...</p>
-          ) : (
-            <>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-600">Business Date</span>
-                <span className="font-semibold text-slate-900">{todayDashboard.businessDate || '-'}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-600">Transactions</span>
-                <span className="font-semibold text-slate-900">{todayDashboard.salesSummary?.transaction_count || 0}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-600">Gross Sales</span>
-                <span className="font-semibold text-slate-900">
-                  {terminalMeta.pettyCashSymbol} {money(todayDashboard.salesSummary?.subtotal_amount)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-600">Discounts</span>
-                <span className="font-semibold text-rose-600">
-                  - {terminalMeta.pettyCashSymbol} {money(todayDashboard.salesSummary?.discount_amount)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-600">DGFY Convenience Fees</span>
-                <span className="font-semibold text-slate-900">
-                  + {terminalMeta.pettyCashSymbol} {money(todayDashboard.salesSummary?.service_fee_total)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm border-t border-dashed border-slate-200 pt-2">
-                <span className="text-slate-600">Net Total</span>
-                <span className="font-semibold text-slate-900">
-                  {terminalMeta.pettyCashSymbol} {money(todayDashboard.salesSummary?.total_amount)}
-                </span>
-              </div>
-              <div className="pt-1">
-                <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Payment Types</p>
-                <div className="space-y-1">
-                  {paymentBreakdown.length > 0 ? paymentBreakdown.map((entry) => (
-                    <div key={`payment-${entry.payment_type}`} className="flex items-center justify-between text-xs">
-                      <span className="text-slate-600">{PAYMENT_TYPE_LABELS[entry.payment_type] || entry.payment_type}</span>
-                      <span className="font-semibold text-slate-900">
-                        {terminalMeta.pettyCashSymbol} {money(entry.amount)} ({entry.count || 0})
-                      </span>
-                    </div>
-                  )) : (
-                    <p className="text-xs text-slate-500">No payment activity yet.</p>
-                  )}
-                </div>
-              </div>
-              <div className="pt-1">
-                <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Order Methods</p>
-                <div className="space-y-1">
-                  {orderMethodBreakdown.length > 0 ? orderMethodBreakdown.map((entry) => (
-                    <div key={`order-${entry.order_method}`} className="flex items-center justify-between text-xs">
-                      <span className="text-slate-600">{ORDER_METHOD_LABELS[entry.order_method] || entry.order_method}</span>
-                      <span className="font-semibold text-slate-900">
-                        {terminalMeta.pettyCashSymbol} {money(entry.amount)} ({entry.count || 0})
-                      </span>
-                    </div>
-                  )) : (
-                    <p className="text-xs text-slate-500">No order-method activity yet.</p>
-                  )}
-                </div>
-              </div>
-            </>
           )}
         </div>
       )}

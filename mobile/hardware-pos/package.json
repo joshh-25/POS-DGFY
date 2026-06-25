@@ -1,0 +1,19 @@
+{
+  "name": "@dgfy/hardware-pos",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Standalone native hardware POS workspace for iMin Android devices.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "catalog:bundle": "node scripts/export-bundled-catalog.mjs"
+  },
+  "dependencies": {
+    "react": "19.0.0",
+    "react-native": "0.79.6",
+    "zustand": "^4.4.7"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.2",
+    "typescript": "^5.5.4"
+  }
+}

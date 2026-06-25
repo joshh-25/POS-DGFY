@@ -56,6 +56,11 @@ describe('terminal unlock diagnostics', () => {
 
   it('maps login failures to POS-specific operator messages', () => {
     expect(resolveTerminalLoginErrorMessage(apiError({ status: 401 }))).toBe('Invalid email or password.');
+    expect(resolveTerminalLoginErrorMessage(apiError({
+      status: 401,
+      url: '/dgfy/account/companies/tenant-1/pos-session',
+      data: { message: 'Terminal password is incorrect.' }
+    }))).toBe('Terminal password is incorrect.');
     expect(resolveTerminalLoginErrorMessage(apiError({ status: 404 }))).toBe(
       'No company is registered for this POS login email. Check the email or sign in from SKUpervisor first.'
     );

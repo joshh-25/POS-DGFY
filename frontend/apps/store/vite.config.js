@@ -35,6 +35,7 @@ const proxyTargets = {
 
 export default defineConfig({
   root: __dirname,
+  cacheDir: path.resolve(__dirname, '../../node_modules/.vite/store'),
   base: normalizedBasePath,
   plugins: [react()],
   define: {

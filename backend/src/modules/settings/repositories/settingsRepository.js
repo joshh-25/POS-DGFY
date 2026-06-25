@@ -267,7 +267,8 @@ const normalizeTerminalRegistry = (rawValue) => {
             label: String(entry?.label || '').trim(),
             location_id: parsePositiveInt(entry?.location_id),
             is_active: isActive,
-            is_default: isActive && parseBooleanLike(entry?.is_default)
+            is_default: isActive && parseBooleanLike(entry?.is_default),
+            terminal_password_hash: String(entry?.terminal_password_hash || '').trim()
         });
     }
 
@@ -292,6 +293,17 @@ const normalizeTerminalRegistry = (rawValue) => {
 
     return normalized.slice(0, 40);
 };
+
+const toPublicTerminalRegistry = (entries = []) => (
+    (Array.isArray(entries) ? entries : []).map((entry) => ({
+        terminal_id: String(entry?.terminal_id || '').trim().toUpperCase(),
+        label: String(entry?.label || '').trim(),
+        location_id: parsePositiveInt(entry?.location_id),
+        is_active: entry?.is_active !== false,
+        is_default: entry?.is_default === true,
+        has_password: Boolean(String(entry?.terminal_password_hash || '').trim())
+    }))
+);
 
 const normalizeValueForSettingKey = (settingKey, value) => {
     if (settingKey === 'pos_discount_profiles') {
@@ -462,7 +474,9 @@ export const settingsRepository = {
         settings.forEach((setting) => {
             const parsedValue = parseSettingValue(setting);
             settingsObject[setting.setting_key] = {
-                value: parsedValue,
+                value: setting.setting_key === 'pos_terminal_registry'
+                    ? toPublicTerminalRegistry(parsedValue)
+                    : parsedValue,
                 data_type: setting.data_type,
                 description: setting.description,
                 updated_at: setting.updated_at
@@ -532,7 +546,9 @@ export const settingsRepository = {
         return {
             setting_id: setting.setting_id,
             setting_key: setting.setting_key,
-            value: parsedValue,
+            value: setting.setting_key === 'pos_terminal_registry'
+                ? toPublicTerminalRegistry(parsedValue)
+                : parsedValue,
             data_type: repaired
                 ? (POS_JSON_SETTING_KEYS.has(setting.setting_key) ? 'json' : 'string')
                 : setting.data_type,
@@ -641,7 +657,9 @@ export const settingsRepository = {
         return {
             setting_id: setting.setting_id,
             setting_key: setting.setting_key,
-            value: normalizedValue,
+            value: key === 'pos_terminal_registry'
+                ? toPublicTerminalRegistry(normalizedValue)
+                : normalizedValue,
             data_type: setting.data_type,
             description: setting.description,
             updated_at: setting.updated_at

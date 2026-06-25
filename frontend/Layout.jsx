@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { usePermission } from './src/hooks/usePermission'; // Created next
 import { createPageUrl } from './utils.js';
@@ -35,8 +35,6 @@ import TenantCapabilityNotice from './src/components/common/TenantCapabilityNoti
 import useStore from './src/store/useStore.js';
 import { useWorkflowMode } from './src/features/settings/WorkflowModeContext.jsx';
 import { getWorkflowModeLabel, isWorkflowPageVisible } from './src/features/settings/workflowMode.js';
-import OnboardingSetupModal, { OnboardingReminderBanner } from './src/features/onboarding/components/OnboardingSetupModal.jsx';
-import { trackOnboardingEvent } from './src/services/onboardingService.js';
 import { getAllSettings } from './src/services/settingsService.js';
 import { buildTenantCapabilityNoticeFromSettings } from './src/utils/tenantCapabilityMessages.js';
 import { mergeCurrentCompanyWithMemberships } from './src/utils/companySwitcherRows.js';
@@ -342,9 +340,6 @@ export default function Layout({ children, currentPageName }) {
   const { can, userRole, loading } = usePermission();
   const { setCurrentUser: setGlobalCurrentUser } = useStore();
   const { workflowMode, modeChangeNotice, dismissModeChangeNotice } = useWorkflowMode();
-  const [onboardingModalOpen, setOnboardingModalOpen] = useState(false);
-  const [onboardingDismissedThisSession, setOnboardingDismissedThisSession] = useState(false);
-  const onboardingReminderTrackedRef = useRef(false);
 
   React.useEffect(() => {
     if (!loading) {
@@ -403,44 +398,9 @@ export default function Layout({ children, currentPageName }) {
       cancelled = true;
     };
   }, [currentUser]);
-
-
-  const onboarding = currentUser?.onboarding || null;
-  const onboardingState = String(onboarding?.tenant_onboarding_state || 'not_started').trim().toLowerCase();
-  const shouldShowOnboardingReminder = Boolean(
-    currentUser?.is_master_admin === true && onboardingState !== 'completed'
-  );
   const shouldShowPhoneReminder = Boolean(
     currentUser && !String(currentUser.phone_number || '').trim()
   );
-
-  React.useEffect(() => {
-    if (!shouldShowOnboardingReminder) {
-      onboardingReminderTrackedRef.current = false;
-      return;
-    }
-
-    if (!onboardingReminderTrackedRef.current) {
-      onboardingReminderTrackedRef.current = true;
-      trackOnboardingEvent({
-        eventKey: 'reminder_shown',
-        metadata: { surface: 'layout' }
-      }).catch(() => {});
-    }
-
-    if (onboardingDismissedThisSession) return;
-    setOnboardingModalOpen(true);
-  }, [onboardingDismissedThisSession, shouldShowOnboardingReminder]);
-
-  const refreshCurrentUser = React.useCallback(async () => {
-    try {
-      const user = await getCurrentUser();
-      setCurrentUser(user);
-      setGlobalCurrentUser(user);
-    } catch (error) {
-      console.warn('Failed to refresh user profile after onboarding action', error);
-    }
-  }, [setGlobalCurrentUser]);
 
   // Filter nav items - only filter after permissions have loaded
   // During loading, show all items to prevent flash of limited menu
@@ -558,15 +518,6 @@ export default function Layout({ children, currentPageName }) {
               onDismiss={() => setCapabilityNotice(null)}
             />
           )}
-          {shouldShowOnboardingReminder && (
-            <OnboardingReminderBanner
-              onboarding={onboarding}
-              onOpenWizard={() => {
-                setOnboardingDismissedThisSession(false);
-                setOnboardingModalOpen(true);
-              }}
-            />
-          )}
           {shouldShowPhoneReminder && (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
               <p className="text-sm font-semibold text-amber-900">Add your phone number to complete your account profile.</p>
@@ -612,21 +563,6 @@ export default function Layout({ children, currentPageName }) {
           {children}
         </div>
       </main>
-      <OnboardingSetupModal
-        open={onboardingModalOpen && shouldShowOnboardingReminder}
-        onClose={() => {
-          setOnboardingModalOpen(false);
-          setOnboardingDismissedThisSession(true);
-          trackOnboardingEvent({
-            eventKey: 'reminder_dismissed',
-            metadata: { surface: 'layout' }
-          }).catch(() => {});
-        }}
-        onboarding={onboarding}
-        currentUser={currentUser}
-        workflowMode={workflowMode}
-        onRefreshUser={refreshCurrentUser}
-      />
       <FeedbackWidget />
     </div>
   );

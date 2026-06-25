@@ -11,6 +11,7 @@ const allowedHosts = true;
 
 export default defineConfig({
   root: __dirname,
+  cacheDir: path.resolve(frontendRoot, 'node_modules/.vite/pos'),
   base: './',
   plugins: [react()],
   define: {
@@ -43,6 +44,16 @@ export default defineConfig({
         target: apiProxyTarget,
         changeOrigin: true,
         secure: false
+      },
+      '/openfreemap': {
+        target: 'https://tiles.openfreemap.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/openfreemap/, '')
+      },
+      '/osm': {
+        target: 'https://tile.openstreetmap.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/osm/, '')
       }
     }
   },

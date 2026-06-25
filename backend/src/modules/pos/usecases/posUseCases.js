@@ -2902,6 +2902,72 @@ export const buildListPosTransactionsUseCase = ({ posRepository }) => {
     };
 };
 
+const buildReadScopedPosReportUseCase = ({ posRepository, repositoryMethod, failureMessage }) => {
+    return async ({ query, user }) => {
+        if (query !== undefined && !isPlainObject(query)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'query must be an object',
+                { statusCode: 400 }
+            ));
+        }
+
+        const normalizedUserId = parsePositiveInt(user?.user_id);
+        if (!normalizedUserId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated user is required to view POS reports',
+                { statusCode: 401 }
+            ));
+        }
+
+        try {
+            const locationScope = await resolvePosReadLocationScope({
+                requestedLocationId: query?.location_id,
+                userId: normalizedUserId,
+                operationLabel: 'POS reports read'
+            });
+            const data = await repositoryMethod.call(posRepository, {
+                ...(query || {}),
+                location_id: locationScope.location_id
+            });
+            return ok(data);
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, failureMessage));
+        }
+    };
+};
+
+export const buildGetPosReportsOverviewUseCase = ({ posRepository }) => buildReadScopedPosReportUseCase({
+    posRepository,
+    repositoryMethod: posRepository.getReportsOverview,
+    failureMessage: 'Failed to load POS reports overview'
+});
+
+export const buildGetPosReportsTopItemsUseCase = ({ posRepository }) => buildReadScopedPosReportUseCase({
+    posRepository,
+    repositoryMethod: posRepository.getReportsTopItems,
+    failureMessage: 'Failed to load POS top items report'
+});
+
+export const buildGetPosReportsComparisonUseCase = ({ posRepository }) => buildReadScopedPosReportUseCase({
+    posRepository,
+    repositoryMethod: posRepository.getReportsComparison,
+    failureMessage: 'Failed to load POS sales comparison report'
+});
+
+export const buildGetPosReportsProfitLossUseCase = ({ posRepository }) => buildReadScopedPosReportUseCase({
+    posRepository,
+    repositoryMethod: posRepository.getReportsProfitLoss,
+    failureMessage: 'Failed to load POS profit/loss report'
+});
+
+export const buildExportPosReportsUseCase = ({ posRepository }) => buildReadScopedPosReportUseCase({
+    posRepository,
+    repositoryMethod: posRepository.exportReports,
+    failureMessage: 'Failed to export POS report'
+});
+
 const resolvePosScanBlockedReason = ({ scanResult, complianceError = null } = {}) => {
     if (complianceError) {
         return {
