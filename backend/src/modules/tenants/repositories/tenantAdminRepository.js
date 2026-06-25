@@ -40,9 +40,9 @@ export const tenantAdminRepository = {
         const Tenant = getTenantModel();
         return Tenant.create(payload, options);
     },
-    findTenantById(tenantId) {
+    findTenantById(tenantId, options = {}) {
         const Tenant = getTenantModel();
-        return Tenant.findByPk(tenantId);
+        return Tenant.findByPk(tenantId, options);
     },
     listTenants(where = {}) {
         const Tenant = getTenantModel();
@@ -58,6 +58,9 @@ export const tenantAdminRepository = {
                 'status',
                 'admin_email',
                 'plan',
+                'owner_dgfy_account_id',
+                'provisioning_source',
+                'ownership_status',
                 'createdAt',
                 'compliance_mode_state',
                 'compliance_mode_choice_required',
@@ -66,14 +69,14 @@ export const tenantAdminRepository = {
             ]
         });
     },
-    updateTenant(tenant, payload) {
+    updateTenant(tenant, payload, options = {}) {
         if (payload && Object.prototype.hasOwnProperty.call(payload, 'compliance_mode_state')) {
             assertComplianceTransition({
                 previousState: tenant.compliance_mode_state || null,
                 nextState: payload.compliance_mode_state
             });
         }
-        return tenant.update(payload);
+        return tenant.update(payload, options);
     },
     async removeTenantDependencies(tenantId) {
         const UserTenantMapping = getUserTenantMappingModel();

@@ -1,5 +1,6 @@
 import {
     deleteAdminDgfyAccountUseCase,
+    createAdminProvisionedDgfyAccountUseCase,
     getAdminDgfyAccountUseCase,
     listAdminDgfyAccountsUseCase,
     reactivateAdminDgfyAccountUseCase,
@@ -66,6 +67,25 @@ export const getAdminDgfyAccount = async (req, res) => {
     });
     return sendUseCaseResult(res, result, {
         fallbackErrorMessage: 'Failed to load DGFY account'
+    });
+};
+
+export const createAdminProvisionedDgfyAccount = async (req, res) => {
+    const result = await createAdminProvisionedDgfyAccountUseCase({
+        body: req.body || {},
+        actor: buildPlatformAdminActor(req),
+        metadata: buildRequestMetadata(req)
+    });
+    await trackAdminDgfyAccountUsage({
+        req,
+        result,
+        eventType: 'admin_dgfy_account_created',
+        action: 'admin_create_dgfy_account',
+        successMetadataResolver: (data) => ({ dgfy_account_id: data?.payload?.data?.account?.id || data?.data?.account?.id || null }),
+        failureMetadataResolver: () => ({ email: req.body?.email || null })
+    });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'Failed to create admin-provisioned DGFY account'
     });
 };
 
@@ -164,6 +184,7 @@ export const deleteAdminDgfyAccount = async (req, res) => {
 export default {
     listAdminDgfyAccounts,
     getAdminDgfyAccount,
+    createAdminProvisionedDgfyAccount,
     updateAdminDgfyAccountProfile,
     suspendAdminDgfyAccount,
     reactivateAdminDgfyAccount,

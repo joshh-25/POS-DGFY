@@ -40,7 +40,7 @@ export default (sequelize) => {
             defaultValue: 'pending'
         },
         source: {
-            type: DataTypes.ENUM('founder', 'invite'),
+            type: DataTypes.ENUM('founder', 'invite', 'admin_handover'),
             allowNull: false,
             defaultValue: 'invite'
         },

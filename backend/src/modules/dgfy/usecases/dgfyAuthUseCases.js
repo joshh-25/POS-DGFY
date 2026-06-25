@@ -231,6 +231,10 @@ export const sanitizeDgfyAccount = (account) => {
         email_verified_at: account.email_verified_at || null,
         phone_verified_at: account.phone_verified_at || null,
         business_step_up_verified_at: account.business_step_up_verified_at || null,
+        provisioning_status: account.provisioning_status || 'self_registered',
+        temporary_password_active: Boolean(account.temporary_password_active),
+        email_verification_source: account.email_verification_source || null,
+        merchant_terms_acknowledged_at: account.merchant_terms_acknowledged_at || null,
         is_email_verified: Boolean(account.email_verified_at),
         last_login_at: account.last_login_at || null
     };
@@ -394,7 +398,11 @@ export const buildRegisterDgfyAccountUseCase = ({
                 email,
                 phone,
                 password_hash: await hashPassword(password),
-                email_verified_at: new Date()
+                email_verified_at: new Date(),
+                email_verification_source: 'public_otp',
+                provisioning_status: 'self_registered',
+                temporary_password_active: false,
+                merchant_terms_acknowledged_at: new Date()
             }, { transaction });
 
             await repository.mirrorPendingInvitationsForAccount?.(createdAccount, { transaction });
@@ -579,7 +587,9 @@ export const buildChangeDgfyPasswordUseCase = ({
         return fail(new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Current password is invalid.', { statusCode: 401 }));
     }
 
-    await repository.updatePassword(account, await hashPassword(newPassword));
+        await repository.updatePassword(account, await hashPassword(newPassword), {
+            temporary_password_active: false
+        });
     return ok({
         payload: {
             success: true,
@@ -745,7 +755,9 @@ export const buildCompleteDgfyPasswordResetUseCase = ({
             code,
             tenantId: null
         });
-        await repository.updatePassword(account, await hashPassword(password));
+        await repository.updatePassword(account, await hashPassword(password), {
+            temporary_password_active: false
+        });
         return ok({
             payload: {
                 success: true,

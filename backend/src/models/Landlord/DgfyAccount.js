@@ -63,6 +63,24 @@ export default (sequelize) => {
             type: DataTypes.DATE,
             allowNull: true
         },
+        provisioning_status: {
+            type: DataTypes.ENUM('self_registered', 'admin_provisioned'),
+            allowNull: false,
+            defaultValue: 'self_registered'
+        },
+        temporary_password_active: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false
+        },
+        email_verification_source: {
+            type: DataTypes.ENUM('public_otp', 'platform_admin_provisioned'),
+            allowNull: true
+        },
+        merchant_terms_acknowledged_at: {
+            type: DataTypes.DATE,
+            allowNull: true
+        },
         deleted_at: {
             type: DataTypes.DATE,
             allowNull: true
@@ -85,6 +103,7 @@ export default (sequelize) => {
             { unique: true, fields: ['email'], name: 'unique_dgfy_accounts_email' },
             { unique: true, fields: ['phone'], name: 'unique_dgfy_accounts_phone' },
             { fields: ['username'], name: 'idx_dgfy_accounts_username' },
+            { fields: ['provisioning_status'], name: 'idx_dgfy_accounts_provisioning_status' },
             { fields: ['deleted_at'], name: 'idx_dgfy_accounts_deleted_at' }
         ]
     });

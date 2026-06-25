@@ -3,6 +3,7 @@ import { dgfyAccountRepository } from './repositories/dgfyAccountRepository.js';
 import { buildGetDgfyLegalTermsUseCase } from './usecases/dgfyLegalUseCases.js';
 import {
     buildGetAdminDgfyAccountUseCase,
+    buildCreateAdminProvisionedDgfyAccountUseCase,
     buildDeleteAdminDgfyAccountUseCase,
     buildListAdminDgfyAccountsUseCase,
     buildReactivateAdminDgfyAccountUseCase,
@@ -203,6 +204,11 @@ export const listAdminDgfyAccountsUseCase = buildListAdminDgfyAccountsUseCase({
 
 export const getAdminDgfyAccountUseCase = buildGetAdminDgfyAccountUseCase({
     repository: dgfyAccountRepository
+});
+
+export const createAdminProvisionedDgfyAccountUseCase = buildCreateAdminProvisionedDgfyAccountUseCase({
+    repository: dgfyAccountRepository,
+    hashPassword: (password) => bcrypt.hash(password, 10)
 });
 
 export const updateAdminDgfyAccountProfileUseCase = buildUpdateAdminDgfyAccountProfileUseCase({

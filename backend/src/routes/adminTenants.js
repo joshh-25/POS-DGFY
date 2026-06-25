@@ -30,6 +30,9 @@ import {
     adminSelectComplianceMode,
     adminUpgradeComplianceMode,
     adminForceNonCompliant,
+    assignTenantOwnerByAdmin,
+    createAdminProvisionedAccountAndTenant,
+    createAdminProvisionedTenant,
     resubmitRegistration
 } from '../controllers/adminTenantController.js';
 import { authenticateAdmin } from '../middleware/auth.js';
@@ -66,6 +69,10 @@ router.post('/resubmit', tenantRegistrationLimiter, resubmitRegistration);
 
 // ADMIN: List all tenants (requires admin auth)
 router.get('/', authenticateAdmin, listTenants);
+
+// ADMIN: Assisted provisioning and handover
+router.post('/admin-provision', authenticateAdmin, createAdminProvisionedTenant);
+router.post('/admin-provision-with-account', authenticateAdmin, createAdminProvisionedAccountAndTenant);
 
 // ADMIN: Pricing Settings
 router.get('/pricing', authenticateAdmin, getPricingSettings);
@@ -109,6 +116,7 @@ router.put('/:id', authenticateAdmin, updateTenant);
 // ADMIN: Update tenant product capability switches
 router.patch('/:id/capabilities', authenticateAdmin, validateTenantCapabilityPatch, updateTenantCapabilities);
 router.get('/:id/capabilities/audit-logs', authenticateAdmin, validateTenantCapabilityAuditLogQuery, listTenantCapabilityAuditLogs);
+router.post('/:id/owner', authenticateAdmin, assignTenantOwnerByAdmin);
 
 // ADMIN: Platform-owned DGFY POS software identity and tenant metadata approvals
 router.get('/:id/pos-metadata', authenticateAdmin, getTenantPosMetadata);

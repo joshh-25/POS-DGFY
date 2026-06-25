@@ -36,6 +36,7 @@ import {
 } from '../modules/dgfy/controllers/dgfyAuthHandlers.js';
 import {
     getAdminDgfyAccount,
+    createAdminProvisionedDgfyAccount,
     deleteAdminDgfyAccount,
     listAdminDgfyAccounts,
     reactivateAdminDgfyAccount,
@@ -103,6 +104,7 @@ router.post('/invitations/:membership_id/accept', authenticateDgfyAccountOrTenan
 router.post('/invitations/:membership_id/reject', authenticateDgfyAccountOrTenantMembership, rejectDgfyInvitation);
 
 router.get('/admin/accounts', authenticateAdmin, listAdminDgfyAccounts);
+router.post('/admin/accounts', authenticateAdmin, createAdminProvisionedDgfyAccount);
 router.get('/admin/accounts/:account_id', authenticateAdmin, getAdminDgfyAccount);
 router.patch('/admin/accounts/:account_id/profile', authenticateAdmin, updateAdminDgfyAccountProfile);
 router.post('/admin/accounts/:account_id/suspend', authenticateAdmin, suspendAdminDgfyAccount);
