@@ -41,14 +41,33 @@ const normalizeTextArray = (value) => parseOptionalArray(value)
   .map((entry) => String(entry || '').trim())
   .filter(Boolean);
 
+const isStorefrontGalleryAssetPath = (value) => (
+  /^storefront-assets\/[^/]+\/[^/]+\.(?:avif|gif|jpe?g|png|webp)$/i.test(trimText(value))
+);
+
+const isExpiredSignedAssetUrl = (value) => {
+  const text = trimText(value);
+  if (!text) return false;
+  try {
+    const parsed = new URL(text);
+    const expirationTimestamp = Number(parsed.searchParams.get('expirationTimestamp'));
+    return parsed.hostname === 'file.notion.so'
+      && Number.isFinite(expirationTimestamp)
+      && expirationTimestamp <= Date.now();
+  } catch {
+    return false;
+  }
+};
+
 const normalizeGalleryUrl = ({ path = '', url = '' } = {}) => {
   const trimmedPath = trimText(path);
   const trimmedUrl = trimText(url);
-  const localPath = trimmedPath.startsWith('storefront-assets/')
+  const localPath = isStorefrontGalleryAssetPath(trimmedPath)
     ? trimmedPath
-    : (trimmedUrl.startsWith('storefront-assets/') ? trimmedUrl : '');
+    : (isStorefrontGalleryAssetPath(trimmedUrl) ? trimmedUrl : '');
   if (localPath) return `/uploads/${localPath}`;
-  return trimmedUrl || trimmedPath;
+  const fallbackUrl = trimmedUrl || trimmedPath;
+  return isExpiredSignedAssetUrl(fallbackUrl) ? '' : fallbackUrl;
 };
 
 const normalizeGalleryArray = (value) => parseOptionalArray(value)

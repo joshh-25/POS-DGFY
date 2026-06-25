@@ -92,6 +92,26 @@ describe('normalizeStorefrontPageModel', () => {
     ]);
   });
 
+  it('omits expired signed gallery urls with placeholder local paths', () => {
+    const model = normalizeStorefrontPageModel({
+      selectedStore: {
+        workflow_mode: 'fnb',
+        storefront_gallery_images: [
+          {
+            url: 'https://file.notion.so/f/example/expired.png?expirationTimestamp=1000',
+            path: 'storefront-assets/tenant/gallery',
+            caption: 'Expired gallery image'
+          }
+        ]
+      },
+      catalog: []
+    });
+
+    expect(model.supporting.galleryImages).toEqual([]);
+    expect(model.hero.galleryPreview).toEqual([]);
+    expect(model.sections.supporting.hasGallery).toBe(false);
+  });
+
   it('formats structured storefront hours for the tenant page model', () => {
     const model = normalizeStorefrontPageModel({
       selectedStore: {
