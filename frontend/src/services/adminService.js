@@ -189,6 +189,54 @@ export const createTenant = async (tenantData) => {
     return response.data;
 };
 
+export const createAdminProvisionedTenant = async (tenantData) => {
+    const token = getToken();
+
+    if (!token) {
+        throw new Error('Admin authentication required');
+    }
+
+    const response = await adminApi.post('/admin/tenants/admin-provision', tenantData, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
+
+    return response.data;
+};
+
+export const createAdminProvisionedAccountAndTenant = async (payload) => {
+    const token = getToken();
+
+    if (!token) {
+        throw new Error('Admin authentication required');
+    }
+
+    const response = await adminApi.post('/admin/tenants/admin-provision-with-account', payload, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
+
+    return response.data;
+};
+
+export const assignTenantOwner = async (tenantId, payload) => {
+    const token = getToken();
+
+    if (!token) {
+        throw new Error('Admin authentication required');
+    }
+
+    const response = await adminApi.post(`/admin/tenants/${tenantId}/owner`, payload, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
+
+    return response.data;
+};
+
 /**
  * Get all tenants with optional status filter
  */
@@ -337,6 +385,11 @@ export const listDgfyAccounts = async (params = {}) => {
 
 export const getDgfyAccount = async (accountId) => {
     const response = await adminApi.get(`/dgfy/admin/accounts/${accountId}`, requireAdminAuthConfig());
+    return response.data;
+};
+
+export const createDgfyAccount = async (payload = {}) => {
+    const response = await adminApi.post('/dgfy/admin/accounts', payload, requireAdminAuthConfig());
     return response.data;
 };
 

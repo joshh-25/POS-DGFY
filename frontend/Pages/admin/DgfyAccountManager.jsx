@@ -13,6 +13,7 @@ import {
     ShieldAlert,
     Trash2,
     UserRound,
+    UserRoundPlus,
     X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -143,6 +144,17 @@ export default function DgfyAccountManager() {
     const [deleteReason, setDeleteReason] = useState('');
     const [deleteConfirmation, setDeleteConfirmation] = useState('');
     const [deleteLoading, setDeleteLoading] = useState(false);
+    const [createForm, setCreateForm] = useState({
+        first_name: '',
+        middle_name: '',
+        last_name: '',
+        email: '',
+        phone: '',
+        temporary_password: '',
+        reason: ''
+    });
+    const [createLoading, setCreateLoading] = useState(false);
+    const [createdTemporaryPassword, setCreatedTemporaryPassword] = useState('');
 
     const query = useMemo(() => ({
         ...filters,
@@ -203,6 +215,36 @@ export default function DgfyAccountManager() {
             last_name: account.last_name || '',
             phone: account.phone || ''
         });
+    };
+
+    const updateCreateForm = (key, value) => {
+        setCreateForm((current) => ({ ...current, [key]: value }));
+    };
+
+    const submitCreate = async (event) => {
+        event.preventDefault();
+        setCreateLoading(true);
+        setCreatedTemporaryPassword('');
+        try {
+            const response = await adminService.createDgfyAccount(createForm);
+            setCreatedTemporaryPassword(response.data?.temporary_password || '');
+            setCreateForm({
+                first_name: '',
+                middle_name: '',
+                last_name: '',
+                email: '',
+                phone: '',
+                temporary_password: '',
+                reason: ''
+            });
+            await loadAccounts();
+            toast.success('Admin-provisioned DGFY account created');
+        } catch (err) {
+            const normalized = normalizeApiError(err);
+            toast.error(`Failed to create DGFY account: ${normalized.message}`);
+        } finally {
+            setCreateLoading(false);
+        }
     };
 
     const submitEdit = async (event) => {
@@ -313,6 +355,34 @@ export default function DgfyAccountManager() {
                 <StatTile label="Verified Email" value={summary.verified_email || 0} icon={MailCheck} />
                 <StatTile label="Unverified Email" value={summary.unverified_email || 0} icon={ShieldAlert} />
             </div>
+
+            <form onSubmit={submitCreate} className="rounded-lg border border-slate-200 bg-white p-4">
+                <div className="mb-4 flex items-center gap-2">
+                    <UserRoundPlus className="h-5 w-5 text-slate-500" />
+                    <div>
+                        <h2 className="text-sm font-semibold text-slate-900">Create admin-provisioned DGFY account</h2>
+                        <p className="text-xs text-slate-500">Creates an active account with a temporary password and full audit evidence.</p>
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="First name" value={createForm.first_name} onChange={(event) => updateCreateForm('first_name', event.target.value)} />
+                    <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Middle name" value={createForm.middle_name} onChange={(event) => updateCreateForm('middle_name', event.target.value)} />
+                    <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Last name" value={createForm.last_name} onChange={(event) => updateCreateForm('last_name', event.target.value)} />
+                    <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Email" value={createForm.email} onChange={(event) => updateCreateForm('email', event.target.value)} />
+                    <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Phone" value={createForm.phone} onChange={(event) => updateCreateForm('phone', event.target.value)} />
+                    <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Temporary password (optional)" value={createForm.temporary_password} onChange={(event) => updateCreateForm('temporary_password', event.target.value)} />
+                    <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-2" placeholder="Audit reason" value={createForm.reason} onChange={(event) => updateCreateForm('reason', event.target.value)} />
+                    <Button type="submit" disabled={createLoading}>
+                        <UserRoundPlus className="mr-2 h-4 w-4" />
+                        {createLoading ? 'Creating...' : 'Create Account'}
+                    </Button>
+                </div>
+                {createdTemporaryPassword ? (
+                    <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                        Temporary password: <span className="font-mono font-semibold">{createdTemporaryPassword}</span>
+                    </div>
+                ) : null}
+            </form>
 
             <div className="rounded-lg border border-slate-200 bg-white">
                 <div className="border-b border-slate-100 p-4">
@@ -566,6 +636,7 @@ export default function DgfyAccountManager() {
                         <label className="space-y-1">
                             <span className="text-sm font-medium text-slate-700">Reason</span>
                             <textarea
+                                aria-label="Lifecycle reason"
                                 className="min-h-24 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                                 value={lifecycleReason}
                                 onChange={(event) => setLifecycleReason(event.target.value)}

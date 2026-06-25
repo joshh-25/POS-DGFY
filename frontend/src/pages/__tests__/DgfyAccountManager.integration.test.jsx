@@ -182,7 +182,7 @@ describe('DgfyAccountManager', () => {
 
     const suspendButton = await screen.findByRole('button', { name: 'Suspend Account' });
     expect(suspendButton.hasAttribute('disabled')).toBe(true);
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Risk review' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /lifecycle reason/i }), { target: { value: 'Risk review' } });
     expect(suspendButton.hasAttribute('disabled')).toBe(false);
     await user.click(suspendButton);
 
@@ -192,7 +192,7 @@ describe('DgfyAccountManager', () => {
 
     const graceRow = screen.getByText('Grace Hopper').closest('tr');
     await user.click(within(graceRow).getAllByRole('button')[2]);
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Support verified identity' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /lifecycle reason/i }), { target: { value: 'Support verified identity' } });
     await user.click(screen.getByRole('button', { name: 'Reactivate Account' }));
 
     await waitFor(() => {
