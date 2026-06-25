@@ -39,7 +39,15 @@ Execution support artifacts:
 6. Cashier role has POS permissions (`pos:view`, plus `pos:transact` for checkout flows).
 7. Admin role has settings + reports/sales visibility permissions.
 8. Terminal identity policy is known for the test tenant (`warn` or `enforce`) and at least one active registry entry exists when `enforce` is enabled.
-9. If testing a DGFY-created company account, confirm `POST /api/v1/auth/lookup` resolves the cashier/admin email to the intended tenant before password validation.
+9. If testing a DGFY-created company account, use the DGFY-first POS flow first:
+   - create DGFY account
+   - create business account
+   - handoff into `/terminal?setup_flow=tenant_onboarding&setup_step=onboarding`
+   - finish onboarding
+   - finish `Settings > POS Setup`
+   - finish `Settings > Storefront`
+   - continue to normal POS terminal unlock
+   Confirm the tenant-local `/auth/lookup` path only when explicitly testing the governed legacy fallback flow.
 
 ## 3) Admin UAT Scenarios
 
@@ -92,21 +100,61 @@ Evidence:
 
 ### 4.0 Terminal Unlock Tenant Context
 1. Open the standalone POS terminal while another company session or stale tenant context may exist in the browser.
-2. Enter the cashier/admin email for the test tenant and the correct password manually.
-3. Confirm the terminal sends login with the company token returned by `/auth/lookup` for that email, not an unrelated stale browser token.
-4. Repeat with an intentionally wrong password and confirm the UI shows invalid-credential copy rather than a tenant/company-token error.
-5. If the account belongs to multiple companies, confirm unlock is blocked with the multi-company instruction instead of guessing a tenant.
+2. Enter the cashier/admin DGFY email and DGFY password for the test tenant manually.
+3. Confirm the POS accepts DGFY sign-in first and then loads the accessible companies for that account.
+4. Select the intended company and continue to the terminal unlock step.
+5. Confirm terminal unlock then uses the selected company context and registered terminal identity, not an unrelated stale browser token.
+6. Repeat with an intentionally wrong DGFY password and confirm the UI shows invalid-credential copy rather than a tenant/company-token error.
+7. Repeat with a correct DGFY login but intentionally wrong terminal password and confirm the UI shows a terminal unlock/password error rather than a generic DGFY login error.
+8. If the account belongs to multiple companies, confirm unlock is blocked until the operator explicitly selects the intended company instead of guessing a tenant.
+9. If explicitly testing the legacy fallback path, confirm the terminal sends login with the company token returned by `/auth/lookup` for that email, not an unrelated stale browser token.
 
 Expected:
-1. Correct credentials unlock the intended tenant terminal.
-2. Wrong password returns `401` and displays `Invalid email or password.`
-3. Missing email-to-tenant mapping displays a company-resolution message and does not reuse a stale token.
-4. Optional `/pos/device/status` `503` is treated as a hardware bridge availability issue, not as an auth/unlock failure.
+1. Correct DGFY credentials, correct company selection, and correct terminal password unlock the intended tenant terminal.
+2. Wrong DGFY password returns `401` and displays `Invalid email or password.`
+3. Wrong terminal password is surfaced as a terminal unlock/password failure, not as a generic DGFY login error.
+4. Missing email-to-tenant mapping displays a company-resolution message and does not reuse a stale token when the legacy fallback path is exercised.
+5. Optional `/pos/device/status` `503` is treated as a hardware bridge availability issue, not as an auth/unlock failure.
 
 Evidence:
-- Browser Network capture for `/api/v1/auth/lookup` and `/api/v1/auth/login` with email visible and company token redacted
+- Browser Network capture for the primary path:
+  - `/api/v1/dgfy/auth/login`
+  - `/api/v1/dgfy/account/companies`
+  - `/api/v1/dgfy/account/companies/:tenant_id/pos-session`
+- Browser Network capture for `/api/v1/auth/lookup` and `/api/v1/auth/login` only when validating the legacy fallback path
 - Screenshot of successful intended-tenant unlock
-- Screenshot or log capture of the wrong-password negative case
+- Screenshot or log capture of the wrong DGFY-password negative case
+- Screenshot or log capture of the wrong terminal-password negative case
+
+### 4.0A Guided Setup Gate For New Tenant POS Entry
+1. Create a brand-new DGFY account and business account.
+2. Confirm the business handoff opens POS directly on the guided setup flow.
+3. Confirm onboarding is forced first and cannot be dismissed into the rest of POS.
+4. Complete onboarding and confirm POS automatically routes into `Settings > POS Setup`.
+5. Leave one required POS Setup field incomplete and confirm normal POS workspaces remain blocked.
+6. Finish required POS Setup fields and confirm POS automatically routes into `Settings > Storefront`.
+7. Leave storefront contact empty and confirm the setup gate still blocks full POS access.
+8. Add a storefront phone or storefront email and save.
+9. Confirm the guided setup state clears and the operator can enter the full POS workspace.
+
+Expected:
+1. New business registration lands directly in POS guided setup.
+2. Guided setup order is enforced as:
+   - onboarding
+   - POS Setup
+   - Storefront Setup
+3. POS Setup gate requires:
+   - business name
+   - business address
+   - active registered terminal with location and terminal password
+4. Storefront Setup gate requires at least one contact channel.
+5. Guided setup completion removes the restricted setup state and restores normal POS navigation.
+
+Evidence:
+- Screenshot of first POS guided onboarding entry
+- Screenshot of POS Setup gate state
+- Screenshot of Storefront Setup gate state
+- Screenshot of full POS access after setup completion
 
 ### 4.1 POS Catalog + Cart
 1. Open POS terminal page.

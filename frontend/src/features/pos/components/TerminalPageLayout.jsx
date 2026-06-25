@@ -81,6 +81,8 @@ export default function TerminalPageLayout({
     complianceBlockerDetails,
     refreshTerminalUser = async () => {},
     refreshTerminalMeta = async () => {},
+    onPosSetupSaved = async () => {},
+    onStorefrontSetupSaved = async () => {},
     queuedTerminalOperationCount,
     queuedTerminalBlockedCount = 0,
     queuedTerminalOperations = [],
@@ -651,6 +653,8 @@ export default function TerminalPageLayout({
                 setDrawerOpen={setDrawerOpen}
                 refreshTerminalUser={refreshTerminalUser}
                 refreshTerminalMeta={refreshTerminalMeta}
+                onPosSetupSaved={onPosSetupSaved}
+                onStorefrontSetupSaved={onStorefrontSetupSaved}
                 sectionIds={TERMINAL_SECTION_IDS}
               />
             </Suspense>

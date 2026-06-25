@@ -2944,7 +2944,9 @@ function SettingsWorkspace({
   sectionId,
   initialTab = 'pos_setup',
   onRefreshTerminalUser = async () => {},
-  onRefreshTerminalMeta = async () => {}
+  onRefreshTerminalMeta = async () => {},
+  onPosSetupSaved = async () => {},
+  onStorefrontSetupSaved = async () => {}
 }) {
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
@@ -3463,11 +3465,21 @@ function SettingsWorkspace({
       throw new Error('Only one default terminal can be configured.');
     }
 
-    const posTerminalRegistry = normalizeTerminalRegistry(candidateTerminalEntries);
+    const posTerminalRegistry = candidateTerminalEntries.map((entry) => ({
+      terminal_id: entry.terminal_id,
+      label: entry.label,
+      location_id: entry.location_id,
+      is_active: entry.is_active !== false,
+      is_default: entry.is_default === true,
+      has_password: entry.has_password === true,
+      terminal_password: String(entry.terminal_password || ''),
+      clear_terminal_password: entry.clear_terminal_password === true
+    }));
     const posTerminalRegistryMode = TERMINAL_REGISTRY_MODE_OPTIONS.includes(String(posForm.terminalRegistryMode || '').trim().toLowerCase())
       ? String(posForm.terminalRegistryMode || '').trim().toLowerCase()
       : 'warn';
-    const activeRegistryEntries = posTerminalRegistry.filter((entry) => entry?.is_active !== false);
+    const normalizedRegistryState = normalizeTerminalRegistry(posTerminalRegistry);
+    const activeRegistryEntries = normalizedRegistryState.filter((entry) => entry?.is_active !== false);
     const activeLocationIds = new Set();
     const duplicateLocationEntry = activeRegistryEntries.find((entry) => {
       const locationId = Number(entry?.location_id || 0);
@@ -3487,6 +3499,7 @@ function SettingsWorkspace({
 
     return {
       posTerminalRegistry,
+      normalizedRegistryState,
       posTerminalRegistryMode
     };
   }, [posForm.terminalRegistry, posForm.terminalRegistryMode]);
@@ -3494,21 +3507,25 @@ function SettingsWorkspace({
   const handleTerminalRegistrySave = useCallback(async () => {
     setSavingTab('terminal_registry');
     try {
-      const { posTerminalRegistry, posTerminalRegistryMode } = buildTerminalRegistryPayload();
+      const { posTerminalRegistry, normalizedRegistryState, posTerminalRegistryMode } = buildTerminalRegistryPayload();
 
-      await updateSettings({
+      const updatedSettings = await updateSettings({
         pos_terminal_registry: posTerminalRegistry,
         pos_terminal_registry_mode: posTerminalRegistryMode,
         pos_terminal_location_binding_enforced: posForm.terminalLocationBindingEnforced === true
       });
 
+      const savedRegistry = normalizeTerminalRegistry(
+        updatedSettings?.pos_terminal_registry?.value
+          || updatedSettings?.pos_terminal_registry
+          || normalizedRegistryState
+      );
+
       setPosForm((current) => ({
         ...current,
-        terminalRegistry: posTerminalRegistry.map((entry) => ({
+        terminalRegistry: savedRegistry.map((entry) => ({
           ...entry,
-          has_password: entry?.clear_terminal_password === true
-            ? false
-            : entry?.has_password === true || String(entry?.terminal_password || '').trim().length > 0,
+          has_password: entry?.has_password === true,
           terminal_password: '',
           clear_terminal_password: false
         })),
@@ -3573,13 +3590,14 @@ function SettingsWorkspace({
         onRefreshTerminalMeta?.(),
         onRefreshTerminalUser?.({ suppressGlobalErrors: true })
       ]);
+      await onPosSetupSaved?.();
       toast.success('POS setup synced to shared settings.');
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to save POS setup.');
     } finally {
       setSavingTab('');
     }
-  }, [buildTerminalRegistryPayload, hydrateSettingsWorkspace, onRefreshTerminalMeta, onRefreshTerminalUser, posForm]);
+  }, [buildTerminalRegistryPayload, hydrateSettingsWorkspace, onPosSetupSaved, onRefreshTerminalMeta, onRefreshTerminalUser, posForm]);
 
   const handleStorefrontSave = useCallback(async () => {
     setSavingTab('storefront');
@@ -3632,13 +3650,14 @@ function SettingsWorkspace({
         storefront_share_enabled: storefrontForm.storefrontShareEnabled === true
       });
       await hydrateSettingsWorkspace();
+      await onStorefrontSetupSaved?.();
       toast.success('Storefront settings synced to shared settings.');
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to save storefront settings.');
     } finally {
       setSavingTab('');
     }
-  }, [hydrateSettingsWorkspace, storefrontForm]);
+  }, [hydrateSettingsWorkspace, onStorefrontSetupSaved, storefrontForm]);
 
   const handleStorefrontListChange = useCallback((field, index, value) => {
     setStorefrontForm((current) => {
@@ -4739,6 +4758,8 @@ export default function TerminalOperationsWorkspace({
   terminalUser,
   refreshTerminalUser = async () => {},
   refreshTerminalMeta = async () => {},
+  onPosSetupSaved = async () => {},
+  onStorefrontSetupSaved = async () => {},
   locked,
   terminalMeta,
   shiftState,
@@ -4843,6 +4864,8 @@ export default function TerminalOperationsWorkspace({
           }
           onRefreshTerminalUser={refreshTerminalUser}
           onRefreshTerminalMeta={refreshTerminalMeta}
+          onPosSetupSaved={onPosSetupSaved}
+          onStorefrontSetupSaved={onStorefrontSetupSaved}
         />
       );
     case 'shift_controls':

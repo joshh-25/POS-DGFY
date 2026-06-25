@@ -24,6 +24,12 @@ This document only lists the important changes recently made to the POS, Storefr
 - The POS terminal stays locked after refresh.
 - The cashier must log in again to unlock the terminal.
 - The locked POS screen now blurs the catalog, header, and sidebar.
+- Locking the terminal no longer always means restarting the whole shift flow:
+  - if the current shift is still open, `Lock Terminal` now performs an operational relock only
+  - reopening that locked terminal requires the terminal password only
+  - reopening that locked terminal does not require opening cash again
+- Closing the shift now returns the POS to a locked terminal state.
+- After shift close, the next unlock returns to the full shift-start flow and requires opening cash again.
 
 ## Receipt
 
@@ -141,6 +147,12 @@ This document only lists the important changes recently made to the POS, Storefr
   - strict shift location binding
 - Terminal registry entries now support terminal-level passwords used by POS unlock.
 - Active terminal registry entries are now limited to one active terminal per store location.
+- Saving from the terminal registry header now persists only terminal-registry settings:
+  - `pos_terminal_registry`
+  - `pos_terminal_registry_mode`
+  - `pos_terminal_location_binding_enforced`
+- Saving terminal-registry changes no longer hard-refreshes the whole Settings workspace.
+- Terminal password save behavior now persists correctly to the shared registry contract and updates the local `has_password` UI state after save.
 - The POS `POS Setup` tab now edits shared cashier defaults and checkout presets:
   - petty cash symbol
   - petty cash amount
@@ -150,33 +162,77 @@ This document only lists the important changes recently made to the POS, Storefr
   - POS discount presets
 - Saving from POS `POS Setup` now writes to the same settings keys read by IMS and receipt rendering, so POS and IMS stay synchronized on the same tenant configuration.
 
+## POS-First Tenant Onboarding
+
+- New DGFY business registration now hands off directly into the POS surface instead of returning the operator to a separate IMS-first onboarding entry point.
+- The guided setup handoff now uses:
+  - `/terminal?setup_flow=tenant_onboarding&setup_step=onboarding`
+- New-tenant POS entry is now enforced in this order:
+  - `Create DGFY Account`
+  - `Create Business Account`
+  - `Automatically Go Inside POS`
+  - `Onboarding`
+  - `POS Setup`
+  - `Storefront Setup`
+  - `Complete All Required Fields`
+  - `Navigate Inside Full POS`
+- During this guided flow, POS now treats tenant setup as a gated sequence for the tenant master admin instead of a soft reminder only.
+- The onboarding modal is forced first when `tenant_onboarding_state !== completed`.
+- After onboarding is completed, POS automatically routes the operator into `Settings > POS Setup`.
+- POS Setup readiness is evaluated from the shared tenant settings contract and currently requires:
+  - business name
+  - business address
+  - at least one active terminal registry entry with:
+    - assigned store location
+    - configured terminal password
+- After POS Setup is complete, POS automatically routes the operator into `Settings > Storefront`.
+- Storefront Setup readiness is currently satisfied by at least one storefront contact channel:
+  - storefront phone
+  - storefront email
+- Until the guided setup is complete, the rest of the POS workspaces are intentionally restricted so the tenant finishes setup in sequence.
+- Completion of all three setup stages removes the guided setup query state and returns the tenant to normal full POS navigation.
+- This flow reuses the shared onboarding and shared settings backend contracts; it does not create a POS-only onboarding store.
+
 ## POS Terminal Unlock
 
-- DGFY account sign-in and company selection now act as the first step only.
-- POS now continues into a terminal unlock step that requires:
+- POS terminal login is now a split two-stage flow:
+  - DGFY account sign-in first
+  - company selection second
+  - terminal unlock third
+- The first step now accepts only the DGFY account email and password.
+- Company selection no longer appears before successful DGFY sign-in.
+- After successful DGFY sign-in, POS loads the accessible companies for that account.
+- After company selection, POS continues into a dedicated terminal unlock modal.
+- The shift-start terminal unlock step requires:
   - a registered terminal from POS Setup
   - the terminal password configured for that terminal
   - opening cash for the shift
 - Terminal unlock now validates against the shared POS terminal registry before the POS session starts.
 - Terminal password hashes are stored in shared tenant settings and are not sent back to the POS UI in plaintext.
 - POS unlock now opens the shift immediately using the terminal's assigned store location, so the terminal starts in a ready-to-sell state after successful unlock.
+- When more than one active registered terminal exists, the unlock UI now makes it explicit that multiple terminals are available and the cashier can switch the selected terminal before unlock.
+- Terminal unlock diagnostics now distinguish DGFY credential failure from terminal-password failure more clearly:
+  - DGFY login failure remains an account-auth error
+  - terminal password failure is now surfaced as a terminal unlock error instead of a generic email/password error
+- The current intended operator sequence is:
+  - DGFY sign-in
+  - select accessible company
+  - continue to terminal unlock
+  - enter terminal password
+  - if no active shift exists, enter opening cash and open the shift
+  - if an active shift was only relocked, resume with terminal password only
 
-## Planned Onboarding Direction
+## Onboarding And Unlock Separation
 
-- The intended onboarding flow is now documented as:
-  - `DGFY account`
-  - `Create Business Account`
-  - `Settings-based POS setup`
-  - `Finish tenant onboarding`
-  - `POS becomes fully functional`
-- POS should not feel like a second business-access login wall after company creation.
-- The tenant should enter onboarding automatically after successful business creation and session handoff.
-- `POS Setup` should live in Settings as part of tenant onboarding, not as a disconnected POS-only registration step.
-- POS should stay limited or blocked for full selling use until the required POS setup fields are completed.
-- Terminal unlock and shift open remain operational controls and should stay separate from tenant onboarding.
-- Any item or shared catalog data created or edited from POS must continue to sync to the IMS-backed shared item records.
-- IMS remains the source of shared item, cost, and inventory metadata; POS remains the source of sales transactions.
-- `tenant_pos_enabled` remains a capability switch, while POS readiness/onboarding completion is a separate tenant setup state.
+- Tenant onboarding and cashier terminal unlock are now treated as separate responsibilities.
+- Tenant onboarding is the tenant-master-admin setup sequence for shared tenant readiness.
+- Terminal unlock remains the cashier/operator control for:
+  - registered terminal identity
+  - terminal password validation
+  - shift opening when required
+- Closing a shift does not send the operator back to DGFY account sign-in.
+- Locking an already open-shift terminal now returns to terminal unlock only.
+- Full DGFY sign-in remains the outer account-authentication boundary, while terminal unlock remains the POS device/session boundary.
 
 ## Main Files Changed
 
@@ -187,10 +243,16 @@ This document only lists the important changes recently made to the POS, Storefr
 - `frontend/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx`
 - `frontend/src/features/pos/pages/TerminalPage.jsx`
 - `frontend/src/features/pos/components/TerminalPageLayout.jsx`
+- `frontend/src/features/pos/components/TerminalLockDrawer.jsx`
 - `frontend/src/features/pos/components/TerminalSidebarPanel.jsx`
 - `frontend/src/features/pos/components/TerminalWorkspaceSidebar.jsx`
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
 - `frontend/apps/store/src/StorefrontApp.jsx`
 - `frontend/src/features/pos/services/posService.js`
+- `frontend/src/features/pos/utils/setupFlow.js`
+- `frontend/src/features/pos/utils/__tests__/setupFlow.test.js`
+- `frontend/src/features/pos/utils/terminalUnlockDiagnostics.js`
+- `frontend/src/features/pos/utils/__tests__/terminalUnlockDiagnostics.test.js`
 - `backend/src/modules/pos/repositories/posRepository.js`
 - `backend/src/validators/posValidator.js`
 - `backend/src/modules/pos/usecases/posUseCases.js`

@@ -100,6 +100,7 @@ const renderRoutes = (initialEntries = ['/dgfy/auth']) => render(
       <Route path="/register-company" element={<RegisterCompany />} />
       <Route path="/done" element={<div>Done screen</div>} />
       <Route path="/login" element={<div>Login screen</div>} />
+      <Route path="/terminal" element={<div>Terminal screen</div>} />
       <Route path="/" element={<div>Dashboard screen</div>} />
     </Routes>
   </MemoryRouter>
@@ -413,7 +414,7 @@ describe('DGFY auth and business registration routes', () => {
       tenantId: 'tenant-1',
       companyToken: 'token-autofoods-12345678'
     }, 'dgfy-token'));
-    expect(await screen.findByText('Dashboard screen')).toBeTruthy();
+    expect(await screen.findByText('Terminal screen')).toBeTruthy();
   });
 
   it('falls back to SKUpervisor login when the automatic IMS session cannot start', async () => {

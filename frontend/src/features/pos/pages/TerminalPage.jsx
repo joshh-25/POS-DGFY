@@ -1,4 +1,5 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   closeTerminalShift,
@@ -63,6 +64,16 @@ import {
   resolvePreferredTerminalId,
   sanitizeTerminalId
 } from '../utils/terminalIdentity.js';
+import {
+  POS_TERMINAL_SETUP_FLOW_QUERY_KEY,
+  POS_TERMINAL_SETUP_FLOW_VALUE,
+  POS_TERMINAL_SETUP_STEP_QUERY_KEY,
+  POS_TERMINAL_SETUP_STEPS,
+  isTenantSetupFlowRequested,
+  resolvePosSetupReadiness,
+  resolveStorefrontSetupReadiness,
+  resolveTenantSetupStep
+} from '../utils/setupFlow.js';
 
 import TerminalPageLayout from '../components/TerminalPageLayout.jsx';
 import PosHardwareMessageModal from '../components/PosHardwareMessageModal.jsx';
@@ -84,6 +95,7 @@ const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const DEFAULT_CURRENCY = 'PHP';
 const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
 const TERMINAL_LOCK_STORAGE_KEY = 'pos_terminal_locked_v1';
+const TERMINAL_LOCK_REASON_STORAGE_KEY = 'pos_terminal_lock_reason_v1';
 const ONLINE_ORDER_POLL_INTERVAL_MS = 12000;
 const QUEUE_HISTORY_LIMIT = 250;
 const TERMINAL_OPERATION_MAX_RETRIES = 5;
@@ -103,6 +115,7 @@ const OPERATIONS_VIEW_MODES = [
   'terminal_setup'
 ];
 const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift', 'items', 'settings_profile', 'settings_pos', 'settings_storefront'];
+const SETTINGS_VIEW_MODES = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'terminal_setup']);
 const TERMINAL_SECTION_IDS = {
   checkoutWorkspace: 'pos-checkout-workspace',
   terminalSetup: 'pos-section-terminal-setup',
@@ -165,13 +178,29 @@ const readStoredTerminalLock = () => {
   return window.localStorage.getItem(TERMINAL_LOCK_STORAGE_KEY) === '1';
 };
 
+const readStoredTerminalLockReason = () => {
+  if (typeof window === 'undefined') return '';
+  return String(window.localStorage.getItem(TERMINAL_LOCK_REASON_STORAGE_KEY) || '').trim();
+};
+
 const setStoredTerminalLock = (locked) => {
   if (typeof window === 'undefined') return;
   if (locked) {
     window.localStorage.setItem(TERMINAL_LOCK_STORAGE_KEY, '1');
   } else {
     window.localStorage.removeItem(TERMINAL_LOCK_STORAGE_KEY);
+    window.localStorage.removeItem(TERMINAL_LOCK_REASON_STORAGE_KEY);
   }
+};
+
+const setStoredTerminalLockReason = (reason) => {
+  if (typeof window === 'undefined') return;
+  const normalizedReason = String(reason || '').trim();
+  if (normalizedReason) {
+    window.localStorage.setItem(TERMINAL_LOCK_REASON_STORAGE_KEY, normalizedReason);
+    return;
+  }
+  window.localStorage.removeItem(TERMINAL_LOCK_REASON_STORAGE_KEY);
 };
 
 const readInitialTerminalId = () => resolvePreferredTerminalId(
@@ -262,6 +291,8 @@ const parseUserPermissions = (user) => {
 };
 
 export default function TerminalPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { workflowMode, modeChangeNotice, dismissModeChangeNotice } = useWorkflowMode();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const stored = localStorage.getItem('posTerminalSidebarCollapsed');
@@ -305,6 +336,12 @@ export default function TerminalPage() {
   });
   const [terminalUnlockRequired, setTerminalUnlockRequired] = useState(false);
   const [terminalUnlockModalOpen, setTerminalUnlockModalOpen] = useState(false);
+  const [terminalUnlockMode, setTerminalUnlockMode] = useState(() => {
+    const storedReason = readStoredTerminalLockReason();
+    if (storedReason === 'terminal_reunlock') return 'relock';
+    if (storedReason === 'shift_start_required') return 'shift_start';
+    return 'shift_start';
+  });
   const [terminalUnlockForm, setTerminalUnlockForm] = useState({
     terminalId: readInitialTerminalId(),
     terminalPassword: '',
@@ -396,6 +433,21 @@ export default function TerminalPage() {
     almostOutOfStock: [],
     outOfStock: []
   });
+  const [setupFlowState, setSetupFlowState] = useState({
+    loading: true,
+    posSetupReady: false,
+    storefrontSetupReady: false,
+    posRequirements: {
+      ready: false,
+      businessNameReady: false,
+      businessAddressReady: false,
+      terminalRegistryReady: false
+    },
+    storefrontRequirements: {
+      ready: false,
+      contactReady: false
+    }
+  });
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
   const workspacePaneRef = useRef(null);
@@ -461,6 +513,26 @@ export default function TerminalPage() {
   const showOnboardingReminder = !locked && terminalUser?.is_master_admin === true && onboardingState !== 'completed';
   const onboardingCompletedCount = Number(onboardingProgress?.completed_required_count || 0);
   const onboardingRequiredTotal = Number(onboardingProgress?.required_total || 0);
+  const setupFlowSearchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const tenantSetupFlowRequested = useMemo(
+    () => isTenantSetupFlowRequested(setupFlowSearchParams),
+    [setupFlowSearchParams]
+  );
+  const tenantSetupStep = useMemo(() => resolveTenantSetupStep({
+    requested: tenantSetupFlowRequested,
+    locked,
+    isMasterAdmin: terminalUser?.is_master_admin === true,
+    onboardingState,
+    posSetupReady: setupFlowState.posSetupReady,
+    storefrontSetupReady: setupFlowState.storefrontSetupReady
+  }), [
+    locked,
+    onboardingState,
+    setupFlowState.posSetupReady,
+    setupFlowState.storefrontSetupReady,
+    tenantSetupFlowRequested,
+    terminalUser?.is_master_admin
+  ]);
 
   useEffect(() => {
     if (!showOnboardingReminder) {
@@ -480,6 +552,66 @@ export default function TerminalPage() {
     if (onboardingDismissedThisSession) return;
     setOnboardingSetupOpen(true);
   }, [onboardingDismissedThisSession, showOnboardingReminder]);
+
+  const replaceTenantSetupQuery = useCallback((nextStep = '') => {
+    const nextParams = new URLSearchParams(location.search);
+    if (!tenantSetupFlowRequested) {
+      nextParams.delete(POS_TERMINAL_SETUP_FLOW_QUERY_KEY);
+      nextParams.delete(POS_TERMINAL_SETUP_STEP_QUERY_KEY);
+    } else {
+      nextParams.set(POS_TERMINAL_SETUP_FLOW_QUERY_KEY, POS_TERMINAL_SETUP_FLOW_VALUE);
+      if (nextStep) {
+        nextParams.set(POS_TERMINAL_SETUP_STEP_QUERY_KEY, nextStep);
+      } else {
+        nextParams.delete(POS_TERMINAL_SETUP_STEP_QUERY_KEY);
+      }
+    }
+    navigate({
+      pathname: location.pathname,
+      search: nextParams.toString() ? `?${nextParams.toString()}` : '',
+      hash: location.hash
+    }, { replace: true });
+  }, [location.hash, location.pathname, location.search, navigate, tenantSetupFlowRequested]);
+
+  const hydrateTenantSetupState = useCallback(async ({ suppressGlobalErrors = false } = {}) => {
+    if (locked || terminalUser?.is_master_admin !== true) {
+      setSetupFlowState({
+        loading: false,
+        posSetupReady: false,
+        storefrontSetupReady: false,
+        posRequirements: {
+          ready: false,
+          businessNameReady: false,
+          businessAddressReady: false,
+          terminalRegistryReady: false
+        },
+        storefrontRequirements: {
+          ready: false,
+          contactReady: false
+        }
+      });
+      return;
+    }
+
+    setSetupFlowState((prev) => ({ ...prev, loading: true }));
+    try {
+      const settingsPayload = await getAllSettings({
+        force: true,
+        requestConfig: suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
+      });
+      const posRequirements = resolvePosSetupReadiness(settingsPayload);
+      const storefrontRequirements = resolveStorefrontSetupReadiness(settingsPayload);
+      setSetupFlowState({
+        loading: false,
+        posSetupReady: posRequirements.ready,
+        storefrontSetupReady: storefrontRequirements.ready,
+        posRequirements,
+        storefrontRequirements
+      });
+    } catch {
+      setSetupFlowState((prev) => ({ ...prev, loading: false }));
+    }
+  }, [locked, terminalUser?.is_master_admin]);
 
   const refreshTerminalOperationQueue = useCallback(async ({ keepResolved = true } = {}) => {
     const entries = await listTerminalOperationQueueEntries({
@@ -1011,9 +1143,10 @@ export default function TerminalPage() {
 
   const hydrateUser = useCallback(async ({ suppressGlobalErrors = false } = {}) => {
     if (readStoredTerminalLock()) {
+      const storedLockReason = readStoredTerminalLockReason();
       setTerminalUser(null);
       setLocked(true);
-      setDrawerOpen(true);
+      setDrawerOpen(!(storedLockReason === 'terminal_reunlock' || storedLockReason === 'shift_start_required'));
       return;
     }
 
@@ -1074,10 +1207,57 @@ export default function TerminalPage() {
   }, [hydrateTerminalMeta, locked]);
 
   useEffect(() => {
+    hydrateTenantSetupState({ suppressGlobalErrors: true });
+  }, [hydrateTenantSetupState]);
+
+  useEffect(() => {
     if (!locked) {
       refreshOperationalContext();
     }
   }, [locked, refreshOperationalContext]);
+
+  useEffect(() => {
+    if (!tenantSetupFlowRequested || locked || terminalUser?.is_master_admin !== true) return;
+
+    if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.COMPLETE) {
+      const nextParams = new URLSearchParams(location.search);
+      nextParams.delete(POS_TERMINAL_SETUP_FLOW_QUERY_KEY);
+      nextParams.delete(POS_TERMINAL_SETUP_STEP_QUERY_KEY);
+      navigate({
+        pathname: location.pathname,
+        search: nextParams.toString() ? `?${nextParams.toString()}` : '',
+        hash: location.hash
+      }, { replace: true });
+      toast.success('Tenant onboarding, POS Setup, and Storefront Setup are complete.');
+      return;
+    }
+
+    replaceTenantSetupQuery(tenantSetupStep);
+    if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.ONBOARDING) {
+      setOnboardingDismissedThisSession(false);
+      setOnboardingSetupOpen(true);
+      return;
+    }
+
+    setOnboardingSetupOpen(false);
+    if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.POS_SETUP) {
+      setPosViewMode('settings_pos');
+      return;
+    }
+    if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP) {
+      setPosViewMode('settings_storefront');
+    }
+  }, [
+    location.hash,
+    location.pathname,
+    location.search,
+    locked,
+    navigate,
+    replaceTenantSetupQuery,
+    tenantSetupFlowRequested,
+    tenantSetupStep,
+    terminalUser?.is_master_admin
+  ]);
 
   useEffect(() => {
     if (!locked) {
@@ -1100,6 +1280,23 @@ export default function TerminalPage() {
       activationBlockers: []
     });
   }, [locked, refreshComplianceGate]);
+
+  useEffect(() => {
+    if (!locked || !readStoredTerminalLock()) return;
+    const storedLockReason = readStoredTerminalLockReason();
+    if (storedLockReason !== 'terminal_reunlock' && storedLockReason !== 'shift_start_required') return;
+
+    setTerminalUnlockMode(storedLockReason === 'terminal_reunlock' ? 'relock' : 'shift_start');
+    setTerminalUnlockRequired(storedLockReason === 'shift_start_required');
+    setTerminalUnlockForm((prev) => ({
+      terminalId: sanitizeTerminalId(prev.terminalId) || sanitizeTerminalId(activeTerminalId) || readInitialTerminalId(),
+      terminalPassword: '',
+      openingFloatAmount: storedLockReason === 'shift_start_required' ? prev.openingFloatAmount : '',
+      openingNote: storedLockReason === 'shift_start_required' ? prev.openingNote : ''
+    }));
+    setTerminalUnlockModalOpen(true);
+    setDrawerOpen(false);
+  }, [activeTerminalId, locked]);
 
   useEffect(() => {
     if (locked || !canViewPos) {
@@ -1361,6 +1558,7 @@ export default function TerminalPage() {
       }
     }
     setStoredTerminalLock(false);
+    setStoredTerminalLockReason('');
     setActiveTerminalId(selectedTerminalId);
     if (Number.isInteger(Number(operatingLocationIdOverride)) && Number(operatingLocationIdOverride) > 0) {
       setOperatingLocationId(Number(operatingLocationIdOverride));
@@ -1377,6 +1575,7 @@ export default function TerminalPage() {
     ]);
     setFormData((prev) => ({ ...prev, password: '', terminalId: selectedTerminalId }));
     setTerminalUnlockRequired(false);
+    setTerminalUnlockMode('shift_start');
     setTerminalUnlockForm({
       terminalId: selectedTerminalId,
       terminalPassword: '',
@@ -1481,6 +1680,7 @@ export default function TerminalPage() {
     const selectedTenantId = await resolveTenantIdForTerminalUnlock();
     const selectedTerminalId = sanitizeTerminalId(terminalUnlockForm.terminalId || resolveSelectedLoginTerminalId());
     const terminalPassword = String(terminalUnlockForm.terminalPassword || '');
+    const requiresOpeningCash = terminalUnlockMode !== 'relock';
     const rawOpeningFloat = String(terminalUnlockForm.openingFloatAmount ?? '').trim();
     const openingFloatAmount = Number(rawOpeningFloat);
 
@@ -1493,11 +1693,11 @@ export default function TerminalPage() {
       toast.error('Terminal password is required.');
       return;
     }
-    if (rawOpeningFloat === '') {
+    if (requiresOpeningCash && rawOpeningFloat === '') {
       toast.error('Opening cash amount is required.');
       return;
     }
-    if (!Number.isFinite(openingFloatAmount) || openingFloatAmount < 0) {
+    if (requiresOpeningCash && (!Number.isFinite(openingFloatAmount) || openingFloatAmount < 0)) {
       toast.error('Opening float must be a non-negative number.');
       return;
     }
@@ -1519,18 +1719,24 @@ export default function TerminalPage() {
         return;
       }
 
-      await openTerminalShift({
-        terminal_id: selectedTerminalId,
-        location_id: resolvedLocationId,
-        opening_float_amount: openingFloatAmount,
-        opening_note: String(terminalUnlockForm.openingNote || '').trim() || undefined,
-        idempotency_key: createIdempotencyKey('pos-shift-open')
-      });
+      if (requiresOpeningCash) {
+        await openTerminalShift({
+          terminal_id: selectedTerminalId,
+          location_id: resolvedLocationId,
+          opening_float_amount: openingFloatAmount,
+          opening_note: String(terminalUnlockForm.openingNote || '').trim() || undefined,
+          idempotency_key: createIdempotencyKey('pos-shift-open')
+        });
+      }
 
       await completeTerminalUnlock(selectedTerminalId, {
         operatingLocationIdOverride: resolvedLocationId
       });
-      toast.success('POS unlocked and shift opened successfully.');
+      toast.success(
+        requiresOpeningCash
+          ? 'POS unlocked and shift opened successfully.'
+          : 'Terminal unlocked successfully.'
+      );
     } catch (error) {
       toast.error(resolveTerminalLoginErrorMessage(error));
     } finally {
@@ -1604,7 +1810,31 @@ export default function TerminalPage() {
   };
 
   const handleLock = () => {
+    const hasOpenShift = Boolean(activeShiftId);
+    const selectedTerminalId = sanitizeTerminalId(activeTerminalId) || resolveSelectedLoginTerminalId();
+
+    if (hasOpenShift) {
+      setStoredTerminalLock(true);
+      setStoredTerminalLockReason('terminal_reunlock');
+      setLocked(true);
+      setDrawerOpen(false);
+      setPosViewMode('checkout');
+      setMobileNavOpen(false);
+      setTerminalUnlockRequired(false);
+      setTerminalUnlockMode('relock');
+      setTerminalUnlockForm({
+        terminalId: selectedTerminalId,
+        terminalPassword: '',
+        openingFloatAmount: '',
+        openingNote: ''
+      });
+      setTerminalUnlockModalOpen(true);
+      setStockAlertSummary({ open: false, almostOutOfStock: [], outOfStock: [] });
+      return;
+    }
+
     setStoredTerminalLock(true);
+    setStoredTerminalLockReason('full_auth');
     clearClientSession({
       reason: 'logout',
       broadcast: true,
@@ -1617,6 +1847,7 @@ export default function TerminalPage() {
     setMobileNavOpen(false);
     setTerminalUser(null);
     setTerminalUnlockRequired(false);
+    setTerminalUnlockMode('shift_start');
     setTerminalUnlockModalOpen(false);
     setStockAlertSummary({ open: false, almostOutOfStock: [], outOfStock: [] });
   };
@@ -1910,6 +2141,10 @@ export default function TerminalPage() {
         cashSummary: null
       });
       setTerminalUnlockRequired(true);
+      setTerminalUnlockMode('shift_start');
+      setStoredTerminalLock(true);
+      setStoredTerminalLockReason('shift_start_required');
+      setLocked(true);
       setTerminalUnlockForm({
         terminalId: sanitizeTerminalId(activeTerminalId) || resolveSelectedLoginTerminalId(),
         terminalPassword: '',
@@ -1917,6 +2152,7 @@ export default function TerminalPage() {
         openingNote: ''
       });
       setTerminalUnlockModalOpen(true);
+      setDrawerOpen(false);
       setMobileNavOpen(false);
       setPosViewMode('checkout');
       await refreshOperationalContext();
@@ -2062,7 +2298,27 @@ export default function TerminalPage() {
       setMobileNavOpen(false);
       return;
     }
-    if (requiresOpenShift) {
+    const isSettingsViewMode = SETTINGS_VIEW_MODES.has(nextMode);
+    if (tenantSetupFlowRequested && tenantSetupStep !== POS_TERMINAL_SETUP_STEPS.COMPLETE) {
+      if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.ONBOARDING) {
+        toast.error('Finish tenant onboarding before opening the rest of the POS.');
+        setOnboardingDismissedThisSession(false);
+        setOnboardingSetupOpen(true);
+        setMobileNavOpen(false);
+        return;
+      }
+      const allowedSetupModes = new Set(['settings_pos', 'settings_storefront']);
+      if (!allowedSetupModes.has(nextMode)) {
+        toast.error(
+          tenantSetupStep === POS_TERMINAL_SETUP_STEPS.POS_SETUP
+            ? 'Finish POS Setup before opening the rest of the POS.'
+            : 'Finish Storefront Setup before opening the rest of the POS.'
+        );
+        setMobileNavOpen(false);
+        return;
+      }
+    }
+    if (requiresOpenShift && !isSettingsViewMode) {
       toast.error('You cannot use the POS because the shift is closed.');
       setMobileNavOpen(false);
       return;
@@ -2072,13 +2328,21 @@ export default function TerminalPage() {
       workspacePaneRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
     setMobileNavOpen(false);
-  }, [activeViewModes, locked, requiresOpenShift]);
+  }, [activeViewModes, locked, requiresOpenShift, tenantSetupFlowRequested, tenantSetupStep]);
 
   const handleHardwareMessageOpenChange = useCallback((open) => {
     if (!open) {
       setHardwareMessage(null);
     }
   }, []);
+
+  const handlePosSetupSaved = useCallback(async () => {
+    await hydrateTenantSetupState({ suppressGlobalErrors: true });
+  }, [hydrateTenantSetupState]);
+
+  const handleStorefrontSetupSaved = useCallback(async () => {
+    await hydrateTenantSetupState({ suppressGlobalErrors: true });
+  }, [hydrateTenantSetupState]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -2195,7 +2459,7 @@ export default function TerminalPage() {
       <>
         <Dialog open={terminalUnlockModalOpen} onOpenChange={(open) => {
           if (submitting) return;
-          if (open === false && terminalUnlockRequired) {
+          if (open === false && (terminalUnlockRequired || terminalUnlockMode === 'relock')) {
             toast.message('Unlock the terminal to continue.');
             return;
           }
@@ -2206,7 +2470,9 @@ export default function TerminalPage() {
               <DialogHeader className="border-b border-slate-100 px-5 py-4">
                 <DialogTitle className="text-lg font-extrabold text-[#0F172A]">Unlock Terminal</DialogTitle>
                 <DialogDescription className="text-sm text-slate-600">
-                  Choose the registered POS terminal, enter its password, and start the shift.
+                  {terminalUnlockMode === 'relock'
+                    ? 'Enter the registered POS terminal password to resume the current shift.'
+                    : 'Choose the registered POS terminal, enter its password, and start the shift.'}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 px-5 py-5">
@@ -2215,21 +2481,28 @@ export default function TerminalPage() {
                     Terminal ID
                   </Label>
                   {activeTerminalRegistry.length > 0 ? (
-                    <select
-                      id="terminal-unlock-terminal-id"
-                      value={terminalUnlockForm.terminalId || ''}
-                      onChange={(event) => setTerminalUnlockForm((prev) => ({ ...prev, terminalId: event.target.value }))}
-                      className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none focus:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-                      disabled={submitting}
-                      required
-                    >
-                      <option value="">Select registered terminal</option>
-                      {activeTerminalRegistry.map((entry) => (
-                        <option key={entry.terminal_id} value={entry.terminal_id}>
-                          {entry.label ? `${entry.label} (${entry.terminal_id})` : entry.terminal_id}
-                        </option>
-                      ))}
-                    </select>
+                    <>
+                      <select
+                        id="terminal-unlock-terminal-id"
+                        value={terminalUnlockForm.terminalId || ''}
+                        onChange={(event) => setTerminalUnlockForm((prev) => ({ ...prev, terminalId: event.target.value }))}
+                        className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none focus:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+                        disabled={submitting}
+                        required
+                      >
+                        <option value="">Select registered terminal</option>
+                        {activeTerminalRegistry.map((entry) => (
+                          <option key={entry.terminal_id} value={entry.terminal_id}>
+                            {entry.label ? `${entry.label} (${entry.terminal_id})` : entry.terminal_id}
+                          </option>
+                        ))}
+                      </select>
+                      {activeTerminalRegistry.length > 1 ? (
+                        <p className="text-[11px] font-medium text-[#64748B]">
+                          {activeTerminalRegistry.length} registered terminals available. Open the list to switch terminals.
+                        </p>
+                      ) : null}
+                    </>
                   ) : (
                     <>
                       <Input
@@ -2268,34 +2541,38 @@ export default function TerminalPage() {
                     required
                   />
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="terminal-unlock-opening-cash" className="text-xs font-extrabold text-[#0F172A]">
-                    Opening Cash
-                  </Label>
-                  <Input
-                    id="terminal-unlock-opening-cash"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={terminalUnlockForm.openingFloatAmount}
-                    onChange={(event) => setTerminalUnlockForm((prev) => ({ ...prev, openingFloatAmount: event.target.value }))}
-                    placeholder="0.00"
-                    disabled={submitting}
-                    required
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="terminal-unlock-opening-note" className="text-xs font-extrabold text-[#0F172A]">
-                    Opening Note
-                  </Label>
-                  <Input
-                    id="terminal-unlock-opening-note"
-                    value={terminalUnlockForm.openingNote}
-                    onChange={(event) => setTerminalUnlockForm((prev) => ({ ...prev, openingNote: event.target.value }))}
-                    placeholder="Optional"
-                    disabled={submitting}
-                  />
-                </div>
+                {terminalUnlockMode !== 'relock' ? (
+                  <>
+                    <div className="grid gap-2">
+                      <Label htmlFor="terminal-unlock-opening-cash" className="text-xs font-extrabold text-[#0F172A]">
+                        Opening Cash
+                      </Label>
+                      <Input
+                        id="terminal-unlock-opening-cash"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={terminalUnlockForm.openingFloatAmount}
+                        onChange={(event) => setTerminalUnlockForm((prev) => ({ ...prev, openingFloatAmount: event.target.value }))}
+                        placeholder="0.00"
+                        disabled={submitting}
+                        required
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="terminal-unlock-opening-note" className="text-xs font-extrabold text-[#0F172A]">
+                        Opening Note
+                      </Label>
+                      <Input
+                        id="terminal-unlock-opening-note"
+                        value={terminalUnlockForm.openingNote}
+                        onChange={(event) => setTerminalUnlockForm((prev) => ({ ...prev, openingNote: event.target.value }))}
+                        placeholder="Optional"
+                        disabled={submitting}
+                      />
+                    </div>
+                  </>
+                ) : null}
               </div>
               <DialogFooter className="border-t border-slate-100 px-5 py-4">
                 <Button
@@ -2364,6 +2641,21 @@ export default function TerminalPage() {
             </form>
           </DialogContent>
         </Dialog>
+        {tenantSetupFlowRequested && !locked && terminalUser?.is_master_admin === true && tenantSetupStep !== POS_TERMINAL_SETUP_STEPS.COMPLETE && (
+          <div className="fixed left-4 top-4 z-[72] max-w-[min(92vw,460px)] rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-950 shadow-lg shadow-blue-900/10">
+            {tenantSetupStep === POS_TERMINAL_SETUP_STEPS.ONBOARDING
+              ? 'Finish tenant onboarding first. POS selling remains limited until setup is complete.'
+              : (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.POS_SETUP
+                ? `Finish POS Setup next. Missing: ${
+                  [
+                    setupFlowState.posRequirements.businessNameReady ? null : 'business name',
+                    setupFlowState.posRequirements.businessAddressReady ? null : 'business address',
+                    setupFlowState.posRequirements.terminalRegistryReady ? null : 'registered terminal with password and store'
+                  ].filter(Boolean).join(', ')
+                }.`
+                : 'Finish Storefront Setup next. Add at least one storefront contact channel to continue.')}
+          </div>
+        )}
         {showOnboardingReminder && (
           <div className="fixed right-4 top-4 z-[70] max-w-[min(92vw,420px)] rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 shadow-lg shadow-amber-900/10">
             <span>
@@ -2436,6 +2728,11 @@ export default function TerminalPage() {
         <OnboardingSetupModal
           open={onboardingSetupOpen}
           onClose={() => {
+            if (tenantSetupFlowRequested && tenantSetupStep === POS_TERMINAL_SETUP_STEPS.ONBOARDING) {
+              setOnboardingSetupOpen(true);
+              toast.error('Complete tenant onboarding before continuing to POS Setup.');
+              return;
+            }
             setOnboardingSetupOpen(false);
             setOnboardingDismissedThisSession(true);
             trackOnboardingEvent({
@@ -2614,6 +2911,8 @@ export default function TerminalPage() {
           handleRetryQueuedOperation={handleRetryQueuedOperation}
           handleResolveQueuedOperation={handleResolveQueuedOperation}
           handleCheckoutCompleted={handleCheckoutCompleted}
+          onPosSetupSaved={handlePosSetupSaved}
+          onStorefrontSetupSaved={handleStorefrontSetupSaved}
           setPosViewMode={setPosViewMode}
           modeChangeNotice={modeChangeNotice}
           dismissModeChangeNotice={dismissModeChangeNotice}
