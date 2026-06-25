@@ -3,6 +3,9 @@ import { jest } from '@jest/globals';
 const findAllMock = jest.fn();
 const findOneMock = jest.fn();
 const tenantFindOneMock = jest.fn();
+const getTenantConnectionMock = jest.fn();
+const getTenantModelsMock = jest.fn();
+const systemSettingFindAllMock = jest.fn();
 const reconcileMock = jest.fn();
 const loggerInfoMock = jest.fn();
 const loggerWarnMock = jest.fn();
@@ -29,6 +32,16 @@ jest.unstable_mockModule('../src/services/storefrontDiscoveryCacheState.js', () 
 
 jest.unstable_mockModule('../src/services/storefrontDiscoveryFreshnessService.js', () => ({
   getStorefrontDiscoverySharedSignature: getStorefrontDiscoverySharedSignatureMock
+}));
+
+jest.unstable_mockModule('../src/utils/TenantConnector.js', () => ({
+  default: {
+    getConnection: getTenantConnectionMock
+  }
+}));
+
+jest.unstable_mockModule('../src/utils/tenantModelFactory.js', () => ({
+  getTenantModels: getTenantModelsMock
 }));
 
 jest.unstable_mockModule('../src/config/logger.js', () => ({
@@ -120,6 +133,13 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
       last_updated_at: '2026-03-31T00:00:00.000Z'
     });
     tenantFindOneMock.mockResolvedValue(null);
+    getTenantConnectionMock.mockResolvedValue({});
+    getTenantModelsMock.mockReturnValue({
+      SystemSetting: {
+        findAll: systemSettingFindAllMock
+      }
+    });
+    systemSettingFindAllMock.mockResolvedValue([]);
     delete process.env.STOREFRONT_DISCOVERY_INDEX_AUTO_REPAIR_ON_EMPTY;
   });
 
@@ -225,7 +245,7 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
     }));
   });
 
-  it('uses materialized profile content from discovery index without tenant settings fallback', async () => {
+  it('uses materialized profile content from discovery index', async () => {
     const repository = await loadRepository();
     findOneMock.mockResolvedValue({
       ...makeEntry({
@@ -277,7 +297,68 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
       storefront_share_enabled: true,
       storefront_review_summary: expect.objectContaining({ score: 4.8, total_count: 127 })
     }));
-    expect(tenantFindOneMock).not.toHaveBeenCalled();
+  });
+
+  it('uses structured tenant storefront hours for materialized profile rows', async () => {
+    const repository = await loadRepository();
+    const structuredHours = {
+      mode: 'weekly',
+      timezone: 'Asia/Manila',
+      weekly: {
+        sun: { enabled: false, open: '09:00', close: '18:00', intervals: [{ open: '09:00', close: '18:00' }] },
+        mon: { enabled: true, open: '06:00', close: '20:00', intervals: [{ open: '06:00', close: '12:00' }, { open: '13:00', close: '20:00' }] },
+        tue: { enabled: true, open: '06:00', close: '20:00', intervals: [{ open: '06:00', close: '12:00' }, { open: '13:00', close: '20:00' }] },
+        wed: { enabled: false, open: '09:00', close: '18:00', intervals: [{ open: '09:00', close: '18:00' }] },
+        thu: { enabled: true, open: '10:00', close: '18:00', intervals: [{ open: '10:00', close: '18:00' }] },
+        fri: { enabled: true, open: '10:00', close: '18:00', intervals: [{ open: '10:00', close: '18:00' }] },
+        sat: { enabled: false, open: '09:00', close: '18:00', intervals: [{ open: '09:00', close: '18:00' }] }
+      }
+    };
+    findOneMock.mockResolvedValue({
+      ...makeEntry({
+        tenant_id: 'tenant-hours',
+        tenant_name: 'Hours Store',
+        slug: 'hours-store'
+      }),
+      storefront_tagline: 'Materialized profile',
+      storefront_hours: 'Mon-Sat 9:00 AM - 6:00 PM'
+    });
+    tenantFindOneMock.mockResolvedValue({
+      id: 'tenant-hours',
+      name: 'Hours Store',
+      company_token: 'tenant-token-hours',
+      db_name: 'sku_tenant_hours',
+      status: 'active'
+    });
+    systemSettingFindAllMock.mockResolvedValue([
+      {
+        setting_key: 'storefront_hours',
+        setting_value: JSON.stringify(structuredHours)
+      }
+    ]);
+
+    const result = await repository.getStorefrontBySlug('hours-store');
+
+    expect(result.storefront_hours).toEqual(expect.objectContaining({
+      mode: 'weekly',
+      weekly: expect.objectContaining({
+        mon: expect.objectContaining({
+          enabled: true,
+          intervals: [
+            { open: '06:00', close: '12:00' },
+            { open: '13:00', close: '20:00' }
+          ]
+        }),
+        thu: expect.objectContaining({
+          enabled: true,
+          intervals: [{ open: '10:00', close: '18:00' }]
+        })
+      })
+    }));
+    expect(result.storefront_hours_status).toEqual(expect.objectContaining({
+      configured: true,
+      display: 'Mon-Tue 6:00 AM - 12:00 PM, 1:00 PM - 8:00 PM; Thu-Fri 10:00 AM - 6:00 PM'
+    }));
   });
 
   it('falls back on profile lookup when storefront branding columns are missing', async () => {

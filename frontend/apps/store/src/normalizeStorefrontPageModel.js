@@ -41,11 +41,21 @@ const normalizeTextArray = (value) => parseOptionalArray(value)
   .map((entry) => String(entry || '').trim())
   .filter(Boolean);
 
+const normalizeGalleryUrl = ({ path = '', url = '' } = {}) => {
+  const trimmedPath = trimText(path);
+  const trimmedUrl = trimText(url);
+  const localPath = trimmedPath.startsWith('storefront-assets/')
+    ? trimmedPath
+    : (trimmedUrl.startsWith('storefront-assets/') ? trimmedUrl : '');
+  if (localPath) return `/uploads/${localPath}`;
+  return trimmedUrl || trimmedPath;
+};
+
 const normalizeGalleryArray = (value) => parseOptionalArray(value)
   .map((entry) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
     return {
-      url: trimText(entry.url || entry.path),
+      url: normalizeGalleryUrl(entry),
       caption: trimText(entry.caption),
       alt: trimText(entry.alt)
     };

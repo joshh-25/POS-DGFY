@@ -57,13 +57,67 @@ describe('normalizeStorefrontPageModel', () => {
     expect(model.supporting.galleryImages).toEqual([
       expect.objectContaining({ url: 'https://cdn.example.com/external.jpg' }),
       expect.objectContaining({ url: '/uploads/storefront-assets/t1/local-url.png' }),
-      expect.objectContaining({ url: 'storefront-assets/t1/path-only.png' })
+      expect.objectContaining({ url: '/uploads/storefront-assets/t1/path-only.png' })
     ]);
     expect(model.hero.galleryPreview).toEqual([
       'https://cdn.example.com/external.jpg',
       '/uploads/storefront-assets/t1/local-url.png',
-      'storefront-assets/t1/path-only.png'
+      '/uploads/storefront-assets/t1/path-only.png'
     ]);
+  });
+
+  it('prefers uploaded local gallery paths over stale external urls on the same row', () => {
+    const model = normalizeStorefrontPageModel({
+      selectedStore: {
+        workflow_mode: 'fnb',
+        storefront_gallery_images: [
+          {
+            url: 'https://file.notion.so/f/example/expired.png',
+            path: 'storefront-assets/masu/gallery-uploaded.png',
+            caption: 'Uploaded gallery image'
+          }
+        ]
+      },
+      catalog: []
+    });
+
+    expect(model.supporting.galleryImages).toEqual([
+      expect.objectContaining({
+        url: '/uploads/storefront-assets/masu/gallery-uploaded.png',
+        caption: 'Uploaded gallery image'
+      })
+    ]);
+    expect(model.hero.galleryPreview).toEqual([
+      '/uploads/storefront-assets/masu/gallery-uploaded.png'
+    ]);
+  });
+
+  it('formats structured storefront hours for the tenant page model', () => {
+    const model = normalizeStorefrontPageModel({
+      selectedStore: {
+        workflow_mode: 'fnb',
+        storefront_hours: {
+          mode: 'weekly',
+          timezone: 'Asia/Manila',
+          weekly: {
+            sun: { enabled: false, open: '09:00', close: '18:00', intervals: [{ open: '09:00', close: '18:00' }] },
+            mon: { enabled: true, open: '06:00', close: '20:00', intervals: [{ open: '06:00', close: '12:00' }, { open: '13:00', close: '20:00' }] },
+            tue: { enabled: true, open: '06:00', close: '20:00', intervals: [{ open: '06:00', close: '12:00' }, { open: '13:00', close: '20:00' }] },
+            wed: { enabled: false, open: '09:00', close: '18:00', intervals: [{ open: '09:00', close: '18:00' }] },
+            thu: { enabled: true, open: '10:00', close: '18:00', intervals: [{ open: '10:00', close: '18:00' }] },
+            fri: { enabled: true, open: '10:00', close: '18:00', intervals: [{ open: '10:00', close: '18:00' }] },
+            sat: { enabled: false, open: '09:00', close: '18:00', intervals: [{ open: '09:00', close: '18:00' }] }
+          }
+        },
+        storefront_hours_status: { display: 'Mon-Sat 9:00 AM - 6:00 PM' }
+      },
+      catalog: []
+    });
+
+    expect(model.hero.hours).toBe('Mon-Tue 6:00 AM - 12:00 PM, 1:00 PM - 8:00 PM; Thu-Fri 10:00 AM - 6:00 PM');
+    expect(model.hero.contactRows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'Hours', value: model.hero.hours })
+    ]));
   });
 
   it('collapses optional sections when storefront data is missing', () => {
