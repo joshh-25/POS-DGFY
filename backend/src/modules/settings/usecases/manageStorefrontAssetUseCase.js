@@ -25,6 +25,21 @@ const STOREFRONT_ASSET_MAX_BYTES = 5 * 1024 * 1024;
 const normalizeAssetType = (assetType) => String(assetType || '').trim().toLowerCase();
 const getAssetKeys = (assetType) => STORE_ASSET_TYPE_TO_SETTING_KEYS[normalizeAssetType(assetType)] || null;
 const isSupportedAssetType = (assetType) => STOREFRONT_ASSET_TYPES.includes(normalizeAssetType(assetType));
+const getImageValidationMessage = (validation = {}) => {
+    switch (validation.reason) {
+        case 'file_too_large':
+            return 'Storefront images must be 5 MB or smaller.';
+        case 'unsupported_reported_mime':
+            return 'Only PNG, JPEG, GIF, WebP, BMP, or AVIF images are allowed for storefront assets.';
+        case 'unsupported_file_signature':
+        case 'mime_signature_mismatch':
+            return 'The uploaded file does not match a supported image format.';
+        case 'missing_file_path':
+            return 'image file is required';
+        default:
+            return 'Only image files are allowed for storefront assets.';
+    }
+};
 
 export const buildUploadStorefrontAssetUseCase = ({
     settingsRepository,
@@ -65,7 +80,7 @@ export const buildUploadStorefrontAssetUseCase = ({
                 });
                 throw new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
-                    'Only image files are allowed for storefront assets.',
+                    getImageValidationMessage(fileValidation),
                     { statusCode: 422 }
                 );
             }

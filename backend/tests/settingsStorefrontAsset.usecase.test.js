@@ -111,6 +111,63 @@ describe('settings storefront asset use-cases', () => {
     expect(result.success).toBe(false);
     expect(result.error.code).toBe('VALIDATION_FAILED');
     expect(result.error.statusCode).toBe(422);
+    expect(result.error.message).toBe('Only PNG, JPEG, GIF, WebP, BMP, or AVIF images are allowed for storefront assets.');
+  });
+
+  it('upload use-case returns a clear message for oversized image files', async () => {
+    const imageFileValidator = jest.fn().mockResolvedValue({ ok: false, reason: 'file_too_large' });
+    const useCase = buildUploadStorefrontAssetUseCase({
+      settingsRepository: {
+        getSettingsByKeys: jest.fn(),
+        updateSettings: jest.fn()
+      },
+      storefrontAssetStorage: {
+        remove: jest.fn(),
+        store: jest.fn()
+      },
+      imageFileValidator
+    });
+
+    const result = await useCase({
+      assetType: 'gallery',
+      file: {
+        mimetype: 'image/png',
+        originalname: 'large.png',
+        path: '/tmp/large.png'
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.statusCode).toBe(422);
+    expect(result.error.message).toBe('Storefront images must be 5 MB or smaller.');
+  });
+
+  it('upload use-case returns a clear message for binary signature mismatches', async () => {
+    const imageFileValidator = jest.fn().mockResolvedValue({ ok: false, reason: 'mime_signature_mismatch' });
+    const useCase = buildUploadStorefrontAssetUseCase({
+      settingsRepository: {
+        getSettingsByKeys: jest.fn(),
+        updateSettings: jest.fn()
+      },
+      storefrontAssetStorage: {
+        remove: jest.fn(),
+        store: jest.fn()
+      },
+      imageFileValidator
+    });
+
+    const result = await useCase({
+      assetType: 'gallery',
+      file: {
+        mimetype: 'image/png',
+        originalname: 'fake.png',
+        path: '/tmp/fake.png'
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.statusCode).toBe(422);
+    expect(result.error.message).toBe('The uploaded file does not match a supported image format.');
   });
 
   it('delete use-case clears persisted keys', async () => {

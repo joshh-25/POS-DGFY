@@ -511,7 +511,37 @@ const normalizeStorefrontGalleryLocalPath = (value) => {
   const raw = String(value || '').trim();
   if (!raw) return '';
   const normalized = raw.replace(/^\/uploads\//, '').replace(/^[/\\]+/, '');
-  return /^storefront-assets\/[A-Za-z0-9/_\-.]+$/.test(normalized) ? normalized : '';
+  return /^storefront-assets\/[A-Za-z0-9][A-Za-z0-9_-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*\.(?:jpe?g|png|gif|webp|bmp|avif)$/i.test(normalized) ? normalized : '';
+};
+
+const isExpiredSignedStorefrontGalleryUrl = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw || !/^https?:\/\//i.test(raw)) return false;
+  try {
+    const parsed = new URL(raw);
+    if (!parsed.hostname.toLowerCase().endsWith('file.notion.so')) return false;
+    const expiration = Number(parsed.searchParams.get('expirationTimestamp'));
+    return Number.isFinite(expiration) && expiration > 0 && expiration <= Date.now();
+  } catch {
+    return false;
+  }
+};
+
+const getStorefrontGalleryPreviewSource = (entry) => {
+  const path = normalizeStorefrontGalleryLocalPath(entry?.path || entry?.url);
+  if (path) return path;
+  const url = String(entry?.url || '').trim();
+  return isExpiredSignedStorefrontGalleryUrl(url) ? '' : url;
+};
+
+const getStorefrontGalleryRowWarning = (entry) => {
+  if (isExpiredSignedStorefrontGalleryUrl(entry?.url) && !normalizeStorefrontGalleryLocalPath(entry?.path)) {
+    return 'This external image link has expired. Upload a new image to show it on the storefront.';
+  }
+  if (String(entry?.path || '').trim() && !normalizeStorefrontGalleryLocalPath(entry?.path)) {
+    return 'This saved local image path is not a valid storefront gallery asset.';
+  }
+  return '';
 };
 
 const normalizeStorefrontGalleryPayloadEntry = (entry, index) => {
@@ -519,7 +549,7 @@ const normalizeStorefrontGalleryPayloadEntry = (entry, index) => {
   const explicitPath = normalizeStorefrontGalleryLocalPath(entry?.path).slice(0, 500);
   const urlLocalPath = normalizeStorefrontGalleryLocalPath(rawUrl).slice(0, 500);
   const path = explicitPath || urlLocalPath;
-  const url = path && rawUrl.startsWith('/uploads/storefront-assets/') ? '' : rawUrl;
+  const url = path && (rawUrl.startsWith('/uploads/storefront-assets/') || isExpiredSignedStorefrontGalleryUrl(rawUrl)) ? '' : rawUrl;
   return {
     url,
     path,
@@ -527,6 +557,16 @@ const normalizeStorefrontGalleryPayloadEntry = (entry, index) => {
     alt: String(entry?.alt || '').trim().slice(0, 140),
     sort_order: Number.isInteger(Number(entry?.sort_order)) ? Number(entry.sort_order) : index
   };
+};
+
+const getStorefrontUploadErrorMessage = (error, fallback) => {
+  const responseData = error?.response?.data || {};
+  const validationMessages = Array.isArray(responseData.errors)
+    ? responseData.errors
+        .map((entry) => entry?.message || entry?.msg || entry?.error)
+        .filter(Boolean)
+    : [];
+  return validationMessages[0] || responseData.message || error?.message || fallback;
 };
 
 const normalizeStorefrontDeliveryPartnersSettings = (raw) => {
@@ -2011,7 +2051,7 @@ export default function Settings() {
       }));
       toast.success(`${assetType === 'cover' ? 'Cover photo' : 'Profile icon'} updated.`);
     } catch (error) {
-      toast.error(error?.response?.data?.message || `Failed to upload ${assetType} image`);
+      toast.error(getStorefrontUploadErrorMessage(error, `Failed to upload ${assetType} image`));
     } finally {
       setAssetUploadingType('');
     }
@@ -2019,11 +2059,18 @@ export default function Settings() {
 
   const handleUploadStorefrontGalleryImage = async (index, file) => {
     if (!file) return;
+    if (!String(file.type || '').toLowerCase().startsWith('image/')) {
+      toast.error('Only image files can be uploaded to the storefront gallery.');
+      return;
+    }
+    if (Number(file.size || 0) > 5 * 1024 * 1024) {
+      toast.error('Storefront gallery images must be 5 MB or smaller.');
+      return;
+    }
     const uploadKey = `gallery-${index}`;
     setAssetUploadingType(uploadKey);
     try {
       const result = await settingsService.uploadStorefrontAsset('gallery', file);
-      const imageUrl = String(result?.image_url || '');
       const imagePath = String(result?.path || '').trim();
       setSettings((prev) => {
         const next = Array.isArray(prev.storefrontGalleryImages)
@@ -2032,7 +2079,7 @@ export default function Settings() {
         const current = next[index] || { url: '', path: '', caption: '', alt: '', sort_order: index };
         next[index] = {
           ...current,
-          url: imageUrl,
+          url: '',
           path: imagePath,
           sort_order: Number.isInteger(Number(current.sort_order)) ? current.sort_order : index
         };
@@ -2040,7 +2087,7 @@ export default function Settings() {
       });
       toast.success('Gallery image uploaded.');
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to upload gallery image');
+      toast.error(getStorefrontUploadErrorMessage(error, 'Failed to upload gallery image'));
     } finally {
       setAssetUploadingType('');
     }
@@ -3168,40 +3215,48 @@ export default function Settings() {
                   <Label>Gallery Images</Label>
                   <Button type="button" variant="outline" size="sm" onClick={addStorefrontGalleryRow}><Plus className="w-4 h-4 mr-1" />Add</Button>
                 </div>
-                {(Array.isArray(settings.storefrontGalleryImages) ? settings.storefrontGalleryImages : []).map((row, index) => (
-                  <div key={`gallery-${index}`} className="grid gap-3 rounded-lg border border-slate-200 p-3 md:grid-cols-[180px_1fr_1fr_120px_auto]">
-                    <div className="space-y-2">
-                      <div className="h-24 overflow-hidden rounded-md border border-slate-200 bg-slate-50">
-                        {resolveAssetUrl(row.url || row.path) ? (
-                          <img
-                            src={resolveAssetUrl(row.url || row.path)}
-                            alt={row.alt || row.caption || `Gallery image ${index + 1}`}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full items-center justify-center px-3 text-center text-xs font-medium text-slate-500">
-                            No gallery image uploaded
-                          </div>
+                {(Array.isArray(settings.storefrontGalleryImages) ? settings.storefrontGalleryImages : []).map((row, index) => {
+                  const previewSource = getStorefrontGalleryPreviewSource(row);
+                  const previewUrl = resolveAssetUrl(previewSource);
+                  const rowWarning = getStorefrontGalleryRowWarning(row);
+                  return (
+                    <div key={`gallery-${index}`} className="grid gap-3 rounded-lg border border-slate-200 p-3 md:grid-cols-[180px_1fr_1fr_120px_auto]">
+                      <div className="space-y-2">
+                        <div className="h-24 overflow-hidden rounded-md border border-slate-200 bg-slate-50">
+                          {previewUrl ? (
+                            <img
+                              src={previewUrl}
+                              alt={row.alt || row.caption || `Gallery image ${index + 1}`}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full items-center justify-center px-3 text-center text-xs font-medium text-slate-500">
+                              No gallery image uploaded
+                            </div>
+                          )}
+                        </div>
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          aria-label={`Upload gallery image ${index + 1}`}
+                          disabled={!canEditStorefrontBranding || assetUploadingType === `gallery-${index}`}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0] || null;
+                            handleUploadStorefrontGalleryImage(index, file);
+                            e.target.value = '';
+                          }}
+                        />
+                        {rowWarning && (
+                          <p className="text-xs font-medium text-amber-700">{rowWarning}</p>
                         )}
                       </div>
-                      <Input
-                        type="file"
-                        accept="image/*"
-                        aria-label={`Upload gallery image ${index + 1}`}
-                        disabled={!canEditStorefrontBranding || assetUploadingType === `gallery-${index}`}
-                        onChange={(e) => {
-                          const file = e.target.files?.[0] || null;
-                          handleUploadStorefrontGalleryImage(index, file);
-                          e.target.value = '';
-                        }}
-                      />
+                      <Input value={row.caption || ''} onChange={(e) => handleStorefrontGalleryChange(index, 'caption', e.target.value)} placeholder="Caption" />
+                      <Input value={row.alt || ''} onChange={(e) => handleStorefrontGalleryChange(index, 'alt', e.target.value)} placeholder="Alt text" />
+                      <Input value={row.sort_order ?? ''} onChange={(e) => handleStorefrontGalleryChange(index, 'sort_order', e.target.value)} placeholder="Sort" />
+                      <Button type="button" variant="ghost" size="icon" onClick={() => removeStorefrontGalleryRow(index)}><Trash2 className="w-4 h-4" /></Button>
                     </div>
-                    <Input value={row.caption || ''} onChange={(e) => handleStorefrontGalleryChange(index, 'caption', e.target.value)} placeholder="Caption" />
-                    <Input value={row.alt || ''} onChange={(e) => handleStorefrontGalleryChange(index, 'alt', e.target.value)} placeholder="Alt text" />
-                    <Input value={row.sort_order ?? ''} onChange={(e) => handleStorefrontGalleryChange(index, 'sort_order', e.target.value)} placeholder="Sort" />
-                    <Button type="button" variant="ghost" size="icon" onClick={() => removeStorefrontGalleryRow(index)}><Trash2 className="w-4 h-4" /></Button>
-                  </div>
-                ))}
+                  );
+                })}
                 {!canEditStorefrontBranding && (
                   <p className="text-xs text-amber-700">
                     Only Admin or Master Admin can upload storefront gallery images unless user has the <code>settings:storefront_branding_edit</code> micropermission.

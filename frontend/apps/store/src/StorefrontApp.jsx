@@ -10452,14 +10452,23 @@ export default function StorefrontApp() {
     }
     setAccountPanel((prev) => ({ ...prev, loading: true, error: '' }));
     const loadDgfyAccountPanel = async (authToken = '') => {
-      const [meData, dashboardData, activitiesData, loyaltyData, companiesData, notificationsData] = await Promise.all([
+      const [meData, dashboardData, activitiesData, loyaltyData, notificationsData] = await Promise.all([
         requestJson('/api/v1/dgfy/auth/me', { authToken, cache: 'no-store' }),
         requestJson('/api/v1/dgfy/customer/dashboard', { authToken, cache: 'no-store' }),
         requestJson('/api/v1/dgfy/customer/activities?limit=100', { authToken, cache: 'no-store' }).catch(() => ({ activities: [] })),
         requestJson('/api/v1/dgfy/customer/loyalty', { authToken, cache: 'no-store' }).catch(() => null),
-        requestJson('/api/v1/dgfy/account/companies', { authToken, cache: 'no-store' }).catch(() => ({ companies: [] })),
         requestJson('/api/v1/dgfy/customer/notifications?limit=50', { authToken, cache: 'no-store' }).catch(() => ({ notifications: [], unread_count: 0 }))
       ]);
+      const hasResolvedDgfyAccount = Boolean(
+        meData?.account?.id
+        || meData?.id
+        || dashboardData?.account?.id
+        || dgfySessionAccount?.id
+        || String(authToken || '').trim()
+      );
+      const companiesData = hasResolvedDgfyAccount
+        ? await requestJson('/api/v1/dgfy/account/companies', { authToken, cache: 'no-store' }).catch(() => ({ companies: [] }))
+        : { companies: [] };
       return {
         meData,
         dashboardData,
