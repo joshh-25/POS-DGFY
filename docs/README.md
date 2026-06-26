@@ -22,6 +22,7 @@ Start here for all planning and implementation work:
   - current production release state: `docs/ops/CURRENT_PRODUCTION_RELEASE_2026-06-18.md`
   - merge-adoption proof gate for PR/branch releases: `docs/ops/MERGE_ADOPTION_GATE.md`
   - developer deployment setup handoff: `docs/ops/DEVELOPER_DEPLOYMENT_HANDOFF.md`
+  - local workspace cleanup and clean-branch policy: `docs/ops/WORKSPACE_CLEANUP_AND_BRANCH_POLICY.md`
 - `docs/compliance`: compliance guide, control matrix, preflight workflow, ops cadence
   - includes classification floor matrix (`docs/compliance/compliance-classification-matrix.md`)
   - includes evidence and submission packet docs under `docs/compliance/evidence/` and `docs/compliance/submission/`
