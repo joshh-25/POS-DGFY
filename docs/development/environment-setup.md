@@ -22,6 +22,9 @@ Current frontend surfaces:
 
 ## Local Development Setup
 
+For the complete local startup command set and port map, see
+`docs/setup/LOCAL_APP_RUNBOOK.md`.
+
 ```bash
 # Clone repository
 git clone <repo-url>

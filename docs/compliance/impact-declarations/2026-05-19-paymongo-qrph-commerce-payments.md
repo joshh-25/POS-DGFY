@@ -1,11 +1,11 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-06-22
+last_reviewed: 2026-06-26
 related_adr: docs/architecture/adr/0027-paymongo-commerce-qrph-platform-split-settlement.md
 declaration_id: 2026-05-19-paymongo-qrph-commerce-payments
 classification: regulatory
-surfaces: payments,storefront_catalog,pos,settings,compliance
+surfaces: payments,storefront_catalog,pos,terminal,settings,compliance
 reason_codes_impacted: ALLOWED,VALIDATION_FAILED,CONFLICT,SERVICE_UNAVAILABLE
 policy_version: 2026.05.19
 verification_evidence: npm run check:architecture,npm run lint:docs,npm --prefix frontend run build:skupervisor,npm --prefix frontend run build:store,git diff --check,node --check changed backend payment files,npm --prefix backend run verify:commerce-payment-migration,npm --prefix backend run verify:paymongo:sandbox,npm --prefix backend run verify:paymongo:webhook,npm --prefix backend test -- --runTestsByPath tests/commercePaymentRefunds.usecases.test.js tests/commercePaymentValidator.test.js tests/commercePaymentSettlement.usecases.test.js tests/commercePaymentReadiness.usecases.test.js tests/paymongoWebhookSignature.test.js
@@ -67,6 +67,8 @@ This declaration covers adding PayMongo QR Ph Storefront commerce payment sessio
 24. Automated child-account creation must not enable QR Ph/split/charge readiness without PayMongo activation and wallet evidence.
 25. API-generated tenant child merchant IDs must not be treated as the DGFY parent/platform merchant ID.
 26. Live customer QR Ph split checkout must remain blocked until PayMongo confirms the parent merchant ID and live `split_payment.transfer_to` plus fixed `split_payment.recipients[].merchant_id` capability; this confirmation is represented by `PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED=true` or `PAYMONGO_PLATFORM_SPLIT_CONFIRMED=true`.
+27. PayMongo support confirmed on June 25, 2026 that Linked Accounts is not configured for the account and self-service onboarding is still under development. Production customer checkout must continue to fail closed for PayMongo split settlement, and operators must not set the platform-split confirmation env flag until PayMongo explicitly enables the account.
+28. DGFY must not replace unavailable PayMongo split settlement by collecting seller funds into a DGFY-controlled account and redistributing them manually unless a separate legal/compliance-approved custody and settlement model is adopted.
 
 ## Verification Evidence
 
@@ -83,7 +85,7 @@ This declaration covers adding PayMongo QR Ph Storefront commerce payment sessio
 - Public ngrok webhook route probe returns `401 Invalid PayMongo webhook signature` for unsigned payloads, proving reachability without accepting forged events.
 - Signed fake-session webhook probe returns `200` with `handled=false` and `reason=session_not_found`, proving the configured sandbox webhook secret is accepted without creating orders.
 - This implementation pass does not include fresh production endpoint or PayMongo dashboard proof; production deployment and signed/unsigned live webhook probes are still required before live canary testing.
-- PayMongo support has not yet confirmed self-service platform onboarding, the DGFY parent merchant ID, or live marketplace split-payment capability; production customer use remains externally blocked until that evidence exists.
+- PayMongo support confirmed on June 25, 2026 that Linked Accounts is not configured for the account and self-service onboarding is still under development; production customer use remains externally blocked until PayMongo explicitly enables the account and confirms the parent merchant ID plus live marketplace split-payment capability.
 - `npm --prefix backend test -- --runTestsByPath tests/commercePaymentRefunds.usecases.test.js tests/commercePaymentValidator.test.js tests/commercePaymentSettlement.usecases.test.js tests/commercePaymentReadiness.usecases.test.js tests/paymongoWebhookSignature.test.js`
 
 ## No Architecture Exception Required

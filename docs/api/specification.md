@@ -3557,7 +3557,7 @@ https://skupervisor.surebizcorp.com/api/v1/commerce-payments/paymongo/webhook
 
 The production server must use `PAYMONGO_MODE=live` and `PAYMONGO_LIVE_WEBHOOK_SECRET`. If an unsigned probe returns `404`, the backend route is not deployed there yet and live PayMongo delivery will fail.
 
-Live split checkout also requires explicit external PayMongo platform evidence. API-created tenant child merchant IDs are tenant readiness inputs only; they are not the DGFY parent/platform merchant ID used as the fixed 1% split recipient. When `COMMERCE_PAYMONGO_SPLIT_ENABLED=true` and `PAYMONGO_MODE=live`, production configuration is incomplete until PayMongo confirms the parent merchant ID plus live `split_payment.transfer_to` and fixed-recipient capability, and the operator sets `PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED=true` or `PAYMONGO_PLATFORM_SPLIT_CONFIRMED=true`.
+Live split checkout also requires explicit external PayMongo platform evidence. API-created tenant child merchant IDs are tenant readiness inputs only; they are not the DGFY parent/platform merchant ID used as the fixed 1% split recipient. When `COMMERCE_PAYMONGO_SPLIT_ENABLED=true` and `PAYMONGO_MODE=live`, production configuration is incomplete until PayMongo confirms the parent merchant ID plus live `split_payment.transfer_to` and fixed-recipient capability, and the operator sets `PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED=true` or `PAYMONGO_PLATFORM_SPLIT_CONFIRMED=true`. Current provider status as of June 25, 2026 is externally blocked: PayMongo support confirmed Linked Accounts is not configured for the account and self-service onboarding is still under development.
 
 **Auth**: Admin JWT (`/admin/login`)
 **Base Path**: `/api/v1/commerce-payments/admin`
