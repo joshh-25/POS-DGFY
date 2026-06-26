@@ -39,6 +39,7 @@ import {
 } from './usecases/barcodeUseCases.js';
 import { storefrontCatalogImageStorage } from './repositories/storefrontCatalogImageStorage.js';
 import { resolveMovementLocation } from '../../services/locationInventoryService.js';
+import * as stockCommandService from './commands/stockCommandService.js';
 
 
 export const getItemsUseCase = buildGetItemsUseCase({ itemRepository });
@@ -97,6 +98,9 @@ export const resolveItemBarcodeUseCase = buildResolveItemBarcodeUseCase({
 });
 export const resolveItemBarcodeConflictUseCase = buildResolveItemBarcodeConflictUseCase({ itemRepository });
 export const renderItemBarcodeLabelUseCase = buildRenderItemBarcodeLabelUseCase({ itemRepository });
+export const inventoryStockCommandService = stockCommandService;
+export { resolveMovementLocation };
 
+export * from './commands/stockCommandService.js';
 export * from './contracts/itemRepository.contract.js';
 export * from './repositories/itemRepository.js';

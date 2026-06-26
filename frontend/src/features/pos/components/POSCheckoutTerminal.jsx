@@ -75,6 +75,8 @@ const RECEIPT_PAPER_OPTIONS = [
     { value: '80mm', label: '80mm (3 1/8 in)' },
     { value: '57mm', label: '57mm (2 1/4 in)' }
 ];
+const FISCAL_PRINT_EVIDENCE_LABEL = 'Record Fiscal Print Evidence';
+const FISCAL_PRINT_CONFIRM_LABEL = 'Confirm Printed';
 
 const money = (value) => Number(value || 0).toFixed(2);
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
@@ -552,7 +554,7 @@ export default function POSCheckoutTerminal({
     const catalogSwipeStartXRef = useRef(null);
     const catalogSwipePointerIdRef = useRef(null);
     const shellClassName = 'space-y-5';
-    const checkoutGridClassName = 'grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_325px] 2xl:gap-6';
+    const checkoutGridClassName = 'grid grid-cols-1 gap-4 2xl:grid-cols-12 2xl:gap-6';
     const catalogGridClassName = useMemo(() => {
         if (isTabletViewport) {
             return IS_DGFY_POS_SURFACE
@@ -566,7 +568,7 @@ export default function POSCheckoutTerminal({
     const catalogViewportClassName = 'min-h-0 flex-1 overflow-visible pr-0 pb-3';
     const tabletAlignedPaneClassName = isTabletViewport ? 'md:max-xl:min-h-[78rem]' : '';
     const currentSaleBodyClassName = 'min-h-0 flex-1 overflow-hidden pr-1';
-    const currentSaleItemsListClassName = 'h-[17.25rem] overflow-y-auto pr-1';
+    const currentSaleItemsListClassName = 'dgfy-pos-y-auto h-[17.25rem] pr-1';
     const checkoutPaneClassName = '2xl:min-h-[32rem] 2xl:max-h-none';
     const catalogPaneHeightClassName = isTabletViewport
         ? 'md:max-xl:min-h-[78rem]'
@@ -2764,7 +2766,7 @@ export default function POSCheckoutTerminal({
                     </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-2 border-t border-slate-200 pt-3">
+                <div className="sticky bottom-0 z-20 grid grid-cols-1 gap-2 border-t border-slate-200 bg-white/95 pt-3 supports-[backdrop-filter]:bg-white/85 sm:grid-cols-2">
                     <Button
                         type="button"
                         variant="outline"
@@ -2890,6 +2892,25 @@ export default function POSCheckoutTerminal({
                                 type="button"
                                 variant="outline"
                                 size="sm"
+                                onClick={() => handlePrintReceipt(lastReceipt, 'fiscal_print_evidence')}
+                                disabled={posActionsBlocked || !lastReceipt || receiptPrinting}
+                                aria-label={FISCAL_PRINT_EVIDENCE_LABEL}
+                            >
+                                {FISCAL_PRINT_EVIDENCE_LABEL}
+                            </Button>
+                            <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => handlePrintReceipt(lastReceipt, 'fiscal_print_confirmed')}
+                                disabled={posActionsBlocked || !lastReceipt || receiptPrinting}
+                                aria-label={FISCAL_PRINT_CONFIRM_LABEL}
+                            >
+                                {FISCAL_PRINT_CONFIRM_LABEL}
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
                                 onClick={() => handleOpenDrawer({
                                     transactionId: Number(lastReceipt?.pos_transaction_id) || null,
                                     reason: 'receipt_preview_drawer_open'
@@ -2965,7 +2986,7 @@ export default function POSCheckoutTerminal({
                             </button>
                         </div>
 
-                        <div className="pos-modal-scroll-content min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
+                        <div className="pos-modal-scroll-content dgfy-pos-y-auto min-h-0 flex-1 space-y-3 overscroll-contain p-4">
                             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px]">
                                 <div className="flex justify-between gap-2">
                                     <span className="font-semibold text-[#334155]">Total Due</span>
@@ -3094,7 +3115,7 @@ export default function POSCheckoutTerminal({
                                 </Button>
                             </div>
                         </div>
-                        <div className="pos-receipt-print-content min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 print:overflow-visible print:p-0">
+                        <div className="pos-receipt-print-content dgfy-pos-y-auto min-h-0 flex-1 overscroll-contain p-4 print:overflow-visible print:p-0">
                             {lastReceipt ? (
                                 <div className="space-y-3 print:space-y-0">
                                     <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Loading receipt preview...</div>}>
@@ -3159,7 +3180,7 @@ export default function POSCheckoutTerminal({
                         className="flex max-h-[88dvh] w-full max-w-[28rem] flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-2xl shadow-slate-950/25 sm:max-w-[30rem] sm:p-4"
                         onClick={(event) => event.stopPropagation()}
                     >
-                        <div className="min-h-0 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
+                        <div className="dgfy-pos-y-auto min-h-0 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
                             <div className="mb-3 flex items-start justify-between gap-2">
                                 <div>
                                     <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Terminal Setup Context</p>

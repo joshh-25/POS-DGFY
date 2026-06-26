@@ -26,7 +26,19 @@ body {
 
 /* Wizard consistency: keep create/edit flows visually compact and aligned. */
 .wizard-modal-shell {
-  width: min(95vw, 1100px);
+  width: min(95vw, 1100px) !important;
+  max-width: min(95vw, 1100px) !important;
+  height: 90vh;
+  max-height: 90vh !important;
+}
+
+@media (max-width: 640px) {
+  .wizard-modal-shell {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    height: 90vh;
+    max-height: 90vh !important;
+  }
 }
 
 .wizard-modal-compact .space-y-6 {
@@ -165,6 +177,10 @@ body {
 .dgfy-pos-sidebar-scroll::-webkit-scrollbar,
 .dgfy-pos-scrollbar-hidden::-webkit-scrollbar {
   display: none;
+}
+
+.dgfy-pos-y-auto {
+  overflow-y: auto;
 }
 
 .dgfy-pos-shell {

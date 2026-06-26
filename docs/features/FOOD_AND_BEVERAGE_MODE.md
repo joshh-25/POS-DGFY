@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-05-15
+last_reviewed: 2026-06-26
 applies_to: fnb_mode
 topic: food_and_beverage
 ---
@@ -48,6 +48,8 @@ Restaurant service charge is optional and separate from the DGFY convenience fee
 ## Menu Inventory
 
 F&B menu items may keep recipe/ingredient definitions in `product_composition`. During F&B POS checkout and Storefront accepted order completion, items with ingredient compositions deduct ingredient stock as `goods_issue` movements instead of deducting only the sold menu item. Those deductions must use the operating location's FIFO batches and update the same location's stock ledger. Non-F&B POS checkout and F&B menu items without a recipe continue to deduct the sold item through the same location-scoped FIFO path when the sold item is stock-bearing.
+
+Offline POS terminal checkout uses the same backend checkout path after replay. While the terminal is offline, queued checkout payloads do not decrement central inventory; stock changes occur only when replay reaches the backend successfully and the shared recipe-aware POS checkout use case commits the transaction. Online Storefront checkout validates and snapshots F&B recipe/kitchen context when the order is accepted, then recipe-aware inventory deduction occurs when the online order is completed/fulfilled through the POS online-order completion path.
 
 Recipe availability preflight is location-scoped. The composition lookup receives the enforced POS checkout location or selected Storefront fulfillment location, checks ingredient quantity against that location's `item_location_stocks` balance when the location-stock schema is available, and then commits deductions through the central stock movement service so location stock and FIFO consumption stay paired. Storefront quote and checkout reject recipe ingredient shortfalls before the online order is created; POS checkout rejects the sale before commit. Shortfall responses include a structured reason code, menu item, ingredient, available quantity, requested quantity, UOM, and location.
 
@@ -104,6 +106,8 @@ F&B product setup uses the shared product wizard but removes Food Manufacturing-
 ## Mode Guards
 
 F&B-only APIs are guarded by `fnbDining`. Manufacturing production routes remain denied in F&B through `productionWorkflows` capability absence, and the frontend hides job-order and dispatch-order navigation while keeping inventory stock movements available.
+
+Frontend mode-sensitive navigation must fail closed until the tenant's active `ops_workflow_mode` is resolved. Job Orders, Dispatch Orders, Services-only, F&B-only, and Hospitality-only sidebar entries must not be rendered from the Food Manufacturing default while settings are loading, stale, or unresolved. Guarded routes such as `/job-orders` and `/dispatch-orders` must also wait for resolved workflow mode before mounting their page components, so a hidden F&B module does not briefly call its backend API and show a generic `403` page. If a stale client still reaches a denied route, the UI should surface the backend workflow-capability denial message instead of replacing it with a generic Axios status string.
 
 ## Role And Permission Contract
 

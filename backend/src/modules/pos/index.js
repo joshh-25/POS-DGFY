@@ -1,6 +1,6 @@
 import { posRepository } from './repositories/posRepository.js';
 import { posCatalogImageStorage } from './repositories/posCatalogImageStorage.js';
-import { createStockMovement } from '../../services/stockMovementService.js';
+import { inventoryStockCommandService } from '../inventory/index.js';
 import { posDeviceBridgeService } from '../../services/posDeviceBridgeService.js';
 import {
     buildListPosCatalogUseCase,
@@ -41,15 +41,13 @@ import {
     buildOpenPosDrawerUseCase
 } from './usecases/posDeviceUseCases.js';
 
-const stockMovementService = { createStockMovement };
-
 export const listPosCatalogUseCase = buildListPosCatalogUseCase({ posRepository });
 export const scanPosBarcodeUseCase = buildScanPosBarcodeUseCase({ posRepository });
-export const checkoutPosUseCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
+export const checkoutPosUseCase = buildCheckoutPosUseCase({ posRepository, inventoryCommandService: inventoryStockCommandService });
 export const listPosTransactionsUseCase = buildListPosTransactionsUseCase({ posRepository });
 export const getPosTransactionByIdUseCase = buildGetPosTransactionByIdUseCase({ posRepository });
 export const recordFiscalPrintEventUseCase = buildRecordFiscalPrintEventUseCase({ posRepository });
-export const voidPosTransactionUseCase = buildVoidPosTransactionUseCase({ posRepository, stockMovementService });
+export const voidPosTransactionUseCase = buildVoidPosTransactionUseCase({ posRepository, inventoryCommandService: inventoryStockCommandService });
 export const generateESalesReportUseCase = buildGenerateESalesReportUseCase({ posRepository });
 export const listESalesReportsUseCase = buildListESalesReportsUseCase({ posRepository });
 export const verifyFiscalEventLedgerUseCase = buildVerifyFiscalEventLedgerUseCase({ posRepository });
@@ -84,7 +82,7 @@ export const getTerminalTodayDashboardUseCase = buildGetTerminalTodayDashboardUs
 export const listIncomingOnlineOrdersUseCase = buildListIncomingOnlineOrdersUseCase({ posRepository });
 export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
     posRepository,
-    stockMovementService
+    inventoryCommandService: inventoryStockCommandService
 });
 export const getPosDeviceStatusUseCase = buildGetPosDeviceStatusUseCase({
     posRepository,

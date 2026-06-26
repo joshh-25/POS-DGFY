@@ -1,6 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as jobOrderService from '../services/jobOrderService.js';
 
+const getJobOrderErrorMessage = (err, fallback) => (
+  err?.response?.data?.message
+  || err?.response?.data?.error
+  || err?.message
+  || fallback
+);
+
 export const useJobOrders = (params = {}) => {
   const [jobOrders, setJobOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -17,7 +24,7 @@ export const useJobOrders = (params = {}) => {
       setJobOrders(orders);
       setPagination(data.pagination);
     } catch (err) {
-      setError(err.message || 'Failed to fetch job orders');
+      setError(getJobOrderErrorMessage(err, 'Failed to fetch job orders'));
     } finally {
       setLoading(false);
     }
@@ -43,7 +50,7 @@ export const useJobOrderById = (joId) => {
       const data = await jobOrderService.getJobOrderById(joId);
       setJobOrder(data);
     } catch (err) {
-      setError(err.message || 'Failed to fetch job order');
+      setError(getJobOrderErrorMessage(err, 'Failed to fetch job order'));
     } finally {
       setLoading(false);
     }
@@ -67,7 +74,7 @@ export const useCreateJobOrder = () => {
       const jobOrder = await jobOrderService.createJobOrder(joData);
       return jobOrder;
     } catch (err) {
-      setError(err.message || 'Failed to create job order');
+      setError(getJobOrderErrorMessage(err, 'Failed to create job order'));
       throw err;
     } finally {
       setLoading(false);
@@ -88,7 +95,7 @@ export const useCompleteJobOrder = () => {
       const response = await jobOrderService.completeJobOrder(joId, completionPayload);
       return response;
     } catch (err) {
-      setError(err.message || 'Failed to complete job order');
+      setError(getJobOrderErrorMessage(err, 'Failed to complete job order'));
       throw err;
     } finally {
       setLoading(false);
@@ -109,7 +116,7 @@ export const useCreateJobOrderDraft = () => {
       const jobOrder = await jobOrderService.createJobOrderDraft(joData);
       return jobOrder;
     } catch (err) {
-      setError(err.message || 'Failed to save job order draft');
+      setError(getJobOrderErrorMessage(err, 'Failed to save job order draft'));
       throw err;
     } finally {
       setLoading(false);
@@ -130,7 +137,7 @@ export const useFinalizeJobOrder = () => {
       const jobOrder = await jobOrderService.finalizeJobOrder(joId);
       return jobOrder;
     } catch (err) {
-      setError(err.message || 'Failed to finalize job order');
+      setError(getJobOrderErrorMessage(err, 'Failed to finalize job order'));
       throw err;
     } finally {
       setLoading(false);
@@ -151,7 +158,7 @@ export const useArchiveJobOrder = () => {
       await jobOrderService.archiveJobOrder(joId);
       return true;
     } catch (err) {
-      setError(err.message || 'Failed to archive job order');
+      setError(getJobOrderErrorMessage(err, 'Failed to archive job order'));
       throw err;
     } finally {
       setLoading(false);
@@ -172,7 +179,7 @@ export const useRestoreJobOrder = () => {
       await jobOrderService.restoreJobOrder(joId);
       return true;
     } catch (err) {
-      setError(err.message || 'Failed to restore job order');
+      setError(getJobOrderErrorMessage(err, 'Failed to restore job order'));
       throw err;
     } finally {
       setLoading(false);

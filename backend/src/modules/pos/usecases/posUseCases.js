@@ -11,7 +11,7 @@ import {
 } from '../../compliance/index.js';
 import logger from '../../../config/logger.js';
 import dbStore from '../../../utils/dbStore.js';
-import { resolveMovementLocation } from '../../../services/locationInventoryService.js';
+import { resolveMovementLocation } from '../../inventory/index.js';
 import {
     computeDgfyConvenienceFee,
     getDgfyConvenienceFeeLabel
@@ -686,6 +686,12 @@ const resolvePosReadLocationScope = async ({
             operationLabel
         });
     } catch (error) {
+        if (allowNullWhenUnresolved && normalizedRequestedLocationId == null) {
+            return {
+                location_id: null,
+                location: null
+            };
+        }
         mapLocationScopeResolutionError(error, {
             requestedLocationId: normalizedRequestedLocationId,
             operationLabel
@@ -740,6 +746,12 @@ const resolvePosOperationalLocationScope = async ({
             operationLabel
         });
     } catch (error) {
+        if (allowNullWhenUnresolved && normalizedRequestedLocationId == null) {
+            return {
+                location_id: null,
+                location: null
+            };
+        }
         mapLocationScopeResolutionError(error, {
             requestedLocationId: normalizedRequestedLocationId,
             operationLabel
@@ -1034,6 +1046,24 @@ const buildLineStockPolicySubject = (line = {}) => ({
     ...(line?.item || {}),
     category: line?.item?.category ?? line?.category
 });
+
+const executeInventoryStockCommand = async ({
+    inventoryCommandService,
+    command,
+    movementData,
+    userId,
+    transaction
+}) => {
+    const commandFn = inventoryCommandService?.[command] || inventoryCommandService?.createStockMovement;
+    if (typeof commandFn !== 'function') {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            `Inventory stock command is unavailable: ${command}`,
+            { statusCode: 409 }
+        );
+    }
+    return commandFn(movementData, userId, transaction);
+};
 
 const getPosSettings = async () => unwrapApplicationResultOrThrow(
     await getAllSettingsUseCase(),
@@ -1604,7 +1634,8 @@ const buildFiscalDocumentSnapshot = ({
     }))
 });
 
-export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService }) => {
+export const buildCheckoutPosUseCase = ({ posRepository, inventoryCommandService, stockMovementService }) => {
+    const stockCommands = inventoryCommandService || stockMovementService;
     return async ({ payload, userId, user }) => {
         const normalizedUserId = parsePositiveInt(userId);
         if (!normalizedUserId) {
@@ -2325,27 +2356,39 @@ export const buildCheckoutPosUseCase = ({ posRepository, stockMovementService })
                 const recipeMovements = recipeMovementPlanByPreparedLine[lineIndex] || [];
                 if (recipeMovements.length > 0) {
                     for (const movement of recipeMovements) {
-                        await stockMovementService.createStockMovement({
-                            item_id: movement.ingredient_item_id,
-                            quantity: Number(movement.quantity),
-                            movement_type: 'goods_issue',
-                            location_id: enforcedCheckoutLocationId,
-                            reference_type: 'POS',
-                            reference_id: String(posTransactionId),
-                            notes: `F&B recipe consumption for ${movement.product_name} on POS checkout ${invoiceNumber}`
-                        }, normalizedUserId, transaction);
+                        await executeInventoryStockCommand({
+                            inventoryCommandService: stockCommands,
+                            command: 'issueStockForPosSale',
+                            movementData: {
+                                item_id: movement.ingredient_item_id,
+                                quantity: Number(movement.quantity),
+                                movement_type: 'goods_issue',
+                                location_id: enforcedCheckoutLocationId,
+                                reference_type: 'POS',
+                                reference_id: String(posTransactionId),
+                                notes: `F&B recipe consumption for ${movement.product_name} on POS checkout ${invoiceNumber}`
+                            },
+                            userId: normalizedUserId,
+                            transaction
+                        });
                     }
                     continue;
                 }
-                await stockMovementService.createStockMovement({
-                    item_id: line.item_id,
-                    quantity: Number(line.quantity),
-                    movement_type: 'goods_issue',
-                    location_id: enforcedCheckoutLocationId,
-                    reference_type: 'POS',
-                    reference_id: String(posTransactionId),
-                    notes: `POS checkout ${invoiceNumber}`
-                }, normalizedUserId, transaction);
+                await executeInventoryStockCommand({
+                    inventoryCommandService: stockCommands,
+                    command: 'issueStockForPosSale',
+                    movementData: {
+                        item_id: line.item_id,
+                        quantity: Number(line.quantity),
+                        movement_type: 'goods_issue',
+                        location_id: enforcedCheckoutLocationId,
+                        reference_type: 'POS',
+                        reference_id: String(posTransactionId),
+                        notes: `POS checkout ${invoiceNumber}`
+                    },
+                    userId: normalizedUserId,
+                    transaction
+                });
             }
 
             const totalAmountCents = toCurrencyCents(totalAmount);
@@ -2463,7 +2506,8 @@ export const buildRecordFiscalPrintEventUseCase = ({ posRepository }) => {
     };
 };
 
-export const buildVoidPosTransactionUseCase = ({ posRepository, stockMovementService }) => {
+export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommandService, stockMovementService }) => {
+    const stockCommands = inventoryCommandService || stockMovementService;
     return async ({ posTransactionId, payload = {}, user = {} } = {}) => {
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         const actorUserId = parsePositiveInt(user?.user_id);
@@ -2511,15 +2555,21 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, stockMovementSer
             for (const movement of stockMovements || []) {
                 const quantity = Math.abs(Number(movement.quantity || 0));
                 if (quantity <= 0) continue;
-                const reversal = await stockMovementService.createStockMovement({
-                    item_id: movement.item_id,
-                    quantity,
-                    movement_type: 'return',
-                    location_id: movement.location_id || existing.location_id || null,
-                    reference_type: 'POS',
-                    reference_id: String(normalizedTransactionId),
-                    notes: `POS void reversal for ${existing.invoice_number}`
-                }, actorUserId, transaction);
+                const reversal = await executeInventoryStockCommand({
+                    inventoryCommandService: stockCommands,
+                    command: 'returnStockForVoidedSale',
+                    movementData: {
+                        item_id: movement.item_id,
+                        quantity,
+                        movement_type: 'return',
+                        location_id: movement.location_id || existing.location_id || null,
+                        reference_type: 'POS',
+                        reference_id: String(normalizedTransactionId),
+                        notes: `POS void reversal for ${existing.invoice_number}`
+                    },
+                    userId: actorUserId,
+                    transaction
+                });
                 stockReversals.push({
                     original_movement_id: movement.movement_id || null,
                     reversal_movement_id: reversal?.movement_id || null
@@ -4875,9 +4925,11 @@ export const buildListIncomingOnlineOrdersUseCase = ({ posRepository }) => {
 
 export const buildUpdateOnlineOrderStatusUseCase = ({
     posRepository,
+    inventoryCommandService,
     stockMovementService,
     activityRecorder = recordDgfyOrderActivity
 }) => {
+    const stockCommands = inventoryCommandService || stockMovementService;
     return async ({ posTransactionId, payload, user }) => {
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         if (!normalizedTransactionId) {
@@ -4977,7 +5029,7 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
             if (
                 currentStatus !== 'completed'
                 && targetStatus === 'completed'
-                && stockMovementService?.createStockMovement
+                && (stockCommands?.issueStockForOnlineFulfillment || stockCommands?.createStockMovement)
             ) {
                 const stockMovements = await buildOnlineOrderStockMovements({
                     order: existing,
@@ -4988,11 +5040,13 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                     }
                 });
                 for (const movement of stockMovements) {
-                    await stockMovementService.createStockMovement(
-                        movement,
-                        actingUserId,
+                    await executeInventoryStockCommand({
+                        inventoryCommandService: stockCommands,
+                        command: 'issueStockForOnlineFulfillment',
+                        movementData: movement,
+                        userId: actingUserId,
                         transaction
-                    );
+                    });
                 }
             }
 

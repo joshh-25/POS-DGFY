@@ -947,14 +947,14 @@ describe('pos use-cases application result contract', () => {
                 .mockResolvedValueOnce(updatedOrder),
             updateOrderById: jest.fn().mockResolvedValue(updatedOrder)
         };
-        const stockMovementService = {
-            createStockMovement: jest.fn().mockResolvedValue({ movement_id: 1 })
+        const inventoryCommandService = {
+            issueStockForOnlineFulfillment: jest.fn().mockResolvedValue({ movement_id: 1 })
         };
         const activityRecorder = jest.fn().mockResolvedValue({ activity_id: 90 });
 
         const useCase = buildUpdateOnlineOrderStatusUseCase({
             posRepository,
-            stockMovementService,
+            inventoryCommandService,
             activityRecorder
         });
 
@@ -965,8 +965,8 @@ describe('pos use-cases application result contract', () => {
         }));
 
         expect(result.success).toBe(true);
-        expect(stockMovementService.createStockMovement).toHaveBeenCalledTimes(1);
-        expect(stockMovementService.createStockMovement).toHaveBeenCalledWith(
+        expect(inventoryCommandService.issueStockForOnlineFulfillment).toHaveBeenCalledTimes(1);
+        expect(inventoryCommandService.issueStockForOnlineFulfillment).toHaveBeenCalledWith(
             expect.objectContaining({
                 item_id: 101,
                 quantity: 2,
@@ -1052,13 +1052,13 @@ describe('pos use-cases application result contract', () => {
             }]),
             updateOrderById: jest.fn().mockResolvedValue(updatedOrder)
         };
-        const stockMovementService = {
-            createStockMovement: jest.fn().mockResolvedValue({ movement_id: 2 })
+        const inventoryCommandService = {
+            issueStockForOnlineFulfillment: jest.fn().mockResolvedValue({ movement_id: 2 })
         };
 
         const useCase = buildUpdateOnlineOrderStatusUseCase({
             posRepository,
-            stockMovementService
+            inventoryCommandService
         });
 
         const result = await dbStore.run({ sequelize: fakeSequelize }, () => useCase({
@@ -1073,8 +1073,8 @@ describe('pos use-cases application result contract', () => {
             lock: true,
             locationId: 4
         }));
-        expect(stockMovementService.createStockMovement).toHaveBeenCalledTimes(1);
-        expect(stockMovementService.createStockMovement).toHaveBeenCalledWith(
+        expect(inventoryCommandService.issueStockForOnlineFulfillment).toHaveBeenCalledTimes(1);
+        expect(inventoryCommandService.issueStockForOnlineFulfillment).toHaveBeenCalledWith(
             expect.objectContaining({
                 item_id: 301,
                 quantity: 0.5,

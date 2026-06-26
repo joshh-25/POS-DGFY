@@ -47,7 +47,15 @@ jest.unstable_mockModule('../src/modules/compliance/index.js', () => ({
 }));
 
 jest.unstable_mockModule('../src/services/locationInventoryService.js', () => ({
-    resolveMovementLocation: mockResolveMovementLocation
+    isMultiLocationInventoryEnabled: jest.fn(async () => true),
+    listActiveLocations: jest.fn(async () => []),
+    resolveDefaultActiveLocation: jest.fn(async () => ({ location_id: 3, name: 'Main' })),
+    assertLocationAccess: jest.fn(async () => true),
+    resolveMovementLocation: mockResolveMovementLocation,
+    resolveTransferLocations: jest.fn(async ({ sourceLocationId, destinationLocationId }) => ({
+        sourceLocation: { location_id: sourceLocationId || 3, name: 'Source' },
+        destinationLocation: { location_id: destinationLocationId || 4, name: 'Destination' }
+    }))
 }));
 
 let buildCheckoutPosUseCase;
@@ -207,10 +215,10 @@ describe('POS checkout F&B contracts', () => {
             incrementPersistentCounter: jest.fn().mockResolvedValue(1),
             getTransactionById: jest.fn(async () => createdTransaction)
         };
-        const stockMovementService = {
-            createStockMovement: jest.fn().mockResolvedValue({ movement_id: 1 })
+        const inventoryCommandService = {
+            issueStockForPosSale: jest.fn().mockResolvedValue({ movement_id: 1 })
         };
-        const useCase = buildCheckoutPosUseCase({ posRepository, stockMovementService });
+        const useCase = buildCheckoutPosUseCase({ posRepository, inventoryCommandService });
 
         const result = await runInTenantContext(() => useCase({
             userId: 12,
@@ -275,6 +283,14 @@ describe('POS checkout F&B contracts', () => {
             invoice_number: 'INV-000001',
             terminal_id: 'TERM-01'
         }), expect.objectContaining({ transaction: expect.any(Object) }));
+        expect(inventoryCommandService.issueStockForPosSale).toHaveBeenCalledWith(expect.objectContaining({
+            item_id: 1,
+            quantity: 1,
+            movement_type: 'goods_issue',
+            location_id: 3,
+            reference_type: 'POS',
+            reference_id: '177'
+        }), 12, expect.any(Object));
     });
 
     it('returns the persisted receipt contract on idempotent replay instead of inferring from invoice prefix or current policy', async () => {
@@ -1018,10 +1034,10 @@ describe('POS checkout F&B contracts', () => {
             createFiscalEvent: jest.fn().mockResolvedValue({ event_hash: 'void-event-hash' }),
             updateTransactionLifecycle: jest.fn(async (id, payload) => ({ ...fiscalTransaction, ...payload }))
         };
-        const stockMovementService = {
-            createStockMovement: jest.fn().mockResolvedValue({ movement_id: 902 })
+        const inventoryCommandService = {
+            returnStockForVoidedSale: jest.fn().mockResolvedValue({ movement_id: 902 })
         };
-        const useCase = buildVoidPosTransactionUseCase({ posRepository, stockMovementService });
+        const useCase = buildVoidPosTransactionUseCase({ posRepository, inventoryCommandService });
 
         const result = await runInTenantContext(() => useCase({
             posTransactionId: 177,
@@ -1035,7 +1051,7 @@ describe('POS checkout F&B contracts', () => {
             fiscal_lifecycle_state: 'voided',
             fiscal_void_event_hash: 'void-event-hash'
         }));
-        expect(stockMovementService.createStockMovement).toHaveBeenCalledWith(expect.objectContaining({
+        expect(inventoryCommandService.returnStockForVoidedSale).toHaveBeenCalledWith(expect.objectContaining({
             item_id: 1,
             quantity: 2,
             movement_type: 'return',
