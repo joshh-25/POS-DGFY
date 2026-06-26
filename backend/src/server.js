@@ -51,6 +51,9 @@ import {
 } from './workers/geoInventoryWorker.js';
 import * as aiController from './controllers/aiController.js';
 import { paymentsEnabled } from './config/paymentsFeature.js';
+import productionEnvValidation from './config/productionEnvValidation.cjs';
+
+const { formatValidationFailure, validateProductionEnv } = productionEnvValidation;
 
 const app = express();
 
@@ -150,6 +153,12 @@ if (isProduction || trustProxyRequested) {
 
 // Environment validation for Production
 if (isProduction) {
+  const validation = validateProductionEnv({ env: process.env });
+  if (validation.shouldFail) {
+    logger.error(formatValidationFailure(validation));
+    process.exit(1);
+  }
+
   const requiredEnv = ['DB_HOST', 'DB_USER', 'DB_NAME', 'JWT_SECRET'];
   const missing = requiredEnv.filter(env => !process.env[env]);
   if (missing.length > 0) {
@@ -267,7 +276,11 @@ const corsOptionsDelegate = (req, callback) => {
       path: req.originalUrl || req.url || '',
       request_id: correlationId
     });
-    callback(new Error('Not allowed by CORS'));
+    const error = new Error('Not allowed by CORS');
+    error.statusCode = 403;
+    error.status = 403;
+    error.code = 'CORS_NOT_ALLOWED';
+    callback(error);
     return;
   }
 

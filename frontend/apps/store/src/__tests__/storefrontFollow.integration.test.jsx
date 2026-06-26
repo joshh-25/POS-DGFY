@@ -126,19 +126,19 @@ describe('storefront follow integration', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText('3 followers')).toBeTruthy();
+      expect(screen.getAllByText('3 followers').length).toBeGreaterThan(0);
       expect(screen.getByRole('button', { name: 'Follow this storefront' }).getAttribute('title')).toBe('Follow');
     }, { timeout: 8000 });
 
     await user.click(screen.getByRole('button', { name: 'Follow this storefront' }));
     await waitFor(() => {
-      expect(screen.getByText('4 followers')).toBeTruthy();
+      expect(screen.getAllByText('4 followers').length).toBeGreaterThan(0);
       expect(screen.getByRole('button', { name: 'Unfollow this storefront' }).getAttribute('title')).toBe('Following');
     }, { timeout: 8000 });
 
     await user.click(screen.getByRole('button', { name: 'Unfollow this storefront' }));
     await waitFor(() => {
-      expect(screen.getByText('3 followers')).toBeTruthy();
+      expect(screen.getAllByText('3 followers').length).toBeGreaterThan(0);
       expect(screen.getByRole('button', { name: 'Follow this storefront' }).getAttribute('title')).toBe('Follow');
     }, { timeout: 8000 });
   }, 10000);
@@ -237,7 +237,7 @@ describe('storefront follow integration', () => {
     }, { timeout: 8000 });
     await user.click(screen.getByRole('button', { name: 'Follow this storefront' }));
     await waitFor(() => {
-      expect(screen.getByText('Storefront is unavailable for follow.')).toBeTruthy();
+      expect(screen.getAllByText('Storefront is unavailable for follow.').length).toBeGreaterThan(0);
     }, { timeout: 8000 });
   }, 10000);
 });

@@ -945,6 +945,11 @@ const toNumberOrNull = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
+const isPublicMapDisabled = (entry = {}) => (
+  entry?.store_has_no_location === true
+  || entry?.map_publication_disabled === true
+  || entry?.public_map_enabled === false
+);
 const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
   const toRad = (value) => value * (Math.PI / 180);
   const earthRadiusKm = 6371;
@@ -976,7 +981,8 @@ const readRouteSlug = () => {
   const path = window.location.pathname || '';
   const patterns = [
     /^\/tenant-store\/([^/]+)(?:\/[^/]+)?$/i,
-    /^\/store\/([^/]+)(?:\/[^/]+)?$/i
+    /^\/store\/([^/]+)(?:\/[^/]+)?$/i,
+    /^\/(?!api\/|map-dgfy(?:\/|$)|store-template(?:\/|$)|storefront-template(?:\/|$)|tenant-store(?:\/|$)|store(?:\/|$))([^/?#]+)$/i
   ];
   for (const pattern of patterns) {
     const match = path.match(pattern);
@@ -992,6 +998,25 @@ const readRouteSlug = () => {
   }
   return null;
 };
+const readRouteLocationId = () => {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search || '');
+  const parsed = Number(params.get('location_id'));
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+const hasMeaningfulDgfyAccount = (account = null) => Boolean(
+  account
+  && typeof account === 'object'
+  && (
+    account.id
+    || account.account_id
+    || account.email
+    || account.phone
+    || account.first_name
+    || account.last_name
+    || account.name
+  )
+);
 const readStoreSubpage = () => {
   if (typeof window === 'undefined') return null;
   const path = window.location.pathname || '';
@@ -2552,7 +2577,7 @@ function DeliveryPinMap({
         markerRef.current = new maplibregl.Marker({ element: el, anchor: 'bottom', draggable: !disabled })
           .setLngLat([lng, lat])
           .addTo(map);
-        if (!disabled) {
+        if (!disabled && typeof markerRef.current?.on === 'function') {
           markerRef.current.on('dragstart', () => {
             if (markerRef.current?._element) markerRef.current._element.style.cursor = 'grabbing';
           });
@@ -3085,7 +3110,8 @@ const FnbHero = ({
   const showMobilePrimaryInfoCard = hasAboutSection || hasMobileStoreDetailsSummary;
   const hasAboutToggle = aboutText.length > 180;
   const hasAddress = Boolean(addressText);
-  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
+  const hasMapData = !isPublicMapDisabled(selectedStore)
+    && Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
     && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
   const whyChooseUs = Array.isArray(heroSectionModel.whyChooseUs) && heroSectionModel.whyChooseUs.length > 0
     ? heroSectionModel.whyChooseUs
@@ -4290,8 +4316,7 @@ const ServicesHero = ({
   const hasAboutOrGallerySection = hasAboutSection || hasGallerySection;
   const hasAboutToggle = aboutText.length > 180;
   const hasAddress = Boolean(addressText);
-  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
-    && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
+  const hasMapData = Array.isArray(serviceHeroModel.mapStores) && serviceHeroModel.mapStores.length > 0;
   const visibleWhyChooseUs = Array.isArray(serviceHeroModel.whyChooseUs) ? serviceHeroModel.whyChooseUs.slice(0, MAX_STOREFRONT_WHY_CHOOSE_US) : [];
   const visibleContactRows = useMemo(() => buildVisibleStorefrontContactRows({
     contactRows: serviceHeroModel.contactRows,
@@ -5160,8 +5185,7 @@ const SimpleHero = ({
   const hasAboutSection = aboutText.length > 0;
   const hasAboutToggle = aboutText.length > 180;
   const hasAddress = Boolean(addressText);
-  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
-    && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
+  const hasMapData = Array.isArray(simpleHeroModel.mapStores) && simpleHeroModel.mapStores.length > 0;
   const visibleWhyChooseUs = Array.isArray(simpleHeroModel.whyChooseUs) ? simpleHeroModel.whyChooseUs.slice(0, MAX_STOREFRONT_WHY_CHOOSE_US) : [];
   const visibleContactRows = useMemo(() => buildVisibleStorefrontContactRows({
     contactRows: simpleHeroModel.contactRows,
@@ -5858,7 +5882,7 @@ export default function StorefrontApp() {
   const [highlightedDiscoveryMarkerKey, setHighlightedDiscoveryMarkerKey] = useState('');
   const [storeLocations, setStoreLocations] = useState([]);
   const [primaryLocationId, setPrimaryLocationId] = useState(null);
-  const [selectedLocationId, setSelectedLocationId] = useState(null);
+  const [selectedLocationId, setSelectedLocationId] = useState(() => readRouteLocationId());
   const [hasSelectedBranchFromMenu, setHasSelectedBranchFromMenu] = useState(false);
   const fnbCategoryDropdownRef = useRef(null);
   const [preferredStoreLocationSelection, setPreferredStoreLocationSelection] = useState(null);
@@ -6033,8 +6057,9 @@ export default function StorefrontApp() {
         const payload = await requestJson('/api/v1/dgfy/auth/me', { cache: 'no-store' });
         if (cancelled) return;
         const account = payload?.account || payload || null;
-        setDgfySessionAccount(account && typeof account === 'object' ? account : null);
-        if (account && typeof account === 'object') {
+        const hasAccount = hasMeaningfulDgfyAccount(account);
+        setDgfySessionAccount(hasAccount ? account : null);
+        if (hasAccount) {
           clearDgfyAuthToken();
           setDgfyAuthTokenState('');
         }
@@ -6048,7 +6073,7 @@ export default function StorefrontApp() {
             });
             if (cancelled) return;
             const account = payload?.account || payload || null;
-            setDgfySessionAccount(account && typeof account === 'object' ? account : null);
+            setDgfySessionAccount(hasMeaningfulDgfyAccount(account) ? account : null);
             return;
           } catch {
             if (cancelled) return;
@@ -6566,7 +6591,7 @@ export default function StorefrontApp() {
       if (requestSearch) q.set('search', requestSearch);
       q.set('result_mode', discoveryResultMode);
       q.set('stock_filter', discoveryStockFilter);
-      q.set('pin_scope', discoveryPinScope);
+      q.set('pin_scope', options?.pinScope || discoveryPinScope);
       q.set('include_match_meta', discoveryIncludeMatchMeta ? 'true' : 'false');
       if (resolvedCoords?.latitude && resolvedCoords?.longitude) {
         q.set('latitude', String(resolvedCoords.latitude));
@@ -6671,6 +6696,14 @@ export default function StorefrontApp() {
       try {
         const locationsData = await requestJson('/api/v1/store/locations', { storeSlug: profile.slug, cache: 'no-store' });
         if (requestSequence !== storeLoadRequestSequenceRef.current) return;
+        const publicMapDisabled = isPublicMapDisabled(profile) || isPublicMapDisabled(locationsData);
+        if (publicMapDisabled) {
+          setSelectedStore((prev) => (prev ? { ...prev, store_has_no_location: true, map_publication_disabled: true } : prev));
+          setStoreLocations([]);
+          setPrimaryLocationId(null);
+          resolvedCatalogLocationId = null;
+          setSelectedLocationId(null);
+        } else {
         const apiLocations = Array.isArray(locationsData?.locations) ? locationsData.locations : [];
         const useProfileSnapshot = !locationsMatchProfileSnapshot(apiLocations, profile);
         const locations = useProfileSnapshot ? profileLocations : apiLocations;
@@ -6685,7 +6718,7 @@ export default function StorefrontApp() {
             && toSlug(preferredStoreLocationSelection.slug) === toSlug(profile.slug)
           )
             ? preferredStoreLocationSelection.locationId
-            : null;
+            : (toSlug(profile.slug) === toSlug(normalized) ? readRouteLocationId() : null);
           const preferredLocation = preferredLocationId == null
             ? null
             : (locations.find((location) => Number(location.location_id) === Number(preferredLocationId)) || null);
@@ -6705,6 +6738,7 @@ export default function StorefrontApp() {
         } else {
           resolvedCatalogLocationId = null;
           setSelectedLocationId(null);
+        }
         }
       } catch {
         const fallbackPrimaryLocationId = profileLocations.find((location) => location.is_primary_storefront)?.location_id ?? profile.location_id ?? null;
@@ -6762,6 +6796,49 @@ export default function StorefrontApp() {
     }
     loadStores();
   }, [loadStores, debouncedDiscoverySearch]);
+
+  useEffect(() => {
+    if (isStorePage || !navigator?.geolocation) return;
+    let cancelled = false;
+    const requestGrantedLocation = () => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          if (cancelled) return;
+          loadStores({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          });
+        },
+        () => {},
+        {
+          enableHighAccuracy: true,
+          timeout: 8000
+        }
+      );
+    };
+    const checkPermission = async () => {
+      try {
+        if (navigator.permissions?.query) {
+          const permission = await navigator.permissions.query({ name: 'geolocation' });
+          if (!cancelled && permission?.state === 'granted') requestGrantedLocation();
+          return;
+        }
+      } catch {
+        // Fall through to prior explicit-success compatibility below.
+      }
+      try {
+        if (!cancelled && window.localStorage.getItem('dgfy_storefront_discovery_location_permission_v1') === 'granted') {
+          requestGrantedLocation();
+        }
+      } catch {
+        // Local storage can be unavailable in private/hardened modes.
+      }
+    };
+    checkPermission();
+    return () => {
+      cancelled = true;
+    };
+  }, [isStorePage, loadStores]);
 
   useEffect(() => {
     discoveryCoordsRef.current = discoveryCoords;
@@ -7444,7 +7521,8 @@ export default function StorefrontApp() {
         const slug = toSlug(store?.slug);
         const locationBundle = discoveryLocationMap[slug] || {};
         const allLocations = Array.isArray(locationBundle.locations) ? locationBundle.locations : [];
-        const activeLocations = allLocations.filter((location) => location?.is_active !== false);
+        const mapDisabled = isPublicMapDisabled(store) || isPublicMapDisabled(locationBundle);
+        const activeLocations = mapDisabled ? [] : allLocations.filter((location) => location?.is_active !== false);
         const pins = activeLocations
           .map((location) => ({
             ...location,
@@ -7465,10 +7543,10 @@ export default function StorefrontApp() {
           || pins.find((location) => location?.is_primary_storefront === true)
           || null;
         const fallbackLocation = nearestMatchingLocation || primaryLocation || pins[0] || null;
-        const fallbackLat = toNumberOrNull(store?.latitude);
-        const fallbackLng = toNumberOrNull(store?.longitude);
-        const anchorLatitude = fallbackLocation?.latitude ?? fallbackLat ?? DEFAULT_CENTER.latitude;
-        const anchorLongitude = fallbackLocation?.longitude ?? fallbackLng ?? DEFAULT_CENTER.longitude;
+        const fallbackLat = mapDisabled ? null : toNumberOrNull(store?.latitude);
+        const fallbackLng = mapDisabled ? null : toNumberOrNull(store?.longitude);
+        const anchorLatitude = fallbackLocation?.latitude ?? fallbackLat ?? null;
+        const anchorLongitude = fallbackLocation?.longitude ?? fallbackLng ?? null;
         const nearestPinWithDistance = hasDiscoveryLocation
           ? pins
             .map((location) => ({
@@ -7602,7 +7680,8 @@ export default function StorefrontApp() {
       const slug = toSlug(store?.slug);
       const locationBundle = discoveryLocationMap[slug] || {};
       const locations = Array.isArray(locationBundle.locations) ? locationBundle.locations : [];
-      const activeWithCoords = locations
+      const mapDisabled = isPublicMapDisabled(store) || isPublicMapDisabled(locationBundle);
+      const activeWithCoords = mapDisabled ? [] : locations
         .filter((location) => location?.is_active !== false)
         .map((location) => ({
           ...location,
@@ -7620,6 +7699,7 @@ export default function StorefrontApp() {
         ? (activeWithCoords.find((location) => Number(location.location_id) === nearestMatchingLocationId) || null)
         : null;
       if (activeWithCoords.length === 0) {
+        if (mapDisabled) return;
         const lat = toNumberOrNull(store?.latitude);
         const lng = toNumberOrNull(store?.longitude);
         if (lat == null || lng == null) return;
@@ -7738,6 +7818,7 @@ export default function StorefrontApp() {
   const fallbackDiscoveryMapPins = useMemo(() => (
     (Array.isArray(filteredDiscoveryStores) ? filteredDiscoveryStores : [])
       .map((store) => {
+        if (isPublicMapDisabled(store)) return null;
         const lat = toNumberOrNull(store?.latitude);
         const lng = toNumberOrNull(store?.longitude);
         if (lat == null || lng == null) return null;
@@ -7766,7 +7847,8 @@ export default function StorefrontApp() {
     (Array.isArray(storesWithNearestBranch) ? storesWithNearestBranch : []).forEach((store) => {
       const slug = toSlug(store?.slug || store?.tenant_name);
       const locationBundle = discoveryLocationMap[slug] || {};
-      const activeLocations = (Array.isArray(locationBundle.locations) ? locationBundle.locations : [])
+      const mapDisabled = isPublicMapDisabled(store) || isPublicMapDisabled(locationBundle);
+      const activeLocations = mapDisabled ? [] : (Array.isArray(locationBundle.locations) ? locationBundle.locations : [])
         .filter((location) => location?.is_active !== false)
         .map((location) => ({
           ...location,
@@ -7776,6 +7858,7 @@ export default function StorefrontApp() {
         .filter((location) => location.latitude != null && location.longitude != null);
 
       if (activeLocations.length === 0) {
+        if (mapDisabled) return;
         const lat = toNumberOrNull(store?.latitude);
         const lng = toNumberOrNull(store?.longitude);
         if (lat == null || lng == null) return;
@@ -8066,7 +8149,8 @@ export default function StorefrontApp() {
   const bookingPermitted = canUseBooking(selectedStore);
   const serviceHeroModel = useMemo(() => {
     if (!selectedStore || !isServicesMode) return null;
-    const mapStores = storeLocations.length > 0
+    const publicMapDisabled = isPublicMapDisabled(selectedStore);
+    const mapStores = publicMapDisabled ? [] : storeLocations.length > 0
       ? storeLocations.map((location) => ({ ...location, tenant_name: selectedStore?.tenant_name }))
       : [selectedStore];
     const locationName = String(selectedLocation?.name || overviewSectionModel?.location?.label || selectedStore?.location_name || '').trim();
@@ -8095,7 +8179,7 @@ export default function StorefrontApp() {
       || selectedStore?.tenant_created_at
       || selectedStore?.created_at
     );
-    const directionsUrl = buildGoogleMapsDirectionsUrl({
+    const directionsUrl = publicMapDisabled ? '' : buildGoogleMapsDirectionsUrl({
       latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
       longitude: selectedLocation?.longitude ?? selectedStore?.longitude,
       addressLine
@@ -8490,7 +8574,8 @@ export default function StorefrontApp() {
       || selectedStore?.tenant_created_at
       || selectedStore?.created_at
     );
-    const mapStores = storeLocations.length > 0
+    const publicMapDisabled = isPublicMapDisabled(selectedStore);
+    const mapStores = publicMapDisabled ? [] : storeLocations.length > 0
       ? storeLocations.map((location) => ({ ...location, tenant_name: selectedStore?.tenant_name }))
       : [selectedStore];
     const whyChooseUs = Array.isArray(overviewSectionModel?.whyChooseUs) && overviewSectionModel.whyChooseUs.length > 0
@@ -8499,7 +8584,7 @@ export default function StorefrontApp() {
           categories: Array.isArray(overviewSectionModel?.categories) ? overviewSectionModel.categories : [],
           catalog
         });
-    const directionsUrl = buildGoogleMapsDirectionsUrl({
+    const directionsUrl = publicMapDisabled ? '' : buildGoogleMapsDirectionsUrl({
       latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
       longitude: selectedLocation?.longitude ?? selectedStore?.longitude,
       addressLine
@@ -10872,26 +10957,15 @@ export default function StorefrontApp() {
     setIsStoreListVisible(false);
     setIsMobileResultsCollapsed(false);
     setSelectedMapPin(null);
-    setDebouncedDiscoverySearch(currentSearch);
-    if (!navigator?.geolocation) {
-      loadStores(undefined, { useImmediateSearch: true });
+    if (
+      currentSearch === String(debouncedDiscoverySearch || '').trim()
+      && !discoveryCoordsRef.current
+      && discoveryPinScope === 'tenant_primary'
+    ) {
       return;
     }
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        loadStores({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude
-        }, { useImmediateSearch: true });
-      },
-      () => {
-        loadStores(undefined, { useImmediateSearch: true });
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 8000
-      }
-    );
+    setDebouncedDiscoverySearch(currentSearch);
+    loadStores(null, { useImmediateSearch: true, pinScope: 'tenant_primary' });
   };
   const handlePopularDiscoveryCategory = (query) => {
     const normalized = String(query || '').trim();
@@ -11186,6 +11260,7 @@ export default function StorefrontApp() {
       const categories = normalizeStorefrontCategories(store?.storefront_categories);
       const primaryCategory = categories[0] || String(store?.workflow_mode || 'Store').replace(/_/g, ' ');
       const secondaryCategory = categories[1] || null;
+      const publicMapDisabled = isPublicMapDisabled(store);
       const categoryLabel = [primaryCategory, secondaryCategory].filter(Boolean).join(' â€¢ ');
 	      const reviewSummary = normalizeStorefrontReviewSummary(store?.storefront_review_summary);
 	      const ratingValue = Number.isFinite(Number(reviewSummary?.score)) ? Number(reviewSummary.score).toFixed(1) : '0.0';
@@ -11193,8 +11268,9 @@ export default function StorefrontApp() {
       const distanceLabel = Number.isFinite(Number(store?.nearest_distance_km)) ? `${Number(store.nearest_distance_km).toFixed(1)} km away` : 'Distance unavailable';
       const waitBase = Number(store?.estimated_wait_minutes || 10);
       const etaLabel = `${waitBase}-${waitBase + 5} min`;
-	      const branchCount = Number(store?.active_location_count || 0);
+	      const branchCount = publicMapDisabled ? 0 : Number(store?.active_location_count || 0);
 	      const branchLabel = branchCount > 0 ? `${branchCount} ${branchCount === 1 ? 'Branch' : 'Branches'}` : null;
+      const locationAvailabilityLabel = publicMapDisabled ? 'Searchable storefront, no map pin' : branchLabel;
 	      const isStoreOpenNow = store?.storefront_open === true;
 		      const businessHoursLabel = formatStorefrontHoursLabel(
             store?.storefront_hours,
@@ -11398,7 +11474,7 @@ export default function StorefrontApp() {
                     </span>
                   </div>
 	                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 11, color: '#64748b' }}>
-	                    {branchLabel && <span style={{ fontWeight: 600 }}>{branchLabel}</span>}
+	                    {locationAvailabilityLabel && <span style={{ fontWeight: 600 }}>{locationAvailabilityLabel}</span>}
                     {Number(store?.catalog_count || 0) > 0 && (
                       <>
                         <span style={{ color: '#cbd5e1' }}>â€¢</span>
@@ -11551,7 +11627,7 @@ export default function StorefrontApp() {
               </span>
             </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              {branchLabel && <span style={{ fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#64748b' }}>{branchLabel}</span>}
+              {locationAvailabilityLabel && <span style={{ fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#64748b' }}>{locationAvailabilityLabel}</span>}
               {Number(store?.catalog_count || 0) > 0 && <span style={{ fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#94a3b8' }}>{Number(store.catalog_count)} item(s)</span>}
                       </div>
                       {!isStoreOpenNow && (
@@ -12144,11 +12220,7 @@ export default function StorefrontApp() {
               onItemClick={handleDiscoveryNavItemClick}
               onAuthClick={() => {
                 setIsDiscoveryNavMenuOpen(false);
-                if (isDgfyCustomerSignedIn) {
-                  openAccountPanel();
-                  return;
-                }
-                openCanonicalDgfyAuth('customer');
+                openAccountPanel();
               }}
               onBusinessClick={openBusinessRegistrationFlow}
             />

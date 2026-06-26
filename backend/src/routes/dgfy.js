@@ -1,5 +1,5 @@
 import express from 'express';
-import { authLimiter, dgfyTenantSessionLimiter } from '../middleware/rateLimiter.js';
+import { authLimiter, dgfyAccountSearchLimiter, dgfyTenantSessionLimiter } from '../middleware/rateLimiter.js';
 import { authenticate, authenticateAdmin, checkPermission } from '../middleware/auth.js';
 import { authenticateDgfyAccount, authenticateDgfyAccountOrTenantMembership } from '../middleware/dgfyAuth.js';
 import { PERMISSIONS } from '../config/permissions.js';
@@ -98,7 +98,7 @@ router.get('/legacy-link/status', authenticate, getDgfyLegacyLinkStatus);
 router.post('/legacy-link/request-email-otp', authLimiter, authenticate, requestDgfyLegacyLinkEmailOtp);
 router.post('/legacy-link/complete', authLimiter, authenticate, completeDgfyLegacyLink);
 router.post('/legacy-link/start-registration-handoff', authLimiter, authenticate, startDgfyLegacyRegistrationHandoff);
-router.get('/accounts/search', authLimiter, authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), searchDgfyBusinessAccounts);
+router.get('/accounts/search', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), dgfyAccountSearchLimiter, searchDgfyBusinessAccounts);
 router.post('/invitations', authenticate, checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), createDgfyInvitation);
 router.post('/invitations/:membership_id/accept', authenticateDgfyAccountOrTenantMembership, acceptDgfyInvitation);
 router.post('/invitations/:membership_id/reject', authenticateDgfyAccountOrTenantMembership, rejectDgfyInvitation);

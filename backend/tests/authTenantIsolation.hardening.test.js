@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import app from '../src/server.js';
 import sequelize from '../src/config/database.js';
 import db from '../src/models/index.js';
+import { ensureLandlordTenantSchemaReady } from './helpers/landlordSchemaReadiness.js';
 
 const PENDING_TENANT_TOKEN_PREFIX = 'token-pending-hardening-';
 const ACTIVE_TENANT_TOKEN_PREFIX = 'token-active-hardening-';
@@ -87,6 +88,7 @@ const createPendingTenant = async () => {
 describe('Auth tenant isolation hardening', () => {
   beforeAll(async () => {
     await sequelize.authenticate();
+    await ensureLandlordTenantSchemaReady();
   });
 
   afterEach(async () => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,18 @@ const LEGACY_ROLE_OPTIONS = [
     { key: 'admin', label: 'Admin', role: 'admin', location_scope: 'tenant', description: LEGACY_ROLE_DESCRIPTIONS.admin }
 ];
 
+const getSearchErrorMessage = (error) => {
+    const message = error?.response?.data?.message || 'Unable to search DGFY accounts.';
+    if (error?.response?.status !== 429) return message;
+    const retryAfterSeconds = Number.parseInt(
+        error?.response?.headers?.['retry-after'] || error?.response?.data?.retryAfterSeconds || '',
+        10
+    );
+    if (!Number.isFinite(retryAfterSeconds) || retryAfterSeconds <= 0) return message;
+    const minutes = Math.max(1, Math.ceil(retryAfterSeconds / 60));
+    return `${message} Try again in about ${minutes} minute${minutes === 1 ? '' : 's'}.`;
+};
+
 export default function UserInvitationModal({ open, onOpenChange, onSuccess, roleCatalog = null }) {
     const [accountQuery, setAccountQuery] = useState('');
     const [accountResults, setAccountResults] = useState([]);
@@ -39,6 +51,7 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
     const [loading, setLoading] = useState(false);
     const [locations, setLocations] = useState([]);
     const [selectedLocationIds, setSelectedLocationIds] = useState([]);
+    const lastSearchQueryRef = useRef('');
 
     const roleOptions = useMemo(() => {
         const presets = Array.isArray(roleCatalog?.presets) ? roleCatalog.presets : [];
@@ -84,12 +97,18 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
             setAccountResults([]);
             setAccountSearchError('');
             setAccountSearchLoading(false);
+            lastSearchQueryRef.current = '';
+            return undefined;
+        }
+        if (query === lastSearchQueryRef.current) {
+            setAccountSearchLoading(false);
             return undefined;
         }
 
         let cancelled = false;
         setAccountSearchLoading(true);
         const timeoutId = window.setTimeout(() => {
+            lastSearchQueryRef.current = query;
             userService.searchDgfyBusinessAccounts(query)
                 .then((payload) => {
                     if (cancelled) return;
@@ -99,7 +118,7 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
                 .catch((error) => {
                     if (cancelled) return;
                     setAccountResults([]);
-                    setAccountSearchError(error?.response?.data?.message || 'Unable to search DGFY accounts.');
+                    setAccountSearchError(getSearchErrorMessage(error));
                 })
                 .finally(() => {
                     if (!cancelled) setAccountSearchLoading(false);
@@ -134,7 +153,7 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
         e.preventDefault();
 
         if (!selectedDgfyAccount?.dgfy_account_id) {
-            toast.error('Select a registered DGFY account to invite');
+            toast.error(accountSearchLoading ? 'Wait for DGFY account search to finish' : 'Select a registered DGFY account to invite');
             return;
         }
 
@@ -153,9 +172,10 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
             });
 
             if (result.email_sent) {
-                toast.success(`Invitation sent to ${selectedDgfyAccount.email}`);
+                toast.success(`Invitation sent by email to ${selectedDgfyAccount.email} and visible in DGFY My Account > Business.`);
             } else {
-                toast.success('Invitation created. Email delivery needs attention, but the invite is visible in DGFY My Account.');
+                const deliveryDetail = result.delivery_error ? ` (${result.delivery_error})` : '';
+                toast.success(`Invitation is visible in DGFY My Account > Business; email delivery failed or is not configured${deliveryDetail}.`);
             }
 
             // Reset form
@@ -198,8 +218,11 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
                                 className="pl-9"
                                 value={accountQuery}
                                 onChange={(e) => {
-                                    setAccountQuery(e.target.value);
-                                    setSelectedDgfyAccount(null);
+                                    const nextValue = e.target.value;
+                                    setAccountQuery(nextValue);
+                                    if (String(nextValue || '').trim() !== String(accountQuery || '').trim()) {
+                                        setSelectedDgfyAccount(null);
+                                    }
                                 }}
                                 autoFocus
                             />
@@ -248,7 +271,7 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
                                     );
                                 })}
                             </div>
-                        ) : accountQuery.trim().length >= 2 && !accountSearchLoading ? (
+                        ) : accountQuery.trim().length >= 2 && !accountSearchLoading && !accountSearchError ? (
                             <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
                                 No registered active DGFY account found for this search.
                             </p>
@@ -300,7 +323,7 @@ export default function UserInvitationModal({ open, onOpenChange, onSuccess, rol
                         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                             Cancel
                         </Button>
-                        <Button type="submit" className="bg-teal-600 hover:bg-teal-700" disabled={loading}>
+                        <Button type="submit" className="bg-teal-600 hover:bg-teal-700" disabled={loading || accountSearchLoading}>
                             {loading ? 'Sending...' : 'Send DGFY Invitation'}
                         </Button>
                     </DialogFooter>

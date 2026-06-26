@@ -422,7 +422,14 @@ export function DgfyCustomerAccountPage({
                           onClick={() => onTrackReference(order)}
                           style={{ background: 'transparent', border: `1px solid ${THEME.border}`, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, color: THEME.primary, cursor: 'pointer' }}
                         >
-                          Track Order
+                          Track
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveNav('orders')}
+                          style={{ background: 'transparent', border: `1px solid ${THEME.border}`, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, color: THEME.muted, cursor: 'pointer' }}
+                        >
+                          Cancel
                         </button>
                         <ChevronRight size={16} color={THEME.muted} />
                       </div>
@@ -495,10 +502,18 @@ export function DgfyCustomerAccountPage({
                   <Home size={20} />
                 </div>
                 <div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: THEME.text, marginBottom: 4 }}>
+                    {defaultAddress.label || 'Address'}{defaultAddress.is_default ? ' - Default' : ''}
+                  </div>
                   <span style={{ background: THEME.successBg, color: THEME.success, fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, marginBottom: 4, display: 'inline-block' }}>Default</span>
                   <div style={{ fontSize: 14, color: THEME.muted, lineHeight: 1.5 }}>
                     {defaultAddress.address_line || 'Address line unavailable.'}
                   </div>
+                  {onUseAddressForCheckout ? (
+                    <button type="button" onClick={() => onUseAddressForCheckout(defaultAddress)} style={{ marginTop: 10 }}>
+                      Use for Checkout
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ) : (
@@ -518,7 +533,7 @@ export function DgfyCustomerAccountPage({
         <div style={{ fontSize: 16, fontWeight: 700, color: THEME.text, marginBottom: 16 }}>Quick Actions</div>
         <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? 'repeat(2, 1fr)' : 'repeat(5, 1fr)', gap: 16 }}>
           {[
-            { label: 'Reorder Items', icon: ShoppingBag, color: THEME.success },
+            { label: 'Reorder', icon: ShoppingBag, color: THEME.success },
             { label: 'Add Address', icon: MapPin, color: THEME.orange },
             { label: 'Update Profile', icon: User, color: THEME.primary },
             { label: 'Help Center', icon: HelpCircle, color: THEME.purple },
@@ -529,7 +544,7 @@ export function DgfyCustomerAccountPage({
               <button 
                 key={i} 
                 onClick={
-                  action.label === 'Reorder Items' ? () => setActiveNav('orders') :
+                  action.label === 'Reorder' ? () => setActiveNav('orders') :
                   action.label === 'Add Address' ? () => setActiveNav('addresses') :
                   action.label === 'Update Profile' ? () => setActiveNav('account') :
                   onHelp
@@ -631,7 +646,7 @@ export function DgfyCustomerAccountPage({
           const isEditing = editingAddressId === address.address_id;
           const busy = accountAddressActionId === String(address.address_id);
           if (isEditing) return <form key={`edit-${address.address_id}`} onSubmit={async (event) => { event.preventDefault(); if (await onSaveAddress?.(editingAddressDraft, address)) setEditingAddressId(null); }} style={{ border: `1px solid ${THEME.border}`, borderRadius: 14, padding: 16, display: 'grid', gap: 10 }}><input value={editingAddressDraft.label} onChange={(event) => setEditingAddressDraft((previous) => ({ ...previous, label: event.target.value }))} /><textarea rows={3} value={editingAddressDraft.address_line} onChange={(event) => setEditingAddressDraft((previous) => ({ ...previous, address_line: event.target.value }))} />{renderAddressPinEditor?.({ draft: editingAddressDraft, onChange: setEditingAddressDraft, mode: `edit-${address.address_id}` })}<div style={{ display: 'flex', gap: 8 }}><button type="button" onClick={() => setEditingAddressId(null)}>Cancel</button><button type="submit" disabled={busy}>Save Changes</button></div></form>;
-          return <article key={`addr-${address.address_id}`} style={{ border: `1px solid ${THEME.border}`, borderRadius: 14, padding: 16, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}><div><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><MapPin size={18} color={THEME.primary} /><strong>{address.label || 'Address'}</strong>{address.is_default ? <span style={{ color: THEME.success, fontSize: 12 }}>Default</span> : null}</div><div style={{ marginTop: 8, color: THEME.muted }}>{address.address_line}</div></div><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{onUseAddressForCheckout ? <button type="button" onClick={() => onUseAddressForCheckout(address)}>Use in Checkout</button> : null}<button type="button" onClick={() => { setEditingAddressId(address.address_id); setEditingAddressDraft({ label: address.label || 'Address', address_line: address.address_line || '', latitude: address.latitude, longitude: address.longitude, is_default: address.is_default === true }); }}>Edit</button>{!address.is_default ? <button type="button" disabled={busy} onClick={() => onSetDefaultAddress?.(address)}>Set Default</button> : null}<button type="button" disabled={busy} onClick={() => onDeleteAddress?.(address)}>Remove</button></div></article>;
+          return <article key={`addr-${address.address_id}`} style={{ border: `1px solid ${THEME.border}`, borderRadius: 14, padding: 16, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}><div><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><MapPin size={18} color={THEME.primary} /><strong>{address.label || 'Address'}</strong>{address.is_default ? <span style={{ color: THEME.success, fontSize: 12 }}>Default</span> : null}</div><div style={{ marginTop: 8, color: THEME.muted }}>{address.address_line}</div></div><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{onUseAddressForCheckout ? <button type="button" onClick={() => onUseAddressForCheckout(address)}>Use for Checkout</button> : null}<button type="button" onClick={() => { setEditingAddressId(address.address_id); setEditingAddressDraft({ label: address.label || 'Address', address_line: address.address_line || '', latitude: address.latitude, longitude: address.longitude, is_default: address.is_default === true }); }}>Edit</button>{!address.is_default ? <button type="button" disabled={busy} onClick={() => onSetDefaultAddress?.(address)}>Set Default</button> : null}<button type="button" disabled={busy} onClick={() => onDeleteAddress?.(address)}>Remove</button></div></article>;
         })}
       </div>
     </div>
@@ -958,6 +973,9 @@ export function DgfyCustomerAccountPage({
 
         {/* Scrollable Page Content */}
         <main style={{ padding: isMobileViewport ? 16 : 40, maxWidth: 1200, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+          <h1 style={{ margin: '0 0 18px', fontSize: isMobileViewport ? 24 : 30, lineHeight: 1.15, color: THEME.text }}>
+            My Account
+          </h1>
           {activeNav === 'overview' && renderOverview()}
           {activeNav === 'orders' && renderOrders()}
           {activeNav === 'bookings' && renderBookings()}

@@ -41,6 +41,8 @@ export const readStoreAuthToken = () => {
 
 export const readDgfyAuthToken = () => {
   if (typeof window === 'undefined') return '';
+  const legacyGlobalToken = String(window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ || '').trim();
+  if (legacyGlobalToken) return legacyGlobalToken;
   for (const key of DGFY_CUSTOMER_AUTH_TOKEN_KEYS) {
     const token = readSessionToken(key);
     if (token) return token;
@@ -61,6 +63,7 @@ export const writeDgfyAuthToken = (token) => {
   if (typeof window === 'undefined') return;
   const normalizedToken = String(token || '').trim();
   if (!normalizedToken) return;
+  window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = normalizedToken;
   writeSessionToken(DGFY_CUSTOMER_AUTH_TOKEN_KEYS[0], normalizedToken);
   clearTokenKeys(window.sessionStorage, DGFY_CUSTOMER_AUTH_TOKEN_KEYS.slice(1));
   clearTokenKeys(window.localStorage, DGFY_CUSTOMER_AUTH_TOKEN_KEYS);
@@ -75,6 +78,7 @@ export const clearStoreAuthToken = () => {
 
 export const clearDgfyAuthToken = () => {
   if (typeof window === 'undefined') return;
+  window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
   clearTokenKeys(window.sessionStorage, DGFY_CUSTOMER_AUTH_TOKEN_KEYS);
   clearTokenKeys(window.localStorage, DGFY_CUSTOMER_AUTH_TOKEN_KEYS);
 };
