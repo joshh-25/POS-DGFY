@@ -107,3 +107,8 @@ export const deleteStorefrontAsset = async (assetType) => {
   invalidateSettingsCache();
   return response.data.data;
 };
+
+export const verifyPosSettingsAccessPin = async (pin) => {
+  const response = await api.post('/settings/verify-pos-access-pin', { pin });
+  return response.data.data;
+};

@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: pos
-last_reviewed: 2026-06-24
+last_reviewed: 2026-06-26
 applies_to: pos, storefront, skupervisor
 topic: recent_pos_storefront_changes
 ---
@@ -166,32 +166,52 @@ This document only lists the important changes recently made to the POS, Storefr
 
 - New DGFY business registration now hands off directly into the POS surface instead of returning the operator to a separate IMS-first onboarding entry point.
 - The guided setup handoff now uses:
-  - `/terminal?setup_flow=tenant_onboarding&setup_step=onboarding`
+  - `/terminal?setup_flow=tenant_onboarding&setup_step=profile`
 - New-tenant POS entry is now enforced in this order:
   - `Create DGFY Account`
   - `Create Business Account`
   - `Automatically Go Inside POS`
-  - `Onboarding`
-  - `POS Setup`
+  - `Profile Setting`
   - `Storefront Setup`
+  - `POS Setup`
   - `Complete All Required Fields`
   - `Navigate Inside Full POS`
-- During this guided flow, POS now treats tenant setup as a gated sequence for the tenant master admin instead of a soft reminder only.
-- The onboarding modal is forced first when `tenant_onboarding_state !== completed`.
-- After onboarding is completed, POS automatically routes the operator into `Settings > POS Setup`.
+- During this guided flow, POS treats tenant setup as a gated sequence for the tenant master admin instead of a soft reminder only.
+- The POS now owns the guided tenant-onboarding modal for this surface; it does not reuse the IMS/SKUpervisor onboarding modal UI.
+- Profile Setting is the first step and reuses the business/account identity already supplied during registration.
+- Profile Setting readiness is satisfied by the registered tenant/company name from the shared company/settings payload.
+- Storefront Setup is the second step and uses the real Storefront fields inside POS Settings.
+- Storefront Setup readiness currently requires:
+  - company cover image
+  - company profile icon
+- POS Setup is the third step and focuses on terminal readiness before selling.
 - POS Setup readiness is evaluated from the shared tenant settings contract and currently requires:
-  - business name
-  - business address
   - at least one active terminal registry entry with:
     - assigned store location
     - configured terminal password
-- After POS Setup is complete, POS automatically routes the operator into `Settings > Storefront`.
-- Storefront Setup readiness is currently satisfied by at least one storefront contact channel:
-  - storefront phone
-  - storefront email
+- POS Setup readiness no longer requires business address; the business name comes from registration.
+- If no registered terminal exists yet, POS does not show the open-shift modal during onboarding. The tenant must create/configure a terminal in `Settings > POS Setup` first.
+- The onboarding modal exposes the required fields inside the modal itself:
+  - Storefront step: cover image and profile icon uploads backed by shared Storefront settings
+  - POS Setup step: terminal registry creation/update with store assignment and terminal password
+- The modal navigation now uses strict onboarding labels:
+  - `Back`
+  - `Next Step`
+  - `Finish Setup`
+  - `Skip for Now`
+- Step circles are clickable only for the current step and completed prior steps.
+- All onboarding entry points now use the same centralized setup-flow resolver for:
+  - step order
+  - previous/next step navigation
+  - settings tab routing
+  - sidebar `Settings` entry routing while onboarding is active
+- Onboarding restriction now follows live setup readiness state, not only the `setup_flow` URL query:
+  - reopening POS without the onboarding query no longer bypasses the gated setup state
+  - reopening `Continue onboarding` now restores the correct guided step and settings tab
 - Until the guided setup is complete, the rest of the POS workspaces are intentionally restricted so the tenant finishes setup in sequence.
 - Completion of all three setup stages removes the guided setup query state and returns the tenant to normal full POS navigation.
 - This flow reuses the shared onboarding and shared settings backend contracts; it does not create a POS-only onboarding store.
+- The onboarding modal runtime bug caused by an undefined step-count constant was fixed, so the guided setup modal now renders correctly in the live POS surface.
 
 ## POS Terminal Unlock
 
@@ -221,6 +241,7 @@ This document only lists the important changes recently made to the POS, Storefr
   - enter terminal password
   - if no active shift exists, enter opening cash and open the shift
   - if an active shift was only relocked, resume with terminal password only
+- POS UI smoke coverage was updated to validate the current DGFY-first terminal login surface instead of the older direct-terminal-login copy.
 
 ## Onboarding And Unlock Separation
 
@@ -244,6 +265,7 @@ This document only lists the important changes recently made to the POS, Storefr
 - `frontend/src/features/pos/pages/TerminalPage.jsx`
 - `frontend/src/features/pos/components/TerminalPageLayout.jsx`
 - `frontend/src/features/pos/components/TerminalLockDrawer.jsx`
+- `frontend/src/features/pos/components/PosTenantSetupModal.jsx`
 - `frontend/src/features/pos/components/TerminalSidebarPanel.jsx`
 - `frontend/src/features/pos/components/TerminalWorkspaceSidebar.jsx`
 - `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`

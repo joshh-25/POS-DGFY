@@ -2981,6 +2981,9 @@ function SettingsWorkspace({
     terminalRegistry: [],
     terminalRegistryMode: 'warn',
     terminalLocationBindingEnforced: false,
+    settingsAccessPinEnabled: false,
+    settingsAccessPin: '',
+    clearSettingsAccessPin: false,
     discountProfiles: [],
     posReceiptMetadataPendingReview: null,
     pettyCashSymbol: 'PHP',
@@ -3135,6 +3138,9 @@ function SettingsWorkspace({
           ? String(settingsPayload?.pos_terminal_registry_mode?.value || '').trim().toLowerCase()
           : 'warn',
         terminalLocationBindingEnforced: settingsPayload?.pos_terminal_location_binding_enforced?.value === true,
+        settingsAccessPinEnabled: settingsPayload?.pos_settings_access_pin_enabled?.value === true,
+        settingsAccessPin: '',
+        clearSettingsAccessPin: false,
         discountProfiles: normalizeDiscountProfiles(discountProfiles),
         posReceiptMetadataPendingReview: settingsPayload?.pos_receipt_metadata_pending_changes?.value?.status === 'pending_review'
           ? settingsPayload.pos_receipt_metadata_pending_changes.value
@@ -3579,6 +3585,8 @@ function SettingsWorkspace({
         pos_terminal_registry: posTerminalRegistry,
         pos_terminal_registry_mode: posTerminalRegistryMode,
         pos_terminal_location_binding_enforced: posForm.terminalLocationBindingEnforced === true,
+        pos_settings_access_pin: String(posForm.settingsAccessPin || '').trim(),
+        clear_pos_settings_access_pin: posForm.clearSettingsAccessPin === true,
         pos_petty_cash_symbol: String(posForm.pettyCashSymbol || 'PHP').trim() || 'PHP',
         pos_petty_cash_amount: Number(posForm.pettyCashAmount || 0),
         pos_open_status: posForm.posOpenStatus === true,
@@ -4096,6 +4104,60 @@ function SettingsWorkspace({
                 </div>
               </label>
             </div>
+            {terminalUser?.is_master_admin === true ? (
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="grid gap-3 md:grid-cols-[minmax(0,280px)_auto] md:items-start">
+                  <div className="grid gap-1.5">
+                    <Label className="text-[12px] font-black text-[#0F172A]">Settings Access PIN</Label>
+                    <Input
+                      type="password"
+                      inputMode="numeric"
+                      className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A]"
+                      value={posForm.settingsAccessPin}
+                      onChange={(event) => setPosForm((current) => ({
+                        ...current,
+                        settingsAccessPin: event.target.value,
+                        clearSettingsAccessPin: false
+                      }))}
+                      placeholder={posForm.settingsAccessPinEnabled ? 'Leave blank to keep current PIN' : 'Create 4 to 12 digit PIN'}
+                      disabled={locked || loading}
+                    />
+                    <p className={`text-[11px] ${posForm.clearSettingsAccessPin === true ? 'font-semibold text-rose-600' : 'text-[#64748B]'}`}>
+                      {posForm.clearSettingsAccessPin === true
+                        ? 'Current Settings PIN will be cleared on save.'
+                        : (posForm.settingsAccessPinEnabled
+                          ? 'Non-master-admin users must enter this PIN before opening Settings.'
+                          : 'Optional. Add a PIN to protect Settings for non-master-admin users.')}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 md:justify-end">
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-extrabold ${
+                      posForm.settingsAccessPinEnabled
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : 'bg-slate-100 text-slate-500'
+                    }`}>
+                      {posForm.settingsAccessPinEnabled ? 'PIN Enabled' : 'PIN Not Set'}
+                    </span>
+                    {posForm.settingsAccessPinEnabled ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-10 rounded-lg border-rose-200 px-4 text-[12px] font-extrabold text-rose-600 hover:bg-rose-50"
+                        onClick={() => setPosForm((current) => ({
+                          ...current,
+                          settingsAccessPin: '',
+                          clearSettingsAccessPin: true,
+                          settingsAccessPinEnabled: false
+                        }))}
+                        disabled={locked || loading}
+                      >
+                        Clear PIN
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ) : null}
             <div className="mt-4 grid gap-3">
               {(Array.isArray(posForm.terminalRegistry) ? posForm.terminalRegistry : []).map((terminal, index) => (
                 <div key={`terminal-registry-${index}`} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_16px_36px_rgba(148,163,184,0.12)]">

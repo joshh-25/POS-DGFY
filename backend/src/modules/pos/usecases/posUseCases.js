@@ -4205,6 +4205,27 @@ export const buildOpenTerminalShiftUseCase = ({ posRepository }) => {
             const existing = await posRepository.findOpenTerminalShift({
                 cashierId: normalizedUserId
             });
+            const existingTerminalShift = await posRepository.findOpenTerminalShift({
+                terminalId
+            });
+            if (
+                existingTerminalShift
+                && parsePositiveInt(existingTerminalShift.cashier_id) !== normalizedUserId
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This terminal already has an active open shift.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            existing_shift_id: existingTerminalShift.pos_terminal_shift_id,
+                            existing_terminal_id: existingTerminalShift.terminal_id || null,
+                            existing_cashier_id: parsePositiveInt(existingTerminalShift.cashier_id) || null,
+                            requested_terminal_id: terminalId || null
+                        }
+                    }
+                );
+            }
             if (existing) {
                 const existingLocationId = parsePositiveInt(existing.location_id);
                 if (String(existing.terminal_id || '') !== String(terminalId || '')) {

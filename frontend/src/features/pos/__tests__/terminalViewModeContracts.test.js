@@ -51,9 +51,18 @@ describe('POS terminal view-mode contracts', () => {
   it('keeps explicit checkout and operations mode lists in TerminalPage', () => {
     expect(terminalPageContent).toContain("const CHECKOUT_VIEW_MODES = ['checkout', 'history', 'receipt']");
     expect(terminalPageContent).toContain("'incoming_queue'");
-    expect(terminalPageContent).toContain("'location_scope'");
+    expect(terminalPageContent).toContain("'settings_profile'");
+    expect(terminalPageContent).toContain("'settings_pos'");
+    expect(terminalPageContent).toContain("'settings_storefront'");
     expect(terminalPageContent).toContain("'shift_controls'");
     expect(terminalPageContent).toContain("'reports'");
+  });
+
+  it('keeps tenant onboarding restriction tied to live readiness state, not only the URL query', () => {
+    expect(terminalPageContent).toContain('const tenantSetupIncomplete = !locked');
+    expect(terminalPageContent).toContain('const tenantSetupRequestedOrRequired = tenantSetupFlowRequested || tenantSetupIncomplete;');
+    expect(terminalPageContent).toContain('if (setupFlowActive) {');
+    expect(terminalPageContent).toContain('resumeTenantSetupFlow();');
   });
 
   it('blocks sidebar view switching while terminal is locked', () => {
@@ -89,7 +98,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("accessState: 'forbidden'");
     expect(terminalPageContent).toContain("accessState: 'allowed'");
     expect(terminalPageContent).toContain("accessState: isForbidden ? 'forbidden' : 'error'");
-    expect(terminalPageContent).toContain("['incoming_queue', 'location_scope'].includes(posViewMode)");
+    expect(terminalPageContent).toContain("if (!canViewPos && ['incoming_queue'].includes(posViewMode)) {");
   });
 
   it('fails closed when compliance gate context cannot be loaded', () => {
@@ -99,8 +108,8 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("title: 'Compliance gate unavailable'");
   });
 
-  it('keeps incoming queue and location scope sidebar items permission-aware', () => {
-    expect(terminalWorkspaceSidebarContent).toContain("disabled={locked || !canViewPos || !hasActiveShift}");
+  it('keeps incoming queue and protected sidebar items permission-aware', () => {
+    expect(terminalWorkspaceSidebarContent).toContain("disabled={locked || onboardingRestricted || !canViewPos || !hasActiveShift}");
     expect(terminalWorkspaceSidebarContent).toContain('POS view permission required');
   });
 
@@ -133,7 +142,6 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('handleConfirmCloseShift');
     expect(terminalPageContent).toContain('Are you sure you want to close this shift?');
     expect(terminalPageContent).not.toContain('window.confirm');
-    expect(terminalPageContent).toContain('Shift closed successfully. Please open a new shift to continue.');
     expect(terminalSidebarPanelContent).toContain('Shift Open');
     expect(terminalSidebarPanelContent).toContain('Shift Closed');
     expect(terminalOperationsWorkspaceContent).toContain('Shift Closed. Please open your shift before using the POS.');
@@ -153,12 +161,10 @@ describe('POS terminal view-mode contracts', () => {
 
   it('keeps dedicated operations workspace content mapping for every sidebar mode', () => {
     expect(terminalOperationsWorkspaceContent).toContain("title: 'Incoming Online Queue'");
-    expect(terminalOperationsWorkspaceContent).toContain("title: 'Location Scope'");
+    expect(terminalOperationsWorkspaceContent).toContain("title: 'Settings'");
     expect(terminalOperationsWorkspaceContent).toContain("title: 'Shift Controls'");
     expect(terminalOperationsWorkspaceContent).toContain("title: 'Cash Drawer Event'");
-    expect(terminalOperationsWorkspaceContent).toContain("close_shift:");
     expect(terminalOperationsWorkspaceContent).toContain("title: 'Reports & Analytics'");
-    expect(terminalOperationsWorkspaceContent).toContain("title: 'Terminal Setup Context'");
     expect(terminalOperationsWorkspaceContent).toContain("case 'reports'");
     expect(terminalOperationsWorkspaceContent).toContain("case 'incoming_queue'");
     expect(terminalOperationsWorkspaceContent).toContain("case 'terminal_setup'");
@@ -321,17 +327,15 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('resolveLoginTerminalId');
     expect(terminalPageContent).toContain('resolvePreferredTerminalId');
     expect(terminalPageContent).toContain('No active terminals configured. Add one in Settings > POS Setup > Terminal Registry.');
-    expect(terminalLockDrawerContent).toContain('Terminal ID');
+    expect(terminalPageContent).toContain('Terminal ID');
+    expect(terminalPageContent).toContain('Select registered terminal');
+    expect(terminalPageContent).toContain('Enter the registered terminal ID from POS Setup. Example: `COUNTER-01`.');
     expect(terminalLockDrawerContent).not.toContain('Company Token (Optional)');
-    expect(terminalLockDrawerContent).not.toContain('Terminal ID (Optional)');
-    expect(terminalLockDrawerContent).toContain("registryEnforced ? 'Terminal ID (Required)' : 'Terminal ID'");
-    expect(terminalLockDrawerContent).toContain('Use COUNTER-01 if no terminals are configured yet.');
-    expect(terminalLockDrawerContent).toContain('registryEnforced ?');
-    expect(terminalLockDrawerContent).toContain('Select configured terminal');
-    expect(terminalLockDrawerContent).toContain('No active terminals configured');
-    expect(terminalLockDrawerContent).toContain('list="terminal-id-options"');
+    expect(terminalLockDrawerContent).toContain('DGFY Email');
+    expect(terminalLockDrawerContent).toContain('Company');
+    expect(terminalLockDrawerContent).toContain('Continue to Terminal Unlock');
+    expect(terminalLockDrawerContent).toContain('Select accessible company');
     expect(terminalPageLayoutContent).toContain('normalizedActiveTerminalId');
-    expect(terminalPageLayoutContent).toContain("normalizedActiveTerminalId || 'Not selected'");
     expect(terminalPageLayoutContent).not.toContain('Terminal identity: <span className="font-semibold text-slate-900">DGFY</span>');
     expect(posCheckoutTerminalContent).toContain('terminalId = \'\'');
     expect(posCheckoutTerminalContent).toContain('const terminalIdentityLabel = normalizedTerminalId');

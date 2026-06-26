@@ -195,7 +195,13 @@ Codes are six digits, single-use, expire after `EMAIL_OTP_TTL_MINUTES` (default 
 ### POST /auth/login
 Authenticate user and establish a browser session.
 
-Tenant-local login remains selected by the `x-company-token` request header. Standalone POS terminal unlock must first call `POST /api/v1/auth/lookup` for the submitted email and then send `/auth/login` with the resolved company token. The current browser company token may be reused only when it is one of the lookup tenants, or as a temporary fallback when lookup fails because of a network/server outage. Missing email-to-tenant mapping, multiple-tenant ambiguity, lookup rate limiting, and invalid password must remain distinguishable operator outcomes. Lookup rate limiting is scoped by client IP plus normalized email and returns retry metadata so POS can tell the operator when to try again without falling back to stale tenant context.
+Tenant-local login remains selected by the `x-company-token` request header. For POS, this endpoint is now the governed legacy fallback path only. The primary POS cashier flow is:
+1. `POST /api/v1/dgfy/auth/login`
+2. list accessible companies from the authenticated DGFY account
+3. `POST /api/v1/dgfy/account/companies/:tenant_id/pos-session`
+4. terminal unlock and shift-open flow
+
+Standalone POS may still use `POST /api/v1/auth/lookup` followed by `/auth/login` only for the approved legacy fallback path when a grace-eligible tenant-local IMS/POS user is not yet using the DGFY account path. In that fallback flow, the current browser company token may be reused only when it is one of the lookup tenants, or as a temporary fallback when lookup fails because of a network/server outage. Missing email-to-tenant mapping, multiple-tenant ambiguity, lookup rate limiting, and invalid password must remain distinguishable operator outcomes. Lookup rate limiting is scoped by client IP plus normalized email and returns retry metadata so POS can tell the operator when to try again without falling back to stale tenant context.
 
 **Request**
 ```json
@@ -5057,7 +5063,17 @@ Requires the current owner DGFY account, a recent or supplied `dgfy_business_ste
 
 ### POST /dgfy/account/companies/:tenant_id/pos-session
 
-Requires an authenticated DGFY account with accepted membership, POS permission/capability, and a selected terminal/counter. Creates the normal tenant session for POS and returns terminal context. Company-token context can preselect the company only after DGFY access is confirmed.
+Requires an authenticated DGFY account with accepted membership, POS permission/capability, and a selected tenant/company. Creates the normal tenant session for POS and returns terminal context. Company-token context can preselect the company only after DGFY access is confirmed.
+
+Current POS operator flow:
+1. cashier signs in with DGFY email and password
+2. POS loads accessible companies for that DGFY account
+3. cashier selects the company
+4. POS creates the tenant POS session
+5. POS opens the terminal unlock step
+6. cashier enters terminal password
+7. if there is no active shift, cashier also enters opening cash to open the shift
+8. if the terminal was only relocked while a shift remained open, terminal password alone resumes the terminal without asking for opening cash again
 
 ```json
 {

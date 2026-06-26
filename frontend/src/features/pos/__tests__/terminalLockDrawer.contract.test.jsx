@@ -9,13 +9,15 @@ const buildProps = (overrides = {}) => ({
   formData: {
     email: 'cashier@example.com',
     password: '',
+    dgfyTenantId: '',
     terminalId: ''
   },
   setFormData: vi.fn(),
-  terminalIdOptions: ['COUNTER-01'],
+  dgfyPosState: {
+    authenticated: false,
+    companies: []
+  },
   terminalRegistry: [{ terminal_id: 'COUNTER-01', label: 'Front Counter', is_active: true, is_default: true }],
-  terminalRegistryMode: 'warn',
-  registryEnforced: false,
   submitting: false,
   onSubmit: vi.fn(),
   ...overrides
@@ -34,30 +36,53 @@ describe('TerminalLockDrawer contract', () => {
   });
 
   it('shows terminal ID as required for shift and checkout in warn mode', () => {
-    render(<TerminalLockDrawer {...buildProps({ registryEnforced: false, terminalRegistryMode: 'warn' })} />);
+    render(<TerminalLockDrawer {...buildProps()} />);
 
-    expect(screen.getByText('Terminal ID')).toBeTruthy();
-    expect(screen.queryByText('Terminal ID (Optional)')).toBeNull();
-    expect(screen.getByText(/Use COUNTER-01 if no terminals are configured yet/i)).toBeTruthy();
-    expect(screen.getByText(/Terminal ID is required for shifts and checkout/i)).toBeTruthy();
+    expect(screen.getByLabelText('DGFY Email')).toBeTruthy();
+    expect(screen.getByLabelText('DGFY Password')).toBeTruthy();
+    expect(screen.queryByText('Terminal ID')).toBeNull();
+    expect(screen.getByText(/Sign in with your DGFY account first/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy();
   });
 
-  it('shows terminal ID as required select in enforce mode', () => {
-    render(<TerminalLockDrawer {...buildProps({ registryEnforced: true, terminalRegistryMode: 'enforce' })} />);
-
-    expect(screen.getByText('Terminal ID (Required)')).toBeTruthy();
-    expect(screen.getByRole('option', { name: /Select configured terminal/i })).toBeTruthy();
-    expect(screen.getByText(/Required in enforce mode/i)).toBeTruthy();
-  });
-
-  it('shows setup guidance when enforce mode has no active terminals', () => {
+  it('shows company selection after DGFY authentication succeeds', () => {
     render(<TerminalLockDrawer {...buildProps({
-      registryEnforced: true,
-      terminalRegistryMode: 'enforce',
-      terminalRegistry: []
+      formData: {
+        email: 'cashier@example.com',
+        password: 'password123',
+        dgfyTenantId: '',
+        terminalId: ''
+      },
+      dgfyPosState: {
+        authenticated: true,
+        companies: [{ tenant_id: 'tenant-1', company_name: 'Front Counter Foods' }]
+      }
     })} />);
 
-    expect(screen.getByRole('option', { name: /No active terminals configured/i })).toBeTruthy();
-    expect(screen.getByText(/Settings > POS Setup > Terminal Registry/i)).toBeTruthy();
+    expect(screen.getByLabelText('Company')).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Front Counter Foods' })).toBeTruthy();
+    expect(screen.getByText(/Choose the business to unlock/i)).toBeTruthy();
+    expect(screen.getByText(/After company selection, POS will ask for a registered terminal/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Continue to Terminal Unlock' })).toBeTruthy();
+  });
+
+  it('keeps company selection disabled while companies are still loading', () => {
+    render(<TerminalLockDrawer {...buildProps({
+      formData: {
+        email: 'cashier@example.com',
+        password: 'password123',
+        dgfyTenantId: '',
+        terminalId: ''
+      },
+      dgfyPosState: {
+        authenticated: true,
+        companies: [],
+        loadingCompanies: true
+      }
+    })} />);
+
+    expect(screen.getByLabelText('Company').disabled).toBe(true);
+    expect(screen.getByRole('option', { name: /Loading companies/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Continue to Terminal Unlock' }).disabled).toBe(false);
   });
 });

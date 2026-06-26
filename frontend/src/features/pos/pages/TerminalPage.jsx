@@ -23,8 +23,7 @@ import {
   startDgfyLegacyRegistrationHandoff,
   startDgfyPosSession
 } from '@/services/dgfyAuthService.js';
-import { trackOnboardingEvent } from '@/services/onboardingService.js';
-import { getAllSettings } from '@/services/settingsService.js';
+import { getAllSettings, getCompanyInfo, verifyPosSettingsAccessPin } from '@/services/settingsService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
 import { getComplianceProfile } from '@/services/complianceService.js';
 import api from '@/services/api.js';
@@ -65,19 +64,26 @@ import {
   sanitizeTerminalId
 } from '../utils/terminalIdentity.js';
 import {
+  buildTenantSetupSearch,
+  clearTenantSetupSearch,
+  getNextTenantSetupStep,
+  getPreviousTenantSetupStep,
   POS_TERMINAL_SETUP_FLOW_QUERY_KEY,
   POS_TERMINAL_SETUP_FLOW_VALUE,
   POS_TERMINAL_SETUP_STEP_QUERY_KEY,
   POS_TERMINAL_SETUP_STEPS,
   isTenantSetupFlowRequested,
+  resolveProfileSetupReadiness,
   resolvePosSetupReadiness,
   resolveStorefrontSetupReadiness,
-  resolveTenantSetupStep
+  resolveTenantSetupStep,
+  resolveTenantSetupStepValue,
+  resolveTenantSetupViewMode
 } from '../utils/setupFlow.js';
 
 import TerminalPageLayout from '../components/TerminalPageLayout.jsx';
 import PosHardwareMessageModal from '../components/PosHardwareMessageModal.jsx';
-import OnboardingSetupModal from '../../onboarding/components/OnboardingSetupModal.jsx';
+import PosTenantSetupModal from '../components/PosTenantSetupModal.jsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -302,12 +308,11 @@ export default function TerminalPage() {
   const [drawerOpen, setDrawerOpen] = useState(() => readStoredTerminalLock() || !getAccessToken());
   const [loadingUser, setLoadingUser] = useState(false);
   const [terminalUser, setTerminalUser] = useState(null);
-  const [onboardingSetupOpen, setOnboardingSetupOpen] = useState(false);
-  const [onboardingDismissedThisSession, setOnboardingDismissedThisSession] = useState(false);
+  const [tenantSetupModalOpen, setTenantSetupModalOpen] = useState(false);
+  const [tenantSetupDismissedThisSession, setTenantSetupDismissedThisSession] = useState(false);
   const [closeShiftConfirmOpen, setCloseShiftConfirmOpen] = useState(false);
   const [hardwareMessage, setHardwareMessage] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const onboardingReminderTrackedRef = useRef(false);
   const [activeTerminalId, setActiveTerminalId] = useState(() => readInitialTerminalId());
   const [terminalRegistry, setTerminalRegistry] = useState([]);
   const [terminalRegistryMode, setTerminalRegistryMode] = useState('warn');
@@ -317,7 +322,8 @@ export default function TerminalPage() {
     pettyCashAmount: 0,
     activeDiscountCount: 0,
     enabledFeeMethods: [],
-    locationBindingReadiness: null
+    locationBindingReadiness: null,
+    settingsAccessPinEnabled: false
   });
   const [complianceGate, setComplianceGate] = useState({
     loading: false,
@@ -348,6 +354,11 @@ export default function TerminalPage() {
     openingFloatAmount: '',
     openingNote: ''
   });
+  const [settingsAccessPinModalOpen, setSettingsAccessPinModalOpen] = useState(false);
+  const [settingsAccessPinSubmitting, setSettingsAccessPinSubmitting] = useState(false);
+  const [settingsAccessPinValue, setSettingsAccessPinValue] = useState('');
+  const [settingsAccessPinVerified, setSettingsAccessPinVerified] = useState(false);
+  const [pendingSettingsViewMode, setPendingSettingsViewMode] = useState('');
   const [dgfyPosState, setDgfyPosState] = useState({
     authenticated: false,
     account: null,
@@ -435,17 +446,24 @@ export default function TerminalPage() {
   });
   const [setupFlowState, setSetupFlowState] = useState({
     loading: true,
+    profileReady: false,
     posSetupReady: false,
     storefrontSetupReady: false,
+    profileRequirements: {
+      ready: false,
+      companyNameReady: false,
+      companyName: ''
+    },
     posRequirements: {
       ready: false,
-      businessNameReady: false,
-      businessAddressReady: false,
       terminalRegistryReady: false
     },
     storefrontRequirements: {
       ready: false,
-      contactReady: false
+      coverImageReady: false,
+      profileImageReady: false,
+      coverImageUrl: '',
+      profileImageUrl: ''
     }
   });
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -484,6 +502,7 @@ export default function TerminalPage() {
     return lookup;
   }, [activeTerminalRegistry]);
   const registryEnforced = terminalRegistryMode === 'enforce';
+  const settingsAccessPinEnabled = terminalMeta.settingsAccessPinEnabled === true;
   const terminalIdOptions = useMemo(() => {
     const current = sanitizeTerminalId(activeTerminalId);
     const formTerminal = sanitizeTerminalId(formData.terminalId);
@@ -506,88 +525,92 @@ export default function TerminalPage() {
   const canAdjustCashDrawer = hasPermission('pos:cash_drawer_adjust');
   const canCloseDay = hasPermission('pos:close_day');
   const canCreateItems = hasPermission('items:create');
+  const canAccessSettingsDirectly = terminalUser?.is_master_admin === true;
   const canEditItems = hasPermission('items:edit');
   const canDeleteItems = hasPermission('items:delete');
-  const onboardingState = String(terminalUser?.onboarding?.tenant_onboarding_state || 'not_started').trim().toLowerCase();
-  const onboardingProgress = terminalUser?.onboarding?.tenant_onboarding_progress?.checklist_snapshot || null;
-  const showOnboardingReminder = !locked && terminalUser?.is_master_admin === true && onboardingState !== 'completed';
-  const onboardingCompletedCount = Number(onboardingProgress?.completed_required_count || 0);
-  const onboardingRequiredTotal = Number(onboardingProgress?.required_total || 0);
   const setupFlowSearchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const tenantSetupFlowRequested = useMemo(
     () => isTenantSetupFlowRequested(setupFlowSearchParams),
     [setupFlowSearchParams]
   );
+  const requestedTenantSetupStep = String(
+    setupFlowSearchParams.get(POS_TERMINAL_SETUP_STEP_QUERY_KEY) || POS_TERMINAL_SETUP_STEPS.PROFILE
+  ).trim().toLowerCase();
+  const tenantSetupIncomplete = !locked
+    && terminalUser?.is_master_admin === true
+    && (!setupFlowState.profileReady || !setupFlowState.storefrontSetupReady || !setupFlowState.posSetupReady);
+  const tenantSetupRequestedOrRequired = tenantSetupFlowRequested || tenantSetupIncomplete;
   const tenantSetupStep = useMemo(() => resolveTenantSetupStep({
-    requested: tenantSetupFlowRequested,
+    requested: tenantSetupRequestedOrRequired,
     locked,
     isMasterAdmin: terminalUser?.is_master_admin === true,
-    onboardingState,
+    requestedStep: requestedTenantSetupStep,
+    profileReady: setupFlowState.profileReady,
     posSetupReady: setupFlowState.posSetupReady,
     storefrontSetupReady: setupFlowState.storefrontSetupReady
   }), [
     locked,
-    onboardingState,
+    requestedTenantSetupStep,
+    setupFlowState.profileReady,
     setupFlowState.posSetupReady,
     setupFlowState.storefrontSetupReady,
-    tenantSetupFlowRequested,
+    tenantSetupRequestedOrRequired,
     terminalUser?.is_master_admin
   ]);
-
-  useEffect(() => {
-    if (!showOnboardingReminder) {
-      onboardingReminderTrackedRef.current = false;
-      setOnboardingDismissedThisSession(false);
-      return;
-    }
-
-    if (!onboardingReminderTrackedRef.current) {
-      onboardingReminderTrackedRef.current = true;
-      trackOnboardingEvent({
-        eventKey: 'reminder_shown',
-        metadata: { surface: 'pos_terminal' }
-      }).catch(() => {});
-    }
-
-    if (onboardingDismissedThisSession) return;
-    setOnboardingSetupOpen(true);
-  }, [onboardingDismissedThisSession, showOnboardingReminder]);
+  const setupFlowActive = tenantSetupIncomplete
+    && tenantSetupStep !== POS_TERMINAL_SETUP_STEPS.COMPLETE;
 
   const replaceTenantSetupQuery = useCallback((nextStep = '') => {
-    const nextParams = new URLSearchParams(location.search);
-    if (!tenantSetupFlowRequested) {
-      nextParams.delete(POS_TERMINAL_SETUP_FLOW_QUERY_KEY);
-      nextParams.delete(POS_TERMINAL_SETUP_STEP_QUERY_KEY);
-    } else {
-      nextParams.set(POS_TERMINAL_SETUP_FLOW_QUERY_KEY, POS_TERMINAL_SETUP_FLOW_VALUE);
-      if (nextStep) {
-        nextParams.set(POS_TERMINAL_SETUP_STEP_QUERY_KEY, nextStep);
-      } else {
-        nextParams.delete(POS_TERMINAL_SETUP_STEP_QUERY_KEY);
-      }
-    }
+    const normalizedStep = resolveTenantSetupStepValue(nextStep || tenantSetupStep);
     navigate({
       pathname: location.pathname,
-      search: nextParams.toString() ? `?${nextParams.toString()}` : '',
+      search: buildTenantSetupSearch(location.search, normalizedStep),
       hash: location.hash
     }, { replace: true });
-  }, [location.hash, location.pathname, location.search, navigate, tenantSetupFlowRequested]);
+  }, [location.hash, location.pathname, location.search, navigate, tenantSetupStep]);
+
+  const clearTenantSetupQueryState = useCallback(() => {
+    navigate({
+      pathname: location.pathname,
+      search: clearTenantSetupSearch(location.search),
+      hash: location.hash
+    }, { replace: true });
+  }, [location.hash, location.pathname, location.search, navigate]);
+
+  const openTenantSetupStep = useCallback((step = '') => {
+    const normalizedStep = resolveTenantSetupStepValue(step || tenantSetupStep);
+    replaceTenantSetupQuery(normalizedStep);
+    setPosViewMode(resolveTenantSetupViewMode(normalizedStep));
+  }, [replaceTenantSetupQuery, tenantSetupStep]);
+
+  const resumeTenantSetupFlow = useCallback((step = '') => {
+    setTenantSetupDismissedThisSession(false);
+    openTenantSetupStep(step || tenantSetupStep || POS_TERMINAL_SETUP_STEPS.PROFILE);
+    setTenantSetupModalOpen(true);
+  }, [openTenantSetupStep, tenantSetupStep]);
 
   const hydrateTenantSetupState = useCallback(async ({ suppressGlobalErrors = false } = {}) => {
     if (locked || terminalUser?.is_master_admin !== true) {
       setSetupFlowState({
         loading: false,
+        profileReady: false,
         posSetupReady: false,
         storefrontSetupReady: false,
+        profileRequirements: {
+          ready: false,
+          companyNameReady: false,
+          companyName: ''
+        },
         posRequirements: {
           ready: false,
-          businessNameReady: false,
-          businessAddressReady: false,
           terminalRegistryReady: false
         },
         storefrontRequirements: {
           ready: false,
-          contactReady: false
+          coverImageReady: false,
+          profileImageReady: false,
+          coverImageUrl: '',
+          profileImageUrl: ''
         }
       });
       return;
@@ -595,16 +618,23 @@ export default function TerminalPage() {
 
     setSetupFlowState((prev) => ({ ...prev, loading: true }));
     try {
-      const settingsPayload = await getAllSettings({
-        force: true,
-        requestConfig: suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
-      });
+      const requestConfig = suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {};
+      const [settingsPayload, companyPayload] = await Promise.all([
+        getAllSettings({
+          force: true,
+          requestConfig
+        }),
+        getCompanyInfo().catch(() => null)
+      ]);
+      const profileRequirements = resolveProfileSetupReadiness(companyPayload, settingsPayload);
       const posRequirements = resolvePosSetupReadiness(settingsPayload);
       const storefrontRequirements = resolveStorefrontSetupReadiness(settingsPayload);
       setSetupFlowState({
         loading: false,
+        profileReady: profileRequirements.ready,
         posSetupReady: posRequirements.ready,
         storefrontSetupReady: storefrontRequirements.ready,
+        profileRequirements,
         posRequirements,
         storefrontRequirements
       });
@@ -648,6 +678,22 @@ export default function TerminalPage() {
     await requestBackgroundQueueReplay();
     return intentId;
   }, [refreshTerminalOperationQueue, requestBackgroundQueueReplay]);
+
+  const resetSettingsAccessPinState = useCallback(() => {
+    setSettingsAccessPinModalOpen(false);
+    setSettingsAccessPinSubmitting(false);
+    setSettingsAccessPinValue('');
+    setSettingsAccessPinVerified(false);
+    setPendingSettingsViewMode('');
+  }, []);
+
+  const commitViewModeSelection = useCallback((nextMode) => {
+    setPosViewMode(nextMode);
+    if (workspacePaneRef.current) {
+      workspacePaneRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    setMobileNavOpen(false);
+  }, []);
 
   const hydrateTerminalMeta = useCallback(async ({ suppressGlobalErrors = false } = {}) => {
     setTerminalMeta((prev) => ({ ...prev, loading: true }));
@@ -707,7 +753,8 @@ export default function TerminalPage() {
         pettyCashAmount: Number.isFinite(pettyCashAmount) ? pettyCashAmount : 0,
         activeDiscountCount,
         enabledFeeMethods,
-        locationBindingReadiness: null
+        locationBindingReadiness: null,
+        settingsAccessPinEnabled: allSettings?.pos_settings_access_pin_enabled?.value === true
       });
     } catch {
       setTerminalRegistry([]);
@@ -728,7 +775,7 @@ export default function TerminalPage() {
           window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, preferredTerminalId);
         }
       }
-      setTerminalMeta((prev) => ({ ...prev, loading: false }));
+      setTerminalMeta((prev) => ({ ...prev, loading: false, settingsAccessPinEnabled: false }));
     }
   }, []);
 
@@ -1144,6 +1191,7 @@ export default function TerminalPage() {
   const hydrateUser = useCallback(async ({ suppressGlobalErrors = false } = {}) => {
     if (readStoredTerminalLock()) {
       const storedLockReason = readStoredTerminalLockReason();
+      resetSettingsAccessPinState();
       setTerminalUser(null);
       setLocked(true);
       setDrawerOpen(!(storedLockReason === 'terminal_reunlock' || storedLockReason === 'shift_start_required'));
@@ -1152,6 +1200,7 @@ export default function TerminalPage() {
 
     let token = getAccessToken();
     if (IS_DGFY_POS_SURFACE && !token) {
+      resetSettingsAccessPinState();
       setTerminalUser(null);
       setLocked(true);
       setDrawerOpen(true);
@@ -1165,6 +1214,7 @@ export default function TerminalPage() {
       }
     }
     if (!token) {
+      resetSettingsAccessPinState();
       setTerminalUser(null);
       setLocked(true);
       setDrawerOpen(true);
@@ -1177,6 +1227,7 @@ export default function TerminalPage() {
         suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
       );
       if (!user) {
+        resetSettingsAccessPinState();
         setTerminalUser(null);
         setLocked(true);
         setDrawerOpen(true);
@@ -1186,13 +1237,14 @@ export default function TerminalPage() {
       setLocked(false);
       setDrawerOpen(false);
     } catch {
+      resetSettingsAccessPinState();
       setTerminalUser(null);
       setLocked(true);
       setDrawerOpen(true);
     } finally {
       setLoadingUser(false);
     }
-  }, []);
+  }, [resetSettingsAccessPinState]);
 
   useEffect(() => {
     hydrateUser();
@@ -1203,7 +1255,7 @@ export default function TerminalPage() {
       hydrateTerminalMeta();
       return;
     }
-    setTerminalMeta((prev) => ({ ...prev, loading: false }));
+    setTerminalMeta((prev) => ({ ...prev, loading: false, settingsAccessPinEnabled: false }));
   }, [hydrateTerminalMeta, locked]);
 
   useEffect(() => {
@@ -1220,44 +1272,33 @@ export default function TerminalPage() {
     if (!tenantSetupFlowRequested || locked || terminalUser?.is_master_admin !== true) return;
 
     if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.COMPLETE) {
-      const nextParams = new URLSearchParams(location.search);
-      nextParams.delete(POS_TERMINAL_SETUP_FLOW_QUERY_KEY);
-      nextParams.delete(POS_TERMINAL_SETUP_STEP_QUERY_KEY);
-      navigate({
-        pathname: location.pathname,
-        search: nextParams.toString() ? `?${nextParams.toString()}` : '',
-        hash: location.hash
-      }, { replace: true });
+      clearTenantSetupQueryState();
       toast.success('Tenant onboarding, POS Setup, and Storefront Setup are complete.');
       return;
     }
 
-    replaceTenantSetupQuery(tenantSetupStep);
-    if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.ONBOARDING) {
-      setOnboardingDismissedThisSession(false);
-      setOnboardingSetupOpen(true);
-      return;
-    }
-
-    setOnboardingSetupOpen(false);
-    if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.POS_SETUP) {
-      setPosViewMode('settings_pos');
-      return;
-    }
-    if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP) {
-      setPosViewMode('settings_storefront');
-    }
+    openTenantSetupStep(tenantSetupStep);
   }, [
-    location.hash,
-    location.pathname,
-    location.search,
+    clearTenantSetupQueryState,
     locked,
-    navigate,
-    replaceTenantSetupQuery,
+    openTenantSetupStep,
     tenantSetupFlowRequested,
     tenantSetupStep,
     terminalUser?.is_master_admin
   ]);
+
+  useEffect(() => {
+    if (!setupFlowActive) {
+      setTenantSetupModalOpen(false);
+      setTenantSetupDismissedThisSession(false);
+      return;
+    }
+    if (!tenantSetupFlowRequested) {
+      openTenantSetupStep(tenantSetupStep);
+    }
+    setTenantSetupDismissedThisSession(false);
+    setTenantSetupModalOpen(true);
+  }, [openTenantSetupStep, setupFlowActive, tenantSetupFlowRequested, tenantSetupStep]);
 
   useEffect(() => {
     if (!locked) {
@@ -1312,6 +1353,7 @@ export default function TerminalPage() {
 
   useEffect(() => {
     const onSessionExpired = () => {
+      resetSettingsAccessPinState();
       setLocked(true);
       setDrawerOpen(true);
       setTerminalUser(null);
@@ -1325,7 +1367,20 @@ export default function TerminalPage() {
       window.removeEventListener('auth:session-cleared', onSessionExpired);
       window.removeEventListener('auth:logout', onSessionExpired);
     };
-  }, []);
+  }, [resetSettingsAccessPinState]);
+
+  useEffect(() => {
+    if (settingsAccessPinEnabled) return;
+    setSettingsAccessPinVerified(false);
+    setSettingsAccessPinModalOpen(false);
+    setPendingSettingsViewMode('');
+    setSettingsAccessPinValue('');
+  }, [settingsAccessPinEnabled]);
+
+  useEffect(() => {
+    if (!locked) return;
+    resetSettingsAccessPinState();
+  }, [locked, resetSettingsAccessPinState]);
 
   useEffect(() => {
     localStorage.setItem('posTerminalSidebarCollapsed', sidebarCollapsed ? '1' : '0');
@@ -1436,6 +1491,7 @@ export default function TerminalPage() {
 
   const activeShiftId = shiftState?.shift?.pos_terminal_shift_id || null;
   const requiresOpenShift = !locked && !shiftState.loading && !activeShiftId;
+  const shiftOpenPromptBlockedBySetup = setupFlowActive || !setupFlowState.posRequirements.terminalRegistryReady;
   const showLegacyDgfyLinkBanner = terminalUser
     && terminalUser.dgfy_link_status
     && terminalUser.dgfy_link_status !== 'linked'
@@ -1812,6 +1868,7 @@ export default function TerminalPage() {
   const handleLock = () => {
     const hasOpenShift = Boolean(activeShiftId);
     const selectedTerminalId = sanitizeTerminalId(activeTerminalId) || resolveSelectedLoginTerminalId();
+    resetSettingsAccessPinState();
 
     if (hasOpenShift) {
       setStoredTerminalLock(true);
@@ -2299,21 +2356,20 @@ export default function TerminalPage() {
       return;
     }
     const isSettingsViewMode = SETTINGS_VIEW_MODES.has(nextMode);
-    if (tenantSetupFlowRequested && tenantSetupStep !== POS_TERMINAL_SETUP_STEPS.COMPLETE) {
-      if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.ONBOARDING) {
-        toast.error('Finish tenant onboarding before opening the rest of the POS.');
-        setOnboardingDismissedThisSession(false);
-        setOnboardingSetupOpen(true);
-        setMobileNavOpen(false);
-        return;
-      }
-      const allowedSetupModes = new Set(['settings_pos', 'settings_storefront']);
+    if (setupFlowActive) {
+      const allowedSetupModes = new Set(['settings_profile', 'settings_pos', 'settings_storefront']);
       if (!allowedSetupModes.has(nextMode)) {
         toast.error(
-          tenantSetupStep === POS_TERMINAL_SETUP_STEPS.POS_SETUP
-            ? 'Finish POS Setup before opening the rest of the POS.'
-            : 'Finish Storefront Setup before opening the rest of the POS.'
+          tenantSetupStep === POS_TERMINAL_SETUP_STEPS.PROFILE
+            ? 'Finish tenant onboarding in POS Settings before opening the rest of the POS.'
+            : (
+          tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP
+            ? 'Finish Storefront Setup before opening the rest of the POS.'
+            : 'Finish POS Setup before opening the rest of the POS.')
         );
+        if (!tenantSetupDismissedThisSession) {
+          resumeTenantSetupFlow();
+        }
         setMobileNavOpen(false);
         return;
       }
@@ -2323,12 +2379,59 @@ export default function TerminalPage() {
       setMobileNavOpen(false);
       return;
     }
-    setPosViewMode(nextMode);
-    if (workspacePaneRef.current) {
-      workspacePaneRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    if (isSettingsViewMode && !canAccessSettingsDirectly) {
+      if (!settingsAccessPinEnabled) {
+        toast.error('Settings PIN is not configured by the main branch admin.');
+        setMobileNavOpen(false);
+        return;
+      }
+      if (!settingsAccessPinVerified) {
+        setPendingSettingsViewMode(nextMode);
+        setSettingsAccessPinValue('');
+        setSettingsAccessPinModalOpen(true);
+        setMobileNavOpen(false);
+        return;
+      }
     }
-    setMobileNavOpen(false);
-  }, [activeViewModes, locked, requiresOpenShift, tenantSetupFlowRequested, tenantSetupStep]);
+    commitViewModeSelection(nextMode);
+  }, [
+    activeViewModes,
+    canAccessSettingsDirectly,
+    commitViewModeSelection,
+    locked,
+    requiresOpenShift,
+    resumeTenantSetupFlow,
+    settingsAccessPinEnabled,
+    settingsAccessPinVerified,
+    setupFlowActive,
+    tenantSetupDismissedThisSession,
+    tenantSetupStep
+  ]);
+
+  const handleSettingsAccessPinSubmit = useCallback(async (event) => {
+    event.preventDefault();
+    const normalizedPin = String(settingsAccessPinValue || '').trim();
+    if (!normalizedPin) {
+      toast.error('Enter the Settings PIN to continue.');
+      return;
+    }
+
+    setSettingsAccessPinSubmitting(true);
+    try {
+      await verifyPosSettingsAccessPin(normalizedPin);
+      setSettingsAccessPinVerified(true);
+      setSettingsAccessPinModalOpen(false);
+      setSettingsAccessPinValue('');
+      const nextMode = String(pendingSettingsViewMode || 'settings_profile').trim() || 'settings_profile';
+      setPendingSettingsViewMode('');
+      commitViewModeSelection(nextMode);
+      toast.success('Settings unlocked for this session.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Invalid Settings PIN.');
+    } finally {
+      setSettingsAccessPinSubmitting(false);
+    }
+  }, [commitViewModeSelection, pendingSettingsViewMode, settingsAccessPinValue]);
 
   const handleHardwareMessageOpenChange = useCallback((open) => {
     if (!open) {
@@ -2343,6 +2446,15 @@ export default function TerminalPage() {
   const handleStorefrontSetupSaved = useCallback(async () => {
     await hydrateTenantSetupState({ suppressGlobalErrors: true });
   }, [hydrateTenantSetupState]);
+
+  const handleTenantSetupDataChanged = useCallback(async () => {
+    await Promise.all([
+      hydrateTenantSetupState({ suppressGlobalErrors: true }),
+      hydrateTerminalMeta({ suppressGlobalErrors: true }),
+      refreshTenantLocations({ suppressGlobalErrors: true }),
+      hydrateUser({ suppressGlobalErrors: true })
+    ]);
+  }, [hydrateTenantSetupState, hydrateTerminalMeta, hydrateUser, refreshTenantLocations]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -2436,7 +2548,14 @@ export default function TerminalPage() {
   const effectiveSidebarCollapsed = isDesktopWide ? sidebarCollapsed : false;
   const isCheckoutWorkspaceMode = CHECKOUT_VIEW_MODES.includes(posViewMode);
   const isOperationsWorkspaceMode = activeOperationsViewModes.includes(posViewMode);
-  const shiftOpeningModalOpen = !drawerOpen && !terminalUnlockModalOpen && !terminalUnlockRequired && requiresOpenShift && canViewPos;
+  const shiftOpeningModalOpen = (
+    !drawerOpen
+    && !terminalUnlockModalOpen
+    && !terminalUnlockRequired
+    && requiresOpenShift
+    && canViewPos
+    && !shiftOpenPromptBlockedBySetup
+  );
   const openingCashAmountText = String(openShiftForm.openingFloatAmount ?? '').trim();
   const openingCashAmountNumber = Number(openingCashAmountText);
   const canSubmitOpenShift = (
@@ -2641,35 +2760,30 @@ export default function TerminalPage() {
             </form>
           </DialogContent>
         </Dialog>
-        {tenantSetupFlowRequested && !locked && terminalUser?.is_master_admin === true && tenantSetupStep !== POS_TERMINAL_SETUP_STEPS.COMPLETE && (
+        {setupFlowActive && (
           <div className="fixed left-4 top-4 z-[72] max-w-[min(92vw,460px)] rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-950 shadow-lg shadow-blue-900/10">
-            {tenantSetupStep === POS_TERMINAL_SETUP_STEPS.ONBOARDING
-              ? 'Finish tenant onboarding first. POS selling remains limited until setup is complete.'
-              : (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.POS_SETUP
-                ? `Finish POS Setup next. Missing: ${
+            {tenantSetupStep === POS_TERMINAL_SETUP_STEPS.PROFILE
+              ? 'Finish tenant onboarding in POS Settings first. The rest of POS remains limited until setup is complete.'
+              : (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP
+                ? 'Finish Storefront Setup next. Add the company icon and cover image to continue.'
+                : `Finish POS Setup next. Missing: ${
                   [
-                    setupFlowState.posRequirements.businessNameReady ? null : 'business name',
-                    setupFlowState.posRequirements.businessAddressReady ? null : 'business address',
                     setupFlowState.posRequirements.terminalRegistryReady ? null : 'registered terminal with password and store'
                   ].filter(Boolean).join(', ')
-                }.`
-                : 'Finish Storefront Setup next. Add at least one storefront contact channel to continue.')}
+                }.`)}
           </div>
         )}
-        {showOnboardingReminder && (
+        {setupFlowActive && (
           <div className="fixed right-4 top-4 z-[70] max-w-[min(92vw,420px)] rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 shadow-lg shadow-amber-900/10">
             <span>
-              Tenant onboarding is incomplete ({onboardingCompletedCount}/{onboardingRequiredTotal} required checks).
+              Tenant onboarding still needs to be finished before the full POS becomes available.
             </span>
             <button
               type="button"
               className="ml-1 font-extrabold underline underline-offset-2"
-              onClick={() => {
-                setOnboardingDismissedThisSession(false);
-                setOnboardingSetupOpen(true);
-              }}
+              onClick={() => resumeTenantSetupFlow()}
             >
-              Continue POS setup.
+              Continue onboarding.
             </button>
           </div>
         )}
@@ -2725,31 +2839,126 @@ export default function TerminalPage() {
             )}
           </div>
         )}
-        <OnboardingSetupModal
-          open={onboardingSetupOpen}
-          onClose={() => {
-            if (tenantSetupFlowRequested && tenantSetupStep === POS_TERMINAL_SETUP_STEPS.ONBOARDING) {
-              setOnboardingSetupOpen(true);
-              toast.error('Complete tenant onboarding before continuing to POS Setup.');
+        <PosTenantSetupModal
+          open={tenantSetupModalOpen}
+          currentStep={tenantSetupStep}
+          companyName={setupFlowState.profileRequirements.companyName}
+          profileData={{
+            username: terminalUser?.username || '',
+            email: terminalUser?.email || '',
+            phoneNumber: terminalUser?.phone_number || ''
+          }}
+          posRequirements={setupFlowState.posRequirements}
+          storefrontRequirements={setupFlowState.storefrontRequirements}
+          terminalRegistry={terminalRegistry}
+          terminalLocations={locationsState.locations}
+          onOpenSettingsStep={openTenantSetupStep}
+          onStepSelect={openTenantSetupStep}
+          onBack={() => {
+            const previousStep = getPreviousTenantSetupStep(tenantSetupStep);
+            if (previousStep) {
+              openTenantSetupStep(previousStep);
+            }
+          }}
+          onContinue={() => {
+            const nextStep = getNextTenantSetupStep(tenantSetupStep);
+            if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.PROFILE) {
+              openTenantSetupStep(nextStep);
               return;
             }
-            setOnboardingSetupOpen(false);
-            setOnboardingDismissedThisSession(true);
-            trackOnboardingEvent({
-              eventKey: 'reminder_dismissed',
-              metadata: { surface: 'pos_terminal' }
-            }).catch(() => {});
+            if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP) {
+              if (!setupFlowState.storefrontSetupReady) {
+                toast.error('Finish Storefront Setup before continuing to POS Setup.');
+                openTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP);
+                return;
+              }
+              openTenantSetupStep(nextStep);
+              return;
+            }
+            if (!setupFlowState.posSetupReady) {
+              toast.error('Finish POS Setup before opening the full POS.');
+              openTenantSetupStep(POS_TERMINAL_SETUP_STEPS.POS_SETUP);
+              return;
+            }
+            replaceTenantSetupQuery(POS_TERMINAL_SETUP_STEPS.COMPLETE);
+            setTenantSetupModalOpen(false);
           }}
-          onboarding={terminalUser?.onboarding || null}
-          currentUser={terminalUser}
-          workflowMode={workflowMode}
-          onRefreshUser={hydrateUser}
+          onSkip={() => {
+            setTenantSetupModalOpen(false);
+            setTenantSetupDismissedThisSession(true);
+            toast.message('Finish tenant onboarding in POS Settings to unlock the rest of the POS.');
+          }}
+          onSetupDataChanged={handleTenantSetupDataChanged}
         />
         <PosHardwareMessageModal
           open={Boolean(hardwareMessage)}
           message={hardwareMessage}
           onOpenChange={handleHardwareMessageOpenChange}
         />
+        <Dialog
+          open={settingsAccessPinModalOpen}
+          onOpenChange={(open) => {
+            if (settingsAccessPinSubmitting) return;
+            setSettingsAccessPinModalOpen(open);
+            if (!open) {
+              setSettingsAccessPinValue('');
+              setPendingSettingsViewMode('');
+            }
+          }}
+        >
+          <DialogContent className="border border-slate-200 bg-white p-0 shadow-2xl sm:max-w-md">
+            <form onSubmit={handleSettingsAccessPinSubmit}>
+              <DialogHeader className="border-b border-slate-100 px-5 py-4">
+                <DialogTitle className="text-lg font-extrabold text-slate-950">Enter Settings PIN</DialogTitle>
+                <DialogDescription className="text-sm leading-6 text-slate-600">
+                  Main branch admin protected Settings with a branch PIN. Enter the PIN to open POS Settings for this session.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-3 px-5 py-5">
+                <div className="grid gap-2">
+                  <Label htmlFor="settings-access-pin" className="text-xs font-extrabold text-[#0F172A]">
+                    Settings PIN
+                  </Label>
+                  <Input
+                    id="settings-access-pin"
+                    type="password"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    value={settingsAccessPinValue}
+                    onChange={(event) => setSettingsAccessPinValue(event.target.value)}
+                    placeholder="Enter 4 to 12 digit PIN"
+                    disabled={settingsAccessPinSubmitting}
+                    required
+                  />
+                  <p className="text-[11px] text-[#64748B]">
+                    This unlock only lasts until the terminal is locked or the session ends.
+                  </p>
+                </div>
+              </div>
+              <DialogFooter className="border-t border-slate-100 gap-2 px-5 py-4 sm:justify-between">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setSettingsAccessPinModalOpen(false);
+                    setSettingsAccessPinValue('');
+                    setPendingSettingsViewMode('');
+                  }}
+                  disabled={settingsAccessPinSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="bg-[#1A4E8D] font-bold text-white hover:bg-[#143F73]"
+                  disabled={settingsAccessPinSubmitting}
+                >
+                  {settingsAccessPinSubmitting ? 'Verifying...' : 'Unlock Settings'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
         <Dialog open={closeShiftConfirmOpen} onOpenChange={setCloseShiftConfirmOpen}>
           <DialogContent className="border border-slate-200 bg-white shadow-2xl sm:max-w-lg">
             <DialogHeader>
@@ -2845,6 +3054,7 @@ export default function TerminalPage() {
           setMobileNavOpen={setMobileNavOpen}
           isDesktopWide={isDesktopWide}
           canViewPos={canViewPos}
+          onboardingRestricted={setupFlowActive}
           canCreateItems={canCreateItems}
           canEditItems={canEditItems}
           canDeleteItems={canDeleteItems}
@@ -2861,6 +3071,11 @@ export default function TerminalPage() {
           operatingLocationId={operatingLocationId}
           queueLocationScopeId={queueLocationScopeId}
           handleSelectViewMode={handleSelectViewMode}
+          settingsEntryViewMode={
+            setupFlowActive
+              ? resolveTenantSetupViewMode(tenantSetupStep)
+              : 'settings_profile'
+          }
           handleLock={handleLock}
           setDrawerOpen={setDrawerOpen}
           effectiveSidebarCollapsed={effectiveSidebarCollapsed}

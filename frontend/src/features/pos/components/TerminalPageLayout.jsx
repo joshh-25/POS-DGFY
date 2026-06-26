@@ -26,6 +26,7 @@ export default function TerminalPageLayout({
     setMobileNavOpen,
     isDesktopWide,
     canViewPos,
+    onboardingRestricted = false,
     canCreateItems = false,
     canEditItems = false,
     canDeleteItems = false,
@@ -42,6 +43,7 @@ export default function TerminalPageLayout({
     operatingLocationId,
     queueLocationScopeId,
     handleSelectViewMode,
+    settingsEntryViewMode = 'settings_profile',
     handleLock,
     setDrawerOpen,
     effectiveSidebarCollapsed = false,
@@ -326,14 +328,16 @@ export default function TerminalPageLayout({
             isMsmeMode={isMsmeMode}
             terminalUser={terminalUser}
             currentViewMode={posViewMode}
-            canViewPos={canViewPos}
-            canAdjustCashDrawer={canAdjustCashDrawer}
+              canViewPos={canViewPos}
+              onboardingRestricted={onboardingRestricted}
+              canAdjustCashDrawer={canAdjustCashDrawer}
             canCloseDay={canCloseDay}
             shiftState={shiftState}
             incomingOrdersState={incomingOrdersState}
             locationsState={locationsState}
             queueLocationScopeId={queueLocationScopeId}
             queueSummary={queueSummary}
+            settingsTargetViewMode={settingsEntryViewMode}
             onSelectViewMode={handleSelectViewMode}
             onUnlock={() => setDrawerOpen(true)}
             onLock={handleLock}
@@ -535,6 +539,7 @@ export default function TerminalPageLayout({
                 locationsState={locationsState}
                 queueLocationScopeId={queueLocationScopeId}
                 queueSummary={queueSummary}
+                settingsTargetViewMode={settingsEntryViewMode}
                 onSelectViewMode={handleSelectViewMode}
                 onUnlock={() => {
                   setDrawerOpen(true);

@@ -42,10 +42,10 @@ Execution support artifacts:
 9. If testing a DGFY-created company account, use the DGFY-first POS flow first:
    - create DGFY account
    - create business account
-   - handoff into `/terminal?setup_flow=tenant_onboarding&setup_step=onboarding`
-   - finish onboarding
-   - finish `Settings > POS Setup`
+   - handoff into `/terminal?setup_flow=tenant_onboarding&setup_step=profile`
+   - finish `Settings > Profile Setting`
    - finish `Settings > Storefront`
+   - finish `Settings > POS Setup`
    - continue to normal POS terminal unlock
    Confirm the tenant-local `/auth/lookup` path only when explicitly testing the governed legacy fallback flow.
 
@@ -130,28 +130,37 @@ Evidence:
 1. Create a brand-new DGFY account and business account.
 2. Confirm the business handoff opens POS directly on the guided setup flow.
 3. Confirm onboarding is forced first and cannot be dismissed into the rest of POS.
-4. Complete onboarding and confirm POS automatically routes into `Settings > POS Setup`.
-5. Leave one required POS Setup field incomplete and confirm normal POS workspaces remain blocked.
-6. Finish required POS Setup fields and confirm POS automatically routes into `Settings > Storefront`.
-7. Leave storefront contact empty and confirm the setup gate still blocks full POS access.
-8. Add a storefront phone or storefront email and save.
-9. Confirm the guided setup state clears and the operator can enter the full POS workspace.
+4. Confirm the first guided step opens `Settings > Profile Setting` and reuses the registration data automatically.
+5. Continue to `Settings > Storefront`.
+6. Leave either the company icon or company cover image empty and confirm the setup gate still blocks the full POS.
+7. Upload both the storefront company icon and storefront cover image.
+8. Confirm guided setup then routes into `Settings > POS Setup`.
+9. Leave the terminal registry incomplete and confirm normal POS workspaces remain blocked.
+10. Create at least one active registered terminal with assigned store location and terminal password.
+11. Save POS Setup and confirm the guided setup state clears.
+12. Confirm the operator can enter the full POS workspace.
+13. Confirm the open-shift modal does not appear before at least one registered active terminal exists.
+14. After onboarding is complete and a terminal exists, confirm the normal unlock/open-shift flow becomes available.
 
 Expected:
 1. New business registration lands directly in POS guided setup.
 2. Guided setup order is enforced as:
-   - onboarding
-   - POS Setup
+   - Profile Setting
    - Storefront Setup
-3. POS Setup gate requires:
-   - business name
-   - business address
-   - active registered terminal with location and terminal password
-4. Storefront Setup gate requires at least one contact channel.
-5. Guided setup completion removes the restricted setup state and restores normal POS navigation.
+   - POS Setup
+3. Profile Setting reuses the existing registration/business account data.
+4. Storefront Setup gate requires:
+   - company icon
+   - company cover image
+5. POS Setup gate requires:
+   - active registered terminal with assigned store location
+   - terminal password for that terminal
+6. Guided setup completion removes the restricted setup state and restores normal POS navigation.
+7. The shift-open flow stays unavailable until a valid registered terminal exists.
 
 Evidence:
 - Screenshot of first POS guided onboarding entry
+- Screenshot of Profile Setting guided step with reused registration data
 - Screenshot of POS Setup gate state
 - Screenshot of Storefront Setup gate state
 - Screenshot of full POS access after setup completion

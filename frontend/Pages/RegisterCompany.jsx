@@ -24,9 +24,7 @@ import DgfyAuthHero from '../src/features/dgfy/components/DgfyAuthHero.jsx';
 import { WORKFLOW_MODE_LABELS, WORKFLOW_MODE_SELECT_VALUES } from '../src/features/settings/workflowMode.js';
 import { buildDgfyAuthPath, DGFY_REGISTER_COMPANY_ENTRY } from '../src/features/dgfyRouteHelpers.js';
 import {
-    POS_TERMINAL_SETUP_FLOW_QUERY_KEY,
-    POS_TERMINAL_SETUP_FLOW_VALUE,
-    POS_TERMINAL_SETUP_STEP_QUERY_KEY,
+    buildTenantSetupSearch,
     POS_TERMINAL_SETUP_STEPS
 } from '../src/features/pos/utils/setupFlow.js';
 
@@ -45,7 +43,7 @@ const hasCompanyLegalVersions = (snapshot = {}) => Boolean(
 );
 const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
 const COMPANY_REGISTRATION_TIMEOUT_MS = 120000;
-const POS_ONBOARDING_ENTRY_SEARCH = `?${POS_TERMINAL_SETUP_FLOW_QUERY_KEY}=${POS_TERMINAL_SETUP_FLOW_VALUE}&${POS_TERMINAL_SETUP_STEP_QUERY_KEY}=${POS_TERMINAL_SETUP_STEPS.ONBOARDING}`;
+const POS_ONBOARDING_ENTRY_SEARCH = buildTenantSetupSearch('', POS_TERMINAL_SETUP_STEPS.PROFILE);
 
 const PasswordInput = ({
     id,
