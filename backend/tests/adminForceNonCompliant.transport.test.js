@@ -39,6 +39,9 @@ jest.unstable_mockModule('../src/controllers/adminTenantController.js', () => ({
     approveTenant: noopHandler,
     rejectTenant: noopHandler,
     provisionNewTenant: noopHandler,
+    createAdminProvisionedAccountAndTenant: noopHandler,
+    createAdminProvisionedTenant: noopHandler,
+    assignTenantOwnerByAdmin: noopHandler,
     getPricingSettings: noopHandler,
     updatePricingSettings: noopHandler,
     updateTenant: noopHandler,
@@ -68,6 +71,7 @@ jest.unstable_mockModule('../src/controllers/adminTenantController.js', () => ({
 }));
 
 jest.unstable_mockModule('../src/middleware/auth.js', () => ({
+    authenticate: (req, _res, next) => next(),
     authenticateAdmin: (req, _res, next) => {
         req.admin = { id: 1, username: 'platform_admin' };
         next();

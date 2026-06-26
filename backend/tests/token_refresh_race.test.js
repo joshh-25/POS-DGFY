@@ -41,6 +41,7 @@ describe('Token Refresh Race Condition (Backend RTR Invariant)', () => {
   let baseRefreshToken;
   let baseSessionCookies;
   let baseCsrfToken;
+  let previousLegacyRegistrationEnabled;
 
   const extractCookieValue = (cookies = [], name) => {
     const rawCookie = cookies.find((cookie) => cookie.startsWith(`${name}=`));
@@ -62,6 +63,8 @@ describe('Token Refresh Race Condition (Backend RTR Invariant)', () => {
   };
 
   beforeAll(async () => {
+    previousLegacyRegistrationEnabled = process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED;
+    process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED = 'true';
     await sequelize.authenticate();
     testTenantContext = await createTestTenant('rttrace');
     COMPANY_TOKEN = testTenantContext.token;
@@ -78,6 +81,11 @@ describe('Token Refresh Race Condition (Backend RTR Invariant)', () => {
     await cleanup();
     if (testTenantContext) {
       await destroyTestTenant(testTenantContext);
+    }
+    if (previousLegacyRegistrationEnabled === undefined) {
+      delete process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED;
+    } else {
+      process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED = previousLegacyRegistrationEnabled;
     }
     await sequelize.close();
   });

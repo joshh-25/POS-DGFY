@@ -6,6 +6,7 @@ let cachedSettings = null;
 let cachedSettingsExpiresAt = 0;
 let cachedSettingsScope = null;
 let inFlightSettingsRequest = null;
+let inFlightSettingsScope = null;
 
 const getSettingsScope = () => {
   const companyToken = getCompanyToken() || 'default';
@@ -18,6 +19,7 @@ const invalidateSettingsCache = () => {
   cachedSettingsExpiresAt = 0;
   cachedSettingsScope = null;
   inFlightSettingsRequest = null;
+  inFlightSettingsScope = null;
 };
 
 /**
@@ -31,22 +33,30 @@ export const getAllSettings = async ({ force = false, requestConfig = {} } = {})
     return cachedSettings;
   }
 
-  if (!force && inFlightSettingsRequest && cachedSettingsScope === scope) {
+  if (!force && inFlightSettingsRequest && inFlightSettingsScope === scope) {
     return inFlightSettingsRequest;
   }
 
-  cachedSettingsScope = scope;
-  inFlightSettingsRequest = api.get('/settings', requestConfig)
+  const requestScope = scope;
+  inFlightSettingsScope = requestScope;
+  const settingsRequest = api.get('/settings', requestConfig)
     .then((response) => {
       const settings = response.data.data;
-      cachedSettings = settings;
-      cachedSettingsExpiresAt = Date.now() + SETTINGS_CACHE_TTL_MS;
+      if (getSettingsScope() === requestScope) {
+        cachedSettings = settings;
+        cachedSettingsScope = requestScope;
+        cachedSettingsExpiresAt = Date.now() + SETTINGS_CACHE_TTL_MS;
+      }
       return settings;
     })
     .finally(() => {
-      inFlightSettingsRequest = null;
+      if (inFlightSettingsRequest === settingsRequest) {
+        inFlightSettingsRequest = null;
+        inFlightSettingsScope = null;
+      }
     });
 
+  inFlightSettingsRequest = settingsRequest;
   return inFlightSettingsRequest;
 };
 

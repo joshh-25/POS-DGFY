@@ -14,6 +14,7 @@ jest.unstable_mockModule('../src/services/emailService.js', () => ({
 
 const { checkExpiringSubscriptions } = await import('../src/schedulers/billingScheduler.js');
 const { sequelize, Tenant } = await import('../src/models/index.js');
+const { ensureLandlordTenantSchemaReady } = await import('./helpers/landlordSchemaReadiness.js');
 
 function toTargetDate(base, daysAhead) {
     const d = new Date(base);
@@ -47,6 +48,7 @@ describe('billingScheduler DB integration - expiring notifications idempotency',
 
     beforeAll(async () => {
         await sequelize.authenticate();
+        await ensureLandlordTenantSchemaReady();
     });
 
     beforeEach(async () => {

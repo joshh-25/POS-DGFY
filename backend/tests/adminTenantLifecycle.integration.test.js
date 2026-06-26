@@ -48,6 +48,7 @@ jest.unstable_mockModule('../src/services/tenantProvisioningService.js', () => (
 
 jest.unstable_mockModule('../src/services/emailService.js', () => ({
     isEmailConfigured: jest.fn().mockReturnValue(false),
+    sendEmail: jest.fn(),
     sendCompanyApprovedEmail: jest.fn(),
     sendCompanyRejectedEmail: jest.fn()
 }));
@@ -70,6 +71,7 @@ const {
 } = await import('../src/models/index.js');
 const { generateDgfyToken } = await import('../src/modules/dgfy/usecases/dgfyAuthUseCases.js');
 const { DGFY_LEGAL_TERM_VERSIONS } = await import('../src/modules/shared/utils/dgfyLegalTerms.js');
+const { ensureLandlordTenantSchemaReady } = await import('./helpers/landlordSchemaReadiness.js');
 const { DataTypes, Op } = await import('sequelize');
 
 describe('Admin Tenant Lifecycle Integration - Parity', () => {
@@ -105,6 +107,7 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
 
     beforeAll(async () => {
         await sequelize.authenticate();
+        await ensureLandlordTenantSchemaReady();
         adminApiToken = jwt.sign(
             { username: `admin_lifecycle_${testSuffix}`, role: 'admin', type: 'admin' },
             process.env.JWT_SECRET,

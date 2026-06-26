@@ -32,12 +32,15 @@ let managerToken;   // JWT for a 'manager' user (has CREATE_ADJUSTMENT permissio
 let viewerToken;    // JWT for a 'viewer' user (no write permissions)
 let managerId;
 let defaultTenantCtx;
+let previousLegacyRegistrationEnabled;
 
 const TIMESTAMP = Date.now();
 const TODAY = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 beforeAll(async () => {
+    previousLegacyRegistrationEnabled = process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED;
+    process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED = 'true';
     await db.sequelize.authenticate();
     defaultTenantCtx = await createTestTenant('void');
 
@@ -113,6 +116,11 @@ afterAll(async () => {
     }).catch(() => { });
     if (defaultTenantCtx) {
         await destroyTestTenant(defaultTenantCtx);
+    }
+    if (previousLegacyRegistrationEnabled === undefined) {
+        delete process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED;
+    } else {
+        process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED = previousLegacyRegistrationEnabled;
     }
 
     await db.sequelize.close();

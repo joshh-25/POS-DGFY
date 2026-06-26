@@ -5,6 +5,9 @@ const mockListTenantsUseCase = jest.fn();
 const mockApproveTenantUseCase = jest.fn();
 const mockRejectTenantUseCase = jest.fn();
 const mockProvisionNewTenantUseCase = jest.fn();
+const mockCreateAdminProvisionedAccountAndTenantUseCase = jest.fn();
+const mockCreateAdminProvisionedTenantUseCase = jest.fn();
+const mockAssignTenantOwnerByAdminUseCase = jest.fn();
 const mockGetPricingSettingsUseCase = jest.fn();
 const mockUpdatePricingSettingsUseCase = jest.fn();
 const mockUpdateTenantUseCase = jest.fn();
@@ -25,6 +28,9 @@ jest.unstable_mockModule('../src/modules/tenants/index.js', () => ({
   approveTenantUseCase: mockApproveTenantUseCase,
   rejectTenantUseCase: mockRejectTenantUseCase,
   provisionNewTenantUseCase: mockProvisionNewTenantUseCase,
+  createAdminProvisionedAccountAndTenantUseCase: mockCreateAdminProvisionedAccountAndTenantUseCase,
+  createAdminProvisionedTenantUseCase: mockCreateAdminProvisionedTenantUseCase,
+  assignTenantOwnerByAdminUseCase: mockAssignTenantOwnerByAdminUseCase,
   getPricingSettingsUseCase: mockGetPricingSettingsUseCase,
   updatePricingSettingsUseCase: mockUpdatePricingSettingsUseCase,
   updateTenantUseCase: mockUpdateTenantUseCase,

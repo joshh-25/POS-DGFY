@@ -45,7 +45,8 @@ vi.mock('../../../../src/features/settings/WorkflowModeContext.jsx', () => ({
 
 vi.mock('../../../../src/features/settings/workflowMode.js', () => ({
   getWorkflowModeLabel: () => 'MSME',
-  isWorkflowPageVisible: () => true
+  isWorkflowPageVisible: () => true,
+  isWorkflowPageModeSensitive: () => false
 }));
 
 vi.mock('../../../../src/features/onboarding/components/OnboardingSetupModal.jsx', () => ({

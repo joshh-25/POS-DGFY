@@ -34,7 +34,7 @@ import GracePeriodBanner from './Components/common/GracePeriodBanner';
 import TenantCapabilityNotice from './src/components/common/TenantCapabilityNotice.jsx';
 import useStore from './src/store/useStore.js';
 import { useWorkflowMode } from './src/features/settings/WorkflowModeContext.jsx';
-import { getWorkflowModeLabel, isWorkflowPageVisible } from './src/features/settings/workflowMode.js';
+import { getWorkflowModeLabel, isWorkflowPageModeSensitive, isWorkflowPageVisible } from './src/features/settings/workflowMode.js';
 import OnboardingSetupModal, { OnboardingReminderBanner } from './src/features/onboarding/components/OnboardingSetupModal.jsx';
 import { trackOnboardingEvent } from './src/services/onboardingService.js';
 import { getAllSettings } from './src/services/settingsService.js';
@@ -82,9 +82,14 @@ const UserProfile = ({ user }) => {
   );
 };
 
-const getSwitchErrorMessage = (error, fallback) => (
-  error?.response?.data?.message || error?.message || fallback
-);
+const getSwitchErrorMessage = (error, fallback) => {
+  const status = error?.response?.status;
+  const message = error?.response?.data?.message || error?.message || '';
+  if ((status === 400 || status === 401) && message.toLowerCase().includes('not linked to a dgfy account membership')) {
+    return 'Current company loaded. Link your IMS user to a DGFY account to see extra DGFY businesses and pending invitations here.';
+  }
+  return message || fallback;
+};
 
 const CompanySwitcher = ({ user }) => {
   const [open, setOpen] = useState(false);
@@ -453,8 +458,10 @@ export default function Layout({ children, currentPageName }) {
 
   // Filter nav items - only filter after permissions have loaded
   // During loading, show all items to prevent flash of limited menu
+  const workflowModeReady = workflowModeLoading === false && workflowModeResolved === true;
   const navItems = ALL_NAV_ITEMS.filter(item => {
-    if (!isWorkflowPageVisible(item.page, workflowMode)) return false;
+    if (!workflowModeReady && isWorkflowPageModeSensitive(item.page)) return false;
+    if (workflowModeReady && !isWorkflowPageVisible(item.page, workflowMode)) return false;
     if (loading) return true; // Show all during loading to prevent flash
     if (item.permissionAny?.length) {
       return item.permissionAny.some((permission) => can(permission));

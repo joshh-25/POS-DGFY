@@ -94,7 +94,14 @@ describe('settings compliance changed-key integration', () => {
         expect(result.success).toBe(false);
         expect(mockAssertComplianceOperationAllowed).toHaveBeenCalledWith(expect.objectContaining({
             context: expect.objectContaining({
-                setting_keys: ['pos_tin_branch']
+                setting_keys: ['pos_receipt_metadata_pending_changes'],
+                setting_updates: expect.objectContaining({
+                    pos_receipt_metadata_pending_changes: expect.objectContaining({
+                        changes: expect.objectContaining({
+                            pos_tin_branch: '123-456'
+                        })
+                    })
+                })
             })
         }));
         expect(updateSettings).not.toHaveBeenCalled();
