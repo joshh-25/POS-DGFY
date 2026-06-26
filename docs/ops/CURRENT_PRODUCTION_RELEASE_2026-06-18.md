@@ -2,12 +2,12 @@
 status: reference
 authority_level: reference
 owner: operations
-last_reviewed: 2026-06-22
+last_reviewed: 2026-06-26
 applies_to: production_release, dgfy_company_access, dgfy_customer_account, storefront, pos, observability
 topic: current_production_release_state
 ---
 
-# Current Production Release State - 2026-06-22
+# Current Production Release State - 2026-06-26
 
 This document records the current production state using deploy evidence, live health output, and release-gate artifacts. Do not use source `HEAD` alone as live-production proof.
 
@@ -15,32 +15,31 @@ Source-only documentation or test-hardening commits may exist after the deployed
 
 ## Proof Snapshot
 
-Production proof refreshed on 2026-06-22 Asia/Manila from live VPS state:
+Production proof refreshed on 2026-06-26 Asia/Manila from live VPS state:
 
-- Production remote `HEAD`: `eed354686109418e8766be97e05bbc90aa8ef55b`
-- Production `.deploy-state/last_deployed_commit`: `eed354686109418e8766be97e05bbc90aa8ef55b`
-- Latest production deploy summary path: `/var/www/skupervisor/logs/deploy/deploy_20260622_165404.summary.txt`
-- Deploy summary `deployed_head`, `remote_head`, and `expected_commit`: `eed354686109418e8766be97e05bbc90aa8ef55b`
-- Live production `/api/v1/health` reports `services.observability.runtime_sha=eed354686109418e8766be97e05bbc90aa8ef55b` with source `deploy_state:last_deployed_commit`.
+- Production remote `HEAD`: `c375dd90f2db16d8ed924c0b10ecd653319e8b16`
+- Production `.deploy-state/last_deployed_commit`: `c375dd90f2db16d8ed924c0b10ecd653319e8b16`
+- Latest production deploy summary path: `/var/www/skupervisor/logs/deploy/deploy_20260626_161139.summary.txt`
+- Production deploy contract: `PASS` for `c375dd90f2db16d8ed924c0b10ecd653319e8b16`
+- Live production `/api/v1/health` reports `services.observability.runtime_sha=c375dd90f2db16d8ed924c0b10ecd653319e8b16` with source `deploy_state:last_deployed_commit`.
 - Live production `/api/v1/health` reports database, Redis, runtime schema, schema indexes, billing telemetry, and observability as healthy. Tenant pool capacity is a warning at 20 active tenants out of 20 capacity.
 - Frontend asset parity status in the deploy summary: `pass`
-- `migrations_changed=0`
-- `total_changed_files=0` for the successful deploy rerun, because the target commit was already present on the production server before the final PM2/build reload.
+- The deploy included the platform-admin assisted provisioning migration in the fast-forward pull and then completed the deterministic deploy rerun at the same target SHA.
 - `tenant_schema_sync_require_zero=1`; the summary records tenant schema sync report output and tenant index headroom report output with `tenant_index_headroom_strict=0`.
 
 ## Release Gate Evidence
 
 No-staging release verdict for the current deployed SHA:
 
-- Artifact: `.tmp/release-gates/eed354686109418e8766be97e05bbc90aa8ef55b/release_verdict.json`
+- Artifact: `.tmp/release-gates/c375dd90f2db16d8ed924c0b10ecd653319e8b16/release_verdict.json`
 - Verdict: `bypassed`
-- Passing local/release gates for the exact target SHA included focused Storefront current-location control coverage, Storefront map layer tests, Storefront production build, docs lint, architecture guardrails, whitespace checks, deploy source-contract checks, QA multi-location smoke, rollback drill, restore drill, observability evidence, and merge-adoption checks.
-- Emergency bypass reason: the owner explicitly authorized emergency production deployment after the Storefront current-location map control restore passed focused gates because the no-staging verdict still had stale QA deploy-summary SHA evidence. This is an auditable no-staging bypass; post-deploy parity is clean.
-- Post-deploy proof closes the runtime inclusion risk for this deployed SHA: production deploy summary, remote head, `.deploy-state/last_deployed_commit`, live `/api/v1/health.services.observability.runtime_sha`, `https://dgfy.ph/map-dgfy` route smoke, deployed source checks, deployed bundle checks, frontend asset parity, and matching `expected_commit` all match or contain the `eed354686109418e8766be97e05bbc90aa8ef55b` release.
+- Passing local/release gates for the exact target SHA included targeted assisted-provisioning backend and frontend tests, SKUpervisor/POS/Store builds, release-worktree rendered smoke, docs lint, architecture guardrails, compliance checks, whitespace checks, deploy source-contract checks, QA multi-location smoke, rollback drill, restore drill, observability evidence, and merge-adoption checks.
+- Emergency bypass reason: the owner-authorized emergency bypass was used because the clean assisted-provisioning slice had stale pre-deploy QA deploy-summary SHA evidence while every other release gate passed. This is an auditable no-staging bypass; post-deploy parity is clean.
+- Post-deploy proof closes the runtime inclusion risk for this deployed SHA: production deploy summary, remote head, `.deploy-state/last_deployed_commit`, live `/api/v1/health.services.observability.runtime_sha`, deployed source checks, deployed bundle checks, frontend asset parity, and production deployment contract all match or contain the `c375dd90f2db16d8ed924c0b10ecd653319e8b16` release.
 
 Observability evidence:
 
-- Artifact: `.tmp/release-gates/eed354686109418e8766be97e05bbc90aa8ef55b/observability_evidence.json`
+- Artifact: `.tmp/release-gates/c375dd90f2db16d8ed924c0b10ecd653319e8b16/observability_evidence.json`
 - Verdict: `pass` in report mode
 - `trace_context.round_trip`: pass
 - `health.runtime_sha.present`: pass
@@ -50,8 +49,9 @@ Observability evidence:
 
 ## Production-Live Scope
 
-The current production runtime includes the branch and PR adoption chain from the earlier proven production SHA through `eed35468`:
+The current production runtime includes the branch and PR adoption chain from the earlier proven production SHA through `c375dd90`:
 
+- Platform-admin assisted provisioning: admin-only DGFY account creation, ownerless tenant provisioning, combined DGFY+tenant provisioning, force owner assignment to an active DGFY account id, tenant admin audit evidence, DGFY admin audit evidence, and the Tenant Manager / DGFY Accounts admin UI panels.
 - DGFY company access hardening: explicit DGFY membership model, DGFY-only invitations, company switching, ownership transfer hardening, legacy-link grace behavior, and DGFY POS unlock.
 - DGFY customer and Storefront flow: handoff-token return flow, guest/account checkout chooser, saved address behavior, tracking drawer, updated account dashboard, no customer-visible `company_token`, and no silent same-email guest adoption into signed-in account history.
 - Storefront display and cosmetics: discovery/header account entry, F&B mobile hero stabilization, F&B details, Storefront styles, discovery relevance ranking, search-result pin fallback, and restored updated customer dashboard layout.
@@ -77,7 +77,7 @@ The current production runtime includes the branch and PR adoption chain from th
 
 ## Source-Current Post-Deploy Changes
 
-The current source tree is ahead of the `eed35468` production runtime. These changes are source-current only until a later guarded production deploy includes them; do not describe them as production-live from this document alone.
+The current source tree may be ahead of the `c375dd90` production runtime after local work resumes. These changes are source-current only until a later guarded production deploy includes them; do not describe them as production-live from this document alone.
 
 - `scripts/deploy-remote.sh` now defaults wrapper-triggered tenant index headroom to report mode (`DEPLOY_TENANT_INDEX_HEADROOM_STRICT=0`) while redundant index cleanup remains a tracked operational concern.
 - The wrapper can run `npm run deploy:qa:target` before the no-staging production gate when `DEPLOY_PROMOTE_QA_BEFORE_PROD` is not `off` or `0`.
@@ -85,7 +85,7 @@ The current source tree is ahead of the `eed35468` production runtime. These cha
 - QA deploy-summary evidence is fetched fresh before each no-staging gate run. `qa.deploy.summary.sha_match` remains hard-blocking, and emergency bypass remains incident-only.
 - Current `.env.qa.local` still points at production (`QA_SSH_HOST=192.53.116.33`, `QA_APP_DIR=/var/www/skupervisor`), so automatic QA promotion correctly refuses until a distinct QA target is configured or `DEPLOY_PROMOTE_QA_BEFORE_PROD=off` is set.
 - PayMongo live QR Ph split checkout now fails closed in source unless `PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED=true` or `PAYMONGO_PLATFORM_SPLIT_CONFIRMED=true` is explicitly set after external PayMongo parent merchant and split-capability confirmation.
-- POS/auth lookup throttling is source-tuned to use normalized-email buckets with `RATE_LIMIT_LOOKUP_WINDOW_MS` and `RATE_LIMIT_LOOKUP_MAX_REQUESTS` knobs so shared networks do not cross-throttle different cashier emails.
+- POS/auth lookup throttling is local/source work until separately deployed or rejected; do not describe it as production-live from this document alone.
 - Documentation-only corrections after these source changes clarify current production evidence and do not change runtime behavior.
 
 ## Production Data Repair Notes
@@ -110,7 +110,7 @@ These items are still not closed by the current production proof:
 4. Tenant pool capacity is at the configured limit and should be handled as an operational capacity task, not as a failed deploy.
 5. Controlled production order UAT is still needed to prove live customer order status changes create account notifications and update the open tracking/dashboard surfaces in production.
 6. Tenant index headroom currently runs non-strict in deploy because the report has redundant-index warnings with `critical=0`; keep this as operational database cleanup rather than a release-blocking failure until an accepted-risk decision changes the gate.
-7. The June 22 Storefront current-location deploy still used emergency bypass because QA deploy-summary SHA evidence was stale. The source tree now contains a guarded QA-promotion path intended to make future routine releases no-bypass once a distinct QA target is configured.
+7. The June 26 platform-admin assisted provisioning deploy still used emergency bypass because QA deploy-summary SHA evidence was stale. The source tree contains a guarded QA-promotion path intended to make future routine releases no-bypass once a distinct QA target is configured.
 8. Production route-level authenticated rendered QA for onboarding and Settings was not rerun after deploy with production credentials. Local seeded route-level QA and deployed bundle/source/live API checks prove inclusion; a controlled production browser pass remains recommended before treating the UX as human-production-proven.
 9. Storefront map source/layer tests, local rendered `/map-dgfy` desktop/mobile smoke, production route smoke, and Storefront discovery reconciliation prove inclusion of the pin-stability restore. Browser QA against production-seeded real storefront pins remains useful before calling zoom/hover spacing human-production-proven.
 
