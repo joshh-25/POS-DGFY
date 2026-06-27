@@ -133,6 +133,15 @@ is exactly the source that production should pull.
 
 Developer feature branches should open PRs into `staging`. Only the governed promotion workflow should move qualified `staging` changes into `master`.
 
+The repo-enforced workflow files are:
+
+1. `.github/workflows/staging-qualification.yml`
+2. `.github/workflows/promote-staging-to-master.yml`
+3. `.github/workflows/exact-master-sha-qualification.yml`
+4. `.github/workflows/deploy-production.yml`
+
+Do not treat green CI alone as production proof. Production proof requires exact `origin/master` deployment markers and deployed-change accuracy review.
+
 ## PayMongo Work
 
 PayMongo work must use a dedicated branch and explicit approval:

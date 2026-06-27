@@ -58,6 +58,12 @@
       "expected_authority_level": "reference"
     },
     {
+      "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
+      "topic": "development_to_production_workflow",
+      "expected_status": "authoritative",
+      "expected_authority_level": "authoritative"
+    },
+    {
       "path": "docs/ops/CURRENT_PRODUCTION_RELEASE_2026-06-18.md",
       "topic": "current_production_release_state",
       "expected_status": "reference",

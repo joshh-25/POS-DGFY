@@ -16,6 +16,8 @@ permissions:
 jobs:
   qualify:
     runs-on: ubuntu-latest
+    env:
+      CANDIDATE_SHA: ${{ github.sha }}
     services:
       mysql:
         image: mysql:8.0
@@ -107,6 +109,27 @@ jobs:
       - name: Check frontend budgets
         run: npm run check:frontend-budgets
 
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+        working-directory: ./backend
+
+      - name: Run browser journey gate
+        run: npm run test:frontend-ims-pos-sales-e2e
+        working-directory: ./backend
+        env:
+          RUN_BROWSER_E2E: 'true'
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+          BROWSER_E2E_HEADLESS: 'true'
+
       - name: Run development-to-production script tests
         run: npm run test:development-to-production
 
@@ -117,7 +140,22 @@ jobs:
         run: npm run check:deploy-source-contract -- --target-sha "${{ github.sha }}" --skip-remote-match --report ".tmp/release-gates/${{ github.sha }}/deploy_source_contract.staging.json"
 
       - name: Generate and enforce batch inventory
-        run: npm run check:batch-inventory -- --base origin/master --head "${{ github.sha }}" --write --require-ship --inventory ".tmp/release-gates/${{ github.sha }}/batch_inventory.json" --markdown ".tmp/release-gates/${{ github.sha }}/batch_inventory.md"
+        run: |
+          npm run check:batch-inventory -- --base origin/master --head "${{ github.sha }}" --write --require-ship --inventory ".tmp/release-gates/${{ github.sha }}/batch_inventory.json" --markdown ".tmp/release-gates/${{ github.sha }}/batch_inventory.md"
+          npm run validate:batch-inventory -- --inventory ".tmp/release-gates/${{ github.sha }}/batch_inventory.json" --base origin/master --head "${{ github.sha }}" --require-ship
+
+      - name: Write staging qualification summary
+        if: always()
+        run: |
+          {
+            echo "## Staging Qualification"
+            echo ""
+            echo "- Candidate SHA: \`${{ github.sha }}\`"
+            echo "- Event: \`${{ github.event_name }}\`"
+            echo "- Branch/ref: \`${{ github.ref }}\`"
+            echo "- Batch inventory: \`.tmp/release-gates/${{ github.sha }}/batch_inventory.json\`"
+            echo "- Promotion is blocked if this run fails or if staging changes before promotion."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload staging qualification artifacts
         if: always()
@@ -125,5 +163,5 @@ jobs:
         with:
           name: staging-qualification-${{ github.sha }}
           path: .tmp/release-gates/${{ github.sha }}/**
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 30

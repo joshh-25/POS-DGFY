@@ -41,6 +41,39 @@ jobs:
       - name: Require merge adoption proof for storefront customer-flow PRs
         run: npm run check:merge-adoption-required -- --base "origin/${{ github.base_ref }}" --head "${{ github.sha }}"
 
+  batch-inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install root dependencies
+        run: npm ci
+      - name: Generate and validate batch inventory
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE_REF="origin/${{ github.base_ref }}"
+          elif [[ "${{ github.ref }}" == "refs/heads/master" || "${{ github.ref }}" == "refs/heads/main" ]]; then
+            BASE_REF="origin/${{ github.ref_name }}~1"
+          else
+            BASE_REF="origin/master"
+          fi
+          npm run check:batch-inventory -- --base "$BASE_REF" --head "${{ github.sha }}" --write --require-ship --inventory ".tmp/release-gates/${{ github.sha }}/batch_inventory.json" --markdown ".tmp/release-gates/${{ github.sha }}/batch_inventory.md"
+          npm run validate:batch-inventory -- --inventory ".tmp/release-gates/${{ github.sha }}/batch_inventory.json" --base "$BASE_REF" --head "${{ github.sha }}" --require-ship
+      - name: Upload batch inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch-inventory-${{ github.sha }}
+          path: .tmp/release-gates/${{ github.sha }}/batch_inventory.*
+          if-no-files-found: error
+          retention-days: 30
+
   dependency-audit:
     runs-on: ubuntu-latest
     steps:
@@ -278,7 +311,7 @@ jobs:
           retention-days: 14
 
   build:
-    needs: [lint-docs, release-verdict-contract, dependency-audit, test-backend, test-frontend, journey-e2e-release-gate]
+    needs: [lint-docs, release-verdict-contract, batch-inventory, dependency-audit, test-backend, test-frontend, journey-e2e-release-gate]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     

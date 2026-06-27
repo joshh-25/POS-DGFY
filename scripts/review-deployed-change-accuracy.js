@@ -3,6 +3,15 @@
 const fs = require('fs');
 const path = require('path');
 
+const VALID_ACCURACY_STATES = new Set([
+  'accurately_reflected',
+  'partially_reflected',
+  'deployed_but_behavior_not_proven',
+  'source_current_only',
+  'docs_overclaim',
+  'deployed_but_inaccurate',
+]);
+
 class AccuracyReviewError extends Error {
   constructor(message, options = {}) {
     super(message);
@@ -82,13 +91,21 @@ function review(options) {
     .filter(Boolean)
     .some((sha) => sha !== targetSha);
 
-  const batchReviews = (inventory.batches || []).map((batch) => ({
-    batch_name: batch.name,
+  const slices = Array.isArray(inventory.release_slices) ? inventory.release_slices : (inventory.batches || []);
+  const productionStatus = markerMismatch ? 'deployed_but_inaccurate' : 'deployed_but_behavior_not_proven';
+  const batchReviews = slices.map((batch) => ({
+    slice_name: batch.slice_name || batch.name,
+    batch_name: batch.name || batch.slice_name,
     intended_verdict: batch.verdict,
-    production_status: markerMismatch ? 'deployed but behavior not proven' : 'deployed but behavior not proven',
-    required_live_proof: batch.production_validation_proof || [],
+    accuracy_state: productionStatus,
+    production_status: productionStatus,
+    required_live_proof: batch.production_proof_required || batch.production_validation_proof || [],
+    production_accuracy_checks_required: batch.production_accuracy_checks_required || [],
     accuracy_decision_required: true,
-    notes: 'Automated SHA/contract markers are only the first proof. Run the listed live/API/UI/database-safe proof before marking accurately reflected.',
+    developer_pr_or_owner_direct_staging_reflected: false,
+    source_only_work_not_claimed_live: true,
+    docs_current_state_requires_review: true,
+    notes: 'Automated SHA/contract markers are only the first proof. Run the listed live/API/UI/database-safe proof before marking accurately_reflected.',
   }));
 
   const report = {
@@ -97,7 +114,10 @@ function review(options) {
     target_sha: targetSha,
     marker_mismatch: markerMismatch,
     markers,
-    status: markerMismatch ? 'blocked' : 'needs-live-proof',
+    status: markerMismatch ? 'blocked' : 'needs_live_proof',
+    valid_accuracy_states: Array.from(VALID_ACCURACY_STATES),
+    completion_rule: 'Deployment is complete only when every shipped slice is accurately_reflected, explicitly documented as residual risk, or intentionally deferred with owner-visible reason.',
+    release_slices: batchReviews,
     batches: batchReviews,
   };
 
@@ -118,10 +138,12 @@ function review(options) {
       '',
     ];
     for (const batch of batchReviews) {
-      lines.push(`### ${batch.batch_name}`);
-      lines.push(`- Production status: \`${batch.production_status}\``);
+      lines.push(`### ${batch.slice_name}`);
+      lines.push(`- Accuracy state: \`${batch.accuracy_state}\``);
       lines.push('- Required live proof:');
       for (const proof of batch.required_live_proof) lines.push(`  - ${proof}`);
+      lines.push('- Production accuracy checks:');
+      for (const check of batch.production_accuracy_checks_required) lines.push(`  - ${check}`);
       lines.push('');
     }
     fs.mkdirSync(path.dirname(path.resolve(options.markdownPath)), { recursive: true });

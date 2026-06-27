@@ -50,11 +50,14 @@ Before sliced commits, PR promotion, or deployment, inspect all implementations 
 
 ```bash
 npm run check:batch-inventory -- --base origin/master --head <candidate_sha> --write --require-ship --inventory ".tmp/release-gates/<candidate_sha>/batch_inventory.json" --markdown ".tmp/release-gates/<candidate_sha>/batch_inventory.md"
+npm run validate:batch-inventory -- --inventory ".tmp/release-gates/<candidate_sha>/batch_inventory.json" --base origin/master --head <candidate_sha> --require-ship
 ```
 
 Each batch must identify purpose, included/excluded files, risk, affected surfaces, tests, docs, ADR/compliance need, commit boundary, rollback notes, production proof, independence, and verdict.
 
 Do not allow unrelated implementations to ride along silently.
+
+Read all implementations in the candidate before slicing. Distinguish developer PR work from owner direct-staging work, preserve excluded work, and reject dirty or mixed candidates that cannot map every changed file to exactly one slice.
 
 ## Excluded Work
 
@@ -75,8 +78,21 @@ Payment-sensitive candidates stop automatic promotion unless explicit payment-re
 3. Include batch inventory and evidence in the promotion PR body.
 4. Requalify the resulting `master` SHA after merge.
 5. Deploy only exact `origin/master` SHA.
-6. Use `RELEASE_TARGET_SHA=<origin_master_sha> npm run deploy:prod:ci` only after branch protection and distinct QA proof are configured.
+6. Use `RELEASE_TARGET_SHA=<origin_master_sha> npm run deploy:prod:ci` only after branch protection, exact master SHA qualification, repeated dry-runs, failure simulations, and distinct QA proof are configured.
 7. Keep the local operator path unchanged: `scripts/deploy-remote.sh --yes`.
+
+Workflow files:
+
+1. `.github/workflows/staging-qualification.yml`
+2. `.github/workflows/promote-staging-to-master.yml`
+3. `.github/workflows/exact-master-sha-qualification.yml`
+4. `.github/workflows/deploy-production.yml`
+
+Dry-run production deployment:
+
+```bash
+PRODUCTION_DEPLOY_DRY_RUN=1 RELEASE_TARGET_SHA=<origin_master_sha> npm run deploy:prod:ci
+```
 
 ## Production Proof And Accuracy
 

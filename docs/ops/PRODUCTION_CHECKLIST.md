@@ -24,6 +24,7 @@ Development-to-production promotion is governed by `docs/ops/DEVELOPMENT_TO_PROD
 - [ ] Batch inventory exists for the exact target SHA and all batches are `ship`:
   ```bash
   npm run check:batch-inventory -- --base origin/master --head "<target_sha>" --write --require-ship --inventory ".tmp/release-gates/<target_sha>/batch_inventory.json" --markdown ".tmp/release-gates/<target_sha>/batch_inventory.md"
+  npm run validate:batch-inventory -- --inventory ".tmp/release-gates/<target_sha>/batch_inventory.json" --base origin/master --head "<target_sha>" --require-ship
   ```
 - [ ] Local production PM2 preview is healthy when using the VPS profile:
   ```bash
@@ -46,6 +47,10 @@ Development-to-production promotion is governed by `docs/ops/DEVELOPMENT_TO_PROD
   ```
 - [ ] For high-risk Storefront, checkout, DGFY auth, tracking, customer dashboard, Store API, or customer-order changes, the release verdict must show `merge.adoption.required` passing. `merge.adoption.not_required` is valid only when the required-proof gate found no high-risk changes.
 - [ ] Payment-sensitive changes are excluded or explicitly approved for payment release. PayMongo live split checkout remains blocked unless ADR 0027 provider-confirmation requirements are met.
+- [ ] QA target proof is real, isolated, and not production:
+  ```bash
+  RELEASE_TARGET_SHA="<target_sha>" npm run check:qa-target-proof -- --target-sha "<target_sha>" --summary ".tmp/release-gates/<target_sha>/qa_deploy_summary.txt" --report ".tmp/release-gates/<target_sha>/qa_target_proof.json"
+  ```
 - [ ] Production multi-location contract smoke gate is green:
   ```bash
   # one-time local setup
@@ -128,7 +133,12 @@ If using CI production deployment:
 RELEASE_TARGET_SHA="<origin_master_sha>" npm run deploy:prod:ci
 ```
 
-CI deployment must remain disabled until branch protection and a distinct QA target are proven.
+Dry-run CI deployment:
+```bash
+PRODUCTION_DEPLOY_DRY_RUN=1 RELEASE_TARGET_SHA="<origin_master_sha>" npm run deploy:prod:ci
+```
+
+CI deployment must remain disabled until branch protection, exact master SHA qualification, failure simulations, and a distinct QA target are proven. The workflow file is `.github/workflows/deploy-production.yml`.
 
 ## 4. If Lock Error Appears
 - [ ] Check active deploy process:

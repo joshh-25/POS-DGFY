@@ -50,6 +50,16 @@ It is intentionally separate from the main backend API process.
 
 ## Runtime Scripts
 
+Install the bridge dependencies separately from the main backend API:
+
+```bash
+cd backend/device-bridge
+npm ci
+```
+
+The main backend package exposes convenience aliases that delegate into this
+folder:
+
 - `npm run start:device-bridge`
 - `npm run dev:device-bridge`
 - `npm run device:printers`
@@ -108,6 +118,10 @@ It is intentionally separate from the main backend API process.
 - `@node-escpos/core`
 - `@node-escpos/usb-adapter`
 - later optional: `@node-escpos/network`
+
+These hardware dependencies are intentionally scoped to `backend/device-bridge`
+instead of the deployable backend API dependency tree. The bridge is a local
+POS hardware helper and is not installed by the production VPS backend deploy.
 
 This first runtime only supports USB ESC/POS printers. It does not yet:
 

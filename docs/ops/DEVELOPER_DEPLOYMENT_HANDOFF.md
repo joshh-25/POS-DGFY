@@ -19,6 +19,7 @@ The intended workflow is:
 2. Developer commits changes on a feature branch.
 3. Developer opens a PR into `staging`.
 4. The `staging` candidate is qualified, promoted through a governed `staging -> master` PR, and deployed only after the exact `origin/master` SHA is proven.
+5. Developers never push directly to `master`; production-current claims require runtime proof and deployed-change accuracy review, not green CI alone.
 
 Developers should not manually upload changed source files to production with WinSCP. WinSCP is only for first-time access setup, server inspection, and emergency file review.
 
@@ -263,6 +264,8 @@ git push origin <feature-branch>
 ```
 
 Then open a PR from `<feature-branch>` into `staging`. Direct developer pushes to `master` are not part of the governed workflow.
+
+The PR must include or link batch/slice documentation, included and excluded work, affected surfaces, risk, required tests/docs/compliance evidence, and merge-adoption proof when high-risk customer-flow paths changed.
 
 After the `staging -> master` promotion PR merges and the owner is ready to deploy, they can tell the owner or Codex agent:
 

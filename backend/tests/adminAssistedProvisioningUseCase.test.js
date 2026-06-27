@@ -1,7 +1,8 @@
 import { jest } from '@jest/globals';
 import {
-  buildAssignTenantOwnerByAdminUseCase,
-  buildCreateAdminProvisionedTenantUseCase
+    buildAssignTenantOwnerByAdminUseCase,
+    buildCreateAdminProvisionedAccountAndTenantUseCase,
+    buildCreateAdminProvisionedTenantUseCase
 } from '../src/modules/tenants/usecases/adminAssistedProvisioningUseCase.js';
 
 const createTenant = (overrides = {}) => ({
@@ -135,5 +136,158 @@ describe('admin assisted provisioning use cases', () => {
       action: 'admin_force_assign_owner',
       reason: 'Owner handover'
     }));
+  });
+
+  it('retries a matching pending company-only attempt without creating a duplicate tenant', async () => {
+    const pendingTenant = createTenant({ status: 'pending' });
+    const tenantAdminRepository = {
+      findTenantByName: jest.fn().mockResolvedValue(pendingTenant),
+      createTenant: jest.fn(),
+      updateTenant: jest.fn(async (tenant, payload) => Object.assign(tenant, payload)),
+      createTenantAdminAuditLog: jest.fn().mockResolvedValue({}),
+      transaction: jest.fn(async (callback) => callback('retry-tx')),
+      findTenantById: jest.fn().mockResolvedValue(createTenant())
+    };
+    const provisionTenant = jest.fn().mockResolvedValue({ id: pendingTenant.id, status: 'active', admin_user_id: 1 });
+    const useCase = buildCreateAdminProvisionedTenantUseCase({
+      tenantAdminRepository,
+      provisionTenant,
+      hashPassword: jest.fn(async (password) => `retry:${password}`),
+      idGenerator: jest.fn(),
+      logger: { error: jest.fn() }
+    });
+
+    const result = await useCase({ body: {
+      name: pendingTenant.name,
+      adminEmail: pendingTenant.admin_email,
+      adminPhone: pendingTenant.admin_phone,
+      adminPassword: 'RetryPass123!',
+      workflowMode: 'food_manufacturing',
+      reason: 'Retry failed provisioning'
+    } });
+
+    expect(result.success).toBe(true);
+    expect(tenantAdminRepository.createTenant).not.toHaveBeenCalled();
+    expect(tenantAdminRepository.updateTenant).toHaveBeenCalledWith(pendingTenant, expect.objectContaining({
+      admin_password_hash: 'retry:RetryPass123!'
+    }), { transaction: 'retry-tx' });
+    expect(provisionTenant).toHaveBeenCalledTimes(1);
+    expect(tenantAdminRepository.createTenantAdminAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+      metadata: expect.objectContaining({ provisioning_attempt: 'retry' })
+    }), { transaction: 'retry-tx' });
+  });
+
+  it('returns an explicit retryable partial-state error when company database provisioning fails', async () => {
+    const pendingTenant = createTenant({ status: 'pending' });
+    const tenantAdminRepository = {
+      findTenantByName: jest.fn().mockResolvedValue(null),
+      createTenant: jest.fn().mockResolvedValue(pendingTenant),
+      createTenantAdminAuditLog: jest.fn().mockResolvedValue({}),
+      transaction: jest.fn(async (callback) => callback('tx')),
+      findTenantById: jest.fn()
+    };
+    const useCase = buildCreateAdminProvisionedTenantUseCase({
+      tenantAdminRepository,
+      provisionTenant: jest.fn().mockRejectedValue(new Error('migration failed')),
+      hashPassword: jest.fn(async (password) => `hashed:${password}`),
+      idGenerator: () => pendingTenant.id,
+      logger: { error: jest.fn() }
+    });
+
+    const result = await useCase({ body: {
+      name: pendingTenant.name,
+      adminEmail: pendingTenant.admin_email,
+      adminPhone: pendingTenant.admin_phone,
+      adminPassword: 'TempPass123!',
+      workflowMode: 'food_manufacturing',
+      reason: 'Failure injection'
+    } });
+
+    expect(result.success).toBe(false);
+    expect(result.error.message).toContain('retained in pending state');
+    expect(result.error.details).toEqual(expect.objectContaining({
+      partial_state: true,
+      retryable: true,
+      phase: 'tenant_provisioning',
+      tenant_id: pendingTenant.id
+    }));
+  });
+
+  it('reconciles ownership assignment after tenant provisioning without reprovisioning or duplicates', async () => {
+    const account = {
+      id: 'dgfy-retry',
+      first_name: 'Retry',
+      email: 'retry@example.test',
+      phone: '+639333333333',
+      provisioning_status: 'admin_provisioned',
+      deleted_at: null
+    };
+    const activeTenant = createTenant({
+      status: 'active',
+      owner_dgfy_account_id: account.id,
+      ownership_status: 'claimed',
+      admin_email: account.email,
+      admin_phone: account.phone
+    });
+    const tenantAdminRepository = {
+      findTenantByName: jest.fn().mockResolvedValue(activeTenant),
+      createTenant: jest.fn(),
+      updateTenant: jest.fn(async (tenant, payload) => Object.assign(tenant, payload)),
+      createTenantAdminAuditLog: jest.fn().mockResolvedValue({}),
+      transaction: jest.fn(async (callback) => callback('retry-tx')),
+      findTenantById: jest.fn().mockResolvedValue(activeTenant)
+    };
+    const dgfyAccountRepository = {
+      findByEmail: jest.fn().mockResolvedValue(account),
+      findByPhone: jest.fn().mockResolvedValue(account),
+      findMembershipForAccount: jest.fn().mockResolvedValue(null),
+      create: jest.fn(),
+      updateAdminProfile: jest.fn(async (row, payload) => Object.assign(row, payload)),
+      createAdminAuditLog: jest.fn().mockResolvedValue({}),
+      forceAssignTenantOwnership: jest.fn().mockResolvedValue({
+        id: 44,
+        status: 'accepted',
+        source: 'admin_handover',
+        tenant_user_id: 9
+      })
+    };
+    const User = {
+      findOne: jest.fn().mockResolvedValue({ user_id: 9, update: jest.fn() }),
+      create: jest.fn()
+    };
+    const provisionTenant = jest.fn();
+    const useCase = buildCreateAdminProvisionedAccountAndTenantUseCase({
+      tenantAdminRepository,
+      dgfyAccountRepository,
+      provisionTenant,
+      tenantConnector: { getConnection: jest.fn().mockResolvedValue({}) },
+      getTenantModels: () => ({ User }),
+      hashPassword: jest.fn(async (password) => `retry:${password}`),
+      idGenerator: jest.fn(),
+      logger: { error: jest.fn() }
+    });
+
+    const result = await useCase({ body: {
+      reason: 'Reconcile ownership failure',
+      dgfy_account: {
+        first_name: 'Retry',
+        last_name: 'Owner',
+        email: account.email,
+        phone: account.phone,
+        temporary_password: 'NewRetry123!'
+      },
+      company: { name: activeTenant.name, workflowMode: 'food_manufacturing' }
+    } });
+
+    expect(result.success).toBe(true);
+    expect(dgfyAccountRepository.create).not.toHaveBeenCalled();
+    expect(tenantAdminRepository.createTenant).not.toHaveBeenCalled();
+    expect(provisionTenant).not.toHaveBeenCalled();
+    expect(dgfyAccountRepository.forceAssignTenantOwnership).toHaveBeenCalledWith(expect.objectContaining({
+      tenant: activeTenant,
+      toAccountId: account.id,
+      tenantUserId: 9
+    }));
+    expect(result.data.payload.data.provisioned.resumed_after_provisioning).toBe(true);
   });
 });

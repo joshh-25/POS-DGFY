@@ -51,12 +51,21 @@ Use `docs/testing/pos-readiness-status.md` as canonical source-of-truth for read
 22. Batch inventory gate must pass for every promotion candidate:
    ```bash
    npm run check:batch-inventory -- --base origin/master --head <candidate_sha> --write --require-ship
+   npm run validate:batch-inventory -- --inventory ".tmp/release-gates/<candidate_sha>/batch_inventory.json" --base origin/master --head <candidate_sha> --require-ship
    ```
 23. CI-safe production deployment, when enabled, must use:
    ```bash
    RELEASE_TARGET_SHA=<origin_master_sha> npm run deploy:prod:ci
    ```
-   Automatic production deployment remains blocked until branch protection and distinct QA proof are configured.
+   Dry-run first:
+   ```bash
+   PRODUCTION_DEPLOY_DRY_RUN=1 RELEASE_TARGET_SHA=<origin_master_sha> npm run deploy:prod:ci
+   ```
+   Automatic production deployment remains blocked until branch protection, exact master SHA qualification, failure simulations, and distinct QA proof are configured.
+24. QA target proof must pass before automatic deployment:
+   ```bash
+   RELEASE_TARGET_SHA=<candidate_sha> npm run check:qa-target-proof -- --target-sha <candidate_sha> --summary ".tmp/release-gates/<candidate_sha>/qa_deploy_summary.txt" --report ".tmp/release-gates/<candidate_sha>/qa_target_proof.json"
+   ```
 
 ## Latest Technical Evidence (2026-06-18)
 

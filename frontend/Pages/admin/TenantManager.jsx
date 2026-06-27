@@ -475,17 +475,6 @@ export default function TenantManager() {
     const [posMetadataAuditLogs, setPosMetadataAuditLogs] = useState([]);
     const [posMetadataAuditLoading, setPosMetadataAuditLoading] = useState(false);
 
-    // Add Tenant Modal State
-    const [showAddModal, setShowAddModal] = useState(false);
-    const [addLoading, setAddLoading] = useState(false);
-    const [addForm, setAddForm] = useState({
-        name: '',
-        adminEmail: '',
-        adminPassword: '',
-        plan: 'premium',
-        complianceMode: 'non_compliant',
-        workflowMode: 'food_manufacturing'
-    });
     const [assistMode, setAssistMode] = useState('company');
     const [assistLoading, setAssistLoading] = useState(false);
     const [assistTemporaryPassword, setAssistTemporaryPassword] = useState('');
@@ -823,32 +812,6 @@ export default function TenantManager() {
             }
         } finally {
             setActionLoading(null);
-        }
-    };
-
-    const handleAddTenant = async (e) => {
-        e.preventDefault();
-        setAddLoading(true);
-        try {
-            await adminService.createTenant(addForm);
-            setShowAddModal(false);
-            setAddForm({
-                name: '',
-                adminEmail: '',
-                adminPassword: '',
-                plan: 'premium',
-                complianceMode: 'non_compliant',
-                workflowMode: 'food_manufacturing'
-            });
-            loadTenants();
-            toast.success('Tenant created successfully');
-        } catch (err) {
-            const normalized = normalizeApiError(err);
-            if (!normalized.isGlobalCandidate) {
-                toast.error(`Failed to create tenant: ${normalized.message}`);
-            }
-        } finally {
-            setAddLoading(false);
         }
     };
 
@@ -1344,7 +1307,7 @@ export default function TenantManager() {
         <div className="mx-auto max-w-7xl">
             {/* Header */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
                         <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
                             <Building2 className="w-8 h-8" />
@@ -1355,9 +1318,6 @@ export default function TenantManager() {
                         </p>
                     </div>
                     <div className="flex gap-2">
-                        <Button onClick={() => setShowAddModal(true)} className="bg-slate-900 text-white hover:bg-slate-800">
-                            + Add Tenant
-                        </Button>
                         <Button onClick={loadTenants} variant="outline" disabled={loading}>
                             <RefreshCw className={cn("w-4 h-4 mr-2", loading && "animate-spin")} />
                             Refresh
@@ -1366,7 +1326,7 @@ export default function TenantManager() {
                 </div>
 
                 {/* Stats */}
-                <div className="grid grid-cols-4 gap-4 mt-6">
+                <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
                     <div className="bg-slate-50 rounded-lg p-4 text-center">
                         <div className="text-2xl font-bold text-slate-900">{tenants.length}</div>
                         <div className="text-sm text-slate-600">Total</div>
@@ -1408,27 +1368,27 @@ export default function TenantManager() {
                     </div>
                 </div>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                    <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Company name" value={assistForm.name} onChange={(event) => updateAssistForm('name', event.target.value)} />
+                    <input required className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Company name" value={assistForm.name} onChange={(event) => updateAssistForm('name', event.target.value)} />
                     <select className="rounded-lg border border-slate-300 px-3 py-2 text-sm" value={assistForm.workflowMode} onChange={(event) => updateAssistForm('workflowMode', event.target.value)}>
                         {WORKFLOW_MODE_SELECT_VALUES.map((mode) => (
                             <option key={mode} value={mode}>{WORKFLOW_MODE_LABELS[mode] || mode}</option>
                         ))}
                     </select>
-                    <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Audit reason" value={assistForm.reason} onChange={(event) => updateAssistForm('reason', event.target.value)} />
+                    <input required minLength={3} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Audit reason" value={assistForm.reason} onChange={(event) => updateAssistForm('reason', event.target.value)} />
                     {assistMode === 'company' ? (
                         <>
-                            <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Admin email" value={assistForm.adminEmail} onChange={(event) => updateAssistForm('adminEmail', event.target.value)} />
-                            <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Admin phone" value={assistForm.adminPhone} onChange={(event) => updateAssistForm('adminPhone', event.target.value)} />
-                            <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Temporary password" value={assistForm.adminPassword} onChange={(event) => updateAssistForm('adminPassword', event.target.value)} />
+                            <input required type="email" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Admin email" value={assistForm.adminEmail} onChange={(event) => updateAssistForm('adminEmail', event.target.value)} />
+                            <input required className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Admin phone" value={assistForm.adminPhone} onChange={(event) => updateAssistForm('adminPhone', event.target.value)} />
+                            <input required minLength={8} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Temporary password" value={assistForm.adminPassword} onChange={(event) => updateAssistForm('adminPassword', event.target.value)} />
                         </>
                     ) : (
                         <>
-                            <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="DGFY first name" value={assistForm.first_name} onChange={(event) => updateAssistForm('first_name', event.target.value)} />
+                            <input required className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="DGFY first name" value={assistForm.first_name} onChange={(event) => updateAssistForm('first_name', event.target.value)} />
                             <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="DGFY middle name" value={assistForm.middle_name} onChange={(event) => updateAssistForm('middle_name', event.target.value)} />
-                            <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="DGFY last name" value={assistForm.last_name} onChange={(event) => updateAssistForm('last_name', event.target.value)} />
-                            <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="DGFY email" value={assistForm.email} onChange={(event) => updateAssistForm('email', event.target.value)} />
-                            <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="DGFY phone" value={assistForm.phone} onChange={(event) => updateAssistForm('phone', event.target.value)} />
-                            <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Temporary password (optional)" value={assistForm.temporary_password} onChange={(event) => updateAssistForm('temporary_password', event.target.value)} />
+                            <input required className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="DGFY last name" value={assistForm.last_name} onChange={(event) => updateAssistForm('last_name', event.target.value)} />
+                            <input required type="email" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="DGFY email" value={assistForm.email} onChange={(event) => updateAssistForm('email', event.target.value)} />
+                            <input required className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="DGFY phone" value={assistForm.phone} onChange={(event) => updateAssistForm('phone', event.target.value)} />
+                            <input minLength={8} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Temporary password (optional)" value={assistForm.temporary_password} onChange={(event) => updateAssistForm('temporary_password', event.target.value)} />
                         </>
                     )}
                     <Button type="submit" disabled={assistLoading}>
@@ -1436,6 +1396,11 @@ export default function TenantManager() {
                         {assistLoading ? 'Provisioning...' : 'Provision'}
                     </Button>
                 </div>
+                {assistMode === 'company' ? (
+                    <p className="mt-3 text-xs text-amber-800">
+                        Company only creates an operational tenant without a DGFY owner. DGFY login, company switching, owner actions, and POS access require owner assignment and an accepted membership.
+                    </p>
+                ) : null}
                 {assistTemporaryPassword ? (
                     <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                         Temporary password: <span className="font-mono font-semibold">{assistTemporaryPassword}</span>
@@ -2763,132 +2728,6 @@ export default function TenantManager() {
                 </div>
             )}
 
-            {/* Add Tenant Modal */}
-            {showAddModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
-                        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-                            <h3 className="font-semibold text-lg text-slate-900">Add New Tenant</h3>
-                            <Button variant="ghost" size="icon" onClick={() => setShowAddModal(false)}>
-                                <X className="w-5 h-5 text-slate-400" />
-                            </Button>
-                        </div>
-
-                        <form onSubmit={handleAddTenant} className="p-6 space-y-4">
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-slate-700">Company Name</label>
-                                <input
-                                    type="text"
-                                    required
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
-                                    value={addForm.name}
-                                    onChange={e => setAddForm({ ...addForm, name: e.target.value })}
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-slate-700">Admin Email</label>
-                                <input
-                                    type="email"
-                                    required
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
-                                    value={addForm.adminEmail}
-                                    onChange={e => setAddForm({ ...addForm, adminEmail: e.target.value })}
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-slate-700">Admin Password</label>
-                                <input
-                                    type="text"
-                                    required
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
-                                    value={addForm.adminPassword}
-                                    onChange={e => setAddForm({ ...addForm, adminPassword: e.target.value })}
-                                    placeholder="Temporary password"
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-slate-700">Plan</label>
-                                    <input
-                                        type="text"
-                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-slate-100 text-slate-600"
-                                        value="Premium-capable"
-                                        readOnly
-                                    />
-                                    <p className="text-xs text-slate-500">
-                                        Registered tenants are premium-capable while subscription billing is paused.
-                                    </p>
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-slate-700">Compliance Mode</label>
-                                    <select
-                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
-                                        value={addForm.complianceMode}
-                                        onChange={e => setAddForm({ ...addForm, complianceMode: e.target.value })}
-                                    >
-                                        <option value="non_compliant">Non-compliant POS</option>
-                                        <option value="compliant">Compliant POS (Pending Activation)</option>
-                                    </select>
-                                    <p className="text-xs text-slate-500">
-                                        Compliant mode supports governed downgrade exceptions for platform admins and one-per-cycle tenant master-admin revert.
-                                    </p>
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-slate-700">Business Mode</label>
-                                    <select
-                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
-                                        value={addForm.workflowMode}
-                                        onChange={e => setAddForm({ ...addForm, workflowMode: e.target.value })}
-                                    >
-                                        {WORKFLOW_MODE_SELECT_VALUES.map((mode) => (
-                                            <option key={mode} value={mode}>{WORKFLOW_MODE_LABELS[mode] || mode}</option>
-                                        ))}
-                                    </select>
-                                    <p className="text-xs text-slate-500">
-                                        Controls initial IMS/POS workflow simplification for this tenant.
-                                    </p>
-                                </div>
-                            </div>
-
-                            {/* DISABLED - switching to PayMongo */}
-                            {/* {addForm.plan === 'premium' && (
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-slate-700">PayPal Subscription ID</label>
-                                    <input
-                                        type="text"
-                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500"
-                                        value={addForm.subscriptionId}
-                                        onChange={e => setAddForm({ ...addForm, subscriptionId: e.target.value })}
-                                        placeholder="Optional (if paid)"
-                                    />
-                                    <p className="text-xs text-slate-500">Leave empty if not yet paid/linked.</p>
-                                </div>
-                            )} */}
-
-                            <div className="flex gap-3 pt-4">
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="flex-1"
-                                    onClick={() => setShowAddModal(false)}
-                                >
-                                    Cancel
-                                </Button>
-                                <Button
-                                    type="submit"
-                                    className="flex-1 bg-slate-900 hover:bg-slate-800 text-white"
-                                    disabled={addLoading}
-                                >
-                                    {addLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Create Tenant'}
-                                </Button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
             {/* Edit Tenant Modal */}
             {showEditModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">

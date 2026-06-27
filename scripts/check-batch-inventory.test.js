@@ -53,8 +53,36 @@ test('generates a ship-ready inventory for non-payment changes', () => {
     }, silentLogger);
 
     assert.equal(inventory.status, 'pass');
-    assert.equal(inventory.batches[0].verdict, 'ship');
+    assert.equal(inventory.release_slices[0].verdict, 'ship');
+    assert.equal(inventory.release_slices[0].payment_sensitive, false);
+    assert.equal(inventory.release_slices[0].high_risk_path, false);
+    assert.deepEqual(inventory.expected_changed_files, ['docs/ops/example.md']);
     assert.match(markdown, /Batch Inventory/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('groups a mixed candidate into multiple release slices', () => {
+  const root = makeRepo();
+  try {
+    writeFile(root, 'backend/src/modules/example/index.js', 'module.exports = {};\n');
+    writeFile(root, 'frontend/apps/store/src/example.js', 'export default true;\n');
+    runGit(root, ['add', '.']);
+    runGit(root, ['commit', '-m', 'mixed']);
+
+    const { inventory } = checkBatchInventory({
+      projectRoot: root,
+      base: 'origin/master',
+      head: 'HEAD',
+      write: false,
+      requireApprovedPayments: false,
+      requireShip: true,
+    }, silentLogger);
+
+    assert.equal(inventory.release_slices.length, 2);
+    assert.equal(inventory.high_risk_path, true);
+    assert.equal(new Set(inventory.release_slices.flatMap((slice) => slice.included_files)).size, 2);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
