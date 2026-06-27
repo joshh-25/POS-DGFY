@@ -1,0 +1,129 @@
+name: Staging Qualification
+
+on:
+  pull_request:
+    branches: [ staging ]
+  push:
+    branches: [ staging ]
+
+concurrency:
+  group: staging-qualification-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpassword
+          MYSQL_DATABASE: sku_inventory_manager_test
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: --health-cmd="redis-cli ping" --health-interval=10s --health-timeout=5s --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm --prefix backend ci
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+
+      - name: Lint governed docs
+        run: npm run lint:docs
+
+      - name: Check architecture
+        run: npm run check:architecture
+
+      - name: Check compliance
+        run: npm run check:compliance
+
+      - name: Validate production env fixtures
+        run: npm run check:production-env
+
+      - name: Audit production dependency trees
+        run: npm run audit:dependencies:prod
+
+      - name: Audit full dependency trees
+        run: npm run audit:dependencies
+
+      - name: Prepare backend test schema
+        working-directory: ./backend
+        run: npx sequelize-cli db:migrate --env development --config src/config/sequelize.config.cjs --migrations-path migrations
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+
+      - name: Run backend test matrix
+        run: npm run test:backend:matrix
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_NAME_TEST: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
+          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+
+      - name: Run frontend tests
+        run: npm run test:frontend
+
+      - name: Build all frontend apps
+        run: npm --prefix frontend run build:all
+
+      - name: Check frontend budgets
+        run: npm run check:frontend-budgets
+
+      - name: Run development-to-production script tests
+        run: npm run test:development-to-production
+
+      - name: Check merge-adoption requirement
+        run: npm run check:merge-adoption-required -- --base origin/master --head ${{ github.sha }}
+
+      - name: Check deploy source contract for candidate
+        run: npm run check:deploy-source-contract -- --target-sha "${{ github.sha }}" --skip-remote-match --report ".tmp/release-gates/${{ github.sha }}/deploy_source_contract.staging.json"
+
+      - name: Generate and enforce batch inventory
+        run: npm run check:batch-inventory -- --base origin/master --head "${{ github.sha }}" --write --require-ship --inventory ".tmp/release-gates/${{ github.sha }}/batch_inventory.json" --markdown ".tmp/release-gates/${{ github.sha }}/batch_inventory.md"
+
+      - name: Upload staging qualification artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-qualification-${{ github.sha }}
+          path: .tmp/release-gates/${{ github.sha }}/**
+          if-no-files-found: ignore
+          retention-days: 30

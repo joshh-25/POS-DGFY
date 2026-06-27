@@ -37,6 +37,7 @@
     "test:hosting:shared": "cd backend && npm run test:hosting:shared",
     "test:hosting:vps": "cd backend && npm run test:hosting:vps",
     "check:frontend-budgets": "node scripts/check-frontend-budgets.js",
+    "check:batch-inventory": "node scripts/check-batch-inventory.js",
     "check:deploy-source-contract": "node scripts/check-deploy-source-contract.js",
     "check:merge-adoption": "node scripts/check-merge-adoption.js",
     "check:merge-adoption-required": "node scripts/check-merge-adoption-required.js",
@@ -72,6 +73,9 @@
     "deploy": "bash scripts/deploy.sh",
     "deploy:auto": "bash scripts/deploy.sh --auto",
     "deploy:verify": "bash scripts/deploy.sh --auto --verify",
+    "deploy:prod:ci": "bash scripts/deploy-master-ci.sh",
+    "promote:staging-to-master": "node scripts/promote-staging-to-master.js",
+    "review:deployed-change-accuracy": "node scripts/review-deployed-change-accuracy.js",
     "verify:prod:multi-location": "powershell -ExecutionPolicy Bypass -File scripts/verify-prod-multi-location.ps1",
     "verify:qa:multi-location": "powershell -ExecutionPolicy Bypass -File scripts/verify-qa-multi-location.ps1",
     "gate:release:prod-contracts": "npm run verify:prod:multi-location",
@@ -91,7 +95,8 @@
     "verify:release-verdict": "node scripts/verify-release-verdict.js",
     "verify:production-deploy-contract": "node scripts/verify-production-deploy-contract.js",
     "test:deploy-contract": "node scripts/check-deploy-source-contract.test.js && node scripts/check-no-staging-prereqs.test.js && node scripts/verify-production-deploy-contract.test.js",
-    "test:merge-adoption": "node scripts/check-merge-adoption.test.js && node scripts/check-merge-adoption-required.test.js"
+    "test:merge-adoption": "node scripts/check-merge-adoption.test.js && node scripts/check-merge-adoption-required.test.js",
+    "test:development-to-production": "node scripts/check-batch-inventory.test.js && node scripts/deploy-master-ci.test.js"
   },
   "keywords": [
     "inventory",

@@ -2,6 +2,8 @@
 
 Use this checklist for every production rollout.
 
+Development-to-production promotion is governed by `docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md`. Developers open PRs into `staging`; `master` is production-only and is updated through the governed promotion PR.
+
 ## 0. One-Time Access Setup (Per Operator Machine)
 - [ ] Configure SSH key-based access for production deploy user.
 - [ ] Confirm server allows key auth (`pubkeyauthentication yes`).
@@ -18,7 +20,11 @@ Use this checklist for every production rollout.
   RELEASE_TARGET_SHA="$(git rev-parse HEAD)" npm run check:deploy-source-contract -- --target-sha "$(git rev-parse HEAD)" --skip-remote-match
   ```
 - [ ] Changes are pushed to the remote branch you will deploy
-- [ ] Optional: CI checks are green
+- [ ] Staging qualification and exact master requalification are green
+- [ ] Batch inventory exists for the exact target SHA and all batches are `ship`:
+  ```bash
+  npm run check:batch-inventory -- --base origin/master --head "<target_sha>" --write --require-ship --inventory ".tmp/release-gates/<target_sha>/batch_inventory.json" --markdown ".tmp/release-gates/<target_sha>/batch_inventory.md"
+  ```
 - [ ] Local production PM2 preview is healthy when using the VPS profile:
   ```bash
   npm run preflight:vps
@@ -39,6 +45,7 @@ Use this checklist for every production rollout.
   MERGE_ADOPTION_MANIFEST="path/to/merge-adoption.json" RELEASE_TARGET_SHA="<target_sha>" npm run gate:release:no-staging
   ```
 - [ ] For high-risk Storefront, checkout, DGFY auth, tracking, customer dashboard, Store API, or customer-order changes, the release verdict must show `merge.adoption.required` passing. `merge.adoption.not_required` is valid only when the required-proof gate found no high-risk changes.
+- [ ] Payment-sensitive changes are excluded or explicitly approved for payment release. PayMongo live split checkout remains blocked unless ADR 0027 provider-confirmation requirements are met.
 - [ ] Production multi-location contract smoke gate is green:
   ```bash
   # one-time local setup
@@ -116,6 +123,13 @@ If using local one-command remote deploy:
 bash scripts/deploy-remote.sh
 ```
 
+If using CI production deployment:
+```bash
+RELEASE_TARGET_SHA="<origin_master_sha>" npm run deploy:prod:ci
+```
+
+CI deployment must remain disabled until branch protection and a distinct QA target are proven.
+
 ## 4. If Lock Error Appears
 - [ ] Check active deploy process:
   ```bash
@@ -188,6 +202,11 @@ bash scripts/deploy-remote.sh
   ```
 - [ ] `qa.deploy.summary.sha_match` passes for the exact production target SHA. A stale QA deploy summary blocks normal release.
 - [ ] If `MERGE_ADOPTION_MANIFEST` was used, `release_verdict.json` includes `merge_adoption_report_file` and the report is `pass`.
+- [ ] Deployed-change accuracy review is complete for each shipped batch:
+  ```bash
+  npm run review:deployed-change-accuracy -- --inventory ".tmp/release-gates/<sha>/batch_inventory.json" --deploy-summary "<latest_summary_file>" --production-contract "<latest_contract_file>" --output ".tmp/release-gates/<sha>/deployed_change_accuracy.json" --markdown ".tmp/release-gates/<sha>/deployed_change_accuracy.md"
+  ```
+- [ ] Any batch marked `partially reflected`, `source-current only`, `deployed but behavior not proven`, `docs overclaim`, or `deployed but inaccurate` is fixed, explicitly deferred, or documented as residual risk.
 
 ## 6. If `npm ci` Fails with `EPERM`/File Lock
 - [ ] Treat as transient lock unless repeated after retries.

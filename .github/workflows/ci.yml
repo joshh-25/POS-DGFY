@@ -2,9 +2,9 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ master, main, develop ]
+    branches: [ master, main, develop, staging ]
   pull_request:
-    branches: [ master, main, develop ]
+    branches: [ master, main, develop, staging ]
 
 jobs:
   lint-docs:
@@ -198,7 +198,7 @@ jobs:
 
   journey-e2e-release-gate:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/'))
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/staging' || startsWith(github.ref, 'refs/heads/release/'))
     needs: [lint-docs, dependency-audit, test-backend, test-frontend]
     services:
       mysql:
@@ -280,7 +280,7 @@ jobs:
   build:
     needs: [lint-docs, release-verdict-contract, dependency-audit, test-backend, test-frontend, journey-e2e-release-gate]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     
     steps:
       - uses: actions/checkout@v6

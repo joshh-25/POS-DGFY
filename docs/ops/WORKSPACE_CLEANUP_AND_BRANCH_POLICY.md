@@ -24,6 +24,8 @@ production .deploy-state/last_deployed_commit
 live /api/v1/health services.observability.runtime_sha
 ```
 
+Development integration source of truth is `origin/staging`, but `staging` is not production. Use `docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md` for the governed `feature branch -> staging -> master -> production` path.
+
 As of the June 26, 2026 final proof, all four production markers matched:
 
 ```text
@@ -55,7 +57,7 @@ local `master`.
 
 ## Non-Negotiable Rules
 
-1. Start new non-payment work from `origin/master`, preferably in
+1. Start new non-payment work from the current integration base, preferably `origin/staging` after it has passed qualification, in
    `C:\xampp\htdocs\SKU-Inventory-Manager-clean`.
 2. Do not merge, rebase, or reset the old local `master` unless the owner
    explicitly asks for that exact operation.
@@ -98,16 +100,16 @@ From the clean workspace:
 
 ```powershell
 cd C:\xampp\htdocs\SKU-Inventory-Manager-clean
-git fetch origin master
-git switch -c codex/<short-task-name> origin/master
+git fetch origin staging
+git switch -c codex/<short-task-name> origin/staging
 ```
 
 If a separate folder is safer for a release slice:
 
 ```powershell
 cd C:\xampp\htdocs\SKU-Inventory-Manager
-git fetch origin master
-git worktree add -b codex/<short-task-name> C:\xampp\htdocs\SKU-Inventory-Manager-<short-task-name> origin/master
+git fetch origin staging
+git worktree add -b codex/<short-task-name> C:\xampp\htdocs\SKU-Inventory-Manager-<short-task-name> origin/staging
 ```
 
 Before committing:
@@ -128,6 +130,8 @@ git rev-parse origin/master
 
 Deploy only when the intended release branch is clean and the pushed target SHA
 is exactly the source that production should pull.
+
+Developer feature branches should open PRs into `staging`. Only the governed promotion workflow should move qualified `staging` changes into `master`.
 
 ## PayMongo Work
 
@@ -175,4 +179,3 @@ Do not clean:
 3. Local secret files such as `.env.qa.local` and `.env.qa.secrets.local`.
 4. Deploy summaries, `.deploy-state`, or production evidence artifacts unless
    explicitly archived first.
-

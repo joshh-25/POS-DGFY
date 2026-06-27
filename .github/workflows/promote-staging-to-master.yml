@@ -1,0 +1,55 @@
+name: Promote Staging To Master
+
+on:
+  workflow_run:
+    workflows: [ "Staging Qualification" ]
+    types: [ completed ]
+    branches: [ staging ]
+  workflow_dispatch:
+
+concurrency:
+  group: promote-staging-to-master
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: staging
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Refresh remote refs
+        run: git fetch origin master staging
+
+      - name: Generate promotion batch inventory
+        run: npm run check:batch-inventory -- --base origin/master --head origin/staging --write --require-ship --inventory ".tmp/release-gates/${{ github.sha }}/batch_inventory.json" --markdown ".tmp/release-gates/${{ github.sha }}/batch_inventory.md"
+
+      - name: Create or update staging-to-master PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: npm run promote:staging-to-master -- --base master --head staging --title "Promote staging to master" --inventory-markdown ".tmp/release-gates/${{ github.sha }}/batch_inventory.md"
+
+      - name: Upload promotion artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: promote-staging-to-master-${{ github.sha }}
+          path: .tmp/release-gates/**
+          if-no-files-found: ignore
+          retention-days: 30
